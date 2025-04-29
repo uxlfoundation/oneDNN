@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -175,7 +175,7 @@ __kernel void gen9_calculate_stats(__global DATA_T *src, __global float *mean,
 #endif // #if FUSE_BN_RELU == 1
 
 #if FUSE_BN_RELU == 1
-        const float8 C_ZERO = 0.0;
+        const float8 C_ZERO = 0.0f;
         dd_data = select(C_ZERO, dd_data, convert_int8(ws_data));
 #endif // #if FUSE_BN_RELU == 1
 
@@ -392,7 +392,7 @@ __kernel void gen9_bnorm_bwd(__global DATA_T *src, __global float *mean,
 #endif // #if FUSE_BN_RELU == 1
 
 #if FUSE_BN_RELU == 1
-        const float8 C_ZERO = 0.0;
+        const float8 C_ZERO = 0.0f;
         dd_data = select(C_ZERO, dd_data, convert_int8(ws_data));
 #if FUSE_BN_ADD_RELU
         write_8x16_block(diff_src_add, c, dd_data);

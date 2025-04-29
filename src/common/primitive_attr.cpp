@@ -607,7 +607,8 @@ status_t dnnl_primitive_attr_set_zero_points(dnnl_primitive_attr_t attr,
             VERBOSE_INVALID_DATATYPE, "zero points");
     VCHECK_ATTR(IMPLICATION(utils::one_of(data_type, s4, u4), mask > 0),
             VERBOSE_BAD_PARAM, "mask with int4 data type");
-    VCHECK_ATTR(IMPLICATION(!utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS),
+    VCHECK_ATTR(IMPLICATION(!utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_SRC,
+                                    DNNL_ARG_SRC | DNNL_ARG_ATTR_USER_PRECOMP),
                         data_type == s32 && ndims == 0),
             VERBOSE_INVALID_DATATYPE, "zero points");
     VCHECK_ATTR(IMPLICATION(ndims, validate_dims(ndims, group_dims)),

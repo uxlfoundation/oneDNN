@@ -281,10 +281,10 @@ partition_data_displacer_t::partition_data_displacer_t(
         // Fill proper data for bottom-right implicit casual mask
         while (aop.kind_ == "Add") {
             auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_op->kind_ != "Subtract") break;
+            auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_sub_op->kind_ != "Subtract") break;
 
-            auto *child_op_out_lt = &child_op->out_lts_[0];
+            auto *child_op_out_lt = &child_sub_op->out_lts_[0];
             auto *next_child_op = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
             if (next_child_op->kind_ != "GreaterEqual") break;
 
@@ -294,7 +294,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
             // The following subtract and greaterEqual must also be a part of
             // the partition.
-            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()
+            if (op_ids_set_.find(child_sub_op->id_) == op_ids_set_.end()
                     || op_ids_set_.find(next_child_op->id_)
                             == op_ids_set_.end())
                 break;
@@ -323,8 +323,20 @@ partition_data_displacer_t::partition_data_displacer_t(
                         }
                     };
 
-            set_seq_len_displace_args(&aop, seq_len_q);
-            set_seq_len_displace_args(child_op, seq_len_kv);
+            // The bottom-right implicit causal mask handles future tokens
+            // differently compared to the top-left casual mask. To support
+            // it, the result of `GenIndex` on rows should subtract `seq_len_q`
+            // and add `seq_len_kv` to generate masks such as:
+            // # s_q=2, s_kv=5            |    # s_q=5, s_kv=2
+            //  0    0    0    0  -inf    |      -inf  -inf
+            //  0    0    0    0    0     |      -inf  -inf
+            //                            |      -inf  -inf
+            //                            |        0   -inf
+            //                            |        0    0
+            // Add the sequence length of Key and Value.
+            set_seq_len_displace_args(&aop, seq_len_kv);
+            // Subtract the sequence lenght of Query.
+            set_seq_len_displace_args(child_sub_op, seq_len_q);
             break;
         }
     }

@@ -172,7 +172,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
         bool is_f16 = (p.itype == f16 || p.otype == f16);
         bool f16_ok = (p.itype == f32 && p.otype == f16 && p.beta == 0.f)
-                || (p.itype == f16 && p.otype == f32 && p.beta == 0.f);
+                || (p.itype == f16 && p.otype == f32 && p.beta == 0.f)
+                || (p.itype == f16 && p.otype == f16 && p.beta == 0.f);
 
         bool ok = true && p.ndims > 0
                 && utils::one_of(

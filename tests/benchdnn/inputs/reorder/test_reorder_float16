@@ -1,6 +1,6 @@
 # f32, s8, u8 <--> f16
 --reset
---sdt=f32,bf16,s8,u8,f8_e5m2,f8_e4m3 --ddt=f16
+--sdt=f16,f32,bf16,s8,u8,f8_e5m2,f8_e4m3 --ddt=f16
 --stag=abx,axb
 --dtag=aBx16b 2x64x14x14 2x56x14x14
 --dtag=gOIhw16i16o 2x64x64x3x3 2x56x56x3x3
@@ -26,3 +26,4 @@
 --attr-scales=src:per_dim_1,dst:per_dim_1
 --sdt=f32 --ddt=f16 3x5x7x11
 --sdt=f16 --ddt=f32 3x5x7x11
+--sdt=f16 --ddt=f16 3x5x7x11

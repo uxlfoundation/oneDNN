@@ -50,9 +50,10 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     dims wei2_user_dims = ltw(inputs[graph_inport[3]]).vdims();
     VCHECK_MQA_DECOMP(
             batch_size == wei1_user_dims[0] && batch_size == wei2_user_dims[0],
-            false,
-            "batch size mismatch, batch_size: %lld, wei1: %lld, wei2: %lld",
-            batch_size, wei1_user_dims[0], wei2_user_dims[0]);
+            false, "batch size mismatch, batch_size: %ld, wei1: %ld, wei2: %ld",
+            static_cast<long int>(batch_size),
+            static_cast<long int>(wei1_user_dims[0]),
+            static_cast<long int>(wei2_user_dims[0]));
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
@@ -71,8 +72,9 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     VCHECK_MQA_DECOMP(batch_size * num_head > RATIO * nthr, false,
             "doesn't meet condition for decompose:"
             "batch size * num_head should be larger than ratio * nthr, but got "
-            "batch_size %lld, num_head %lld, ration %d , nthr %d",
-            batch_size, num_head, RATIO, nthr);
+            "batch_size %ld, num_head %ld, ration %d , nthr %d",
+            static_cast<long int>(batch_size), static_cast<long int>(num_head),
+            RATIO, nthr);
 #endif
     return true;
 }

@@ -121,13 +121,13 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
                                     data_type::s4, data_type::u4,
                                     data_type::f4_e2m1, data_type::f4_e3m0),
                         weights_desc->dims[with_groups + 1] % 2 == 0),
-            VERBOSE_INCONSISTENT_DIM, "weights", with_groups + 1);
+            VERBOSE_BAD_DIM, "weights", with_groups + 1);
     // s4/u4/f4 src requires channels to be multiple of 2 to be byte aligned
     VCHECK_CONV(IMPLICATION(utils::one_of(src_desc->data_type, data_type::s4,
                                     data_type::u4, data_type::f4_e2m1,
                                     data_type::f4_e3m0),
                         src_desc->dims[1] % 2 == 0),
-            VERBOSE_INCONSISTENT_DIM, "src", 1);
+            VERBOSE_BAD_DIM, "src", 1);
 
     int sp_dims = src_desc->ndims - 2;
     utils::array_copy(cd.strides, strides, sp_dims);

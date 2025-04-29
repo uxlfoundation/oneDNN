@@ -348,9 +348,12 @@ status_t insert_to_group_for_reorder(std::shared_ptr<subgraph_t> &sg) {
             VCHECK_INSERT_OPS(
                     group * out_md.get_dims()[1] == in_md.get_dims()[0],
                     status::invalid_shape,
-                    "unmatched shape to insert to_group for reorder, group: %d,"
-                    "output dims[1]: %d, input dims[0], %d",
-                    group, out_md.get_dims()[1], in_md.get_dims()[0]);
+                    "unmatched shape to insert to_group for reorder, group: "
+                    "%ld,"
+                    "output dims[1]: %ld, input dims[0], %ld",
+                    static_cast<long int>(group),
+                    static_cast<long int>(out_md.get_dims()[1]),
+                    static_cast<long int>(in_md.get_dims()[0]));
             // insert to_group op
             op_ptr to_group_op = std::make_shared<op_t>(op_kind::dnnl_to_group);
             to_group_op->set_attr<int64_t>(op_attr::groups, group);

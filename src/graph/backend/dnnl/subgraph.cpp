@@ -325,7 +325,8 @@ status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {
                 VCHECK_SUBGRAPH(ok, status::invalid_graph_op,
                         "additional verify failed for dnnl_convolution,  "
                         "data_format:%s, filter_format:%s, groups:%ld",
-                        data_fmt.c_str(), filter_fmt.c_str(), groups);
+                        data_fmt.c_str(), filter_fmt.c_str(),
+                        static_cast<long int>(groups));
             }
         } else {
             // TODO(qun)

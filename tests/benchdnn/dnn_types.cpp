@@ -400,6 +400,11 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
+    // process precomp
+    const auto p_str = parser::get_substr(s, start_pos, ':');
+    this->user_precomp = str2bool(p_str.c_str());
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
     return OK;
 }
 
@@ -1115,10 +1120,12 @@ dnnl_primitive_attr_t create_dnnl_attr(
     if (!attr.zero_points.is_def()) {
         const auto &zp = attr.zero_points;
         for (const auto &arg : zp.points) {
-            const auto arg_name = arg.first;
-            if (zp.is_def(arg_name)) continue;
-
             const auto &e = arg.second;
+            const auto arg_name = arg.first
+                    | ((e.user_precomp) ? DNNL_ARG_ATTR_USER_PRECOMP
+                                        : DNNL_ARG_UNDEF);
+            if (zp.is_def(arg_name & ~DNNL_ARG_ATTR_USER_PRECOMP)) continue;
+
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask
                     = attr_args.get_mask(DNNL_ARG_ATTR_ZERO_POINTS | arg_name);

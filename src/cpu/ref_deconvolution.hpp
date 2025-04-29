@@ -262,6 +262,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
         }
 
         bool zero_points_ok() const {
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
             const auto &zp = attr()->zero_points_;
 
             using namespace data_type;
@@ -279,8 +280,13 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                 ok = utils::one_of(mask_dst, 0, (1 << 1));
                 if (!ok) return false;
             }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
+            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST)) {
+                return false;
+            }
+            return true;
         }
     };
 

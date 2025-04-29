@@ -87,18 +87,26 @@ struct ref_convolution_int8_fwd_t : public primitive_t {
         }
 
         bool zero_points_ok() const {
-            if (!attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = attr()->zero_points_.get_mask(DNNL_ARG_SRC);
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+            const auto &zp = attr()->zero_points_;
+
+            if (!zp.has_default_values(DNNL_ARG_SRC)) {
+                int mask_src = zp.get_mask(DNNL_ARG_SRC);
                 const bool ok = mask_src == 0 || mask_src == (1 << 1);
                 if (!ok) return false;
             }
-            if (!attr()->zero_points_.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = attr()->zero_points_.get_mask(DNNL_ARG_DST);
+            if (!zp.has_default_values(DNNL_ARG_DST)) {
+                int mask_dst = zp.get_mask(DNNL_ARG_DST);
                 const bool ok = mask_dst == 0 || mask_dst == (1 << 1);
                 if (!ok) return false;
             }
-
-            return attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
+            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST)) {
+                return false;
+            }
+            return true;
         }
 
         bool post_ops_ok() const {

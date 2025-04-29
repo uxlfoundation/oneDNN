@@ -125,6 +125,11 @@ struct ref_matmul_int8_t : public primitive_t {
                 bool ok = utils::one_of(mask_dst, 0, wei_qmask_N());
                 if (!ok) return false;
             }
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+            if (!zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_SRC))
+                return false;
             return true;
         }
     };

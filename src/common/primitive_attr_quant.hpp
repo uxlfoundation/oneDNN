@@ -319,6 +319,8 @@ private:
         for (const auto &sa : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (arg == sa) return true;
         }
+        // user-supplied precomputed zp
+        if (arg == (DNNL_ARG_SRC | DNNL_ARG_ATTR_USER_PRECOMP)) return true;
         // sdpa
         if (arg == DNNL_ARG_SRC_2) return true;
         return false;

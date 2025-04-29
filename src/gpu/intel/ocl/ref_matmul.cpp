@@ -32,10 +32,15 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     auto &c = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
+    const auto has_src_up_zp = !pd()->attr()->zero_points_.has_default_values(
+            DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC);
+    const auto src_zp_idx = DNNL_ARG_SRC
+            | ((has_src_up_zp) ? DNNL_ARG_ATTR_USER_PRECOMP : DNNL_ARG_UNDEF);
+
     auto &src_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     auto &wei_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     auto &dst_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | src_zp_idx);
     const auto &b0
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const auto &c0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
@@ -179,8 +184,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t wei_zp_stride_b1
             = b_d.ndims() > 3 ? wei_zp_strides[b_d.ndims() - 4] : 0;
 
-    int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
-    const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
+    int src_zp_mask = attr_zps.get_mask(src_zp_idx);
+    const auto src_zp_group_k = attr_zps.get_group(src_zp_idx, 1);
     const auto src_zp_ngroups_k = K / src_zp_group_k;
     // Identify src_zp dimensions as user may not pass them.
     dims_t src_zp_dims {};

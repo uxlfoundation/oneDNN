@@ -1014,8 +1014,10 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &wei_md = query_md(const_pd, DNNL_ARG_WEIGHTS);
 
         const auto append_zero_points = [&](int exec_arg) {
-            const int exec_zp_arg = DNNL_ARG_ATTR_ZERO_POINTS | exec_arg;
             const auto &e = zp.get(exec_arg);
+            const int exec_zp_arg = (e.user_precomp)
+                    ? (DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | exec_arg)
+                    : (DNNL_ARG_ATTR_ZERO_POINTS | exec_arg);
             int64_t ndims = 1;
             dims_t dims = {};
             const auto mask

@@ -9,7 +9,7 @@
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG]]
     --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]
-    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]
+    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS[:PRECOMP]]]][+...]
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
                     DW:KkSsPp[:DST_DT]
@@ -154,6 +154,9 @@ policies will trigger an error.
 
 `GROUPS` specifies how zero points are grouped along dimensions where multiple
 zero points factors are used.
+
+`PRECOMP` is a boolean value (`false` by default) meaning that this buffer's
+partial reductions are to be precomputed by the user if `true`.
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.

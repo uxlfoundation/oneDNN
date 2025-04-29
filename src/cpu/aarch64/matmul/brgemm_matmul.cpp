@@ -43,6 +43,49 @@ using namespace dnnl::impl::utils;
 using namespace nstl;
 
 using namespace data_type;
+namespace {
+
+int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
+        bool do_initialization, int m_ker_idx, bool is_N_tail, bool is_K_tail,
+        int bs) {
+    const int max_m_ker_idx
+            = bgmmc.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
+    if (m_ker_idx >= max_m_ker_idx) return -1;
+
+    auto vM = m_ker_idx > 0
+            ? (bgmmc.is_runtime_M ? dynamic_m_tails[m_ker_idx - 1]
+                                  : bgmmc.M_tail)
+            : bgmmc.M_blk;
+    auto vN = (is_N_tail) ? bgmmc.N_tail : bgmmc.N_blk;
+    auto vK = (is_K_tail) ? bgmmc.K_tail : bgmmc.K_blk;
+    if (vM == 0 || vN == 0 || vK == 0 || bs == 0 || bgmmc.LDA < vK
+            || bgmmc.LDB < vN || bgmmc.LDC < vN)
+        return -1;
+
+    int idx = 16 * m_ker_idx + 8 * (int)is_bs_tail + 4 * (int)do_initialization
+            + 2 * (int)is_N_tail + (int)is_K_tail;
+    assert(idx < max_num_brg_kernels_matmul);
+    return idx;
+}
+
+int get_brg_batchsize(
+        const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail, bool is_K_tail) {
+    auto bs = is_K_tail  ? 1
+            : is_bs_tail ? bgmmc.brgemm_batch_tail_size
+                         : bgmmc.brgemm_batch_size;
+    return bs;
+}
+
+} // anonymous namespace
+
+template <cpu_isa_t isa>
+int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
+        bool do_initialization, int m_ker_idx, bool is_N_tail,
+        bool is_K_tail) const {
+    int bs = get_brg_batchsize(bgmmc_, is_bs_tail, is_K_tail);
+    return get_brg_kernel_index(bgmmc_, is_bs_tail, do_initialization,
+            m_ker_idx, is_N_tail, is_K_tail, bs);
+}
 
 template <cpu_isa_t isa>
 status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {

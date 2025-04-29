@@ -271,12 +271,19 @@ void jit_gemm_pd_t::init_attrs() {
 }
 
 bool jit_gemm_pd_t::zp_ok() {
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
+
+    if (!attr_zps.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+            || !attr_zps.has_default_values(user_precomp | DNNL_ARG_SRC)
+            || !attr_zps.has_default_values(user_precomp | DNNL_ARG_DST)) {
+        return false;
+    }
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.

@@ -206,15 +206,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
 
     auto check_attr_zero_points = [&]() -> bool {
+        const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
         const auto &zp = attr()->zero_points_;
         static const std::vector<int> supported_args {
                 DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        for (int arg : supported_args) {
-            if (!zp.has_default_values(arg)) {
-                const int mask = zp.get_mask(arg);
-                if (mask > 0) return false;
-            }
-        }
+        for (int arg : supported_args)
+            if ((!zp.has_default_values(arg) && (zp.get_mask(arg) > 0))
+                    || !zp.has_default_values(user_precomp | arg))
+                return false;
         return true;
     };
     const bool problem_dt_correct

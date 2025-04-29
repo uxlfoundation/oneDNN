@@ -31,10 +31,15 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     auto &c = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
+    const auto has_src_up_zp = !pd()->attr()->zero_points_.has_default_values(
+            DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC);
+    const auto src_zp_idx = DNNL_ARG_SRC
+            | ((has_src_up_zp) ? DNNL_ARG_ATTR_USER_PRECOMP : DNNL_ARG_UNDEF);
+
     auto &src_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     auto &wei_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     auto &dst_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | src_zp_idx);
     const auto &b0
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const auto &c0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
@@ -178,8 +183,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t wei_zp_stride_b1
             = b_d.ndims() > 3 ? wei_zp_strides[b_d.ndims() - 4] : 0;
 
-    int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
-    const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
+    int src_zp_mask = attr_zps.get_mask(src_zp_idx);
+    const auto src_zp_group_k = attr_zps.get_group(src_zp_idx, 1);
     const auto src_zp_ngroups_k = K / src_zp_group_k;
     // Identify src_zp dimensions as user may not pass them.
     dims_t src_zp_dims {};
@@ -199,6 +204,10 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     }
     const dim_t src_zp_stride_k = src_zp_strides[a_d.ndims() - 1];
     const dim_t src_zp_stride_m = src_zp_strides[a_d.ndims() - 2];
+    const dim_t src_zp_stride_b0
+            = a_d.ndims() > 2 ? src_zp_strides[a_d.ndims() - 3] : 0;
+    const dim_t src_zp_stride_b1
+            = a_d.ndims() > 3 ? src_zp_strides[a_d.ndims() - 4] : 0;
 
     // For compute kernel, the minimal group is picked.
     const auto scale_ngroups_k
@@ -222,6 +231,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, a0);
     arg_list.set(arg_idx++, src_zp_stride_k);
     arg_list.set(arg_idx++, src_zp_stride_m);
+    arg_list.set(arg_idx++, src_zp_stride_b0);
+    arg_list.set(arg_idx++, src_zp_stride_b1);
     arg_list.set(arg_idx++, src_zp_group_k);
     arg_list.set(arg_idx++, b0);
     arg_list.set(arg_idx++, wei_zp_stride_n);

@@ -1883,7 +1883,14 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const int prelu_ind = p.find(primitive_kind::prelu);
     jcp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
 
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
     const auto &zp = attr.zero_points_;
+
+    VDISPATCH_CONV_IC(zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_DST),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
     jcp.src_zero_point
             = get_zp_type(attr, DNNL_ARG_SRC) != brgemm_broadcast_t::none;
     jcp.dst_zero_point

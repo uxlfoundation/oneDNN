@@ -69,7 +69,10 @@ struct ref_convolution_int8_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             CHECK(attr_scales_ok());
             CHECK(attr_zero_points_ok(
-                    {{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0, 2}}}));
+                    {{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0, 2}},
+                            {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC, {}},
+                            {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_WEIGHTS, {}},
+                            {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_DST, {}}}));
             VDISPATCH_CONV(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(
                     attr_.set_default_formats(dst_md(0)) == status::success,

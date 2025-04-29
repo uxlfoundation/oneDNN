@@ -306,10 +306,14 @@ class QuantizationParam(Mapping):
     data_type: str
     mask: int = 0
     groups: str = ""
+    user_zp_precomp: bool = False
 
     def __str__(self):
         if self.groups:
-            return f"{self.mask}:{self.data_type}:{self.groups}"
+            if self.user_zp_precomp:
+                return f"{self.mask}:{self.data_type}:{self.groups}:true"
+            else:
+                return f"{self.mask}:{self.data_type}:{self.groups}"
         return f"{self.mask}:{self.data_type}"
 
 

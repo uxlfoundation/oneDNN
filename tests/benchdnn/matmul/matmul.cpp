@@ -143,6 +143,11 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             attr_args.prepare_quant(prb->attr, arg, mask);
         }
     };
+    const auto get_zp_arg = [&](int arg) {
+        return (prb->attr.zero_points.get(arg).user_precomp)
+                ? (DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | arg)
+                : (DNNL_ARG_ATTR_ZERO_POINTS | arg);
+    };
 
     overload_quant_mask(prb->attr.scales.get(DNNL_ARG_SRC).policy,
             DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
@@ -151,9 +156,9 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     overload_quant_mask(prb->attr.scales.get(DNNL_ARG_DST).policy,
             DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_SRC).policy,
-            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+            get_zp_arg(DNNL_ARG_SRC));
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
-            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+            get_zp_arg(DNNL_ARG_WEIGHTS));
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));
@@ -859,6 +864,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
+    bool needs_user_src_zp_precomp = false;
 
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
@@ -952,6 +958,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+            case DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | DNNL_ARG_SRC:
+                // can't do partial reductions just yet, since SRC can be empty
+                // at this point; do nothing but declare the need to reduce:
+                needs_user_src_zp_precomp = true;
+                break;
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
                 ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
                         /* prefill = */ false);
@@ -966,6 +977,37 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
                 cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
+
+        // Don't keep reference memory if it is not used further.
+        if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();
+    }
+    if (needs_user_src_zp_precomp && !ref_mem_map.empty()) {
+        // TODO: stop assuming that the SRC buffer format is plain and K-first!
+        int exec_arg = DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | DNNL_ARG_SRC;
+        auto &src = ref_mem_map[DNNL_ARG_SRC];
+        auto &zp = ref_mem_map[exec_arg];
+        auto &mem = mem_map[exec_arg];
+        const auto src_mapped = src.is_mapped();
+        const auto zp_mapped = zp.is_mapped();
+        if (!src_mapped) src.map();
+        if (!zp_mapped) zp.map();
+        auto psrc = src.get_mapped_pointer<float>();
+        auto pzp = zp.get_mapped_pointer<float>();
+
+        const auto g_size = prb->attr.zero_points.get(DNNL_ARG_SRC).groups[1];
+        assert(prb->k % prb->attr.zero_points.get(DNNL_ARG_SRC).groups[1] == 0);
+
+        benchdnn_parallel_nd(int(src.nelems(true) / g_size), [&](int64_t g) {
+            pzp[g] = 0;
+            for (auto i = g * g_size, iend = (g + 1) * g_size; i < iend; i++)
+                pzp[g] += psrc[i];
+        });
+        if (!src_mapped) src.unmap();
+        if (!zp_mapped) zp.unmap();
+
+        SAFE(mem.reorder(zp), WARN);
+        update_ref_mem_map_from_prim(
+                prim_ref, mem, ref_mem_map, exec_arg, dnnl_data_type_undef);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

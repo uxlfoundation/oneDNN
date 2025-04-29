@@ -85,20 +85,26 @@ struct attr_t {
         struct entry_t {
             entry_t(policy_t apolicy = COMMON, int avalue = 0,
                     dnnl_data_type_t adt = dnnl_s32,
-                    const std::vector<dnnl_dim_t> &agroups = {})
-                : policy(apolicy), value(avalue), dt(adt), groups(agroups) {}
+                    const std::vector<dnnl_dim_t> &agroups = {},
+                    bool aprecomp = false)
+                : policy(apolicy)
+                , value(avalue)
+                , dt(adt)
+                , groups(agroups)
+                , user_precomp(aprecomp) {}
 
             int from_str(const std::string &s);
 
             bool is_def() const {
                 return policy == COMMON && value == 0 && dt == dnnl_s32
-                        && groups.empty();
+                        && groups.empty() && !user_precomp;
             }
 
             policy_t policy = COMMON;
             int value = 0;
             dnnl_data_type_t dt = dnnl_s32;
             std::vector<dnnl_dim_t> groups;
+            bool user_precomp = false;
         };
 
         int from_str(const std::string &s);

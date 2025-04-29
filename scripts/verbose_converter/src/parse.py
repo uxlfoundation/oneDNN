@@ -421,6 +421,8 @@ class ParserImpl:
                 param.data_type = spec.read_str()
                 if spec.read_literal(":"):
                     param.groups = spec.read_str()
+                    if spec.read_literal(":"):
+                        param.user_zp_precomp = spec.read_str() == "true"
         return param
 
     # v2.7 and below

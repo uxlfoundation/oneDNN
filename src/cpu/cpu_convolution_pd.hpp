@@ -68,7 +68,10 @@ protected:
     // update the default.
     status_t attr_zero_points_ok(
             const std::unordered_map<int, std::vector<int>> &supported_args_map
-            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_DST, {0}}}) const {
+            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_DST, {0}},
+                    {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC, {}},
+                    {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_WEIGHTS, {}},
+                    {DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_DST, {}}}) const {
         return convolution_fwd_pd_t::attr_zero_points_ok(supported_args_map);
     }
 

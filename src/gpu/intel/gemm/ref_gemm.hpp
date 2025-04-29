@@ -203,6 +203,7 @@ struct ref_gemm_t : public gpu_gemm_t {
         }
 
         bool attr_zp_ok() const {
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
             const auto &zp = attr()->zero_points_;
 
             bool ok = IMPLICATION(desc()->acc_type != data_type::s32,
@@ -211,12 +212,10 @@ struct ref_gemm_t : public gpu_gemm_t {
 
             static const std::vector<int> supported_args {
                     DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C};
-            for (int arg : supported_args) {
-                if (!zp.has_default_values(arg)) {
-                    const int mask = zp.get_mask(arg);
-                    if (mask > 0) return false;
-                }
-            }
+            for (int arg : supported_args)
+                if ((!zp.has_default_values(arg) && (zp.get_mask(arg) > 0))
+                        || !zp.has_default_values(user_precomp | arg))
+                    return false;
             return true;
         }
 

@@ -648,6 +648,9 @@ std::string get_arg(int arg) {
 
     std::string s;
     switch (arg) {
+        case DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC:
+        case DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC_1:
+        case DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC_2:
         case DNNL_ARG_SRC: // DNNL_ARG_SRC_0
         case DNNL_ARG_SRC_1:
         case DNNL_ARG_SRC_2: s = "src"; break;

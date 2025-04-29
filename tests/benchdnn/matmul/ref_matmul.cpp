@@ -40,6 +40,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_scales
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    const dnn_mem_t &src_up_zps
+            = args.find(DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | DNNL_ARG_SRC);
     const dnn_mem_t &src_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const dnn_mem_t &wei_zps
@@ -68,10 +70,18 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const bool has_src_single_scale = has_src_scale && src_scale_mask == 0;
     const bool has_wei_single_scale = has_wei_scale && wei_scale_mask == 0;
 
-    const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
-    const bool has_wei_zp
-            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
-    const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
+    const bool has_src_up_zp
+            = prb->attr.zero_points.get(DNNL_ARG_SRC).user_precomp;
+    const bool has_src_zp = !has_src_up_zp
+            && !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
+    const bool has_wei_up_zp
+            = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).user_precomp;
+    const bool has_wei_zp = !has_wei_up_zp
+            && !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
+    const bool nas_dst_up_zp
+            = prb->attr.zero_points.get(DNNL_ARG_DST).user_precomp;
+    const bool has_dst_zp = !nas_dst_up_zp
+            && !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
 
     const int src_zp_mask = prb->attr.zero_points.get_mask(
             DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
@@ -108,6 +118,13 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto smallest_k_group = std::min(
             {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
     const auto n_k_groups = K / smallest_k_group;
+
+    assert(IMPLICATION(has_src_up_zp && has_src_scale,
+            (src_scale_group % src_zp_group == 0)));
+    assert(IMPLICATION(has_src_up_zp && has_wei_scale,
+            (wei_scale_group % src_zp_group == 0)));
+    assert(IMPLICATION(has_src_up_zp && has_wei_scale,
+            (wei_zp_group % src_zp_group == 0)));
 
     // Fast return if any dim is zero. Common logic doesn't apply because of
     // broadcast semantics.
@@ -165,16 +182,35 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                 wei_scale = wei_scales.get_f32_elem(wei_scale_idx);
             }
 
-            for (int64_t k = 0; k < smallest_k_group; ++k) {
-                const auto src_off
-                        = src_off_f(prb, src_mb, m, gK * smallest_k_group + k);
-                const auto wei_off = wei_ba_off_f(
-                        prb, wei_mb, gK * smallest_k_group + k, n);
+            if (has_src_up_zp) {
+                for (int64_t k = 0; k < smallest_k_group; ++k) {
+                    const auto src_off = src_off_f(
+                            prb, src_mb, m, gK * smallest_k_group + k);
+                    const auto wei_off = wei_ba_off_f(
+                            prb, wei_mb, gK * smallest_k_group + k, n);
 
-                auto s = src_scale * (src_m.get_f32_elem(src_off) - src_zp);
-                auto w = wei_scale * (wei_m.get_f32_elem(wei_off) - wei_zp);
+                    auto s = src_scale * src_m.get_f32_elem(src_off);
+                    auto w = wei_scale * wei_m.get_f32_elem(wei_off);
 
-                dst += s * w;
+                    dst += s * w;
+                }
+                auto mZ = mb * n_k_groups * M * smallest_k_group / src_zp_group;
+                auto gZ = (n_k_groups * m + gK) * smallest_k_group
+                        / src_zp_group;
+                dst -= src_scale * src_up_zps.get_f32_elem(mZ + gZ) * wei_scale
+                        * wei_zp;
+            } else {
+                for (int64_t k = 0; k < smallest_k_group; ++k) {
+                    const auto src_off = src_off_f(
+                            prb, src_mb, m, gK * smallest_k_group + k);
+                    const auto wei_off = wei_ba_off_f(
+                            prb, wei_mb, gK * smallest_k_group + k, n);
+
+                    auto s = src_scale * (src_m.get_f32_elem(src_off) - src_zp);
+                    auto w = wei_scale * (wei_m.get_f32_elem(wei_off) - wei_zp);
+
+                    dst += s * w;
+                }
             }
         }
 

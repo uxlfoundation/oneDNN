@@ -214,6 +214,7 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 
     for (bool defaultFormat : {true, false}) {
         bool legacy = defaultFormat ^ zebinFirst;
+        isZebin = !legacy;
 
         if (legacy) {
             try {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2021 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ inline bool dense_gemm_consitency_check(const memory_desc_wrapper &src_d,
             && src_d.is_dense(true) && dst_d.is_dense() && wei_d.is_dense(true);
 }
 
-void transpose_md(memory_desc_t &md) {
+inline void transpose_md(memory_desc_t &md) {
     // Note: we cannot directly use good leading dimension for a
     // in padded_dims.  This is because inner_blks does not
     // account for padding, and should divide the corresponding
@@ -125,7 +125,7 @@ void transpose_md(memory_desc_t &md) {
     // here, by default we do not transpose md if it is not
 }
 
-format_tag_t get_tag(memory_desc_t &md) {
+inline format_tag_t get_tag(memory_desc_t &md) {
     using namespace format_tag;
     auto tag = memory_desc_matches_one_of_tag(md, ab, abc, abcd,
             abcde, // NCHW derivatives
@@ -143,7 +143,7 @@ inline bool is_ineff_lead_dim(const dim_t dim) {
 
 /* Pick between M and K for the most efficient leading
  * dimension to compute GeMM. */
-bool transpose_leading_dim(const dim_t M, const dim_t K) {
+inline bool transpose_leading_dim(const dim_t M, const dim_t K) {
     return IMPLICATION(is_ineff_lead_dim(M), is_ineff_lead_dim(K) && M <= K);
 }
 } // namespace

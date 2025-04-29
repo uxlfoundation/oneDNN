@@ -319,8 +319,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     float iscale = native_recip(scale);
 #endif
 #else
-    float scale = 1.0;
-    float iscale = 1.0;
+    float scale = 1.0f;
+    float iscale = 1.0f;
 #endif
     scale *= 1.442695f; // log2(e)
 
@@ -546,11 +546,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
 #endif
 
-#if SOFTMAX_INF_AS_ZERO
-#define set_zeros(v) vselect(-FLT_MAX, v, visfinite(v))
-        tile_elementwise(S_max_tile, set_zeros);
-#endif
-
         tile_vbroadcast_sub(&S_tile, S_max_tile);
 
 /* Scale + exponentiate */
@@ -753,12 +748,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
     /* Rescale by 1 / (column sums) */
-#if SOFTMAX_INF_AS_ZERO
-#define set_zeros2(v) (vselect(native_vrecip(v), 1.f, v == 0))
-    tile_elementwise(A_scale_tile, set_zeros2);
-#else
     tile_elementwise(A_scale_tile, native_vrecip);
-#endif
     tile_hbroadcast_mul(&A_tile, A_scale_tile);
 
     /* Convert to half precision and store */

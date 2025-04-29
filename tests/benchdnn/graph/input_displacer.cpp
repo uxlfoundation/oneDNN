@@ -323,8 +323,8 @@ partition_data_displacer_t::partition_data_displacer_t(
                         }
                     };
 
-            set_seq_len_displace_args(&aop, seq_len_q);
-            set_seq_len_displace_args(child_op, seq_len_kv);
+            set_seq_len_displace_args(&aop, seq_len_kv);
+            set_seq_len_displace_args(child_op, seq_len_q);
             break;
         }
     }

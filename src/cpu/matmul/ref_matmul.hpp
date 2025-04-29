@@ -132,6 +132,7 @@ struct ref_matmul_t : public primitive_t {
 
     private:
         bool zero_points_ok() const {
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) { return false; }
             /* weights decompression requires zero points support */
@@ -150,8 +151,12 @@ struct ref_matmul_t : public primitive_t {
                     if (!ok) return false;
                 }
             }
-            if (!zp.has_default_values(DNNL_ARG_DST)) { return false; }
-
+            if (!zp.has_default_values(DNNL_ARG_DST)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST)) {
+                return false;
+            }
             return true;
         }
     };

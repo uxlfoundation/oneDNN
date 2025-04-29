@@ -89,10 +89,12 @@ struct micro_sdpa_t : public gpu_primitive_t {
 
             VCHECK_SDPA_COND(qry_md()->dims[1] >= key_md()->dims[1]
                             && qry_md()->dims[1] >= val_md()->dims[1],
-                    "number of heads in query tensor(%s) must be greater "
-                    "than the number of heads in the key(%s) and value(%s) "
+                    "number of heads in query tensor(%ld) must be greater "
+                    "than the number of heads in the key(%ld) and value(%ld) "
                     "tensors",
-                    qry_md()->dims[1], key_md()->dims[1], val_md()->dims[1]);
+                    static_cast<long int>(qry_md()->dims[1]),
+                    static_cast<long int>(key_md()->dims[1]),
+                    static_cast<long int>(val_md()->dims[1]));
 
             int kq_scales_mask = desc()->kq_scales.get_mask();
             int kq_zp_mask = desc()->kq_zero_points.get_mask(DNNL_ARG_WEIGHTS);
@@ -159,8 +161,8 @@ struct micro_sdpa_t : public gpu_primitive_t {
                                 || (math::is_pow2<int>(vgs)
                                         || vgs == val_md()->dims[3]),
                         "the value group size(%d) must be a power of 2 or "
-                        "equal to the number of values(%d).",
-                        vgs, val_md()->dims[3]);
+                        "equal to the number of values(%ld).",
+                        vgs, static_cast<long int>(val_md()->dims[3]));
             }
 
             CHECK(init_microkernels(engine));

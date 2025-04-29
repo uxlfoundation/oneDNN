@@ -148,11 +148,12 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     if (status != status::success) return status;
 
     VDEBUGINFO(4, primitive, sdpa,
-            "D=%d,K=%ld,%s%s%s"
+            "D=%d,K=%d,%s%s%s"
             "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
             "vs_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
-            d->head_size(), d->keys(), thin_q ? "thin_q," : "",
-            quantized ? "quant," : "", is_integrated ? "integrated" : "",
+            static_cast<int>(d->head_size()), static_cast<int>(d->keys()),
+            thin_q ? "thin_q," : "", quantized ? "quant," : "",
+            is_integrated ? "integrated" : "",
             config->unroll_m_kq * config->wg_m_kq,
             config->unroll_n_kq * config->wg_n_kq, config->unroll_m_kq,
             config->unroll_n_kq, config->wg_m_kq, config->wg_n_kq,
@@ -174,7 +175,8 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
             "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
             "greater than or equal to head size(%ld)",
             config->unroll_m_vs, config->wg_m_vs,
-            config->unroll_m_vs * config->wg_m_vs, d->head_size());
+            config->unroll_m_vs * config->wg_m_vs,
+            static_cast<long int>(d->head_size()));
 
     /* Get device information */
     HWInformation hw_info;
@@ -206,7 +208,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     } else {
         VCHECK_SDPA_COND(utils::one_of(qry_md()->data_type, data_type::f16,
                                  data_type::bf16),
-                "Q tensor's data type(%s) must be bf16 or f16");
+                "Q tensor's data type must be bf16 or f16");
     }
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;

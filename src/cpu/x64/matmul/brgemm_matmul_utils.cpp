@@ -1603,7 +1603,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_batch_layout_trivial
                                       && bgmmc.batch > 1,
                               bgmmc.B_strides[2] % 2 == 0),
-                VERBOSE_BAD_DIM);
+                VERBOSE_BAD_PARAM, "B_strides");
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order

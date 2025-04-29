@@ -322,7 +322,7 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         op_d.reduce_desc = *reduce_desc;
         op_d.reduce_kind = reduce_kind;
         VCHECK_MATMUL(op_d.reduce_kind != matmul_reduce_kind::undef,
-                VERBOSE_BAD_PARAM);
+                VERBOSE_BAD_PARAM, "reduce_kind");
     }
 
     const bool with_bias = op_d.bias_desc.ndims != 0;

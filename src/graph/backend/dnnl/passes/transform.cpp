@@ -1150,8 +1150,8 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                         status::unimplemented,
                         "Matmul only support applying per channel scale "
                         "along the last dimension for DNNL_ARG_WEIGHTS. "
-                        "trans_flag: %d, axis: %lld, ndims: %d",
-                        trans_flag, axis, ndims);
+                        "trans_flag: %d, axis: %ld, ndims: %d",
+                        trans_flag, static_cast<long int>(axis), ndims);
             }
             int64_t key = -1;
             if (next_op.has_attr(op_attr::fusion_info_key)) {

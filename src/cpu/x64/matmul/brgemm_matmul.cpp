@@ -43,6 +43,60 @@ using namespace dnnl::impl::utils;
 using namespace nstl;
 
 using namespace data_type;
+namespace {
+
+int get_brg_batchsize(
+        const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail, bool is_K_tail) {
+    auto bs = is_K_tail  ? 1
+            : is_bs_tail ? bgmmc.brgemm_batch_tail_size
+                         : bgmmc.brgemm_batch_size;
+    return bs;
+}
+
+int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
+        bool do_initialization, int m_ker_idx, int n_ker_idx, bool is_K_tail,
+        int bs) {
+    const int max_m_ker_idx
+            = bgmmc.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
+    if (m_ker_idx >= max_m_ker_idx) return -1;
+
+    auto vM = m_ker_idx > 0
+            ? (bgmmc.is_runtime_M ? dynamic_m_tails[m_ker_idx - 1]
+                                  : bgmmc.M_tail)
+            : bgmmc.M_blk;
+    const int max_n_ker_idx
+            = bgmmc.is_runtime_N ? max_num_dynamic_n_tails + 1 : 2;
+    if (n_ker_idx >= max_n_ker_idx) return -1;
+
+    auto vN = n_ker_idx > 0
+            ? (bgmmc.is_runtime_N ? dynamic_n_tails[n_ker_idx - 1]
+                                  : bgmmc.N_tail)
+            : bgmmc.N_blk;
+    auto vK = (is_K_tail) ? bgmmc.K_tail : bgmmc.K_blk;
+    if (vM == 0 || vN == 0 || vK == 0 || bs == 0 || bgmmc.LDA < vK
+            || (bgmmc.LDB < vN && !bgmmc.is_amx)
+            || ((bgmmc.LDC < vN && !bgmmc.is_amx)
+                    && !is_runtime_value(bgmmc.LDC)))
+        return -1;
+
+    int idx = 2 * max_n_ker_idx
+                    * (4 * m_ker_idx + 2 * (int)is_bs_tail
+                            + (int)do_initialization)
+            + 2 * n_ker_idx + (int)is_K_tail;
+    assert(idx < max_num_brg_kernels_matmul);
+    return idx;
+}
+
+} // anonymous namespace
+
+template <cpu_isa_t isa>
+int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
+        bool do_initialization, int m_ker_idx, int n_ker_idx,
+        bool is_K_tail) const {
+    int bs = get_brg_batchsize(bgmmc_, is_bs_tail, is_K_tail);
+    return get_brg_kernel_index(bgmmc_, is_bs_tail, do_initialization,
+            m_ker_idx, n_ker_idx, is_K_tail, bs);
+}
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::pd_t::maybe_set_LDB2() {

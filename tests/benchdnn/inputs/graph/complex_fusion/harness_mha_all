@@ -38,6 +38,8 @@
 --reset --dt=2:f32+5:f32 --case=complex_fusion/mha/sdpa-plain-wo-mask-f16.json
 --reset --dt=2:f32+6:f32 --case=complex_fusion/mha/sdpa-plain-wo-scale-f16-bs1.json
 --reset --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
+# q_seq_len != kv_seq_len
+--reset --in-shapes=1:1x16x128x64+24:1x16x128x64 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json

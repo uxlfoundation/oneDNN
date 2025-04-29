@@ -1589,6 +1589,8 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             ss << ",msk:causal:bottom_right";
     }
 
+    ss << ",alg:" << desc->softmax_alg;
+
     return ss.str();
 }
 

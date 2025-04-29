@@ -50,8 +50,6 @@ status_t sdp_primitive_v1_kernel_t::compile_impl(
 #endif
 
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // First, dry run on a deep copy
     subgraph_
@@ -139,8 +137,7 @@ status_t sdp_primitive_v1_kernel_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -170,8 +167,7 @@ status_t sdp_primitive_v1_kernel_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -203,8 +199,7 @@ status_t sdp_primitive_v1_kernel_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

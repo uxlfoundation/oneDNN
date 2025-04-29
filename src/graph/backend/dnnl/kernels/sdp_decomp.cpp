@@ -41,8 +41,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(
@@ -204,14 +202,12 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
 
     // allocate the select internal memory
     temporary_scratchpad_t select_scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(select_scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
     size_t block_size = sdp_registry_.size();
-    temporary_scratchpad_t scratchpad(
-            block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(block_size * sdp_cfg_.nthr, p_engine_);
     assertm(scratchpad.size() >= sdp_registry_.size(),
             "no enough scratchpad memory");
     grantor_t var_grantor = sdp_registry_.grantor(scratchpad.get_buffer());

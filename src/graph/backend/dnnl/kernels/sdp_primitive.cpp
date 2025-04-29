@@ -50,8 +50,6 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
     return status::unimplemented;
 #endif
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // First, dry run on a deep copy
     subgraph_
@@ -220,7 +218,7 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(0, p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     memory mem_storage[10];
@@ -250,7 +248,7 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(0, p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     memory mem_storage[10];
@@ -296,7 +294,7 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
 
     // Micro kernel doesn't use scratchpad memory, here we force-set size as
     // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(0, p_engine_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     memory mem_storage[10];

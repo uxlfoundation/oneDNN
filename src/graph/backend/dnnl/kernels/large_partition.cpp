@@ -205,8 +205,6 @@ status_t larger_partition_kernel_t::compile_impl(
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -260,8 +258,7 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -288,8 +285,8 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    p_engine_);
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -331,8 +328,7 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -359,8 +355,8 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    p_engine_);
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -407,8 +403,7 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -435,8 +430,8 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    p_engine_);
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {

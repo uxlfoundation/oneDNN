@@ -31,88 +31,10 @@
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 
-const size_t DNNL_CPU_MEMALIGNMENT = 64;
-const size_t DNNL_SYCL_MEMALIGNMENT = 64;
-const size_t DNNL_OCL_MEMALIGNMENT = 0;
-
 namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
-
-void *dnnl_allocator_t::malloc(size_t size, const dnnl::engine &p_engine,
-        const graph::allocator_t *alc, allocator_t::mem_type_t type) {
-    if (p_engine.get_kind() == dnnl::engine::kind::cpu) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-        return alc->allocate(size, dnnl::sycl_interop::get_device(p_engine),
-                dnnl::sycl_interop::get_context(p_engine),
-                {type, DNNL_SYCL_MEMALIGNMENT});
-#else
-        return alc->allocate(size, {type, DNNL_CPU_MEMALIGNMENT});
-#endif
-    } else if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        return alc->allocate(size, dnnl::sycl_interop::get_device(p_engine),
-                dnnl::sycl_interop::get_context(p_engine),
-                {type, DNNL_SYCL_MEMALIGNMENT});
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        return alc->allocate(size, dnnl::ocl_interop::get_device(p_engine),
-                dnnl::ocl_interop::get_context(p_engine),
-                {type, DNNL_OCL_MEMALIGNMENT});
-#else
-        return nullptr;
-#endif
-    } else {
-        return nullptr;
-    }
-}
-
-void dnnl_allocator_t::free(
-        void *p, const dnnl::engine &p_engine, const allocator_t *alc) {
-    if (p_engine.get_kind() == dnnl::engine::kind::cpu) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-        assert(!"use event based free");
-#else
-        return alc->deallocate(p);
-#endif
-    } else if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        assert(!"use event based free");
-#endif
-    }
-}
-
-#ifdef DNNL_WITH_SYCL
-void dnnl_allocator_t::free(void *p, const dnnl::engine &p_engine,
-        const allocator_t *alc, const ::sycl::event &deps) {
-    if (p_engine.get_kind() == dnnl::engine::kind::cpu) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-        alc->deallocate(p, dnnl::sycl_interop::get_device(p_engine),
-                dnnl::sycl_interop::get_context(p_engine), deps);
-#else
-        alc->deallocate(p);
-#endif
-    } else if (p_engine.get_kind() == dnnl::engine::kind::gpu) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        alc->deallocate(p, dnnl::sycl_interop::get_device(p_engine),
-                dnnl::sycl_interop::get_context(p_engine), deps);
-#endif
-    }
-}
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-void dnnl_allocator_t::free(void *p, const dnnl::engine &p_engine,
-        const allocator_t *alc, const cl_event &deps) {
-    if (p_engine.get_kind() != dnnl::engine::kind::gpu) {
-        assert(!"the engine kind should be gpu");
-        return;
-    }
-    alc->deallocate(p, dnnl::ocl_interop::get_device(p_engine),
-            dnnl::ocl_interop::get_context(p_engine), deps);
-}
-#endif
 
 format_tag get_ncx_format(size_t ndim) {
     switch (ndim) {

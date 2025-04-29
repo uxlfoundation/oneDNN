@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2023 Intel Corporation
+ * Copyright 2023-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,23 +37,22 @@ namespace graph {
 
 class constant_buffer_t {
 public:
-    using malloc_func_t = void *(*)(size_t, impl::engine_t *, allocator_t *);
-    using free_func_t = void (*)(void *, impl::engine_t *, allocator_t *);
+    using malloc_func_t = void *(*)(size_t, impl::engine_t *);
+    using free_func_t = void (*)(void *, impl::engine_t *);
 
     // Backends should provide these malloc and free function handles
-    constant_buffer_t(size_t size, impl::engine_t *eng, allocator_t *alc,
+    constant_buffer_t(size_t size, impl::engine_t *eng,
             malloc_func_t malloc_func, free_func_t free_func)
         : size_(size)
         , eng_(eng)
-        , alc_(alc)
         , malloc_func_(malloc_func)
         , free_func_(free_func) {
-        data_ = malloc_func_(size, eng, alc);
+        data_ = malloc_func_(size, eng);
         eng_->retain();
     }
 
     virtual ~constant_buffer_t() {
-        free_func_(data_, eng_, alc_);
+        free_func_(data_, eng_);
         eng_->release();
     };
 
@@ -78,7 +77,6 @@ protected:
     void *data_;
     size_t size_;
     impl::engine_t *eng_;
-    allocator_t *alc_;
 
 private:
     malloc_func_t malloc_func_;

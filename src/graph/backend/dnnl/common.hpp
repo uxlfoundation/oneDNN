@@ -67,23 +67,6 @@ using exec_args = std::unordered_map<int, memory>;
 using constant_cache_t = graph::constant_tensor_cache_t;
 
 using pd_cache_t = std::unordered_map<op_t *, graph::utils::any_t>;
-struct dnnl_allocator_t {
-    static void *malloc(size_t size, const dnnl::engine &p_engine,
-            const allocator_t *alc, allocator_t::mem_type_t type);
-
-    static void free(
-            void *p, const dnnl::engine &p_engine, const allocator_t *alc);
-
-#ifdef DNNL_WITH_SYCL
-    static void free(void *p, const dnnl::engine &p_engine,
-            const allocator_t *alc, const ::sycl::event &deps);
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    static void free(void *p, const dnnl::engine &p_engine,
-            const allocator_t *alc, const cl_event &deps);
-#endif
-};
 
 format_tag get_ncx_format(size_t ndim);
 

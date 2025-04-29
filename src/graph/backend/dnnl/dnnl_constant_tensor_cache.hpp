@@ -19,6 +19,7 @@
 #include "graph/interface/constant_tensor_cache.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
+#include "graph/backend/dnnl/dnnl_allocator.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 
 namespace dnnl {
@@ -27,34 +28,29 @@ namespace graph {
 namespace dnnl_impl {
 
 struct dnnl_constant_buffer_t : public graph::constant_buffer_t {
-    dnnl_constant_buffer_t(
-            size_t size, dnnl::engine &engine, graph::allocator_t *alc)
-        : graph::constant_buffer_t(
-                size, engine.get(), alc, malloc_func, free_func) {}
-
-    static void *malloc_func(
-            size_t size, impl::engine_t *eng, graph::allocator_t *alc) {
-        dnnl::engine engine;
-        engine.reset(eng, true); // not own
-        return dnnl_allocator_t::malloc(
-                size, engine, alc, allocator_t::mem_type_t::persistent);
+    dnnl_constant_buffer_t(size_t size, dnnl::engine &engine)
+        : graph::constant_buffer_t(size, engine.get(), malloc_func, free_func) {
     }
 
-    static void free_func(
-            void *data, impl::engine_t *eng, graph::allocator_t *alc) {
-        dnnl::engine engine;
-        engine.reset(eng, true); // not own
+    static void *malloc_func(size_t size, impl::engine_t *eng) {
+        const dnnl_allocator_t alloc(*eng);
+        return alloc.malloc(size);
+    }
+
+    static void free_func(void *data, impl::engine_t *eng) {
+        const dnnl_allocator_t alloc(*eng);
+
         if (eng->kind() == engine_kind::cpu) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(data, engine, alc, ::sycl::event());
+            alloc.free(data, ::sycl::event());
 #else
-            dnnl_allocator_t::free(data, engine, alc);
+            alloc.free(data);
 #endif
         } else if (eng->kind() == engine_kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(data, engine, alc, ::sycl::event());
+            alloc.free(data, ::sycl::event());
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            dnnl_allocator_t::free(data, engine, alc, cl_event());
+            alloc.free(data, cl_event());
 #endif
         }
     }

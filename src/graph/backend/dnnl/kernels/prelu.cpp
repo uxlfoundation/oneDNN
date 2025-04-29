@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,8 +41,6 @@ status_t prelu_fwd_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
         return status::unimplemented;
 
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -120,8 +118,7 @@ status_t prelu_fwd_t<quantized>::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -152,8 +149,7 @@ status_t prelu_fwd_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -189,8 +185,7 @@ status_t prelu_fwd_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -214,8 +209,6 @@ status_t prelu_bwd_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -288,8 +281,7 @@ status_t prelu_bwd_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -318,8 +310,7 @@ status_t prelu_bwd_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
@@ -354,8 +345,7 @@ status_t prelu_bwd_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");

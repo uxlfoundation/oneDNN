@@ -23,6 +23,7 @@
 #include "graph/interface/allocator.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
+#include "graph/backend/dnnl/dnnl_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -40,19 +41,17 @@ public:
 // deallocated when destroying the temporary_scratchpad_t
 class temporary_scratchpad_t : public scratchpad_t {
 public:
-    temporary_scratchpad_t(
-            size_t size, const dnnl::engine &eng, const allocator_t &alloc)
+    temporary_scratchpad_t(size_t size, const dnnl::engine &eng)
         : buffer_(nullptr)
         , size_(size)
         , eng_(&eng)
-        , alloc_(&alloc)
+        , alloc_(dnnl_allocator_t(*(eng.get())))
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         , ocl_e_(nullptr)
 #endif
     {
         if (size > 0) {
-            buffer_ = reinterpret_cast<char *>(dnnl_allocator_t::malloc(
-                    size, eng, &alloc, allocator_t::mem_type_t::temp));
+            buffer_ = reinterpret_cast<char *>(alloc_.malloc(size));
         }
         if (!buffer_) { size_ = 0; }
     }
@@ -60,15 +59,15 @@ public:
     ~temporary_scratchpad_t() override {
         if (eng_->get_kind() == dnnl::engine::kind::cpu) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
+            alloc_.free(buffer_, e_);
 #else
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_);
+            alloc_.free(buffer_);
 #endif
         } else if (eng_->get_kind() == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, ocl_e_);
+            alloc_.free(buffer_, ocl_e_);
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
+            alloc_.free(buffer_, e_);
 #else
             assert(!"unsupport gpu runtime");
 #endif
@@ -96,7 +95,7 @@ private:
     char *buffer_;
     size_t size_;
     const dnnl::engine *eng_;
-    const allocator_t *alloc_;
+    const dnnl_allocator_t alloc_;
 #ifdef DNNL_WITH_SYCL
     ::sycl::event e_;
 #endif

@@ -71,7 +71,7 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_md(0)->data_type, /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok());
             VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`

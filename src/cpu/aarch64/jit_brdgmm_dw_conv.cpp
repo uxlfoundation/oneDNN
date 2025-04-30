@@ -203,9 +203,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             || !wei_scales.has_default_values();
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
-    const bool scales_ok
-            = attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
-    if (!scales_ok) { return status::unimplemented; }
+    CHECK(attr_scales_ok());
 
     // strd is only feasible for 1D (i.e., height dim is one)
     // and if there are no tails (for calculating matrix_B strides).

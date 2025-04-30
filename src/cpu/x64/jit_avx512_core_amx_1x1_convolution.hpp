@@ -71,7 +71,7 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_ATTR);
+            CHECK(attr_scales_ok());
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_md(0)->data_type,
                                    /* is_int8 */ is_int8_convolution),

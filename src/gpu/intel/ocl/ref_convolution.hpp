@@ -44,13 +44,18 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
             const auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
 
-            using sm = primitive_attr_t::skip_mask_t;
-            const auto attr_skip_mask = sm::post_ops | sm::zero_points_data_type
-                    | sm::scales_data_type | sm::sum_dt | sm::rounding_mode;
-
             const bool is_int8 = utils::one_of(src_md_.data_type, s8, u8);
             const bool is_fp8
                     = utils::one_of(src_md_.data_type, f8_e5m2, f8_e4m3);
+
+            using sm = primitive_attr_t::skip_mask_t;
+            auto attr_skip_mask = sm::post_ops | sm::sum_dt | sm::rounding_mode;
+            if (is_int8) {
+                attr_skip_mask
+                        |= sm::zero_points_data_type | sm::scales_data_type;
+            } else if (is_fp8) {
+                attr_skip_mask |= sm::scales_data_type;
+            }
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -94,10 +99,8 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
             VDISPATCH_CONV(post_ops_with_binary_ok(attr(), *dst_md(), 5),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
-                                   is_int8 || is_fp8),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
+                    {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0, 2}}}));
 
             VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);
             subbyte_pack_ = utils::one_of(
@@ -197,7 +200,8 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
 
             VDISPATCH_CONV(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
+                    {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0, 2}}}));
 
             VDISPATCH_CONV(
                     this->set_default_formats(), VERBOSE_UNSUPPORTED_TAG);

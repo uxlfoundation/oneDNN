@@ -238,21 +238,50 @@ protected:
         return ok;
     }
 
-    bool attr_scales_ok(const std::vector<int> &supported_args
-            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) const {
-        bool ok = attr()->scales_.has_default_values(supported_args);
-        for (int arg : supported_args) {
+    // `supported_args_map` contains supported arguments and associated
+    // supported masks with those supported arguments. This function has default
+    // values to cover the widest possible case. In case the support range is
+    // shorter, the implementation should pass its own supported map.
+    //
+    // Note: `DNNL_ARG_WEIGHTS` expects masks without groups. It will be handled
+    // in this function through the `x * 2 + 1` equation. Like, `per_oc` or `1`
+    // will be checked as `1 * 2 + 1 = 3`.
+    status_t attr_scales_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map)
+            const {
+        std::vector<int> supported_args;
+        supported_args.reserve(supported_args_map.size());
+        for (const auto &e : supported_args_map) {
+            const int arg = e.first;
+            supported_args.push_back(arg);
+
             if (attr()->scales_.has_default_values(arg)) continue;
 
             const auto &mask = attr()->scales_.get_mask(arg);
-            if (arg == DNNL_ARG_WEIGHTS)
-                ok = ok && (mask == 0 || mask == (with_groups() ? 3 : 1));
-            else if (arg == DNNL_ARG_DST)
-                ok = ok && (mask == 0 || mask == 2);
-            else
-                ok = ok && (mask == 0);
+            const auto &supported_masks = e.second;
+            const bool arg_is_wei = utils::one_of(arg, DNNL_ARG_WEIGHTS,
+                    DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
+            bool mask_supported = false;
+            for (const int supported_mask : supported_masks) {
+                if (mask == supported_mask) {
+                    mask_supported = true;
+                    break;
+                }
+                // Handle a case with groups.
+                if (arg_is_wei && with_groups() && supported_mask > 0
+                        && mask == (supported_mask * 2 + 1)) {
+                    mask_supported = true;
+                    break;
+                }
+            }
+            VDISPATCH_CONV_IC(mask_supported,
+                    "scale_mask:%d for arg:%d is unsupported", mask, arg);
         }
-        return ok;
+
+        VDISPATCH_CONV_IC(attr()->scales_.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        return status::success;
     }
 };
 

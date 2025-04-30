@@ -987,6 +987,9 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
     std::vector<int> scales(scale_args.size());
     for (int i = 0; i < (int)scale_args.size(); i++)
         scales[i] = scale_args[i].second;
+
+    // The following check could be re-used from the convolution_pd.hpp but
+    // prb doesn't inherits pd and can't use protected method.
     if (!attr->scales_.has_default_values(scales)) return false;
     for (int arg : scales) {
         if (attr->scales_.has_default_values(arg)) continue;

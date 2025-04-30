@@ -385,9 +385,13 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         const bool is_wei_zp = !prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS);
         const bool is_non_s32_src_zp
                 = prb->attr.zero_points.get(DNNL_ARG_SRC).dt != dnnl_s32;
+        const bool is_non_unit_dst_scale
+                = !prb->attr.scales.is_def(DNNL_ARG_DST)
+                && prb->attr.scales.get_mask(DNNL_ARG_DST, dnnl_convolution)
+                        > 0;
 
         if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
-                || is_wei_zp || is_non_s32_src_zp) {
+                || is_wei_zp || is_non_s32_src_zp || is_non_unit_dst_scale) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

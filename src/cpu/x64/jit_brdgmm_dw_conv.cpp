@@ -257,9 +257,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             || !wei_scales.has_default_values();
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
-    const bool scales_ok
-            = attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST});
-    VDISPATCH_CONV(scales_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(attr_scales_ok());
 
     const auto &zp = attr()->zero_points_;
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);

@@ -79,7 +79,7 @@ struct gemm_x8s8s32x_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type,
                                    /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok());
             VDISPATCH_CONV(zero_points_valid(attr()), VERBOSE_UNSUPPORTED_ATTR);
 
             auto scratchpad = scratchpad_registry().registrar();
@@ -158,7 +158,7 @@ struct gemm_x8s8s32x_convolution_bwd_data_t : public primitive_t {
             VDISPATCH_CONV(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok());
 
             auto scratchpad = scratchpad_registry().registrar();
 

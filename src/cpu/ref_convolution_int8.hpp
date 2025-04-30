@@ -67,7 +67,7 @@ struct ref_convolution_int8_fwd_t : public primitive_t {
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type,
                                    /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok());
             VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_CONV(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(
@@ -151,7 +151,7 @@ struct ref_convolution_int8_bwd_data_t : public primitive_t {
             VDISPATCH_CONV(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok());
 
             return status::success;
         }

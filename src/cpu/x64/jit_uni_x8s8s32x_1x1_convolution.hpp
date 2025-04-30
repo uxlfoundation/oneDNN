@@ -79,16 +79,14 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
                                     | smask_t::sum_dt,
                             dst_md(0)->data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_CONV(attr()->scales_.has_default_values({DNNL_ARG_SRC,
-                                   DNNL_ARG_WEIGHTS, DNNL_ARG_DST,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS,
-                                   DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST}),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_CONV(set_default_formats_common(
                                    dat_tag(), format_tag::any, dat_tag()),
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
+                    {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS, {0, 1}},
+                    {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST, {0}}}));
             VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_md(0)->data_type, /* is_int8 */ true),

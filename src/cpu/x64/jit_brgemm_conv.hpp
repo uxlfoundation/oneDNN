@@ -129,12 +129,6 @@ struct brgemm_convolution_fwd_t : public primitive_t {
                 bool do_init, int kd_b, int kd_e, int kh_b, int kh_e);
 
     protected:
-        bool arg_scales_ok() const {
-            std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-            return attr_scales_ok(supported_args);
-        }
-
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
 

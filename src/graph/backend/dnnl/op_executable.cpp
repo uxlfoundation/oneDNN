@@ -1223,7 +1223,8 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
         auto pd = graph::utils::any_cast<dnnl::binary::primitive_desc>(
                 pd_cache.at(op.get()));
         printf("Found in the pd_cache, pd src0 mem_desc datatype: %s\n",
-                        dnnl_dt2str(memory::convert_to_c(pd.src0_desc().get_data_type())));
+                dnnl_dt2str(
+                        memory::convert_to_c(pd.src0_desc().get_data_type())));
         return {pd, true};
     }
 
@@ -1239,6 +1240,13 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
             op->get_input_value(0)->get_logical_tensor());
     auto src1 = make_dnnl_memory_desc(
             op->get_input_value(1)->get_logical_tensor());
+    printf("binary src0 lt datatype: %s\n",
+            dnnl_dt2str(
+                    op->get_input_value(0)->get_logical_tensor().data_type));
+    printf("binary src1 lt datatype: %s\n",
+            dnnl_dt2str(
+                    op->get_input_value(1)->get_logical_tensor().data_type));
+
     printf("binary src0 mem_desc datatype: %s\n",
             dnnl_dt2str(memory::convert_to_c(src0.get_data_type())));
     printf("binary src1 mem_desc datatype: %s\n",

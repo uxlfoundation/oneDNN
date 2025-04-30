@@ -167,13 +167,21 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             conf.src_data_type = src_dt;
             conf.dst_data_type = dst_dt;
 
-            auto mayiuse_sg = [=](const int sg_size) {
-                return compute_engine->mayiuse_sub_group(sg_size)
-                        && compute_engine
-                                   ->mayiuse_block_reads_writes_with_sub_group(
-                                           sg_size);
-            };
-            conf.subgroup_size = mayiuse_sg(32) ? 32 : 16;
+            // utilize largest supported subgroup size
+            conf.subgroup_size = [=] {
+                for (int size : {32, 16, 8}) {
+                    if (compute_engine->mayiuse_sub_group(size)
+                            && compute_engine
+                                       ->mayiuse_block_reads_writes_with_sub_group(
+                                               size))
+                        return size;
+                }
+                return 0;
+            }();
+            if (conf.subgroup_size == 0) {
+                assert(!"Device does not support a valid subgroup size");
+                return status::unimplemented;
+            }
 
             // run-time configuration setup
             rt_conf.softmax_axis_size = src_mdw.dims()[desc()->softmax_axis];

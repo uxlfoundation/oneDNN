@@ -172,38 +172,75 @@ inline const std::map<op_kind_t, dnnl::algorithm> &get_eltwise_alg_map() {
             {graph::op_kind::Sigmoid, dnnl::algorithm::eltwise_logistic},
             {graph::op_kind::Sqrt, dnnl::algorithm::eltwise_sqrt},
             {graph::op_kind::Square, dnnl::algorithm::eltwise_square},
-            {graph::op_kind::Tanh, dnnl::algorithm::eltwise_tanh}};
+            {graph::op_kind::Tanh, dnnl::algorithm::eltwise_tanh},
+            {graph::op_kind::AbsBackward, dnnl::algorithm::eltwise_abs},
+            {graph::op_kind::ClampBackward, dnnl::algorithm::eltwise_clip_v2},
+            {graph::op_kind::EluBackward, dnnl::algorithm::eltwise_elu},
+            {graph::op_kind::GELUBackward, dnnl::algorithm::eltwise_gelu_erf},
+            {graph::op_kind::HardSigmoidBackward,
+                    dnnl::algorithm::eltwise_hardsigmoid},
+            {graph::op_kind::HardSwishBackward,
+                    dnnl::algorithm::eltwise_hardswish},
+            {graph::op_kind::MishBackward, dnnl::algorithm::eltwise_mish},
+            {graph::op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
+            {graph::op_kind::SigmoidBackward,
+                    dnnl::algorithm::eltwise_logistic},
+            {graph::op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
+            {graph::op_kind::SqrtBackward, dnnl::algorithm::eltwise_sqrt},
+            {graph::op_kind::TanhBackward, dnnl::algorithm::eltwise_tanh},
+    };
     return eltwise_alg_map;
 }
 
-inline dnnl::algorithm get_eltwise_bwd_alg(op_kind_t kind, bool use_dst) {
+inline dnnl::algorithm get_eltwise_alg(
+        const std::shared_ptr<op_t> &op, bool bwd) {
     using algo = dnnl::algorithm;
-    switch (kind) {
-        case graph::op_kind::AbsBackward: return algo::eltwise_abs;
-        case graph::op_kind::ClampBackward:
-            if (use_dst) return algo::eltwise_clip_v2_use_dst_for_bwd;
-            return algo::eltwise_clip_v2;
-        case graph::op_kind::EluBackward:
-            if (use_dst) return algo::eltwise_elu_use_dst_for_bwd;
-            return algo::eltwise_elu;
-        case graph::op_kind::GELUBackward: return algo::eltwise_gelu_erf;
-        case graph::op_kind::HardSigmoidBackward:
-            return algo::eltwise_hardsigmoid;
-        case graph::op_kind::HardSwishBackward: return algo::eltwise_hardswish;
-        case graph::op_kind::MishBackward: return algo::eltwise_mish;
-        case graph::op_kind::ReLUBackward:
-            if (use_dst) return algo::eltwise_relu_use_dst_for_bwd;
-            return algo::eltwise_relu;
-        case graph::op_kind::SigmoidBackward:
-            if (use_dst) return algo::eltwise_logistic_use_dst_for_bwd;
-            return algo::eltwise_logistic;
-        case graph::op_kind::SqrtBackward:
-            if (use_dst) return algo::eltwise_sqrt_use_dst_for_bwd;
-            return algo::eltwise_sqrt;
-        case graph::op_kind::TanhBackward:
-            if (use_dst) return algo::eltwise_tanh_use_dst_for_bwd;
-            return algo::eltwise_tanh;
-        default: return algo::undef;
+
+    const op_kind_t opk = op->get_kind();
+    const auto &map = get_eltwise_alg_map();
+
+    auto it = map.find(opk);
+    if (it == map.end()) {
+        assert(!"unexpected op kind");
+        return algo::undef;
+    } else {
+        auto alg = it->second;
+        // handle attributes
+        if (opk == graph::op_kind::GELU
+                || opk == graph::op_kind::GELUBackward) {
+            if (op->has_attr(graph::op_attr::mode)
+                    && op->get_attr<std::string>(graph::op_attr::mode)
+                            == "gelu_tanh") {
+                alg = algo::eltwise_gelu_tanh;
+            }
+        }
+
+        if (bwd && op->has_attr(graph::op_attr::use_dst)
+                && op->get_attr<bool>(graph::op_attr::use_dst)) {
+            switch (opk) {
+                case graph::op_kind::ClampBackward:
+                    alg = algo::eltwise_clip_v2_use_dst_for_bwd;
+                    break;
+                case graph::op_kind::EluBackward:
+                    alg = algo::eltwise_elu_use_dst_for_bwd;
+                    break;
+                case graph::op_kind::ReLUBackward:
+                    alg = algo::eltwise_relu_use_dst_for_bwd;
+                    break;
+                case graph::op_kind::SigmoidBackward:
+                    alg = algo::eltwise_logistic_use_dst_for_bwd;
+                    break;
+                case graph::op_kind::SqrtBackward:
+                    alg = algo::eltwise_sqrt_use_dst_for_bwd;
+                    break;
+                case graph::op_kind::TanhBackward:
+                    alg = algo::eltwise_tanh_use_dst_for_bwd;
+                    break;
+                default: break;
+            }
+        }
+
+        return alg;
     }
 }
 

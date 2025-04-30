@@ -48,9 +48,8 @@ refer to the article by [Biao Zhang and Rico Sennrich](https://arxiv.org/abs/191
 This article provides more details regarding the method and showcases some experiments
 using frameworks like TensorFlow and PyTorch.
 
-Additionally, consider TensorFlow
-[LayerNorm with RMS parameter](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LayerNormalization)
-and PyTorch [RMSNorm](https://pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) APIs.
+Additionally, consider [Keras RMS Normalization Layer](https://github.com/keras-team/keras/blob/v3.9.2/keras/src/layers/normalization/rms_normalization.py)
+and [PyTorch RMSNorm](https://pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) APIs.
 
 ## Proposal
 

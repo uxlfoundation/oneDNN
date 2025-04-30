@@ -2680,8 +2680,8 @@ TEST(test_interface_op_schema, Gelu) {
     const op_kind_t op_kind_ = op_kind::GELU;
     const size_t expected_in_size = 1;
     const size_t expected_out_size = 1;
-    const size_t expected_attr_size = 0;
-    const std::map<op_attr_t, bool> attrs_data = {};
+    const size_t expected_attr_size = 1;
+    const std::map<op_attr_t, bool> attrs_data = {{op_attr::mode, false}};
 
     verify_op_schema(op_kind_, expected_in_size, expected_out_size,
             expected_attr_size, attrs_data);
@@ -2697,8 +2697,8 @@ TEST(test_interface_op_schema, GELUBackward) {
     const op_kind_t op_kind_ = op_kind::GELUBackward;
     const size_t expected_in_size = 2;
     const size_t expected_out_size = 1;
-    const size_t expected_attr_size = 0;
-    const std::map<op_attr_t, bool> attrs_data = {};
+    const size_t expected_attr_size = 1;
+    const std::map<op_attr_t, bool> attrs_data = {{op_attr::mode, false}};
 
     verify_op_schema(op_kind_, expected_in_size, expected_out_size,
             expected_attr_size, attrs_data);

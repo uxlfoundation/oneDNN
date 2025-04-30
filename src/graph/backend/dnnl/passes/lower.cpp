@@ -116,7 +116,7 @@ static status_t eltwise_fwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(get_eltwise_alg_map().at(op->get_kind())));
+            static_cast<int64_t>(get_eltwise_alg(op, false)));
     merge_common_eltwise_attrs(op, new_op);
     rewriter.replace_op(op, new_op);
     insert_empty_scratchpad(new_op);
@@ -132,13 +132,13 @@ static status_t eltwise_bwd_handler(
             : false;
     new_op->set_attr(op_attr::use_dst, use_dst);
 
-    auto kind = op->get_kind();
-    auto bwd_algo = get_eltwise_bwd_alg(kind, use_dst);
-    auto fwd_algo = get_eltwise_bwd_alg(kind, false);
-    if (bwd_algo == algorithm::undef) {
-        DEBUG_PRINT_ERROR("Unsupported eltwise bwd op.");
+    auto bwd_algo = get_eltwise_alg(op, true);
+    auto fwd_algo = get_eltwise_alg(op, false);
+    if (bwd_algo == algorithm::undef || fwd_algo == algorithm::undef) {
+        assert(!"unsupported eltwise bwd op.");
         return status::unimplemented;
     }
+
     new_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(bwd_algo));
     new_op->set_attr<int64_t>(

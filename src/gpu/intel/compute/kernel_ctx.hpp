@@ -189,6 +189,10 @@ private:
             add_option("-DOCL_DEBUG");
         }
 
+        if (gpu_utils::dev_getenv("cl_opt_disable", 0)) {
+            add_option("-cl-opt-disable");
+        }
+
         if (gpu_utils::dev_getenv("enable_ocl_werror", is_dev_mode()))
             add_option("-Werror ");
     }

@@ -44,12 +44,7 @@ int str2desc(desc_t *desc, const char *str);
 std::ostream &operator<<(std::ostream &s, const desc_t &d);
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     desc_t desc {};
 

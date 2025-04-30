@@ -36,12 +36,7 @@ namespace matmul {
 using dims_mask_t = std::bitset<DNNL_MAX_NDIMS>;
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_vdims_t prb_vdims;
 

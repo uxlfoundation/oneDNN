@@ -53,12 +53,7 @@ const char *alg2str(alg_t alg);
 dnnl_alg_kind_t alg2alg_kind(alg_t alg);
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_vdims_t prb_vdims;
 

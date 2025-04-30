@@ -45,12 +45,7 @@ const auto flags2str = bnorm::flags2str;
 flags_t str2flags(const char *str);
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
-
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template = perf_template;
-    }
+    using base_settings_t::base_settings_t;
 
     prb_dims_t prb_dims;
 

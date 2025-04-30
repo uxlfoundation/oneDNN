@@ -85,7 +85,8 @@ struct convolution_kernel_fwd_t {
                         ? load_float_value(data_type::f32, dst_scale_ptr(), 0)
                         : 1.f);
 
-        dims_t data_dims, weights_dims, dst_dims, dst_strides, off;
+        dims_t data_dims, weights_dims, dst_dims, dst_strides;
+        dims_t logical_index;
         for (int i = 0; i < max_supported_ndims; i++) {
             data_dims[i] = (i < data_md().ndims()) ? data_md().dims()[i] : 1;
             weights_dims[i]
@@ -126,18 +127,17 @@ struct convolution_kernel_fwd_t {
 
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / dst_strides[i] % dst_dims[i];
-            }
+            auto dst_tensor = memory_tensor_t(dst_, dst_md());
+            dst_tensor.get_logical_index(idx, logical_index);
 
-            const int n = off[0];
-            const int oc_tot = off[1];
+            const int n = logical_index[0];
+            const int oc_tot = logical_index[1];
             const int oc = oc_tot % OC;
             const int g = oc_tot / OC;
 
-            const int od = off[2];
-            const int oh = off[3];
-            const int ow = off[4];
+            const int od = logical_index[2];
+            const int oh = logical_index[3];
+            const int ow = logical_index[4];
 
             float accumulator = 0;
             for (int ic = 0; ic < IC; ++ic) {
@@ -196,7 +196,8 @@ struct convolution_kernel_fwd_t {
                 accumulator += bias;
             }
 
-            accumulator = conf_.post_ops.apply(accumulator, dst_, idx);
+            accumulator = conf_.post_ops.apply(
+                    accumulator, dst_, dst_md().off_v(logical_index));
 
             if (conf_.do_scale_dst) { accumulator /= sm_dst; }
             if (conf_.use_dst_zeropoints) {
@@ -205,8 +206,8 @@ struct convolution_kernel_fwd_t {
                         zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
                 accumulator += dst_zeropoint;
             }
-            store_float_value(
-                    dst_md().data_type(), accumulator, dst_ptr(), idx);
+
+            dst_tensor.store_md(accumulator, logical_index);
         }
     }
 
@@ -296,9 +297,9 @@ struct convolution_kernel_bwd_data_t {
         const float sm_dst = (conf_.do_scale_dst
                         ? load_float_value(data_type::f32, dst_scale_ptr(), 0)
                         : 1.f);
-
         dims_t data_dims, weights_dims, dst_dims, data_strides, off;
         for (int i = 0; i < max_supported_ndims; i++) {
+
             data_dims[i] = (i < diff_data_md().ndims())
                     ? diff_data_md().dims()[i]
                     : 1;
@@ -435,6 +436,7 @@ struct convolution_kernel_bwd_data_t {
                         zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
                 accumulator += dst_zeropoint;
             }
+
             store_float_value(diff_data_md().data_type(), accumulator,
                     diff_data_ptr(), idx);
         }

@@ -428,6 +428,8 @@ DNNL_GRAPH_OP_SCHEMA(GELU, 1,
                 .set_num_outputs(1)
                 .set_input(0, "src", "T")
                 .set_output(0, "dst", "T")
+                .set_attr(op_attr::mode, false, attribute_kind::s, "gelu_erf",
+                        {"gelu_erf", "gelu_tanh"})
                 .set_type_constraints(
                         "T", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_shape_inference_function(infer_identity_output_shape))
@@ -439,6 +441,8 @@ DNNL_GRAPH_OP_SCHEMA(GELUBackward, 1,
                 .set_input(0, "src", "T")
                 .set_input(1, "diff_dst", "T")
                 .set_output(0, "diff_src", "T")
+                .set_attr(op_attr::mode, false, attribute_kind::s, "gelu_erf",
+                        {"gelu_erf", "gelu_tanh"})
                 .set_type_constraints(
                         "T", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_shape_inference_function(infer_identity_output_shape))

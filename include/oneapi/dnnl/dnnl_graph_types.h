@@ -374,6 +374,7 @@ typedef enum {
     /// Specifies a mode attribute of an op.
     /// Interpolate: "nearest", "linear", "bilinear", or "trilinear".
     /// SoftMax: "none", "inf_as_zero".
+    /// GELU/GELUBackward: "gelu_erf", "gelu_tanh".
     dnnl_graph_op_attr_mode,
     /// Specifies a qtype attribute to an op. The value can be "per_channel" or
     /// "per_tensor". The attribute is defined for quantization operations.

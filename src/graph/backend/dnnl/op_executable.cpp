@@ -378,7 +378,7 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
     // convert src memory desc to any when:
     // 1) not the situation mentioned above
     // 2) the given md is blocked and convert to queried layout is necessary
-    if (can_use_blocked_layout) { src = to_format_any(src); }
+//     if (can_use_blocked_layout) { src = to_format_any(src); }
     auto wei = make_dnnl_memory_desc(
             op->get_input_value(1)->get_logical_tensor());
     // For non-constant weight, create primitive desc with strided layout when:
@@ -392,7 +392,7 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
             && (is_format(wei, dnnl::memory::format_tag::adbc)
                     || is_format(wei, dnnl::memory::format_tag::abdc)
                     || is_format(wei, dnnl::memory::format_tag::acbd));
-    if (const_weight || (can_use_blocked_layout)) { wei = to_format_any(wei); }
+//     if (const_weight || (can_use_blocked_layout)) { wei = to_format_any(wei); }
     auto dst = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
     const bool keep_dst_layout = op->has_attr(op_attr::keep_dst_layout)

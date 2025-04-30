@@ -1,0 +1,65 @@
+{
+  "version": "3.9.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0
+  ],
+  "output_ports": [
+    1
+  ],
+  "graph": [
+    {
+      "id": 0,
+      "name": "ELTWISE_0",
+      "kind": "GELU",
+      "attrs": {
+        "mode": {
+          "type": "string",
+          "value": "gelu_tanh"
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "f32",
+          "shape": [
+            1,
+            32,
+            28,
+            28
+          ],
+          "stride": [
+            25088,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 1,
+          "dtype": "f32",
+          "shape": [
+            1,
+            32,
+            28,
+            28
+          ],
+          "stride": [
+            25088,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

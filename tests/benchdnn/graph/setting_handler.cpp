@@ -965,6 +965,14 @@ bool get_eltwise_alg(
             return false;
         alg = map_kind_to_alg.at(op_kind);
     }
+
+    // check gelu mode
+    if (op_kind == "GELU" || op_kind == "GELUBackward") {
+        const auto it = base_op_ref.attrs_.find("mode");
+        if (it != base_op_ref.attrs_.end()
+                && it->second.str_value_ == "gelu_tanh")
+            alg = ::eltwise::alg_t::GELU_TANH;
+    }
     return true;
 }
 

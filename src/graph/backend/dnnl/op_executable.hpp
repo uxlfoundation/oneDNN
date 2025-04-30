@@ -973,6 +973,10 @@ struct binary_executable_t : public op_executable_t {
             is_dummy_ = true;
             return;
         }
+        const auto &input_lt = op->get_input_value(0)->get_logical_tensor();
+        printf("graph binary op created\n");
+        printf("binary src0 lt datatype: %s\n",
+                dnnl_dt2str(input_lt.data_type));
 
         auto desc = create_desc(op, p_engine, mgr, pd_cache);
         prim_ = dnnl::binary(desc);
@@ -2565,6 +2569,8 @@ struct genindex_executable_t : public op_executable_t {
         nelems_ = ltw(input_lt).nelems();
         ndims_ = ltw(input_lt).ndims();
         const auto &output_lt = op->get_output_value(0)->get_logical_tensor();
+        printf("genindex dst lt datatype: %s\n",
+                dnnl_dt2str(output_lt.data_type));
         for (int i = 0; i < ndims_; i++) {
             output_dims_[i] = output_lt.dims[i];
             output_strides_[i] = output_lt.layout.strides[i];

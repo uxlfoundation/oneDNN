@@ -342,7 +342,7 @@ void kernel_desc_t::set_stride_reqs(tensor_kind_t kind,
             if (prb_stride(dim, kind).is_undef()) continue;
             if (it == entries.rbegin())
                 reqs.add(prb_stride(dim, kind).var() == expr_t(1));
-            reqs.add_stride_reqs(prb_stride(dim, kind), dims);
+            // reqs.add_stride_reqs(prb_stride(dim, kind), dims);
             dims.push_back(dim);
         }
     }

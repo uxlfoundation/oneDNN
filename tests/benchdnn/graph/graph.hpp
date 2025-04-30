@@ -38,13 +38,9 @@ namespace graph {
 using namespace dnnl::graph;
 
 struct settings_t : public base_settings_t {
-    settings_t() = default;
+    settings_t(const char *perf_template = perf_template_def)
+        : base_settings_t(perf_template) {}
 
-    // ctor to save certain fields from resetting
-    settings_t(const char *perf_template) : settings_t() {
-        this->perf_template
-                = perf_template; // NOLINT(cppcoreguidelines-prefer-member-initializer)
-    }
     std::string json_file;
     std::vector<std::map<size_t, std::string>> in_shapes_vec {{{0, "default"}}};
     std::vector<std::map<size_t, std::string>> op_attrs_vec {{{0, "default"}}};
@@ -59,11 +55,9 @@ struct settings_t : public base_settings_t {
     std::vector<std::map<size_t, std::string>> op_kind_map {
             {{SIZE_MAX, "default"}}};
 
-    const char *perf_template_csv
-            = "perf,%engine%,%DESC%,"
-              "%-time%,%0time%";
-    const char *perf_template_def = "perf,%engine%,%prb%,%-time%,%0time%";
-    const char *perf_template = perf_template_def;
+    const char *perf_template_csv = "perf,%engine%,%DESC%,%-time%,%0time%";
+    static constexpr const char *perf_template_def
+            = "perf,%engine%,%prb%,%-time%,%0time%";
 
     void reset() { *this = settings_t(perf_template); }
 };

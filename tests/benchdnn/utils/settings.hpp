@@ -72,7 +72,8 @@ struct base_settings_t {
         }
     };
 
-    base_settings_t() {
+    base_settings_t(const char *perf_template = perf_template_def)
+        : perf_template(perf_template) {
         dnnl_get_default_fpmath_mode(&(this->fpmath_mode[0].mode));
     };
 
@@ -109,7 +110,7 @@ struct base_settings_t {
         return csv.c_str();
     }
 
-    const char *perf_template_def
+    static constexpr const char *perf_template_def
             = "perf,%engine%,%impl%,%name%,%prb%,%Gops%,%+ctime%,%-time%,%-"
               "Gflops%,%0time%,%0Gflops%";
     const char *perf_template = perf_template_def;

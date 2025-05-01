@@ -143,19 +143,6 @@ pvar_t dst_od_stride("dst_od_stride");
 pvar_t dst_oh_stride("dst_oh_stride");
 pvar_t dst_ow_stride("dst_ow_stride");
 
-pvar_t g_stride("g_stride");
-pvar_t ic_stride("ic_stride");
-pvar_t id_stride("id_stride");
-pvar_t ih_stride("ih_stride");
-pvar_t iw_stride("iw_stride");
-pvar_t kd_stride("kd_stride");
-pvar_t kh_stride("kh_stride");
-pvar_t kw_stride("kw_stride");
-pvar_t mb_stride("mb_stride");
-pvar_t oc_stride("oc_stride");
-pvar_t od_stride("od_stride");
-pvar_t oh_stride("oh_stride");
-pvar_t ow_stride("ow_stride");
 } // namespace pvars
 
 bool is_spatial(const pvar_t &pvar, char prefix) {

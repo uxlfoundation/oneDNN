@@ -233,6 +233,8 @@ struct filter_status_t {
 
 inline component_t::flag_kind prim_kind2_comp_kind(
         const primitive_kind_t prim_kind) {
+    if (prim_kind >= primitive_kind::internal_only_start)
+        return component_t::all;
     return static_cast<component_t::flag_kind>(1 << prim_kind | 1 << 0);
 }
 

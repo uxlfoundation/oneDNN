@@ -375,7 +375,10 @@ struct send_1d_desc_t {
 
     bool base_alignment_ok(const expr_t &off, const prover_t &prover) const {
         int align = (type_size >= 16 ? 8 : 1);
-        if (!prover.require(off % align == 0)) return false;
+        auto e = linear_normalize_expander_t().mutate(off);
+        auto args = op_split(op_kind_t::_add, e);
+        for (auto &a : args)
+            if (!prover.require(a % align == 0)) return false;
         return true;
     }
 
@@ -532,8 +535,16 @@ struct send_2d_desc_t {
         if (!prover.require(pitch_bytes <= block_2d_max_dim())) return false;
         if (!prover.require(pitch_bytes % block_2d_pitch_alignment(hw) == 0))
             return false;
-        if (!prover.require(base % base_align == 0)) return false;
-        if (!prover.require(x_base % x_align == 0)) return false;
+        auto e = linear_normalize_expander_t().mutate(base);
+        auto args = op_split(op_kind_t::_add, e);
+        for (auto &a : args) {
+            if (!prover.require(a % base_align == 0)) return false;
+        }
+        e = linear_normalize_expander_t().mutate(x_base);
+        args = op_split(op_kind_t::_add, e);
+        for (auto &a : args) {
+            if (!prover.require(a % x_align == 0)) return false;
+        }
         return true;
     }
 

@@ -60,6 +60,10 @@ void split_to_linear(const expr_t &expr, const std::vector<expr_t> &idxs,
         const std::vector<expr_t> &start, expr_t &init,
         std::vector<expr_t> &incs);
 
+class linear_normalize_expander_t : public ir_mutator_t {
+public:
+    object_t _mutate(const binary_op_t &_obj) override;
+};
 } // namespace jit
 } // namespace intel
 } // namespace gpu

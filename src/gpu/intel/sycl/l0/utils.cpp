@@ -394,7 +394,18 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     stepping_id = product.stepping;
 
     mayiuse_systolic = false;
-    CHECK(get_l0_device_enabled_systolic_intel(device, mayiuse_systolic));
+    if (get_l0_device_enabled_systolic_intel(device, mayiuse_systolic)
+            != status::success)
+        mayiuse_systolic = false;
+
+    /* Some old drivers do not report systolic availability. Manually override
+       systolic availability based on product family. */
+    switch (product.family) {
+        case ProductFamily::DG2:
+        case ProductFamily::ARL:
+        case ProductFamily::PVC: mayiuse_systolic = true;
+        default: break;
+    }
 
     CHECK(get_l0_device_enabled_native_float_atomics(
             device, native_extensions));

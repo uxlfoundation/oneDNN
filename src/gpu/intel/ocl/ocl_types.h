@@ -411,12 +411,6 @@
 #define AS_BLOCK_DATA4_T as_uchar4
 #define AS_BLOCK_DATA8_T as_uchar8
 
-#define MMAD_DATA_T half
-#define MMAD_DATA4_T half4
-#define MMAD_DATA8_T half8
-#define MMAD_ACC_DATA4_T half4
-#define MMAD_ACC_DATA8_T half8
-
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T convert_float(cvt_f8_e5m2_to_hf(v))
 
@@ -476,12 +470,6 @@
 #define AS_BLOCK_DATA2_T as_uchar2
 #define AS_BLOCK_DATA4_T as_uchar4
 #define AS_BLOCK_DATA8_T as_uchar8
-
-#define MMAD_DATA_T half
-#define MMAD_DATA4_T half4
-#define MMAD_DATA8_T half8
-#define MMAD_ACC_DATA4_T half4
-#define MMAD_ACC_DATA8_T half8
 
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T(v) convert_float(cvt_f8_e4m3_to_hf(v))

@@ -333,18 +333,16 @@ void kernel_desc_t::set_defaults() {
 
 void kernel_desc_t::set_stride_reqs(tensor_kind_t kind,
         const layout_tag_t &desc_tag, prb_reqs_t &reqs) const {
-    if (desc_tag.is_strided()) {
-        std::vector<pvar_t> dims;
-        auto tag = append_groups(kind, desc_tag, is_dw);
-        auto entries = tag.raw_tag().entries();
-        for (auto it = entries.rbegin(); it != entries.rend(); it++) {
-            auto dim = tag.desc().prb_dim(it->index());
-            if (prb_stride(dim, kind).is_undef()) continue;
-            if (it == entries.rbegin())
-                reqs.add(prb_stride(dim, kind).var() == expr_t(1));
-            // reqs.add_stride_reqs(prb_stride(dim, kind), dims);
-            dims.push_back(dim);
-        }
+    if (!desc_tag.is_strided()) return;
+    std::vector<pvar_t> dims;
+    auto tag = append_groups(kind, desc_tag, is_dw);
+    auto entries = tag.raw_tag().entries();
+    for (auto it = entries.rbegin(); it != entries.rend(); it++) {
+        auto dim = tag.desc().prb_dim(it->index());
+        if (prb_stride(dim, kind).is_undef()) continue;
+        if (it == entries.rbegin())
+            reqs.add(prb_stride(dim, kind).var() == expr_t(1));
+        dims.push_back(dim);
     }
 }
 

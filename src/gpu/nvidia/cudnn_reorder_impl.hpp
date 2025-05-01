@@ -117,17 +117,19 @@ public:
     void execute(cudnnHandle_t handle, void *src, void *dst, void *src_scale,
             void *dst_scale) const override {
         float alpha = 1.0f;
+        cudaStream_t cuda_stream;
+        CUDNN_EXECUTE_FUNC(cudnnGetStream, handle, &cuda_stream);
         if (src_scale) {
             float host_src_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_src_scale,
-                    (CUdeviceptr)src_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_src_scale,
+                    (CUdeviceptr)src_scale, sizeof(float), cuda_stream);
             alpha *= host_src_scale;
         }
         float beta = beta_;
         if (dst_scale) {
             float host_dst_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                    (CUdeviceptr)dst_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                    (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             alpha /= host_dst_scale;
             beta /= host_dst_scale;
         }
@@ -197,17 +199,19 @@ public:
     void execute(cudnnHandle_t handle, void *src, void *dst, void *src_scale,
             void *dst_scale) const override {
         float alpha = 1.0f;
+        cudaStream_t cuda_stream;
+        CUDNN_EXECUTE_FUNC(cudnnGetStream, handle, &cuda_stream);
         if (src_scale) {
             float host_src_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_src_scale,
-                    (CUdeviceptr)src_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_src_scale,
+                    (CUdeviceptr)src_scale, sizeof(float), cuda_stream);
             alpha *= host_src_scale;
         }
         float beta = beta_;
         if (dst_scale) {
             float host_dst_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                    (CUdeviceptr)dst_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                    (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             alpha /= host_dst_scale;
             beta /= host_dst_scale;
         }

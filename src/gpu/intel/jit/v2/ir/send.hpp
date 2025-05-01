@@ -515,6 +515,35 @@ struct send_2d_desc_t {
         }
     }
 
+    static std::vector<expr_t> split_by_add(const expr_t &e) {
+        auto *op = e.as_ptr<binary_op_t>();
+        if (op && op->op_kind == op_kind_t::_mul) {
+            std::vector<expr_t> args;
+            expr_t factor;
+            if (op->a.is<int_imm_t>()) {
+                args = split_by_add(op->b);
+                factor = op->a;
+            } else if (op->b.is<int_imm_t>()) {
+                args = split_by_add(op->a);
+                factor = op->b;
+            } else {
+                return {e};
+            }
+            std::vector<expr_t> ret;
+            for (auto &a : args) {
+                ret.push_back(binary_op_t::make(op_kind_t::_mul, a, factor));
+            }
+            return ret;
+        }
+        if (!op || op->op_kind != op_kind_t::_add) return {e};
+        auto a_args = split_by_add(op->a);
+        auto b_args = split_by_add(op->b);
+        std::vector<expr_t> args;
+        args.insert(args.end(), a_args.begin(), a_args.end());
+        args.insert(args.end(), b_args.begin(), b_args.end());
+        return args;
+    }
+
     bool is_supported(const view_t &view, const prover_t &prover) const {
         if (w % block_2d_x_alignment(type.size()) != 0) return false;
 
@@ -532,8 +561,14 @@ struct send_2d_desc_t {
         if (!prover.require(pitch_bytes <= block_2d_max_dim())) return false;
         if (!prover.require(pitch_bytes % block_2d_pitch_alignment(hw) == 0))
             return false;
-        if (!prover.require(base % base_align == 0)) return false;
-        if (!prover.require(x_base % x_align == 0)) return false;
+        auto args = split_by_add(base);
+        for (auto &a : args) {
+            if (!prover.require(a % base_align == 0)) return false;
+        }
+        args = split_by_add(x_base);
+        for (auto &a : args) {
+            if (!prover.require(a % x_align == 0)) return false;
+        }
         return true;
     }
 

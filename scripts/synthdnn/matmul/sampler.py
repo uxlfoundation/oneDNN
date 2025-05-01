@@ -21,6 +21,95 @@ import math
 from matmul.primitive import *
 
 
+class Quantization:
+    @staticmethod
+    def next(ndims, src_type, wei_type):
+        out_zp = ""
+        out_scale = ""
+        prefix_zp = "--attr-zero-points="
+        prefix_scale = "--attr-scales="
+        if src_type in ["u4", "s4", "u8", "s8"]:
+            zp = random.choice(Quantization.supported_zp(ndims, False))
+            if zp is not None:
+                out_zp += f"{prefix_zp}src:{zp}"
+                prefix_zp = "+"
+
+            scale = random.choice(Quantization.supported_scale(ndims))
+            if scale is not None:
+                out_scale += f"{prefix_scale}src:{scale}"
+                prefix_scale = "+"
+        if wei_type in ["u4", "s4", "u8", "s8"]:
+            zp = random.choice(Quantization.supported_zp(ndims, True))
+            if zp is not None:
+                out_zp += f"{prefix_zp}wei:{zp}"
+                prefix_zp = "+"
+
+            scale = random.choice(Quantization.supported_scale(ndims))
+            if scale is not None:
+                out_scale += f"{prefix_scale}wei:{scale}"
+                prefix_scale = "+"
+        if out_zp == "":
+            return out_scale
+        if out_scale == "":
+            return out_zp
+        return f"{out_scale} {out_zp}"
+
+    @staticmethod
+    def supported_scale_policy(ndims):
+        if ndims == 1:
+            return ["common", "per_oc"]
+        if ndims == 2:
+            return ["common", "per_oc", "per_ocic"]
+        return [
+            "common",
+            "per_oc",
+            "per_ocic",
+            "per_tensor",
+        ]
+
+    @staticmethod
+    def supported_scale_type():
+        return ["f32", "f16", "bf16"]
+
+    @staticmethod
+    def supported_scale(ndims):
+        out = [None]
+        for t in Quantization.supported_scale_type():
+            for p in Quantization.supported_scale_policy(ndims):
+                if p == "common":
+                    out.append(f"{p}:0.25:{t}")
+                else:
+                    out.append(f"{p}:{t}")
+        return out
+
+    @staticmethod
+    def supported_zp_policy(ndims, is_wei):
+        if ndims == 1 or is_wei:
+            return ["common"]
+        if ndims == 2:
+            return ["common", "per_dim_1"]
+        if ndims == 3:
+            return ["common", "per_dim_2"]
+        return ["common"]
+
+    @staticmethod
+    def supported_zp_type(policy):
+        if policy == "common":
+            return ["s32", "s8", "u8"]
+        return ["s32", "s8", "u8", "s4", "u4"]
+
+    @staticmethod
+    def supported_zp(ndims, is_wei):
+        out = [None]
+        for p in Quantization.supported_zp_policy(ndims, is_wei):
+            for t in Quantization.supported_zp_type(p):
+                if p == "common":
+                    out.append(f"{p}:1:{t}")
+                else:
+                    out.append(f"{p}:{t}")
+        return out
+
+
 class Region:
     def __init__(self, line):
         restrictions = []
@@ -98,7 +187,7 @@ class Sampler:
                 self.s = next(self.dim_sampler)
                 self.rem_samples = self.rem_samples - 1
 
-            return Primitive(self.k, self.s)
+            return Primitive(self.k, self.s, "")
 
     class ZipIter:
         def __init__(self, samples, kinds, dim_sampler):
@@ -113,8 +202,11 @@ class Sampler:
             self.rem_samples = self.rem_samples - 1
             k = next(self.kinds_iter)
             s = next(self.dim_sampler)
+            q = Quantization.next(
+                self.dim_sampler.region.ndims - 1, k.type.A, k.type.B
+            )
 
-            return Primitive(k, s)
+            return Primitive(k, s, q)
 
     class DimSampler:
         def __init__(self, region):

@@ -6,5 +6,7 @@ dependencies:
   - python=3.9.5
   - pip=21.1.2
   - doxyrest=2.1.2
+  - doxygen=1.8.14
+  - graphviz=2.40.1
   - sphinx=4.0.2
   - sphinx-book-theme=0.0.41

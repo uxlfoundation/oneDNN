@@ -254,9 +254,10 @@ class Kind:
 
 
 class Primitive:
-    def __init__(self, kind, dims):
+    def __init__(self, kind, dims, quantization):
         self.kind: Kind = kind
         self.dims = dims
+        self.quantization = quantization
 
     def __getitem__(self, index):
         if index == "b":
@@ -275,7 +276,7 @@ class Primitive:
         raise KeyError(f"Cannot get {index} from matmul primitive")
 
     def benchdnn_str(self):
-        return f"{self.kind.benchdnn_str()} {self.dims}"
+        return f"{self.kind.benchdnn_str()} {self.quantization} {self.dims}"
 
     @staticmethod
     def from_repro(repro_line):

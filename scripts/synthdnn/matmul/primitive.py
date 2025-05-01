@@ -249,9 +249,10 @@ class Kind:
 
 
 class Primitive:
-    def __init__(self, kind, dims):
+    def __init__(self, kind, dims, quantization):
         self.kind: Kind = kind
         self.dims = dims
+        self.quantization = quantization
 
     def benchdnn_str(self):
-        return f"{self.kind.benchdnn_str()} {self.dims}"
+        return f"{self.kind.benchdnn_str()} {self.quantization} {self.dims}"

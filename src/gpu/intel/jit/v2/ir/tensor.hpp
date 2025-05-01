@@ -284,13 +284,13 @@ public:
     layout_tag_t() = default;
 
     layout_tag_t(const layout_desc_t &desc, const type_t &type,
-            const layout_raw_tag_t &raw_tag, const bool is_strided = false)
+            const layout_raw_tag_t &raw_tag, bool is_strided = false)
         : desc_(desc)
         , type_(type)
         , raw_tag_(raw_tag)
         , is_strided_(is_strided) {}
     layout_tag_t(const type_t &type, const std::string &str_tag,
-            const bool is_strided = false)
+            bool is_strided = false)
         : layout_tag_t({}, type, layout_raw_tag_t(str_tag), is_strided) {}
     layout_tag_t(const layout_desc_t &desc, const type_t &type,
             const std::string &str_tag, const bool is_strided = false)
@@ -299,7 +299,7 @@ public:
     bool is_empty() const { return raw_tag_.is_empty(); }
     bool is_any() const { return raw_tag_.is_any(); }
     bool is_strided() const { return is_strided_; }
-    void set_strided(const bool strided) { is_strided_ = strided; }
+    void set_strided(bool strided) { is_strided_ = strided; }
     const layout_desc_t &desc() const { return desc_; }
     const type_t &type() const { return type_; }
     const layout_raw_tag_t &raw_tag() const { return raw_tag_; }
@@ -332,10 +332,10 @@ public:
         desc_ = layout_desc_t();
         auto s = stream_parse<std::string>(in);
         auto parts = gpu_utils::split(s, ":");
-        gpu_assert(parts.size() == 3);
+        gpu_assert(parts.size() <= 3);
         jit::parse(parts[0], raw_tag_);
         jit::parse(parts[1], type_);
-        jit::parse(parts[2], is_strided_);
+        if (parts.size() == 3) jit::parse(parts[2], is_strided_);
     }
 
 private:

@@ -101,8 +101,9 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
 
             CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
                     {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0, 2}}}));
+            CHECK(attr_zero_points_ok({{DNNL_ARG_SRC, {0, 2}},
+                    {DNNL_ARG_WEIGHTS, {0}}, {DNNL_ARG_DST, {0, 2}}}));
 
-            VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);
             subbyte_pack_ = utils::one_of(
                     dst_md_.data_type, data_type::f4_e2m1, data_type::f4_e3m0);
             if (subbyte_pack_) {
@@ -172,9 +173,12 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_convolution_bwd_data_t);
 
         status_t init(impl::engine_t *engine) {
+            using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
-            const auto attr_skip_mask
-                    = sm::post_ops | sm::zero_points_data_type | sm::scales;
+            auto attr_skip_mask = sm::post_ops | sm::scales;
+            if (utils::one_of(invariant_dst_md()->data_type, s8, u8)) {
+                attr_skip_mask |= sm::zero_points_data_type;
+            }
             using namespace data_type;
             const auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
@@ -202,6 +206,8 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             CHECK(attr_scales_ok({{DNNL_ARG_SRC, {0}},
                     {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0, 2}}}));
+            CHECK(attr_zero_points_ok(
+                    {{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0, 2}}}));
 
             VDISPATCH_CONV(
                     this->set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
@@ -211,10 +217,8 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
             VDISPATCH_CONV_SC(attr_.set_default_formats(diff_src_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            VDISPATCH_CONV(zero_points_ok(attr()), VERBOSE_UNSUPPORTED_ZP_CFG);
-
-            subbyte_pack_ = utils::one_of(dst_md()->data_type,
-                    data_type::f4_e2m1, data_type::f4_e3m0);
+            subbyte_pack_
+                    = utils::one_of(dst_md()->data_type, f4_e2m1, f4_e3m0);
             if (subbyte_pack_) {
                 using namespace dnnl::impl::memory_tracking::names;
                 const memory_desc_wrapper dst_mdw(dst_md(0));

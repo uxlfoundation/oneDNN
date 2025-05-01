@@ -63,6 +63,15 @@ protected:
         return convolution_fwd_pd_t::attr_scales_ok(supported_args_map);
     }
 
+    // See `convolution_pd_t::attr_zero_points_ok` comment.
+    // Put a default map relevant for most implementations. Once it's changed,
+    // update the default.
+    status_t attr_zero_points_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map
+            = {{DNNL_ARG_SRC, {0}}, {DNNL_ARG_DST, {0}}}) const {
+        return convolution_fwd_pd_t::attr_zero_points_ok(supported_args_map);
+    }
+
 private:
     bool has_padded_dst() const {
         memory_desc_wrapper dst_d(&dst_md_);

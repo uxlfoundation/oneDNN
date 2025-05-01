@@ -283,6 +283,41 @@ protected:
 
         return status::success;
     }
+
+    // `supported_args_map` contains supported arguments and associated
+    // supported masks with those supported arguments. This function has default
+    // values to cover the widest possible case. In case the support range is
+    // shorter, the implementation should pass its own supported map.
+    status_t attr_zero_points_ok(
+            const std::unordered_map<int, std::vector<int>> &supported_args_map)
+            const {
+        std::vector<int> supported_args;
+        supported_args.reserve(supported_args_map.size());
+        for (const auto &e : supported_args_map) {
+            const int arg = e.first;
+            supported_args.push_back(arg);
+
+            if (attr()->zero_points_.has_default_values(arg)) continue;
+
+            const auto &mask = attr()->zero_points_.get_mask(arg);
+            const auto &supported_masks = e.second;
+            bool mask_supported = false;
+            for (const int supported_mask : supported_masks) {
+                if (mask == supported_mask) {
+                    mask_supported = true;
+                    break;
+                }
+            }
+            VDISPATCH_CONV_IC(mask_supported,
+                    "zero_point_mask:%d for arg:%d is unsupported", mask, arg);
+        }
+
+        VDISPATCH_CONV_IC(
+                attr()->zero_points_.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+
+        return status::success;
+    }
 };
 
 // NOLINTBEGIN(google-default-arguments)

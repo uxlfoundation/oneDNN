@@ -68,7 +68,8 @@ struct ref_convolution_int8_fwd_t : public primitive_t {
                                    /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
             CHECK(attr_scales_ok());
-            VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_zero_points_ok(
+                    {{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0, 2}}}));
             VDISPATCH_CONV(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(
                     attr_.set_default_formats(dst_md(0)) == status::success,
@@ -84,21 +85,6 @@ struct ref_convolution_int8_fwd_t : public primitive_t {
                     ? utils::pick(ndims() - 3, goiw, goihw, goidhw)
                     : utils::pick(ndims() - 3, oiw, oihw, oidhw);
             return set_default_formats_common(dat_tag, wei_tag, dat_tag);
-        }
-
-        bool zero_points_ok() const {
-            if (!attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = attr()->zero_points_.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0 || mask_src == (1 << 1);
-                if (!ok) return false;
-            }
-            if (!attr()->zero_points_.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = attr()->zero_points_.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0 || mask_dst == (1 << 1);
-                if (!ok) return false;
-            }
-
-            return attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
         }
 
         bool post_ops_ok() const {

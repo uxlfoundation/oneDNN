@@ -80,7 +80,7 @@ struct gemm_x8s8s32x_convolution_fwd_t : public primitive_t {
                                    /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
             CHECK(attr_scales_ok());
-            VDISPATCH_CONV(zero_points_valid(attr()), VERBOSE_UNSUPPORTED_ATTR);
+            CHECK(attr_zero_points_ok());
 
             auto scratchpad = scratchpad_registry().registrar();
 

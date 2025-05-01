@@ -94,7 +94,7 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
                     {DNNL_ARG_WEIGHTS, {0, 1}}, {DNNL_ARG_DST, {0}},
                     {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS, {0, 1}},
                     {DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST, {0}}}));
-            VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_zero_points_ok());
 
             const convolution_desc_t *conv_d = desc();
             const memory_desc_t *src_d = src_md();
@@ -168,23 +168,6 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
         format_tag_t dat_tag() const {
             return utils::pick(src_md_.ndims - 3, format_tag::nwc,
                     format_tag::nhwc, format_tag::ndhwc);
-        }
-
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                const bool ok = mask_src == 0;
-                if (!ok) return false;
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                const bool ok = mask_dst == 0;
-                if (!ok) return false;
-            }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
         }
 
         status_t copy(const pd_t &other) {

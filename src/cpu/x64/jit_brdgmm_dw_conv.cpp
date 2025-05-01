@@ -258,23 +258,11 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     CHECK(attr_scales_ok());
+    CHECK(attr_zero_points_ok({{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0}}}));
 
     const auto &zp = attr()->zero_points_;
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
-
-    VDISPATCH_CONV(IMPLICATION(jcp.src_zero_point || jcp.dst_zero_point,
-                           utils::one_of(jcp.src_dt, s8, u8)),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
-
-    VDISPATCH_CONV(
-            IMPLICATION(jcp.src_zero_point,
-                    utils::one_of(zp.get_mask(DNNL_ARG_SRC), 0, (1 << 1))),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
-
-    VDISPATCH_CONV(
-            IMPLICATION(jcp.dst_zero_point, zp.get_mask(DNNL_ARG_DST) == 0),
-            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     // Source zero_point requires compensation, thus, must initialize weights
     // descriptor and can't take predefined one.

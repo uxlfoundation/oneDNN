@@ -382,8 +382,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_CONV(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     CHECK(attr_scales_ok());
+    CHECK(attr_zero_points_ok());
     VDISPATCH_CONV(
             impl::is_dense_format_kind({src_md(0), weights_md(0), dst_md(0)}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);

@@ -80,7 +80,7 @@ enum class normalization_flags : unsigned {
   /// training.
   /// In backward propagation, the library computes the derivative with respect
   /// to the RMS norm, assuming that the mean is zero.
-  use_rms_norm = dnnl_use_rms_norm,
+  rms_norm = dnnl_rms_norm,
 };
 ```
 
@@ -95,24 +95,24 @@ typedef enum {
   ///  - on forward propagation use RMS normalization instead of true mean and
   ///    variance
   ///  - on backward propagation assume mean as zero
-  dnnl_use_rms_norm = 0x20U,
+  dnnl_rms_norm = 0x20U,
 } dnnl_normalization_flags_t;
 ```
 
-The new flag `dnnl_use_rms_norm` will be used to indicate that the RMS
+The new flag `dnnl_rms_norm` will be used to indicate that the RMS
 normalization is used instead of the standard Layer Normalization.
 
 **Naming Option 2**:
 Alternative namings for the flag could signify that the mean is **assumed** to
-be zero, for instance `dnnl_{use, force}_zero_mean`. But this seems misleading
+be zero, for instance `dnnl_{use_zero, no}_mean`. But this seems misleading
 as the mean is not explicitly set to zero, but simply ignored. Also it doesn't
 explciitly indicate what is happening with the variance.
 
 #### Compatibility with Existing Flags
 
-The `dnnl_use_global_stats` flag technically could be applied to RMSNorm, but
-it is not particularly meaningful since RMSNorm never requires the mean computations.
-Therefore the proposal is to make it incompatible with the `dnnl_use_global_stats` flag.
+The combination of `dnnl_use_global_stats` and `dnnl_rms_norm` would be supported,
+but users must only provide pre-computed RMS norm statistics
+(instead of both mean and variance as required for Layer normalization).
 
 Since RMSNorm is a simplified version of LayerNorm, it works with `dnnl_use_scale`
 and `dnnl_use_shift` flags in the same manner.
@@ -124,15 +124,10 @@ Additionally, like LayerNorm, it will not support `dnnl_fuse_norm_relu` or `dnnl
 Since the main purpose of RMSNorm is to avoid the overhead of mean computations,
 it seems reasonable to omit the mean as input/output and use `RMS^2` in place of the variance, which means:
 
-- For `dnnl_forward_training`, the mean will not be included as an output when the `dnnl_use_rms_norm`
+- For `dnnl_forward_training`, the mean will not be included as an output when the `dnnl_rms_norm`
 flag is enabled. Additionally, the output will provide `RMS^2` in place of the variance.
 - For `dnnl_backward`, the mean will not be required as an input. For the variance input
 it is expected that `RMS^2` will be supplied instead of the true variance.
-
-**Output Changes Option 2**:
-Another option is to keep the mean as an output but always set it to zero.
-This adds unnecessary overhead, but it might simplify adoption for existing codebases,
-as they wouldn't need to adjust how outputs are handled in case of LayerNorm and RMSNorm.
 
 ### Changes to benchdnn
 
@@ -144,33 +139,23 @@ An additional flag for LayerNorm to enable RMSNorm will be added to the `--flags
             `G` is dnnl_use_global_stats;
             `C` is dnnl_use_scale;
             `H` is dnnl_use_shift;
-            `M` is dnnl_use_rms_norm;
+            `M` is dnnl_rms_norm;
             ...
 ```
 
-Note: If the flag is named `dnnl_{use, force}_zero_mean`, the option will be updated to `--flags=[|G|C|H|Z]`.
+Note: If the flag is named `dnnl_{use_zero, no}_mean`, the option will be updated to `--flags=[|G|C|H|Z]`.
 
 Other internal changes would be captured in work-in-progress [PR 3068](https://github.com/uxlfoundation/oneDNN/pull/3068).
 
 ## Open Questions
 
-- Should the flag be named `dnnl_use_rms_norm` or `dnnl_{use, force}_zero_mean`?
+- Should the flag be named `dnnl_rms_norm` or `dnnl_{use_zero, no}_mean`?
 
   Pros and Cons:
-  - (Preferred) `dnnl_use_rms_norm`:
+  - (Preferred) `dnnl_rms_norm`:
     - Pros: Explicitly indicates that RMS normalization is used.
     - Cons: May not be immediately clear to those unfamiliar with the term.
-  - `dnnl_{use, force}_zero_mean`:
+  - `dnnl_{use_zero, no}_mean`:
     - Pros: Clearly indicates that the mean is assumed to be zero.
     - Cons: Somewhat misleading as it doesn't explicitly indicate what is happening with
       the variance (e.g, do we compute and use true variance or `RMS^2`?).
-
-- Should the mean be omitted from the output or always set to zero?
-
-  Pros and Cons:
-  - (Preferred) **Omit mean**:
-    - Pros: Cleaner design and avoids unnecessary memory requirement.
-    - Cons: Requires users to adjust their code to handle the absence of the mean for RMSNorm comparing to LayerNorm.
-  - **Keep mean**:
-    - Pros: Easier integration to existing codebases making use of LayerNorm.
-    - Cons: Unnecessary memory overhead and less intuitive design.

@@ -8,13 +8,13 @@
 
 --dir=FWD_D,BWD_DW
 --inplace=true
---flags=GCH,CH
+--flags=GCHM,GCH,CH,M
 --batch=option_set_all
 
 --dt=f16
 --dir=FWD_I
 --inplace=true,false
---flags=GCH,CH
+--flags=GCHM,GCH,CH,M
 --batch=option_set_all
 
 # Scales post-op tests

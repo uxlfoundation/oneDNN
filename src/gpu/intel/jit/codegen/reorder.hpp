@@ -1585,11 +1585,19 @@ template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
         ngen_operand_t &src) {
-    if (!dst.is_reg_data()) return;
     if (!src.is_reg_data()) return;
-
     auto rd = src.reg_buf_data();
-    align_src_dst_offset(host, scope, mod, dst.reg_buf_data(), rd);
+
+    if (!dst.is_reg_data()) {
+        // Float pipe requires src operands to align with dst, even if that's
+        // the null register. In the case of the null register, we align to the
+        // GRF boundary.
+        reg_buf_data_t dummy(reg_buf_t(rd.hw(), ngen::GRFRange(0, 1)));
+        // This call returns early if everything is already aligned nicely
+        align_src_dst_offset(host, scope, mod, dummy, rd);
+    } else {
+        align_src_dst_offset(host, scope, mod, dst.reg_buf_data(), rd);
+    }
     if (rd == src.reg_buf_data()) return;
 
     bool is_negated = src.is_negated();

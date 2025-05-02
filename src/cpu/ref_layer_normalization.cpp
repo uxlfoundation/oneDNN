@@ -53,12 +53,13 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
     const float eps = pd()->desc()->layer_norm_epsilon;
     const bool save_stats = pd()->is_training();
     const bool calculate_stats = !pd()->stats_are_src();
+    const bool skip_mean = pd()->skip_mean();
 
     /* fast return */
     if (this->pd()->has_zero_dim_memory()) {
         if (calculate_stats && save_stats) {
             for (dim_t n = 0; n < N; n++) {
-                mean[n] = 0;
+                if (!skip_mean) { mean[n] = 0; }
                 variance[n] = 0;
             }
         }
@@ -70,16 +71,19 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
         DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
         const size_t s_off = stat_d.off_l(n);
-        auto v_mean = calculate_stats ? 0 : mean[s_off];
+        auto v_mean = (calculate_stats || skip_mean) ? 0 : mean[s_off];
         auto v_variance = calculate_stats ? 0 : variance[s_off];
 
         if (calculate_stats) {
-            for (dim_t c = 0; c < C; ++c) {
-                const auto s_off = src_d.off_l(n * C + c);
-                float s = io::load_float_value(src_d.data_type(), src, s_off);
-                v_mean += s;
+            if (!skip_mean) {
+                for (dim_t c = 0; c < C; ++c) {
+                    const auto s_off = src_d.off_l(n * C + c);
+                    float s = io::load_float_value(
+                            src_d.data_type(), src, s_off);
+                    v_mean += s;
+                }
+                v_mean /= C;
             }
-            v_mean /= C;
 
             for (dim_t c = 0; c < C; ++c) {
                 const auto s_off = src_d.off_l(n * C + c);
@@ -118,7 +122,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
 
         if (calculate_stats) {
             if (save_stats) {
-                mean[s_off] = v_mean;
+                if (!skip_mean) { mean[s_off] = v_mean; }
                 variance[s_off] = v_variance;
             }
         }
@@ -183,6 +187,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
 
     const float eps = pd()->desc()->layer_norm_epsilon;
     const bool calculate_diff_stats = !pd()->use_global_stats();
+    const bool skip_mean = pd()->skip_mean();
 
     if (diff_scale || diff_shift) {
         parallel_nd(C, [=](dim_t c) {
@@ -197,7 +202,8 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
                 float s = io::load_float_value(src_d.data_type(), src, src_off);
                 float dd = io::load_float_value(
                         diff_dst_d.data_type(), diff_dst, diff_dst_off);
-                diff_gamma += (s - mean[stat_off]) * dd * inv_sqrt_variance;
+                float mean_val = skip_mean ? 0.f : mean[stat_off];
+                diff_gamma += (s - mean_val) * dd * inv_sqrt_variance;
                 diff_beta += dd;
             }
 
@@ -226,8 +232,9 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
                 float s = io::load_float_value(src_d.data_type(), src, src_off);
                 float dd = io::load_float_value(
                         diff_dst_d.data_type(), diff_dst, diff_dst_off);
+                float mean_val = skip_mean ? 0.f : mean[s_off];
                 dd_gamma += dd * gamma;
-                dd_gamma_x += dd * gamma * (s - mean[s_off]);
+                dd_gamma_x += dd * gamma * (s - mean_val);
             }
             dd_gamma_x *= inv_sqrt_variance;
         }
@@ -244,8 +251,9 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
             float d_src = dd * gamma;
             if (calculate_diff_stats) {
                 float s = io::load_float_value(src_d.data_type(), src, src_off);
+                float mean_val = skip_mean ? 0.f : mean[s_off];
                 d_src -= dd_gamma / C;
-                d_src -= (s - mean[s_off]) * dd_gamma_x * inv_sqrt_variance / C;
+                d_src -= (s - mean_val) * dd_gamma_x * inv_sqrt_variance / C;
             }
             d_src *= inv_sqrt_variance;
             io::store_float_value(

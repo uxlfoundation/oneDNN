@@ -551,6 +551,15 @@ enum class normalization_flags : unsigned {
     /// On training, normalization will require the workspace to implement
     /// backward propagation. On inference, the workspace is not required.
     fuse_norm_add_relu = dnnl_fuse_norm_add_relu,
+
+    /// Use Root Mean Square (RMS) Normalization.
+    /// In forward propagation, this means that the mean is assumed zero,
+    /// and RMS norm is used instead of the variance for re-scaling.
+    /// The RMS norm is provided as an output during forward propagation
+    /// for training.
+    /// In backward propagation, the library computes the derivative
+    /// with respect to the RMS norm only, assuming mean is zero.
+    rms_norm = dnnl_rms_norm,
 };
 
 /// Converts normalization flags enum value from C++ API to C API type.

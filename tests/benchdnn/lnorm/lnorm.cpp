@@ -164,7 +164,8 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((n % 7) << 1);
         } else if (prb->c > 0) {
-            const float m = ref_mean.get_elem(n);
+            // compute RMS statistic in case of rms normalization flag
+            const float m = (prb->skip_mean()) ? 0.f : ref_mean.get_elem(n);
             for (int64_t c = 0; c < prb->c; ++c) {
                 const int64_t off = n * prb->c + c;
                 const float s = ref_src.get_elem(off);
@@ -640,7 +641,7 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
 // even if the normalization layer worked correctly
 #if !(DNNL_AARCH64_USE_ACL)
         if (!(prb->flags & GLOB_STATS) && !(prb->dir & FLAG_INF)) {
-            check_kinds.push_back(MEAN);
+            if (!prb->skip_mean()) check_kinds.push_back(MEAN);
             check_kinds.push_back(VAR);
         }
 #endif

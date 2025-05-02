@@ -51,7 +51,8 @@ status_t lnorm_desc_init(layer_normalization_desc_t *lnorm_desc,
     VCHECK_LNORM((flags
                          & ~(normalization_flags::use_global_stats
                                  | normalization_flags::use_scale
-                                 | normalization_flags::use_shift))
+                                 | normalization_flags::use_shift
+                                 | normalization_flags::rms_norm))
                     == 0,
             VERBOSE_BAD_FLAGS);
 

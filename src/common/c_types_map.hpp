@@ -1923,6 +1923,7 @@ const normalization_flags_t use_scale = dnnl_use_scale;
 const normalization_flags_t use_shift = dnnl_use_shift;
 const normalization_flags_t fuse_norm_relu = dnnl_fuse_norm_relu;
 const normalization_flags_t fuse_norm_add_relu = dnnl_fuse_norm_add_relu;
+const normalization_flags_t rms_norm = dnnl_rms_norm;
 } // namespace normalization_flags
 
 using rnn_flags_t = dnnl_rnn_flags_t;

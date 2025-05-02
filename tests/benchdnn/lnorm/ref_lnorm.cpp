@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     const bool use_sc = prb->use_sc();
     const bool use_sh = prb->use_sh();
+    const bool skip_mean = prb->skip_mean();
 
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
@@ -48,7 +49,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             prb->ndims, dnnl_layer_normalization);
 
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
-        float smean = mean.get_elem(n);
+        float smean = skip_mean ? 0.f : mean.get_elem(n);
         float svar = var.get_elem(n);
         float sqrt_var = sqrtf(svar + prb->eps);
 
@@ -79,6 +80,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
 
     const bool use_sc = prb->use_sc();
     const bool use_sh = prb->use_sh();
+    const bool skip_mean = prb->skip_mean();
 
     if ((use_sc || use_sh) && (prb->dir & FLAG_WEI)) {
         benchdnn_parallel_nd(prb->c, [&](int64_t c) {
@@ -86,7 +88,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             float d_beta = 0;
 
             for (int64_t n = 0; n < prb->n; ++n) {
-                float smean = mean.get_elem(n);
+                float smean = skip_mean ? 0.f : mean.get_elem(n);
                 float svar = var.get_elem(n);
                 float rcp_denom = 1.f / sqrtf(svar + prb->eps);
                 auto off = n * prb->c + c;
@@ -101,7 +103,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     }
 
     benchdnn_parallel_nd(prb->n, [&](int64_t n) {
-        float smean = mean.get_elem(n);
+        float smean = skip_mean ? 0.0f : mean.get_elem(n);
         float svar = var.get_elem(n);
         float rcp_denom = 1.f / sqrtf(svar + prb->eps);
         float dd_gamma = 0, dd_gamma_x = 0;

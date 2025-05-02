@@ -84,6 +84,9 @@ struct layer_normalization_pd_t : public primitive_desc_t {
     bool use_global_stats() const {
         return desc_.flags & normalization_flags::use_global_stats;
     }
+    bool skip_mean() const {
+        return desc_.flags & normalization_flags::rms_norm;
+    }
 
     bool is_fwd() const {
         return utils::one_of(desc_.prop_kind, prop_kind::forward_training,
@@ -166,6 +169,7 @@ struct layer_normalization_fwd_pd_t : public layer_normalization_pd_t {
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         if (utils::one_of(arg, DNNL_ARG_MEAN, DNNL_ARG_VARIANCE)) {
+            if (arg == DNNL_ARG_MEAN && skip_mean()) return arg_usage_t::unused;
             if (stats_are_src()) return arg_usage_t::input;
             if (!stats_are_src() && is_training()) return arg_usage_t::output;
             return arg_usage_t::unused;
@@ -214,14 +218,14 @@ struct layer_normalization_fwd_pd_t : public layer_normalization_pd_t {
     }
 
     int n_inputs() const override {
-        return 1 + 2 * stats_are_src() + use_scale() + use_shift()
-                + n_binary_po_inputs();
+        return 1 + (2 - skip_mean()) * stats_are_src() + use_scale()
+                + use_shift() + n_binary_po_inputs();
     }
     int n_outputs() const override {
         // Originally as '1 + 2 * (!stats_are_src()) * is_training()',
         // had to be worked around MSVC bug not copying inlined bodies
         // of stats_are_src() and is_training().
-        return (!stats_are_src() && is_training()) ? 3 : 1;
+        return (!stats_are_src() && is_training()) ? 3 - skip_mean() : 1;
     }
 
 protected:
@@ -276,9 +280,12 @@ struct layer_normalization_bwd_pd_t : public layer_normalization_pd_t {
     using hint_class = layer_normalization_fwd_pd_t;
 
     arg_usage_t arg_usage(int arg) const override {
-        if (utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_MEAN, DNNL_ARG_VARIANCE,
-                    DNNL_ARG_DIFF_DST))
+        if (utils::one_of(
+                    arg, DNNL_ARG_SRC, DNNL_ARG_VARIANCE, DNNL_ARG_DIFF_DST))
             return arg_usage_t::input;
+
+        if (arg == DNNL_ARG_MEAN)
+            return skip_mean() ? arg_usage_t::unused : arg_usage_t::input;
 
         if (arg == DNNL_ARG_SCALE)
             return use_scale() ? arg_usage_t::input : arg_usage_t::unused;
@@ -337,7 +344,7 @@ struct layer_normalization_bwd_pd_t : public layer_normalization_pd_t {
         return index == 0 ? &diff_scaleshift_md_ : &glob_zero_md;
     }
 
-    int n_inputs() const override { return 4 + use_scale(); }
+    int n_inputs() const override { return 4 - skip_mean() + use_scale(); }
     int n_outputs() const override {
         return 1
                 + (desc_.prop_kind == prop_kind::backward)

@@ -2269,6 +2269,16 @@ typedef enum {
     ///    tensor and then perform backward normalization.
     dnnl_fuse_norm_add_relu = 0x10U,
 
+    /// Use RMS normalization
+    ///
+    /// If specified:
+    ///  - on forward propagation assume mean as zero
+    ///    and use RMS norm instead of the variance
+    ///  - on backward propagation compute derivative wrt RMS norm
+    ///
+    /// When used with #dnnl_use_global_stats, only RMS norm is required to be
+    /// provided as input.
+    dnnl_rms_norm = 0x20U,
 } dnnl_normalization_flags_t;
 
 /// @} dnnl_api_primitives_common

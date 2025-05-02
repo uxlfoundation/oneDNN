@@ -68,6 +68,32 @@ The tensors marked with an asterisk are used only when the primitive is
 configured to use \f$\gamma(c)\f$, and \f$\beta(c)\f$
 (i.e., #dnnl_use_scale or #dnnl_use_shift are set).
 
+#### Specific of Root Mean Square Normalization
+
+The layer normalization primitive also supports root mean square normalization
+(RMSNorm) via #dnnl_rms_norm flag. RMSNorm is a simplification of layer
+normalization that skips re-centering the data assuming that the mean is zero
+and uses root mean square statistics
+\f$\sqrt{\frac{1}{C} \sum\limits_{c} (\src(t, n, c))^2}\f$ instead of a variance.
+
+For the forward step, RMSNorm is then defined by the following formula:
+\f[
+   \dst(t, n, c) =
+      \gamma(c) \cdot
+   \frac{\src(t, n, c)} {\sqrt{\frac{1}{C} \sum\limits_{c} (\src(t, n, c))^2 + \varepsilon}}
+   + \beta(c),
+\f]
+
+where:
+
+- \f$\gamma(c), \beta(c)\f$ are optional scale and shift for a channel
+  (see #dnnl_use_scale, #dnnl_use_shift flags), and
+
+- \f$\varepsilon\f$ is a constant added to enhance numerical stability.
+
+For backward propagation, RMSNorm similarly does not require the mean,
+and the root mean square statistic is used in place of variance.
+
 ## Execution Arguments
 
 Depending on the [flags](@ref dnnl_normalization_flags_t) and
@@ -81,6 +107,9 @@ requires different inputs and outputs. For clarity, a summary is shown below.
 | #dnnl_use_scale                                              | *Inputs*: \src, \f$\gamma\f$ <br><br> *Outputs*: \dst                                         | *Inputs*: \src, \f$\gamma\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$              | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$ <br><br> *Outputs*: \diffsrc, \diffgamma                         | Not supported              |
 | #dnnl_use_shift                                              | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst                                          | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$               | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\beta\f$ <br><br> *Outputs*: \diffsrc, \diffbeta                           | Not supported              |
 | #dnnl_use_global_stats \| #dnnl_use_scale \| #dnnl_use_shift | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \diffsrc, \diffgamma, \diffbeta | Not supported              |
+| #dnnl_rms_norm                                           | *Inputs*: \src, <br><br> *Outputs*: \dst                                         | *Inputs*: \src <br><br> *Outputs*: \dst, \f$\sigma^2\f$              | *Inputs*: \diffdst, \src, \f$\sigma^2\f$ <br><br> *Outputs*: \diffsrc                        | Same as for #dnnl_backward              |
+| #dnnl_use_global_stats \| #dnnl_rms_norm                 | *Inputs*: \src, \f$\sigma^2\f$ <br><br> *Outputs*: \dst | *Inputs*: \src, \f$\sigma^2\f$ <br><br> *Outputs*: \dst | *Inputs*: \diffdst, \src \f$\sigma^2\f$ <br><br> *Outputs*: \diffsrc | Same as for #dnnl_backward              |
+
 
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
@@ -91,7 +120,7 @@ argument index as specified by the following table.
 | \f$\gamma\f$                | DNNL_ARG_SCALE                                                            |
 | \f$\beta\f$                 | DNNL_ARG_SHIFT                                                            |
 | mean (\f$\mu\f$)            | DNNL_ARG_MEAN                                                             |
-| variance (\f$\sigma\f$)     | DNNL_ARG_VARIANCE                                                         |
+| variance* (\f$\sigma\f$)    | DNNL_ARG_VARIANCE                                                         |
 | \dst                        | DNNL_ARG_DST                                                              |
 | \diffdst                    | DNNL_ARG_DIFF_DST                                                         |
 | \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         |
@@ -101,6 +130,8 @@ argument index as specified by the following table.
 | \f$dst scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_DST                                      |
 | \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 |
 
+The variance is marked with an asterisk because, for RMS normalization, the root
+mean square statistic is computed in place of the variance.
 
 ## Implementation Details
 
@@ -115,7 +146,8 @@ argument index as specified by the following table.
    runtime (in which case they are outputs of the primitive) or provided by
    a user (in which case they are inputs). In the latter case, a user must set
    the #dnnl_use_global_stats flag. For the backward propagation, the mean and
-   variance are always input parameters.
+   variance are input parameters. In case of RMS normalization, the mean is never
+   required or computed and the variance is replaced with the root mean square statistic.
 
 3. Both forward and backward propagation support in-place operations, meaning
    that \src can be used as input and output for forward propagation, and

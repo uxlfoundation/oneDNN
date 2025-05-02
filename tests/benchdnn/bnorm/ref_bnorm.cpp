@@ -30,8 +30,6 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
-    float *dst_ptr = (float *)dst;
-
     const int64_t MB = prb->mb;
     const int64_t C = prb->ic;
     const int64_t D = prb->id;
@@ -63,7 +61,9 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             if (fuse_relu && res < 0) res = 0;
             if (need_ws) { ws.set_elem(off, !!res); }
             maybe_post_ops(attr, res);
-            dst_ptr[off] = res;
+            // Write to dst only for forward, backward will stash necessary
+            // values in src memory.
+            if (prb->dir & FLAG_FWD) dst.set_f32_elem(off, res);
             // Write the update value back in `SRC` to save on computations on
             // backward. `src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)`
             if (prb->dir & FLAG_BWD) src.set_f32_elem(off, x_hat);

@@ -1711,6 +1711,31 @@ dnnl_data_type_t deduce_cfg_data_type(
     return dt_;
 }
 
+// The function removes arguments that are unnecessary. Such arguments may come
+// from the forward-for-backward primitive running. The library map removes them
+// when allocating memories for the backward primitive and the reference map
+// should do the same.
+void erase_unused_args(
+        dnn_mem_map_t &ref_mem_map, const dnn_mem_map_t &mem_map) {
+    // Collection of keys is required as evicting members along the way
+    // invalidates references in the modified object and makes further
+    // traversing over the object undefined.
+    std::vector<int> keys_to_erase;
+    keys_to_erase.reserve(ref_mem_map.size());
+
+    for (const auto &pair : ref_mem_map) {
+        const auto key = pair.first;
+        if (mem_map.find(key) == mem_map.end()) {
+            // Correspondent argument is not found in a library mem map.
+            // It means it should be removed.
+            keys_to_erase.push_back(key);
+        }
+    }
+    for (const auto &k : keys_to_erase) {
+        ref_mem_map.erase(k);
+    }
+}
+
 // This function handles cases when optimized CPU primitive is used as a
 // reference for a problem. Optimized primitive means custom memory formats
 // which require reorder to them. Since `ref_mem_map` is passed to optimized

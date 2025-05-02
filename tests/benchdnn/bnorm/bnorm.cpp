@@ -647,11 +647,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             tag::abx, ref_engine, /* prefill = */ false);
                 }
                 break;
-            case DNNL_ARG_WORKSPACE: {
-                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, dnnl_u8, tag::abx,
-                        ref_engine, /* prefill = */ false);
-                break;
-            }
             default: break;
         }
     }
@@ -669,7 +664,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     }
 
     // Reference code uses different kind of workspace. Adjust to ref needs.
-    if (ref_mem_map.count(DNNL_ARG_WORKSPACE)) {
+    // Insert a reference workspace if it comes non-empty from the library side.
+    if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0 && is_fwd_prim) {
         const auto &src_md = ref_mem_map[DNNL_ARG_SRC].md_;
         ref_mem_map[DNNL_ARG_WORKSPACE] = dnn_mem_t(
                 src_md, dnnl_u8, tag::abx, ref_engine, /* prefill = */ false);

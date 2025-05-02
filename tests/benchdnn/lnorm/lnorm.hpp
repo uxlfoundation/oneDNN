@@ -41,6 +41,7 @@ const flags_t NONE = bnorm::NONE;
 const flags_t GLOB_STATS = bnorm::GLOB_STATS;
 const flags_t USE_SCALE = bnorm::USE_SCALE;
 const flags_t USE_SHIFT = bnorm::USE_SHIFT;
+const flags_t USE_RMS_NORM = bnorm::USE_RMS_NORM;
 const auto flags2str = bnorm::flags2str;
 flags_t str2flags(const char *str);
 
@@ -137,6 +138,7 @@ struct prb_t : public prb_dims_t {
     bool use_stats() const { return flags & GLOB_STATS; }
     bool use_sc() const { return flags & USE_SCALE; }
     bool use_sh() const { return flags & USE_SHIFT; }
+    bool skip_mean() const { return flags & USE_RMS_NORM; }
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.

@@ -48,6 +48,7 @@ const flags_t USE_SCALE = dnnl_use_scale;
 const flags_t USE_SHIFT = dnnl_use_shift;
 const flags_t FUSE_NORM_RELU = dnnl_fuse_norm_relu;
 const flags_t FUSE_NORM_ADD_RELU = dnnl_fuse_norm_add_relu;
+const flags_t USE_RMS_NORM = dnnl_rms_norm;
 flags_t str2flags(const char *str);
 std::string flags2str(flags_t flags);
 

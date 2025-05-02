@@ -1550,44 +1550,63 @@ std::string init_info_sum(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
-    ss << e << "," << pd->kind() << "," << pd->name() << ",";
+    ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
+       << ",";
 
     const sdpa_desc_t *desc = pd->desc();
+    ss << md2fmt_str(
+            "query", pd->qry_md(), pd->invariant_src_user_format_kind(0))
+       << " ";
+    ss << md2fmt_str("key", pd->key_md(), pd->invariant_src_user_format_kind(1))
+       << " ";
+    ss << md2fmt_str("val", pd->val_md(), pd->invariant_src_user_format_kind(2))
+       << " ";
+    if (pd->with_attn_mask())
+        ss << md2fmt_str("msk", pd->attn_mask_md(),
+                pd->invariant_src_user_format_kind(3))
+           << " ";
+    ss << md2fmt_str("dst", pd->dst_md(), pd->invariant_dst_user_format_kind())
+       << ",";
 
     std::string delimiter;
-    if (!desc->kq_scales.has_default_values()) {
-        ss << delimiter << "kq_attr-scales:wei:" << desc->kq_scales;
-        delimiter = "+";
+    if (pd->with_key_scales() || pd->with_value_scales()) {
+        ss << delimiter << "attr-scales:";
+        delimiter = "";
+        if (pd->with_key_scales()) {
+            ss << delimiter << "kq:" << desc->kq_scales;
+            delimiter = "+";
+        }
+        if (pd->with_value_scales()) {
+            ss << delimiter << "vs:" << desc->vs_scales;
+            delimiter = "+";
+        }
+        delimiter = " ";
     }
-    if (!desc->kq_zero_points.has_default_values()) {
-        ss << delimiter
-           << "kq_attr-zero-points:" << desc->kq_zero_points.get_verbose();
-        delimiter = "+";
+    if (pd->with_key_zp() || pd->with_value_zp()) {
+        ss << delimiter << "attr-zero-points:";
+        delimiter = "";
+        if (pd->with_key_zp()) {
+            ss << delimiter << "kq:" << desc->kq_zero_points;
+            delimiter = "+";
+        }
+        if (pd->with_value_zp()) {
+            ss << delimiter << "vs:" << desc->vs_zero_points;
+            delimiter = "+";
+        }
     }
+    ss << ",";
 
-    if (!desc->vs_scales.has_default_values()) {
-        ss << delimiter << "vs_attr-scales:wei:" << desc->vs_scales;
-        delimiter = "+";
-    }
-    if (!desc->vs_zero_points.has_default_values()) {
-        ss << delimiter
-           << "vs_attr-zero-points:" << desc->vs_zero_points.get_verbose();
-    }
-
-    ss << ",query:" << pd->qry_md()->data_type << ":"
-       << md2dim_str(pd->qry_md());
-    ss << ",key:" << pd->key_md()->data_type << ":" << md2dim_str(pd->key_md())
-       << ":" << md2fmt_tag_str(pd->key_md());
-    ss << ",val:" << pd->val_md()->data_type << ":" << md2dim_str(pd->val_md());
     if (pd->with_attn_mask()) {
-        ss << ",msk:" << pd->attn_mask_md()->data_type << ":"
-           << md2dim_str(pd->attn_mask_md());
+        auto *md = pd->attn_mask_md();
+        ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
         if (desc->mask_type == attn_mask_type::top_left)
-            ss << ",msk:causal:top_left";
+            ss << "msk:causal:top_left";
         else
-            ss << ",msk:causal:bottom_right";
+            ss << "msk:causal:bottom_right";
     }
+    ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
+       << ":" << md2dim_str(pd->val_md());
 
     return ss.str();
 }

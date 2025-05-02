@@ -248,6 +248,7 @@ struct cudnn_convolution_bwd_data_t : public gpu::primitive_t {
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
             ok = ok && this->set_default_formats();
+            ok = ok && attr()->post_ops_.len() == 0;
             ok = ok
                     && (utils::everyone_is(f32, diff_src_md_.data_type,
                                 weights_md_.data_type, diff_dst_md_.data_type)
@@ -325,6 +326,7 @@ struct cudnn_convolution_bwd_weights_t : public gpu::primitive_t {
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
             ok = ok && this->set_default_formats();
+            ok = ok && attr()->post_ops_.len() == 0;
             ok = ok
                     && (utils::everyone_is(f32, src_md_.data_type,
                                 diff_weights_md_.data_type,

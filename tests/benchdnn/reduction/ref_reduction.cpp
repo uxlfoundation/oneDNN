@@ -73,8 +73,8 @@ void finalize(float &dst, alg_t alg, float p, float eps, dnnl_dim_t n) {
     }
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 

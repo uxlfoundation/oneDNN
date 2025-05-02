@@ -603,10 +603,18 @@ int init_prim(const thr_ctx_t &thr_ctx,
 template <typename setup_cmp_func_t, typename prb_t>
 void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         const args_t &args, const args_t &ref_args,
-        const setup_cmp_func_t &setup_cmp_func, res_t *res,
+        const setup_cmp_func_t &setup_cmp_func, res_t *res, dir_t dir,
         dnnl_primitive_t prim_ref = nullptr) {
     // Fast exit for any modes but correctness.
     if (!has_bench_mode_bit(mode_bit_t::corr)) return;
+
+    // Report prim_ref run status for easier distinguishing between GPU failures
+    // and ref CPU failures.
+    if (prim_ref) {
+        BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
+    }
+
+    TIME_REF(compute_ref(prb, dir, ref_args, prim_ref));
 
     // Forward-for-backward service primitives define `kinds` as empty to skip
     // validation. This is to avoid extra checks on higher level.
@@ -616,14 +624,6 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         TIME_COMPARE(check_zero_padding(args.dnn_mem(i), args.arg(i), res));
         TIME_COMPARE(check_buffer_overwrite(args.dnn_mem(i), args.arg(i), res));
     }
-
-    // Report prim_ref run status for easier distinguishing between GPU failures
-    // and ref CPU failures.
-    if (prim_ref) {
-        BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
-    }
-
-    TIME_REF(compute_ref(prb, ref_args, prim_ref));
 
     for (const auto &kind : kinds) {
         compare::compare_t cmp;

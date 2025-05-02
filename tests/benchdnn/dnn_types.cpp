@@ -75,8 +75,8 @@ std::ostream &operator<<(std::ostream &s, dnnl_engine_kind_t ek) {
 }
 
 dnnl_prop_kind_t prop2prop_kind(const dir_t dir) {
-    if (dir == FWD_D) return dnnl_forward_training;
     if (dir == FWD_I) return dnnl_forward_inference;
+    if (dir & FLAG_FWD) return dnnl_forward_training;
     if (dir == BWD_DW) return dnnl_backward;
     assert(!"unknown dir");
     return dnnl_prop_kind_undef;

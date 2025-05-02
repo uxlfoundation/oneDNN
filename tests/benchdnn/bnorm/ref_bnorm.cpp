@@ -30,7 +30,6 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
-    uint8_t *ws_ptr = (uint8_t *)ws;
     float *dst_ptr = (float *)dst;
 
     const int64_t MB = prb->mb;
@@ -62,7 +61,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             float res = gamma * x_hat + beta;
             if (fuse_add_relu) res += src_add.get_f32_elem(off);
             if (fuse_relu && res < 0) res = 0;
-            if (need_ws) ws_ptr[off] = !!res;
+            if (need_ws) ws.set_elem(off, !!res);
             maybe_post_ops(attr, res);
             dst_ptr[off] = res;
             // Write the update value back in `SRC` to save on computations on

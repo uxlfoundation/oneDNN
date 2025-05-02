@@ -265,6 +265,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     const auto &ref_engine = get_cpu_engine();
+    const bool is_fwd_prim = is_fwd_prop_kind(query_prop_kind(query_pd(prim)));
 
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, DST});
@@ -294,14 +295,16 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_DIFF_DST:
                 SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
                 break;
-            case DNNL_ARG_WORKSPACE: {
-                const auto ws_dt
-                        = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
-                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
-                        ref_engine, /* prefill = */ false);
-                if (prb->dir & FLAG_FWD) SAFE(fill_ws(prb, mem, ref_mem), WARN);
+            case DNNL_ARG_WORKSPACE:
+                if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0
+                        && is_fwd_prim) {
+                    const auto ws_dt
+                            = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
+                    ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
+                            ref_engine, /* prefill = */ false);
+                    SAFE(fill_ws(prb, mem, ref_mem), WARN);
+                }
                 break;
-            }
             case DNNL_ARG_DST:
                 SAFE(!check_md_consistency_with_tag(mem.md_, prb->tag), WARN);
                 break;

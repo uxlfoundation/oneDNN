@@ -240,6 +240,8 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
             // plain format, last logical dim is last physical
             VDISPATCH_LNORM(src_d.blocking_desc().strides[ndims() - 1] == 1,
                     VERBOSE_BLOCKING_FAIL, "bad stride value");
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
 
             CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 

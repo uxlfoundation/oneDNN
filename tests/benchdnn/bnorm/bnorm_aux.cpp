@@ -70,6 +70,7 @@ std::string flags2str(flags_t flags) {
     if (flags & USE_SHIFT) str += "H";
     if (flags & FUSE_NORM_RELU) str += "R";
     if (flags & FUSE_NORM_ADD_RELU) str += "A";
+    if (flags & USE_RMS_NORM) str += "M";
     return str;
 }
 

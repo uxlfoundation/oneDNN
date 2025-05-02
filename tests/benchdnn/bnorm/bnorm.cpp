@@ -638,16 +638,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_DST:
-                if (prb->dir & FLAG_BWD) {
-                    // Stash for backward which is used in reference code:
-                    //     src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)
-                    ref_mem_map.emplace(DNNL_ARG_DST_1,
-                            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                                    /* prefill = */ false));
-                }
-                break;
             case DNNL_ARG_DIFF_SRC: break; // Skip on backward.
-            case DNNL_ARG_DST_1: break; // Skip on backward.
             case DNNL_ARG_MEAN:
             case DNNL_ARG_VARIANCE:
                 if (prb->dir & FLAG_INF) {

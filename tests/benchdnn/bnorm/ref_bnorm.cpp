@@ -29,7 +29,6 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &sh = args.find(DNNL_ARG_SHIFT);
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &src_hat = args.find(DNNL_ARG_DST_1);
 
     uint8_t *ws_ptr = (uint8_t *)ws;
     float *dst_ptr = (float *)dst;
@@ -66,13 +65,15 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             if (need_ws) ws_ptr[off] = !!res;
             maybe_post_ops(attr, res);
             dst_ptr[off] = res;
-            if (prb->dir & FLAG_BWD) src_hat.set_f32_elem(off, x_hat);
+            // Write the update value back in `SRC` to save on computations on
+            // backward. `src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)`
+            if (prb->dir & FLAG_BWD) src.set_f32_elem(off, x_hat);
         }
     });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_hat = args.find(DNNL_ARG_DST_1);
+    const dnn_mem_t &src_hat = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &var = args.find(DNNL_ARG_VARIANCE);
     const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
     const dnn_mem_t &sc = args.find(DNNL_ARG_SCALE);

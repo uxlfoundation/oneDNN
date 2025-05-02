@@ -65,6 +65,8 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_BLOCKING_FAIL, "bad stride value");
     VDISPATCH_LNORM(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+            "rms normalization is not supported");
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 
@@ -269,6 +271,8 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_LNORM(impl::is_dense_format_kind(
                             {src_md(), diff_src_md(), dst_md(), diff_dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+            "rms normalization is not supported");
 
     CHECK(fill_compatible_stats_md(*src_md(), reordered_stat_md_));
 

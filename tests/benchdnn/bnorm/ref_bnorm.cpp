@@ -61,7 +61,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             float res = gamma * x_hat + beta;
             if (fuse_add_relu) res += src_add.get_f32_elem(off);
             if (fuse_relu && res < 0) res = 0;
-            if (need_ws) ws.set_elem(off, !!res);
+            if (need_ws) { ws.set_elem(off, !!res); }
             maybe_post_ops(attr, res);
             dst_ptr[off] = res;
             // Write the update value back in `SRC` to save on computations on
@@ -134,12 +134,14 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     });
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     // Running fwd ref on bwd to collect src_hat (used instead of src + mean)
     // and ws, if fuse_relu flag is requested.
-    compute_ref_fwd(prb, args);
-    if (prb->dir & FLAG_BWD) compute_ref_bwd(prb, args);
+    if (dir & FLAG_FWD)
+        compute_ref_fwd(prb, args);
+    else
+        compute_ref_bwd(prb, args);
 }
 
 } // namespace bnorm

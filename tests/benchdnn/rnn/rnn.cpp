@@ -525,10 +525,10 @@ int fill_bias(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
     return OK;
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const prb_t &prb_ = *prb;
-    if (prb_.prop != dnnl_backward)
+    if (prop2prop_kind(dir) != dnnl_backward)
         compute_ref_fwd(prb_, args);
     else
         compute_ref_bwd(prb_, args);
@@ -1284,7 +1284,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(v_prim[0], args, res), WARN);
 
     check_correctness(&prb, get_kinds_to_check(&prb, FLAG_FWD), args, ref_args,
-            setup_cmp, res);
+            setup_cmp, res, FLAG_FWD);
     SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_FWD), args, prb.attr,
                  prb.inplace, res),
             WARN);
@@ -1303,7 +1303,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[1], args, res), WARN);
 
         check_correctness(&prb, get_kinds_to_check(&prb, FLAG_BWD), args,
-                ref_args, setup_cmp, res);
+                ref_args, setup_cmp, res, prb.dir);
         SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_BWD), args,
                      prb.attr, prb.inplace, res),
                 WARN);

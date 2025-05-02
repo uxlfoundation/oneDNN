@@ -1332,7 +1332,7 @@ int doit(const prb_t *prb, res_t *res) {
     res->state = EXECUTED;
 
     if (has_bench_mode_bit(mode_bit_t::corr)) {
-        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res);
+        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prb->dir);
     }
 
     // Create a bind to match internals to run performance measurements.

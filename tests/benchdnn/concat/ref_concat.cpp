@@ -30,8 +30,8 @@ void get_sizes(const prb_t *prb, int64_t &outer_size, int64_t &inner_size,
     axis_size = prb->axis_size();
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
     float *dst_ptr = (float *)dst;

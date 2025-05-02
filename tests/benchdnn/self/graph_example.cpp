@@ -159,7 +159,9 @@ int init_op(std::unordered_map<int, graph_link_t> &op_graph,
     SAFE(execute_and_wait(prim, args, res), WARN);
 
     // Execute reference.
-    if (has_bench_mode_bit(mode_bit_t::corr)) { compute_ref(prb, ref_args); }
+    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        compute_ref(prb, prb->dir, ref_args);
+    }
 
     return OK;
 }

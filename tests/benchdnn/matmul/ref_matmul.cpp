@@ -312,8 +312,8 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
     }
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     if (prim_ref) {
         SAFE_V(execute_and_wait(prim_ref, args));
         return;

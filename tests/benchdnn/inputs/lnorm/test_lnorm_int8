@@ -7,5 +7,5 @@
 
 --dir=FWD_I
 --attr-scales=,src:common:128,dst:common:0.125,src:common:64+dst:common:0.5
---flags=,CH,G,GCH
+--flags=,CH,G,GCH,M,GCHM
 --batch=option_set_all

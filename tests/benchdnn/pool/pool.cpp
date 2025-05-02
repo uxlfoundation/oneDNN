@@ -264,6 +264,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
+    if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
+
     const auto &ref_engine = get_cpu_engine();
     const bool is_fwd_prim = is_fwd_prop_kind(query_prop_kind(query_pd(prim)));
 

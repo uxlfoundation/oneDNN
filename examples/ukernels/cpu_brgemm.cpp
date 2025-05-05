@@ -61,19 +61,20 @@ void brgemm_example() {
 
     // Query the packing requirement from the ukernel. It's enough to query
     // packing requirements once for multiple objects.
-    // Based on this information, specific `ldb` value can be used, since
-    // transform has a limited set of values supported.
-    bool need_pack = false;
-    try {
-        need_pack = brgemm::get_B_pack_type(a_dt, b_dt) == pack_type::pack32;
-    } catch (error &e) {
-        if (e.status == dnnl_unimplemented)
-            throw example_allows_unimplemented {
-                    "Kernel is not supported on this platform.\n"};
+    const auto pack = brgemm::get_B_pack_type(a_dt, b_dt);
 
-        // on any other error just re-throw
-        throw;
+    // If the value is `pack_type::undef`, ukernel API is not supported on the
+    // target system.
+    if (pack == pack_type::undef) {
+        printf("Kernel is not supported on this platform.\n");
+        return;
     }
+
+    // Packing is required if the returned value is different from
+    // `pack_type::no_pack`.
+    // If packing is required, specific `ldb` value can be used ahead, since
+    // transform has a limited set of supported values.
+    bool need_pack = pack != pack_type::no_trans;
 
     const memory::dim lda = K;
     // `ldb` for `need_pack = true` must be one of 16, 32, 48, or 64. This

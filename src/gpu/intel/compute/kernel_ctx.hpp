@@ -48,6 +48,8 @@ public:
 
     std::string options() const {
         std::ostringstream oss;
+        oss.imbue(std::locale::classic());
+
         for (auto &opt : option_set_)
             oss << " " << opt;
 

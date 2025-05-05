@@ -277,10 +277,8 @@ struct brgemm : public handle<dnnl_brgemm_t> {
         dnnl_pack_type_t c_pack_type;
         dnnl_status_t status = dnnl_brgemm_get_B_pack_type(&c_pack_type,
                 memory::convert_to_c(a_dt), memory::convert_to_c(b_dt));
-        if (status != dnnl_success)
-            error::wrap_c_api(status, "could not query B pack type");
-
-        return static_cast<pack_type>(c_pack_type);
+        return status == dnnl_success ? static_cast<pack_type>(c_pack_type)
+                                      : dnnl::ukernel::pack_type::undef;
     }
 
     /// Returns the size of a scratchpad memory needed for the BRGeMM ukernel

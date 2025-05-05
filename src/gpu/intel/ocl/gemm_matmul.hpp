@@ -129,7 +129,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 }
                 // Grouped attrs are only compatible with reduced dims with matching trivial outer batch.
                 bool attrs_compat = (!grouped_attr
-                        || (b_md->dims[0] == a_md->dims[0] == 1));
+                        || utils::everyone_is(1, b_md->dims[0], a_md->dims[0]));
                 //for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
                 auto reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2
                         && attrs_compat);

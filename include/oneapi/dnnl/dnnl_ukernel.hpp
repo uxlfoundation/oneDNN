@@ -261,10 +261,12 @@ struct brgemm : public handle<dnnl_brgemm_t> {
     ///
     /// This step must be performed prior to querying information from the
     /// object.
-    void finalize() {
+    ///
+    /// Returns `true` if the call successfully completed, and `false`,
+    /// otherwise.
+    bool finalize() {
         dnnl_status_t status = dnnl_brgemm_finalize(get());
-        if (status != dnnl_success)
-            error::wrap_c_api(status, "could not finalize an object");
+        return status == dnnl_success;
     }
 
     /// Returns the packing type expected by a tensor B of a BRGeMM ukernel

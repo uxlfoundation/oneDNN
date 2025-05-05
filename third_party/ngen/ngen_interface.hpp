@@ -598,6 +598,7 @@ std::string InterfaceHandler::generateZeInfo() const
 #endif
 
     std::stringstream md;
+    md.imbue(std::locale::classic());
 
     const char *version = "1.8";
 

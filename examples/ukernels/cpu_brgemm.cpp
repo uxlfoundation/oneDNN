@@ -210,49 +210,59 @@ void brgemm_example() {
     // zeroing the correspondent piece of accumulation buffer.
     brgemm brg, brg_po;
     if (batch_size > 0) {
-        try {
-            // Construct a basic brgemm object.
-            brg = brgemm(
-                    M, N, K_k, batch_size, lda, ldb, ldc, a_dt, b_dt, c_dt);
-            // Instruct the kernel to append the result to C tensor.
-            brg.set_add_C(true);
-            // Finalize the initialization.
-            brg.finalize();
-            // Generate the executable JIT code for the objects.
-            brg.generate();
-        } catch (error &e) {
-            if (e.status == dnnl_unimplemented)
-                throw example_allows_unimplemented {
-                        "Kernel is not supported on this platform.\n"};
-
-            // on any other error just re-throw
-            throw;
-        }
-    }
-
-    try {
         // Construct a basic brgemm object.
-        brg_po = brgemm(M, N, K_k, 1, lda, ldb, ldc, a_dt, b_dt, c_dt);
-        // Instruct the kernel to append the result to C tensor.
-        brg_po.set_add_C(true);
-        // Specify post-ops for the brgemm object.
-        brg_po.set_post_ops(ldd, d_dt, brgemm_ops);
-        // Specify quantization scales for B.
-        if (b_dt == memory::data_type::s8 || b_dt == memory::data_type::u8) {
-            brg_po.set_B_scales(/* mask = */ 2);
+        // `allow_empty` makes the interface to return an empty `brg` object
+        // in case of critical error.
+        brg = brgemm(M, N, K_k, batch_size, lda, ldb, ldc, a_dt, b_dt, c_dt,
+                /* allow_empty = */ true);
+        if (!brg) {
+            printf("Error: brg object was not constructed.\n");
+            return;
         }
-        // Finalize the initialization.
-        brg_po.finalize();
-        // Generate the executable JIT code for the objects.
-        brg_po.generate();
-    } catch (error &e) {
-        if (e.status == dnnl_unimplemented)
-            throw example_allows_unimplemented {
-                    "Kernel is not supported on this platform.\n"};
 
-        // on any other error just re-throw
-        throw;
+        // Instruct the kernel to append the result to C tensor.
+        brg.set_add_C(true);
+
+        // Finalize the initialization.
+        // Successful completion return `true`. Otherwise, `brg` object can't be
+        // used due to lack of support or non-compatible settings. The specific
+        // reason may be found by using `ONEDNN_VERBOSE=all` env var.
+        const bool ok = brg.finalize();
+        if (!ok) {
+            printf("Kernel is not supported on this platform.\n");
+            return;
+        }
+
+        // Generate the executable code.
+        brg.generate();
     }
+
+    // Construct a basic brgemm object.
+    brg_po = brgemm(M, N, K_k, 1, lda, ldb, ldc, a_dt, b_dt, c_dt,
+            /* allow_empty = */ true);
+    if (!brg_po) {
+        printf("Error: brg_po object was not constructed.\n");
+        return;
+    }
+
+    // Instruct the kernel to append the result to C tensor.
+    brg_po.set_add_C(true);
+    // Specify post-ops.
+    brg_po.set_post_ops(ldd, d_dt, brgemm_ops);
+    // Specify quantization scales for B.
+    if (b_dt == memory::data_type::s8 || b_dt == memory::data_type::u8) {
+        brg_po.set_B_scales(/* mask = */ 2);
+    }
+
+    // Finalize the initialization.
+    const bool ok = brg_po.finalize();
+    if (!ok) {
+        printf("Kernel is not supported on this platform.\n");
+        return;
+    }
+
+    // Generate the executable code.
+    brg_po.generate();
 
     // Query a scratchpad size and initialize a scratchpad buffer if the ukernel
     // is expecting it. This is a service space needed, has nothing in common

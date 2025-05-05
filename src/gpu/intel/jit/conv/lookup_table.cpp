@@ -44,10 +44,12 @@ conv_lookup_table_t::conv_lookup_table_t(const char **entries) {
     while (*entries) {
         conv_lookup_table_t::entry_t e;
         std::istringstream iss(*entries);
+        iss.imbue(std::locale::classic());
         e.parse(iss);
 #ifdef DNNL_DEV_MODE
         {
             std::ostringstream oss;
+            oss.imbue(std::locale::classic());
             e.stringify(oss);
             gpu_assert(oss.str() == *entries)
                     << "parsed from:\n  " << *entries << "\nstringified to\n  "

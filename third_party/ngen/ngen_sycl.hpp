@@ -127,7 +127,7 @@ sycl::kernel SYCLCodeGenerator<hw>::getKernel(const sycl::context &context, cons
             detail::handleL0(call_zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
 
             auto bundle = make_kernel_bundle<backend::ext_oneapi_level_zero, bundle_state::executable>({moduleL0}, context);
-            outKernel = make_kernel<backend::ext_oneapi_level_zero>({bundle, kernelL0}, context);
+            outKernel = make_kernel<backend::ext_oneapi_level_zero>({std::move(bundle), kernelL0}, context);
             break;
         }
         default: throw unsupported_sycl_device();

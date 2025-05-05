@@ -553,7 +553,7 @@ struct EmulationImplementation {
         bool s1W = isW(src1);
         bool s1D = isDW(src1);
         bool s1Q = isQW(src1);
-        bool s1Immed = std::is_base_of<Immediate, S1>::value;
+        const bool s1Immed = std::is_base_of<Immediate, S1>::value;
 
         bool s0Signed = isSigned(src0.getType());
         bool s1Signed = isSigned(src1.getType());

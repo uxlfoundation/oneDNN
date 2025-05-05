@@ -272,13 +272,6 @@ typedef struct {
 } dnnl_graph_logical_tensor_t;
 ```
 
-Currently supported dnnl_graph_tensor_property_t values:
-- `dnnl_graph_tensor_property_undef`: Undefined tensor property.
-- `dnnl_graph_tensor_property_variable`: The tensor may change during computation
-  or between iterations.
-- `dnnl_graph_tensor_property_constant`: The tensor remains unchanged during computation and across
-  iterations, allowing optimization and caching (e.g., constant weight tensors in inference scenarios).
-
 To support scalar tensors, introduce a new property:
 
 ```cpp
@@ -292,7 +285,19 @@ typedef enum {
 } dnnl_graph_tensor_property_t;
 ```
 
-With this addition, an example of creating a scalar tensor would be:
+The host_scalar property is designed for use with a CPU engine,
+which can be created with various runtimes, including native CPU runtimes,
+SYCL CPU runtime, or when the CPU runtime is set to none. This means scalar
+tensors can be created in the following ways:
+
+- A logical tensor with the host_scalar property and a CPU engine using a native
+  runtime (e.g., OpenMP, TBB, Threadpool) along with a host scalar value.
+- A logical tensor with the host_scalar property and a CPU engine using the SYCL
+  runtime along with a host scalar value.
+- A logical tensor with the host_scalar property and a CPU engine with no
+  runtime specified, along with a host scalar value.
+
+An example of creating a scalar tensor in code:
 
 ```cpp
 dnnl::engine eng(engine::kind::cpu, 0);

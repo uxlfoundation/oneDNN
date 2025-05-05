@@ -697,7 +697,7 @@ void fold_const_nary_op_args(op_kind_t op_kind, const std::vector<expr_t> &args,
     if (c.is_empty()) return;
     if (op_kind == op_kind_t::_mul && is_zero(c)) {
         new_args.clear();
-        new_args.push_back(c);
+        new_args.push_back(std::move(c));
         return;
     }
     if (op_kind == op_kind_t::_mul && is_one(c)) return;

@@ -350,7 +350,7 @@ private:
     void set(const std::string &s_tile, const std::string &_s_dim) {
         gpu_assert(!_s_dim.empty());
         bool no_min_check = (_s_dim[0] == '#');
-        auto s_dim = no_min_check ? _s_dim.substr(1) : _s_dim;
+        const auto &s_dim = no_min_check ? _s_dim.substr(1) : _s_dim;
         auto d = pvar_t(s_dim);
         if (no_min_check) gpu_assert(s_tile == "i");
         if (s_tile == "i") {

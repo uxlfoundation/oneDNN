@@ -461,7 +461,7 @@ private:
         std::vector<pvar_tile_t> tiles = {pvar_tile_t()};
         for (auto &d : desc.iter_tile) {
             auto bmnk = to_gemm(d, desc.prop);
-            if (!utils::one_of(bmnk, pvars::m, pvars::n)) continue;
+            if (!utils::one_of(std::move(bmnk), pvars::m, pvars::n)) continue;
             for (int outer : {2, 4}) {
                 if (desc.iter_tile.at(d) % outer != 0) continue;
                 pvar_tile_t tile_outer;

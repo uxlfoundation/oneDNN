@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -90,14 +90,14 @@ public:
         Requirements req;
         ActionFunc action;
 
-        Item(Requirements req_, ActionFunc action_) : req(req_), action(action_) {}
+        Item(Requirements req_, ActionFunc action_) : req(req_), action(std::move(action_)) {}
     };
 
     struct CheckedItem : public Item {
         ActionCheckFunc check;
 
-        CheckedItem(Requirements req_, ActionFunc action_, ActionCheckFunc check_) : Item(req_, action_), check(check_) {}
-        CheckedItem(Item item_, ActionCheckFunc check_ = ActionCheckFunc(nullptr)) : Item(item_), check(check_) {}
+        CheckedItem(Requirements req_, ActionFunc action_, ActionCheckFunc check_) : Item(req_, std::move(action_)), check(std::move(check_)) {}
+        CheckedItem(Item item_, ActionCheckFunc check_ = ActionCheckFunc(nullptr)) : Item(std::move(item_)), check(std::move(check_)) {}
     };
 
     enum class CallbackType {

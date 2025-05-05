@@ -216,7 +216,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                 }
 
                 if (a64) {
-                    int udStride = (hw >= HW::XeHP) ? 2 : 1;
+                    constexpr int udStride = (hw >= HW::XeHP) ? 2 : 1;
                     int simd1 = std::min(2 * ne, simdSize);
                     int simd2 = simdSize - simd1;
                     if (udStride == 2 && simd2) {

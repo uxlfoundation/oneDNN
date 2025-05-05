@@ -71,7 +71,7 @@ kernel_desc_t plan_registry_t::find_best(
         time = e.model_set.time(prb, sk_desc);
         if (time < min_time) {
             min_time = time;
-            best = sk_desc;
+            best = std::move(sk_desc);
         }
     }
     return best;

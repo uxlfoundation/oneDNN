@@ -49,10 +49,7 @@ const expr_t &pvar_t::index_var() const {
 
 const expr_t &pvar_t::var() const {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) {
-        auto var = const_var_t::make(type_t::s32(), name_);
-        vars[*this] = var;
-    }
+    if (!vars.has(*this)) vars[*this] = const_var_t::make(type_t::s32(), name_);
     return vars[*this];
 }
 

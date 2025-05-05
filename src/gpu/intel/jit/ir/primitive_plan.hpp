@@ -43,10 +43,10 @@ public:
 
     void add_kernel(
             const compute::kernel_t &kernel, const kernel_info_t &kernel_info) {
-        kernel_entry_t e;
+        kernel_entries_.emplace_back();
+        auto &e = kernel_entries_.back();
         e.kernel = kernel;
         e.kernel_info = kernel_info;
-        kernel_entries_.push_back(e);
     }
 
 private:

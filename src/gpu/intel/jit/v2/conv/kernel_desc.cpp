@@ -1016,7 +1016,7 @@ status_t kernel_desc_t::init_primitive_plan(primitive_init_plan_t &plan,
         auto user_name = t.name;
         auto &md = *pd->arg_md(t.arg_key);
         auto compute_layout = get_kernel_layout(t.name, *this, md, pd);
-        auto user_layout
+        const auto &user_layout
                 = (md.ndims == 0 ? jit::layout_t()
                                  : jit::layout_t(md, /*do_normalize=*/false));
         bool is_out_stream_k = use_stream_k && t.is_output;

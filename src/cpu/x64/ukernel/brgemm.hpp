@@ -73,11 +73,12 @@ struct dnnl_brgemm : public dnnl::impl::c_compatible {
 
     dnnl::impl::status_t execute(const void *A_ptr, const void *B_ptr,
             const dnnl::impl::dim_t *A_B_offsets, void *C_ptr,
-            void *scratchpad_ptr) const;
+            void *scratchpad_ptr, const dnnl::impl::dim_t *actual_lds) const;
     dnnl::impl::status_t execute(const void *A_ptr, const void *B_ptr,
             const dnnl::impl::dim_t *A_B_offsets, const void *C_ptr,
             void *D_ptr, void *scratchpad_ptr,
-            const dnnl::impl::cpu::ukernel::attr_params_t *attr_params) const;
+            const dnnl::impl::cpu::ukernel::attr_params_t *attr_params,
+            const dnnl::impl::dim_t *actual_lds) const;
 
 private:
     // User's inputs.
@@ -142,12 +143,12 @@ status_t dnnl_brgemm_generate(dnnl_brgemm *brgemm);
 
 status_t dnnl_brgemm_execute(const dnnl_brgemm *brgemm, const void *A_ptr,
         const void *B_ptr, const dim_t *A_B_offsets, void *C_ptr,
-        void *scratchpad_ptr);
+        void *scratchpad_ptr, const dim_t *actual_lds);
 
 status_t dnnl_brgemm_execute_postops(const dnnl_brgemm *brgemm,
         const void *A_ptr, const void *B_ptr, const dim_t *A_B_offsets,
         const void *C_ptr, void *D_ptr, void *scratchpad_ptr,
-        const dnnl_ukernel_attr_params *attr_params);
+        const dnnl_ukernel_attr_params *attr_params, const dim_t *actual_lds);
 
 status_t dnnl_brgemm_destroy(dnnl_brgemm *brgemm);
 

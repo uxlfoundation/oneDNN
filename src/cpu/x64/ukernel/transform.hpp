@@ -37,7 +37,8 @@ struct dnnl_transform : public dnnl::impl::c_compatible {
     dnnl::impl::status_t generate();
 
     // Executes a transform kernel.
-    dnnl::impl::status_t execute(const void *src, void *dst) const;
+    dnnl::impl::status_t execute(
+            const void *src, void *dst, dnnl::impl::dim_t in_actual_ld) const;
 
 private:
     // User's inputs.
@@ -73,8 +74,8 @@ status_t dnnl_transform_create(dnnl_transform **transform, dim_t K, dim_t N,
 
 status_t dnnl_transform_generate(dnnl_transform *transform);
 
-status_t dnnl_transform_execute(
-        const dnnl_transform *transform, const void *in_ptr, void *out_ptr);
+status_t dnnl_transform_execute(const dnnl_transform *transform,
+        const void *in_ptr, void *out_ptr, dim_t in_actual_ld);
 
 status_t dnnl_transform_destroy(dnnl_transform *transform);
 

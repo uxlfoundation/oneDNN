@@ -127,20 +127,21 @@ status_t dnnl_brgemm_generate(brgemm_t *brgemm) {
 
 status_t dnnl_brgemm_execute(const brgemm_t *brgemm, const void *A_ptr,
         const void *B_ptr, const dim_t *A_B_offsets, void *C_ptr,
-        void *scratchpad_ptr) {
+        void *scratchpad_ptr, const dim_t *actual_lds) {
 #if DNNL_X64
-    return x64::ukernel::dnnl_brgemm_execute(
-            brgemm, A_ptr, B_ptr, A_B_offsets, C_ptr, scratchpad_ptr);
+    return x64::ukernel::dnnl_brgemm_execute(brgemm, A_ptr, B_ptr, A_B_offsets,
+            C_ptr, scratchpad_ptr, actual_lds);
 #endif
     return status::unimplemented;
 }
 
 status_t dnnl_brgemm_execute_postops(const brgemm_t *brgemm, const void *A_ptr,
         const void *B_ptr, const dim_t *A_B_offsets, const void *C_ptr,
-        void *D_ptr, void *scratchpad_ptr, const attr_params_t *attr_params) {
+        void *D_ptr, void *scratchpad_ptr, const attr_params_t *attr_params,
+        const dim_t *actual_lds) {
 #if DNNL_X64
     return x64::ukernel::dnnl_brgemm_execute_postops(brgemm, A_ptr, B_ptr,
-            A_B_offsets, C_ptr, D_ptr, scratchpad_ptr, attr_params);
+            A_B_offsets, C_ptr, D_ptr, scratchpad_ptr, attr_params, actual_lds);
 #endif
     return status::unimplemented;
 }

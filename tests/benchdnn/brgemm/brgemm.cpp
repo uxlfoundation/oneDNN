@@ -663,10 +663,11 @@ dnnl_status_t brgemm_kernel_execute_postops_wrapper(const_dnnl_brgemm_t brgemm,
     dnnl_status_t st = dnnl_runtime_error;
     if (use_dst_as_acc) {
         st = dnnl_brgemm_execute(brgemm, src_ptr, wei_packed_ptr,
-                offsets.data(), dst_ptr, scratchpad_ptr);
+                offsets.data(), dst_ptr, scratchpad_ptr, nullptr);
     } else {
         st = dnnl_brgemm_execute_postops(brgemm, src_ptr, wei_packed_ptr,
-                offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr, attr_params);
+                offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr, attr_params,
+                nullptr);
     }
     return st;
 }
@@ -1287,7 +1288,7 @@ int doit(const prb_t *prb, res_t *res) {
             : nullptr;
 
     if (kernel_args.need_pack_) {
-        DNN_SAFE(dnnl_transform_execute(transform, wei_ptr, wei_packed_ptr),
+        DNN_SAFE(dnnl_transform_execute(transform, wei_ptr, wei_packed_ptr, 0),
                 WARN);
     } else {
         const auto &wei_dt = mem_map.at(DNNL_ARG_WEIGHTS);
@@ -1341,7 +1342,7 @@ int doit(const prb_t *prb, res_t *res) {
     // be handled by API.
     DNN_SAFE(dnnl_brgemm_execute_postops(brgemm, src_ptr, wei_packed_ptr,
                      offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr,
-                     attr_params),
+                     attr_params, nullptr),
             WARN);
 #endif
     res->state = EXECUTED;

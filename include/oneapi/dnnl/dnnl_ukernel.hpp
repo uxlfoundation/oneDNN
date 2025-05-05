@@ -343,13 +343,27 @@ struct brgemm : public handle<dnnl_brgemm_t> {
     ///     `batch_size` value passed at object construction stage.
     /// @param C Pointer to a tensor C (accumulation buffer).
     /// @param scratchpad Pointer to a scratchpad buffer.
+    /// @param actual_lds Vector of actual leading dimensions for tensors A, B,
+    ///     and C. Must be specified if brgemm object was created with runtime
+    ///     values for `lda`, `ldb`, or `ldc`. When `get_B_pack_type` returns
+    ///     values other than `no_pack`, `actual_lds[1]` for `ldb` must be
+    ///     used in transform routine. If any of given values were not specified
+    ///     as runtime values at kernel creation, they will be used instead.
     void execute(const void *A, const void *B,
             const std::vector<std::pair<memory::dim, memory::dim>> &A_B_offsets,
-            void *C, void *scratchpad) const {
+            void *C, void *scratchpad,
+            const std::vector<memory::dim> &actual_lds = {}) const {
+        if (!actual_lds.empty() && actual_lds.size() < 3) {
+            // Allow size 4 to have a single object passed to this execute and
+            // to post-ops one.
+            error::wrap_c_api(dnnl_invalid_arguments,
+                    "actual_lds must be iat least of size 3");
+        }
         // TODO: export batch_element to C API later for user to fill it and
         // pass directly to the call.
         dnnl_status_t status = dnnl_brgemm_execute(get(), A, B,
-                (const dnnl_dim_t *)A_B_offsets.data(), C, scratchpad);
+                reinterpret_cast<const dnnl_dim_t *>(A_B_offsets.data()), C,
+                scratchpad, static_cast<const dnnl_dim_t *>(actual_lds.data()));
         if (status != dnnl_success)
             error::wrap_c_api(
                     status, "could not execute a BRGeMM ukernel object");
@@ -367,15 +381,28 @@ struct brgemm : public handle<dnnl_brgemm_t> {
     /// @param scratchpad Pointer to a scratchpad buffer.
     /// @param params Post-op memory arguments. Must be passed If binary
     ///     post-op or scales were set.
+    /// @param actual_lds Vector of actual leading dimensions for tensors A, B,
+    ///     C, and D. Must be specified if brgemm object was created with
+    ///     runtime values for `lda`, `ldb`, `ldc`, or `ldd`.
+    ///     When `get_B_pack_type` returns values other than `no_pack`,
+    ///     `actual_lds[1]` for `ldb` must be used in transform routine. If any
+    ///     of given values were not specified as runtime values at kernel
+    ///     creation, they will be used instead.
     void execute(const void *A, const void *B,
             const std::vector<std::pair<memory::dim, memory::dim>> &A_B_offsets,
             const void *C, void *D, void *scratchpad,
-            const attr_params &params = default_attr_params()) const {
+            const attr_params &params = default_attr_params(),
+            const std::vector<memory::dim> &actual_lds = {}) const {
+        if (!actual_lds.empty() && actual_lds.size() < 4) {
+            error::wrap_c_api(dnnl_invalid_arguments,
+                    "actual_lds must be at least of size 4");
+        }
         // TODO: export batch_element to C API later for user to fill it and
         // pass directly to the call.
         dnnl_status_t status = dnnl_brgemm_execute_postops(get(), A, B,
-                (const dnnl_dim_t *)A_B_offsets.data(), C, D, scratchpad,
-                params.get());
+                reinterpret_cast<const dnnl_dim_t *>(A_B_offsets.data()), C, D,
+                scratchpad, params.get(),
+                static_cast<const dnnl_dim_t *>(actual_lds.data()));
         if (status != dnnl_success)
             error::wrap_c_api(
                     status, "could not execute a BRGeMM ukernel object");
@@ -448,8 +475,12 @@ struct transform : public handle<dnnl_transform_t> {
     ///
     /// @param in Pointer to an input buffer.
     /// @param out Pointer to an output buffer.
-    void execute(const void *in, void *out) const {
-        dnnl_status_t status = dnnl_transform_execute(get(), in, out);
+    /// @param in_actual_ld Actual input buffer leading dimension. Must be
+    ///     specified if transform was created with runtime `in_ld`.
+    void execute(
+            const void *in, void *out, memory::dim in_actual_ld = 0) const {
+        dnnl_status_t status
+                = dnnl_transform_execute(get(), in, out, in_actual_ld);
         if (status != dnnl_success)
             error::wrap_c_api(status,
                     "could not execute a BRGeMM ukernel packing B object");

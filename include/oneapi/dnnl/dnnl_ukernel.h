@@ -249,11 +249,12 @@ dnnl_status_t DNNL_API dnnl_brgemm_generate(dnnl_brgemm_t brgemm);
 ///     stage.
 /// @param C_ptr Pointer to a tensor C (accumulation buffer).
 /// @param scratchpad_ptr Pointer to a scratchpad buffer.
+/// @param actual_lds TODO: add doc
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_brgemm_execute(const_dnnl_brgemm_t brgemm,
         const void *A_ptr, const void *B_ptr, const dnnl_dim_t *A_B_offsets,
-        void *C_ptr, void *scratchpad_ptr);
+        void *C_ptr, void *scratchpad_ptr, const dnnl_dim_t *actual_lds);
 
 /// Executes a BRGeMM ukernel object with post operations.
 ///
@@ -269,12 +270,14 @@ dnnl_status_t DNNL_API dnnl_brgemm_execute(const_dnnl_brgemm_t brgemm,
 /// @param D_ptr Pointer to a tensor D (output buffer).
 /// @param scratchpad_ptr Pointer to a scratchpad buffer.
 /// @param attr_params Ukernel attributes memory storage.
+/// @param actual_lds TODO: add doc
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_brgemm_execute_postops(const_dnnl_brgemm_t brgemm,
         const void *A, const void *B, const dnnl_dim_t *A_B_offsets,
         const void *C_ptr, void *D_ptr, void *scratchpad_ptr,
-        const_dnnl_ukernel_attr_params_t attr_params);
+        const_dnnl_ukernel_attr_params_t attr_params,
+        const dnnl_dim_t *actual_lds);
 
 /// Destroys a BRGeMM ukernel object.
 ///
@@ -313,10 +316,12 @@ dnnl_status_t DNNL_API dnnl_transform_generate(dnnl_transform_t transform);
 /// @param transform Transform object.
 /// @param in_ptr Pointer to an input buffer.
 /// @param out_ptr Pointer to an output buffer.
+/// @param in_actual_ld Actual input buffer leading dimension. Must be specified
+///     if transform was created with runtime `in_ld`.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
-dnnl_status_t DNNL_API dnnl_transform_execute(
-        const_dnnl_transform_t transform, const void *in_ptr, void *out_ptr);
+dnnl_status_t DNNL_API dnnl_transform_execute(const_dnnl_transform_t transform,
+        const void *in_ptr, void *out_ptr, dnnl_dim_t in_actual_ld);
 
 /// Destroys a transform object.
 ///

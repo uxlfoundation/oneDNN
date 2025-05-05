@@ -1705,7 +1705,8 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
         conf.N_tail = conf.N % conf.N_blk;
         conf.b_dt_sz = types::data_type_size(in_type);
         conf.tr_b_dt_sz = types::data_type_size(conf.wei_dt);
-        conf.copy_B_wei_stride = in_ld * conf.b_dt_sz;
+        conf.copy_B_wei_stride
+                = is_runtime_value(in_ld) ? in_ld : in_ld * conf.b_dt_sz;
         conf.N_chunk_elems = conf.N; // To match seems unneeded assert.
         conf.s8s8_comp_b_str = utils::rnd_up(conf.N, conf.wei_n_blk);
         conf.s8s8_comp_n_str = conf.wei_n_blk;

@@ -38,8 +38,9 @@ dnnl_transform::dnnl_transform(dim_t K, dim_t N, pack_type_t in_pack_type,
     , out_dt_(out_dt) {
     // Check for a valid in_ld depending on a pack type.
     assert(in_pack_type == pack_type::no_trans
-                    ? IMPLICATION(K_ > 1, in_ld_ >= N_)
-                    : in_ld_ >= K_);
+                    ? IMPLICATION(K_ > 1,
+                            (in_ld_ >= N_ || in_ld_ == DNNL_RUNTIME_DIM_VAL))
+                    : (in_ld_ >= K_ || in_ld_ == DNNL_RUNTIME_DIM_VAL));
     // Only special N_blk sizes are supported by matmul copy routines. Rest
     // will crash.
     assert(utils::one_of(out_ld_, 16, 32, 48, 64));
@@ -75,7 +76,8 @@ status_t transform_t::generate() {
     return status::success;
 }
 
-status_t transform_t::execute(const void *src, void *dst) const {
+status_t transform_t::execute(
+        const void *src, void *dst, dim_t in_actual_ld) const {
     double start_ms = 0;
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel))
         start_ms = get_msec();
@@ -97,6 +99,8 @@ status_t transform_t::execute(const void *src, void *dst) const {
         auto ker_exec_ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
         ker_exec_ctx.current_N_blk
                 = is_N_tail ? kernel_conf.N_tail : kernel_conf.N_blk;
+        if (in_actual_ld > 0 && is_runtime_value(in_ld_))
+            ker_exec_ctx.dynamic_src_stride = in_actual_ld;
 
         int k_blk_idx = 0;
         for (; k_blk_idx < kernel_conf.K / kernel_conf.K_blk; k_blk_idx++) {
@@ -184,12 +188,12 @@ status_t dnnl_transform_generate(transform_t *transform) {
     return status::success;
 }
 
-status_t dnnl_transform_execute(
-        const transform_t *transform, const void *in_ptr, void *out_ptr) {
+status_t dnnl_transform_execute(const transform_t *transform,
+        const void *in_ptr, void *out_ptr, dim_t in_actual_ld) {
     if (utils::any_null(transform, in_ptr, out_ptr))
         return status::invalid_arguments;
 
-    CHECK(transform->execute(in_ptr, out_ptr));
+    CHECK(transform->execute(in_ptr, out_ptr, in_actual_ld));
     return status::success;
 }
 

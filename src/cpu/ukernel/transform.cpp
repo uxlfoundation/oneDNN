@@ -45,10 +45,11 @@ status_t dnnl_transform_generate(transform_t *transform) {
     return status::unimplemented;
 }
 
-status_t dnnl_transform_execute(
-        const transform_t *transform, const void *in_ptr, void *out_ptr) {
+status_t dnnl_transform_execute(const transform_t *transform,
+        const void *in_ptr, void *out_ptr, dim_t in_actual_ld) {
 #if DNNL_X64
-    return x64::ukernel::dnnl_transform_execute(transform, in_ptr, out_ptr);
+    return x64::ukernel::dnnl_transform_execute(
+            transform, in_ptr, out_ptr, in_actual_ld);
 #endif
     return status::unimplemented;
 }

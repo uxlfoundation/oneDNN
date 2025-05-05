@@ -185,7 +185,8 @@ status_t brgemm_t::generate() {
 }
 
 status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
-        const dim_t *A_B_offsets, void *C_ptr, void *scratchpad_ptr) const {
+        const dim_t *A_B_offsets, void *C_ptr, void *scratchpad_ptr,
+        const dim_t *actual_lds) const {
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
     std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
     for (int i = 0; i < batch_size; i++) {
@@ -193,11 +194,21 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
     }
 
+    brgemm_dynamic_values_t dynamic_values;
+    if (actual_lds
+            && (is_runtime_value(lda_) || is_runtime_value(ldb_)
+                    || is_runtime_value(ldc_))) {
+        const auto actual_lda = is_runtime_value(lda_) ? actual_lds[0] : lda_;
+        const auto actual_ldb = is_runtime_value(ldb_) ? actual_lds[1] : ldb_;
+        const auto actual_ldc = is_runtime_value(ldc_) ? actual_lds[2] : ldc_;
+        dynamic_values = brgemm_dynamic_values_t(
+                actual_lda, actual_ldb, actual_ldc, actual_ldc);
+    }
+
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
-                /* dynamic_values = */ nullptr);
+                v_batch_element.data(), C_ptr, scratchpad_ptr, &dynamic_values);
         double duration_ms = get_msec() - start_ms;
 
         std::stringstream ss;
@@ -206,21 +217,21 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
-                /* dynamic_values = */ nullptr);
+                v_batch_element.data(), C_ptr, scratchpad_ptr, &dynamic_values);
     }
     return status::success;
 }
 
 status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         const dim_t *A_B_offsets, const void *C_ptr, void *D_ptr,
-        void *scratchpad_ptr, const attr_params_t *attr_params) const {
+        void *scratchpad_ptr, const attr_params_t *attr_params,
+        const dim_t *actual_lds) const {
     if (attr_params == nullptr) return status::invalid_arguments;
 
     if (!brgemm_desc_.are_post_ops_applicable()) {
         if (C_ptr == D_ptr) {
             return execute(A_ptr, B_ptr, A_B_offsets, const_cast<void *>(C_ptr),
-                    scratchpad_ptr);
+                    scratchpad_ptr, actual_lds);
         } else {
             VCHECK_BRGEMM_STATUS(status::runtime_error, false,
                     "the kernel won't return correct results with this "
@@ -233,6 +244,18 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
+    }
+
+    brgemm_dynamic_values_t dynamic_values;
+    if (actual_lds
+            && (is_runtime_value(lda_) || is_runtime_value(ldb_)
+                    || is_runtime_value(ldc_) || is_runtime_value(ldd_))) {
+        const auto actual_lda = is_runtime_value(lda_) ? actual_lds[0] : lda_;
+        const auto actual_ldb = is_runtime_value(ldb_) ? actual_lds[1] : ldb_;
+        const auto actual_ldc = is_runtime_value(ldc_) ? actual_lds[2] : ldc_;
+        const auto actual_ldd = is_runtime_value(ldd_) ? actual_lds[3] : ldd_;
+        dynamic_values = brgemm_dynamic_values_t(
+                actual_lda, actual_ldb, actual_ldc, actual_ldd);
     }
 
     brgemm_post_ops_data_t post_ops_data;
@@ -306,8 +329,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         double start_ms = get_msec();
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
                 v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
-                post_ops_data, scratchpad_ptr,
-                /* dynamic_values = */ nullptr);
+                post_ops_data, scratchpad_ptr, &dynamic_values);
         double duration_ms = get_msec() - start_ms;
 
         std::stringstream ss;
@@ -317,8 +339,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     } else {
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
                 v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
-                post_ops_data, scratchpad_ptr,
-                /* dynamic_values = */ nullptr);
+                post_ops_data, scratchpad_ptr, &dynamic_values);
     }
     return status::success;
 }
@@ -465,16 +486,18 @@ status_t dnnl_brgemm_generate(brgemm_t *brgemm) {
 
 status_t dnnl_brgemm_execute(const brgemm_t *brgemm, const void *A_ptr,
         const void *B_ptr, const dim_t *A_B_offsets, void *C_ptr,
-        void *scratchpad_ptr) {
-    CHECK(brgemm->execute(A_ptr, B_ptr, A_B_offsets, C_ptr, scratchpad_ptr));
+        void *scratchpad_ptr, const dim_t *actual_lds) {
+    CHECK(brgemm->execute(
+            A_ptr, B_ptr, A_B_offsets, C_ptr, scratchpad_ptr, actual_lds));
     return status::success;
 }
 
 status_t dnnl_brgemm_execute_postops(const brgemm_t *brgemm, const void *A_ptr,
         const void *B_ptr, const dim_t *A_B_offsets, const void *C_ptr,
-        void *D_ptr, void *scratchpad_ptr, const attr_params_t *attr_params) {
+        void *D_ptr, void *scratchpad_ptr, const attr_params_t *attr_params,
+        const dim_t *actual_lds) {
     CHECK(brgemm->execute(A_ptr, B_ptr, A_B_offsets, C_ptr, D_ptr,
-            scratchpad_ptr, attr_params));
+            scratchpad_ptr, attr_params, actual_lds));
     return status::success;
 }
 

@@ -140,6 +140,7 @@ std::vector<uint8_t> OpenCLCodeGenerator<hw>::getPatchTokenBinary(cl_context con
 {
     using super = ELFCodeGenerator<hw>;
     std::ostringstream dummyCL;
+    dummyCL.imbue(std::locale::classic());
     auto modOptions = options;
 
     if ((hw >= HW::XeHP) && (super::interface_.needGRF > 128))

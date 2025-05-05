@@ -199,6 +199,7 @@ std::vector<const ActualT *> matchProtocol(
 std::string generateShim(const Package &package, HostLanguage language,
         const ShimOptions &options) {
     std::stringstream shim;
+    shim.imbue(std::locale::classic());
 
     bool cpp = (language == HostLanguage::SYCL);
 

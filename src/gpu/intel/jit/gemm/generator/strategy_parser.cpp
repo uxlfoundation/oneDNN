@@ -139,6 +139,7 @@ static void getTiling(std::stringstream &s, MatrixAddressingStrategy &astrategy)
 void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
     std::stringstream s(str);
+    s.imbue(std::locale::classic());
     bool overrideFusedLoop = false;
     bool gotSR = false;
 
@@ -467,6 +468,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             else if (mod.substr(0, 2) == "ks") {
                 char eat;
                 std::stringstream ms(mod);
+                ms.imbue(std::locale::classic());
                 ms >> eat >> eat >> strategy.unrollKSLM;
                 if (!ms.eof() && (ms.peek() == '/'))
                     ms >> eat >> strategy.unrollKSLMMasked;
@@ -520,6 +522,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                         strategy.slmB = true;
                     }
                     std::stringstream ms(mod);
+                    ms.imbue(std::locale::classic());
                     ms >> strategy.slmBuffers;
                     ms >> eat;
                     if (!ms.eof())
@@ -529,6 +532,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                 case 'k': {
                     char eat;
                     std::stringstream ms(mod);
+                    ms.imbue(std::locale::classic());
                     ms >> eat >> strategy.unroll[LoopK];
                     if (!ms.eof() && (ms.peek() == '/'))
                         ms >> eat >> strategy.unrollK_masked;
@@ -723,6 +727,7 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
 std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     std::stringstream s;
+    s.imbue(std::locale::classic());
 
     bool anyOptAlignAB = strategy.optAlignAB || strategy.optAlignAB2D;
 

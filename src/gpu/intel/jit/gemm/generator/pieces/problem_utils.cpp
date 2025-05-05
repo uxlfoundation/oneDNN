@@ -61,6 +61,7 @@ static inline void append(std::ostringstream &s, Type T1, Type T2);
 std::string GEMMProblem::toString() const
 {
     std::ostringstream ss;
+    ss.imbue(std::locale::classic());
 
     switch (batch) {
         default:                                      break;
@@ -120,6 +121,7 @@ std::string GEMMProblem::toString() const
 std::string GEMMProblem::scalarsToString() const
 {
     std::ostringstream ss;
+    ss.imbue(std::locale::classic());
     append(ss, alpha);
     ss << ' ';
     append(ss, beta);

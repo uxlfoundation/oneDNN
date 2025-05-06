@@ -97,7 +97,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
                     static_cast<long int>(val_md()->dims[1]));
 
             int kq_scales_mask = desc()->kq_scales.get_mask();
-            int kq_zp_mask = desc()->kq_zero_points.get_mask(DNNL_ARG_WEIGHTS);
+            int kq_zp_mask = desc()->kq_zero_points.get_mask();
             if (!desc()->kq_scales.has_default_values()
                     && !desc()->kq_zero_points.has_default_values())
                 VCHECK_SDPA_COND(kq_scales_mask == kq_zp_mask,
@@ -116,9 +116,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         kq_zp_mask);
 
             /// NOTE: Limitation of microkernels
-            if (utils::one_of(
-                        desc()->kq_zero_points.get_data_type(DNNL_ARG_WEIGHTS),
-                        s4, u4)) {
+            if (utils::one_of(desc()->kq_zero_points.get_data_type(), s4, u4)) {
                 VCHECK_SDPA_COND(key_group_size() == 16,
                         "if kq zero points data type is s4 or u4 then the "
                         "group size(%d) must be 16.",
@@ -126,7 +124,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
             }
 
             int vs_scales_mask = desc()->vs_scales.get_mask();
-            int vs_zp_mask = desc()->vs_zero_points.get_mask(DNNL_ARG_WEIGHTS);
+            int vs_zp_mask = desc()->vs_zero_points.get_mask();
             if (!desc()->vs_scales.has_default_values()
                     && !desc()->vs_zero_points.has_default_values())
                 VCHECK_SDPA_COND(vs_scales_mask == vs_zp_mask,
@@ -145,9 +143,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         vs_zp_mask);
 
             /// NOTE: Limitation of microkernels
-            if (utils::one_of(
-                        desc()->vs_zero_points.get_data_type(DNNL_ARG_WEIGHTS),
-                        s4, u4)) {
+            if (utils::one_of(desc()->vs_zero_points.get_data_type(), s4, u4)) {
                 VCHECK_SDPA_COND(value_group_size() == 16,
                         "if vs zero points data type is s4 or u4 then the "
                         "group size(%d) must be 16.",

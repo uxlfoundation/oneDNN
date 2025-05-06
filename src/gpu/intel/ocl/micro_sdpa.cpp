@@ -39,9 +39,9 @@ namespace {
 
 using namespace gemmstone;
 
-/// Returns true if a common scale value is used for each slice of the tensor
-/// operation. For 4D case it's when the mask's two first bits are on and two
-/// last bits are off.
+/// Returns true if a common quantization value is used for each slice of the
+/// tensor operation. For 4D case it's when the mask's two first bits are on
+/// and two last bits are off.
 /// Examples:
 ///   | mask      | result  |
 ///   |-----------+---------|
@@ -50,19 +50,8 @@ using namespace gemmstone;
 ///   |  3 (1100) | true    |
 ///   |  1 (1000) | true    |
 ///   |  8 (0001) | false   |
-bool with_quantize_common(const quant_entry_t &scale_entry) {
-    return !scale_entry.has_default_values()
-            && (((scale_entry.get_mask() & 3) != 0
-                        && (scale_entry.get_mask() & 12) == 0)
-                    || scale_entry.get_mask() == 0);
-}
-
-/// Returns true if a common zero points value is used for each slice of the
-/// tensor operation
-bool with_quantize_common(const zero_points_t &zp) {
-    int mask = zp.get_mask(DNNL_ARG_WEIGHTS);
-    return !zp.has_default_values(DNNL_ARG_WEIGHTS)
-            && (((mask & 3) != 0 && (mask & 12) == 0) || mask == 0);
+bool with_quantize_common(const quant_entry_t &entry) {
+    return !entry.has_default_values() && ((entry.get_mask() & 12) == 0);
 }
 
 } /* anonymous namespace */

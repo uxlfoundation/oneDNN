@@ -941,6 +941,21 @@ bool has_send_atomics(const stmt_t &s) {
     return visitor.found;
 }
 
+class has_dpas_visitor_t : public ir_visitor_t {
+public:
+    void _visit(const func_call_t &obj) override {
+        auto *dpas = obj.func.as_ptr<dpas_t>();
+        if (dpas) found = true;
+    }
+
+    bool found = false;
+};
+
+bool has_dpas(const stmt_t &s) {
+    has_dpas_visitor_t visitor;
+    visitor.visit(s);
+    return visitor.found;
+}
 bool relation_t::implies(const relation_t &other) const {
     gpu_assert(var().is_same(other.var()));
 

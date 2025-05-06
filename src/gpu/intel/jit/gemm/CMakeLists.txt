@@ -19,7 +19,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" OR CMAKE_CXX_COMPILER_ID MATCHES "
     append(CMAKE_CXX_FLAGS " -Wno-implicit-int-conversion")
 endif()
 
-set(DIRS "generator;generator/pieces;selector")
+set(DIRS "ir;generator;generator/pieces;selector")
 
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp

@@ -31,10 +31,21 @@ namespace utils = dnnl::graph::tests::unit::utils;
 TEST(test_binary_op_execute, BinaryOp) {
     graph::engine_t *eng = get_engine();
 
-    std::vector<graph::op_kind_t> op_kinds = {graph::op_kind::Multiply,
+    std::vector<graph::op_kind_t> op_kinds1 = {graph::op_kind::Multiply,
             graph::op_kind::Minimum, graph::op_kind::Maximum,
             graph::op_kind::Divide, graph::op_kind::Subtract,
             graph::op_kind::SquaredDifference};
+    std::vector<graph::op_kind_t> op_kinds2 = {graph::op_kind::Multiply,
+            graph::op_kind::Minimum, graph::op_kind::Maximum,
+            graph::op_kind::Divide, graph::op_kind::Subtract};
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    std::vector<graph::op_kind_t> op_kinds = op_kinds1;
+#else
+    std::vector<graph::op_kind_t> op_kinds
+            = eng->kind() == graph::engine_kind::gpu ? op_kinds2 : op_kinds1;
+#endif
 
     std::vector<float> src0 {2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0};
     std::vector<float> src1 {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};

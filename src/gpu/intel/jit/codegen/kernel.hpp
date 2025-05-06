@@ -39,6 +39,7 @@
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
 #include "ngen.hpp"
+#include "ngen_elf.hpp"
 #include "ngen_emulation.hpp"
 #include "ngen_register_allocator.hpp"
 #include "xpu/utils.hpp"
@@ -1275,6 +1276,10 @@ public:
         : ngen::AsmCodeGenerator(k.getProduct())
         , interface_(k.neo_interface()) {}
 
+    ir_asm_generator_t(const ngen::Product &product,
+            const ngen::NEOInterfaceHandler &interface)
+        : ngen::AsmCodeGenerator(product), interface_(interface) {}
+
     NGEN_FORWARD_SCOPE(ngen::AsmCodeGenerator)
 
     int getSIMD() const { return interface_.getSIMD(); }
@@ -1312,6 +1317,11 @@ public:
     template <ngen::HW hw>
     ir_asm_kernel_t(const ir_kernel_t<hw> &k)
         : base(k.exec_cfg(), k.kernel_iface(), k) {}
+
+    ir_asm_kernel_t(const exec_config_t &exec_config,
+            const kernel_iface_t &kernel_iface, const ngen::Product &product,
+            const ngen::NEOInterfaceHandler &neo_interface)
+        : base(exec_config, kernel_iface, product, neo_interface) {}
 };
 #else
 class ir_asm_kernel_t {

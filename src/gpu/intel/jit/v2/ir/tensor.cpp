@@ -916,7 +916,6 @@ void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &_tile,
     auto tile = _tile;
     for (auto &d : tile) {
         gpu_assert(base_tile.has(d));
-        gpu_assert(base_tile[d] % tile[d] == 0);
     }
 
     pvar_coord_t<dim_t> idx;
@@ -925,7 +924,7 @@ void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &_tile,
     for (auto &d : base_tile) {
         if (!tile.has(d)) tile[d] = 1;
         idx[d] = 0;
-        bound[d] = ir_utils::safe_div(base_tile[d], tile[d]);
+        bound[d] = utils::div_up(base_tile[d], tile[d]);
         ntiles *= bound[d];
     }
     for (int i = 0; i < ntiles; i++) {

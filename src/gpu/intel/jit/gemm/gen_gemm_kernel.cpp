@@ -21,7 +21,10 @@
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
+#include "gpu/intel/jit/gemm/ir/builder.hpp"
+#include "gpu/intel/jit/gemm/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "kernel_selector.hpp"
@@ -43,6 +46,11 @@ void entryObserver(
     }
 };
 } // anonymous namespace
+
+bool enable_gemm_ir() {
+    static const bool ret = gpu_utils::dev_getenv("enable_gemm_ir", false);
+    return ret;
+}
 
 status_t gen_gemm_kernel_desc_t::create_generator(
         const compute::compute_engine_t &engine,
@@ -166,6 +174,18 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
+
+    if (enable_gemm_ir()) {
+        if (strategy_.kParallel) {
+            strategy_.kParallel = false;
+            strategy_.C.atomic = false;
+            strategy_.CO.atomic = false;
+        }
+        if (strategy_.kParallelLocal) {
+            strategy_.kParallelLocal = false;
+            strategy_.kInterleave = false;
+        }
+    }
 
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
@@ -934,8 +954,13 @@ void gen_gemm_kernel_t::init_interface() {
         for (int i = 0; i < problem.batchDims - 1; i++) {
             interface_.newArgument(
                     "batch_size" + std::to_string(i), DataType::ud);
-            interface_.newArgument(
-                    "recip_batch_size" + std::to_string(i), DataType::ud);
+            if (enable_gemm_ir()) {
+                interface_.newArgument(
+                        "batch_magic" + std::to_string(i), DataType::uq);
+            } else {
+                interface_.newArgument(
+                        "recip_batch_size" + std::to_string(i), DataType::ud);
+            }
         }
     }
     if (strategy.fuseBeta || strategy.fusePostOps)
@@ -979,6 +1004,30 @@ status_t gen_gemm_kernel_t::get_kernel(
         compute::kernel_t &kernel, const compute::compute_engine_t *engine) {
     init_interface();
     maybe_print_verbose();
+
+    if (enable_gemm_ir()) {
+        auto gemm_desc = gemmstone::gemm_ir_desc_t(*desc()->problem(),
+                *desc()->strategy(), interface_, hw_t(engine));
+        ir::constraint_set_t cset;
+        if (gpu_utils::dev_getenv("gemm_ir_specialize", false)) {
+            if (desc()->n_ != -1)
+                cset.add_constraint(
+                        gemm_desc.kernel_iface().find_arg("m") == desc()->m_);
+            if (desc()->m_ != -1)
+                cset.add_constraint(
+                        gemm_desc.kernel_iface().find_arg("n") == desc()->n_);
+            if (desc()->k_ != -1)
+                cset.add_constraint(
+                        gemm_desc.kernel_iface().find_arg("k") == desc()->k_);
+        }
+        auto stmt = build_ir(gemm_desc, cset);
+        if (stmt.is_empty()) return status::unimplemented;
+        auto generator
+                = ir_kernel_t(gemm_desc.kernel_iface(), gemm_desc.exec_cfg, {},
+                        false, {GENERATOR_NAME, GENERATOR_LINE});
+        generator.generate_from_ir(stmt);
+        return generator.get_kernel(kernel, engine);
+    }
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \

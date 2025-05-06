@@ -61,6 +61,7 @@ struct settings_t : public base_settings_t {
     std::vector<std::string> stag {tag::abx}, wtag {tag::abx}, dtag {tag::abx};
     std::vector<vdims_t> strides {vdims_t(STRIDES_SIZE)};
     std::vector<std::vector<int64_t>> ld {{}};
+    std::vector<std::vector<int64_t>> rt_ld {{}};
     std::vector<dnnl_data_type_t> bia_dt {dnnl_data_type_undef};
     std::vector<int> batch_size {1};
     std::vector<float> alpha {1.f}, beta {0.f};
@@ -79,8 +80,8 @@ struct prb_t : public prb_vdims_t {
     prb_t(const prb_vdims_t &prb_vdims, const std::vector<dnnl_data_type_t> &dt,
             const std::string &stag, const std::string &wtag,
             const std::string &dtag, const vdims_t &strides,
-            const std::vector<int64_t> &ld, dnnl_data_type_t bia_dt,
-            float alpha, float beta, int batch_size,
+            const std::vector<int64_t> &ld, const std::vector<int64_t> &rt_ld,
+            dnnl_data_type_t bia_dt, float alpha, float beta, int batch_size,
             const std::string &brgemm_attr, const std::string &batch_kind,
             const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
@@ -91,6 +92,7 @@ struct prb_t : public prb_vdims_t {
         , dtag(dtag)
         , strides(strides)
         , ld(ld)
+        , rt_ld(rt_ld)
         , bia_dt(bia_dt)
         , alpha(alpha)
         , beta(beta)
@@ -133,6 +135,7 @@ struct prb_t : public prb_vdims_t {
     std::string stag, wtag, dtag;
     vdims_t strides;
     std::vector<int64_t> ld;
+    std::vector<int64_t> rt_ld;
     dnnl_data_type_t bia_dt;
     float alpha, beta;
     int64_t batch_size;
@@ -157,14 +160,16 @@ struct prb_t : public prb_vdims_t {
     dnnl_data_type_t dst_dt() const { return dt[2]; }
     dnnl_data_type_t get_dt(data_kind_t data_kind) const;
 
-    int64_t get_lda() const {
+    int64_t get_create_lda() const {
+        if (!rt_ld.empty() && rt_ld[0] != 0) { return DNNL_RUNTIME_DIM_VAL; }
         if (!ld.empty() && ld[0] != 0) {
             assert(ld[0] >= batch_size * k);
             return ld[0];
         }
         return batch_size * k;
     }
-    int64_t get_ldb() const {
+    int64_t get_create_ldb() const {
+        if (!rt_ld.empty() && rt_ld[1] != 0) { return DNNL_RUNTIME_DIM_VAL; }
         if (!ld.empty() && ld[1] != 0) {
             assert(ld[1] >= n);
             return ld[1];
@@ -173,11 +178,12 @@ struct prb_t : public prb_vdims_t {
         const int64_t ldb = rnd_up(n, 16);
         return ldb;
     }
-    int64_t get_ldc() const {
-        if (use_dst_as_acc()) return get_ldd();
+    int64_t get_create_ldc() const {
+        if (use_dst_as_acc()) return get_create_ldd();
         return n;
     }
-    int64_t get_ldd() const {
+    int64_t get_create_ldd() const {
+        if (!rt_ld.empty() && rt_ld[2] != 0) { return DNNL_RUNTIME_DIM_VAL; }
         if (!ld.empty() && ld[2] != 0) {
             assert(ld[2] >= n);
             return ld[2];
@@ -185,11 +191,34 @@ struct prb_t : public prb_vdims_t {
         return n;
     }
 
+    int64_t get_execute_lda() const {
+        if (!rt_ld.empty() && rt_ld[0] != 0) {
+            assert(rt_ld[0] >= batch_size * k);
+            return rt_ld[0];
+        }
+        return get_create_lda();
+    }
+    int64_t get_execute_ldb() const {
+        if (!rt_ld.empty() && rt_ld[1] != 0) {
+            assert(rt_ld[1] >= n);
+            return rt_ld[1];
+        }
+        return get_create_ldb();
+    }
+    int64_t get_execute_ldc() const { return get_create_ldc(); }
+    int64_t get_execute_ldd() const {
+        if (!rt_ld.empty() && rt_ld[2] != 0) {
+            assert(rt_ld[2] >= n);
+            return rt_ld[2];
+        }
+        return get_create_ldd();
+    }
+
     int64_t get_src_batch_offset() const {
         return k * dnnl_data_type_size(src_dt());
     }
     int64_t get_wei_batch_offset() const {
-        return get_ldb() * k * dnnl_data_type_size(wei_dt());
+        return get_execute_ldb() * k * dnnl_data_type_size(wei_dt());
     }
 
     bool use_dst_as_acc() const {

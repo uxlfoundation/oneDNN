@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -88,6 +88,15 @@ std::string prb_t::set_repro_line() {
         if (ld[1] != 0) s << ld[1];
         s << ":";
         if (ld[2] != 0) s << ld[2];
+        s << " ";
+    }
+    if (canonical || rt_ld != def.rt_ld[0]) {
+        s << "--runtime-ld=";
+        if (rt_ld[0] != 0) s << rt_ld[0];
+        s << ":";
+        if (rt_ld[1] != 0) s << rt_ld[1];
+        s << ":";
+        if (rt_ld[2] != 0) s << rt_ld[2];
         s << " ";
     }
 

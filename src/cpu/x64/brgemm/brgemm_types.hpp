@@ -547,15 +547,17 @@ private:
 };
 
 struct brgemm_dynamic_values_t {
-    dim_t dynamic_LDA = 0;
-    dim_t dynamic_LDB = 0;
-    dim_t dynamic_LDC = 0;
-    dim_t dynamic_LDD = 0;
+    brgemm_dynamic_values_t() = default;
     brgemm_dynamic_values_t(dim_t LDA, dim_t LDB, dim_t LDC, dim_t LDD)
         : dynamic_LDA(LDA)
         , dynamic_LDB(LDB)
         , dynamic_LDC(LDC)
         , dynamic_LDD(LDD) {}
+
+    dim_t dynamic_LDA = 0;
+    dim_t dynamic_LDB = 0;
+    dim_t dynamic_LDC = 0;
+    dim_t dynamic_LDD = 0;
 };
 
 struct brgemm_kernel_params_t {

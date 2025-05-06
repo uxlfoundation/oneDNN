@@ -343,9 +343,9 @@ int init_kernel(kernel_args_t &kernel_args) {
     // Create BRGeMM descriptor, analogous to primitive descriptor creation
     const auto status_init = brgemm_desc_init(&brgemm_desc, isa_undef,
             batch_kind, prb->src_dt(), prb->wei_dt(), false /* transA */,
-            false /* transB */, layout, prb->alpha, prb->beta, prb->get_lda(),
-            prb->get_ldb(), prb->get_ldc(), prb->m, prb->n, prb->k,
-            nullptr /* strides */);
+            false /* transB */, layout, prb->alpha, prb->beta,
+            prb->get_create_lda(), prb->get_create_ldb(), prb->get_create_ldc(),
+            prb->m, prb->n, prb->k, nullptr /* strides */);
     SAFE(check_dnnl_status(status_init, prb, res), WARN);
     if (res->state == SKIPPED) return OK;
 
@@ -358,12 +358,12 @@ int init_kernel(kernel_args_t &kernel_args) {
     }
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args));
-    dims_t dst_strides = {prb->get_ldd(), 1};
+    dims_t dst_strides = {prb->get_create_ldd(), 1};
     auto dst_md = dnn_mem_t::init_md(
             prb->ndims, prb->dst_dims.data(), prb->dst_dt(), "", dst_strides);
 
     SAFE(check_dnnl_status(brgemm_desc_set_postops(&brgemm_desc, dnnl_attr,
-                                   dst_md, prb->get_ldd(), prb->bia_dt),
+                                   dst_md, prb->get_create_ldd(), prb->bia_dt),
                  prb, res),
             WARN);
     if (res->state == SKIPPED) return OK;
@@ -407,15 +407,15 @@ int init_kernel(kernel_args_t &kernel_args) {
 
     dnnl_status_t st = dnnl_success;
     auto &brgemm = kernel_args.brgemm_;
-    DNN_SAFE(
-            dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k, prb->batch_size,
-                    prb->get_lda(), prb->get_ldb(), prb->get_ldc(),
-                    prb->src_dt(), prb->wei_dt(), prb->acc_dt()),
+    DNN_SAFE(dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k,
+                     prb->batch_size, prb->get_create_lda(),
+                     prb->get_create_ldb(), prb->get_create_ldc(),
+                     prb->src_dt(), prb->wei_dt(), prb->acc_dt()),
             WARN);
     // Only `beta` equal to `0.f` and `1.f` works.
     DNN_SAFE(dnnl_brgemm_set_add_C(brgemm, static_cast<int>(prb->beta)), WARN);
-    DNN_SAFE(dnnl_brgemm_set_post_ops(
-                     brgemm, prb->get_ldd(), prb->dst_dt(), dnnl_post_ops),
+    DNN_SAFE(dnnl_brgemm_set_post_ops(brgemm, prb->get_create_ldd(),
+                     prb->dst_dt(), dnnl_post_ops),
             WARN);
     if (!prb->attr.scales.is_def(DNNL_ARG_SRC)) {
         DNN_SAFE(dnnl_brgemm_set_A_scales(
@@ -466,7 +466,7 @@ int init_kernel(kernel_args_t &kernel_args) {
         // One of strides implicitly equals to `1`.
         auto in_ld = MAX2(wei_strides[0], wei_strides[1]);
         st = dnnl_transform_create(&transform, prb->k * prb->batch_size, prb->n,
-                in_pack_type, in_ld, prb->get_ldb(), prb->wei_dt(),
+                in_pack_type, in_ld, prb->get_execute_ldb(), prb->wei_dt(),
                 prb->wei_dt());
         SAFE(check_dnnl_status(st, prb, res), WARN);
         if (res->state == SKIPPED) return OK;
@@ -512,7 +512,8 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     // Note: this check must be done here to avoid runtime error in benchdnn due
     // to failed reorder creation.
     // TODO: enable this support and remove this check.
-    const bool is_bad_ldb = prb->get_ldb() % 16 > 0 || prb->get_ldb() > 64;
+    const bool is_bad_ldb
+            = prb->get_execute_ldb() % 16 > 0 || prb->get_execute_ldb() > 64;
     const bool req_s8_comp = prb->src_dt() == dnnl_s8;
     const bool req_zp_comp = !prb->attr.zero_points.is_def(DNNL_ARG_SRC);
     if (is_bad_ldb && (req_s8_comp || req_zp_comp)) {
@@ -578,8 +579,9 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
-    const bool ldb_ok = prb->get_ldb() == 16 || prb->get_ldb() == 32
-            || prb->get_ldb() == 48 || prb->get_ldb() == 64;
+    const bool ldb_ok = prb->get_execute_ldb() == 16
+            || prb->get_execute_ldb() == 32 || prb->get_execute_ldb() == 48
+            || prb->get_execute_ldb() == 64;
     if (!ldb_ok) {
         BENCHDNN_PRINT(2, "%s\n",
                 "Unsupported leading B dimension. Only 16, 32, 48, and 64 are "
@@ -632,16 +634,19 @@ dnnl_status_t brgemm_kernel_execute_postops_wrapper(
         const namespace_impl::brgemm_batch_element_t *batch_element,
         void *acc_ptr, void *dst_ptr,
         const namespace_impl::brgemm_post_ops_data_t &post_ops_data,
-        void *scratchpad_ptr, const dnnl_stream_t &stream,
+        void *scratchpad_ptr,
+        const namespace_impl::brgemm_dynamic_values_t &dynamic_values,
+        const dnnl_stream_t &stream,
         const std::vector<dnnl_exec_arg_t> &dnnl_args) {
 
     if (batch_kind == "addr") {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, batch_element,
-                acc_ptr, dst_ptr, post_ops_data, scratchpad_ptr);
+                acc_ptr, dst_ptr, post_ops_data, scratchpad_ptr,
+                &dynamic_values);
     } else if (batch_kind == "offs") {
         brgemm_kernel_execute_postops(brgemm_kernel, batch_size, src_ptr,
                 wei_ptr, batch_element, acc_ptr, dst_ptr, post_ops_data,
-                scratchpad_ptr);
+                scratchpad_ptr, &dynamic_values);
     }
     return dnnl_success;
 }
@@ -679,8 +684,8 @@ void init_memory_args(
     const dnnl_dims_t src_dims = {prb->m, prb->k * prb->batch_size};
     const dnnl_dims_t wei_dims = {prb->k * prb->batch_size, prb->n};
 
-    dims_t src_strides = {prb->get_lda(), 1};
-    dims_t dst_strides = {prb->get_ldd(), 1};
+    dims_t src_strides = {prb->get_execute_lda(), 1};
+    dims_t dst_strides = {prb->get_execute_ldd(), 1};
     dims_t acc_strides = prb->use_dst_as_acc() ? dst_strides : dims_t();
 
     auto src_md = dnn_mem_t::init_md(
@@ -702,8 +707,8 @@ void init_memory_args(
     // memory. Thus, it requires two memories and we need to pass a memory
     // handle from bigger one (where LDB is an actual dim value) to smaller, but
     // there's some reorder bug resulting in an error.
-    const auto wtag = prepare_wei_format_string(
-            prb->wei_dt(), prb->get_ldb(), kernel_args.is_b_data_layout_vnni_);
+    const auto wtag = prepare_wei_format_string(prb->wei_dt(),
+            prb->get_execute_ldb(), kernel_args.is_b_data_layout_vnni_);
     BENCHDNN_PRINT(6, "wtag: %s\n", wtag.c_str());
 
     auto wei_md = dnn_mem_t::init_md(prb->ndims, wei_dims, prb->wei_dt(), wtag);
@@ -770,7 +775,7 @@ void init_memory_args(
 
     const dnnl_dim_t k_rounded = multiplier * div_up(prb->k, multiplier);
     const dnnl_dims_t wei_packed_dims = {k_rounded * prb->batch_size, prb->n};
-    dims_t wei_packed_strides = {prb->get_ldb(), 1};
+    dims_t wei_packed_strides = {prb->get_execute_ldb(), 1};
     auto wei_packed_md = dnn_mem_t::init_md(
             prb->ndims, wei_packed_dims, prb->wei_dt(), "", wei_packed_strides);
 #endif
@@ -1231,7 +1236,7 @@ int doit(const prb_t *prb, res_t *res) {
     const size_t wei_offset_zp = wei_offset_s8s8
             + ((wei_md_extra.flags
                        & dnnl::impl::memory_extra_flags::compensation_conv_s8s8)
-                            ? prb->get_ldb() * sizeof(int32_t)
+                            ? prb->get_execute_ldb() * sizeof(int32_t)
                             : 0);
     char *src_comp_ptr = const_cast<char *>(wei_ptr) + wei_offset_zp;
 
@@ -1263,6 +1268,16 @@ int doit(const prb_t *prb, res_t *res) {
             ? (const_cast<char *>(wei_ptr) + wei_offset_s8s8)
             : has_scratchpad ? (char *)mem_map.at(DNNL_ARG_SCRATCHPAD)
                              : nullptr;
+
+    namespace_impl::brgemm_dynamic_values_t dynamic_values;
+    if (!prb->rt_ld.empty()) {
+        const auto execute_lda = prb->get_execute_lda();
+        const auto execute_ldb = prb->get_execute_ldb();
+        const auto execute_ldc = prb->get_execute_ldc();
+        const auto execute_ldd = prb->get_execute_ldd();
+        dynamic_values = namespace_impl::brgemm_dynamic_values_t(
+                execute_lda, execute_ldb, execute_ldc, execute_ldd);
+    }
 
 #else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
     char *wei_packed_ptr = (char *)mem_map.at(DNNL_ARG_WEIGHTS_1);
@@ -1315,11 +1330,11 @@ int doit(const prb_t *prb, res_t *res) {
     if (prb->batch_kind == "addr") {
         brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size,
                 v_batch_element.data(), acc_ptr, dst_ptr, post_ops_data,
-                scratchpad_ptr);
+                scratchpad_ptr, &dynamic_values);
     } else if (prb->batch_kind == "offs") {
         brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size, src_ptr,
                 wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
-                post_ops_data, scratchpad_ptr);
+                post_ops_data, scratchpad_ptr, &dynamic_values);
     }
 #else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
     // `prb->use_dst_as_acc()=true` will make `dst_ptr=acc_ptr` and rest should
@@ -1340,8 +1355,8 @@ int doit(const prb_t *prb, res_t *res) {
     perf_function_t perf_func = std::bind(brgemm_kernel_execute_postops_wrapper,
             kernel_args.brgemm_kernel_, prb->batch_kind, prb->batch_size,
             src_ptr, wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
-            post_ops_data, scratchpad_ptr, std::placeholders::_1,
-            std::placeholders::_2);
+            post_ops_data, scratchpad_ptr, dynamic_values,
+            std::placeholders::_1, std::placeholders::_2);
 #else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
     perf_function_t perf_func = std::bind(brgemm_kernel_execute_postops_wrapper,
             kernel_args.brgemm_, prb->use_dst_as_acc(), src_ptr, wei_packed_ptr,

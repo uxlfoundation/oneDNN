@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_dtag : s.dtag)
     for_(const auto &i_strides : s.strides)
     for_(const auto &i_ld : s.ld)
+    for_(const auto &i_rt_ld : s.rt_ld)
     for_(const auto &i_alpha : s.alpha)
     for_(const auto &i_beta : s.beta)
     for_(const auto &i_batch_size : s.batch_size)
@@ -45,8 +46,9 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_strides,
-                i_ld, i_bia_dt, i_alpha, i_beta, i_batch_size, i_brgemm_attr,
-                i_batch_kind, i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+                i_ld, i_rt_ld, i_bia_dt, i_alpha, i_beta, i_batch_size,
+                i_brgemm_attr, i_batch_kind, i_attr, i_ctx_init, i_ctx_exe,
+                s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
         BENCHDNN_PRINT(1, "run: %s\n", prb.str());
 
@@ -150,6 +152,14 @@ static const std::string help_batch_kind
         = "STRING    (Default: addr)\n    Specifies BRGeMM batch kind. "
           "Supported values are: `addr`, `offs`.\n";
 
+static const std::string help_runtime_ld
+        = "UINT:UINT:UINT    (Default: not specified)\n    Specifies "
+          "LDA:LDB:LDD values that are defined at runtime. The kernel will be "
+          "created with special values indicating that fact. If some values "
+          "are skipped, the regular LDA:LDB:LDD values will be used. If there "
+          "are no post-ops, LDC will reuse LDD, otherwise expect LDC always "
+          "dense.\n";
+
 int bench(int argc, char **argv) {
     // BRGeMM kernel support is available on x86 Intel CPU only.
     if (is_gpu()) return OK;
@@ -177,6 +187,8 @@ int bench(int argc, char **argv) {
                         argv[0], "brgemm-attr", help_brgemm_attr)
                 || parse_vector_option(s.batch_kind, def.batch_kind, cstr2str,
                         argv[0], "batch-kind", help_batch_kind)
+                || parse_multivector_option(s.rt_ld, def.rt_ld, atoi, argv[0],
+                        "runtime-ld", help_runtime_ld)
                 || parse_attributes(s, def, argv[0])
                 || parse_test_pattern_match(s.pattern, argv[0])
                 || parse_perf_template(s.perf_template, s.perf_template_def,

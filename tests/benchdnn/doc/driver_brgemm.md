@@ -25,6 +25,10 @@ where *brgemm-knobs* are:
             So far `LDA` and `LDD` do nothing and `LDB` is used only to make a
             correct kernel call when `N` < 16 since blocked format is implied
             for weights.
+ - `--runtime-ld=LDA:LDB:LDD` -- direct leading dimension specification for src,
+            weights, and dst tensors which will be available for the brgemm at
+            execute time. The value for either of the tensors can be skipped
+            meaning a default value will be applied.
  - `--alpha=FLOAT` -- float value corresponding to scaling of accumulator
             result: `C = alpha * A * B`.
  - `--beta=FLOAT` -- float value corresponding to adding part of accumulator

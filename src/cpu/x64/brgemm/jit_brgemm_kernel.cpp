@@ -159,6 +159,12 @@ private:
     const reg64_t reg_C = r15;
     const reg64_t reg_aux_C = r14;
 
+    // r14 is used to work with C (via reg_aux_C alias) that happens outside of
+    // the microkernel so using r14 (via reg_tmp_microkernel alias) inside the
+    // microkernel is safe as long as its content is preserved after exiting
+    // the microkernel.
+    const reg64_t reg_tmp_microkernel = r14;
+
     const reg64_t reg_addr_batch = r13;
     const reg64_t reg_A = r13;
     const reg64_t reg_B = r12;
@@ -2331,6 +2337,15 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         compute_int8_compensation(
                 rd_loop, bd_b, bd_e, bd_block, ld_block2, is_ld_tail, vpad);
 
+    // Sometimes the offset used for prefetching is too big and needs to be
+    // handled with an additional temporary register.
+    // `reg_aux_C` and `reg_tmp_microkernel` are aliases for `r14` so we need to
+    // save its content.
+    const dim_t max_prefetch_offset = B_offset(ld_block2 - 1, rd_loop - 1)
+            + static_cast<dim_t>(brg.LDB) * brg.rd_block * brg.typesize_B;
+    if (max_prefetch_offset > INT_MAX)
+        mov(ptr[rsp + reg_aux_C_backup_offs_], reg_aux_C);
+
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
@@ -2356,8 +2371,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             for (dim_t bd = bd_b; bd < bd_e; bd++) {
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
                 if (prefetch_count_B < ld_block2) {
-                    prefetcht0(ptr[reg_aux_B + B_offset(prefetch_count_B++, rd)
-                            + brg.LDB * brg.rd_block * brg.typesize_B]);
+                    const dim_t prefetch_offset
+                            = B_offset(prefetch_count_B++, rd)
+                            + static_cast<dim_t>(brg.LDB) * brg.rd_block
+                                    * brg.typesize_B;
+                    prefetcht0(EVEX_compress_addr_safe(
+                            reg_aux_B, prefetch_offset, reg_tmp_microkernel));
                 }
                 for (dim_t ld = 0; ld < ld_block2; ld++) {
                     auto vmm = accm(ld_block2, bd, ld);
@@ -2370,6 +2389,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             }
         }
     }
+
+    if (max_prefetch_offset > INT_MAX)
+        mov(reg_aux_C, ptr[rsp + reg_aux_C_backup_offs_]);
 }
 
 template <typename Wmm>

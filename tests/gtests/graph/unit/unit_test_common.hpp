@@ -64,6 +64,15 @@ dnnl::impl::graph::engine_kind_t get_test_engine_kind();
 
 void set_test_engine_kind(dnnl::impl::graph::engine_kind_t kind);
 
+#ifdef DNNL_SYCL_CUDA
+#define SKIP_IF_NV_GPU(message) \
+    do { \
+        SKIP_IF(get_test_engine_kind() == graph::engine_kind::gpu, (message)); \
+    } while (0)
+#else
+#define SKIP_IF_NV_GPU(message)
+#endif
+
 inline int get_compiled_partition_cache_size() {
     int result = 0;
 #ifndef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE

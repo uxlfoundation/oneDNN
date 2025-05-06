@@ -211,8 +211,15 @@ public:
     static func_t make(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t src2_type,
             int src2_stride) {
-        return func_t(new mad_t(hw, dst_type, exec_size, src1_type, src1_stride,
-                src2_type, src2_stride));
+        return func_t(new mad_t(hw, dst_type, 1, exec_size, src1_type,
+                src1_stride, src2_type, src2_stride));
+    }
+
+    static func_t make(const hw_t &hw, const type_t &dst_type, int src0_stride,
+            int exec_size, const type_t &src1_type, int src1_stride,
+            const type_t src2_type, int src2_stride) {
+        return func_t(new mad_t(hw, dst_type, src0_stride, exec_size, src1_type,
+                src1_stride, src2_type, src2_stride));
     }
 
     std::string str() const override {
@@ -266,20 +273,23 @@ public:
     type_t src2_type;
 
     int exec_size;
+    int src0_stride;
     int src1_stride;
     int src2_stride;
 
 private:
-    mad_t(const hw_t &hw, const type_t &dst_type, int exec_size,
-            const type_t &src1_type, int src1_stride, const type_t &src2_type,
-            int src2_stride)
+    mad_t(const hw_t &hw, const type_t &dst_type, int src0_stride,
+            int exec_size, const type_t &src1_type, int src1_stride,
+            const type_t &src2_type, int src2_stride)
         : func_impl_t(_type_info())
         , dst_type(dst_type)
         , src1_type(src1_type)
         , src2_type(src2_type)
         , exec_size(exec_size)
+        , src0_stride(src0_stride)
         , src1_stride(src1_stride)
         , src2_stride(src2_stride) {
+        if (hw.is_undef()) return;
         int max_exec_size_bytes = get_max_exec_size_bytes(hw);
         gpu_assert(math::is_pow2(exec_size));
 

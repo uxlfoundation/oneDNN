@@ -2093,6 +2093,10 @@ public:
         return make(buf, size, kind, std::vector<alloc_attr_t>(), body);
     }
 
+    static stmt_t make(const expr_t &buf, const stmt_t &body = {}) {
+        return stmt_t(new alloc_t(buf, body));
+    }
+
     bool is_equal(const object_impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
@@ -2152,6 +2156,15 @@ private:
         , attrs(attrs)
         , body(body) {
         gpu_assert(buf.type().is_ptr()) << buf;
+    }
+
+    alloc_t(const expr_t &buf, const stmt_t &body)
+        : stmt_impl_t(_type_info())
+        , buf(buf)
+        , size(buf.type().size())
+        , kind(alloc_kind_t::grf)
+        , body(body) {
+        gpu_assert(!buf.type().is_ptr()) << buf;
     }
 };
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,4 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifndef GPU_INTEL_JIT_GEMM_IR_BUILDER_HPP
+#define GPU_INTEL_JIT_GEMM_IR_BUILDER_HPP
+
+#include "gemmstone/config.hpp"
+
 namespace gemmstone {
+
+struct GEMMProblem;
+struct GEMMStrategy;
+
+ir::stmt_t build_ir(const GEMMProblem &problem, const GEMMStrategy &strategy);
+
+} // namespace gemmstone
+
+#endif

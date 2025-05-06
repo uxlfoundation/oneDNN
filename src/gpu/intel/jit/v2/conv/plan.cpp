@@ -573,6 +573,7 @@ private:
     }
 
     bool init_fma_plan(
+
             const layout_t &a, const layout_t &b, fma_plan_t &plan) const {
         auto inst_tile = mul_info_.inst_tile();
         auto acc_layout = mul_info_.acc_layout(a, b, c_layout_);

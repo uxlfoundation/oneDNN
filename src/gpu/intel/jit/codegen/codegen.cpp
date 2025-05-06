@@ -551,6 +551,7 @@ private:
                            .format(0, mad_func.exec_size, 1,
                                    to_ngen(mad_func.dst_type))
                            .reg_data();
+            gpu_assert(mad_func.src0_stride == 1) << "Unimplemented";
         } else {
             gpu_assert(src0_op.is_immediate());
             gpu_assert(to_cpp<int32_t>(src0_op.immediate()) == 0);

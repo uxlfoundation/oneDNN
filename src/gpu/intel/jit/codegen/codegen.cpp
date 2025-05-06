@@ -19,6 +19,7 @@
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
+#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/bank_conflict_allocation.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/reduce.hpp"
@@ -1678,6 +1679,33 @@ void convert_ir_to_ngen(const stmt_t &body, ngen_generator_t *host,
     gpu_trace() << get_ngen_str(body, *host, kernel_grid_walk_order);
     convert_ir_to_ngen_impl(body, host, kernel_grid_walk_order);
 }
+
+elf_binary_t lower_ir(const stmt_t &body, const compile_ctx_t &ctx) {
+#define ARCH_DISPATCH(arch) \
+    case ngen::HW::arch: { \
+        ir_kernel_base_t<ngen::ELFCodeGenerator<ngen::HW::arch>> host( \
+                ctx.exec_config(), ctx.kernel_iface(), ngen::DebugConfig {}); \
+        ctx.setup_interface(body, host); \
+        gpu_trace() << get_ngen_str(body, \
+                {ctx.exec_config(), ctx.kernel_iface(), host.interface()}, \
+                nullptr); \
+        convert_ir_to_ngen_impl(body, &host, nullptr); \
+        return {host.getBinary()}; \
+        break; \
+    }
+
+    switch (ctx.hw()) {
+        REG_XELP_ISA(ARCH_DISPATCH(XeLP))
+        REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
+        REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
+        REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
+        REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+        default: assert(!"Unsupported architecture"); break;
+    }
+#undef ARCH_DISPATCH
+    return {};
+} // namespace jit
 
 REG_XELP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::XeLP> *host,

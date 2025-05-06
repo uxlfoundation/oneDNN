@@ -285,6 +285,7 @@ TEST(test_matmul_compile, MatmulMatmulBf16Bf16Bf16) {
 }
 
 TEST(test_matmul_compile, MatmulBlocked) {
+    SKIP_IF_NV_GPU("matmul using blocked layout is unsupported on NV GPU!");
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "matmul");
 
     graph::engine_t *eng = get_engine();
@@ -337,6 +338,7 @@ TEST(test_matmul_compile, MatmulBlocked) {
 }
 
 TEST(test_matmul_execute, MatmulNdx1d) {
+    SKIP_IF_NV_GPU("5d matmul is unsupported on NV GPU!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -433,6 +435,7 @@ TEST(test_matmul_execute, MatmulNdx1d) {
 }
 
 TEST(test_matmul_execute, Matmul1dxNd) {
+    SKIP_IF_NV_GPU("5d matmul is unsupported on NV GPU!");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 

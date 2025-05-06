@@ -182,6 +182,15 @@ status_t layout_propagation(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+status_t use_strided_layout_for_genindex(std::shared_ptr<subgraph_t> &sg) {
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::dnnl_gen_index) { continue; }
+        sg->fusion_info_mgr_.set_use_blocked_layout(false);
+        break;
+    }
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

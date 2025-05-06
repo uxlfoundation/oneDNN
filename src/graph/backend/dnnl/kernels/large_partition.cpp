@@ -141,6 +141,7 @@ void larger_partition_kernel_t::setup_pipeline_stage2(pass_pipeline_t &pipeline,
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);
+    BACKEND_DNNL_ADD_PASS(pipeline, use_strided_layout_for_genindex);
     BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
     BACKEND_DNNL_ADD_PASS(pipeline, common_reorder_elimination);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_adjacent_reorders);

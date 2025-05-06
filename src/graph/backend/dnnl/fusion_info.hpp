@@ -307,6 +307,9 @@ public:
 
     const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
     bool get_use_blocked_layout() const { return can_use_blocked_layout_; }
+    void set_use_blocked_layout(bool can_use_blocked_layout) {
+        can_use_blocked_layout_ = can_use_blocked_layout;
+    }
 
 private:
     std::vector<fusion_info_t> data_;

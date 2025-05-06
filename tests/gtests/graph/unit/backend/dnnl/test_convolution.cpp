@@ -1091,6 +1091,7 @@ TEST(test_convolution_compile, ConvAddSharedInputs) {
            \  /
            Add
     */
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // prepare logical tensor
@@ -1688,6 +1689,7 @@ TEST(test_convolution_execute, ConvAdd) {
 }
 
 TEST(test_convolution_execute, ConvAddPerTensorBroadcast) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -1774,6 +1776,7 @@ TEST(test_convolution_execute, ConvAddPerTensorBroadcast) {
 }
 
 TEST(test_convolution_execute, ConvAddExpandedPerTensorBroadcast) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -1858,6 +1861,7 @@ TEST(test_convolution_execute, ConvAddExpandedPerTensorBroadcast) {
 }
 
 TEST(test_convolution_execute, ConvAddPerChannelBroadcast) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -1943,6 +1947,7 @@ TEST(test_convolution_execute, ConvAddPerChannelBroadcast) {
 }
 
 TEST(test_convolution_execute, ConvAddPerChannelBroadcastNxc) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -2185,6 +2190,7 @@ TEST(test_convolution_execute, ConvAddRelu) {
 }
 
 TEST(test_convolution_execute, ConvMultiplePostOps) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -2314,6 +2320,7 @@ TEST(test_convolution_execute, ConvMultiplePostOps) {
 }
 
 TEST(test_convolution_execute, ConvBiasEltwise) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -2433,6 +2440,7 @@ TEST(test_convolution_execute, ConvBiasEltwise) {
 }
 
 TEST(test_convolution_execute, ConvBiasAddEltwise) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -2561,6 +2569,7 @@ TEST(test_convolution_execute, ConvBiasAddEltwise) {
 }
 
 TEST(test_convolution_execute, ConvAddEltwise) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -3149,6 +3158,7 @@ TEST(test_convolution_execute_subgraph_int8, Conv2dLeakyRelu) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, Conv2dMish) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     const graph::op_kind_t opk = graph::op_kind::Mish;
     quantized_conv2d_eltwise(opk, nullptr, nullptr);
 }
@@ -4881,6 +4891,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionBiasGeluU8s8u8MixBf16) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, ConvolutionReluMulS8Bf16Accuracy) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5687,6 +5698,7 @@ TEST(test_convolution_execute_subgraph_int8,
 }
 
 TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
@@ -5850,6 +5862,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
 }
 
 TEST(test_convolution_execute, ConvSumSum) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     // default engine kind is cpu.
     graph::engine_t *eng = get_engine();
@@ -5952,6 +5965,7 @@ TEST(test_convolution_execute, ConvSumSum) {
 }
 
 TEST(test_convolution_execute, ConvolutionBf16InFp32Out) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     // default engine kind is cpu.
@@ -6054,6 +6068,7 @@ TEST(test_convolution_execute, ConvolutionBf16InFp32Out) {
 }
 
 TEST(test_convolution_execute_subgraph_int8, QuantWeiConv2dSumRelu) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();

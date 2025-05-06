@@ -2285,6 +2285,7 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dAdd) {
 }
 
 TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dBinary) {
+    SKIP_IF_NV_GPU("Corresponding postop fusion is unsupported on NV GPU!");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();

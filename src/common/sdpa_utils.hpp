@@ -144,11 +144,11 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.k_desc = *k_md;
     if (kq_attr) {
         sdpa_desc.kq_scales = kq_attr->scales_.get(DNNL_ARG_WEIGHTS);
-        sdpa_desc.kq_zero_points = kq_attr->zero_points_;
+        sdpa_desc.kq_zero_points = kq_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
     }
     if (vs_attr) {
         sdpa_desc.vs_scales = vs_attr->scales_.get(DNNL_ARG_WEIGHTS);
-        sdpa_desc.vs_zero_points = vs_attr->zero_points_;
+        sdpa_desc.vs_zero_points = vs_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
     }
     sdpa_desc.v_desc = *v_md;
     sdpa_desc.dst_desc = *dst_md;

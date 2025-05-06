@@ -110,9 +110,10 @@ explciitly indicate what is happening with the variance.
 
 #### Compatibility with Existing Flags
 
-The combination of `dnnl_use_global_stats` and `dnnl_rms_norm` would be supported,
-but users must only provide pre-computed RMS norm statistics
-(instead of both mean and variance as required for Layer normalization).
+The combination of `dnnl_use_global_stats` and `dnnl_rms_norm` will be supported.
+However, users must provide pre-computed RMS norm statistics
+(instead of both mean and variance as required for Layer Normalization)
+using the `DNNL_ARG_VARIANCE` index.
 
 Since RMSNorm is a simplified version of LayerNorm, it works with `dnnl_use_scale`
 and `dnnl_use_shift` flags in the same manner.

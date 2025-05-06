@@ -37,6 +37,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+bool enable_gemm_ir();
+
 static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
     using gemmstone::Type;
     switch (type) {

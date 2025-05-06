@@ -25,7 +25,7 @@ echo "github workspace $GITHUB_WORKSPACE"
 os_type=$(uname)
 
 ACL_WITH_ASSERTS=${ACL_WITH_ASSERTS:-0}
-ACL_VERSION=${ACL_VERSION:-v24.08.1}
+ACL_VERSION=${ACL_VERSION:-v52.0.0}
 
 if [[ "$os_type" == "Linux" ]]; then
   echo "This machine is running Linux"
@@ -91,5 +91,3 @@ ACL_LIB_DIR=$(find_acl_lib_dir)
 echo "Using ACL lib from ${ACL_LIB_DIR}"
 echo "cp contents from ${ACL_LIB_DIR} to ${ACL_ROOT_DIR}/lib"
 cp -rf "$ACL_LIB_DIR"* "$ACL_ROOT_DIR/lib/"
-
-echo "${ACL_VERSION}" >"${ACL_ROOT_DIR}/arm_compute/arm_compute_version.embed"

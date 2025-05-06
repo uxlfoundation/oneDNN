@@ -24,6 +24,9 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
+#include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
+#include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "kernel_selector.hpp"
@@ -47,6 +50,12 @@ void entryObserver(
     }
 };
 } // anonymous namespace
+
+bool enable_generator_dsl() {
+    static const bool ret
+            = gpu_utils::dev_getenv("enable_generator_dsl", false);
+    return ret;
+}
 
 status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
@@ -169,6 +178,8 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
+
+    if (enable_generator_dsl()) { fixup_dsl_strategy(strategy_); }
 
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
@@ -959,8 +970,13 @@ void gen_kernel_t::init_interface() {
         for (int i = 0; i < problem.batchDims - 1; i++) {
             interface_.newArgument(
                     "batch_size" + std::to_string(i), DataType::ud);
-            interface_.newArgument(
-                    "recip_batch_size" + std::to_string(i), DataType::ud);
+            if (enable_generator_dsl()) {
+                interface_.newArgument(
+                        "batch_magic" + std::to_string(i), DataType::uq);
+            } else {
+                interface_.newArgument(
+                        "recip_batch_size" + std::to_string(i), DataType::ud);
+            }
         }
     }
     if (strategy.fuseBeta || strategy.fusePostOps)
@@ -1000,10 +1016,34 @@ void gen_kernel_t::init_interface() {
     interface_.externalName(kernel_name());
 }
 
+dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
+        const GEMMStrategy &strategy, const ngen::InterfaceHandler &iface,
+        const ir::hw_t &hw, int m, int n, int k) {
+    auto gemm_desc
+            = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
+    ir::constraint_set_t cset;
+    if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {
+        if (n != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("m") == m);
+        if (m != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("n") == n);
+        if (k != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("k") == k);
+    }
+    return make_kernel(gemm_desc, cset);
+};
+
 status_t gen_kernel_t::get_kernel(
         compute::kernel_t &kernel, const intel::engine_t *engine) {
     init_interface();
     maybe_print_verbose();
+
+    if (enable_generator_dsl()) {
+        auto k = get_dsl_kernel(*desc()->problem(), *desc()->strategy(),
+                interface_, hw_t(engine), desc()->m_, desc()->n_, desc()->k_);
+        if (k.body.is_empty()) return status::runtime_error;
+        return engine->create_kernel(kernel, k);
+    }
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \

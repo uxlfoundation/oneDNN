@@ -22,6 +22,7 @@
 #include "common/primitive_attr.hpp"
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
+#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
@@ -40,6 +41,9 @@
 #endif
 
 namespace gemmstone {
+
+namespace ir = dnnl::impl::gpu::intel::jit;
+namespace dsl = dnnl::impl::gpu::intel::jit::dsl;
 
 #define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
 #define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>

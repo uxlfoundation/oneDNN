@@ -27,7 +27,7 @@ using dims_t = dnnl_dims_t;
 using dims = std::vector<dim_t>;
 
 TEST(test_select_execute, TestSelect) {
-
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *engine = get_engine();
     std::vector<bool> cond(128, true);
     std::vector<float> src0(1, -1);
@@ -95,6 +95,7 @@ TEST(test_select_execute, TestSelect) {
 }
 
 TEST(test_select_execute, MatmulSelect) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::op_t matmul_op(0, graph::op_kind::MatMul, "MatMul");
     graph::op_t div_op(1, graph::op_kind::Divide, "div_op");
     graph::op_t select_op(2, graph::op_kind::Select, "Select");

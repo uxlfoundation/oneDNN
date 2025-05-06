@@ -618,6 +618,7 @@ TEST(test_binary_op_execute, Eltwise3BinaryPostops) {
 }
 
 TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 

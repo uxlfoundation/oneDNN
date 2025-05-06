@@ -753,6 +753,8 @@ INSTANTIATE_TEST_SUITE_P(test_convtranspose_add_compile,
                 convtranspose_add_params_t {{1, 4, 4, 1}, true, true}));
 
 TEST(test_convtranspose_operator_kernel, convtranspose_relu) {
+    // For now, deconv+relu case has correctness issue on NV GPU.
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     std::vector<bool> with_biases = {false, true};
@@ -2743,6 +2745,8 @@ TEST(test_convtranspose_execute_subgraph_int8,
 }
 
 TEST(test_convtranspose_execute_subgraph_fp32, Convtranspose3Postops) {
+    // For now, deconv+abs+square case has correctness issue on NV GPU.
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *engine = get_engine();

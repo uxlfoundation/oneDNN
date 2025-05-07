@@ -270,7 +270,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                         displace_args_t {aop, offset, *causal_mask_lt,
                                 filling_type, {{user_set_value}, cfg_name}});
             } else if (filling_type == filling_type_t::causal_mask) {
-                // Casual mask filling
+                // Causal mask filling
                 displace_args_.emplace(causal_mask_lt->id_,
                         displace_args_t {
                                 aop, offset, *causal_mask_lt, filling_type});
@@ -387,8 +387,20 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
     int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
             opkind, main_op_offset);
 
-    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s;\n", main_op.kind_.c_str(),
-            data_kind2str(exec_arg2data_kind(main_op_arg)));
+    const auto &get_name = [&filling_type, &fill_cfg]() {
+        std::string s;
+        if (filling_type == filling_type_t::fixed_setting) {
+            s = fill_cfg.name_;
+        } else if (filling_type == filling_type_t::causal_mask) {
+            s = "Explicit causal mask";
+        } else if (filling_type == filling_type_t::quantization) {
+            s = "Quantization";
+        }
+        return s;
+    };
+    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
+            main_op.kind_.c_str(),
+            data_kind2str(exec_arg2data_kind(main_op_arg)), get_name().c_str());
 
     dnn_mem_t mem_replace;
     if (filling_type == filling_type_t::quantization) {

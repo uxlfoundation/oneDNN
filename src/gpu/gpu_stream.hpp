@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +22,10 @@
 
 #include "xpu/context.hpp"
 #include "xpu/stream_profiler.hpp"
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+#include "gpu/generic/async_verbose.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -50,6 +54,9 @@ public:
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    std::unique_ptr<gpu::generic::async_verbose_tracker_t> async_tracker_;
+#endif
 };
 
 } // namespace gpu

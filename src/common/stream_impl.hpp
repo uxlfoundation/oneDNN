@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,6 +41,12 @@ public:
     bool is_profiling_enabled() const {
         return (flags() & dnnl::impl::stream_flags::profiling);
     }
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    bool is_async_verbose_enabled() const {
+        return (get_verbose(verbose_t::exec_profile));
+    }
+#endif
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     status_t get_threadpool(

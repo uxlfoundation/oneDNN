@@ -73,6 +73,25 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    bool is_async_verbose_enabled() const {
+        return impl_->is_async_verbose_enabled();
+    }
+
+    virtual std::string get_async_tracking_stats() const {
+        if (!is_async_verbose_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
+
+    virtual dnnl::impl::status_t reset_async_tracker() const {
+        if (!is_async_verbose_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
+
+#endif
+
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 

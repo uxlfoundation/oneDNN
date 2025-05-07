@@ -160,6 +160,181 @@ status_t jit_gemm_pd_t::init_post_ops() {
     return status::success;
 }
 
+void jit_gemm_pd_t::init_attrs() {
+    const auto d = desc();
+    using namespace data_type;
+
+    bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
+            && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
+            && utils::one_of(d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
+    wei_decomp_ = (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
+                          && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                          && utils::one_of(d->b_type(), f16, f32, bf16, f8_e5m2,
+                                  f8_e4m3))
+            && attr()->mayiconvert(d->a_type(), f32);
+    dy_quant_enabled_ = (utils::one_of(d->c_type(), f32, f16, bf16)
+                                && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                                && utils::one_of(d->b_type(), u8, s8))
+            || all_f8;
+    quant_enabled_ = wei_decomp_ || dy_quant_enabled_;
+
+    auto &attr_zps = attr()->zero_points_;
+    if (!attr_zps.has_default_values()) {
+        if (!attr_zps.has_default_values(DNNL_ARG_A)) {
+            cmask_a_ = attr_zps.get_mask(DNNL_ARG_A);
+            ao_dims_ = cmask_a_ > 0;
+            if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
+                zp_group_k_a_ = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+                if (zp_group_k_a_ < d->k()) {
+                    wei_zp_2d_ = true;
+                    ao_dims_ = 2;
+                    wei_q2d_group_k_ = zp_group_k_a_;
+                }
+            }
+        }
+        if (!attr_zps.has_default_values(DNNL_ARG_B)) {
+            cmask_b_ = attr_zps.get_mask(DNNL_ARG_B);
+            bo_dims_ = cmask_b_ > 0;
+            if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
+                zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_SRC, 1);
+                if (zp_group_k_b_ < d->k()) {
+                    bo_dims_ = 2;
+                    src_q2d_group_k_ = zp_group_k_b_;
+                }
+            }
+        }
+        if (!attr_zps.has_default_values(DNNL_ARG_C))
+            cmask_c_ = attr_zps.get_mask(DNNL_ARG_C);
+    }
+
+    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_WEIGHTS);
+    const auto *src_scales = &attr()->scales_.get(DNNL_ARG_SRC);
+
+    if (!wei_scales->has_default_values()) {
+        wei_scales_type_ = wei_scales->get_data_type();
+        if (!wei_scales->has_default_groups()) {
+            wei_scales_group_k_ = wei_scales->get_group(0);
+            if (quant_enabled_ && !wei_scales->has_default_groups()
+                    && wei_scales_group_k_ < d->k()) {
+                wei_scales_2d_ = true;
+                if (!wei_zp_2d_) wei_q2d_group_k_ = wei_scales_group_k_;
+            }
+        }
+    }
+
+    if (!src_scales->has_default_values()) {
+        src_scales_type_ = src_scales->get_data_type();
+        src_po_sc_ = src_scales->get_mask() == 2;
+        if (!src_scales->has_default_groups()) {
+            src_scales_group_k_ = src_scales->get_group(1);
+            if (quant_enabled_ && !src_scales->has_default_groups()
+                    && src_scales_group_k_ < d->k()) {
+                src_scales_2d_ = true;
+                src_q2d_group_k_ = src_scales_group_k_;
+            }
+        }
+    }
+}
+
+bool jit_gemm_pd_t::zp_ok() {
+    auto &attr_zps = attr()->zero_points_;
+    int ndims = desc()->a_desc.ndims;
+    const auto d = desc();
+    using namespace data_type;
+
+    if (!attr_zps.has_default_values(DNNL_ARG_A)) {
+        // Groups determine supported masks.
+        if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
+            if (!valid_2d_mask(cmask_a_, ndims)) return false;
+            const auto wei_q2d_group_n
+                    = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
+            // Non-trivial N group unsupported.
+            if (wei_q2d_group_n != 1) return false;
+            // Zero points with non-trivial groups only supported
+            // when target tensor is being dequantized.
+            if (!(!dy_quant_enabled_ || utils::one_of(d->a_type(), s4, u4)
+                        || zp_group_k_a_ == desc()->k()))
+                return false;
+        } else {
+            if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
+                return false;
+            // Weights zp can only be performantly enabled during upconversion
+            // for cases that perform decompression.
+            if (!(wei_decomp_ || utils::one_of(d->a_type(), s4, u4)
+                        || !wei_scales_2d_))
+                return false;
+        }
+    }
+
+    if (!attr_zps.has_default_values(DNNL_ARG_B)) {
+        // Groups determine supported masks.
+        if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
+            if (!valid_2d_mask(cmask_b_, ndims)) return false;
+
+            const auto src_q2d_group_m = attr_zps.get_group(DNNL_ARG_SRC, 0);
+            // Non-trivial M group unsupported.
+            if (src_q2d_group_m != 1) return false;
+            // Zero points with non-trivial groups only supported
+            // when target tensor is being dequantized.
+            if (!(!dy_quant_enabled_ || utils::one_of(d->b_type(), s4, u4)
+                        || zp_group_k_b_ == desc()->k()))
+                return false;
+        } else {
+            if (!utils::one_of(
+                        cmask_b_, 0, mask_scalar, mask_per_oc | mask_per_ic))
+                return false;
+        }
+    }
+
+    if (!attr_zps.has_default_values(DNNL_ARG_C)) {
+        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
+    }
+
+    return true;
+}
+
+bool jit_gemm_pd_t::scales_ok() {
+    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_WEIGHTS);
+    const auto *src_scales = &attr()->scales_.get(DNNL_ARG_SRC);
+    int ndims = desc()->a_desc.ndims;
+    using namespace data_type;
+
+    for (auto s : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+        if (attr()->scales_.has_default_values(s)) continue;
+
+        auto mask = attr()->scales_.get_mask(s);
+        if (!(utils::one_of(mask, 0, mask_scalar, mask_per_oc, mask_per_ic)
+                    || (s == DNNL_ARG_WEIGHTS
+                            && !wei_scales->has_default_groups()
+                            && valid_2d_mask(mask, ndims))
+                    || (s == DNNL_ARG_SRC && !src_scales->has_default_groups()
+                            && valid_2d_mask(mask, ndims))))
+            return false;
+    }
+
+    if (wei_scales_2d_) {
+        if (wei_q2d_group_k_ != wei_scales_group_k_) return false;
+        // Non-trivial N group unsupported.
+        if (wei_scales->get_group(1) != 1) return false;
+    }
+
+    if (src_scales_2d_) {
+        if (!(dy_quant_enabled_ && utils::one_of(eff_a_type(), s4, u4)))
+            return false;
+    } else {
+        if (!src_scales->has_default_values() && src_scales->get_mask() != 0
+                && wei_scales_group_k_ >= desc()->k())
+            return false;
+    }
+
+    return true;
+}
+
+bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
+    return utils::one_of(
+            mask, (1 << (ndims - 1)), (1 << (ndims - 1)) + (1 << (ndims - 2)));
+}
+
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {
     switch (binary_srcs_[idx].type) {
         case binary_src_t::binary: {

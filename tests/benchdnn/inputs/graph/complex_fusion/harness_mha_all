@@ -39,6 +39,18 @@
 --reset --dt=2:f32+6:f32 --case=complex_fusion/mha/sdpa-plain-wo-scale-f16-bs1.json
 --reset --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 
+--reset --case=complex_fusion/mha/codegemma-bf16-f32.json
+--reset --in-shapes=0:1x16x2x256+1:1x16x256x2+5:1x16x2x2+9:1x16x2x256 --case=complex_fusion/mha/codegemma-bf16-f32.json
+--reset --in-shapes=0:1x16x257x256+1:1x16x256x257+5:1x16x257x257+9:1x16x257x256 --case=complex_fusion/mha/codegemma-bf16-f32.json
+--reset --in-shapes=0:1x16x1x256+1:1x16x256x257+5:1x16x1x257+9:1x16x257x256 --case=complex_fusion/mha/codegemma-bf16-f32.json
+--reset --op-attrs=0:transpose_b:1 --in-shapes=0:1x16x2x256+1:1x16x2x256+5:1x16x2x2+9:1x16x2x256 --case=complex_fusion/mha/codegemma-bf16-f32.json
+
+--reset --case=complex_fusion/mha/gemma2-bf16-f32.json
+--reset --in-shapes=0:1x8x2x2x256+1:1x8x1x256x2+8:1x8x2x2x2+12:1x8x1x2x256 --case=complex_fusion/mha/gemma2-bf16-f32.json
+--reset --in-shapes=0:1x8x2x257x256+1:1x8x1x256x257+8:1x8x2x257x257+12:1x8x1x257x256 --case=complex_fusion/mha/gemma2-bf16-f32.json
+--reset --in-shapes=0:1x8x2x1x256+1:1x8x1x256x257+8:1x8x2x1x257+12:1x8x1x257x256 --case=complex_fusion/mha/gemma2-bf16-f32.json
+--reset --op-attrs=0:transpose_b:1 --case=complex_fusion/mha/gemma2-bf16-f32.json
+
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=3:bf16+4:bf16+2:bf16+1:bf16+11:bf16+0:bf16+12:bf16+14:bf16+16:bf16 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json

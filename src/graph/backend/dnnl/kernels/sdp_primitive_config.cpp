@@ -209,20 +209,13 @@ status_t sdp_primitive_config_t::initial_check(
                         == "per_group") {
             if (!cur_op->has_attr(op_attr::group_shape))
                 return status::invalid_arguments;
+            is_compressed_sdpa = true;
             const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
                     op_attr::group_shape);
             const auto &input_lt
                     = cur_op->get_input_value(0)->get_logical_tensor();
-            const auto &input_dims = ltw(input_lt).dims();
             if (static_cast<int>(group_shape.size()) != ltw(input_lt).ndims())
                 return status::invalid_arguments;
-            // Due to the precision issue of ukernel implementation, we only
-            // support group_num=1 case for now.
-            for (size_t idx = 0; idx < group_shape.size(); ++idx) {
-                if (group_shape[idx] != 1
-                        && group_shape[idx] != input_dims[idx])
-                    return status::unimplemented;
-            }
             // TODO(zhitao): execute the reorder for scale and zps mannually if the
             // transpose attribute is specified as true.
             auto post_op = get_post_op(cur_op);

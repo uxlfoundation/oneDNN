@@ -17,6 +17,10 @@ where *binary-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={any [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+- `--strides=SRC0_STRIDES:SRC1_STRIDES:DST_STRIDES` -- physical memory layout
+            specification for `src0`, `src1`, and `dst` tensors through
+            strides values. Refer to [option documentation](knob_strides.md)
+            for details.
  - `--alg={ADD [default], DIV, EQ, GE, GT, LE, LT, MAX, MIN, MUL, NE, SELECT, SUB}`
             -- algorithm for binary operations.
             Refer to [binary primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_binary.html)

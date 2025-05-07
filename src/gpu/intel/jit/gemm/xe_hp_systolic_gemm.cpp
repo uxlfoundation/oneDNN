@@ -53,6 +53,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = compute_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
+    init_attrs();
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -129,6 +130,12 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
                            memory_desc_wrapper(dst_md()).size()})
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
+
+    VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    if (!attr()->zero_points_.has_default_values()) {
+        VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
 
     VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 

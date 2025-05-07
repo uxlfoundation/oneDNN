@@ -1594,16 +1594,17 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             delimiter = "+";
         }
     }
-    ss << ",";
+    ss << ",alg:" << desc->softmax_alg;
 
+    delimiter = " ";
     if (pd->with_attn_mask()) {
         auto *md = pd->attn_mask_md();
-        ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
+        ss << delimiter << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
         if (desc->mask_type == attn_mask_type::top_left)
-            ss << "msk:causal:top_left";
+            ss << delimiter << "msk:causal:top_left";
         else
-            ss << "msk:causal:bottom_right";
+            ss << delimiter << "msk:causal:bottom_right";
     }
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
        << ":" << md2dim_str(pd->val_md());

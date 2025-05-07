@@ -49,8 +49,6 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
     const dnn_mem_t &src_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
-    const dnn_mem_t &wei_zps
-            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
@@ -65,16 +63,12 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
             DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
 
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
-    const bool has_wei_zp
-            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
 
-    const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
-    const int wei_zp_mask = prb->attr.zero_points.get_mask(
-            DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
-    const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy);
+    assert(IMPLICATION(has_src_zp, src_zps.nelems() == 1));
+    assert(IMPLICATION(has_dst_zp, dst_zps.nelems() == 1));
+    int src_zp = has_src_zp ? src_zps.get_elem(0) : 0;
+    int dst_zp = has_dst_zp ? dst_zps.get_elem(0) : 0;
 
     const int64_t BS = prb->batch_size;
     const int64_t M = prb->m;
@@ -83,15 +77,6 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
 
     // Using workspace memory as a method to get brgemm attributes.
     bool generate_skip_accumulation = ws_m && *((bool *)ws_m);
-
-    const bool wei_zp_per_n = wei_zp_mask & (1 << (wei_m.ndims() - 1));
-    const bool wei_zp_per_k = wei_zp_mask & (1 << (wei_m.ndims() - 2));
-    const int64_t wei_zp_stride_n = wei_zp_per_n ? 1 : 0;
-    const int64_t wei_zp_stride_k = wei_zp_per_k ? wei_zp_per_n ? N : 1 : 0;
-    const auto wei_zp_groups
-            = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
-    const int64_t wei_zp_group_k
-            = !wei_zp_groups.empty() ? wei_zp_groups[0] : 1;
 
     dnn_mem_t dst_tmp(dst_m, dnnl_f32, tag::abx, dst_m.engine());
 
@@ -106,16 +91,8 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
             float res = 0;
             for_(int64_t bs = 0; bs < BS; bs++)
             for (int64_t k = 0; k < K; ++k) {
-                int src_zp = has_src_zp
-                        ? src_zps.get_elem(src_zp_mask > 0 ? k : 0)
-                        : 0;
-                int wei_zp = has_wei_zp ? wei_zps.get_elem(
-                                     wei_zp_stride_k * (k / wei_zp_group_k)
-                                     + wei_zp_stride_n * n)
-                                        : 0;
-
                 auto s = src[src_off_f(prb, bs, m, k)] - src_zp;
-                auto w = wei[wei_off_f(prb, bs, k, n)] - wei_zp;
+                auto w = wei[wei_off_f(prb, bs, k, n)];
                 res += alpha * s * w;
             }
             float &dst = ((float *)dst_tmp)[dst_off_f(prb, m, n)];
@@ -152,7 +129,6 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
 
         maybe_post_ops(prb->attr, tmp, dst, v_po_vals);
 
-        int dst_zp = has_dst_zp ? dst_zps.get_elem(dst_zp_mask > 0 ? n : 0) : 0;
         dst = tmp * dst_scale + dst_zp;
     });
 }

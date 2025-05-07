@@ -36,6 +36,13 @@ TEST(test_binary_op_execute, BinaryOp) {
             graph::op_kind::Divide, graph::op_kind::Subtract,
             graph::op_kind::SquaredDifference};
 
+// SquaredDifference is not supported on NVIDIA GPU.
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (eng->kind() == graph::engine_kind::gpu)
+        op_kinds.erase(op_kinds.end() - 1);
+#endif
+
     std::vector<float> src0 {2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0};
     std::vector<float> src1 {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
     std::vector<float> dst(src0.size(), 0.0);

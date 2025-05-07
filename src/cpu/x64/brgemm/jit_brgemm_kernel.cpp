@@ -439,6 +439,9 @@ private:
     dim_t C_offset(dim_t bd, dim_t ld) const noexcept;
     dim_t D_offset(dim_t bd, dim_t ld) const noexcept;
 
+    Xbyak::Address bcast_A_addr(
+            dim_t bd, dim_t rd, bool bcast_ptr, bool is_amx = false) noexcept;
+
     dim_t rdb_A_offset() const noexcept;
     dim_t rdb_B_offset() const noexcept;
 
@@ -451,6 +454,8 @@ private:
     dim_t bdb_C_offset(dim_t bd_block2) const noexcept;
     dim_t bdb_D_offset(dim_t bd_block2) const noexcept;
     dim_t bdb_po_offset(dim_t bd_block2) const noexcept;
+
+    void apply_bdb_A_offset(dim_t bd_block2) noexcept;
 
     dim_t bias_offset(dim_t ld, bool is_tail = false) const noexcept;
     dim_t oc_logical_offset(dim_t ld, bool is_tail = false) const noexcept;
@@ -504,6 +509,16 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::D_offset(dim_t bd, dim_t ld) const noexcept {
     const auto bd_shift = brg.is_runtime_ldd ? 0 : bd * brg.LDD;
     return brg.typesize_D * (bd_shift + ld * brg.ld_block);
+}
+
+template <typename Wmm>
+Xbyak::Address jit_brgemm_kernel_t<Wmm>::bcast_A_addr(
+        dim_t bd, dim_t rd, bool bcast_ptr, bool is_amx) noexcept {
+    if (bcast_ptr) {
+        return ptr_b[reg_aux_A + A_offset(bd, rd, is_amx)];
+    } else {
+        return ptr[reg_aux_A + A_offset(bd, rd, is_amx)];
+    }
 }
 
 template <typename Wmm>
@@ -563,6 +578,11 @@ dim_t jit_brgemm_kernel_t<Wmm>::bdb_D_offset(dim_t bd_block2) const noexcept {
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_po_offset(dim_t bd_block2) const noexcept {
     return bd_block2 * brg.bd_block * brg.LDD;
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_bdb_A_offset(dim_t bd_block2) noexcept {
+    add(reg_a_offset, bdb_A_offset(bd_block2));
 }
 
 template <typename Wmm>
@@ -2230,7 +2250,6 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     auto broadcast_A = [this, rd_tail_size, is_rd_tail, rd_loop,
                                rows_for_rd_tail,
                                bd_e](Vmm vmm_bcast, dim_t bd, dim_t rd) {
-        const auto offset = A_offset(bd, rd);
         const auto dt = brg.dt_a;
         const bool maybe_load_bytes
                 = (rows_for_rd_tail > 0 || brg.brgattr.wary_A_k_tail_read)
@@ -2245,27 +2264,34 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const auto is_tail = have_to_load_bytes && bd_by_load_bytes;
         if (is_tail) {
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
-            load_bytes(
-                    xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
+            load_bytes(xmm_tmp, bcast_A_addr(bd, rd, /* bcast_ptr = */ false),
+                    rd_tail_size * brg.typesize_A);
             uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {
-                uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
+                uni_vbroadcastss(vmm_bcast,
+                        bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
             } else if (dt == data_type::bf16) {
                 if (brg.isa_impl == avx2_vnni_2)
-                    vbcstnebf162ps(vmm_bcast, ptr[reg_aux_A + offset]);
+                    vbcstnebf162ps(vmm_bcast,
+                            bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
                 else
-                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                    uni_vpbroadcastd(vmm_bcast,
+                            bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
             } else if (one_of(dt, data_type::s8, data_type::u8)) {
-                uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                uni_vpbroadcastd(vmm_bcast,
+                        bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
             } else if (dt == data_type::f16) {
                 if (brg.isa_impl == avx10_2_512) {
-                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                    uni_vpbroadcastd(vmm_bcast,
+                            bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
                 } else if (brg.isa_impl == avx2_vnni_2) {
-                    vbcstnesh2ps(vmm_bcast, ptr[reg_aux_A + offset]);
+                    vbcstnesh2ps(vmm_bcast,
+                            bcast_A_addr(bd, rd, /* bcast_ptr = */ false));
                 } else if (is_superset(brg.isa_impl, avx512_core_fp16)) {
                     // Broadcast is not supported for legacy f16-conversions.
-                    vcvtph2psx(vmm_bcast, ptr_b[reg_aux_A + offset]);
+                    vcvtph2psx(vmm_bcast,
+                            bcast_A_addr(bd, rd, /* bcast_ptr = */ true));
                 }
             }
         }
@@ -2356,7 +2382,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(),
-                                ptr_b[reg_aux_A + A_offset(bd, rd)]);
+                                bcast_A_addr(bd, rd, /* bcast_ptr = */ true));
                     else
                         dot_product(vmm, load(), bcst(bd));
                 }
@@ -2387,7 +2413,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(ld),
-                                ptr_b[reg_aux_A + A_offset(bd, rd)]);
+                                bcast_A_addr(bd, rd, /* bcast_ptr = */ true));
                     else
                         dot_product(vmm, load(ld), bcst());
                 }
@@ -2631,7 +2657,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                   } else {
                       add(reg_D, bdb_D_offset(bd_block2));
                   }
-                  add(reg_a_offset, bdb_A_offset(bd_block2));
+
+                  apply_bdb_A_offset(bd_block2);
 
                   advance_bd_block2_post_op_regs(bd_block2);
               };

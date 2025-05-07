@@ -61,6 +61,8 @@ public:
 
     bool invert_scale_ = false;
     bool quantized_ = false;
+    bool is_compressed_ = false;
+
     attn_mask_type_t mask_type_ = attn_mask_type::undef;
     dim_t kv_head_number_;
     std::string softmax_mode_ = "none";

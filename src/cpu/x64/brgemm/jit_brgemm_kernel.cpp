@@ -188,6 +188,10 @@ private:
 
     const reg64_t reg_a_offset = rdx;
     const reg64_t reg_b_offset = rsi;
+    // `r9`, or `reg_bdb_loop` or any other aliases are not used inside
+    // `gemm_microkernel` call, only around it. As long as it's value is
+    // preserved, it's safe to used it inside.
+    const reg64_t reg_runtime_lda = r9;
 
     const reg64_t reg_aux1_batch = rbp;
     const reg64_t reg_aux1_A = rbp;
@@ -273,7 +277,10 @@ private:
     // these are used for FP8 as temporary push/pop spaces
     constexpr static int reg_val_tmp_1_ = 256;
     constexpr static int reg_val_tmp_2_ = 264;
-    constexpr static int stack_space_needed_ = 272;
+    constexpr static int reg_runtime_lda_val_ = 272;
+    // TODO: is it safe to use `reg_bdb_loop_offs_` instead?
+    constexpr static int reg_runtime_lda_bdb_loop_backup_ = 280;
+    constexpr static int stack_space_needed_ = 288;
 
     bool is_ldb_loop_ = false;
     bool with_binary_non_scalar_bcast_ = false;
@@ -479,6 +486,7 @@ private:
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::A_offset(
         dim_t bd, dim_t rd, bool is_amx) const noexcept {
+    assert(!brg.is_runtime_lda);
     return (is_amx) ? brg.typesize_A * (bd * brg.bd_block * brg.LDA)
                     : brg.typesize_A * (bd * brg.LDA + rd);
 }
@@ -514,10 +522,30 @@ dim_t jit_brgemm_kernel_t<Wmm>::D_offset(dim_t bd, dim_t ld) const noexcept {
 template <typename Wmm>
 Xbyak::Address jit_brgemm_kernel_t<Wmm>::bcast_A_addr(
         dim_t bd, dim_t rd, bool bcast_ptr, bool is_amx) noexcept {
-    if (bcast_ptr) {
-        return ptr_b[reg_aux_A + A_offset(bd, rd, is_amx)];
+    if (!brg.is_runtime_lda) {
+        if (bcast_ptr) {
+            return ptr_b[reg_aux_A + A_offset(bd, rd, is_amx)];
+        } else {
+            return ptr[reg_aux_A + A_offset(bd, rd, is_amx)];
+        }
+    }
+
+    // Same as A_offset but due to runtime LDA specific, requires an extra
+    // register to compute the offset.
+    // Note: `typesize_A * LDA` was conducted when saving `reg_runtime_lda_val_`
+    if (is_amx) {
+        assert(bd * brg.bd_block < INT_MAX);
+        mov(reg_runtime_lda, static_cast<int>(bd * brg.bd_block));
     } else {
-        return ptr[reg_aux_A + A_offset(bd, rd, is_amx)];
+        assert(bd < INT_MAX && brg.typesize_A * rd < INT_MAX);
+        mov(reg_runtime_lda, static_cast<int>(bd));
+        imul(reg_runtime_lda, ptr[rsp + reg_runtime_lda_val_]);
+        add(reg_runtime_lda, static_cast<int>(brg.typesize_A * rd));
+    }
+    if (bcast_ptr) {
+        return ptr_b[reg_aux_A + reg_runtime_lda];
+    } else {
+        return ptr[reg_aux_A + reg_runtime_lda];
     }
 }
 
@@ -560,6 +588,7 @@ dim_t jit_brgemm_kernel_t<Wmm>::ldb_po_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_A_offset(dim_t bd_block2) const noexcept {
+    assert(!brg.is_runtime_lda);
     return brg.typesize_A * bd_block2 * brg.bd_block * brg.LDA;
 }
 
@@ -582,7 +611,18 @@ dim_t jit_brgemm_kernel_t<Wmm>::bdb_po_offset(dim_t bd_block2) const noexcept {
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_bdb_A_offset(dim_t bd_block2) noexcept {
-    add(reg_a_offset, bdb_A_offset(bd_block2));
+    if (!brg.is_runtime_lda) {
+        add(reg_a_offset, bdb_A_offset(bd_block2));
+        return;
+    }
+
+    // Same as bdb_A_offset but due to runtime LDA specific, requires an extra
+    // register to compute the offset.
+    // Note: typesize_A was conducted when saving `reg_runtime_lda_val_`.
+    assert(brg.bd_block * bd_block2 < INT_MAX);
+    mov(reg_runtime_lda, static_cast<int>(brg.bd_block * bd_block2));
+    imul(reg_runtime_lda, ptr[rsp + reg_runtime_lda_val_]);
+    add(reg_a_offset, reg_runtime_lda);
 }
 
 template <typename Wmm>
@@ -963,6 +1003,12 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.with_dst_scales) {
         mov(reg_dst_scales, ptr[param1 + GET_OFF(ptr_dst_scales)]);
         mov(ptr[rsp + reg_dst_scales_offs_], reg_dst_scales);
+    }
+
+    if (brg.is_runtime_lda) {
+        mov(reg_tmp_read_values, ptr[param1 + GET_OFF(dynamic_LDA)]);
+        if (brg.typesize_A > 1) shl(reg_tmp_read_values, (brg.typesize_A >> 1));
+        mov(ptr[rsp + reg_runtime_lda_val_], reg_tmp_read_values);
     }
 
     if (brg.is_runtime_ldc) {
@@ -2262,6 +2308,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                 || brg.brgattr.wary_A_k_tail_read);
         const auto is_tail = have_to_load_bytes && bd_by_load_bytes;
+
         if (is_tail) {
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(xmm_tmp, bcast_A_addr(bd, rd, /* bcast_ptr = */ false),
@@ -2632,36 +2679,47 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         }
     };
 
-    auto bdb_loop_body
-            = [this, do_ldb_loop](dim_t bd_block2, bool is_bdb_tail,
-                      bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
-                      bool skip_accumulation) {
-                  do_ldb_loop(bd_block2, is_bdb_tail, first_bdb, last_bdb,
-                          rows_for_rd_tail, skip_accumulation);
+    auto bdb_loop_body = [this, do_ldb_loop](dim_t bd_block2, bool is_bdb_tail,
+                                 bool first_bdb, bool last_bdb,
+                                 dim_t rows_for_rd_tail,
+                                 bool skip_accumulation) {
+        // Save a state of reg_bdb_loop since it's used in runtime lda
+        // offset computations. Restore at the end of the call once
+        // `apply_bdb_A_offset` is done.
+        if (brg.is_runtime_lda) {
+            mov(ptr[rsp + reg_runtime_lda_bdb_loop_backup_], reg_bdb_loop);
+        }
 
-                  if (brg.is_runtime_ldc) {
-                      mov(ptr[rsp + reg_aux_C_bdb_loop_backup_offs_], reg_C);
-                      xor_(reg_C, reg_C);
-                      imul(reg_C, ptr[rsp + reg_C_shift_bytes_offs_],
-                              bdb_C_offset(bd_block2));
-                      add(reg_C, ptr[rsp + reg_aux_C_bdb_loop_backup_offs_]);
-                  } else {
-                      add(reg_C, bdb_C_offset(bd_block2));
-                  }
-                  if (brg.is_runtime_ldd) {
-                      mov(ptr[rsp + reg_aux_D_bdb_loop_backup_offs_], reg_D);
-                      xor_(reg_D, reg_D);
-                      imul(reg_D, ptr[rsp + reg_D_shift_bytes_offs_],
-                              bdb_D_offset(bd_block2));
-                      add(reg_D, ptr[rsp + reg_aux_D_bdb_loop_backup_offs_]);
-                  } else {
-                      add(reg_D, bdb_D_offset(bd_block2));
-                  }
+        do_ldb_loop(bd_block2, is_bdb_tail, first_bdb, last_bdb,
+                rows_for_rd_tail, skip_accumulation);
 
-                  apply_bdb_A_offset(bd_block2);
+        if (brg.is_runtime_ldc) {
+            mov(ptr[rsp + reg_aux_C_bdb_loop_backup_offs_], reg_C);
+            xor_(reg_C, reg_C);
+            imul(reg_C, ptr[rsp + reg_C_shift_bytes_offs_],
+                    bdb_C_offset(bd_block2));
+            add(reg_C, ptr[rsp + reg_aux_C_bdb_loop_backup_offs_]);
+        } else {
+            add(reg_C, bdb_C_offset(bd_block2));
+        }
+        if (brg.is_runtime_ldd) {
+            mov(ptr[rsp + reg_aux_D_bdb_loop_backup_offs_], reg_D);
+            xor_(reg_D, reg_D);
+            imul(reg_D, ptr[rsp + reg_D_shift_bytes_offs_],
+                    bdb_D_offset(bd_block2));
+            add(reg_D, ptr[rsp + reg_aux_D_bdb_loop_backup_offs_]);
+        } else {
+            add(reg_D, bdb_D_offset(bd_block2));
+        }
 
-                  advance_bd_block2_post_op_regs(bd_block2);
-              };
+        apply_bdb_A_offset(bd_block2);
+
+        if (brg.is_runtime_lda) {
+            mov(reg_bdb_loop, ptr[rsp + reg_runtime_lda_bdb_loop_backup_]);
+        }
+
+        advance_bd_block2_post_op_regs(bd_block2);
+    };
 
     dim_t rows_for_rd_tail, bd_blocks_for_rd_tail;
 

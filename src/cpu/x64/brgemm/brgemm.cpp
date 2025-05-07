@@ -249,8 +249,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
             alpha, beta, LDA, LDB, LDC, M, N, K, strides, false /* is_bf32 */,
             is_tf32));
 
-    if (utils::one_of(true, brg->is_runtime_lda, brg->is_runtime_ldb))
-        return status::unimplemented;
+    if (brg->is_runtime_ldb) return status::unimplemented;
 
     if (M <= 0 || N <= 0 || K <= 0) return status::invalid_arguments;
 

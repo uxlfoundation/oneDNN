@@ -7,6 +7,7 @@
 --bia_dt=undef,f32
 --attr-fpmath=,bf16
 --ld=,:96:96
+--runtime-ld=1024::
 --batch=shapes_2d_no_tail_f32
 
 # f16
@@ -46,6 +47,7 @@
 ## int8:bias
 --beta=0
 --bia_dt=f32,bf16,f16,s8
+--runtime-ld=3072::
 --batch=shapes_2d_no_tail_int8
 --bia_dt=undef
 

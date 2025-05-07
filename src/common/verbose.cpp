@@ -1608,6 +1608,8 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
        << ":" << md2dim_str(pd->val_md());
 
+    ss << ",alg:" << desc->softmax_alg;
+
     return ss.str();
 }
 

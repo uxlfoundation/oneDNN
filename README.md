@@ -118,7 +118,8 @@ The library is optimized for the following GPUs:
 * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
 * Intel Graphics and Intel Arc graphics for Intel Core Ultra processors
  (formerly Meteor Lake, Arrow Lake and Lunar Lake)
-* future Intel Arc graphics (code name Battlemage)
+* Intel Arc B-series graphics (formerly Battlemage)
+* Intel Arc graphics for future Intel Core Ultra processors (code name Panther Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html

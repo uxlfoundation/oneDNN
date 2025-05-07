@@ -51,6 +51,9 @@ using frameworks like TensorFlow and PyTorch.
 Additionally, consider [Keras RMS Normalization Layer](https://github.com/keras-team/keras/blob/v3.9.2/keras/src/layers/normalization/rms_normalization.py)
 and [PyTorch RMSNorm](https://pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) APIs.
 
+Note that this proposal currently does not cover the [Keras Layer Normalization](https://keras.io/api/layers/normalization_layers/layer_normalization/)
+with the `rms_scaling=True` option, see [keras#21234 Issue](https://github.com/keras-team/keras/issues/21234).
+
 ## Proposal
 
 The proposal is to extend the LayerNorm primitive to support RMSNorm

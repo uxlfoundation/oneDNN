@@ -146,7 +146,7 @@ set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-      Possible values are: GEN9, GEN11, XELP, XEHP, XEHPG, XEHPC, XE2, XE3.")
+      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be
@@ -222,7 +222,7 @@ option(DNNL_EXPERIMENTAL_LOGGING
 # Profiling capabilities
 # ======================
 
-# TODO: restore default to ON after the issue with linking C files by 
+# TODO: restore default to ON after the issue with linking C files by
 # Intel oneAPI DPC++ Compiler is fixed. Currently this compiler issues a warning
 # when linking object files built from C and C++ sources.
 option(DNNL_ENABLE_JIT_PROFILING
@@ -233,8 +233,8 @@ option(DNNL_ENABLE_JIT_PROFILING
     ON)
 
 option(DNNL_ENABLE_ITT_TASKS
-    "Enable ITT Tasks tagging feature and tag all primitive execution 
-    (on by default). VTune Profiler can group profiling results based 
+    "Enable ITT Tasks tagging feature and tag all primitive execution
+    (on by default). VTune Profiler can group profiling results based
     on those ITT tasks and show corresponding timeline information."
     ON)
 

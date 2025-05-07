@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -203,13 +203,13 @@
 
 // Primitive CPU ISA section is in src/cpu/platform.hpp
 
-#if BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_GEN9
+#if BUILD_PRIMITIVE_GPU_ISA_ALL
 #define REG_GEN9_ISA(...) __VA_ARGS__
 #else
 #define REG_GEN9_ISA(...)
 #endif
 
-#if BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_GEN11
+#if BUILD_PRIMITIVE_GPU_ISA_ALL
 #define REG_GEN11_ISA(...) __VA_ARGS__
 #else
 #define REG_GEN11_ISA(...)

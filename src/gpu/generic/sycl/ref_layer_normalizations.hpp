@@ -72,6 +72,8 @@ struct ref_layer_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_LNORM(md_dims_in_range(src_md()), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
             return init_conf();
         }
 
@@ -146,6 +148,8 @@ struct ref_layer_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_LNORM(md_dims_in_range(diff_dst_md()),
                     VERBOSE_OUT_OF_RANGE_DIMS, "diff_dst");
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
             return init_conf();
         }
 

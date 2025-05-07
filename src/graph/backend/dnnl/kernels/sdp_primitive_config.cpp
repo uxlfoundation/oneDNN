@@ -202,6 +202,8 @@ status_t sdp_primitive_config_t::initial_check(
                     graph::op_kind::SoftMax};
     op_ptr mm1 = nullptr, mm2 = nullptr, scale = nullptr;
     bool f32_inter = true;
+    bool is_compressed_sdpa = false;
+
     for (const auto &cur_op : sg->get_ops()) {
         const auto &op_kind = cur_op->get_kind();
         if (op_kind == graph::op_kind::DynamicDequantize
@@ -255,8 +257,11 @@ status_t sdp_primitive_config_t::initial_check(
                     const auto mask = post_op;
                     const auto &lt_ms
                             = mask->get_output_value(0)->get_logical_tensor();
-                    f32_inter = f32_inter
-                            && (ltw(lt_ms).data_type() == data_type::f32);
+                    // compressed sdpa requires that query dt = mask dt, hence
+                    // we should allow f16 mask.
+                    if (!is_compressed_sdpa)
+                        f32_inter = f32_inter
+                                && (ltw(lt_ms).data_type() == data_type::f32);
                     post_op = get_post_op(post_op);
                 }
                 // Not support select after scale(optional) and mask(optional)

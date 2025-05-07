@@ -124,6 +124,9 @@ struct reusable_vectorized_layer_normalization_fwd_t : public gpu_primitive_t {
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
 
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
+
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
 
             return status::success;

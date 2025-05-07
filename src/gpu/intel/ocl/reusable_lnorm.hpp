@@ -113,6 +113,8 @@ struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
             if (stats_are_tmp()) init_scratchpad();
@@ -190,6 +192,8 @@ struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
 

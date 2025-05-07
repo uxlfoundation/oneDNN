@@ -149,17 +149,8 @@ An additional flag for LayerNorm to enable RMSNorm will be added to the `--flags
 
 Note: If the flag is named `dnnl_{use_zero, no}_mean`, the option will be updated to `--flags=[|G|C|H|Z]`.
 
-Other internal changes would be captured in work-in-progress [PR 3068](https://github.com/uxlfoundation/oneDNN/pull/3068).
+Other internal changes would be captured in [PR 3068](https://github.com/uxlfoundation/oneDNN/pull/3068).
 
 ## Open Questions
 
-- Should the flag be named `dnnl_rms_norm` or `dnnl_{use_zero, no}_mean`?
-
-  Pros and Cons:
-  - (Preferred) `dnnl_rms_norm`:
-    - Pros: Explicitly indicates that RMS normalization is used.
-    - Cons: May not be immediately clear to those unfamiliar with the term.
-  - `dnnl_{use_zero, no}_mean`:
-    - Pros: Clearly indicates that the mean is assumed to be zero.
-    - Cons: Somewhat misleading as it doesn't explicitly indicate what is happening with
-      the variance (e.g, do we compute and use true variance or `RMS^2`?).
+N/A, everything was discussed and agreed upon.

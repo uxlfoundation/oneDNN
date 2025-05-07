@@ -58,7 +58,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         return this->memory_planner_.get_memory_info(val);
     });
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
-    pass_pipeline_t select_pipeline = pass_pipeline_t(vis);
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     // Fusion and canonicalization passes begin
@@ -157,23 +156,6 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 }
 
 template <bool quantized, memory::data_type dt>
-void sdp_decomp_kernel_t<quantized, dt>::prepare_args_set(
-        const execution_args_set_t *res, const std::vector<tensor_t> &inputs,
-        const scratchpad_t &scratchpad) {
-    // update the data of partition in/outputs args
-    for (const auto &mem_idx : res->get_mems_use_external_inputs()) {
-        mem_idx.first.set_data_handle(inputs[mem_idx.second].get_data_handle());
-    }
-
-    grantor_t var_grantor = memory_planner_.internal_temporary_grantor(
-            scratchpad.get_buffer());
-
-    for (auto &mem_offkey : res->get_mems_use_internal_temporary()) {
-        mem_offkey.first.set_data_handle(var_grantor.get(mem_offkey.second));
-    }
-}
-
-template <bool quantized, memory::data_type dt>
 status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) {
@@ -203,13 +185,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
             inputs[sdp_cfg_.graph_inport[4]].get_data_handle());
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
-    // allocate the select internal memory
-    temporary_scratchpad_t select_scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
-    assertm(select_scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
     size_t block_size = sdp_registry_.size();
     temporary_scratchpad_t scratchpad(
             block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);

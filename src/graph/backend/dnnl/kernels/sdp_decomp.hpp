@@ -49,14 +49,7 @@ private:
     // used for sdp internal memory planning
     registry_t sdp_registry_;
 
-    // we create 2 subgraph_ for graph which include select op The sdp part is
-    // the first subgraph_ and the select part which didn't fused by sdp is the
-    // second select_subgraph_. The sdp subgraph_ uses decomposition algorithm.
-    // the select_subgraph_ uses sequential algorithm
     std::shared_ptr<subgraph_t> subgraph_;
-    std::shared_ptr<subgraph_t> select_subgraph_;
-    std::function<std::shared_ptr<execution_args_set_t>()>
-            select_resource_ctor_;
     memory_planner_t memory_planner_;
     subgraph_visualizer_t vis_;
 
@@ -76,10 +69,6 @@ public:
         thread_local_cache_t<sdp_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
-
-        thread_local_cache_t<execution_args_set_t> select_res_cache;
-        select_res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
-        select_res_cache.release();
     }
 
     status_t compile_impl(const dnnl_partition_impl_t *part,
@@ -90,10 +79,6 @@ public:
     void prepare_sub_args(const grantor_t &var_grantor, const int id,
             const size_t block_size,
             std::unordered_map<dnnl_memory_t, std::vector<memory>> &mem_map);
-
-    void prepare_args_set(const execution_args_set_t *res,
-            const std::vector<tensor_t> &inputs,
-            const scratchpad_t &scratchpad);
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,

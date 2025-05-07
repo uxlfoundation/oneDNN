@@ -542,6 +542,7 @@ int partition_data_displacer_t::gen_quantize_filling(
     ::graph::deserialized_op_t op = main_op;
     auto driver = op.opkind2driver();
     bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
+    bool s8_mem_for_u8_wei = false;
 
     op.in_lts_[0].data_type_ = dt;
     if (op.in_lts_.size() > 1) {
@@ -552,6 +553,7 @@ int partition_data_displacer_t::gen_quantize_filling(
             if (dt == "u8") {
                 // None of them supports u8u8, replace with u8s8.
                 op.in_lts_[1].data_type_ = "s8";
+                s8_mem_for_u8_wei = arg & DNNL_ARG_WEIGHTS_0;
             } else if (dt == "s4" || dt == "u4") {
                 // None of them supports x4x4, replace with f32x4f32 or
                 // xf16x4xf16.
@@ -588,8 +590,17 @@ int partition_data_displacer_t::gen_quantize_filling(
     SAFE_V(ref_prim.init_ref_memory_args(eng, res));
     if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
 
-    mem = ::std::move(const_cast<dnn_mem_t &>(ref_prim.get_arg(arg)));
-
+    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim.get_arg(arg));
+    if (s8_mem_for_u8_wei) {
+        // If s8 data is directly read using the u8 data type, it may lead to
+        // overflow issues. For complex patterns like SDPA, this could result
+        // in precision degradation. Using a reorder to convert negative values
+        // into zeros.
+        dnn_mem_t gen_u8_mem(gen_mem, dnnl_u8, tag::abx, gen_mem.engine());
+        mem = ::std::move(gen_u8_mem);
+        return OK;
+    }
+    mem = ::std::move(gen_mem);
     return OK;
 }
 

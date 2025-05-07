@@ -62,16 +62,6 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
                 static_cast<long int>(scale_sz));
     }
 
-    // Check select cond and src0 shape
-    if (graph_inport[5] != -1 && graph_inport[6] != -1) {
-        const auto select_cond_dims = ltw(inputs[graph_inport[5]]).vdims();
-        const auto select_src0_dims = ltw(inputs[graph_inport[6]]).vdims();
-        VCHECK_SDP_DECOMP(select_cond_dims != select_src0_dims, false,
-                "Only supports select for case requiring broadcast cond input, "
-                "but got cond dims %s and src0 dims %s",
-                dims2str(select_cond_dims).c_str(),
-                dims2str(select_src0_dims).c_str());
-    }
     VCHECK_SDP_DECOMP(ltw(inputs[graph_inport[1]]).data_type()
                     == ltw(inputs[graph_inport[4]]).data_type(),
             false,

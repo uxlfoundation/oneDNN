@@ -90,7 +90,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, binary_pass)
                             graph::op_kind::Add, graph::op_kind::Multiply,
                             graph::op_kind::Maximum, graph::op_kind::Minimum,
                             graph::op_kind::Divide, graph::op_kind::Subtract,
-                            graph::op_kind::SquaredDifference});
+                            graph::op_kind::SquaredDifference,
+                            graph::op_kind::Select});
                 })
         .set_attr<FCreateKernel>("FCreateKernel",
                 []() -> kernel_ptr { return std::make_shared<binary_t>(); });
@@ -311,7 +312,6 @@ DNNL_BACKEND_SINGLE_OP_TRANSFORM(
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, Reorder, float_reorder)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticTranspose, float_reorder)
 DNNL_BACKEND_SINGLE_OP_TRANSFORM(reorder_pass, StaticReshape, float_reorder)
-DNNL_BACKEND_SINGLE_OP_TRANSFORM(select_pass, Select, select_t)
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gn_pass)
         .set_priority(DEFAULT_P)
         .set_kind(partition_kind_t::misc_post_ops)

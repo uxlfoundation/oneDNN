@@ -536,10 +536,16 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             std::lock_guard<std::mutex> guard(m);
 
             zeros += ithr_zeros;
-            all_max_rdiff = MAX2(all_max_rdiff, ithr_all_max_rdiff);
-            all_max_diff = MAX2(all_max_diff, ithr_all_max_diff);
-            err_max_rdiff = MAX2(err_max_rdiff, ithr_err_max_rdiff);
-            err_max_diff = MAX2(err_max_diff, ithr_err_max_diff);
+            // NaN would sneak due to MAX2 implementation picking the second
+            // value in case of uncomparable value (which NaN is).
+            if (!std::isnan(all_max_rdiff) && !std::isinf(all_max_rdiff))
+                all_max_rdiff = MAX2(all_max_rdiff, ithr_all_max_rdiff);
+            if (!std::isnan(all_max_diff) && !std::isinf(all_max_diff))
+                all_max_diff = MAX2(all_max_diff, ithr_all_max_diff);
+            if (!std::isnan(err_max_rdiff) && !std::isinf(err_max_rdiff))
+                err_max_rdiff = MAX2(err_max_rdiff, ithr_err_max_rdiff);
+            if (!std::isnan(err_max_diff) && !std::isinf(err_max_diff))
+                err_max_diff = MAX2(err_max_diff, ithr_err_max_diff);
             ithr_zeros = 0;
             ithr_all_max_rdiff = 0.f;
             ithr_all_max_diff = 0.f;

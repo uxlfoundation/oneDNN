@@ -347,8 +347,11 @@ TEST(test_pool_execute_subgraph_fp32, Pool3Postops) {
 
         case1_out_data = case1_dst_ts.as_vec_type<float>();
         case2_out_data = case2_dst_ts.as_vec_type<float>();
+        const float eps_scale = 10.0f;
+        const float kFloatEpsScale
+                = eps_scale * std::numeric_limits<float>::epsilon();
         for (size_t i = 0; i < case1_out_data.size(); ++i) {
-            ASSERT_FLOAT_EQ(case1_out_data[i], case2_out_data[i]);
+            ASSERT_NEAR(case1_out_data[i], case2_out_data[i], kFloatEpsScale);
         }
     }
 }

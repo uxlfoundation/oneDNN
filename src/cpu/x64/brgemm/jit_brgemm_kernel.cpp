@@ -422,8 +422,7 @@ private:
             reg64_t reg_base, dim_t offset, reg64_t reg_stride, dim_t num_rows,
             dim_t num_col_bytes, bool is_rd_tail);
     bool maybe_pre_process_k_tail(bool last_bdb, bool is_rd_tail, const Tmm &t1,
-            reg64_t reg_base, dim_t offset, reg64_t reg_stride,
-            matrix_kind_t mk);
+            reg64_t reg_base, dim_t offset, matrix_kind_t mk);
     void maybe_tileloadd_nt(matrix_kind_t matrix_kind, dim_t idx, dim_t offset,
             bool is_rd_tail, bool is_tail, bool last_bdb);
     void dot_product(Vmm v1, Vmm v2, Vmm v3);
@@ -536,6 +535,7 @@ Xbyak::Address jit_brgemm_kernel_t<Wmm>::bcast_A_addr(
     if (is_amx) {
         assert(bd * brg.bd_block < INT_MAX);
         mov(reg_runtime_lda, static_cast<int>(bd * brg.bd_block));
+        imul(reg_runtime_lda, ptr[rsp + reg_runtime_lda_val_]);
     } else {
         assert(bd < INT_MAX && brg.typesize_A * rd < INT_MAX);
         mov(reg_runtime_lda, static_cast<int>(bd));
@@ -2019,7 +2019,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
         mov(reg_buf_aux, ptr[rsp + reg_val_tmp_2_]);
     } else {
         if (maybe_pre_process_k_tail(last_bdb || is_tail, is_rd_tail, t1,
-                    reg_base, offset, reg_stride, matrix_kind))
+                    reg_base, offset, matrix_kind))
             return;
 
         const size_t cache_footprint = static_cast<size_t>(brg.typesize_A)
@@ -2039,7 +2039,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
 template <typename Wmm>
 bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
         bool is_rd_tail, const Tmm &t1, reg64_t reg_base, dim_t offset,
-        reg64_t reg_stride, matrix_kind_t mk) {
+        matrix_kind_t mk) {
 
     // TODO: check is it last bs to calculate need_k_tail_processing
     const auto need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
@@ -2136,8 +2136,21 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
     dim_t rbd_block = (is_rd_tail) ? 1 : brg.rdb;
     for (dim_t rdb = 0; rdb < rbd_block; rdb++) {
         for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
-            maybe_tileloadd_nt(matrix_kind_t::matrix_A, bdb,
-                    rdb * rdb_A_offset() + A_offset(bdb, 0, true), is_rd_tail,
+            dim_t offset = 0;
+            if (!brg.is_runtime_lda) {
+                offset = rdb * rdb_A_offset()
+                        + A_offset(bdb, 0, /* is_amx = */ true);
+            } else {
+                // mov(ptr[rsp + reg_runtime_lda_bdb_loop_backup_], reg_stride_lda);
+                // Compute A_offset.
+                mov(reg_stride_lda, static_cast<int>(bdb * brg.bd_block));
+                imul(reg_stride_lda, ptr[rsp + reg_runtime_lda_val_]);
+                // Append reduction offset.
+                add(reg_stride_lda, static_cast<int>(rdb * rdb_A_offset()));
+                // Append original offset
+                add(reg_stride_lda, ptr[rsp + reg_runtime_lda_val_]);
+            }
+            maybe_tileloadd_nt(matrix_kind_t::matrix_A, bdb, offset, is_rd_tail,
                     is_bdb_tail, last_bdb && bdb == bd_block2 - 1);
         }
         for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
@@ -2548,7 +2561,12 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
         if (brg.alpha != 0.f && !skip_accumulation) {
             restore_A_B_matrices();
             if (brg.is_tmm) {
-                mov(reg_stride_lda, brg.typesize_A * brg.LDA);
+                if (!brg.is_runtime_lda)
+                    mov(reg_stride_lda, brg.typesize_A * brg.LDA);
+                else {
+                    // This part gets added at `gemm_microkernel_amx`.
+                    // mov(reg_stride_lda, ptr[rsp + reg_runtime_lda_val_]);
+                }
                 mov(reg_stride_ldb, brg.rd_step * brg.typesize_B * brg.LDB);
             }
 
@@ -2686,7 +2704,9 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         // Save a state of reg_bdb_loop since it's used in runtime lda
         // offset computations. Restore at the end of the call once
         // `apply_bdb_A_offset` is done.
-        if (brg.is_runtime_lda) {
+        // `Tmm` computations preserve the value already through the
+        // `reg_stride_lda`.
+        if (brg.is_runtime_lda && !brg.is_tmm) {
             mov(ptr[rsp + reg_runtime_lda_bdb_loop_backup_], reg_bdb_loop);
         }
 
@@ -2714,7 +2734,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 
         apply_bdb_A_offset(bd_block2);
 
-        if (brg.is_runtime_lda) {
+        if (brg.is_runtime_lda && !brg.is_tmm) {
             mov(reg_bdb_loop, ptr[rsp + reg_runtime_lda_bdb_loop_backup_]);
         }
 

@@ -75,6 +75,7 @@ reusable_softmax_fwd_generic(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 }
 #endif
 
+#define VECT_SIZE 8
 #define DIVUP(a, b) (((a) + (b)-1) / (b))
 
 #define STORE_FLOAT8(prefix, ptr, val) \
@@ -101,65 +102,64 @@ reusable_softmax_fwd_generic(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #define COMMON_STORE_DATA8(x, y, z) CONCAT3(STORE_, UP_CASE_DATA, 8)(x, y, z)
 
 #ifdef USE_VECTORIZED_KERNEL
-
 __attribute__((reqd_work_group_size(SUBGROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         __global float *src_scale, __global float *dst_scale,
-        dim_t SOFTMAX_AXIS_SIZE, dim_t softmax_axis_stride,
+        dim_t softmax_axis_size, dim_t softmax_axis_stride,
         dim_t softmax_axis_chunk_size, dispatch_gws_rt_params_t gws_params) {
 
     float scale = 1.0f;
 
     const off_t linear_thread_id = get_global_id(0);
     const off_t data_off
-            = (linear_thread_id / SUBGROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+            = (linear_thread_id / SUBGROUP_SIZE) * softmax_axis_size;
     global DATA_T *src_backup = src;
     src += data_off;
 
     VECT_FLOAT_T dk;
     float max_ = -INFINITY;
     float denom_ = 0.0f;
-    const bool has_tail = SOFTMAX_AXIS_SIZE % (SUBGROUP_SIZE * 8);
-    int last_buf = DIVUP(SOFTMAX_AXIS_SIZE, (SUBGROUP_SIZE * 8));
+    const bool has_tail = softmax_axis_size % (SUBGROUP_SIZE * VECT_SIZE);
+    int last_buf = DIVUP(softmax_axis_size, (SUBGROUP_SIZE * VECT_SIZE));
     if (has_tail) last_buf--;
 
-    for (int k = 0; k < last_buf; ++k) {
-        off_t idx = k * SUBGROUP_SIZE;
+    const off_t idx_end = has_tail ? softmax_axis_size - (SUBGROUP_SIZE * VECT_SIZE + 1) :
+                                     softmax_axis_size;
+
+    for (off_t idx = 0; idx < idx_end; idx += SUBGROUP_SIZE * VECT_SIZE) {
         dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx * 8])));
-        for (int i = 0; i < 8; ++i) {
+                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx])));
+        for (off_t i = 0; i < VECT_SIZE; ++i) {
             max_ = max(dk[i], max_);
         }
     }
+
     if (has_tail) {
-        int k = last_buf;
-        for (int i = 0; i < 8; ++i) {
-            off_t off = k * 8 * SUBGROUP_SIZE + i * SUBGROUP_SIZE
-                    + get_sub_group_local_id();
-            float d = (off < SOFTMAX_AXIS_SIZE ? COMMON_DATA_TO_X(SRC, src[off])
+        const off_t idx_beg = last_buf * SUBGROUP_SIZE * VECT_SIZE + get_sub_group_local_id();
+        const off_t idx_end = idx_beg + SUBGROUP_SIZE * VECT_SIZE;
+        for (off_t idx = idx_beg; idx < idx_end; idx += SUBGROUP_SIZE) {
+            float d = (idx < softmax_axis_size ? COMMON_DATA_TO_X(SRC, src[idx])
                                                : -COMMON_DATA_MAX);
             max_ = max(d, max_);
         }
     }
+
     max_ = sub_group_reduce_max(max_);
 
-    for (int k = 0; k < last_buf; ++k) {
-        off_t idx = k * SUBGROUP_SIZE;
-        dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx * 8])));
+    for (off_t idx = 0; idx < idx_end; idx += SUBGROUP_SIZE * VECT_SIZE) {
+        dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx])));
         dk = exp(dk - max_);
-        for (int i = 0; i < 8; ++i)
+        for (off_t i = 0; i < VECT_SIZE; ++i)
             denom_ += dk[i];
     }
+
     if (has_tail) {
-        int k = last_buf;
-        for (int i = 0; i < 8; ++i) {
-            off_t off = k * 8 * SUBGROUP_SIZE + i * SUBGROUP_SIZE
-                    + get_sub_group_local_id();
-            if (off < SOFTMAX_AXIS_SIZE) {
-                denom_ += exp(COMMON_DATA_TO_X(SRC, src[off]) - max_);
-            }
+        const off_t idx_beg = last_buf * SUBGROUP_SIZE * VECT_SIZE + get_sub_group_local_id();
+        const off_t idx_end = idx_beg + SUBGROUP_SIZE * VECT_SIZE;
+        for (off_t idx = idx_beg; idx < idx_end; idx += SUBGROUP_SIZE) {
+            if (idx < softmax_axis_size)
+                denom_ += exp(COMMON_DATA_TO_X(SRC, src[idx]) - max_);
         }
     }
     denom_ = sub_group_reduce_add(denom_);
@@ -167,24 +167,21 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 
     dst += data_off;
 
-    for (int k = 0; k < last_buf; ++k) {
-        off_t idx = k * SUBGROUP_SIZE;
-        dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx * 8])));
+    for (off_t idx = 0; idx < idx_end; idx += SUBGROUP_SIZE * VECT_SIZE) {
+        dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx])));
         dk = LOGSOFTMAX ? dk - max_ - denom_ : exp(dk - max_) * denom_;
-
-        COMMON_STORE_DATA8(DST, &dst[idx * 8], scale * dk);
+        COMMON_STORE_DATA8(DST, &dst[idx], scale * dk);
     }
+
     if (has_tail) {
-        int k = last_buf;
-        for (int i = 0; i < 8; i++) {
-            off_t off = k * 8 * SUBGROUP_SIZE + i * SUBGROUP_SIZE
-                    + get_sub_group_local_id();
-            if (off < SOFTMAX_AXIS_SIZE) {
-                float dk = COMMON_DATA_TO_X(SRC, src[off]);
-                float thing = LOGSOFTMAX ? dk - max_ - denom_
-                                         : exp(dk - max_) * denom_;
-                dst[off] = TO_DST(scale * thing);
+        const off_t idx_beg = last_buf * SUBGROUP_SIZE * VECT_SIZE + get_sub_group_local_id();
+        const off_t idx_end = idx_beg + SUBGROUP_SIZE * VECT_SIZE;
+        for (off_t idx = idx_beg; idx < idx_end; idx += SUBGROUP_SIZE) {
+            if (idx < softmax_axis_size) {
+                float dk = COMMON_DATA_TO_X(SRC, src[idx]);
+                dk = LOGSOFTMAX ? dk - max_ - denom_
+                     : exp(dk - max_) * denom_;
+                dst[idx] = TO_DST(scale * dk);
             }
         }
     }
@@ -192,18 +189,17 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 #endif
 
 #ifdef USE_SMALL_KERNEL
-
 __attribute__((reqd_work_group_size(SUBGROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         __global float *src_scale, __global float *dst_scale,
-        dim_t SOFTMAX_AXIS_SIZE, dim_t softmax_axis_stride,
+        dim_t softmax_axis_size, dim_t softmax_axis_stride,
         dim_t softmax_axis_chunk_size, dispatch_gws_rt_params_t gws_params) {
     float scale = 1.0f;
     if (src_scale) { scale = *src_scale; }
     if (dst_scale) { scale /= *dst_scale; }
     const off_t data_off
-            = (get_global_id(0) / SUBGROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+            = (get_global_id(0) / SUBGROUP_SIZE) * softmax_axis_size;
     float d;
     float max_ = -INFINITY;
     float denom_ = 0.0f;
@@ -211,21 +207,20 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 
     const off_t off = get_sub_group_local_id();
 
-    d = (off < SOFTMAX_AXIS_SIZE ? COMMON_DATA_TO_X(SRC, src[off]) : -INFINITY);
+    d = (off < softmax_axis_size ? COMMON_DATA_TO_X(SRC, src[off]) : -INFINITY);
     max_ = sub_group_reduce_max(d);
 
-    if (off < SOFTMAX_AXIS_SIZE) denom_ += exp(d - max_);
+    if (off < softmax_axis_size) denom_ += exp(d - max_);
 
     denom_ = sub_group_reduce_add(denom_);
     denom_ = LOGSOFTMAX ? log(denom_) : 1.0f / denom_;
     dst += data_off;
 
-    if (off < SOFTMAX_AXIS_SIZE) {
+    if (off < softmax_axis_size) {
         float from_src = COMMON_DATA_TO_X(SRC, src[off]);
         float thing = LOGSOFTMAX ? from_src - max_ - denom_
                                  : exp(from_src - max_) * denom_;
         dst[off] = TO_DST(scale * thing);
     }
 }
-
 #endif

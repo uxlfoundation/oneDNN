@@ -17,6 +17,7 @@
 #include "gpu/intel/ocl/rnn/rnn_utils.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/math_utils.hpp"
 #include "gpu/intel/ocl/rnn/rnn_grid.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -183,7 +184,9 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
 
         // For large enough k dimension, parallelization in external gemm
         // kernels is more performant.
-        const dim_t k_limit = tail_dhc ? 50 : 160;
+        int ideal_k_limit
+                = math::lcm((int)device_info.min_subgroup_size(), (int)rnn.sic);
+        dim_t k_limit = tail_dhc ? 50 : nstl::min(256, ideal_k_limit);
 
         // The fused gemm implementation assumes the dst channel dimension is
         // dense

@@ -65,7 +65,7 @@ void tf_gemm2_gqa(const dim bs, const dim head_num_kv, const dim group,
     logical_tensor lt_mul2_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
     op mul_2_op(op_id++, op::kind::Multiply, "multiply_2");
-    mul_2_op.add_inputs({lt_tanh_out, lt_mul1_in2});
+    mul_2_op.add_inputs({lt_tanh_out, lt_mul2_in2});
     mul_2_op.add_output(lt_mul2_out);
 
     logical_tensor lt_select_in1 {lt_id++, logical_tensor::data_type::boolean,

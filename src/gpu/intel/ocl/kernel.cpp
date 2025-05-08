@@ -111,6 +111,9 @@ private:
     utils::rw_mutex_t mutex_;
 };
 
+status_t kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
+    return get_ocl_kernel_binary(ocl_kernel(), binary);
+}
 status_t kernel_t::get_binary(
         const impl::engine_t *engine, xpu::binary_t &binary) const {
     auto *ocl_engine = utils::downcast<const engine_t *>(engine);

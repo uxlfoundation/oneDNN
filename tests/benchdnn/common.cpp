@@ -120,15 +120,29 @@ void parse_result(res_t &res, const char *pstr) {
         case MISTRUSTED: bs.mistrusted++; break;
         case PASSED: bs.passed++; break;
         case LISTED: bs.listed++; break;
-        case INITIALIZED:
+        case INITIALIZED: {
             // TODO: workaround for failed fill functions.
-            if (bench_mode != bench_mode_t::init) {
+            if (bench_mode != bench_mode_t::init
+                    && bench_mode != bench_mode_t::hash) {
                 is_failed = true;
                 state = "FAILED";
             } else {
                 bs.passed++;
             }
+
+            if (bench_mode == bench_mode_t::hash)
+                if (res.impl_id == 0)
+                    BENCHDNN_PRINT(0, "%d:%s impl_id: %s __REPRO: %s\n",
+                            bs.tests, state, "(unsupported)", pstr);
+                else
+                    BENCHDNN_PRINT(0,
+                            "%d:%s impl_id: 0x%016" PRIx64 " __REPRO: %s\n",
+                            bs.tests, state, res.impl_id, pstr);
+            else
+                BENCHDNN_PRINT(0, "%d:%s __REPRO: %s\n", bs.tests, state, pstr);
+            print_me = false;
             break;
+        }
         default:
             BENCHDNN_PRINT(0, "%s\n",
                     "Error: unknown state encountered in \'parse_results()\'.");
@@ -552,6 +566,49 @@ int batch(const char *fname, bench_f bench) {
         c_opts.push_back(const_cast<char *>(opt.c_str()));
 
     return bench(static_cast<int>(c_opts.size()), c_opts.data());
+}
+
+std::unordered_map<std::string, uint64_t> &db_mut() {
+    static std::unordered_map<std::string, uint64_t> db;
+    return db;
+}
+
+const std::unordered_map<std::string, uint64_t> &get_db() {
+    return db_mut();
+}
+
+int setup_db(const char *fname) {
+    if (fname == nullptr || fname[0] == 0) return OK;
+    std::ifstream fstream(fname);
+    std::string line;
+    auto &db = db_mut();
+    while (std::getline(fstream, line)) {
+        auto id_start = line.find("impl_id: ", 0);
+        if (id_start == std::string::npos) continue;
+        const char *id_str = &line[id_start + 9];
+        if (id_str[0] != '0' || id_str[1] != 'x') continue;
+        uint64_t id = strtoul(id_str + 2, nullptr, 16);
+
+        auto repro_start = line.find("__REPRO: ", 0);
+        if (repro_start == std::string::npos) continue;
+        auto mode_modifier_start = line.find("--mode-modifier=", 0);
+        auto mode_start = line.find("--mode=", 0);
+        if (mode_modifier_start != std::string::npos) {
+            repro_start = mode_modifier_start + 17;
+            while (line[repro_start] == ' ')
+                repro_start++;
+        } else if (mode_start != std::string::npos) {
+            repro_start = mode_start + 8;
+            while (line[repro_start] == ' ')
+                repro_start++;
+        } else
+            repro_start += 9;
+        std::string prb_str = line.substr(repro_start, std::string::npos);
+
+        if (id != 0) db[prb_str] = id;
+    }
+
+    return OK;
 }
 
 int flip_coin(ptrdiff_t seed, float probability) {

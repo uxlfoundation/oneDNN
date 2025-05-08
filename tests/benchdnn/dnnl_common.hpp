@@ -86,6 +86,8 @@ extern "C" dnnl_status_t dnnl_query_profiling_data(dnnl_stream_t stream,
 #endif
 #endif
 
+extern "C" uint64_t dnnl_primitive_get_id(dnnl_primitive_t);
+
 int check_pd_cache(const_dnnl_primitive_desc_t pd, res_t *res);
 int check_primitive_cache(dnnl_primitive_t p, res_t *res);
 
@@ -522,6 +524,34 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     if (is_service_prim) {
         user_prim.reset(primw.release());
         return OK;
+    }
+
+    res->impl_id = dnnl_primitive_get_id(primw);
+
+    if (!get_db().empty() && res->impl_id != 0) {
+        // TODO: Stop using strings and use prb directly
+        std::string s = prb->str();
+
+        auto mode_modifier_start = s.find("--mode-modifier=", 0);
+        auto mode_start = s.find("--mode=", 0);
+        if (mode_modifier_start != std::string::npos) {
+            mode_modifier_start += 17;
+            while (s[mode_modifier_start] == ' ')
+                mode_modifier_start++;
+            s = s.substr(mode_modifier_start, std::string::npos);
+        } else if (mode_start != std::string::npos) {
+            mode_start += 8;
+            while (s[mode_start] == ' ')
+                mode_start++;
+            s = s.substr(mode_start, std::string::npos);
+        }
+
+        auto e = get_db().find(s);
+        if (e != get_db().end() && e->second == res->impl_id) {
+            res->state = SKIPPED;
+            res->reason = "in database";
+            return OK;
+        }
     }
 
     auto pd = query_pd(primw);

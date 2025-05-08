@@ -25,6 +25,7 @@
 #include <memory>
 #include <utility>
 
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
@@ -125,6 +126,12 @@ public:
         gpu_assert(false) << "unimplemented function get_binary_size() called";
         return status::runtime_error;
     }
+
+    virtual status_t get_kernel_binary(xpu::binary_t &binary) const {
+        gpu_assert(false) << "unimplemented function get_binary() called";
+        return status::runtime_error;
+    }
+
     virtual status_t get_binary(
             const impl::engine_t *engine, xpu::binary_t &binary) const {
         gpu_assert(false) << "unimplemented function get_binary() called";
@@ -210,9 +217,22 @@ public:
         return impl_->get_binary_size(engine, binary_size);
     }
 
+    status_t get_kernel_binary(xpu::binary_t &binary) const {
+        return impl_->get_kernel_binary(binary);
+    }
+
     status_t get_binary(
             const impl::engine_t *engine, xpu::binary_t &binary) const {
         return impl_->get_binary(engine, binary);
+    }
+
+    size_t get_hash() const {
+        xpu::binary_t binary;
+        auto status = get_kernel_binary(binary);
+        gpu_assert(status == status::success);
+        auto hash = serialization_stream_t::hash_range(
+                binary.data(), binary.size());
+        return hash != 0 ? hash : 2147483647; // id is required to be non-zero
     }
 
     const std::vector<scalar_type_t> &arg_types() const {

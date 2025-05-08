@@ -70,7 +70,8 @@ struct task_t {
     int exec() {
         // Checking for `INITIALIZED` state here prevents from `SKIPPED`
         // problems being executed.
-        if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init) {
+        if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init
+                && bench_mode != bench_mode_t::hash) {
             // Differentiate a message when the run happens...
             BENCHDNN_PRINT(1, "run: %s\n", prb_.str());
             do_func_(*v_prim_, &prb_, &res_);

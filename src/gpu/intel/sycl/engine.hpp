@@ -65,30 +65,6 @@ public:
 
     status_t convert_to_sycl(
             std::vector<gpu::intel::compute::kernel_t> &kernels,
-            cl_program program,
-            const gpu::intel::compute::program_src_t &program_src,
-            const std::vector<const char *> &kernel_names,
-            gpu::intel::ocl::engine_t *ocl_engine) const {
-        kernels = std::vector<gpu::intel::compute::kernel_t>(
-                kernel_names.size());
-        xpu::binary_t binary;
-        CHECK(ocl::get_ocl_program_binary(
-                program, ocl_engine->device(), binary));
-
-        std::vector<std::unique_ptr<::sycl::kernel>> sycl_kernels;
-        CHECK(gpu::intel::sycl::compat::make_kernels(
-                sycl_kernels, kernel_names, this, binary));
-
-        for (size_t i = 0; i < kernel_names.size(); i++) {
-            if (!sycl_kernels[i]) continue;
-            CHECK(interop_kernel_t::make(
-                    kernels[i], *sycl_kernels[i], program_src));
-        }
-        return status::success;
-    }
-
-    status_t convert_to_sycl(
-            std::vector<gpu::intel::compute::kernel_t> &kernels,
             const std::vector<gpu::intel::compute::kernel_t> &ocl_kernels,
             const std::vector<const char *> &kernel_names,
             gpu::intel::ocl::engine_t *ocl_engine) const {
@@ -147,6 +123,85 @@ public:
         return jitter->get_kernel(*kernel, this);
     }
 
+#ifdef DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
+    status_t create_kernels(std::vector<gpu::intel::compute::kernel_t> *kernels,
+            const std::vector<const char *> &kernel_names,
+            const gpu::intel::compute::kernel_ctx_t &kernel_ctx)
+            const override {
+        if (kind() != engine_kind::gpu) {
+            assert(!"not expected");
+            return status::invalid_arguments;
+        }
+        namespace syclex = ::sycl::ext::oneapi::experimental;
+
+        auto device = utils::downcast<const impl::xpu::sycl::engine_impl_t *>(
+                impl())
+                              ->device();
+        VERROR_ENGINE(
+                device.ext_oneapi_can_compile(syclex::source_language::opencl),
+                status::runtime_error,
+                "SYCL OpenCL online compiler not supported on device");
+
+        const char *source = nullptr;
+        for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
+            source = ocl::get_kernel_source(kernel_names[i]);
+        VERROR_ENGINE(source, status::runtime_error,
+                "No OpenCL source was found for kernel");
+
+        std::stringstream pp_code;
+        CHECK(gpu::intel::ocl::preprocess_headers(pp_code, source, kernel_ctx));
+
+        std::string build_options = kernel_ctx.options();
+        build_options += " " + device_info()->get_cl_ext_options();
+
+        std::unique_ptr<::sycl::kernel_bundle<::sycl::bundle_state::executable>>
+                kb;
+        auto kb_src = ::sycl::kernel_bundle<
+                ::sycl::bundle_state::ext_oneapi_source>(
+                syclex::create_kernel_bundle_from_source(context(),
+                        syclex::source_language::opencl, pp_code.str()));
+        auto kb_exe = ::sycl::kernel_bundle<::sycl::bundle_state::executable>(
+                syclex::build(kb_src,
+                        syclex::properties {
+                                syclex::build_options(build_options),
+                        }));
+        kb.reset(new decltype(kb_exe)(kb_exe));
+        *kernels = std::vector<compute::kernel_t>(kernel_names.size());
+        for (size_t i = 0; i < kernel_names.size(); ++i) {
+            if (!kernel_names[i]) continue;
+
+            CHECK(interop_kernel_t::make((*kernels)[i],
+                    kb->ext_oneapi_get_kernel(kernel_names[i]),
+                    gpu::intel::compute::program_src_t(pp_code.str())));
+        }
+
+        return status::success;
+    }
+#else
+    status_t convert_to_sycl(
+            std::vector<gpu::intel::compute::kernel_t> &kernels,
+            cl_program program,
+            const gpu::intel::compute::program_src_t &program_src,
+            const std::vector<const char *> &kernel_names,
+            gpu::intel::ocl::engine_t *ocl_engine) const {
+        kernels = std::vector<gpu::intel::compute::kernel_t>(
+                kernel_names.size());
+        xpu::binary_t binary;
+        CHECK(ocl::get_ocl_program_binary(
+                program, ocl_engine->device(), binary));
+
+        std::vector<std::unique_ptr<::sycl::kernel>> sycl_kernels;
+        CHECK(gpu::intel::sycl::compat::make_kernels(
+                sycl_kernels, kernel_names, this, binary));
+
+        for (size_t i = 0; i < kernel_names.size(); i++) {
+            if (!sycl_kernels[i]) continue;
+            CHECK(interop_kernel_t::make(
+                    kernels[i], *sycl_kernels[i], program_src));
+        }
+        return status::success;
+    }
+
     status_t create_kernels(std::vector<gpu::intel::compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,
             const gpu::intel::compute::kernel_ctx_t &kernel_ctx)
@@ -167,6 +222,7 @@ public:
                 *kernels, ocl_program, src, kernel_names, ocl_engine.get()));
         return status::success;
     }
+#endif // DNNL_EXPERIMENTAL_SELF_SUFFICIENT_L0
 
     cl_device_id ocl_device() const {
         if (backend() != xpu::sycl::backend_t::opencl) {

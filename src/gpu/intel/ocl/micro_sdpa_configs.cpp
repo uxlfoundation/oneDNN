@@ -190,7 +190,7 @@ sdpa_config_t xe2_q_h512_s64_2nd = {16, 16, 64, 16, 8, 1, 8, 1};
 sdpa_config_t xe2_q_h512_2nd = {16, 16, 64, 16, 16, 1, 16, 1};
 
 sdpa_config_t xe2_h512_s128_integrated = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_h512_integrated = {16, 16, 32, 16, 16, 1, 16, 1};
+sdpa_config_t xe2_h512_integrated = {16, 16, 16, 16, 32, 1, 32, 1};
 
 sdpa_config_t xe2_h512_s256_2nd_integrated = {16, 16, 64, 16, 8, 1, 8, 1};
 sdpa_config_t xe2_h512_s1024_2nd_integrated = {16, 16, 64, 16, 8, 2, 8, 2};

@@ -99,6 +99,14 @@ bool query_post_ops_has_kind(
     return false;
 }
 
+bool query_post_ops_has_binary_alg_kind(
+        const_dnnl_post_ops_t post_ops, int idx, dnnl_alg_kind_t alg) {
+    dnnl_alg_kind_t po_alg = dnnl_alg_kind_undef;
+    const auto status = dnnl_post_ops_get_params_binary_v2(
+            post_ops, idx, &po_alg, nullptr, nullptr);
+    return (status == dnnl_success && po_alg == alg);
+}
+
 dnnl_scratchpad_mode_t query_scratchpad_mode(const_dnnl_primitive_attr_t attr) {
     dnnl_scratchpad_mode_t mode = dnnl_scratchpad_mode_library;
     dnnl_primitive_attr_get_scratchpad_mode(attr, &mode);

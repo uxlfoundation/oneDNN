@@ -1019,6 +1019,7 @@ bool post_ops_ok(const conv_problem_t &prb, const hw_t &hw) {
                 // kernel always works correctly in benchdnn.
                 return false;
         }
+        if (po.is_binary_with_ternary_op()) return false;
     }
     return true;
 }

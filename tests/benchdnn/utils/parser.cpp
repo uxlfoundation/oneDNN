@@ -204,17 +204,117 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                     = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
         } else if (e.is_binary_kind()) {
-            const auto dt_str = get_substr(subs, subs_pos, ':');
+
+            char src_delim = ':';
+            bool has_src2_specs = false;
+            std::string src2_subs;
+            // placeholder data type for the ternary conditional input
+            e.binary.src2_dt = dnnl_s8;
+
+            // For binary algorithms with ternary inputs, specifications can be
+            // provided for both binary (src1) and ternary (src2) tensors in the form:
+            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]].
+            // In that case, we check for the ':' delimiter that separates src1 and
+            // src2 args, split the string for the two tensors and parse them
+            // individually.
+            // TODO: Currently, there is no broadcasting support for the src2 tensor -
+            // specifying src2 mask inputs and tags therefore has no effect on the
+            // operation.
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                src_delim = '.';
+                auto src2_pos = subs.find_first_of(':', subs_pos);
+                has_src2_specs = (src2_pos != std::string::npos);
+                if (has_src2_specs) {
+                    src2_subs = subs.substr(src2_pos + 1);
+                    subs = subs.substr(0, src2_pos);
+                }
+            }
+
+            auto parse_ternary_input_specs = [&](const std::string &s,
+                                                     char delim) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "Warning: Broadcasting is not supported for the "
+                        "ternary tensor - specifying post-op policy and tag "
+                        "will have no effect on the ternary operation.");
+
+                size_t s2_pos = 0;
+
+                const auto mask_input_str = get_substr(s, s2_pos, delim);
+                // Check if `mask_input_str` consists of only digits.
+                const bool only_digits = std::all_of(mask_input_str.cbegin(),
+                        mask_input_str.cend(), [](int c) {
+                            assert(c < UINT8_MAX);
+                            return std::isdigit(c);
+                        });
+
+                using mask_input_t
+                        = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
+                if (only_digits) {
+                    // If digits only, then read it as integer value.
+                    e.binary.src2_mask
+                            = parser_utils::stoll_safe(mask_input_str);
+                    e.binary.src2_mask_input = mask_input_t::mask;
+                    if (e.binary.src2_mask > 0)
+                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                "Error: binary post-op policy for the ternary "
+                                "tensor",
+                                mask_input_str.c_str(),
+                                "is not recognized - broadcasting is not "
+                                "supported "
+                                "for the ternary tensor.");
+                } else {
+                    // Otherwise, re-direct to policy parsing.
+                    e.binary.src2_policy = attr_t::str2policy(mask_input_str);
+                    if (e.binary.src2_policy != attr_t::policy_t::COMMON) {
+                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                "Error: binary post-op policy for the ternary "
+                                "tensor",
+                                mask_input_str.c_str(),
+                                "is not supported - broadcasting is not "
+                                "supported "
+                                "for the ternary tensor.");
+                        SAFE_V(FAIL);
+                    }
+                    e.binary.src2_mask_input = mask_input_t::policy;
+                }
+                if (s2_pos == std::string::npos) return;
+
+                const auto tag_str = get_substr(s, s2_pos, delim);
+                e.binary.src2_tag = tag_str;
+                if (check_tag(e.binary.src2_tag) != OK) {
+                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                            "Error: binary post-op tag for the ternary tensor",
+                            tag_str.c_str(), "is not recognized.");
+                    SAFE_V(FAIL);
+                }
+
+                if (s2_pos != std::string::npos) {
+                    const auto unknown_str
+                            = get_substr(subs, subs_pos, src_delim);
+                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                            "Warning: Additional unrecognized arguments",
+                            unknown_str.c_str(), "are specified.");
+                }
+            };
+
+            const auto dt_str = get_substr(subs, subs_pos, src_delim);
             e.binary.src1_dt = str2dt(dt_str.c_str());
+
             if (e.binary.src1_dt == dnnl_data_type_undef) {
                 BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                         "Error: binary post-op data type", dt_str.c_str(),
                         "is not recognized.");
                 SAFE_V(FAIL);
             }
-            if (subs_pos == std::string::npos) continue;
 
-            const auto mask_input_str = get_substr(subs, subs_pos, ':');
+            if (subs_pos == std::string::npos) {
+                if (has_src2_specs)
+                    parse_ternary_input_specs(src2_subs, src_delim);
+                continue;
+            }
+
+            const auto mask_input_str = get_substr(subs, subs_pos, src_delim);
             // Check if `mask_input_str` consists of only digits.
             const bool only_digits = std::all_of(
                     mask_input_str.cbegin(), mask_input_str.cend(), [](int c) {
@@ -241,15 +341,31 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 }
                 e.binary.mask_input = mask_input_t::policy;
             }
-            if (subs_pos == std::string::npos) continue;
 
-            const auto tag_str = get_substr(subs, subs_pos, ':');
+            if (subs_pos == std::string::npos) {
+                if (has_src2_specs)
+                    parse_ternary_input_specs(src2_subs, src_delim);
+                continue;
+            }
+
+            const auto tag_str = get_substr(subs, subs_pos, src_delim);
             e.binary.tag = tag_str;
             if (check_tag(e.binary.tag) != OK) {
                 BENCHDNN_PRINT(0, "%s \'%s\' %s\n", "Error: binary post-op tag",
                         tag_str.c_str(), "is not recognized.");
                 SAFE_V(FAIL);
             }
+
+            if (subs_pos == std::string::npos) {
+                if (has_src2_specs)
+                    parse_ternary_input_specs(src2_subs, src_delim);
+            } else {
+                const auto unknown_str = get_substr(subs, subs_pos, src_delim);
+                BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                        "Warning: Additional unrecognized arguments",
+                        unknown_str.c_str(), "are specified.");
+            }
+
         } else if (e.is_prelu_kind()) {
             const auto policy_str = get_substr(subs, subs_pos, ':');
             e.prelu.policy = attr_t::str2policy(policy_str);

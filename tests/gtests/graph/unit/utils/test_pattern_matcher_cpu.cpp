@@ -1108,6 +1108,53 @@ TEST(test_utils_pattern_matcher, OptionalWithLargerPort) {
     ASSERT_EQ(fusion_ops.size(), 3U);
 }
 
+TEST(test_utils_pattern_matcher, CommutativeSelect) {
+    auto graphp = std::make_shared<pb_graph_t>();
+    //    GreaterEqual matmul add
+    //             \     /    /
+    //                Select
+    auto pmatmul = graphp->append_op(MatMul);
+    auto pgreaterequal = graphp->append_op(GreaterEqual);
+    auto padd = graphp->append_op(Add);
+    auto pselect = graphp->append_op(Select,
+            {in_edge(0, pgreaterequal, 0), in_edge(1, pmatmul, 0),
+                    in_edge(2, padd, 0)});
+    UNUSED(pselect);
+
+    graph_t agraph;
+    op_t greaterEqual {0, GreaterEqual, "greaterEqual"};
+    op_t matmul {1, MatMul, "matmul"};
+    op_t add {2, Add, "add"};
+    op_t select {3, Select, "select"};
+
+    std::vector<logical_tensor_t> lt_vec = create_logical_tensors(10);
+    lt_vec[2].data_type = data_type::boolean;
+
+    greaterEqual.add_input(lt_vec[0]);
+    greaterEqual.add_input(lt_vec[1]);
+    greaterEqual.add_output(lt_vec[2]);
+    matmul.add_input(lt_vec[3]);
+    matmul.add_input(lt_vec[4]);
+    matmul.add_output(lt_vec[5]);
+    add.add_input(lt_vec[6]);
+    add.add_input(lt_vec[7]);
+    add.add_output(lt_vec[8]);
+    select.add_input(lt_vec[2]);
+    select.add_input(lt_vec[8]);
+    select.add_input(lt_vec[5]);
+    select.add_output(lt_vec[9]);
+
+    ASSERT_EQ(agraph.add_op(&matmul), status::success);
+    ASSERT_EQ(agraph.add_op(&greaterEqual), status::success);
+    ASSERT_EQ(agraph.add_op(&add), status::success);
+    ASSERT_EQ(agraph.add_op(&select), status::success);
+    agraph.finalize();
+
+    std::vector<op_t *> fusion_ops;
+    EXPECT_TRUE(match_pattern(agraph.get_ops()[0].get(), graphp, fusion_ops));
+    ASSERT_EQ(fusion_ops.size(), 4U);
+}
+
 //
 // ?: means optional
 // ^: means repetition

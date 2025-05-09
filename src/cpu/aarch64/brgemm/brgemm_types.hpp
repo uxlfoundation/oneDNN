@@ -250,6 +250,7 @@ struct brgemm_t {
     int typesize_D = 0;
     int typesize_bias = 0;
 
+    bool is_xmm = false;
     bool is_ymm = false;
     bool is_zmm = false;
 

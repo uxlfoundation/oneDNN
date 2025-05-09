@@ -905,7 +905,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
 }
 
 static inline bool isa_has_masks(cpu_isa_t isa) {
-    return is_superset(isa, sve_256);
+    return is_superset(isa, sve_128);
 }
 
 void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
@@ -1098,8 +1098,13 @@ void jit_brgemm_kernel_t::apply_compensation(
                 const auto mask = is_tail ? k_mask : P_ALL_ONE;
                 ld1w(vmm_comp.s, mask / T_z,
                         ptr(reg_aux_compensation, comp_offset));
-            } else {
+            } else if (is_superset(brg.isa_impl, sve_256)) {
                 not_(P_TMP.b, P_ALL_ONE, P_NOT_256.b);
+                cmplt(P_TMP.s, P_TMP / T_z, z_tail_mask().s, 0);
+                ld1w(vmm_comp.s, P_TMP / T_z,
+                        ptr(reg_aux_compensation, comp_offset));
+            } else {
+                not_(P_TMP.b, P_ALL_ONE, P_NOT_128.b);
                 cmplt(P_TMP.s, P_TMP / T_z, z_tail_mask().s, 0);
                 ld1w(vmm_comp.s, P_TMP / T_z,
                         ptr(reg_aux_compensation, comp_offset));
@@ -1854,6 +1859,9 @@ void jit_brgemm_kernel_t::generate() {
             break;
         case sve_256:
             simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
+            break;
+        case sve_128:
+            simd_w_ = cpu_isa_traits<sve_128>::vlen / sizeof(float);
             break;
         default: {
             assert(!"unsupported isa");

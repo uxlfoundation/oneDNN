@@ -104,7 +104,7 @@ status_t set_isa_impl(brgemm_t *brg) {
         return status::unimplemented;
     } else if (brg->is_f32 || brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
         return status::success;
     }
     return status::success;
@@ -115,6 +115,8 @@ void set_brg_vmm(brgemm_t *brg) {
     brg->is_zmm = mayiuse(sve_512) && is_superset(brg->isa_impl, sve_512);
     brg->is_ymm = !brg->is_zmm && mayiuse(sve_256)
             && is_superset(brg->isa_impl, sve_256);
+    brg->is_xmm = !brg->is_ymm && mayiuse(sve_128)
+            && is_superset(brg->isa_impl, sve_128);
 }
 
 int calculate_ldb_params(brgemm_t *brg, const int try_ld_block2) {
@@ -190,9 +192,12 @@ status_t brgemm_blocking(brgemm_t *brg) {
     if (brg->isa_impl == isa_undef) return status::unimplemented;
     assert(!brg->is_dgmm); // should not be called from brdgmm
     set_brg_vmm(brg);
-    if (!(brg->is_zmm || brg->is_ymm)) return status::unimplemented;
+    if (!(brg->is_zmm || brg->is_ymm || brg->is_xmm))
+        return status::unimplemented;
 
-    const int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
+    const int simd_w = is_superset(brg->isa_impl, sve_512)
+            ? 16
+            : (is_superset(brg->isa_impl, sve_256) ? 8 : 4);
     brg->ld_block = simd_w;
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
@@ -203,7 +208,7 @@ status_t brgemm_blocking(brgemm_t *brg) {
     // reduce 'ld_block2' to allow a larger 'bd_block'
     const int max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
-    if (is_superset(brg->isa_impl, sve_256) && max_bcast_block < max_vpad) {
+    if (is_superset(brg->isa_impl, sve_128) && max_bcast_block < max_vpad) {
         adj_ld_block2 = calculate_ldb_params(brg, 2);
         max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
     }
@@ -385,7 +390,7 @@ status_t init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa,
 
     if (brg->is_f32) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
     }
 
     brg->is_dgmm = true;

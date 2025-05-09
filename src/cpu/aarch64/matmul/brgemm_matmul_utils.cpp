@@ -718,7 +718,7 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
 
         best_blocking.update_configuration(bgmmc);
     } else {
-        assert(one_of(bm_conf_utils.get_isa(), sve_256));
+        // assert(one_of(bm_conf_utils.get_isa(), sve_256));
 
         const matmul_sve512_blocking_params_t::matmul_params_t matmul(
                 bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);

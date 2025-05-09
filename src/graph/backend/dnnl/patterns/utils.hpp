@@ -441,6 +441,10 @@ inline bool check_inputs_xf16(op_t *op) {
     return true;
 }
 
+inline bool disable_implicit_causal(op_t *op) {
+    return false;
+}
+
 // Implicit Causal Mask
 inline graph::utils::pm::repetition_t *optional_causal_mask(
         const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
@@ -449,6 +453,7 @@ inline graph::utils::pm::repetition_t *optional_causal_mask(
 
     graph::utils::pm::pb_op_t *gen_index_row
             = popt_graph->append_op(graph::op_kind::GenIndex);
+    gen_index_row->append_decision_function(disable_implicit_causal);
     if (check_xf16) {
         // sdpa_primitive only supports f16/bf16 on gpu
         // for other dtypes, we don't have a reference implementation on gpu

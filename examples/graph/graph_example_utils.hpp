@@ -124,7 +124,7 @@ struct sycl_deletor_t {
 
 inline void *sycl_malloc_wrapper(
         size_t size, size_t alignment, const void *dev, const void *ctx) {
-    return malloc_shared(size, *static_cast<const ::sycl::device *>(dev),
+    return malloc_device(size, *static_cast<const ::sycl::device *>(dev),
             *static_cast<const ::sycl::context *>(ctx));
 }
 
@@ -202,7 +202,7 @@ inline void allocate_sycl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
 
         // memory allocation
         data_buffer.push_back({});
-        data_buffer.back().reset(::sycl::malloc_shared(mem_size, q.get_device(),
+        data_buffer.back().reset(::sycl::malloc_device(mem_size, q.get_device(),
                                          q.get_context()),
                 sycl_deletor_t {q.get_context()});
 
@@ -231,7 +231,7 @@ inline void allocate_sycl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
 
         // memory allocation
         data_buffer.push_back({});
-        data_buffer.back().reset(::sycl::malloc_shared(mem_size, q.get_device(),
+        data_buffer.back().reset(::sycl::malloc_device(mem_size, q.get_device(),
                                          q.get_context()),
                 sycl_deletor_t {q.get_context()});
 
@@ -253,24 +253,6 @@ inline void allocate_sycl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
             exit(1); \
         } \
     } while (0)
-
-static void *ocl_malloc_shared(
-        size_t size, size_t alignment, cl_device_id dev, cl_context ctx) {
-    using F = void *(*)(cl_context, cl_device_id, cl_ulong *, size_t, cl_uint,
-            cl_int *);
-    if (size == 0) return nullptr;
-
-    cl_platform_id platform;
-    OCL_CHECK(clGetDeviceInfo(
-            dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
-    const char *f_name = "clSharedMemAllocINTEL";
-    auto f = reinterpret_cast<F>(
-            clGetExtensionFunctionAddressForPlatform(platform, f_name));
-    cl_int err;
-    void *p = f(ctx, dev, nullptr, size, static_cast<cl_uint>(alignment), &err);
-    OCL_CHECK(err);
-    return p;
-}
 
 static void *ocl_malloc_device(
         size_t size, size_t alignment, cl_device_id dev, cl_context ctx) {
@@ -328,7 +310,7 @@ inline void allocate_ocl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
 
         // memory allocation
         data_buffer.push_back({});
-        void *p = ocl_malloc_shared(
+        void *p = ocl_malloc_device(
                 mem_size, 0, dnnl::ocl_interop::get_device(eng), ctx);
         data_buffer.back().reset(
                 p, [ctx, dev](void *p) { ocl_free(p, dev, ctx, {}); });

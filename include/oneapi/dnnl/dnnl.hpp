@@ -905,6 +905,8 @@ struct memory : public handle<dnnl_memory_t> {
         blocked = dnnl_blocked,
         /// Format kind for sparse tensors.
         sparse = dnnl_format_kind_sparse,
+        /// Format kind for host-side scalars.
+        host_side_scalar = dnnl_format_kind_host_side_scalar,
         /// A special format kind that indicates that tensor format is opaque.
         opaque = dnnl_format_kind_opaque,
     };

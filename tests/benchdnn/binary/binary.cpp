@@ -112,9 +112,18 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args));
 
-    auto src2_d = prb->is_ternary_op() ? dnn_mem_t::init_md(prb->ndims,
-                          prb->vdims[0].data(), dnnl_s8, prb->stag[0])
-                                       : nullptr;
+    // On one hand, regarding benchdnn binary driver, as users can not pass
+    // shape and memory tag information of src2 through cml, it should comply
+    // that of src0.
+    // On the other, the prb descriptor from graph driver may contain shape
+    // information about src2, the condition input. In this case, it should
+    // comply with user input while creating the primitive descriptor.
+    auto src2_d = prb->is_ternary_op()
+            ? dnn_mem_t::init_md(prb->ndims,
+                    prb->vdims.size() > 2 ? prb->vdims[2].data()
+                                          : prb->vdims[0].data(),
+                    dnnl_s8, prb->stag.size() > 2 ? prb->stag[2] : prb->stag[0])
+            : nullptr;
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_binary_primitive_desc_create_v2(
             &init_pd_args.pd, init_pd_args.engine, alg,

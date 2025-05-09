@@ -7,11 +7,11 @@
 
 --dir=FWD_D,BWD_DW
 --dt=f32,bf16,f16
---flags=,G,CH
+--flags=,G,CH,M,GCHM
 --batch=shapes_ci
 
 --dir=BWD_D
---flags=,G
+--flags=,G,GM
 --batch=shapes_ci
 
 # Different data type combinations

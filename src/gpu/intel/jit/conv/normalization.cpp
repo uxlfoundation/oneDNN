@@ -202,10 +202,11 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
             o = (off != 0) ? o + off : o;
         }
         const auto &x = view_t::placeholder_var();
-        dim_t L = ir_utils::max_unique_pad_states(O, I, KD, P, S, true);
-        bool mask = L < ir_utils::max_unique_pad_states(O, I, KD, P, S, false);
+        auto max_pads = ir_utils::max_unique_pad_states(O, I, K, D, P, S, true);
+        bool mask = max_pads
+                < ir_utils::max_unique_pad_states(O, I, K, D, P, S, false);
         v.set_vdim(v.vvars()[idx], (needs_right_bound) ? O : 1);
-        v.set_tdim(idx, o, (mask) ? x < L : expr_t());
+        v.set_tdim(idx, o, (mask) ? x < max_pads : expr_t());
     };
 
     const auto &vars = cp_view().vvars();

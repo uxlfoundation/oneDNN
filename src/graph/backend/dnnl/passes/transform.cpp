@@ -1013,6 +1013,166 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
+    // lambda function to fuse one post op into base primitive
+    auto fuse_post_ops_func = [&](bool &changed) -> status_t {
+        auto &mgr = sg->fusion_info_mgr_;
+        std::vector<std::pair<op_t *, op_t *>> fuse_groups;
+
+        std::set<op_t *> visited;
+        const std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>>
+                pops_fusible_map = {{op_kind::dnnl_matmul,
+                        {op_kind::dnnl_eltwise, op_kind::dnnl_binary}}};
+        status_t ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
+            auto base_op_kind = op->get_kind();
+            // only fuse two ops each time, the priority we need to set
+            if (!pops_fusible_map.count(base_op_kind) || visited.count(op) != 0)
+                return status::success;
+
+            auto out_val = op->get_output_values()[0];
+            auto consumers = out_val->get_consumers();
+
+            // The base op should have and only have one consumer, it's
+            // the post op to be fused
+            if (consumers.size() != 1) return status::success;
+            auto &post_op = consumers[0].get_op();
+
+            // check if fusible
+            auto post_op_kind = post_op.get_kind();
+            bool not_fusible
+                    = (!pops_fusible_map.at(base_op_kind).count(post_op_kind)
+                            || (post_op_kind == op_kind::dnnl_binary
+                                    && static_cast<dnnl::algorithm>(
+                                               post_op.get_attr<int64_t>(
+                                                       op_attr::alg_kind))
+                                            == dnnl::algorithm::binary_select));
+            if (not_fusible) { return status::success; }
+
+            // push fusible pair to fuse group for later fusion
+            fuse_groups.emplace_back(op, &post_op);
+            visited.insert(op);
+            visited.insert(&post_op);
+            return status::success;
+        });
+        VCHECK_TRANSFORM(ret == status::success, ret,
+                "Error finding fusible post_op groups");
+
+        if (fuse_groups.empty()) {
+            changed = false;
+            return status::success;
+        }
+        subgraph_rewriter_t rewriter(sg);
+        for (auto &fuse_group : fuse_groups) {
+            auto base_op = fuse_group.first;
+            auto post_op = fuse_group.second;
+            // post op fuse to which predecessor
+            size_t fuse_op_predecessor_offset = base_op->get_output_value(0)
+                                                        ->get_consumers()[0]
+                                                        .get_offset();
+            int64_t key = -1;
+            if (base_op->has_attr(op_attr::fusion_info_key)
+                    && base_op->get_attr<int64_t>(op_attr::fusion_info_key)
+                            != -1) {
+                key = base_op->get_attr<int64_t>(op_attr::fusion_info_key);
+            } else {
+                key = mgr.init_info();
+                base_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+            }
+            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            if (post_op->get_kind() == op_kind::dnnl_eltwise) {
+                float scale = 1.f;
+                fusion_info.append_post_eltwise(
+                        post_op->shared_from_this(), scale);
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            == dnnl::algorithm::binary_add) {
+                // If the other in value of Add has mul_scales producer,
+                // then this pattern is a int8 pattern
+                size_t mul_scale_op_offset = 2;
+                auto other_in_val0 = post_op->get_input_value(
+                        1 - fuse_op_predecessor_offset);
+                if (other_in_val0->has_producer()
+                        && (other_in_val0->get_producer().get_kind()
+                                        == op_kind::dnnl_mul_scales
+                                || other_in_val0->get_producer().get_kind()
+                                        == op_kind::dnnl_sub_zps)) {
+                    mul_scale_op_offset = 1 - fuse_op_predecessor_offset;
+                }
+                auto other_in_val1
+                        = post_op->get_input_value(fuse_op_predecessor_offset);
+                if (mul_scale_op_offset != 2
+                        && is_output_scales_supported(base_op->get_kind())
+                        && ltw(other_in_val0->get_logical_tensor()).vdims()
+                                == ltw(other_in_val1->get_logical_tensor())
+                                           .vdims()) {
+                    // for int8 cases (excluding OPs which don't support
+                    // output scales attribute and its inputs don't have
+                    // same dims)
+                    auto in_val = post_op->get_input_value(mul_scale_op_offset);
+                    auto &pre_op = in_val->get_producer();
+                    std::vector<float> scales {1.f};
+                    int32_t zp = 0;
+                    if (pre_op.get_kind() == op_kind::dnnl_mul_scales) {
+                        scales = pre_op.get_attr<std::vector<float>>(
+                                op_attr::scales);
+                        assert(scales.size() == 1); // per tensor
+                        auto tmp = pre_op.get_input_value(0);
+                        if (tmp->has_producer()
+                                && tmp->get_producer().get_kind()
+                                        == op_kind::dnnl_sub_zps) {
+                            auto &sub_op = tmp->get_producer();
+                            auto zps = sub_op.get_attr<std::vector<int64_t>>(
+                                    op_attr::zps);
+                            zp = static_cast<int32_t>(zps[0]);
+                            assert(scales.size() == zps.size());
+                            rewriter.fuse_op_to_successor(
+                                    sub_op.shared_from_this());
+                        }
+                    } else {
+                        auto zps = pre_op.get_attr<std::vector<int64_t>>(
+                                op_attr::zps);
+                        zp = static_cast<int32_t>(zps[0]);
+                        assert(scales.size() == zps.size());
+                    }
+                    rewriter.fuse_op_to_successor(pre_op.shared_from_this());
+                    fusion_info.append_post_binary(post_op->shared_from_this(),
+                            std::vector<size_t> {base_op->num_inputs()},
+                            scales[0], zp);
+                } else {
+                    fusion_info.append_post_binary(post_op->shared_from_this(),
+                            std::vector<size_t> {base_op->num_inputs()});
+                }
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            != dnnl::algorithm::binary_add) {
+                fusion_info.append_post_binary(post_op->shared_from_this(),
+                        std::vector<size_t> {base_op->num_inputs()});
+            } else {
+                // unsupported post ops
+                continue;
+            }
+            // remove the fused post_ops op
+            rewriter.fuse_op_to_predecessor(
+                    post_op->shared_from_this(), fuse_op_predecessor_offset);
+        }
+        rewriter.run();
+        changed = true;
+        return status::success;
+    };
+    int cnt = 0;
+    const int max_num_limit = static_cast<int>(sg->num_ops());
+    bool changed = true;
+    do {
+        CHECK(fuse_post_ops_func(changed));
+        cnt++;
+    } while (changed && cnt <= max_num_limit);
+    VCHECK_TRANSFORM(cnt <= max_num_limit + 1, status::unimplemented,
+            "Failed to fuse all post ops since there has unsupported ones");
+    return status::success;
+}
+
 status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
     auto &mgr = sg->fusion_info_mgr_;
 

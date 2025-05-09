@@ -73,6 +73,10 @@ struct memory_desc_wrapper : public c_compatible {
     }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
 
+    bool is_host_side_scalar_desc() const {
+        return format_kind() == format_kind::host_side_scalar;
+    }
+
     const blocking_desc_t &blocking_desc() const {
         assert(is_blocking_desc() || is_sparse_packed_desc());
         if (!is_sparse_desc()) return md_->format_desc.blocking;

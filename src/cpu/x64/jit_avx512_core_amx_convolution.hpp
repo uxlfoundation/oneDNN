@@ -97,6 +97,7 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
 
     protected:
         bool zero_points_ok() const {
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
             const auto &zp = attr()->zero_points_;
 
             if (!zp.has_default_values(DNNL_ARG_SRC)) {
@@ -109,8 +110,13 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
                 const bool ok = mask_dst == 0;
                 if (!ok) return false;
             }
-
-            return zp.has_default_values(DNNL_ARG_WEIGHTS);
+            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST)) {
+                return false;
+            }
+            return true;
         }
     };
 

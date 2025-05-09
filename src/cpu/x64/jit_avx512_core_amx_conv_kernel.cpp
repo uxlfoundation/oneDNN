@@ -2363,6 +2363,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             !((is_small_shape || is_3d_small_ic) && !is_supported_small_ic),
             VERBOSE_SHAPE_RESTRICTION);
 
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
     const auto zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
@@ -2373,6 +2374,10 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             !(!IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common)
                     || !IMPLICATION(jcp.dst_zero_point || jcp.src_zero_point,
                             is_int8_convolution)),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_CONV_IC(zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_ZP_CFG);
 
     // Dispatch the shapes to VNNI for better performance

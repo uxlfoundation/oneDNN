@@ -239,7 +239,17 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (quant_enabled_ && !src_scales.has_default_groups())
                 src_scales_2d_ = true;
 
-            if (!attr()->zero_points_.has_default_values()) {
+            if (!attr_zps.has_default_values()) {
+                const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+
+                VDISPATCH_GEMM(attr_zps.has_default_values(
+                                       user_precomp | DNNL_ARG_WEIGHTS)
+                                && attr_zps.has_default_values(
+                                        user_precomp | DNNL_ARG_SRC)
+                                && attr_zps.has_default_values(
+                                        user_precomp | DNNL_ARG_DST),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
                     const int cmask_a = attr_zps.get_mask(DNNL_ARG_A);
                     ao_dims_ = cmask_a > 0;

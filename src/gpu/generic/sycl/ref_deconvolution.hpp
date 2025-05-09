@@ -59,7 +59,7 @@ struct ref_deconvolution_bwd_weights_t
             VDISPATCH_DECONVOLUTION(md_dims_in_range(src_md()),
                     VERBOSE_OUT_OF_RANGE_DIMS, "src");
             VDISPATCH_DECONVOLUTION(
-                    set_default_formats(), VERBOSE_UNSUPPORTED_TAG_S);
+                    set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_DECONVOLUTION(check_convolution_data_types(
                                             data_d, diff_weights_d, diff_dst_d),
                     VERBOSE_UNSUPPORTED_DT_CFG);

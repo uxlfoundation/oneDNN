@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -280,6 +280,7 @@ struct sycl_post_ops_t {
                     return false;
                 }
             } else if (allow_inputs && attr_po.contain(binary, i)) {
+                if (attr_po.entry_[i].is_binary_with_ternary_op()) return false;
                 if (!ref_binary_op_t::binary_ok(attr_po.entry_[i].binary)) {
                     return false;
                 }

@@ -16,6 +16,7 @@
 
 file(GLOB_RECURSE SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]pp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gemm/*.[ch]pp
     )
 
 set_source_files_properties(${SOURCES}

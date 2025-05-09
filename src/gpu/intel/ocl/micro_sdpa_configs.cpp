@@ -322,6 +322,7 @@ sdpa_config_t *choose_config_xehpg(
     }
     return nullptr;
 }
+static std::vector<dim_t> seq_intervals_xehpg = {32, 64, 96, 128, 256, 512};
 
 sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q,
         bool quantized, bool is_integrated) {
@@ -398,6 +399,8 @@ sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q,
     }
     return nullptr;
 }
+static std::vector<dim_t> seq_intervals_xehpc
+        = {32, 64, 96, 128, 256, 384, 512, 768, 1024, 1152};
 
 sdpa_config_t *choose_config_xe2(dim_t head_size, dim_t seq, bool thin_q,
         bool quantized, bool is_integrated) {
@@ -500,6 +503,129 @@ sdpa_config_t *choose_config_xe2(dim_t head_size, dim_t seq, bool thin_q,
     }
     return choose_config_xehpc(
             head_size, seq, thin_q, quantized, is_integrated);
+}
+static std::vector<dim_t> seq_intervals_xe2
+        = {64, 96, 128, 256, 384, 512, 768, 1024, 1152};
+
+// adjust heuristic intervals to match the tuned intervals according
+// to the sequence length and gpu architecture
+// this way recompilation both matches the tuned intervals and avoids
+// excessive recompilation with smaller power of 2 sizes
+dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch) {
+    const std::vector<dim_t> *seq_intervals;
+    switch (arch) {
+        case compute::gpu_arch_t::xe_hpg:
+            seq_intervals = &seq_intervals_xehpg;
+            break;
+        case compute::gpu_arch_t::xe_hpc:
+            seq_intervals = &seq_intervals_xehpc;
+            break;
+        case compute::gpu_arch_t::xe2:
+        case compute::gpu_arch_t::xe3: seq_intervals = &seq_intervals_xe2;
+        default: return utils::rnd_up_pow2(seq);
+    }
+
+    for (auto seq_boundary : *seq_intervals) {
+        if (seq <= seq_boundary) { return seq_boundary; }
+    }
+    return utils::rnd_up_pow2(seq);
+}
+
+void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
+        gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        micro::GEMMProtocol::Options &opts_kq,
+        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs,
+        const micro_sdpa_ukernel_params_t &ukernel_config) {
+
+    // hardware info
+    hwInfo.gmdid = ukernel_config.hwinfo.gmdid;
+    hwInfo.euCount = ukernel_config.hwinfo.euCount;
+    hwInfo.systolicAvailable = ukernel_config.hwinfo.systolicAvailable;
+
+    // options kq, vs
+    auto deserialize_options
+            = [](micro::GEMMProtocol::Options &gemmstone_opts,
+                      const ukernel_serialized_opts_t &serialized_opts) {
+                  gemmstone_opts.localB = serialized_opts.localB;
+                  gemmstone_opts.slmPtr = serialized_opts.slmPtr;
+                  gemmstone_opts.scaleA = serialized_opts.scaleA;
+                  gemmstone_opts.offsetA = serialized_opts.offsetA;
+              };
+    deserialize_options(opts_kq, ukernel_config.opts_kq);
+    deserialize_options(opts_vs, ukernel_config.opts_vs);
+
+    // problems kq, vs
+    auto deserialize_problem = [](gemmstone::GEMMProblem &problem,
+                                       const ukernel_serialized_problem_t
+                                               &serialized_problem) {
+        problem.Ta_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Ta_ext)};
+        problem.Tb_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Tb_ext)};
+        problem.Ta
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Ta)};
+        problem.Tb
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tb)};
+        problem.Tc_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Tc_ext)};
+        problem.Tc
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tc)};
+        problem.Ts
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Ts)};
+        problem.A.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.A_layout);
+
+        if (serialized_problem.with_scales
+                && !serialized_problem.with_common_scales) {
+            problem.Ta_scale = {static_cast<gemmstone::Type::_Type>(
+                    serialized_problem.Ta_scale)};
+            problem.A_scale.setAlignment(serialized_problem.A_scale_alignment);
+            problem.A_scale.layout = static_cast<gemmstone::MatrixLayout>(
+                    serialized_problem.A_scale_layout);
+            problem.asPtrDims = serialized_problem.asPtrDims;
+        }
+        if (serialized_problem.with_zp) {
+            problem.Tao = {static_cast<gemmstone::Type::_Type>(
+                    serialized_problem.Tao)};
+            problem.AO.setAlignment(serialized_problem.AO_alignment);
+            problem.AO.layout = static_cast<gemmstone::MatrixLayout>(
+                    serialized_problem.AO_layout);
+            problem.aoPtrDims = serialized_problem.aoPtrDims;
+            problem.aOffset = static_cast<gemmstone::ABOffset>(
+                    serialized_problem.aOffset);
+        }
+        if (serialized_problem.with_scales || serialized_problem.with_zp) {
+            problem.aqGroupM = serialized_problem.aqGroupM;
+            problem.aqGroupK = serialized_problem.aqGroupK;
+        }
+
+        problem.B.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.B_layout);
+        problem.C.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.C_layout);
+        problem.A.setAlignment(serialized_problem.A_alignment);
+        problem.B.setAlignment(serialized_problem.B_alignment);
+        problem.B.crosspack = serialized_problem.B_crosspack;
+        if (serialized_problem.B_tileR > 0 && serialized_problem.B_tileC > 0) {
+            problem.B.tileR = serialized_problem.B_tileR;
+            problem.B.tileC = serialized_problem.B_tileC;
+        }
+    };
+    deserialize_problem(problem_kq, ukernel_config.problem_kq);
+    deserialize_problem(problem_vs, ukernel_config.problem_vs);
+
+    // sizes kq, vs
+    auto deserialize_sizes
+            = [](gemmstone::SizeParams &sizes,
+                      const ukernel_serialized_sizes_t &serialized_sizes) {
+                  sizes.m = serialized_sizes.m;
+                  sizes.n = serialized_sizes.n;
+                  sizes.k = serialized_sizes.k;
+                  sizes.batch = serialized_sizes.batch;
+              };
+    deserialize_sizes(sizes_kq, ukernel_config.sizes_kq);
+    deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
 }
 
 } // namespace ocl

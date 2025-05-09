@@ -708,7 +708,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
 
 class sdpa_test_t : public ::testing::TestWithParam<sdpa_dims_t> {
 public:
-    void SetUp() override {
+    // Testing reusable functionality requires shared engine between tests.
+    static void SetUpTestSuite() {
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -725,6 +726,22 @@ public:
         eng = dnnl::engine(engine::kind::gpu, 0);
 #endif
         strm = dnnl::stream(eng);
+    }
+
+    void SetUp() override {
+#ifdef DNNL_SYCL_CUDA
+        GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
+#endif
+#ifdef DNNL_SYCL_HIP
+        GTEST_SKIP() << "SDPA primitive tests do not support HIP";
+#endif
+#ifdef DNNL_TEST_WITH_ENGINE_PARAM
+        SKIP_IF(get_test_engine_kind() != dnnl::engine::kind::gpu,
+                "This test requires GPU engine");
+#else
+        SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
+                "SDPA tests require gpus.");
+#endif
         p = GetParam();
         doubled_memory.reserve(30);
         t = get_descriptors(eng, p, doubled_memory);
@@ -737,12 +754,16 @@ public:
     }
 
 protected:
+    static dnnl::engine eng;
+    static dnnl::stream strm;
+
     sdpa_dims_t p;
-    dnnl::engine eng;
-    dnnl::stream strm;
     sdpa_tensors_t t;
     std::vector<dnnl_memory_t> doubled_memory;
 };
+
+dnnl::engine sdpa_test_t::eng;
+dnnl::stream sdpa_test_t::strm;
 
 bool with_key_transposed = true;
 bool no_key_transposed = false;
@@ -924,7 +945,11 @@ INSTANTIATE_TEST_SUITE_P(llama_3_8b,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,      qdt,       kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
     testing::Values(
                     sdpa_dims_t{   1,    32,        8,    384,    384,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,    33,        8,    384,    384,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,    34,        8,    384,    384,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,    385,      1,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,    32,        8,    386,      1,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,    32,        8,    387,      1,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,    512,    512,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,    513,      1,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,   1024,   1024,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },

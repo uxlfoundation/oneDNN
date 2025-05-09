@@ -19,6 +19,8 @@
 
 #include <assert.h>
 
+#include "gpu/intel/ocl/micro_sdpa_configs.hpp"
+
 #include "common/c_types_map.hpp"
 #include "common/gemm_types.hpp"
 #include "common/gemm_utils.hpp"
@@ -39,13 +41,72 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
+struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
+
+    const std::vector<const char *> &get_kernel_names() const {
+        static const std::vector<const char *> kernel_names = {"micro_sdpa"};
+        return kernel_names;
+    }
+
+    status_t create_generator(const compute::compute_engine_t &engine,
+            compute::kernel_bundle_t &bundle) const {
+        compute::kernel_ctx_t kernel_ctx;
+        CHECK(get_kernel_ctx(kernel_ctx));
+        auto status = engine.create_kernel_bundle(
+                bundle, get_kernel_names(), kernel_ctx);
+        return status;
+    }
+
+    status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
+
+    int ndims;
+    data_type_t data_t;
+    data_type_t dst_data_t, key_data_t, qry_data_t, val_data_t, msk_data_t;
+    data_type_t key_scales_data_t, value_scales_data_t;
+    data_type_t key_zp_data_t, value_zp_data_t;
+    int kv_group_size;
+
+    int q_align, k_align, v_align, a_align;
+    bool transpose_k;
+    uint8_t padding0[3] = {0};
+
+    int kq_scale_mask, vs_scale_mask, kq_zp_mask, vs_zp_mask;
+    int key_elements_per_byte, key_zp_elements_per_byte, val_elements_per_byte,
+            val_zp_elements_per_byte;
+
+    int key_group_size, val_group_size;
+    data_type_t scale_data_t;
+
+    int attn_mask_undef, attn_mask_buffer, attn_mask_top_left,
+            attn_mask_bottom_right;
+    bool invert_scale, with_attn_scale, with_attn_mask, broadcast_mask_q,
+            with_causal_mask;
+    uint8_t padding1[3] = {0};
+    int subgroup_size, d_max;
+
+    bool d_full, arch_gte_hpc;
+    bool block_q, block_a, block_msk, block_2d_a;
+    bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v, prefetch_remainder;
+    uint8_t padding2[5] = {0};
+    int prefetch_d_max;
+
+    bool softmax_inf_as_zero;
+    bool q_arrive_await_barrier;
+    bool use_systolic_ukernel;
+    uint8_t padding3[1] = {0};
+
+    micro_sdpa_ukernel_params_t ukernel_config;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_sdpa_params_t);
+
 struct micro_sdpa_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public sdpa_pd_t {
         using sdpa_pd_t::sdpa_pd_t;
-        static constexpr int mask_mb_indes = 0;
+        static constexpr int mask_mb_index = 0;
         static constexpr int mask_q_index = 2;
         static constexpr int mask_k_index = 3;
+        static constexpr int ndims = 4;
 
         DECLARE_COMMON_PD_T("ocl:micro:any", micro_sdpa_t);
 
@@ -165,7 +226,12 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         vgs, static_cast<long int>(val_md()->dims[3]));
             }
 
-            CHECK(init_microkernels(engine));
+            VDISPATCH_SDPA_SC(init_conf_microkernels(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL,
+                    "micro_sdpa init_conf_microkernels");
+            VDISPATCH_SDPA_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "micro_sdpa init_conf");
+
             return status::success;
         }
 
@@ -188,9 +254,6 @@ struct micro_sdpa_t : public gpu_primitive_t {
             return status::success;
         }
 
-        const micro::Package &gemm_kq() const { return gemm_kq_; }
-        const micro::Package &gemm_vs() const { return gemm_vs_; }
-
         int sg_size() const { return sg_size_; }
         bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
@@ -203,14 +266,15 @@ struct micro_sdpa_t : public gpu_primitive_t {
         }
 
         compute::gpu_arch_t arch() const { return arch_; }
+        micro_sdpa_params_t conf;
 
     private:
-        micro::Package gemm_kq_, gemm_vs_;
         int sg_size_ = 0;
         bool use_systolic_ukernel_ = true;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
-        status_t init_microkernels(impl::engine_t *engine);
+        status_t init_conf_microkernels(impl::engine_t *engine);
+        status_t init_conf(impl::engine_t *engine);
     };
 
     status_t init(impl::engine_t *engine) override;

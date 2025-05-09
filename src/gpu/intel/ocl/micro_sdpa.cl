@@ -16,6 +16,7 @@
 
 #include "gpu/intel/ocl/sdpa_utils.h"
 #include "gpu/intel/ocl/tile_ops.h"
+#include "gpu/intel/ocl/types_interop.h"
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"
@@ -225,15 +226,19 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 #define cooperative_prefetch_2d_k cooperative_prefetch_2d_maybe_rem
 #endif
 
-#if REMAINDER_Q
-#define tile_load_block_rem_q tile_load_block
-#define tile_store_block_rem_q tile_store_block
-#else
-#define tile_load_block_rem_q(t, ptr, n, ld, off_r, off_c) \
-    tile_load_block(t, ptr, ld, off_r, off_c)
-#define tile_store_block_rem_q(t, ptr, n, ld, off_r, off_c) \
-    tile_store_block(t, ptr, ld, off_r, off_c)
-#endif
+#define tile_load_block_rem_q(t, ptr, n, ld, off_r, off_c, load_rem) \
+    if (load_rem) { \
+        tile_load_block(t, ptr, n, ld, off_r, off_c); \
+    } else { \
+        tile_load_block(t, ptr, ld, off_r, off_c); \
+    }
+
+#define tile_store_block_rem_q(t, ptr, n, ld, off_r, off_c, store_rem) \
+    if (store_rem) { \
+        tile_store_block(t, ptr, n, ld, off_r, off_c); \
+    } else { \
+        tile_store_block(t, ptr, ld, off_r, off_c); \
+    }
 
 #define binary_add(x, y) ((x) + (y))
 
@@ -256,13 +261,13 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 */
 
 inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
-        int m, int n, int ldq, int offset_r, int offset_c) {
+        int m, int n, int ldq, int offset_r, int offset_c, int load_rem) {
 
 #if USE_SYSTOLIC_UKERNEL
 
 #ifdef BLOCK_Q
-    tile_load_block_rem_q(
-            Q_tile, (global uint *)Q, n, ldq >> 1, offset_r, offset_c);
+    tile_load_block_rem_q(Q_tile, (global uint *)Q, n, ldq >> 1, offset_r,
+            offset_c, load_rem);
 #elif Q_ALIGN >= 4
     tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r,
             offset_c);
@@ -273,7 +278,7 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 #else // FMA
 
 #ifdef BLOCK_Q
-    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c);
+    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c, load_rem);
 #else
     tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
 #endif
@@ -303,7 +308,15 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         ,
         const global MSK_DATA_T *msk
 #endif
-) {
+        ,
+        KEY_OFFSETS, QRY_OFFSETS, VAL_OFFSETS, DST_OFFSETS
+#if WITH_ATTN_MASK
+        ,
+        MSK_OFFSETS
+#endif
+        ,
+        const int remainder_k, const int remainder_q) {
+
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);
@@ -362,15 +375,15 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     const bool need_sum_barrier = (ugemm_vs_barrier_count == 0);
 
     /* Convert to half precision and store */
-    const size_t k_offset = KEY_OFF(b1, b0_kv, 0, 0);
-    const size_t v_offset = VAL_OFF(b1, b0_kv, 0, 0);
+    const size_t k_offset = KEY_BATCH(b1, b0_kv);
+    const size_t v_offset = VAL_BATCH(b1, b0_kv);
     /* Locate K/Q/V/A matrices within batch */
     K += k_offset / KEY_ELEMENTS_PER_BYTE;
-    Q += QRY_OFF(b1, b0, 0, 0);
+    Q += QRY_BATCH(b1, b0);
     V += v_offset / VAL_ELEMENTS_PER_BYTE;
-    A += DST_OFF(b1, b0, 0, 0, 0);
+    A += DST_BATCH(b1, b0);
 #if WITH_ATTN_MASK
-    msk += MSK_OFF(b1 % MSK_D0, b0 % MSK_D1, 0, 0);
+    msk += MSK_BATCH(b1 % MSK_D0, b0 % MSK_D1);
 #ifndef BLOCK_MSK
     int mask_aligned = (((size_t)msk) % 4) == 0;
 #endif
@@ -400,7 +413,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
 
-        tile_load_src1(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy);
+        tile_load_src1(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy, remainder_q);
 
         /* Store Q tile to SLM */
         tile_store_t_slm_src1(
@@ -532,17 +545,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #endif
 
-#if REMAINDER_K
-        /* Prepare k mask: NaN in bounds, -inf out of bounds */
         kmask_tile_type_float k_mask;
+        if (remainder_k) {
+/* Prepare k mask: NaN in bounds, -inf out of bounds */
 #pragma unroll
-        for (int ii = 0; ii < ugemm_kq_sg_tile_m / SUBGROUP_SIZE; ii++)
-            k_mask.x[0][ii] = (k0 + sg_i0_kq + ii * SUBGROUP_SIZE
-                                              + get_sub_group_local_id()
-                                      < k0end)
-                    ? nan(0u)
-                    : -INFINITY;
-#endif
+            for (int ii = 0; ii < ugemm_kq_sg_tile_m / SUBGROUP_SIZE; ii++) {
+                k_mask.x[0][ii] = (k0 + sg_i0_kq + ii * SUBGROUP_SIZE
+                                                  + get_sub_group_local_id()
+                                          < k0end)
+                        ? nan(0u)
+                        : -INFINITY;
+            }
+        }
 
         /* Calculate S = (K^T) * Q */
         s_tile_type S_tile
@@ -583,9 +597,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
         /* Apply k mask */
-#if REMAINDER_K
-        tile_hbroadcast_min(&S_tile, k_mask);
-#endif
+        if (remainder_k) { tile_hbroadcast_min(&S_tile, k_mask); }
 
 #if WITH_CAUSAL_MASK
 #define less_than(offset_k, offset_q) (offset_q < offset_k)
@@ -873,7 +885,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     ugemm_vs_sg_tile_n * sg_j_vs, sg1);
             tile_binary(A_scale_tile, A_scale_tile_load, binary_add);
         }
-
 #if VAL_SCALES == QUANTIZE_COMMON
 #define v_scale_op(x) ((x)*v_scale)
         tile_elementwise(A_tile, v_scale_op);
@@ -903,7 +914,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #ifdef BLOCK_2D_A
     tile_store_block2d(A_tile_dst, A, d, q, lda, sg_i0_vs, sg_j0_vs);
 #elif defined(BLOCK_A)
-    tile_store_block_rem_q(A_tile_dst, A, q, lda, sg_i0_vs, sg_j0_vs);
+    tile_store_block_rem_q(
+            A_tile_dst, A, q, lda, sg_i0_vs, sg_j0_vs, remainder_q);
 #else
     tile_store(A_tile_dst, A, d, q, lda, sg_i0_vs, sg_j0_vs);
 #endif

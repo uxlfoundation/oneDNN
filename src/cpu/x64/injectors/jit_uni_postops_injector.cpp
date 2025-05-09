@@ -283,6 +283,9 @@ void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
             binary_injector_->compute_vector_range(
                     vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
             ++rhs_arg_idx;
+            // Ternary op handles two arguments at the same time, thus,
+            // skipping one more.
+            if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
         } else {
             const auto lam = lambda_jit_injectors_.find(post_op.kind);
             if (lam != lambda_jit_injectors_.end()) lam->second();
@@ -393,11 +396,22 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                             isa, entry.eltwise.alg, data_type::f32);
                 case binary:
                 case prelu:
-                    if (!entry.is_like_binary()) continue;
-                    assert(dst_d && "dst_d is null");
-                    return binary_injector::is_supported(isa,
-                            binary_injector::get_src1_desc(entry, *dst_d),
-                            *dst_d, enabled_bcast_strategy);
+                    if (entry.is_like_binary()) {
+                        assert(dst_d != nullptr && "dst_d is null");
+                        bool ok = binary_injector::is_supported(isa,
+                                binary_injector::get_src1_desc(entry, *dst_d),
+                                *dst_d, enabled_bcast_strategy);
+                        if (entry.is_binary_with_ternary_op()) {
+                            const auto src2_d = binary_injector::get_src2_desc(
+                                    entry, *dst_d);
+                            VCHECK_PO_INJ_BOOL(
+                                    binary_injector::is_data_supported(
+                                            isa, src2_d.data_type),
+                                    VERBOSE_ISA_DT_MISMATCH);
+                        }
+                        return ok;
+                    }
+                    break;
                 default: assert(!"Unhandled post_op type");
             }
         }

@@ -49,12 +49,13 @@ struct task_t {
         v_prim_ = std::make_shared<
                 std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>>>();
 
-        // A timer for each test case. Starts from `create_func_` and ends at
-        // `parse_result`.
+        // A timer for each test case. Wraps each call for fine timings.
+        // Otherwise, due to parallel creation, timer for a problem starts but
+        // waits for its line.
         auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
         tct.start();
-
         SAFE(create_func_(*v_prim_, &prb_, &res_), WARN);
+        tct.stamp();
         return OK;
     }
 
@@ -64,12 +65,18 @@ struct task_t {
         // No alive testing objects - no checks.
         if (res_.state != INITIALIZED) return OK;
 
-        return check_func_(*v_prim_, &prb_, &res_);
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.start();
+        SAFE(check_func_(*v_prim_, &prb_, &res_), WARN);
+        tct.stamp();
+        return OK;
     }
 
     int exec() {
         // Checking for `INITIALIZED` state here prevents from `SKIPPED`
         // problems being executed.
+        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
+        tct.start();
         if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init) {
             // Differentiate a message when the run happens...
             BENCHDNN_PRINT(1, "run: %s\n", prb_.str());
@@ -80,9 +87,6 @@ struct task_t {
             BENCHDNN_PRINT(1, "run (just report, no exec): %s\n", prb_.str());
         }
 
-        // A timer for each test case. Starts from `create_func_` and ends at
-        // `parse_result`.
-        auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
         tct.stamp();
 
         return report();

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@
 
 #include "test_allocator.hpp"
 #include "unit/unit_test_common.hpp"
+
+#include "graph/backend/dnnl/common.hpp"
 
 namespace graph = dnnl::impl::graph;
 
@@ -132,4 +134,9 @@ graph::engine_kind_t get_test_engine_kind() {
 
 void set_test_engine_kind(graph::engine_kind_t kind) {
     test_engine_kind = kind;
+}
+
+dnnl::memory make_memory_from_tensor(const graph::tensor_t &t) {
+    auto eng = graph::dnnl_impl::make_dnnl_engine(*(t.get_engine()));
+    return graph::dnnl_impl::make_dnnl_memory(t, eng);
 }

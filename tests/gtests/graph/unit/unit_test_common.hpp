@@ -64,6 +64,8 @@ dnnl::impl::graph::engine_kind_t get_test_engine_kind();
 
 void set_test_engine_kind(dnnl::impl::graph::engine_kind_t kind);
 
+dnnl::memory make_memory_from_tensor(const dnnl::impl::graph::tensor_t &t);
+
 #ifdef DNNL_SYCL_CUDA
 #define SKIP_IF_NV_GPU(message) \
     do { \
@@ -197,20 +199,24 @@ public:
     /// @return The vector
     template <typename T>
     std::vector<T> as_vec_type() const {
-        const auto dptr = static_cast<typename std::add_pointer<T>::type>(
-                ts_.get_data_handle());
-        if (!dptr) return {};
+        auto mem = make_memory_from_tensor(ts_);
+        T *data_ptr = mem.map_data<T>();
+
+        if (!data_ptr) return {};
         size_t volume = (num_bytes_ + sizeof(T) - 1) / sizeof(T);
-        return {dptr, dptr + volume};
+        std::vector<T> ret(data_ptr, data_ptr + volume);
+        mem.unmap_data(reinterpret_cast<void *>(data_ptr));
+        return ret;
     }
 
     template <typename T>
     void fill(T mean, T deviation, double sparsity = 1.) {
         if (num_bytes_ == 0 || !data_) return;
-        T *format_ptr = static_cast<typename std::add_pointer<T>::type>(
-                ts_.get_data_handle());
+        auto mem = make_memory_from_tensor(ts_);
+        T *data_ptr = mem.map_data<T>();
         size_t volume = (num_bytes_ + sizeof(T) - 1) / sizeof(T);
-        fill_data<T>(volume, format_ptr, mean, deviation, sparsity);
+        fill_data<T>(volume, data_ptr, mean, deviation, sparsity);
+        mem.unmap_data(reinterpret_cast<void *>(data_ptr));
     }
 
     template <typename T>
@@ -221,12 +227,13 @@ public:
     template <typename T>
     void fill(T val) {
         if (num_bytes_ == 0 || !data_) return;
-        T *format_ptr = static_cast<typename std::add_pointer<T>::type>(
-                ts_.get_data_handle());
+        auto mem = make_memory_from_tensor(ts_);
+        T *data_ptr = mem.map_data<T>();
         size_t volume = (num_bytes_ + sizeof(T) - 1) / sizeof(T);
         for (size_t i = 0; i < volume; ++i) {
-            format_ptr[i] = val;
+            data_ptr[i] = val;
         }
+        mem.unmap_data(reinterpret_cast<void *>(data_ptr));
     }
 
     template <typename T>
@@ -238,11 +245,12 @@ public:
             return;
         }
         if (num_bytes_ == 0 || !data_) return;
-        T *format_ptr = static_cast<typename std::add_pointer<T>::type>(
-                ts_.get_data_handle());
+        auto mem = make_memory_from_tensor(ts_);
+        T *data_ptr = mem.map_data<T>();
         for (size_t i = 0; i < vec.size(); ++i) {
-            format_ptr[i] = vec[i];
+            data_ptr[i] = vec[i];
         }
+        mem.unmap_data(reinterpret_cast<void *>(data_ptr));
     }
 
     static std::vector<dnnl::impl::graph::tensor_t> to_graph_tensor(

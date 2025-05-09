@@ -174,7 +174,9 @@ dnnl::stream make_dnnl_stream(
 
 dnnl::memory::desc make_dnnl_memory_desc(const logical_tensor_t &lt) {
     const logical_tensor_wrapper_t ltw(lt);
-    const auto dtype = static_cast<dnnl::memory::data_type>(ltw.data_type());
+    const auto dtype = ltw.data_type() == graph::data_type::boolean
+            ? data_type::u8
+            : static_cast<data_type>(ltw.data_type());
 
     if (ltw.is_opaque()) {
 #ifdef DNNL_GRAPH_LAYOUT_DEBUG

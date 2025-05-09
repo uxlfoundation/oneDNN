@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2021-2025 Arm Ltd. and affiliates
 *
@@ -80,6 +80,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_t)
         CPU_INSTANCE_AARCH64_ACL(acl_matmul_t)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_256>)
+        CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_128>)
         CPU_INSTANCE_AARCH64(jit_int8_matmul_t)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx_fp16>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx>)

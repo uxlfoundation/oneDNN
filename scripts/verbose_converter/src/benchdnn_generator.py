@@ -418,7 +418,18 @@ class BinaryConverter(AlgorithmMixin, MultiSourceMixin, Converter):
     @property
     def shapes(self):
         return self.entry.shapes.split(" ", 1)[0]
-
+    
+    @property
+    def dts(self):
+        src0, src1, *_, dst = self.entry.mds
+        return f"--sdt={src0.data_type}:{src1.data_type} --ddt={dst.data_type}"
+    @property
+    def tags(self):
+        src0, src1, *_, dst = self.entry.mds
+        src0_tag = maybe_make_any_tag(src0)
+        src1_tag = maybe_make_any_tag(src1)
+        dst_tag = maybe_make_any_tag(dst)
+        return f"--stag={src0_tag}:{src1_tag} --dtag={dst_tag}"
 
 class BRGEMMConverter(MultiDataTypeMixin, Converter):
     driver: str = "brgemm"

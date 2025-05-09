@@ -932,6 +932,8 @@ struct memory : public handle<dnnl_memory_t> {
         blocked = dnnl_blocked,
         /// Format kind for sparse tensors.
         sparse = dnnl_format_kind_sparse,
+        /// Format kind for host-side scalars.
+        host_side_scalar = dnnl_format_kind_host_side_scalar,
         /// A special format kind that indicates that tensor format is opaque.
         opaque = dnnl_format_kind_opaque,
     };
@@ -2946,6 +2948,23 @@ struct memory : public handle<dnnl_memory_t> {
                 error::wrap_c_api(status,
                         "could not create a memory descriptor for packed "
                         "sparse encoding");
+            return desc {md};
+        }
+
+        /// Constructs a memory descriptor describing a host-side
+        /// scalar to be directly passed as an argument to device-side
+        /// kernels. Intended to avoid memory transfer overhead on
+        /// primitive execution. The resulting descriptor cannot be
+        /// utilized to generate a memory object.
+        ///
+        /// @param adata_type Data type of the scalar.
+        /// @returns A memory descriptor for host-side scalar input.
+        static desc host_scalar(data_type adata_type) {
+            dnnl_memory_desc_t md = nullptr;
+            error::wrap_c_api(dnnl_memory_desc_create_host_side_scalar(
+                                      &md, convert_to_c(adata_type)),
+                    "could not create a memory descriptor describing host side "
+                    "scalar");
             return desc {md};
         }
 

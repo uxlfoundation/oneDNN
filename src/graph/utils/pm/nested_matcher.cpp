@@ -69,11 +69,18 @@ namespace utils {
 namespace pm {
 
 namespace {
-// check if an op's inputs are commutative
-bool has_commutative_inputs(op_t *op) {
+// check if an op has commutative inputs
+bool is_commutative_op(op_t *op) {
     const op_schema_t *opm
             = op_schema_registry_t::get_op_schema(op->get_kind());
-    return opm->get_commutative_inputs();
+    return opm->is_commutative_op();
+}
+
+// check if an op's specific inputs are commutative
+bool is_commutative_inputs(op_t *op, const size_t input0, const size_t input1) {
+    const op_schema_t *opm
+            = op_schema_registry_t::get_op_schema(op->get_kind());
+    return opm->is_commutative_inputs(input0, input1);
 }
 
 // fill local context in map when optional exists
@@ -208,6 +215,9 @@ bool node_inputs_matcher_t::match_commutative_inputs() {
                 ++op_input_offset) {
             if (verified_op_input_ports.find(op_input_offset)
                             == verified_op_input_ports.end()
+                    && (node_input_offset == op_input_offset
+                            || is_commutative_inputs(get_op(),
+                                    node_input_offset, op_input_offset))
                     && match_input_by_offset(
                             op_input_offset, node_input_offset)) {
                 verified_op_input_ports.insert(op_input_offset);
@@ -252,7 +262,7 @@ bool match_node_inputs(const binding_t &b, match_context_t *ctx,
     if (node_inputs_matcher.get_node()->get_inputs().size()
             == VARIADIC_INPUT_NUM) {
         matching_status = node_inputs_matcher.match_variadic_inputs();
-    } else if (!has_commutative_inputs(node_inputs_matcher.get_op())) {
+    } else if (!is_commutative_op(node_inputs_matcher.get_op())) {
         matching_status = node_inputs_matcher.match_non_commutative_inputs();
     } else {
         matching_status = node_inputs_matcher.match_commutative_inputs();
@@ -552,7 +562,8 @@ bool match_node(const binding_t &b, match_context_t *ctx,
                 __FILE__, __LINE__);
         return false;
     }
-    if (!has_commutative_inputs(b.bind_op) && b.bind_op_port != b.bind_port) {
+    if (b.bind_op_port != b.bind_port
+            && !is_commutative_inputs(b.bind_op, b.bind_op_port, b.bind_port)) {
         DEBUG(DEBUGINFO_PM,
                 "matching op & node: %s (%s) <=> %s, matching "
                 "failed \n",

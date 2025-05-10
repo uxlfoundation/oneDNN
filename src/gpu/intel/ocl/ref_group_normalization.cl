@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -52,11 +52,15 @@
  * defined by post operation type API
  *
  */
-KERNEL_ATTR
-__kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
-        __global AUX_DATA_T *mean, __global AUX_DATA_T *variance,
-        __global DST_DATA_T *dst, __global const AUX_DATA_T *scale,
-        __global const AUX_DATA_T *shift, __global const AUX_DATA_T *src_scale,
+NAMED_KERNEL_ATTR_SG0(DEFAULT)
+#if SUBGROUP_SIZE != 1
+__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE)))
+#endif
+__kernel void
+ref_gnorm_fwd(__global const SRC_DATA_T *src, __global AUX_DATA_T *mean,
+        __global AUX_DATA_T *variance, __global DST_DATA_T *dst,
+        __global const AUX_DATA_T *scale, __global const AUX_DATA_T *shift,
+        __global const AUX_DATA_T *src_scale,
         __global const AUX_DATA_T *dst_scale,
         const AUX_DATA_T eps POST_OP_ARGS) {
 
@@ -176,11 +180,15 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
  * @param [in]      eps             User defined constant
  *
  */
-KERNEL_ATTR
-__kernel void ref_gnorm_bwd(__global const SRC_DATA_T *src,
-        __global AUX_DATA_T *mean, __global AUX_DATA_T *variance,
-        __global const DST_DATA_T *diff_dst, __global const AUX_DATA_T *scale,
-        __global SRC_DATA_T *out_diff_src, __global AUX_DATA_T *out_diff_scale,
+NAMED_KERNEL_ATTR_SG0(DEFAULT)
+#if SUBGROUP_SIZE != 1
+__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE)))
+#endif
+__kernel void
+ref_gnorm_bwd(__global const SRC_DATA_T *src, __global AUX_DATA_T *mean,
+        __global AUX_DATA_T *variance, __global const DST_DATA_T *diff_dst,
+        __global const AUX_DATA_T *scale, __global SRC_DATA_T *out_diff_src,
+        __global AUX_DATA_T *out_diff_scale,
         __global AUX_DATA_T *out_diff_shift, const AUX_DATA_T eps) {
 
     // get parallel variables IDs

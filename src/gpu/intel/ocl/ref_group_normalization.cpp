@@ -92,6 +92,8 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     const auto *compute_engine
             = utils::downcast<compute::compute_engine_t *>(engine);
+    const auto *device_info = compute_engine->device_info();
+    if (device_info->mayiuse_sub_group(16)) subgroup_size = 16;
     dispatch = compute_engine->create_dispatch(src_md());
 
     dispatch.define_dim("BATCH", MB());
@@ -109,6 +111,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init_kernel_ctx(
             !attr()->scales_.has_default_values(DNNL_ARG_SRC));
     kernel_ctx.define_int("WITH_DST_SCALES",
             !attr()->scales_.has_default_values(DNNL_ARG_DST));
+    kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     init_kernel_ctx_common(kernel_ctx, this);
 
     // promote macros defined by parameters to OpenCL command line
@@ -178,6 +181,8 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
 
     const auto *compute_engine
             = utils::downcast<compute::compute_engine_t *>(engine);
+    const auto *device_info = compute_engine->device_info();
+    if (device_info->mayiuse_sub_group(16)) subgroup_size = 16;
     dispatch = compute_engine->create_dispatch(diff_src_md());
     // put parallelization dimension
     dispatch.define_dim("CHANNEL", C());
@@ -189,6 +194,7 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
 status_t ref_group_normalization_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
 
+    kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     init_kernel_ctx_common(kernel_ctx, this);
 
     // promote macros defined by parameters to OpenCL command line

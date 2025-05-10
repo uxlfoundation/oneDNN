@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ struct ref_group_normalization_fwd_t : public gpu_primitive_t {
 
         // kernel runtime nd_range
         compute::dispatch_t dispatch;
+        int subgroup_size = 1;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -83,6 +84,7 @@ struct ref_group_normalization_bwd_t : public gpu_primitive_t {
 
         // kernel runtime nd_range
         compute::dispatch_t dispatch;
+        int subgroup_size = 1;
     };
 
     status_t init(impl::engine_t *engine) override {

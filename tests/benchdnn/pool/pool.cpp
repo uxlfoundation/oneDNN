@@ -264,7 +264,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
+    if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
+
     const auto &ref_engine = get_cpu_engine();
+    const bool is_fwd_prim = is_fwd_prop_kind(query_prop_kind(query_pd(prim)));
 
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, DST});
@@ -294,14 +297,16 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_DIFF_DST:
                 SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
                 break;
-            case DNNL_ARG_WORKSPACE: {
-                const auto ws_dt
-                        = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
-                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
-                        ref_engine, /* prefill = */ false);
-                if (prb->dir & FLAG_FWD) SAFE(fill_ws(prb, mem, ref_mem), WARN);
+            case DNNL_ARG_WORKSPACE:
+                if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0
+                        && is_fwd_prim) {
+                    const auto ws_dt
+                            = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
+                    ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
+                            ref_engine, /* prefill = */ false);
+                    SAFE(fill_ws(prb, mem, ref_mem), WARN);
+                }
                 break;
-            }
             case DNNL_ARG_DST:
                 SAFE(!check_md_consistency_with_tag(mem.md_, prb->tag), WARN);
                 break;
@@ -362,6 +367,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -377,7 +384,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[0], args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb, FLAG_FWD), args, ref_args,
-            setup_cmp, res);
+            setup_cmp, res, FLAG_FWD);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb, FLAG_FWD), args, prb->attr,
                  prb->inplace, res),
             WARN);
@@ -396,7 +403,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[1], args, res), WARN);
 
         check_correctness(prb, get_kinds_to_check(prb, FLAG_BWD), args,
-                ref_args, setup_cmp, res);
+                ref_args, setup_cmp, res, FLAG_BWD);
         SAFE(check_bitwise(prim, get_kinds_to_check(prb, FLAG_BWD), args,
                      prb->attr, prb->inplace, res),
                 WARN);

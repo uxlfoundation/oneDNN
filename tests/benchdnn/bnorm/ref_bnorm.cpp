@@ -29,10 +29,6 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &sh = args.find(DNNL_ARG_SHIFT);
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &src_hat = args.find(DNNL_ARG_DST_1);
-
-    uint8_t *ws_ptr = (uint8_t *)ws;
-    float *dst_ptr = (float *)dst;
 
     const int64_t MB = prb->mb;
     const int64_t C = prb->ic;
@@ -63,16 +59,20 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             float res = gamma * x_hat + beta;
             if (fuse_add_relu) res += src_add.get_f32_elem(off);
             if (fuse_relu && res < 0) res = 0;
-            if (need_ws) ws_ptr[off] = !!res;
+            if (need_ws) { ws.set_elem(off, !!res); }
             maybe_post_ops(attr, res);
-            dst_ptr[off] = res;
-            if (prb->dir & FLAG_BWD) src_hat.set_f32_elem(off, x_hat);
+            // Write to dst only for forward, backward will stash necessary
+            // values in src memory.
+            if (prb->dir & FLAG_FWD) dst.set_f32_elem(off, res);
+            // Write the update value back in `SRC` to save on computations on
+            // backward. `src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)`
+            if (prb->dir & FLAG_BWD) src.set_f32_elem(off, x_hat);
         }
     });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_hat = args.find(DNNL_ARG_DST_1);
+    const dnn_mem_t &src_hat = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &var = args.find(DNNL_ARG_VARIANCE);
     const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
     const dnn_mem_t &sc = args.find(DNNL_ARG_SCALE);
@@ -134,12 +134,14 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     });
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     // Running fwd ref on bwd to collect src_hat (used instead of src + mean)
     // and ws, if fuse_relu flag is requested.
-    compute_ref_fwd(prb, args);
-    if (prb->dir & FLAG_BWD) compute_ref_bwd(prb, args);
+    if (dir & FLAG_FWD)
+        compute_ref_fwd(prb, args);
+    else
+        compute_ref_bwd(prb, args);
 }
 
 } // namespace bnorm

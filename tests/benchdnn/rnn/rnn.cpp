@@ -525,10 +525,10 @@ int fill_bias(const prb_t &prb, rnn_data_kind_t kind, dnn_mem_t &mem_dt,
     return OK;
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     const prb_t &prb_ = *prb;
-    if (prb_.prop != dnnl_backward)
+    if (prop2prop_kind(dir) != dnnl_backward)
         compute_ref_fwd(prb_, args);
     else
         compute_ref_bwd(prb_, args);
@@ -1083,6 +1083,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
+    if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
+
     const auto &prb = *prb_;
     const auto &ref_engine = get_cpu_engine();
 
@@ -1270,6 +1272,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t &prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = prb.prop != dnnl_backward ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -1284,7 +1288,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(v_prim[0], args, res), WARN);
 
     check_correctness(&prb, get_kinds_to_check(&prb, FLAG_FWD), args, ref_args,
-            setup_cmp, res);
+            setup_cmp, res, FLAG_FWD);
     SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_FWD), args, prb.attr,
                  prb.inplace, res),
             WARN);
@@ -1303,7 +1307,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[1], args, res), WARN);
 
         check_correctness(&prb, get_kinds_to_check(&prb, FLAG_BWD), args,
-                ref_args, setup_cmp, res);
+                ref_args, setup_cmp, res, prb.dir);
         SAFE(check_bitwise(prim, get_kinds_to_check(&prb, FLAG_BWD), args,
                      prb.attr, prb.inplace, res),
                 WARN);

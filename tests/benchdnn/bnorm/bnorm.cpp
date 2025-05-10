@@ -613,6 +613,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
+    if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
+
     // TODO: this function still allocates the full memory print needed to fill
     // the data and each argument can't be destroyed right away since filling
     // requires all of them at a time.
@@ -638,16 +640,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_DST:
-                if (prb->dir & FLAG_BWD) {
-                    // Stash for backward which is used in reference code:
-                    //     src_hat[i] = (src[i] - mean) / sqrt(var + prb->eps)
-                    ref_mem_map.emplace(DNNL_ARG_DST_1,
-                            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                                    /* prefill = */ false));
-                }
-                break;
             case DNNL_ARG_DIFF_SRC: break; // Skip on backward.
-            case DNNL_ARG_DST_1: break; // Skip on backward.
             case DNNL_ARG_MEAN:
             case DNNL_ARG_VARIANCE:
                 if (prb->dir & FLAG_INF) {
@@ -656,11 +649,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             tag::abx, ref_engine, /* prefill = */ false);
                 }
                 break;
-            case DNNL_ARG_WORKSPACE: {
-                ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, dnnl_u8, tag::abx,
-                        ref_engine, /* prefill = */ false);
-                break;
-            }
             default: break;
         }
     }
@@ -678,7 +666,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     }
 
     // Reference code uses different kind of workspace. Adjust to ref needs.
-    if (ref_mem_map.count(DNNL_ARG_WORKSPACE)) {
+    // Insert a reference workspace if it comes non-empty from the library side.
+    if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0 && is_fwd_prim) {
         const auto &src_md = ref_mem_map[DNNL_ARG_SRC].md_;
         ref_mem_map[DNNL_ARG_WORKSPACE] = dnn_mem_t(
                 src_md, dnnl_u8, tag::abx, ref_engine, /* prefill = */ false);
@@ -735,6 +724,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -749,7 +740,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     SAFE(execute_and_wait(v_prim[0], args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb, FLAG_FWD), args, ref_args,
-            setup_cmp, res);
+            setup_cmp, res, FLAG_FWD);
     SAFE(check_bitwise(prim, get_kinds_to_check(prb, FLAG_FWD), args, prb->attr,
                  prb->inplace, res),
             WARN);
@@ -770,7 +761,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         SAFE(execute_and_wait(v_prim[1], args, res), WARN);
 
         check_correctness(prb, get_kinds_to_check(prb, FLAG_BWD), args,
-                ref_args, setup_cmp, res);
+                ref_args, setup_cmp, res, FLAG_BWD);
         SAFE(check_bitwise(prim, get_kinds_to_check(prb, FLAG_BWD), args,
                      prb->attr, prb->inplace, res),
                 WARN);

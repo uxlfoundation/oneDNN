@@ -603,10 +603,18 @@ int init_prim(const thr_ctx_t &thr_ctx,
 template <typename setup_cmp_func_t, typename prb_t>
 void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         const args_t &args, const args_t &ref_args,
-        const setup_cmp_func_t &setup_cmp_func, res_t *res,
+        const setup_cmp_func_t &setup_cmp_func, res_t *res, dir_t dir,
         dnnl_primitive_t prim_ref = nullptr) {
     // Fast exit for any modes but correctness.
     if (!has_bench_mode_bit(mode_bit_t::corr)) return;
+
+    // Report prim_ref run status for easier distinguishing between GPU failures
+    // and ref CPU failures.
+    if (prim_ref) {
+        BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
+    }
+
+    TIME_REF(compute_ref(prb, dir, ref_args, prim_ref));
 
     // Forward-for-backward service primitives define `kinds` as empty to skip
     // validation. This is to avoid extra checks on higher level.
@@ -616,14 +624,6 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         TIME_COMPARE(check_zero_padding(args.dnn_mem(i), args.arg(i), res));
         TIME_COMPARE(check_buffer_overwrite(args.dnn_mem(i), args.arg(i), res));
     }
-
-    // Report prim_ref run status for easier distinguishing between GPU failures
-    // and ref CPU failures.
-    if (prim_ref) {
-        BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
-    }
-
-    TIME_REF(compute_ref(prb, ref_args, prim_ref));
 
     for (const auto &kind : kinds) {
         compare::compare_t cmp;
@@ -729,7 +729,13 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     // Backward case when forward is required will have mem_map not empty.
     // Remove all memories that are not in `supported_exec_args` to save on
     // initializing reference memories.
+    //
+    // Note: this code is pretty similar to the one in `erase_unused_args` but
+    // with a slight change where the key is checked and bitwise correction.
     if (!mem_map.empty()) {
+        // Collection of keys is required as evicting members along the way
+        // invalidates references and makes traversing over the object
+        // undefined behavior.
         std::vector<int> keys_to_erase;
         for (const auto &pair : mem_map) {
             const auto key = pair.first;
@@ -746,8 +752,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             bool add_key_to_erase = !key_found_in_exec_args && !bitwise_stash;
             if (add_key_to_erase) keys_to_erase.push_back(key);
         }
-        for (const auto &k : keys_to_erase)
-            mem_map.erase(mem_map.find(k));
+        for (const auto &k : keys_to_erase) {
+            mem_map.erase(k);
+        }
     }
 
     auto const_pd = query_pd(prim);
@@ -1063,6 +1070,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
     }
 }
+
+void erase_unused_args(
+        dnn_mem_map_t &ref_mem_map, const dnn_mem_map_t &mem_map);
 
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,

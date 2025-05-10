@@ -592,6 +592,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
+    set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
+
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
@@ -612,7 +614,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         dst_dt.md_->extra = empty_extra;
 
         // Validate main reorder part.
-        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res);
+        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prb->dir);
 
         // Restore extra for compensation comparison and performance mode.
         dst_dt.md_->extra = orig_dst_extra;

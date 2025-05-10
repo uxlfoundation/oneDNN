@@ -509,8 +509,8 @@ void compute_ref_bwd_w(
     }
 }
 
-void compute_ref(
-        const prb_t *prb, const args_t &args, dnnl_primitive_t prim_ref) {
+void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+        dnnl_primitive_t prim_ref) {
     // Update prb descriptor to re-use convolution reference.
     prb_t prb_tr((desc_t)*prb, prb->dir, prb->dt, prb->bia_dt(), prb->stag,
             prb->wtag, prb->dtag, prb->alg, prb->mb, prb->attr, prb->ctx_init,
@@ -520,11 +520,11 @@ void compute_ref(
     std::swap(prb_tr.id, prb_tr.od);
     std::swap(prb_tr.iw, prb_tr.ow);
 
-    if (prb->dir & FLAG_FWD)
+    if (dir & FLAG_FWD)
         compute_ref_fwd(&prb_tr, args, prim_ref);
-    else if (prb->dir == BWD_D)
+    else if (dir == BWD_D)
         compute_ref_bwd_d(&prb_tr, args, prim_ref);
-    else if (prb->dir & FLAG_BWD && prb->dir & FLAG_WEI)
+    else if ((dir & FLAG_BWD) && (dir & FLAG_WEI))
         compute_ref_bwd_w(&prb_tr, args, prim_ref);
 }
 

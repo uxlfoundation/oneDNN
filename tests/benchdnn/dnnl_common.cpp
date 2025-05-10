@@ -1099,6 +1099,12 @@ int get_gpu_cache_size(size_t &cache_size) {
 // If no, indicate that the system won't make it and drop `prim_ref` falling
 // back to stock reference.
 int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
+    // Skip the check if it is disabled.
+    if (!mem_check) return OK;
+
+    // Skip the check if the test object won't be executed.
+    if (!has_bench_mode_bit(mode_bit_t::exec)) return OK;
+
     static size_t cpu_device_capacity = get_cpu_ram_size();
     static size_t gpu_device_capacity = 0;
     static size_t gpu_max_alloc_capacity = 0;
@@ -1215,10 +1221,10 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     bool fits_cpu_ram = cpu_and_device_size
             <= (is_cpu() ? benchdnn_cpu_limit : benchdnn_combined_limit);
 
-    set_zmalloc_max_expected_size(
-            is_cpu() ? cpu_and_device_size : total_size_cpu);
-    // Check combined size against CPU capacity as the simpler method to account
-    // for integrated devices and mapping/unmapping memory.
+    // Save the expected value to set at `doit`, otherwise, the check doesn't
+    // work correctly. See `zmalloc_expected_size` comment.
+    res->mem_size_args.zmalloc_expected_size
+            = is_cpu() ? cpu_and_device_size : total_size_cpu;
 
     if (!fits_cpu_ram) {
         std::string prim_ref_msg
@@ -1703,6 +1709,31 @@ dnnl_data_type_t deduce_cfg_data_type(
     }
 
     return dt_;
+}
+
+// The function removes arguments that are unnecessary. Such arguments may come
+// from the forward-for-backward primitive running. The library map removes them
+// when allocating memories for the backward primitive and the reference map
+// should do the same.
+void erase_unused_args(
+        dnn_mem_map_t &ref_mem_map, const dnn_mem_map_t &mem_map) {
+    // Collection of keys is required as evicting members along the way
+    // invalidates references in the modified object and makes further
+    // traversing over the object undefined.
+    std::vector<int> keys_to_erase;
+    keys_to_erase.reserve(ref_mem_map.size());
+
+    for (const auto &pair : ref_mem_map) {
+        const auto key = pair.first;
+        if (mem_map.find(key) == mem_map.end()) {
+            // Correspondent argument is not found in a library mem map.
+            // It means it should be removed.
+            keys_to_erase.push_back(key);
+        }
+    }
+    for (const auto &k : keys_to_erase) {
+        ref_mem_map.erase(k);
+    }
 }
 
 // This function handles cases when optimized CPU primitive is used as a

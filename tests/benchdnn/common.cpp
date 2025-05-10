@@ -144,9 +144,14 @@ void parse_result(res_t &res, const char *pstr) {
                 + " total:" + std::to_string(res.total) + ")";
     }
 
-    const auto &tct = res.timer_map.get_timer(timer::names::test_case_timer);
+    using bt = timer::timer_t;
+    using namespace timer::names;
+
+    const auto &tct = res.timer_map.get_timer(test_case_timer);
     // Round to integer for nicer input.
-    const int64_t tct_ms = static_cast<int64_t>(tct.ms());
+    // Use `sum` mode because it consists of two separate parts - creation and
+    // execution.
+    const int64_t tct_ms = static_cast<int64_t>(tct.ms(bt::mode_t::sum));
     std::string tct_str = " (" + std::to_string(tct_ms) + " ms)";
 
     // This is the common format of the repro line ([] - for optional entries):
@@ -163,9 +168,6 @@ void parse_result(res_t &res, const char *pstr) {
     bs.tests++;
     assert(bs.tests
             == bs.passed + bs.skipped + bs.mistrusted + bs.failed + bs.listed);
-
-    using bt = timer::timer_t;
-    using namespace timer::names;
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         const auto &t = res.timer_map.perf_timer();

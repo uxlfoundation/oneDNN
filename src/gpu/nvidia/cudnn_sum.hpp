@@ -18,7 +18,7 @@
 #ifndef GPU_NVIDIA_CUDNN_SUM_HPP
 #define GPU_NVIDIA_CUDNN_SUM_HPP
 
-#include "gpu/generic/ref_sum.hpp"
+#include "gpu/generic/sycl/ref_sum.hpp"
 
 #include "gpu/nvidia/engine.hpp"
 #include "gpu/nvidia/sycl_cuda_utils.hpp"
@@ -28,9 +28,9 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
-struct cudnn_ref_sum_t : public dnnl::impl::gpu::generic::ref_sum_t {
+struct cudnn_ref_sum_t : public dnnl::impl::gpu::generic::sycl::ref_sum_t {
 
-    using base_t = dnnl::impl::gpu::generic::ref_sum_t;
+    using base_t = dnnl::impl::gpu::generic::sycl::ref_sum_t;
     using base_t::base_t;
     using base_pd_t = base_t::pd_t;
 

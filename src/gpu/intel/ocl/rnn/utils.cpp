@@ -183,12 +183,9 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
 
         // For large enough k dimension, parallelization in external gemm
         // kernels is more performant.
-        int eu_count = device_info.eu_count();
-        int ideal_k_block = math::lcm(
-                (int)eu_count, (int)device_info.min_subgroup_size());
-        int ideal_k_limit = math::lcm((int)ideal_k_block, (int)rnn.sic);
-        dim_t k_limit = tail_dhc ? 50 : 160;
-        k_limit = tail_dhc ? 50 : ideal_k_limit;
+        int ideal_k_limit
+                = math::lcm((int)device_info.min_subgroup_size(), (int)rnn.sic);
+        dim_t k_limit = tail_dhc ? 50 : nstl::min(256, ideal_k_limit);
 
         // The fused gemm implementation assumes the dst channel dimension is
         // dense

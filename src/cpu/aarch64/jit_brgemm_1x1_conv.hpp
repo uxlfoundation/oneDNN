@@ -60,11 +60,6 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
     protected:
-        bool arg_scales_ok() const {
-            std::vector<int> supported_args
-                    = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-            return attr_scales_ok(supported_args);
-        }
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
 

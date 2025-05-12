@@ -39,39 +39,21 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-namespace {
-template <typename gates_t, typename acc_t>
-// The loop body needs to be put in a function as some versions of icc have
-// an issue with lambdas & macros inside omp simd loops
-inline void body_loop(int i, int k, const gates_t *ws_gates, acc_t *diff_bias,
-        const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position) {
-    if (rnn.diff_weights_overwrite && (cell_position & rnn_utils::last_iter))
-        diff_bias[i * rnn.dhc + k] = 0.0f;
-    for (int j = 0; j < rnn.mb; j++)
-        diff_bias[i * rnn.dhc + k]
-                += ws_gates[j * rnn.scratch_gates_ld + i * rnn.dhc + k];
-}
-} // namespace
-
 template <typename gates_t, typename acc_t>
 void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, const gates_t *ws_gates_,
         acc_t *diff_bias_) {
-
     // @todo block k on simd-width to enable vectorization in
     // parallel_nd path
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP && _OPENMP >= 201307 \
-        && (!defined(__INTEL_COMPILER) || __INTEL_COMPILER < 1910)
-#pragma omp parallel for simd collapse(2)
-    for (int i = 0; i < rnn.n_gates; i++)
-        for (int k = 0; k < rnn.dhc; k++)
-            body_loop(i, k, ws_gates_, diff_bias_, rnn, cell_position);
-#else
     parallel_nd(rnn.n_gates, rnn.dhc, [&](dim_t i, dim_t k) {
-        body_loop(i, k, ws_gates_, diff_bias_, rnn, cell_position);
+        const dim_t offset = i * rnn.dhc + k;
+        if (rnn.diff_weights_overwrite
+                && (cell_position & rnn_utils::last_iter))
+            diff_bias_[offset] = 0.0f;
+        PRAGMA_OMP_SIMD(reduction(+ : diff_bias_[offset]))
+        for (int j = 0; j < rnn.mb; j++)
+            diff_bias_[offset] += ws_gates_[j * rnn.scratch_gates_ld + offset];
     });
-#endif
 }
 
 template <impl::data_type_t src_type, impl::data_type_t weights_type,

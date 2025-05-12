@@ -51,18 +51,20 @@ void binary_example(dnnl::engine::kind engine_kind) {
     dnnl::stream engine_stream(engine);
 
     // Tensor dimensions.
-    const memory::dim N = 3, // batch size
-            IC = 3, // channels
-            IH = 150, // tensor height
-            IW = 150; // tensor width
+    const memory::dim N = 1, // batch size
+            IC = 12, // channels
+            IH = 128, // tensor height
+            IW = 128; // tensor width
 
     // Source (src_0 and src_1) and destination (dst) tensors dimensions.
-    memory::dims src_0_dims = {N, IC, IH, IW};
-    memory::dims src_1_dims = {N, IC, IH, 1};
+    memory::dims src_0_dims = {1, 1, 1, 1};
+    memory::dims src_1_dims = {N, IC, IH, IW};
+    memory::dims src_2_dims = {1, 1, 1, IW};
 
     // Allocate buffers.
     std::vector<float> src_0_data(product(src_0_dims));
     std::vector<float> src_1_data(product(src_1_dims));
+    std::vector<int8_t> src_2_data(product(src_2_dims));
 
     // Initialize src_0 and src_1 (src).
     std::generate(src_0_data.begin(), src_0_data.end(), []() {
@@ -73,34 +75,34 @@ void binary_example(dnnl::engine::kind engine_kind) {
         static int i = 0;
         return std::sin(i++ * 2.f);
     });
+    for (size_t idx = 0; idx < src_2_data.size(); ++idx) {
+        src_2_data[idx] = idx % 2;
+    }
 
     // Create src and dst memory descriptors.
     auto src_0_md = memory::desc(
             src_0_dims, memory::data_type::f32, memory::format_tag::nchw);
     auto src_1_md = memory::desc(
             src_1_dims, memory::data_type::f32, memory::format_tag::nchw);
+    auto src_2_md = memory::desc(
+            src_2_dims, memory::data_type::s8, memory::format_tag::nchw);
     auto dst_md = memory::desc(
-            src_0_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_1_dims, memory::data_type::f32, memory::format_tag::nchw);
 
     // Create src memory objects.
     auto src_0_mem = memory(src_0_md, engine);
     auto src_1_mem = memory(src_1_md, engine);
+    auto src_2_mem = memory(src_2_md, engine);
+    auto dst_mem = memory(dst_md, engine);
 
     // Write data to memory object's handle.
     write_to_dnnl_memory(src_0_data.data(), src_0_mem);
     write_to_dnnl_memory(src_1_data.data(), src_1_mem);
-
-    // Create primitive post-ops (ReLU).
-    const float alpha = 0.f;
-    const float beta = 0.f;
-    post_ops binary_ops;
-    binary_ops.append_eltwise(algorithm::eltwise_relu, alpha, beta);
-    primitive_attr binary_attr;
-    binary_attr.set_post_ops(binary_ops);
+    write_to_dnnl_memory(src_2_data.data(), src_2_mem);
 
     // Create primitive descriptor.
-    auto binary_pd = binary::primitive_desc(engine, algorithm::binary_mul,
-            src_0_md, src_1_md, dst_md, binary_attr);
+    auto binary_pd = binary::primitive_desc(engine, algorithm::binary_select,
+            src_0_md, src_1_md, src_2_md, dst_md);
 
     // Create the primitive.
     auto binary_prim = binary(binary_pd);
@@ -109,7 +111,8 @@ void binary_example(dnnl::engine::kind engine_kind) {
     std::unordered_map<int, memory> binary_args;
     binary_args.insert({DNNL_ARG_SRC_0, src_0_mem});
     binary_args.insert({DNNL_ARG_SRC_1, src_1_mem});
-    binary_args.insert({DNNL_ARG_DST, src_0_mem});
+    binary_args.insert({DNNL_ARG_SRC_2, src_2_mem});
+    binary_args.insert({DNNL_ARG_DST, dst_mem});
 
     // Primitive execution: binary with ReLU.
     binary_prim.execute(engine_stream, binary_args);
@@ -118,7 +121,7 @@ void binary_example(dnnl::engine::kind engine_kind) {
     engine_stream.wait();
 
     // Read data from memory object's handle.
-    read_from_dnnl_memory(src_0_data.data(), src_0_mem);
+    //     read_from_dnnl_memory(src_0_data.data(), dst_mem);
 }
 
 int main(int argc, char **argv) {

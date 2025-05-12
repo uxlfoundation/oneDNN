@@ -35,6 +35,50 @@
 #define UNUSED(x) ((void)(x))
 #endif
 
+#include <cmath>
+#include <vector>
+#include <type_traits>
+
+template <typename T>
+typename std::enable_if<std::is_floating_point<T>::value, bool>::type allclose(
+        const std::vector<T> &a, const std::vector<T> &b, T rtol = T(1e-5),
+        T atol = T(1e-8)) {
+    if (a.size() != b.size()) return false;
+
+    for (size_t i = 0; i < a.size(); ++i) {
+        // Handle NaN cases
+        if (std::isnan(a[i]) || std::isnan(b[i])) return false;
+
+        T absolute_diff = std::abs(a[i] - b[i]);
+        T relative_tolerance = rtol * std::abs(b[i]);
+
+        if (absolute_diff > atol + relative_tolerance) return false;
+    }
+    return true;
+}
+
+template <typename T>
+bool allclose(const T *a, const T *b, size_t len, T rtol = T(1e-5),
+        T atol = T(1e-8)) {
+    for (size_t i = 0; i < len; ++i) {
+        if (std::isnan(a[i]) || std::isnan(b[i])) return false;
+        T absolute_diff = std::abs(a[i] - b[i]);
+        if (absolute_diff > atol + rtol * std::abs(b[i])) return false;
+    }
+    return true;
+}
+
+//using ltw = dnnl::impl::graph::logical_tensor_wrapper_t;
+template <typename T>
+std::vector<T> as_vec_type(dnnl::graph::tensor ts_, size_t volume) {
+    const auto dptr = static_cast<typename std::add_pointer<T>::type>(
+            ts_.get_data_handle());
+    if (!dptr) return {};
+    //auto num_bytes_ = ltw(ts_.get_logical_tensor()).size();
+    //size_t volume = (num_bytes_ + sizeof(T) - 1) / sizeof(T);
+    return {dptr, dptr + volume};
+}
+
 /// Set any layout according to the connection relationship of partitions
 ///
 /// @param partitions a list of partitions

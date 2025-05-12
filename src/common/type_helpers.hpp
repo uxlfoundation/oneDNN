@@ -137,6 +137,10 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
     }
 }
 
+inline size_t data_type_bits(data_type_t data_type) {
+    return elements_to_bytes(data_type, 8);
+}
+
 template <typename T>
 inline T min_value(data_type_t data_type) {
     using namespace data_type;

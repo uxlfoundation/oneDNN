@@ -120,11 +120,10 @@ std::string print_to_string(const ::testing::TestParamInfo<sdpa_dims_t> &info) {
     return ss.str();
 }
 
-std::string print_table_header(const sdpa_dims_t &p) {
-    std::stringstream ss;
-    ss << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | Vdt |  time "
-          "(us) | BW eff/actual (Gbps) | FLOPs (GFLOPs) |";
-    return ss.str();
+void print_table_header() {
+    std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | Vdt | "
+                 "mask | quant |  time (us) | BW eff/actual (Gbps) | "
+                 "gemm/total FLOPs (GFLOPs) |\n";
 }
 
 std::string print_row(const sdpa_dims_t &p) {
@@ -1393,8 +1392,68 @@ std::vector<std::chrono::microseconds> timeit(
     return times;
 }
 
-GPU_TEST_P(sdpa_test_t, DISABLED_perf) {
-    memory::data_type scale_dt = memory::data_type::f16;
+template <typename O, typename I>
+O magnitude_cast(I input) {
+    using ratio = std::ratio_divide<typename I::ratio, typename O::ratio>;
+    return input.value * ratio::num / ratio::den;
+}
+
+template <class Unit = std::ratio<1>>
+class byte_t {
+public:
+    using ratio = Unit;
+    float value;
+    byte_t(float v) : value(v) {}
+
+    byte_t(memory::data_type dt)
+        : value(dnnl_data_type_size((dnnl_data_type_t)dt)
+                / ((dt == mdt::s4 || dt == mdt::u4) ? 2 : 1)) {}
+
+    template <typename OR>
+    byte_t(byte_t<OR> o) : value(magnitude_cast<Unit>(o).value) {}
+
+    operator float() { return value; }
+};
+
+template <class Unit = std::ratio<1>>
+class num_ops_t {
+public:
+    using ratio = Unit;
+    float value;
+    num_ops_t(float v) : value(v) {}
+
+    template <typename OR>
+    num_ops_t(num_ops_t<OR> o) : value(magnitude_cast<Unit>(o).value) {}
+
+    operator float() { return value; }
+};
+
+using kilobyte = byte_t<std::ratio<1024>>;
+using megabyte = byte_t<std::ratio<1024 * 1024, 1>>;
+using gigabyte = byte_t<std::ratio<1024 * 1024 * 1024, 1>>;
+
+using kiloops = num_ops_t<std::ratio<1000>>;
+using megaops = num_ops_t<std::ratio<1000 * 1000, 1>>;
+using gigaops = num_ops_t<std::ratio<1000 * 1000 * 1000, 1>>;
+
+template <typename BYTES, typename TIME>
+float bandwidth(BYTES bytes, TIME duration) {
+    return (bytes.value
+            / std::chrono::duration_cast<std::chrono::duration<float>>(duration)
+                      .count());
+}
+
+template <typename OPS, typename TIME>
+float compute(OPS ops, TIME duration) {
+    return (ops.value
+            / std::chrono::duration_cast<std::chrono::duration<float>>(duration)
+                      .count());
+}
+
+static std::once_flag header_flag;
+
+GPU_TEST_P(sdpa_test_t, perf) {
+    memory::data_type scale_dt = t.m_query_test.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
     bool invert_scale = true;
 
@@ -1498,18 +1557,85 @@ GPU_TEST_P(sdpa_test_t, DISABLED_perf) {
     if (scale_dt != mdt::undef) { f16_args[DNNL_ARG_SCALE] = t.m_scale; }
     if (mask_ptr) { f16_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-    auto loop_sdpa_f16 = [&] { sdpaf16_p.execute(strm, f16_args); };
+    //auto loop_sdpa_f16 = [&] { sdpaf16_p.execute(strm, f16_args); };
 
-    int iterations = 100;
+    int iterations = 20;
     auto quantized_time = timeit(loop_quantized, strm, iterations);
-    auto sdpa_f16_time = timeit(loop_sdpa_f16, strm, iterations);
+    //auto sdpa_f16_time = timeit(loop_sdpa_f16, strm, iterations);
 
-    auto min_time = [](const std::vector<std::chrono::microseconds> &a) {
+    using namespace std::chrono;
+    auto min_time = [](const std::vector<microseconds> &a) {
         return *std::min_element(a.begin(), a.end());
     };
 
-    std::cout << print_row(p) << "|"
-              << min_time(quantized_time).count() / float(iterations) << "|"
-              << min_time(sdpa_f16_time).count() / float(iterations) << "|"
-              << std::endl;
+    auto qtime = min_time(quantized_time) / iterations;
+
+    // total number of bytes of all tensors
+    byte_t<> total_bytes = t.m_query.get_desc().get_size()
+
+            + key_dequantized.get_desc().get_size() / 2
+            + t.m_key_scales.get_desc().get_size()
+            + t.m_key_zp.get_desc().get_size()
+
+            + value_dequantized.get_desc().get_size() / 2
+            + t.m_value_scales.get_desc().get_size()
+            + t.m_value_zp.get_desc().get_size()
+
+            + t.m_output.get_desc().get_size()
+            + (mask_ptr ? t.m_mask.get_desc().get_size() : 0);
+
+    auto mask_slice_elements = 0;
+    switch (p.mask) {
+        case mask_type::twoD:
+            mask_slice_elements = p.seq_len * p.query_num;
+            break;
+        case mask_type::oneD: mask_slice_elements = p.seq_len; break;
+        default: mask_slice_elements = 0; break;
+    }
+
+    size_t kv_slice_tensor_elements = (p.head_size * p.seq_len);
+    size_t batch_elements = p.mb * std::max(p.head_num, p.kv_head_num);
+
+    // Total number of bytes read by the micro_sdpa kernel. This calculation
+    // is different from total_bytes because it expands tensors like masks
+    // to match the batches of kvq tensors. Typically this is bigger than
+    // total bytes.
+    byte_t<> total_bytes_effective
+            = (batch_elements
+                      * (byte_t<>(p.kdt) * kv_slice_tensor_elements
+                              + byte_t<>(p.vdt) * kv_slice_tensor_elements
+                              + byte_t<>(p.qdt)
+                                      * (2 * p.head_size * p.query_num)
+                              + (mask_ptr ? byte_t<>(p.mskdt)
+                                                      * mask_slice_elements
+                                          : 0)))
+            + t.m_key_scales.get_desc().get_size()
+            + t.m_key_zp.get_desc().get_size()
+            + t.m_value_scales.get_desc().get_size()
+            + t.m_value_zp.get_desc().get_size();
+
+    // All flops even for causal mask cases
+    num_ops_t<> total_flops = std::max<size_t>(p.kv_head_num, p.head_num) * p.mb
+            * (2.f * (2.f * p.head_size * p.seq_len * p.query_num)
+                    + (scale_dt != mdt::undef ? (p.seq_len * p.query_num) : 0)
+                    + (p.mask != mask_type::no_mask ? (p.seq_len * p.query_num)
+                                                    : 0)
+                    + (5 * p.seq_len * p.query_num));
+
+    // Ignores softmax/mask/scale and does not count masked out values in causal mask cases
+    num_ops_t<> flash_flops
+            = (4.f * p.mb * p.head_num * p.seq_len * p.query_num * p.head_size)
+            / ((p.mask == mask_type::causal_tl
+                       || p.mask == mask_type::causal_br)
+                            ? 2.f
+                            : 1.f);
+
+    std::call_once(header_flag, print_table_header);
+    std::cout << print_row(p) << "|" << qtime.count() << "|"
+              << bandwidth(
+                         magnitude_cast<gigabyte>(total_bytes_effective), qtime)
+              << "/" << bandwidth(magnitude_cast<gigabyte>(total_bytes), qtime)
+              << "|" << compute(magnitude_cast<gigaops>(flash_flops), qtime)
+              << "/" << compute(magnitude_cast<gigaops>(total_flops), qtime)
+              << "|" << std::endl;
 }

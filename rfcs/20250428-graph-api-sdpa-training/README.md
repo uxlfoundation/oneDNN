@@ -178,7 +178,7 @@ This decomposition is based on the following formulas:
 > $$
 
 Both $P$ and $Stats$ are outputs of the SoftMax operation. The $Stats$ are saved
-and used during backward propagation to reconstruct $P$`$.
+and used during backward propagation to reconstruct $P$.
 
 For dropout, the cuDNN Graph API supports Philox-generated dropout. A Philox
 random number generator (RNG) is used to create a random dropout mask, as

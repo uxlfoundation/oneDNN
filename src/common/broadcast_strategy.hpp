@@ -37,6 +37,7 @@ enum class broadcasting_strategy_t {
     per_oc_d, // [a, b, c, d] -> [1, b, c, 1]; [n, g, oc/g, sp] --> [1, g, oc/g, 1] specific case for ncsp matmul reduction.
     per_mb_spatial, // [n, 1, d, h, w] // Broadcast only channel
     per_mb_w, // [n, 1, 1, 1, w] // Broadcast per batch and width
+    per_mb_oc,
     per_w, // [1, 1, 1, 1, w] // Broadcast per width
     shared_axes, // [n, 1, d, h, 1] // General case broadcast (any combination)
     batch, // [1, c, d, h, w] // Broadcast only batch

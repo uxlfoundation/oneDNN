@@ -833,6 +833,7 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
         const int min_N_blk = !bgmmc.is_runtime_N && low_parallelism
                         && is_amx_xf16 && !bm_conf_utils.check_n_blk_fixed()
                         && bgmmc.N_blk > 32 && !runtime_dims
+                        && !bgmmc.transposed_B // Transposed copy B kernel doesn't support adjusting N_blk
                 ? 32
                 : bgmmc.N_blk;
         const int desired_M_chunk = bgmmc.is_runtime_M

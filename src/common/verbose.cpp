@@ -144,6 +144,12 @@ void print_header() noexcept {
                     "info,experimental functionality for logging is enabled\n");
 #endif
 
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+        verbose_printf(
+                "info,experimental tracking functionality for asynchronous "
+                "verbose mode is enabled\n");
+#endif
+
 #ifdef ONEDNN_BUILD_GRAPH
         verbose_printf(
                 "graph,info,template:%soperation,engine,partition_id,"

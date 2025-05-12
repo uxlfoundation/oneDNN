@@ -2199,82 +2199,67 @@ typedef enum {
 
 /// Flags for normalization primitives.
 typedef enum {
-    /// Use no normalization flags
+    /// Use no normalization flags. If specified, the library computes mean and
+    /// variance on forward propagation for training and inference, outputs
+    /// them on forward propagation for training, and computes the respective
+    /// derivatives on backward propagation.
     ///
-    /// If specified
-    ///  - on forward training propagation mean and variance are computed and
-    ///    stored as output
-    ///  - on backward propagation compute full derivative wrt data
-    ///  - on backward propagation prop_kind == #dnnl_backward_data has the same
-    ///    behavior as prop_kind == #dnnl_backward
+    /// @note
+    ///     Backward propagation of type prop_kind == #dnnl_backward_data has
+    ///     the same behavior as prop_kind == #dnnl_backward.
     dnnl_normalization_flags_none = 0x0U,
 
-    /// Use global statistics
-    ///
-    /// If specified
-    ///  - on forward propagation use mean and variance provided by user (input)
-    ///  - on backward propagation reduces the amount of computations, since
-    ///    mean and variance are considered as constants
-    ///
-    ///  If not specified:
-    ///   - on forward propagation mean and variance are computed and stored as
-    ///     output
-    ///   - on backward propagation compute full derivative wrt data
+    /// Use global statistics. If specified, the library uses mean and
+    /// variance provided by the user as an input on forward propagation and
+    /// does not compute their derivatives on backward propagation. Otherwise,
+    /// the library computes mean and variance on forward propagation for
+    /// training and inference, outputs them on forward propagation for
+    /// training, and computes the respective derivatives on backward
+    /// propagation.
     dnnl_use_global_stats = 0x1U,
 
-    /// Use scale parameter
-    ///
-    /// If specified:
-    ///  - on forward propagation use scale for the normalization results
-    ///  - on backward propagation (for prop_kind == #dnnl_backward) compute
-    ///    diff wrt scale (hence one extra output used)
+    /// Use scale parameter. If specified, the user is expected to pass scale as
+    /// input on forward propagation. On backward propagation of type
+    /// #dnnl_backward, the library computes its derivative.
     dnnl_use_scale = 0x2U,
 
-    /// Use shift parameter
-    ///
-    /// If specified:
-    ///  - on forward propagation use shift (aka bias) for the normalization
-    ///    results
-    ///  - on backward propagation (for prop_kind == #dnnl_backward) compute
-    ///    diff wrt shift (hence one extra output used)
+    /// Use shift parameter. If specified, the user is expected to pass shift as
+    /// input on forward propagation. On backward propagation of type
+    /// #dnnl_backward, the library computes its derivative.
     dnnl_use_shift = 0x4U,
 
-    /// Fuse with ReLU
+    /// Fuse normalization with ReLU. On training, normalization will require
+    /// the workspace to implement backward propagation. On inference, the
+    /// workspace is not required and behavior is the same as when normalization
+    /// is fused with ReLU using the post-ops API.
     ///
-    /// The flag implies negative slope being 0. On training this is the only
-    /// configuration supported. For inference, to use non-zero negative slope
-    /// consider using @ref dev_guide_attributes_post_ops.
-    ///
-    /// If specified:
-    ///  - on inference this option behaves the same as if the primitive were
-    ///    fused with ReLU using post ops API with zero negative slope.
-    ///  - on training primitive requires workspace (required to be able to
-    ///    perform backward pass)
+    /// @note
+    ///     The flag implies negative slope being 0. On training this is the only
+    ///     configuration supported. For inference, to use non-zero negative slope
+    ///     consider using @ref dev_guide_attributes_post_ops.
     dnnl_fuse_norm_relu = 0x8U,
 
-    /// Fuse with Add and then fuse with ReLU
-    ///
-    /// If specified:
-    ///
-    ///  - on forward propagation apply element-wise binary Add operation to
-    ///    to the normalization results with an additional input tensor and then
-    ///    apply ReLU with negative slope being 0.
-    ///  - on training primitive requires workspace (required to be able to
-    ///    perform backward pass).
-    ///  - on backward propagation save the result of backward ReLU operation
-    ///    with input tensor and workspace from forward pass to extra output
-    ///    tensor and then perform backward normalization.
+    /// Fuse normalization with an elementwise binary Add operation
+    /// followed by ReLU.
+    /// During training, normalization will require a workspace to implement
+    /// backward propagation. For inference, the workspace is not needed.
+    /// On forward propagation, an elementwise binary Add operation is applied
+    /// to the normalization results with an additional input tensor, followed
+    /// by ReLU with a negative slope of 0.
+    /// On backward propagation, the result of the backward ReLU operation
+    /// with the input tensor and workspace from the forward pass is saved
+    /// to an extra output tensor, and backward normalization is performed.
     dnnl_fuse_norm_add_relu = 0x10U,
 
-    /// Use RMS normalization
+    /// Use Root Mean Square (RMS) Normalization. In forward propagation,
+    /// the mean is considered zero, and RMS norm is used instead of variance
+    /// for scaling. Only the RMS norm is output during forward propagation for
+    /// training. In backward propagation, the library calculates the derivative
+    /// with respect to the RMS norm only, assuming the mean is zero.
     ///
-    /// If specified:
-    ///  - on forward propagation assume mean as zero
-    ///    and use RMS norm instead of the variance
-    ///  - on backward propagation compute derivative wrt RMS norm
-    ///
-    /// When used with #dnnl_use_global_stats, only RMS norm is required to be
-    /// provided as input.
+    /// @note
+    ///     When used with #dnnl_use_global_stats,
+    ///     only RMS norm is required to be provided as input.
     dnnl_rms_norm = 0x20U,
 } dnnl_normalization_flags_t;
 

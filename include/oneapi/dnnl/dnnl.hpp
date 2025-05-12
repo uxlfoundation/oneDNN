@@ -517,9 +517,13 @@ inline dnnl_alg_kind_t convert_to_c(algorithm aalgorithm) {
 /// Flags for normalization primitives.
 enum class normalization_flags : unsigned {
     /// Use no normalization flags. If specified, the library computes mean and
-    /// variance on forward propagation for training and inference, outputs them
-    /// on forward propagation for training, and computes the respective
+    /// variance on forward propagation for training and inference, outputs
+    /// them on forward propagation for training, and computes the respective
     /// derivatives on backward propagation.
+    ///
+    /// @note
+    ///     Backward propagation of type #dnnl::prop_kind::backward_data has
+    ///     the same behavior as #dnnl::prop_kind::backward.
     none = dnnl_normalization_flags_none,
 
     /// Use global statistics. If specified, the library uses mean and
@@ -545,20 +549,34 @@ enum class normalization_flags : unsigned {
     /// the workspace to implement backward propagation. On inference, the
     /// workspace is not required and behavior is the same as when normalization
     /// is fused with ReLU using the post-ops API.
+    ///
+    /// @note
+    ///     The flag implies negative slope being 0. On training this is the only
+    ///     configuration supported. For inference, to use non-zero negative slope
+    ///     consider using @ref dev_guide_attributes_post_ops.
     fuse_norm_relu = dnnl_fuse_norm_relu,
 
-    /// Fuse normalization with elementwise binary Add and then fuse with ReLU.
-    /// On training, normalization will require the workspace to implement
-    /// backward propagation. On inference, the workspace is not required.
+    /// Fuse normalization with an elementwise binary Add operation
+    /// followed by ReLU.
+    /// During training, normalization will require a workspace to implement
+    /// backward propagation. For inference, the workspace is not needed.
+    /// On forward propagation, an elementwise binary Add operation is applied
+    /// to the normalization results with an additional input tensor, followed
+    /// by ReLU with a negative slope of 0.
+    /// On backward propagation, the result of the backward ReLU operation
+    /// with the input tensor and workspace from the forward pass is saved
+    /// to an extra output tensor, and backward normalization is performed.
     fuse_norm_add_relu = dnnl_fuse_norm_add_relu,
 
-    /// Use Root Mean Square (RMS) Normalization.
-    /// In forward propagation, this means that the mean is assumed zero,
-    /// and RMS norm is used instead of the variance for re-scaling.
-    /// The RMS norm is provided as an output during forward propagation
-    /// for training.
-    /// In backward propagation, the library computes the derivative
-    /// with respect to the RMS norm only, assuming mean is zero.
+    /// Use Root Mean Square (RMS) Normalization. In forward propagation,
+    /// the mean is considered zero, and RMS norm is used instead of variance
+    /// for scaling. Only the RMS norm is output during forward propagation for
+    /// training. In backward propagation, the library calculates the derivative
+    /// with respect to the RMS norm only, assuming the mean is zero.
+    ///
+    /// @note
+    ///     When used with #dnnl::normalization_flags::use_global_stats,
+    ///     only RMS norm is required to be provided as input.
     rms_norm = dnnl_rms_norm,
 };
 

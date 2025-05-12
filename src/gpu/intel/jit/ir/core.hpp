@@ -227,6 +227,10 @@ enum class type_kind_t {
     oword,
     hword
 };
+class simt_info_t {
+public:
+    static int simt_size;
+};
 
 static auto type_kind_names = nstl::to_array({
         make_enum_name(type_kind_t::undef, "undef"),
@@ -1495,6 +1499,10 @@ private:
         normalize_ptr(type, buf, off);
         gpu_assert(is_var(buf)) << buf;
         gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(
+                has_default_stride() || _stride % simt_info_t::simt_size == 0);
+        gpu_assert(type.elems() == 1
+                || type.elems() % simt_info_t::simt_size == 0);
         if (stride == type.scalar().size()) stride = default_stride;
     }
 };
@@ -2242,6 +2250,10 @@ private:
         normalize_ptr(value.type(), buf, off);
         gpu_assert(is_var(buf)) << buf;
         gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(value.type().elems() == 1
+                || value.type().elems() % simt_info_t::simt_size == 0);
+        gpu_assert(
+                has_default_stride() || stride % simt_info_t::simt_size == 0);
         if (stride == value.type().scalar().size()) stride = default_stride;
         if (!mask.is_empty())
             gpu_assert(mask.type() == type_t::_bool(value.type().elems()));

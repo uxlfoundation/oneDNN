@@ -184,6 +184,7 @@ public:
         , kernel_info_(kernel_info)
         , buf_mgr_(ir_ctx)
         , zp_dst_(zp_dst) {
+        simt_info_t::simt_size = 8;
         if (plan_.slm.has_a())
             (void)buf_mgr_.get("a_slm", into<int>(plan_.slm.a_layout.size()));
         if (plan_.slm.has_b())

@@ -27,6 +27,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+int simt_info_t::simt_size = 1;
+
 expr_t const_fold_non_recursive(const expr_t &expr);
 object_t const_fold(const object_t &obj);
 

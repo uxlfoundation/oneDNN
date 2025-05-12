@@ -543,6 +543,46 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
         } \
     }
 
+#define DECLARE_2D_TILE_PRINT(tile_type, element_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) void print_tile(tile_type t, \
+            const __constant char *format, int wg_x, int wg_y, int wg_z, \
+            int sg_per_wg_m, int sg_per_wg_n) { \
+        if (get_group_id(0) == wg_x && get_group_id(1) == wg_y \
+                && get_group_id(2) == wg_z) { \
+            uint sg_ij = sub_group_broadcast(get_local_id(1), 0); \
+            int sg_i = sg_ij % sg_per_wg_m; \
+            int sg_j = sg_ij / sg_per_wg_m; \
+            if (get_local_id(0) == 0 && get_local_id(1) == 0 \
+                    && get_local_id(2) == 0) \
+                printf(#tile_type "(%lu,%lu):\n", get_group_id(0), \
+                        get_group_id(1)); \
+            barrier(CLK_LOCAL_MEM_FENCE); \
+            for (int sgr = 0; sgr < sg_per_wg_n; sgr++) { \
+                for (int rr = 0; rr < nbr * br; rr++) { \
+                    barrier(CLK_LOCAL_MEM_FENCE); \
+                    if (get_local_id(0) == 0 && get_local_id(1) == 0) { \
+                        printf("%d: ", sgr *nbr *br + rr); \
+                    } \
+                    barrier(CLK_LOCAL_MEM_FENCE); \
+                    for (int sgc = 0; sgc < sg_per_wg_m; sgc++) { \
+                        if (sg_i == sgc && sg_j == sgr) { \
+                            for (int cc = 0; cc < nbc * bc; cc++) { \
+                                element_type value; \
+                                value = xlane_tile_access( \
+                                        t, rr, cc, sg, br, bc, nbr); \
+                                if (get_sub_group_local_id() == 0) \
+                                    printf(format, value); \
+                            } \
+                        } \
+                        barrier(CLK_LOCAL_MEM_FENCE); \
+                    } \
+                    if (get_local_id(0) == 0 && get_local_id(1) == 0) \
+                        printf("\n"); \
+                } \
+            } \
+        } \
+    }
+
 #define DECLARE_2D_TILE(tile_type, element_type, sg, br, bc, nbr, nbc) \
     typedef element_type __attribute__((ext_vector_type(br * bc / sg))) \
             _e_##tile_type; \

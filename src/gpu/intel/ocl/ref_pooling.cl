@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,9 +58,9 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
     const off_t od = GWS_GET_OD();
     const off_t oh = GWS_GET_OH();
     const off_t ow = GWS_GET_OW();
+    const off_t dst_off = DST_OFF(mb, oc, od, oh, ow);
 
     if (mb >= SRC_D0 || oc >= SRC_D1) {
-        const off_t dst_off = DST_OFF(mb, oc, od, oh, ow);
         dst[dst_off] = TO_DST(0.0f);
 #if ALG_MAX && IS_TRAINING
         ws[dst_off] = 0;
@@ -68,10 +68,6 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
         return;
     }
 
-    const off_t dst_off = DST_OFF(mb, oc, od, oh, ow);
-#if ALG_MAX && IS_TRAINING
-    ws[dst_off] = -1;
-#endif
 #if ALG_AVG_P || ALG_AVG_NP
     ACC_DATA_T d = 0;
 #endif
@@ -81,82 +77,64 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 #else
     ACC_DATA_T d = DST_DATA_MIN;
 #endif // DT_BF16
+#if IS_TRAINING
+    int ws_value = -1;
+#endif
 #endif // ALG_MAX
 
-    for (off_t kd = 0; kd < KD; ++kd) {
-        const off_t id = od * SD - PD + kd * (DD + 1);
-        if (id < 0 || id >= ID) continue;
-        for (off_t kh = 0; kh < KH; ++kh) {
-            const off_t ih = oh * SH - PH + kh * (DH + 1);
-            if (ih < 0 || ih >= IH) continue;
-            for (off_t kw = 0; kw < KW; ++kw) {
-                const off_t iw = ow * SW - PW + kw * (DW + 1);
-                if (iw < 0 || iw >= IW) continue;
+    const off_t id0 = od * SD - PD;
+    const off_t ih0 = oh * SH - PH;
+    const off_t iw0 = ow * SW - PW;
 
-                off_t src_off = SRC_OFF(mb, oc, id, ih, iw);
+#if !ALG_MAX && !ALG_AVG_P
+    off_t num_summands = 0;
+#endif
+    for_(off_t kd = 0, id = id0; kd < KD; ++kd, id += (DD + 1))
+    for_(off_t kh = 0, ih = ih0; kh < KH; ++kh, ih += (DH + 1))
+    for (off_t kw = 0, iw = iw0; kw < KW; ++kw, iw += (DW + 1)) {
+        if (id < 0 || ih < 0 || iw < 0) continue;
+        if (id >= ID || ih >= IH || iw >= IW) continue;
+#if !ALG_MAX && !ALG_AVG_P
+        num_summands++;
+#endif
+        off_t src_off = SRC_OFF(mb, oc, id, ih, iw);
 #if ALG_MAX
 #if IS_TRAINING
-                if (ws[dst_off] < 0) ws[dst_off] = kd * KH * KW + kh * KW + kw;
+        if (ws_value < 0) ws_value = (kd * KH + kh) * KW + kw;
 #endif
 #if DT_BF16
-                DEF_ACC_DATA_T s = DATA_TO_REF(src[src_off]);
+        DEF_ACC_DATA_T s = DATA_TO_REF(src[src_off]);
 #elif DT_F64
-                ACC_DATA_T s = src[src_off];
+        ACC_DATA_T s = src[src_off];
 #else
-                ACC_DATA_T s = DATA_TO_REF(src[src_off]);
+        ACC_DATA_T s = DATA_TO_REF(src[src_off]);
 #endif // DT_BF16
-                if (s > d) {
-                    d = s;
+        if (s > d) {
+            d = s;
 #if IS_TRAINING
-                    ws[dst_off] = kd * KH * KW + kh * KW + kw;
+            ws_value = (kd * KH + kh) * KW + kw;
 #endif
-                }
+        }
 #else // ALG_MAX == 0
 #if DT_F64
-                d += src[src_off];
+        d += src[src_off];
 #else
-                d += DATA_TO_REF(src[src_off]);
+        d += DATA_TO_REF(src[src_off]);
 #endif // DT_F64
 #endif // ALG_MAX
-            }
-        }
     }
+
 #if ALG_MAX
 #if IS_TRAINING
-    if (ws[dst_off] < 0) ws[dst_off] = 0;
+    ws[dst_off] = max(0, ws_value);
 #endif
+#elif ALG_AVG_P
+    d /= KD * KW * KH;
 #else
-#if ALG_AVG_P
-    const off_t num_summands = KD * KW * KH;
-#else
-    const off_t id_start = od * SD - PD;
-    const off_t ih_start = oh * SH - PH;
-    const off_t iw_start = ow * SW - PW;
-    const off_t id_end = od * SD - PD + (KD - 1) * DD + KD;
-    const off_t ih_end = oh * SH - PH + (KH - 1) * DH + KH;
-    const off_t iw_end = ow * SW - PW + (KW - 1) * DW + KW;
-
-    const off_t id_start_excluded
-            = id_start < 0 ? (0 - id_start - 1) / (DD + 1) + 1 : 0;
-    const off_t ih_start_excluded
-            = ih_start < 0 ? (0 - ih_start - 1) / (DH + 1) + 1 : 0;
-    const off_t iw_start_excluded
-            = iw_start < 0 ? (0 - iw_start - 1) / (DW + 1) + 1 : 0;
-    const off_t id_end_excluded
-            = id_end > ID ? (id_end - ID - 1) / (DD + 1) + 1 : 0;
-    const off_t ih_end_excluded
-            = ih_end > IH ? (ih_end - IH - 1) / (DH + 1) + 1 : 0;
-    const off_t iw_end_excluded
-            = iw_end > IW ? (iw_end - IW - 1) / (DW + 1) + 1 : 0;
-
-    const off_t num_summands = (KD - id_start_excluded - id_end_excluded)
-            * (KH - ih_start_excluded - ih_end_excluded)
-            * (KW - iw_start_excluded - iw_end_excluded);
-#endif
     d /= num_summands;
 #endif
 
-        // post op service
+    // post op service
 #if DT_BF16 || DT_F64
     POST_OP_DATA_T tmp = d;
 #else

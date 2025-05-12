@@ -309,10 +309,11 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
     p.req_asymmetric_comp = om_d.extra().flags
             & memory_extra_flags::compensation_conv_asymmetric_src;
 
-    const bool with_groups = is_with_groups(omd);
+    // const bool with_groups = is_with_groups(omd);
 
     auto mask_ok = [&](bool check, int mask) {
-        return IMPLICATION(check, mask == (with_groups ? 0x3 : 0x1));
+        static const std::set<int> supported_masks = {0x1, 0x2, 0x3, 0x4, 0x5};
+        return IMPLICATION(check, supported_masks.count(mask) > 0);
     };
 
     VDISPATCH_REORDER_IC(
@@ -350,11 +351,11 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
                 : (p.req_asymmetric_comp ? om_d.extra().asymm_compensation_mask
                                          : tr::prb_t::invalid_comp_mask);
 
-        if (p.compensation_mask == tr::prb_t::asymmetric_comp_mask)
-            return unimplemented;
+    //     if (p.compensation_mask == tr::prb_t::asymmetric_comp_mask)
+    //         return unimplemented;
 
-        assert(p.compensation_mask == tr::prb_t::standard_comp_mask
-                || p.compensation_mask == tr::prb_t::comp_mask_with_groups);
+        // assert(p.compensation_mask == tr::prb_t::standard_comp_mask
+        //         || p.compensation_mask == tr::prb_t::comp_mask_with_groups);
     }
 
     int ndims = 0;

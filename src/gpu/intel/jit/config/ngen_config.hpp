@@ -45,7 +45,7 @@ using half = dnnl::impl::float16_t;
                 || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
 #if __has_include(<version>)
 #include <version>
-#if __cpp_lib_source_location >= 201907L
+#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
 #define NGEN_ENABLE_SOURCE_LOCATION true
 #endif
 #endif

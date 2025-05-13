@@ -33,6 +33,8 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     # Common flags for GNU and CLANG IDs.
     platform_unix_and_mingw_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
     platform_unix_and_mingw_common_cxx_flags(DPCPP_HOST_COMPILER_OPTS)
+    # Stripping Wundef before passing it into a host compiler.
+    string(REGEX REPLACE "-Wundef" "" DPCPP_HOST_COMPILER_OPTS "${DPCPP_HOST_COMPILER_OPTS}")
 
     sdl_unix_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
     sdl_unix_src_ccxx_flags(DPCPP_SRC_COMPILER_OPTS)

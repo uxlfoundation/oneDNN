@@ -754,8 +754,10 @@ void Generator<hw>::applyLateABOffset(bool isA, int h, const GEMMProblem &proble
     if (scalarA) A = state.Ar_offsetLayout.find(0, 0, state.Ar_offsetRegs);
     if (scalarB) B = state.Br_offsetLayout.find(0, 0, state.Br_offsetRegs);
 
-    for (int xx = 0; xx < nx; xx += 2 * nec) {
-        int xchunk = std::min(nx - xx, 2 * nec);
+    auto &C0 = C_layout[0];
+    int xchunk0 = std::min<int>(2 * nec, C0.colMajor ? C0.nr : C0.nc);
+    for (int xx = 0; xx < nx; xx += xchunk0) {
+        int xchunk = std::min(nx - xx, xchunk0);
         for (int y = 0; y < ny; y++) {
             auto i = x0 + xx, j = y;
             auto ir = xr0 + xx, jr = y;

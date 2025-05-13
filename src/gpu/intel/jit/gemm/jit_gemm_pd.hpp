@@ -79,7 +79,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    bool wei_zp_2d_ = false;
+    bool wei_zp_2d_ = false, src_zp_2d_ = false;
     int wei_q2d_group_k_ = 0;
     int src_q2d_group_k_ = 0;
     bool src_po_sc_ = false;
@@ -155,6 +155,13 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
 
     bool wei_scales_2d() const { return wei_scales_2d_; }
     bool src_scales_2d() const { return src_scales_2d_; }
+
+    bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
+
+    int quant_attr_cmask(int arg, const quant_entries_t &attr) const;
+    bool dy_quant_enabled();
+    bool wei_decomp();
+    bool quant_enabled();
 
     bool swap_ab() const { return swap_ab_; }
 

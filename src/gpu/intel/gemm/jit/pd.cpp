@@ -211,6 +211,10 @@ status_t pd_t::init_attrs() {
     const auto b_zps = attr_zps.get(DNNL_ARG_B);
     const auto c_zps = attr_zps.get(DNNL_ARG_C);
 
+    const auto &attr_gs = attr()->precomputed_reductions_;
+    const auto a_gs = attr_gs.get(DNNL_ARG_A);
+    const auto b_gs = attr_gs.get(DNNL_ARG_B);
+
     const auto &scales = attr()->scales_;
     const auto a_scales = scales.get(DNNL_ARG_A);
     const auto b_scales = scales.get(DNNL_ARG_B);
@@ -223,6 +227,8 @@ status_t pd_t::init_attrs() {
     // Swap descriptors to follow column major format
     CHECK(a_zps.get_md(a_zp_md_, d->b_desc));
     CHECK(b_zps.get_md(b_zp_md_, d->a_desc));
+    CHECK(a_gs.get_md(a_gs_md_, d->b_desc));
+    CHECK(b_gs.get_md(b_gs_md_, d->a_desc));
     CHECK(a_scales.get_md(a_scale_md_, desc_.b_desc));
     CHECK(b_scales.get_md(b_scale_md_, desc_.a_desc));
     CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
@@ -230,7 +236,8 @@ status_t pd_t::init_attrs() {
     auto ndims = d->c_desc.ndims;
     ao_dims_ = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
     bo_dims_ = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
-
+    ag_dims_ = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
+    bg_dims_ = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
     asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
 
@@ -238,6 +245,10 @@ status_t pd_t::init_attrs() {
     if (!a_zps.has_default_groups()) {
         a_zp_group_k_ = a_zps.get_group(0);
         a_zp_group_m_ = a_zps.get_group(1);
+    }
+    if (!a_gs.has_default_groups()) {
+        a_gs_group_k_ = a_gs.get_group(0);
+        a_gs_group_m_ = a_gs.get_group(1);
     }
     if (!a_scales.has_default_groups()) {
         a_scales_group_k_ = a_scales.get_group(0);
@@ -249,6 +260,10 @@ status_t pd_t::init_attrs() {
         b_zp_group_n_ = b_zps.get_group(0);
         b_zp_group_k_ = b_zps.get_group(1);
     }
+    if (!b_gs.has_default_groups()) {
+        b_gs_group_n_ = b_gs.get_group(0);
+        b_gs_group_k_ = b_gs.get_group(1);
+    }
     if (!b_scales.has_default_groups()) {
         b_scales_group_n_ = b_scales.get_group(0);
         b_scales_group_k_ = b_scales.get_group(1);
@@ -257,6 +272,7 @@ status_t pd_t::init_attrs() {
 }
 
 bool pd_t::zp_ok() {
+    auto &attr_gs = attr()->precomputed_reductions_;
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
@@ -277,10 +293,10 @@ bool pd_t::zp_ok() {
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
-            // Zero points with non-trivial groups only supported
-            // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && !utils::one_of(d->a_type(), s4, u4)
-                    && a_zp_2d())
+            // Zero points with non-trivial groups only supported with
+            // precomputed reductions or when target tensor is being dequantized.
+            if (attr_gs.has_default_values(DNNL_ARG_B) && dy_quant_enabled_
+                    && !utils::one_of(d->a_type(), s4, u4) && a_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
@@ -317,6 +333,27 @@ bool pd_t::zp_ok() {
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
         if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
     }
+
+    return true;
+}
+
+bool pd_t::gs_ok() {
+    auto &attr_gs = attr()->precomputed_reductions_;
+
+    if (!attr_gs.has_default_values(DNNL_ARG_DST)) { return false; }
+
+    bool with_a_group_sums_ = !attr_gs.has_default_values(DNNL_ARG_A);
+    bool with_b_group_sums_ = !attr_gs.has_default_values(DNNL_ARG_B);
+
+    if ((attr_gs.get_data_type(DNNL_ARG_A) != data_type::s32)
+            && with_a_group_sums_) {
+        return false;
+    }
+    if ((attr_gs.get_data_type(DNNL_ARG_B) != data_type::s32)
+            && with_b_group_sums_) {
+        return false;
+    }
+    if (swap_ab_) std::swap(with_a_group_sums_, with_b_group_sums_);
 
     return true;
 }

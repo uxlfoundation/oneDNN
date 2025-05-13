@@ -59,13 +59,14 @@ struct gen_t : public primitive_t {
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
                     | smask_t::accumulation_mode | smask_t::rounding_mode
                     | smask_t::scales | smask_t::scales_data_type
-                    | smask_t::scales_groups | smask_t::zero_points
-                    | smask_t::zero_points_data_type
+                    | smask_t::scales_groups | smask_t::precomputed_reductions
+                    | smask_t::zero_points | smask_t::zero_points_data_type
                     | smask_t::zero_points_groups;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto &attr_zps = attr()->zero_points_;
+            auto &attr_gs = attr()->precomputed_reductions_;
             auto &attr_scales = attr()->scales_;
 
             dev_info_ = intel_engine->device_info();
@@ -75,17 +76,27 @@ struct gen_t : public primitive_t {
 
             // If we have both grouped scales and grouped zero-points, they must
             // have the same group size
-            if (a_scales_2d() && a_zp_2d()) {
+            if (a_scales_2d() && (a_zp_2d() || a_gs_2d())) {
                 auto asc_group_k = attr_scales.get_group(DNNL_ARG_A, 0);
                 auto azp_group_k = attr_zps.get_group(DNNL_ARG_A, 0);
+                auto ags_group_k = attr_gs.get_group(DNNL_ARG_A, 0);
                 VDISPATCH_GEMM(
-                        asc_group_k == azp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+                        IMPLICATION(a_zp_2d(), asc_group_k == azp_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_GEMM(
+                        IMPLICATION(a_gs_2d(), asc_group_k == ags_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
             }
-            if (b_scales_2d() && b_zp_2d()) {
+            if (b_scales_2d() && (b_zp_2d() || b_gs_2d())) {
                 auto bsc_group_k = attr_scales.get_group(DNNL_ARG_B, 1);
                 auto bzp_group_k = attr_zps.get_group(DNNL_ARG_B, 1);
+                auto bgs_group_k = attr_gs.get_group(DNNL_ARG_B, 1);
                 VDISPATCH_GEMM(
-                        bsc_group_k == bzp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+                        IMPLICATION(b_zp_2d(), bsc_group_k == bzp_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_GEMM(
+                        IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
             }
 
             const auto d = desc();
@@ -214,9 +225,12 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!attr()->zero_points_.has_default_values()) {
-
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
+            }
+            if (!attr()->precomputed_reductions_.has_default_values()) {
+                VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+                if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -264,6 +278,12 @@ struct gen_t : public primitive_t {
                     : data_type::s32;
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                    : data_type::s32;
+            auto ag_type = with_a_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                    : data_type::s32;
+            auto bg_type = with_b_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
                     && !wei_decomp_;
@@ -328,10 +348,12 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k(), a_q2d_group_m()};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
+            jit::quant_params a_quant
+                    = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
+                            ag_dims_, a_q2d_group_k(), a_q2d_group_m()};
+            jit::quant_params b_quant
+                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
+                            bg_dims_, b_q2d_group_k(), b_q2d_group_n()};
 
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,
@@ -599,6 +621,7 @@ private:
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
             const memory_storage_t *a_scales, const memory_storage_t *b_scales,
+            const memory_storage_t *ag, const memory_storage_t *bg,
             const memory_storage_t &co, const memory_storage_t *c_temp,
             const memory_storage_t *sround_seed, int po_count,
             const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,

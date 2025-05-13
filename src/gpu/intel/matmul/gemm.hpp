@@ -51,6 +51,7 @@ struct gemm_t : public primitive_t {
             gemm_attr.deterministic_ = attr()->deterministic_;
             gemm_attr.rounding_mode_ = attr()->rounding_mode_;
             gemm_attr.scales_ = attr()->scales_;
+            gemm_attr.precomputed_reductions_ = attr()->precomputed_reductions_;
             gemm_attr.zero_points_ = attr()->zero_points_;
             if (attr()->zero_points_.has_host_scalars()
                     || attr()->scales_.has_host_scalars()) {
@@ -58,9 +59,6 @@ struct gemm_t : public primitive_t {
             }
             gemm_attr.post_ops_ = attr()->post_ops_;
             VDISPATCH_MATMUL(attr()->dropout_.has_default_values(),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(
-                    attr()->precomputed_reductions_.has_default_values(),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto a_md = src_md(), b_md = weights_md(), c_md = dst_md(),

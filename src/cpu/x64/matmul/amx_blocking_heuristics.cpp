@@ -757,7 +757,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     current_lda_ = get_actual_lda();
 
     // Need a temp C buffer if a BRGEMM creates partial results
-    need_buf_c_ = (nthr_k_ != 1) || (k_blk_ != K);
+    need_buf_c_ = (nthr_k_ > 1);
 
     efficiency_score_ = calculate_blocking_scores();
 
@@ -833,6 +833,7 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
         const int min_N_blk = !bgmmc.is_runtime_N && low_parallelism
                         && is_amx_xf16 && !bm_conf_utils.check_n_blk_fixed()
                         && bgmmc.N_blk > 32 && !runtime_dims
+                        && !bgmmc.transposed_B // Transposed copy B kernel doesn't support adjusting N_blk
                 ? 32
                 : bgmmc.N_blk;
         const int desired_M_chunk = bgmmc.is_runtime_M

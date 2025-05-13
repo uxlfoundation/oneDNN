@@ -657,13 +657,12 @@ struct matmul_avx512_blocking_params_t {
         return lda;
     }
 
-    inline bool is_buffer_c_required(
-            dim_t acc_dt, dim_t dst_dt, bool with_sum) const {
-        const size_t k_chunk_elems = k_blk * batch_size;
+    inline bool is_buffer_c_required(const brgemm_matmul_conf_t &bgmmc) const {
+        const size_t k_chunk_elems = bgmmc.K_chunk_elems;
         if (nthr_k > 1 && static_cast<size_t>(mp.K) > k_chunk_elems)
             return true;
 
-        return ((acc_dt != dst_dt || with_sum)
+        return ((bgmmc.acc_dt != bgmmc.dst_dt || bgmmc.with_sum)
                 && (static_cast<size_t>(mp.K) > k_chunk_elems
                         || mp.K % k_blk > 0));
     }
@@ -679,8 +678,7 @@ struct matmul_avx512_blocking_params_t {
 
         bgmmc.nthr_k = nthr_k;
 
-        bgmmc.use_buffer_c = is_buffer_c_required(
-                bgmmc.acc_dt, bgmmc.dst_dt, bgmmc.with_sum);
+        bgmmc.use_buffer_c = is_buffer_c_required(bgmmc);
         bgmmc.LDA = bgmmc.adjust_a_strides || bgmmc.use_buffer_a
                         || bgmmc.treat_A_as_plain
                 ? get_actual_lda(bgmmc.use_buffer_a, bgmmc.tr_a_dt_sz)
@@ -1740,21 +1738,12 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
-    bgmmc.buffer_b_gb_stride = bgmmc.tr_b_dt_sz * rnd_up(bgmmc.LDB, bgmmc.N_blk)
-            * bgmmc.wei_k_blk;
+    bgmmc.buffer_b_gb_stride
+            = bgmmc.tr_b_dt_sz * bgmmc.LDB * bgmmc.K_blk * bgmmc.wei_k_blk;
     bgmmc.buffer_b_k_brg_stride
-            = bgmmc.buffer_b_gb_stride * bgmmc.K_chunk_size * bgmmc.K_blk;
-
-    // TODO: (Refactoring) the only usage of `buffer_b_chunk_sz`
-    // and `buffer_b_n_blk_stride` is here. Remove it if not needed.
-    bgmmc.buffer_b_n_blk_stride = bgmmc.tr_b_dt_sz
-            * ((bgmmc.N_blk / bgmmc.LDB) * bgmmc.LDB2
-                    + (bgmmc.N_blk % bgmmc.LDB)
-                            * data_type_vnni_granularity(bgmmc.wei_dt));
-
-    bgmmc.buffer_b_chunk_sz
-            = bgmmc.buffer_b_k_brg_stride * bgmmc.brgemm_batch_size;
-    bgmmc.buffer_b_per_thread_sz = bgmmc.buffer_b_chunk_sz;
+            = bgmmc.buffer_b_gb_stride * bgmmc.brgemm_batch_size;
+    bgmmc.buffer_b_per_thread_sz
+            = bgmmc.buffer_b_k_brg_stride * bgmmc.K_chunk_size;
 
     bgmmc.buffer_reduce_per_thread_sz = 0;
     if (bgmmc.reduce_kind == matmul_reduce_kind::src) {

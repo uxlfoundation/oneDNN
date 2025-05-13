@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -235,14 +235,15 @@ dim_t get_prelu_weights_off(const memory_desc_t &weights_md,
             weights_md, l_offset, dst_dims, dst_ndims, weights_mask);
 }
 
-dim_t get_binary_src1_off(const memory_desc_t &src1_md, const dim_t l_offset,
+// Note: src_md is either src1_md or src2_md
+dim_t get_binary_src_off(const memory_desc_t &src_md, const dim_t l_offset,
         const dims_t &dst_dims, const int dst_ndims) {
 
     const int mask_binary_po
-            = utils::get_dims_mask(dst_dims, src1_md.dims, dst_ndims);
+            = utils::get_dims_mask(dst_dims, src_md.dims, dst_ndims);
 
     return get_po_tensor_off(
-            src1_md, l_offset, dst_dims, dst_ndims, mask_binary_po);
+            src_md, l_offset, dst_dims, dst_ndims, mask_binary_po);
 }
 
 } // namespace
@@ -304,13 +305,29 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
                 const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, args.dst_md);
                 const auto &src1_desc = e.binary.src1_desc;
 
-                const auto off = get_binary_src1_off(
+                const auto off = get_binary_src_off(
                         src1_desc, args.l_offset, dst_d.dims(), dst_d.ndims());
+
                 const auto src1_binary_po = CTX_IN_MEM(const void *,
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
+                const auto src2_binary_po = CTX_IN_MEM(const void *,
+                        (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
+
+                bool src2_val = false;
+                if (e.is_binary_with_ternary_op()
+                        && e.binary.alg
+                                == dnnl::impl::alg_kind::binary_select) {
+                    const auto &src2_desc = e.binary.src2_desc;
+                    const auto src2_off = get_binary_src_off(src2_desc,
+                            args.l_offset, dst_d.dims(), dst_d.ndims());
+                    src2_val = static_cast<bool>(io::load_int_value(
+                            src2_desc.data_type, src2_binary_po, src2_off));
+                }
+
                 const float val_po = io::load_float_value(
                         src1_desc.data_type, src1_binary_po, off);
-                res = it_binary_po->compute_scalar(res, val_po, false);
+
+                res = it_binary_po->compute_scalar(res, val_po, src2_val);
                 ++it_binary_po;
             } break;
             case primitive_kind::prelu: {

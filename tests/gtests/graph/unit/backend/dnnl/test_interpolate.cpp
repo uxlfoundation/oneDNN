@@ -288,6 +288,7 @@ TEST(test_interpolate_execute, Interpolate3PostOps) {
 }
 
 TEST(test_interpolate_execute, InterpolatePostOps) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 

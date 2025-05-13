@@ -537,6 +537,7 @@ TEST(test_large_partition_execute, Int8Mha_CPU) {
 }
 
 TEST(test_large_partition_execute, Int8DistilBertMha) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -594,6 +595,7 @@ TEST(test_large_partition_execute, Int8DistilBertMha) {
 }
 
 TEST(test_large_partition_execute, Int8GptMha) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -710,6 +712,7 @@ TEST(test_large_partition_execute, F32Mha) {
 }
 
 TEST(test_large_partition_execute, F32DistilBertMha) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 
@@ -775,6 +778,7 @@ TEST(test_large_partition_execute, F32DistilBertMha) {
 }
 
 TEST(test_large_partition_execute, F32GptMha) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
 

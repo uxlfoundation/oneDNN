@@ -656,6 +656,8 @@ std::string get_arg(int arg) {
         case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS:
             s = "attr_post_op_dw_wei";
             break;
+        case DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC: s = "attr_user_precomp_src"; break;
+        case DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_WEIGHTS: s = "attr_user_precomp_wei"; break;
         default: assert(!"unsupported arg"); s = "unsupported arg";
     }
     return s;

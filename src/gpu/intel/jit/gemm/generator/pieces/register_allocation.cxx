@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -509,7 +509,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
             auto hintV = getHint(HintType::A0, strategy);
             auto hintN = getHint(HintType::A0Broadcast, strategy);
             auto hintC = getHint(HintType::C, strategy);
-            if (repackC) stub();
 
             for (int copy = 0; copy < N_copies; copy++)
                 N_regs[copy] = state.ra.alloc_range(N_regCount, hintN);
@@ -525,7 +524,14 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
             const RegisterBlock *V_block;
             int V_rows, V_cols;
             getLayoutDims(Vr_regCount > 0 ? Vr_layout : V_layout, V_rows, V_cols);
-            int kv = globalCM ? V_cols : V_rows;
+            int kv  = globalCM ? V_cols : V_rows;
+            int mnv = globalCM ? V_rows : V_cols;
+            int mnStride = mnv;
+            if (repackC) {
+                int Cr_rows, Cr_cols;
+                getLayoutDims(state.Cr_layout, Cr_rows, Cr_cols);
+                mnStride = globalCM ? Cr_rows : Cr_cols;
+            }
 
             int minOPCount = minOuterProductCount(hw, problem, strategy);
             int lastMN0 = -1;
@@ -554,9 +560,10 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                 allocSlice();
 
                 V_bundles = BundleGroup(raHW);
+                for (int mn = mn0; mn < mnv; mn += mnStride) {
                 for (int h0 = 0; h0 < kv; h0 += minOPCount) {
-                    int r = globalCM ? mn0 : h0;
-                    int c = globalCM ? h0 : mn0;
+                    int r = globalCM ? mn : h0;
+                    int c = globalCM ? h0 : mn;
                     int comp = 0;
                     if (Vr_regCount == 0) for (int copy = 0; copy < V_copies; copy++) {
                         auto V0 = findBlockReg(Tv_load, V_layout, r, c, V_regs[copy], nv, V_block, 0, comp);
@@ -565,6 +572,7 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                         auto V0 = findBlockReg(Tv, Vr_layout, r, c, Vr_regs, nv, V_block, 0, comp);
                         V_bundles |= Bundle::locate(raHW, V0);
                     }
+                }
                 }
 
                 lastMN0 = mn0;

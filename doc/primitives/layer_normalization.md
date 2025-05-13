@@ -68,7 +68,7 @@ The tensors marked with an asterisk are used only when the primitive is
 configured to use \f$\gamma(c)\f$, and \f$\beta(c)\f$
 (i.e., #dnnl_use_scale or #dnnl_use_shift are set).
 
-#### Specific of Root Mean Square Normalization
+## Root Mean Square Normalization Mode
 
 The layer normalization primitive also supports root mean square normalization
 (RMSNorm) via #dnnl_rms_norm flag. RMSNorm is a simplification of layer

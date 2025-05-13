@@ -56,9 +56,9 @@ int main() {
     const dims dot1_in2_shape {bs, head_num, head_size, seq_len_kv};
     const dims dot1_out_shape {bs, head_num, seq_len_q, seq_len_kv};
     const dims scale_sz = {1};
-    logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::bf16,
+    logical_tensor lt_dot1_in1 {lt_id++, logical_tensor::data_type::f16,
             dot1_in1_shape, logical_tensor::layout_type::strided};
-    logical_tensor lt_dot1_in2 {lt_id++, logical_tensor::data_type::bf16,
+    logical_tensor lt_dot1_in2 {lt_id++, logical_tensor::data_type::f16,
             dot1_in2_shape, logical_tensor::layout_type::strided};
     logical_tensor lt_dot1_out {lt_id++, logical_tensor::data_type::f32,
             dot1_out_shape, logical_tensor::layout_type::strided};
@@ -89,16 +89,16 @@ int main() {
     op softmax_op(op_id++, op::kind::SoftMax, "softmax");
     softmax_op.set_attr<int64_t>(
             op::attr::axis, -1); // assume -1 means last axis, to confirm
-    logical_tensor lt_softmax_out {lt_id++, logical_tensor::data_type::bf16,
+    logical_tensor lt_softmax_out {lt_id++, logical_tensor::data_type::f16,
             logical_tensor::layout_type::strided};
     softmax_op.add_input(lt_select_out);
     softmax_op.add_output(lt_softmax_out);
 
     const dims dot2_in2_shape {bs, head_num, seq_len_kv, head_size};
     const dims dot2_out_shape {bs, head_num, seq_len_q, head_size};
-    logical_tensor lt_dot2_in2 {lt_id++, logical_tensor::data_type::bf16,
+    logical_tensor lt_dot2_in2 {lt_id++, logical_tensor::data_type::f16,
             dot2_in2_shape, logical_tensor::layout_type::strided};
-    logical_tensor lt_dot2_out {lt_id++, logical_tensor::data_type::bf16,
+    logical_tensor lt_dot2_out {lt_id++, logical_tensor::data_type::f16,
             dot2_out_shape, logical_tensor::layout_type::strided};
 
     op matmul_2_op(op_id++, op::kind::MatMul, "matmul_2");
@@ -135,7 +135,7 @@ int main() {
     auto ts_dot2_out = tensor(lt_dot2_out, eng);
 
     std::vector<float> lt_mul1_in2_data(product(scale_sz), 0.0625);
-    std::vector<float> lt_select_in2_data(product(scale_sz), -45856);
+    std::vector<float> lt_select_in2_data(product(scale_sz), -2.36603e+38);
 
     std::vector<float> lt_dot1_in1_data(product(dot1_in1_shape));
     std::vector<float> lt_dot1_in2_data(product(dot1_in2_shape));
@@ -163,15 +163,15 @@ int main() {
     std::vector<logical_tensor> lts = {lt_select_in2, lt_dot2_in2, lt_dot2_out};
     std::vector<tensor> tensors = {ts_select_in2, ts_dot2_in2, ts_dot2_out};
     for (int idx = 0; idx < lts.size(); idx++) {
-        const auto bf16_out_md = make_md(lts[idx]);
-        auto bf16_out_mem = dnnl::memory(
-                bf16_out_md, eng, tensors[idx].get_data_handle());
+        const auto f16_out_md = make_md(lts[idx]);
+        auto f16_out_mem = dnnl::memory(
+                f16_out_md, eng, tensors[idx].get_data_handle());
 
         const auto f32_out_md = make_md(lts[idx], dnnl::memory::data_type::f32);
         auto f32_out_mem = dnnl::memory(f32_out_md, eng);
 
-        dnnl::reorder(bf16_out_mem, f32_out_mem)
-                .execute(strm, bf16_out_mem, f32_out_mem);
+        dnnl::reorder(f16_out_mem, f32_out_mem)
+                .execute(strm, f16_out_mem, f32_out_mem);
         strm.wait();
 
         printf("lts[%d]: ", idx);

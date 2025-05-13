@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,8 @@ struct gemm_exec_args_t {
     const memory_storage_t *a_scales = nullptr;
     const memory_storage_t *b_scales = nullptr;
     const memory_storage_t *c_scales = nullptr;
+    const memory_storage_t *a_group_sums = nullptr;
+    const memory_storage_t *b_group_sums = nullptr;
     const memory_storage_t *sum_ab = nullptr;
     const memory_storage_t *sround_seed = nullptr;
     exec_args_t exec_args;

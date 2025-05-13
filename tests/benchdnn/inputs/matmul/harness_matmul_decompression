@@ -180,6 +180,24 @@
 --attr-fpmath=f16:true
 32x127:127x63_n"odd_k_single_group"
 
+# fp8 weights decompression
+--reset
+--skip-impl=ref
+--dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
+--wtag=any,abc,acb
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--reset
+--skip-impl=ref
+--dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
+--wtag=any,ab,ba
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+1x4096:4096x4096
+
 # Dynamic quantization (int8 src, int4/int8 weights)
 --reset
 --skip-impl=ref

@@ -179,10 +179,26 @@ This decomposition is based on the following formulas:
 
 Both $P$ and $Stats$ are outputs of the SoftMax operation. The $Stats$ are saved
 and used during backward propagation to reconstruct $P$.
+The primary reason SDPA forward keeps $Stats$ instead of $P$ is mainly to
+optimize memory usage:
+
+- Softmax Output ($P$): Storing the full softmax output requires significant
+  memory, especially for long sequences, as it scales with the size of the
+  attention matrix ($B \times H_{q} \times S_{q} \times S_{kv}$).
+- Softmax Statistics ($Stats$): Storing only the statistics requires much less
+  memory because it reduces the storage to a smaller tensor (e.g., $B \times
+  H_{q} \times S_{q} \times 1$), which is independent of the sequence length
+  $S_{kv}$.
+
+By keeping the statistics instead of the full output, the memory footprint is
+significantly reduced, which is critical for large-scale models and long
+sequences. Additionally, according to FlashAttention [3], even though
+recomputation introduces more FLOPs, it accelerates the backward pass by
+reducing HBM accesses on GPUs like the A100.
 
 For dropout, the cuDNN Graph API supports Philox-generated dropout. A Philox
 random number generator (RNG) is used to create a random dropout mask, as
-described in PyTorch [3]. This operation involves the following parameters:
+described in PyTorch [4]. This operation involves the following parameters:
 
 - **RNG seed**: Seed for the random number generator.
 - **RNG offset**: Describes how many 128-bit random numbers to skip.
@@ -221,7 +237,7 @@ For $dQ$ and $dK$, $dS$ is computed as follows (refer to the appendix for deriva
 
 If attention scaling or masking (e.g., implicit causal mask) is applied,
 additional steps are required to compute $P$ and $dS$. The overall backward
-graph is illustrated below [4]:
+graph is illustrated below [5]:
 
 ![cuDNN sdpa backward](images/cudnn_sdpa_backward.png)
 
@@ -229,7 +245,7 @@ graph is illustrated below [4]:
 
 #### SDPA Forward
 
-In PyTorch, the `scaled_dot_product_attention` ATen operator [5] takes query,
+In PyTorch, the `scaled_dot_product_attention` ATen operator [6] takes query,
 key, and value tensors as inputs, along with optional parameters such as
 attention scale, mask, dropout probability, `is_causal`, and `enable_gqa` flags.
 Underneath, various SDP backends implement different strategies, such as:
@@ -558,6 +574,7 @@ pass of the SoftMax operation.
 2. FlashAttention-2: Faster Attention with Better Parallelism and Work
    Partitioning,
    [https://arxiv.org/abs/2307.08691](https://arxiv.org/abs/2307.08691)
-3. Philox random number generator (RNG) as described in PyTorch, [https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/core/PhiloxRNGEngine.h](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/core/PhiloxRNGEngine.h)
-4. cuDNN Graph API fused-flash-attention-bprop, [https://docs.nvidia.com/deeplearning/cudnn/frontend/v1.11.0/developer/graph-api.html#fused-flash-attention-bprop](https://docs.nvidia.com/deeplearning/cudnn/frontend/v1.11.0/developer/graph-api.html#fused-flash-attention-bprop)
-5. PyTorch ATen operator of scaled_dot_product_attention, [https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/attention.cpp](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/attention.cpp#L718)
+3. FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness, [https://arxiv.org/abs/2205.14135](https://arxiv.org/abs/2205.14135)
+4. Philox random number generator (RNG) as described in PyTorch, [https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/core/PhiloxRNGEngine.h](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/core/PhiloxRNGEngine.h)
+5. cuDNN Graph API fused-flash-attention-bprop, [https://docs.nvidia.com/deeplearning/cudnn/frontend/v1.11.0/developer/graph-api.html#fused-flash-attention-bprop](https://docs.nvidia.com/deeplearning/cudnn/frontend/v1.11.0/developer/graph-api.html#fused-flash-attention-bprop)
+6. PyTorch ATen operator of scaled_dot_product_attention, [https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/attention.cpp](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/attention.cpp#L718)

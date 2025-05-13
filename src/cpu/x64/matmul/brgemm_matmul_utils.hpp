@@ -177,9 +177,6 @@ struct brgemm_matmul_conf_t {
 
     dim_t buffer_b_gb_stride;
     dim_t buffer_b_k_brg_stride;
-    dim_t buffer_b_n_blk_stride;
-
-    dim_t buffer_b_chunk_sz;
     dim_t buffer_b_per_thread_sz;
 
     dim_t buffer_reduce_per_thread_sz;

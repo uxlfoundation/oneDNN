@@ -113,8 +113,10 @@ protected:
 struct quant_params {
     data_type_t scales_type;
     data_type_t zp_type;
-    int zp_ndims;
+    data_type_t gs_type;
     int scale_ndims;
+    int zp_ndims;
+    int gs_ndims;
     int group_k;
     int group_mn;
 };

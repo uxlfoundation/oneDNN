@@ -1335,7 +1335,7 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                 dim_t offset = offset_ + mb * jcp.ngroups * dst_step;
                 for_(dim_t od = 0; od < jcp.od; ++od)
                 for (dim_t oh = 0; oh < jcp.oh; ++oh) {
-                    PRAGMA_OMP_SIMD(reduction(+ : db))
+                    PRAGMA_OMP_SIMD(reduction(+ : db) linear(offset))
                     for (dim_t ow = 0; ow < jcp.ow; ++ow) {
                         db += diff_dst[offset];
                         offset++;

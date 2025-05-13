@@ -236,6 +236,8 @@ void jit_gemm_pd_t::init_attrs() {
     const auto a_zps = attr_zps.get(DNNL_ARG_A);
     const auto b_zps = attr_zps.get(DNNL_ARG_B);
     const auto c_zps = attr_zps.get(DNNL_ARG_C);
+    const auto a_upre = attr_zps.get(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_A);
+    const auto b_upre = attr_zps.get(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_B);
 
     const auto &scales = attr()->scales_;
     const auto a_scales = scales.get(DNNL_ARG_A);
@@ -260,6 +262,8 @@ void jit_gemm_pd_t::init_attrs() {
         a_q2d_group_k_ = a_zps.get_group(0);
     } else if (a_scales_2d()) {
         a_q2d_group_k_ = a_scales.get_group(0);
+    } else if (!a_upre.has_default_values()) {
+        a_q2d_group_k_ = a_upre.get_group(0);
     }
 
     b_scales_type_ = b_scales.get_data_type();
@@ -267,6 +271,8 @@ void jit_gemm_pd_t::init_attrs() {
         b_q2d_group_k_ = b_zps.get_group(1);
     } else if (b_scales_2d()) {
         b_q2d_group_k_ = b_scales.get_group(1);
+    } else if (!b_upre.has_default_values()) {
+        b_q2d_group_k_ = b_upre.get_group(1);
     }
 }
 
@@ -279,11 +285,24 @@ bool jit_gemm_pd_t::zp_ok() {
     const auto d = desc();
     using namespace data_type;
 
-    if (!attr_zps.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
-            || !attr_zps.has_default_values(user_precomp | DNNL_ARG_SRC)
-            || !attr_zps.has_default_values(user_precomp | DNNL_ARG_DST)) {
+    if (!attr_zps.has_default_values(user_precomp | DNNL_ARG_DST)) {
         return false;
     }
+
+    bool with_a_group_sums_
+            = !attr_zps.has_default_values(user_precomp | DNNL_ARG_A);
+    bool with_b_group_sums_
+            = !attr_zps.has_default_values(user_precomp | DNNL_ARG_B);
+
+    if ((attr_zps.get_data_type(user_precomp | DNNL_ARG_A) != data_type::s32)
+            && with_a_group_sums_) {
+        return false;
+    }
+    if ((attr_zps.get_data_type(user_precomp | DNNL_ARG_B) != data_type::s32)
+            && with_b_group_sums_) {
+        return false;
+    }
+    if (swap_ab_) std::swap(with_a_group_sums_, with_b_group_sums_);
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
@@ -292,18 +311,8 @@ bool jit_gemm_pd_t::zp_ok() {
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
-            // Zero points with non-trivial groups only supported
-            // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && !utils::one_of(d->a_type(), s4, u4)
-                    && a_zp_2d())
-                return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
-                return false;
-            // Weights zp can only be performantly enabled during upconversion
-            // for cases that perform decompression.
-            if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && a_scales_2d())
                 return false;
         }
     }

@@ -31,7 +31,7 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     // The order of input logical tensors in inputs is not certain, we need
     // to record the input offset in a certain order of ops.
     CHECK_BOOL(record_input_offset(sg, inputs));
-    dims src1_user_dims = ltw(inputs[graph_inport[0]]).vdims();
+    dims src1_user_dims = ltw(inputs[graph_inport[mm1_src]]).vdims();
     ndims = src1_user_dims.size();
     VCHECK_SDP_DECOMP(ndims == 4 || ndims == 5, false,
             "Input dims should be 4 or 5, but got %zu", src1_user_dims.size());
@@ -44,8 +44,8 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     seq_len_q = src1_user_dims[index++];
     head_size_qk = src1_user_dims[index++];
 
-    dims wei1_user_dims = ltw(inputs[graph_inport[1]]).vdims();
-    dims wei2_user_dims = ltw(inputs[graph_inport[2]]).vdims();
+    dims wei1_user_dims = ltw(inputs[graph_inport[mm1_wei]]).vdims();
+    dims wei2_user_dims = ltw(inputs[graph_inport[mm2_wei]]).vdims();
     num_head_kv = wei1_user_dims[1];
     VCHECK_SDP_DECOMP(num_head_kv == wei2_user_dims[1], false,
             "kv head number mismatch, kv head number: %ld, wei1: %ld, wei2: "
@@ -65,29 +65,29 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 
     head_size_v = wei2_user_dims.back();
     // Check scale size
-    if (graph_inport[3] != -1) {
-        auto scale_sz = ltw(inputs[graph_inport[3]]).nelems();
+    if (graph_inport[mm1_scale] != -1) {
+        auto scale_sz = ltw(inputs[graph_inport[mm1_scale]]).nelems();
         VCHECK_SDP_DECOMP(scale_sz == 1, false,
                 "Only supports single scale value, but got %ld",
                 static_cast<long int>(scale_sz));
     }
 
     // Check soft-capping size
-    if (graph_inport[4] != -1) {
-        auto scale_sz = ltw(inputs[graph_inport[4]]).nelems();
+    if (graph_inport[mm1_soft_capping] != -1) {
+        auto scale_sz = ltw(inputs[graph_inport[mm1_soft_capping]]).nelems();
         VCHECK_SDP_DECOMP(scale_sz == 1, false,
                 "Only supports single scale value for soft-capping, but got "
                 "%ld",
                 static_cast<long int>(scale_sz));
     }
 
-    VCHECK_SDP_DECOMP(ltw(inputs[graph_inport[1]]).data_type()
-                    == ltw(inputs[graph_inport[2]]).data_type(),
+    VCHECK_SDP_DECOMP(ltw(inputs[graph_inport[mm1_wei]]).data_type()
+                    == ltw(inputs[graph_inport[mm2_wei]]).data_type(),
             false,
             "Key and value should have the same data type. But got key:%s, "
             "value:%s",
-            dnnl_dt2str(ltw(inputs[graph_inport[1]]).data_type()),
-            dnnl_dt2str(ltw(inputs[graph_inport[2]]).data_type()));
+            dnnl_dt2str(ltw(inputs[graph_inport[mm1_wei]]).data_type()),
+            dnnl_dt2str(ltw(inputs[graph_inport[mm2_wei]]).data_type()));
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
 // between batch_size, num_head_q and thread number to determine whether to use
@@ -131,9 +131,9 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // Acquire the data type from input param for later primitive creation.
     // The src and wei dt of both quantized sdp and float sdp are the same.
     memory::data_type dt_src_user = static_cast<memory::data_type>(
-            ltw(inputs[graph_inport[0]]).data_type());
+            ltw(inputs[graph_inport[mm1_src]]).data_type());
     memory::data_type dt_wei_user = static_cast<memory::data_type>(
-            ltw(inputs[graph_inport[1]]).data_type());
+            ltw(inputs[graph_inport[mm1_wei]]).data_type());
     memory::data_type dt_wei = quantized ? memory::data_type::s8 : dt_src_user;
     memory::data_type dt_inter = quantized
             ? dt
@@ -162,7 +162,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // per-head: reorder src1 to dense, for first matmul
     dims sub_src1_dims = {seq_len_q, head_size_qk};
-    src1_strides = ltw(inputs[graph_inport[0]]).vstrides();
+    src1_strides = ltw(inputs[graph_inport[mm1_src]]).vstrides();
     sub_src1_md = memory::desc(sub_src1_dims, dt_src_user,
             {src1_strides[second_last_dim], src1_strides[last_dim]});
     auto sub_src1_d_md = memory::desc(sub_src1_dims, dt_src_user, tag::ab);
@@ -296,7 +296,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     dnnl::primitive_attr sub_reorder2_attr
             = make_primitive_attr(sdp_op[3], mgr);
     dims sub_wei2_dims = {seq_len_kv, head_size_v};
-    wei2_strides = ltw(inputs[graph_inport[2]]).vstrides();
+    wei2_strides = ltw(inputs[graph_inport[mm2_wei]]).vstrides();
     sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
             {wei2_strides[second_last_dim], wei2_strides[last_dim]});
     // The format is `ab` due to performance of reorder to `ba` is low.

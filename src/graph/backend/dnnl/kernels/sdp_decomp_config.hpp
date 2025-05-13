@@ -87,6 +87,16 @@ public:
     // Used to record the exact input offset in subgraph
     // [mm1_src,mm1_wei,mm2_wei,mm1_scale,mm1_soft_capping,mm1_add,select_condition,select_other_input]
     std::vector<int> graph_inport;
+    enum input_index_t {
+        mm1_src = 0,
+        mm1_wei,
+        mm2_wei,
+        mm1_scale,
+        mm1_soft_capping,
+        mm1_add,
+        select_condition,
+        select_other_input
+    };
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim, sub_select_prim;

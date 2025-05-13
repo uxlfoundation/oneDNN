@@ -1291,6 +1291,18 @@ struct fma_context_t {
         if (a_type.is_f16() && acc_type.is_f16()) {
             return layout.make_dense();
         }
+        if (layout.type().is_bf16() && !hw.systolic_support())
+            return layout.retype(type_t::f32()).make_dense();
+        if (a_type.is_bf16()) {
+            // bf16 mixed mode requires src1 to be converted to f32 when it's
+            // broadcasted.
+            if (is_a && is_src1_broadcast)
+                return layout.retype(type_t::f32()).make_dense();
+            // bf16 mixed mode mad requires src1 to be packed
+            if (is_a) return layout.make_dense();
+            // bf16 mixed mode mad requires src2 to be f32.
+            return layout.retype(type_t::f32()).make_dense();
+        }
         bool is_a_xf8_or_xf16_or_xf4 = (a_type.is_fp4() || a_type.is_fp8()
                 || a_type.is_bf16() || a_type.is_f16());
         bool is_b_xf8_or_xf16_or_xf4 = (b_type.is_fp4() || b_type.is_fp8()

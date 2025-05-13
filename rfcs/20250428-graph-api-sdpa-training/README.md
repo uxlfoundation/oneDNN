@@ -495,6 +495,46 @@ and backward graphs are as follows:
 - SoftMax is already used in SDPA inference, switching to a decomposed
   representation for training may cause confusion.
 
+## Implementation Effort
+
+### Library Implementation
+
+1. **Graph API and Related Functionality Support**:
+   - **Dropout Support**: If Proposal 1.B is adopted, add a new Dropout
+     operation to the oneDNN Graph API. A dropout primitive will be required
+     to support the reference implementation of SDPA training forward.
+   - **RNG Support**: If Proposal 1.C is adopted, add a new RNG operation to the
+     oneDNN Graph API. This will request a reference CPU/GPU RNG implementation,
+     potentially introducing a new RNG primitive to enable Dropout functionality.
+   - **SoftMax with Statistics**: If Proposal 2.B is adopted, extend the
+     existing SoftMax operation to include an optional `stats` output in the
+     oneDNN Graph API. Update the SoftMax primitive to support the `stats`
+     output for backward computation.
+
+2. **Backend Pattern Support**:
+   - Extend the inference pattern to support the training forward pattern based
+     on the selected proposals. Start with the case where $H_q = H_k = H_v$ and
+     $D_{qk} = D_v$, using the `fp32` data type, and expand to other
+     configurations, such as varying head numbers, head sizes, and data types
+     (e.g., `bf16`, `f16`), based on solution viability and user demand.
+   - Implement support for the backward pattern according to the selected
+     proposals, starting from the case $H_q = H_k = H_v$ and $D_{qk} = D_v$ with
+     `fp32` and extend to other configurations as needed.
+   - Support the reference implementation of SDPA training forward and backward
+     with larger partition kernels.
+
+### Validation
+
+1. **Functionality Testing**:
+   - Use benchdnn graph to validate the correctness of new operations (e.g.,
+     SoftMax with `stats`, Dropout, RNG). Implement reference for these
+     operations in benchdnn graph if necessary.
+   - Validate the correctness of forward and backward patterns using benchdnn graph.
+
+2. **Integration with Frameworks**:
+   - Collaborate with the PyTorch team to integrate the solution into PyTorch
+     and validate its functionality within the framework.
+
 ## Conclusions
 
 TBD

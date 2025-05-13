@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const pool_conf_t &conf, const offsets_t &off,
         const post_ops_t &post_ops, const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
-    kernel_ctx.set_data_type(conf.src_dt);
+    kernel_ctx.set_data_type(conf.src_dt, /*type_punning=*/false);
 
     kernel_ctx.define_int("SUB_GROUP_SIZE", 1);
     kernel_ctx.define_int("NDIMS", conf.ndims);
@@ -99,8 +99,10 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     def_offsets(off.src_off, kernel_ctx, "SRC", conf.ndims);
     def_offsets(off.dst_off, kernel_ctx, "DST", conf.ndims);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*type_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*type_punning=*/false);
 
     def_dispatch(kernel_ctx, conf.dispatch);
 

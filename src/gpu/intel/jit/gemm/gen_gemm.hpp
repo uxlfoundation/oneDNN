@@ -239,16 +239,33 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (quant_enabled_ && !src_scales.has_default_groups())
                 src_scales_2d_ = true;
 
+            bool with_a_group_sums_ = false, with_b_group_sums_ = false;
+
             if (!attr_zps.has_default_values()) {
                 const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
 
                 VDISPATCH_GEMM(attr_zps.has_default_values(
-                                       user_precomp | DNNL_ARG_WEIGHTS)
-                                && attr_zps.has_default_values(
-                                        user_precomp | DNNL_ARG_SRC)
-                                && attr_zps.has_default_values(
-                                        user_precomp | DNNL_ARG_DST),
+                                       user_precomp | DNNL_ARG_DST),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                with_a_group_sums_ = !attr_zps.has_default_values(
+                        user_precomp | DNNL_ARG_A);
+                with_b_group_sums_ = !attr_zps.has_default_values(
+                        user_precomp | DNNL_ARG_B);
+                if (with_a_group_sums_) {
+                    VDISPATCH_GEMM(
+                            attr_zps.get_data_type(user_precomp | DNNL_ARG_A)
+                                    == data_type::s32,
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+                if (with_b_group_sums_) {
+                    VDISPATCH_GEMM(
+                            attr_zps.get_data_type(user_precomp | DNNL_ARG_B)
+                                    == data_type::s32,
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+
+                if (swap_ab_) std::swap(with_a_group_sums_, with_b_group_sums_);
 
                 if (!attr_zps.has_default_values(DNNL_ARG_A)) {
                     const int cmask_a = attr_zps.get_mask(DNNL_ARG_A);
@@ -269,12 +286,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                         const auto wei_q2d_group_n = attr_zps.get_group(idx, 1);
                         // Non-trivial N group unsupported.
                         VDISPATCH_GEMM(wei_q2d_group_n == 1,
-                                VERBOSE_UNSUPPORTED_ZP_CFG);
-                        // Zero points with non-trivial groups only supported
-                        // when target tensor is being dequantized.
-                        VDISPATCH_GEMM(!dy_quant_enabled_
-                                        || utils::one_of(d->a_type(), s4, u4)
-                                        || zp_group_k == desc()->k(),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
                     } else {
                         VDISPATCH_GEMM(utils::one_of(cmask_a, 0, mask_per_oc,
@@ -369,9 +380,8 @@ struct gen_gemm_t : public gpu_gemm_t {
                     src_scales_2d_ = false;
                 else {
                     src_q2d_group_k = scales_group_k;
-                    VDISPATCH_GEMM(dy_quant_enabled_
-                                    && utils::one_of(eff_a_type(), s4, u4),
-                            VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_GEMM(
+                            dy_quant_enabled_, VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             }
 
@@ -500,8 +510,15 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VERBOSE_UNSUPPORTED_POSTOP);
             }
 
+            // Check for group sum presence if required.
+            auto &problem = *kernel_desc_.problem();
+            VDISPATCH_GEMM((!problem.needsAGroupSums() || with_a_group_sums_)
+                            && (!problem.needsBGroupSums()
+                                    || with_b_group_sums_),
+                    "group sum tensor required");
+
             // Limited post-op support for low-precision accumulation.
-            if (kernel_desc_.problem()->Tc.size() < 4) {
+            if (problem.Tc.size() < 4) {
                 VDISPATCH_GEMM(!need_x32_acc, VERBOSE_UNSUPPORTED_POSTOP);
             }
 
@@ -860,7 +877,8 @@ private:
             const memory_storage_t &a, const memory_storage_t &b,
             const memory_storage_t &c, const memory_storage_t *ao,
             const memory_storage_t *bo, const memory_storage_t *a_scales,
-            const memory_storage_t *b_scales, const memory_storage_t &co,
+            const memory_storage_t *b_scales, const memory_storage_t *ag,
+            const memory_storage_t *bg, const memory_storage_t &co,
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,
             int64_t offset_b, int64_t offset_c, int64_t offset_aq,

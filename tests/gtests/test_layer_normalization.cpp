@@ -100,21 +100,32 @@ protected:
         Forward(training, flags::use_scale | flags::use_shift);
         Forward(training,
                 flags::use_scale | flags::use_shift | flags::use_global_stats);
-        Forward(training, flags::rms_norm);
-        Forward(training,
-                flags::rms_norm | flags::use_scale | flags::use_shift);
-        Forward(training,
-                flags::rms_norm | flags::use_scale | flags::use_shift
-                        | flags::use_global_stats);
+
+        // RMS normalization is currently supported only on CPU.
+        // todo: remove the CPU check once other engines are supported
+        if (get_test_engine_kind() == engine::kind::cpu) {
+            Forward(training, flags::rms_norm);
+            Forward(training,
+                    flags::rms_norm | flags::use_scale | flags::use_shift);
+            Forward(training,
+                    flags::rms_norm | flags::use_scale | flags::use_shift
+                            | flags::use_global_stats);
+        }
+
         Forward(inference);
         Forward(inference, flags::use_global_stats);
         Forward(inference, flags::use_scale | flags::use_shift);
-        Forward(inference, flags::rms_norm);
-        Forward(inference,
-                flags::rms_norm | flags::use_scale | flags::use_shift);
-        Forward(inference,
-                flags::rms_norm | flags::use_scale | flags::use_shift
-                        | flags::use_global_stats);
+
+        // RMS normalization is currently supported only on CPU.
+        // todo: remove the CPU check once other engines are supported
+        if (get_test_engine_kind() == engine::kind::cpu) {
+            Forward(inference, flags::rms_norm);
+            Forward(inference,
+                    flags::rms_norm | flags::use_scale | flags::use_shift);
+            Forward(inference,
+                    flags::rms_norm | flags::use_scale | flags::use_shift
+                            | flags::use_global_stats);
+        }
 
         if (!impl::utils::one_of(p.dst_dt, memory::data_type::f16,
                     memory::data_type::s8, memory::data_type::u8)) {
@@ -129,12 +140,17 @@ protected:
             Backward(prop_kind::backward,
                     flags::use_scale | flags::use_shift
                             | flags::use_global_stats);
-            Backward(prop_kind::backward, flags::rms_norm);
-            Backward(prop_kind::backward,
-                    flags::rms_norm | flags::use_scale | flags::use_shift);
-            Backward(prop_kind::backward,
-                    flags::rms_norm | flags::use_scale | flags::use_shift
-                            | flags::use_global_stats);
+
+            // RMS normalization is currently supported only on CPU.
+            // todo: remove the CPU check once other engines are supported
+            if (get_test_engine_kind() == engine::kind::cpu) {
+                Backward(prop_kind::backward, flags::rms_norm);
+                Backward(prop_kind::backward,
+                        flags::rms_norm | flags::use_scale | flags::use_shift);
+                Backward(prop_kind::backward,
+                        flags::rms_norm | flags::use_scale | flags::use_shift
+                                | flags::use_global_stats);
+            }
         }
     }
 

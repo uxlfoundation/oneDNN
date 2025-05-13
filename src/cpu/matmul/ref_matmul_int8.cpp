@@ -153,9 +153,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             = src_placeholder_group_k > 1 ? K / src_placeholder_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_pl_md {};
-    CHECK(matmul_helper_t::get_quant_md(src_pl_md, ndims, src_d.dims(),
-            src_placeholder_mask, 1, src_placeholder_group_k,
-            src_placeholder_dt));
+    CHECK(attr_placeholder.get(DNNL_ARG_SRC).get_md(src_pl_md, *src_d.md_));
 
     // For compute kernel, the minimal group is picked.
     const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);

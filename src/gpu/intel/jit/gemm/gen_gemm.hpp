@@ -253,6 +253,13 @@ struct gen_gemm_t : public gpu_gemm_t {
                             (mnk <= 256 * 1024 * 1024), VERBOSE_LARGE_SHAPES);
             }
 
+            // Check for group sums.
+            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+            const bool with_ags = !attr_zps.has_default_values(
+                    user_precomp | (swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A));
+            const bool with_bgs = !attr_zps.has_default_values(
+                    user_precomp | (swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B));
+
             // Wrangle data types.
             auto ao_type = with_a_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
@@ -332,9 +339,9 @@ struct gen_gemm_t : public gpu_gemm_t {
                     with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
                     beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
                     ao_type, bo_type, a_scales_type_, b_scales_type_, co_type,
-                    acc_type, eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                    eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(), d->batch(),
-                    std::move(gpu_post_ops)));
+                    acc_type, with_ags, with_bgs, eff_align_a(), eff_align_b(),
+                    align_c(), eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(),
+                    d->ldc(), d->batch(), std::move(gpu_post_ops)));
 
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.
@@ -588,7 +595,8 @@ private:
             const memory_storage_t &a, const memory_storage_t &b,
             const memory_storage_t &c, const memory_storage_t *ao,
             const memory_storage_t *bo, const memory_storage_t *a_scales,
-            const memory_storage_t *b_scales, const memory_storage_t &co,
+            const memory_storage_t *b_scales, const memory_storage_t *ag,
+            const memory_storage_t *bg, const memory_storage_t &co,
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,
             int64_t offset_b, int64_t offset_c, int64_t offset_aq,

@@ -59,9 +59,12 @@ void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, const gates_t *ws_gates_,
         acc_t *diff_bias_) {
 
-    // @todo block k on simd-width to enable vectorization in
+    // @TODO: block k on simd-width to enable vectorization in
     // parallel_nd path
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP && _OPENMP >= 201307 \
+    // Note: `defined(_OPENMP)` is needed for `icx -fsycl` compilation. The
+    // second pass for device code doesn't contain OpenMP macros.
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP && defined(_OPENMP) \
+        && _OPENMP >= 201307 \
         && (!defined(__INTEL_COMPILER) || __INTEL_COMPILER < 1910)
 #pragma omp parallel for simd collapse(2)
     for (int i = 0; i < rnn.n_gates; i++)

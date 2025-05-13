@@ -205,6 +205,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     MatrixAddressingStrategy A, B, C;            // Strategies for accessing A/B/C.
     MatrixAddressingStrategy AO, BO, CO;         // Strategies for accessing A/B/C offsets.
     MatrixAddressingStrategy A_scale, B_scale;   // Strategies for accessing A/B scales.
+    MatrixAddressingStrategy Ag, Bg;             // Strategies for accessing A/B groupwise reductions.
     int ka_load, kb_load;                        // How much of A/B is loaded at once, in k dimension
     int ka_load_masked = 0, kb_load_masked = 0;  // Same as above, when masking m/n (0 = default = same as ka/kb_load)
     bool loadBFirst = false;                     // If true, load B before A (default A then B).

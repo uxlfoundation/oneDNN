@@ -827,11 +827,21 @@ void BLASKernelGenerator<hw>::gemmScaleInputs(const GEMMProblem &problem, const 
         scale(problem.Tb_scale, inputs.ldbScale, ldbq);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
+    if (problem.needsAGroupSums()) {
+        scale(problem.Tag, inputs.ldag, ldaq);
+        scale(problem.Tag, inputs.offsetAg, inputs.offsetAq);
+    }
+    if (problem.needsBGroupSums()) {
+        scale(problem.Tbg, inputs.ldbg, ldbq);
+        scale(problem.Tbg, inputs.offsetBg, inputs.offsetBq);
+    }
 
     state.ldao = inputs.ldao;
     state.ldbo = inputs.ldbo;
     state.ldaScale = inputs.ldaScale;
     state.ldbScale = inputs.ldbScale;
+    state.ldag = inputs.ldag;
+    state.ldbg = inputs.ldbg;
 
     state.ra.safeRelease(inputs.ldaq);
     state.ra.safeRelease(inputs.ldbq);
@@ -990,6 +1000,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext, Tc_ext = problem.Tc_ext;
     auto Tao = problem.Tao, Tbo = problem.Tbo;
     auto Ta_scale = problem.Ta_scale, Tb_scale = problem.Tb_scale;
+    auto Tag = problem.Tag, Tbg = problem.Tbg;
     auto &Ta_load = state.Ta_load, &Tb_load = state.Tb_load;
     bool slmA = strategy.slmA, slmB = strategy.slmB;
 
@@ -1612,6 +1623,8 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     bool bo2D = (problem.boPtrDims == 2);
     bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D && problem.earlyDequantizeA();
     bool boTo2D = problem.bOffset == ABOffset::Calc && !bo2D && problem.earlyDequantizeB();
+    bool ag2D = problem.needsAGroupSums();
+    bool bg2D = problem.needsBGroupSums();
 
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);
@@ -1636,11 +1649,13 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         return assignMasks(state.A_layout,       LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.A_offsetLayout, LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.A_scaleLayout,  LoopM,    LoopK,       masks, strategy, state)
+            && assignMasks(state.Ag_layout,      LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.Ap_layout,      LoopM,    LoopK,    A_cmasks, strategy, state)
             && assignMasks(state.Ai_layout,      LoopM,    LoopNone, A_cmasks, strategy, state)
             && assignMasks(state.B_layout,       LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.B_offsetLayout, LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.B_scaleLayout,  LoopK,    LoopN,       masks, strategy, state)
+            && assignMasks(state.Bg_layout,      LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.Bp_layout,      LoopK,    LoopN,    B_cmasks, strategy, state)
             && assignMasks(state.Bi_layout,      LoopNone, LoopN,    B_cmasks, strategy, state)
         ;
@@ -1702,6 +1717,8 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, problem.BO, strategy.BO, state);
     allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, problem.A_scale, strategy.A_scale, state);
     allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, problem.B_scale, strategy.B_scale, state);
+    allocAddrRegs(state.Ag_addrs, state.Ag_layout, problem.Ag, strategy.Ag, state);
+    allocAddrRegs(state.Bg_addrs, state.Bg_layout, problem.Bg, strategy.Bg, state);
 
     // Free up some C registers temporarily for use in address calculations.
     releaseRanges(state.C_regs, state);
@@ -1722,28 +1739,31 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     Subregister A_h0q, B_h0q;
 
     if (state.h0.isValid()) {
-        if (ao2D || as2D) {
+        if (ao2D || as2D || ag2D) {
             A_h0q = state.ra.alloc_sub<uint32_t>();
             divDown(A_h0q, state.h0, problem.aqGroupK, strategy, state);
         }
-        if (bo2D || bs2D) {
+        if (bo2D || bs2D || bg2D) {
             B_h0q = state.ra.alloc_sub<uint32_t>();
             divDown(B_h0q, state.h0, problem.bqGroupK, strategy, state);
         }
     }
 
-    auto i0s = i0q, j0s = j0q;
-    auto A_h0s = A_h0q, B_h0s = B_h0q;
+    bool lateOffsetA = bg2D;
+    bool lateOffsetB = ag2D;
 
-    if (slmA && (ao2D || aoTo2D || (as2D && !state.lateScale2DA))) {
+    auto i0qLate = i0q, j0qLate = j0q;
+    auto A_h0qLate = A_h0q, B_h0qLate = B_h0q;
+
+    if (slmA && (((ao2D || aoTo2D) && !lateOffsetA) || (as2D && !state.lateScale2DA))) {
         if (state.ma_slm < unrollM) {
             if (state.ma_slm * strategy.wg[LoopN] != unrollM) stub();
             i0q = state.ra.alloc_sub<uint32_t>();
             emad(1, i0q, state.i0, state.lidN, state.ma_slm, strategy, state);
         }
-        if ((ao2D || (as2D && !state.lateScale2DA)) && state.ka_slm < strategy.unrollKSLM && problem.aqGroupK < strategy.unrollKSLM) {
-            if (state.lateScale2DA)
-                A_h0s = copySubregister(A_h0q, state);
+        if (((ao2D && !lateOffsetA) || (as2D && !state.lateScale2DA)) && state.ka_slm < strategy.unrollKSLM && problem.aqGroupK < strategy.unrollKSLM) {
+            if (state.lateScale2DA || lateOffsetA || ag2D)
+                A_h0qLate = copySubregister(A_h0q, state);
             if (A_h0q.isInvalid()) {
                 A_h0q = state.ra.alloc_sub<uint32_t>();
                 mov(1, A_h0q, 0);
@@ -1751,15 +1771,15 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
             addScaled(1, A_h0q, A_h0q, state.lidN, state.ka_slm, problem.aqGroupK, state, true);
         }
     }
-    if (slmB && (bo2D || boTo2D || (bs2D && !state.lateScale2DB))) {
+    if (slmB && (((bo2D || boTo2D) && !lateOffsetB) || (bs2D && !state.lateScale2DB))) {
         if (state.nb_slm < unrollN) {
             if (state.nb_slm * strategy.wg[LoopM] != unrollN) stub();
             j0q = state.ra.alloc_sub<uint32_t>();
             emad(1, j0q, state.j0, state.lidM, state.nb_slm, strategy, state);
         }
-        if ((bo2D || (bs2D && !state.lateScale2DB)) && state.kb_slm < strategy.unrollKSLM && problem.bqGroupK < strategy.unrollKSLM) {
-            if (state.lateScale2DB)
-                B_h0s = copySubregister(B_h0q, state);
+        if (((bo2D && !lateOffsetB) || (bs2D && !state.lateScale2DB)) && state.kb_slm < strategy.unrollKSLM && problem.bqGroupK < strategy.unrollKSLM) {
+            if (state.lateScale2DB || lateOffsetB || bg2D)
+                B_h0qLate = copySubregister(B_h0q, state);
             if (B_h0q.isInvalid()) {
                 B_h0q = state.ra.alloc_sub<uint32_t>();
                 mov(1, B_h0q, 0);
@@ -1769,23 +1789,23 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     }
 
     if (problem.aqGroupM > 1 && (ao2D || as2D)) {
-        auto inI0Q = i0q, inI0S = i0s;
+        auto inI0Q = i0q, inI0S = i0qLate;
         if (i0q == state.i0) i0q = state.ra.alloc_sub<uint32_t>();
         divDown(i0q, inI0Q, problem.aqGroupM, strategy, state);
         if (inI0S == inI0Q)
-            i0s = i0q;
+            i0qLate = i0q;
         else
-            divDown(i0s, i0s, problem.aqGroupM, strategy, state);
+            divDown(i0qLate, i0qLate, problem.aqGroupM, strategy, state);
     }
 
     if (problem.bqGroupN > 1 && (bo2D || bs2D)) {
-        auto inJ0Q = j0q, inJ0S = j0s;
+        auto inJ0Q = j0q, inJ0S = j0qLate;
         if (j0q == state.j0) j0q = state.ra.alloc_sub<uint32_t>();
         divDown(j0q, inJ0Q, problem.bqGroupN, strategy, state);
         if (inJ0S == inJ0Q)
-            j0s = j0q;
+            j0qLate = j0q;
         else
-            divDown(j0s, j0s, problem.bqGroupN, strategy, state);
+            divDown(j0qLate, j0qLate, problem.bqGroupN, strategy, state);
     }
 
     auto setupQAddr = [&](Type T, vector<GRFRange> &addrs, const vector<RegisterBlock> &layout,
@@ -1802,32 +1822,44 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     };
 
     if (ao2D) {
+        auto &i0o   = lateOffsetA ? i0qLate   : i0q;
+        auto &A_h0o = lateOffsetA ? A_h0qLate : A_h0q;
         setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
-                   i0q, A_h0q, state.inputs.ldao, problem.AO, strategy.AO);
+                   i0o, A_h0o, state.inputs.ldao, problem.AO, strategy.AO);
     }
     if (as2D) {
-        if (!state.lateScale2DA)
-            i0s = i0q, A_h0s = A_h0q;
+        auto &i0s   = state.lateScale2DA ? i0qLate : i0q;
+        auto &A_h0s = state.lateScale2DA ? A_h0qLate : A_h0q;
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
                    i0s, A_h0s, state.inputs.ldaScale, problem.A_scale, strategy.A_scale);
     }
+    if (ag2D) {
+        setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
+                   i0qLate, A_h0qLate, state.inputs.ldag, problem.Ag, strategy.Ag);
+    }
     if (bo2D) {
+        auto &j0o   = lateOffsetB ? j0qLate   : j0q;
+        auto &B_h0o = lateOffsetB ? B_h0qLate : B_h0q;
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
-                   B_h0q, j0q, state.inputs.ldbo, problem.BO, strategy.BO);
+                   B_h0o, j0o, state.inputs.ldbo, problem.BO, strategy.BO);
     }
     if (bs2D) {
-        if (!state.lateScale2DB)
-            j0s = j0q, B_h0s = B_h0q;
+        auto &j0s   = state.lateScale2DB ? j0qLate   : j0q;
+        auto &B_h0s = state.lateScale2DB ? B_h0qLate : B_h0q;
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
                    B_h0s, j0s, state.inputs.ldbScale, problem.B_scale, strategy.B_scale);
     }
+    if (bg2D) {
+        setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
+                   B_h0qLate, j0qLate, state.inputs.ldbg, problem.Bg, strategy.Bg);
+    }
 
-    if (i0s != state.i0) state.ra.safeRelease(i0s);
-    if (j0s != state.j0) state.ra.safeRelease(j0s);
+    if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
+    if (j0qLate != state.j0) state.ra.safeRelease(j0qLate);
     state.ra.safeRelease(A_h0q);
     state.ra.safeRelease(B_h0q);
-    state.ra.safeRelease(A_h0s);
-    state.ra.safeRelease(B_h0s);
+    state.ra.safeRelease(A_h0qLate);
+    state.ra.safeRelease(B_h0qLate);
 
     // Load and convert 0D/1D offsets for 2D dequantization.
     if (aoTo2D) {
@@ -2012,6 +2044,8 @@ void BLASKernelGenerator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMM
     safeReleaseRanges(state.B_offsetAddrs, state);
     safeReleaseRanges(state.A_scaleAddrs, state);
     safeReleaseRanges(state.B_scaleAddrs, state);
+    safeReleaseRanges(state.Ag_addrs, state);
+    safeReleaseRanges(state.Bg_addrs, state);
 
     safeReleaseRanges(state.A_regs, state);
     safeReleaseRanges(state.Ar_regs, state);
@@ -2020,8 +2054,10 @@ void BLASKernelGenerator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMM
     safeReleaseRanges(state.Ap_regs, state);
     safeReleaseRanges(state.A_offsetRegs, state);
     safeReleaseRanges(state.A_scaleRegs, state);
+    safeReleaseRanges(state.Ag_regs, state);
     safeReleaseRanges(state.Ar_offsetRegs, state);
     safeReleaseRanges(state.Ar_scaleRegs, state);
+    safeReleaseRanges(state.Agr_regs, state);
     safeReleaseRanges(state.B_regs, state);
     safeReleaseRanges(state.Br_regs, state);
     safeReleaseRanges(state.Bi_regs, state);
@@ -2029,8 +2065,10 @@ void BLASKernelGenerator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMM
     safeReleaseRanges(state.Bp_regs, state);
     safeReleaseRanges(state.B_offsetRegs, state);
     safeReleaseRanges(state.B_scaleRegs, state);
+    safeReleaseRanges(state.Bg_regs, state);
     safeReleaseRanges(state.Br_offsetRegs, state);
     safeReleaseRanges(state.Br_scaleRegs, state);
+    safeReleaseRanges(state.Bgr_regs, state);
     state.ra.safeRelease(state.broadcast_regs);
     safeReleaseRanges(state.tempMul_regs, state);
     clearTokenAllocations(hw, state);
@@ -2064,6 +2102,8 @@ void BLASKernelGenerator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMM
     state.B_offsetLayout.clear();
     state.A_scaleLayout.clear();
     state.B_scaleLayout.clear();
+    state.Ag_layout.clear();
+    state.Bg_layout.clear();
 
     if (state.systolicSumA || state.systolicSumB)
         setupTeardownAccumulateSumSystolic(false, Type::invalid, problem, strategy, state);
@@ -2185,6 +2225,8 @@ void BLASKernelGenerator<hw>::gemmCalcQuantizationIncrements(const GEMMProblem &
     bool bo2D = (problem.boPtrDims == 2);
     bool as2D = problem.aScale2D;
     bool bs2D = problem.bScale2D;
+    bool ag2D = problem.needsAGroupSums();
+    bool bg2D = problem.needsBGroupSums();
 
     auto calcInterleavedQIncrement = [&](bool isA, SubregisterPair &base, LDIncrements &increments) {
         auto inc   = isA ? state.kaqStride  : state.kbqStride;
@@ -2204,10 +2246,14 @@ void BLASKernelGenerator<hw>::gemmCalcQuantizationIncrements(const GEMMProblem &
         calcInterleavedQIncrement(true,  state.ldao,     state.ldaoIncrements);
     if (as2D && problem.A_scale.layout == MatrixLayout::N)
         calcInterleavedQIncrement(true,  state.ldaScale, state.ldasIncrements);
+    if (ag2D && problem.Ag.layout == MatrixLayout::N)
+        calcInterleavedQIncrement(true,  state.ldag,     state.ldagIncrements);
     if (bo2D && problem.BO.layout == MatrixLayout::T)
         calcInterleavedQIncrement(false, state.ldbo,     state.ldboIncrements);
     if (bs2D && problem.B_scale.layout == MatrixLayout::T)
         calcInterleavedQIncrement(false, state.ldbScale, state.ldbsIncrements);
+    if (bg2D && problem.Bg.layout == MatrixLayout::T)
+        calcInterleavedQIncrement(false, state.ldbg,     state.ldbgIncrements);
 }
 
 // Free cached multiples of lda/ldb.
@@ -2226,12 +2272,14 @@ void BLASKernelGenerator<hw>::gemmFreeIncrements(const GEMMProblem &problem, con
         freeIncrements(state.lda, state.ldaIncrements);
         freeIncrements(state.ldao, state.ldaoIncrements);
         freeIncrements(state.ldaScale, state.ldasIncrements);
+        freeIncrements(state.ldag, state.ldagIncrements);
     }
 
     if (doB) {
         freeIncrements(state.ldb, state.ldbIncrements);
         freeIncrements(state.ldbo, state.ldboIncrements);
         freeIncrements(state.ldbScale, state.ldbsIncrements);
+        freeIncrements(state.ldbg, state.ldbgIncrements);
     }
 }
 
@@ -2312,6 +2360,8 @@ void BLASKernelGenerator<hw>::gemmAllocateTokens(const GEMMProblem &problem, con
     success &= allocateTokens(state.B_offsetLayout, state.B_offsetRegs, state);
     success &= allocateTokens(state.A_scaleLayout, state.A_scaleRegs, state);
     success &= allocateTokens(state.B_scaleLayout, state.B_scaleRegs, state);
+    success &= allocateTokens(state.Ag_layout, state.Ag_regs, state);
+    success &= allocateTokens(state.Bg_layout, state.Bg_regs, state);
 
     if (!success) {
         status << "Not enough tokens for k loop." << status_stream::endl;
@@ -2448,6 +2498,14 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
         state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
+    if (problem.needsAGroupSums()) {
+        state.inputs.agPtr = interface.getArgumentIfExists("ag_ptr");
+        state.inputs.surfaceAg = interface.getArgumentSurfaceIfExists("ag_ptr");
+    }
+    if (problem.needsBGroupSums()) {
+        state.inputs.bgPtr = interface.getArgumentIfExists("bg_ptr");
+        state.inputs.surfaceBg = interface.getArgumentSurfaceIfExists("bg_ptr");
+    }
     if (problem.postOps.cStochasticRound)
         state.inputs.sroundSeedPtr = interface.getArgument("sround_seed");
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
@@ -2459,6 +2517,8 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
     state.inputs.offsetCO = interface.getArgumentIfExists("offset_CO");
     state.inputs.offsetAScale = interface.getArgumentIfExists("offset_A_scale");
     state.inputs.offsetBScale = interface.getArgumentIfExists("offset_B_scale");
+    state.inputs.offsetAg = interface.getArgumentIfExists("offset_Ag");
+    state.inputs.offsetBg = interface.getArgumentIfExists("offset_Bg");
     state.inputs.offsetAq = interface.getArgumentIfExists("offset_Aq");
     state.inputs.offsetBq = interface.getArgumentIfExists("offset_Bq");
     if (problem.batch == BatchMode::Strided) {
@@ -2487,6 +2547,8 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
     state.inputs.ldco = interface.getArgumentIfExists("ldco");
     state.inputs.ldaScale = interface.getArgumentIfExists("lda_scale");
     state.inputs.ldbScale = interface.getArgumentIfExists("ldb_scale");
+    state.inputs.ldag = interface.getArgumentIfExists("ldag");
+    state.inputs.ldbg = interface.getArgumentIfExists("ldbg");
     state.inputs.ldaq = interface.getArgumentIfExists("ldaq");
     state.inputs.ldbq = interface.getArgumentIfExists("ldbq");
     state.inputs.m = interface.getArgumentIfExists("m");
@@ -2613,6 +2675,10 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
     state.inputs.diagC = state.inputs.diagC.d();
 
     // Claim registers.
+    auto claimIfValid = [&](Subregister s) {
+        if (s.isValid()) state.ra.claim(s);
+    };
+
     for (int i = 0; i < r0DWords(hw); i++)
         state.ra.claim(r0.ud(i));
 
@@ -2623,43 +2689,41 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
             state.ra.claim(state.inputs.C[q]);
 
     if (aOffset) {
-        if (state.inputs.ao.isValid())
-            state.ra.claim(state.inputs.ao);
-        if (state.inputs.aoPtr.isValid())
-            state.ra.claim(state.inputs.aoPtr);
-        if (state.inputs.offsetAO.isValid())
-            state.ra.claim(state.inputs.offsetAO);
+        claimIfValid(state.inputs.ao);
+        claimIfValid(state.inputs.aoPtr);
+        claimIfValid(state.inputs.offsetAO);
     }
 
     if (bOffset) {
-        if (state.inputs.bo.isValid())
-            state.ra.claim(state.inputs.bo);
-        if (state.inputs.boPtr.isValid())
-            state.ra.claim(state.inputs.boPtr);
-        if (state.inputs.offsetBO.isValid())
-            state.ra.claim(state.inputs.offsetBO);
+        claimIfValid(state.inputs.bo);
+        claimIfValid(state.inputs.boPtr);
+        claimIfValid(state.inputs.offsetBO);
     }
 
     if (problem.aScale2D) {
         state.ra.claim(state.inputs.aScalePtr);
-        if (state.inputs.offsetAScale.isValid())
-            state.ra.claim(state.inputs.offsetAScale);
+        claimIfValid(state.inputs.offsetAScale);
     }
 
     if (problem.bScale2D) {
         state.ra.claim(state.inputs.bScalePtr);
-        if (state.inputs.offsetBScale.isValid())
-            state.ra.claim(state.inputs.offsetBScale);
+        claimIfValid(state.inputs.offsetBScale);
     }
 
-    if (state.inputs.ldaq.isValid())
-        state.ra.claim(state.inputs.ldaq);
-    if (state.inputs.ldbq.isValid())
-        state.ra.claim(state.inputs.ldbq);
-    if (state.inputs.offsetAq.isValid())
-        state.ra.claim(state.inputs.offsetAq);
-    if (state.inputs.offsetBq.isValid())
-        state.ra.claim(state.inputs.offsetBq);
+    if (problem.needsAGroupSums()) {
+        state.ra.claim(state.inputs.agPtr);
+        claimIfValid(state.inputs.offsetAg);
+    }
+
+    if (problem.needsBGroupSums()) {
+        state.ra.claim(state.inputs.bgPtr);
+        claimIfValid(state.inputs.offsetBg);
+    }
+
+    claimIfValid(state.inputs.ldaq);
+    claimIfValid(state.inputs.ldbq);
+    claimIfValid(state.inputs.offsetAq);
+    claimIfValid(state.inputs.offsetBq);
 
     if (problem.usesCO()) {
         if (strategy.CO.base.isStateless())
@@ -2679,16 +2743,14 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
     state.ra.claim(state.inputs.ldb);
     for (int q = 0; q < state.C_count; q++)
         state.ra.claim(state.inputs.ldc[q]);
-    if (state.inputs.ldao.isValid())
-        state.ra.claim(state.inputs.ldao);
-    if (state.inputs.ldbo.isValid())
-        state.ra.claim(state.inputs.ldbo);
+    claimIfValid(state.inputs.ldao);
+    claimIfValid(state.inputs.ldbo);
     if (problem.allowMatrixOffset())
         state.ra.claim(state.inputs.ldco);
-    if (state.inputs.ldaScale.isValid())
-        state.ra.claim(state.inputs.ldaScale);
-    if (state.inputs.ldbScale.isValid())
-        state.ra.claim(state.inputs.ldbScale);
+    claimIfValid(state.inputs.ldaScale);
+    claimIfValid(state.inputs.ldbScale);
+    claimIfValid(state.inputs.ldag);
+    claimIfValid(state.inputs.ldbg);
     state.ra.claim(state.inputs.m);
     state.ra.claim(state.inputs.n);
     state.ra.claim(state.inputs.k);
@@ -2771,8 +2833,7 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
 
     if (strategy.persistent) {
         state.ra.claim(state.inputs.groupStride);
-        if (state.inputs.groupCountMN.isValid())
-            state.ra.claim(state.inputs.groupCountMN);
+        claimIfValid(state.inputs.groupCountMN);
     }
 
     if (strategy.kParallelVariable) {

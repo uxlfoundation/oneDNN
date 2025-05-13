@@ -74,6 +74,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     strategy.BO.assignSurface(state.inputs.surfaceBO);
     strategy.A_scale.assignSurface(state.inputs.surfaceAScale);
     strategy.B_scale.assignSurface(state.inputs.surfaceBScale);
+    strategy.Ag.assignSurface(state.inputs.surfaceAg);
+    strategy.Bg.assignSurface(state.inputs.surfaceBg);
 
     // Prologue.
     if (!inFusedGEMM)
@@ -176,8 +178,10 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 
     if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
     if (!strategy.A_scale.base.isStateless())                      replace0(state.inputs.aScalePtr);
+    if (!strategy.Ag.base.isStateless())                           replace0(state.inputs.agPtr);
     if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2) replace0(state.inputs.boPtr);
     if (!strategy.B_scale.base.isStateless())                      replace0(state.inputs.bScalePtr);
+    if (!strategy.Bg.base.isStateless())                           replace0(state.inputs.bgPtr);
 
     // A/B offset pointer handling.
     bool aOffset = (problem.aOffset != ABOffset::None);
@@ -238,6 +242,15 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 
     state.ra.safeRelease(state.inputs.offsetAScale);
     state.ra.safeRelease(state.inputs.offsetBScale);
+
+    // Group sum address handling.
+    if (problem.needsAGroupSums() && state.inputs.offsetAg.isValid())
+        eadd(1, state.inputs.agPtr, state.inputs.agPtr, state.inputs.offsetAg, strategy, state);
+    if (problem.needsBGroupSums() && state.inputs.offsetBg.isValid())
+        eadd(1, state.inputs.bgPtr, state.inputs.bgPtr, state.inputs.offsetBg, strategy, state);
+
+    state.ra.safeRelease(state.inputs.offsetAg);
+    state.ra.safeRelease(state.inputs.offsetBg);
 
     if (problem.aqGroupK == 0) problem.aqGroupK = strategy.slmA ? strategy.unrollKSLM : strategy.ka_load;
     if (problem.bqGroupK == 0) problem.bqGroupK = strategy.slmB ? strategy.unrollKSLM : strategy.kb_load;

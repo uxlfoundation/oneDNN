@@ -300,7 +300,8 @@ protected:
     void outerProductSystolic(int h, int ha, int hb, int opCount, bool rem, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProduct(int h, int ha, int hb, int opCount, bool rem, const std::vector<RegisterBlock> &A_layout, const std::vector<RegisterBlock> &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void setupTeardownAccumulateSumSystolic(bool setup, Type Tother, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void outerProductRepackC(int x0, int xr0, int nx, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void outerProductRepackC(int x0, int xr0, int nx, int h, bool rem, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void applyLateABOffset(bool isA, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int x0 = 0, int xr0 = 0, int nx = -1);
 
     // c_update.cpp
     void setupCAddr0(ngen::GRFRange (&C_addr0)[2], ngen::GRFRange (&C_addr0Unmasked)[2], const std::vector<RegisterBlock> &C_layout, const std::vector<RegisterBlock> &C_layoutUnmasked, int C_count, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, const Address2DParams *params = nullptr);

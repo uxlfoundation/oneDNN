@@ -157,12 +157,14 @@ struct GEMMProblem : public CommonProblem {
     Type Ta_ext, Tb_ext, Tc_ext;                    // Types for A/B/C data in memory.
     Type Tao, Tbo, Tco;                             // Types for A/B/C offsets.
     Type Ta_scale, Tb_scale;                        // Types for A/B scales.
+    Type Tag, Tbg;                                  // Types for A/B group sums.
 
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
-    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B/C scales (if 2D).
-    MatrixAddressing sroundSeed;              // Addressing information for A/B/C scales (if 2D).
+    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B scales (if 2D).
+    MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
+    MatrixAddressing sroundSeed;                    // Addressing information for A/B/C scales (if 2D).
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
@@ -222,11 +224,6 @@ struct GEMMProblem : public CommonProblem {
     bool gemmt() const { return false; }
     bool backward() const { return false; }
 
-    bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB()); }
-    bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA()); }
-    bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
-    bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
-
     bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
     bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
 
@@ -244,6 +241,15 @@ struct GEMMProblem : public CommonProblem {
                     && (Tb_ext.bits() < Tb.bits() || Tb.isFP()))
             || (bScale2D && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
     }
+
+    bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
+    bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
+
+    bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
+    bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
+
+    bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
+    bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
     Type Tc_compute() const {
         if (Ta.isInteger() && Tb.isInteger() && Tc == Type::f32)

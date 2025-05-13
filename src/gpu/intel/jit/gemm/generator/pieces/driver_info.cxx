@@ -78,6 +78,8 @@ CommonDriverInfo BLASKernelGenerator<hw>::driverInfo(GEMMProblem problem, const 
     if (problem.beta.pointer())                                   info.flags |= FlagBetaPtr;
     if (strategy.nondeterministic(problem))                       info.flags |= FlagNondeterministic;
     if (strategy.tlbWarmup)                                       info.flags |= FlagExtraWG;
+    if (problem.needsAGroupSums())                                info.flags |= FlagAGroupSums;
+    if (problem.needsBGroupSums())                                info.flags |= FlagBGroupSums;
     info.flags |= (strategy.fillGoal << FlagShiftFillGoal) & FlagMaskFillGoal;
     info.slm = int(gemmSLMSize(hw, problem, strategy));
     info.perKSLM = int(gemmPerKSLMSize(hw, problem, strategy));

@@ -677,8 +677,8 @@ void BLASKernelGenerator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRF
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA();
-    bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB();
+    bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA() && !problem.quantized2DA();
+    bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB() && !problem.quantized2DB();
     if (!aOffset && !bOffset)
         return;
 

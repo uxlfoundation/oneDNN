@@ -581,17 +581,17 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
         astrategy.newDP = strategy.C.newDP;
     }
 
-    bool surfaceAq = (problem.quantized2DA() && !strategy.A.base.isStateless());
-    bool surfaceBq = (problem.quantized2DB() && !strategy.B.base.isStateless());
+    bool surfaceAq = ((problem.quantized2DA() || problem.needsAGroupSums()) && !strategy.A.base.isStateless());
+    bool surfaceBq = ((problem.quantized2DB() || problem.needsBGroupSums()) && !strategy.B.base.isStateless());
 
-    strategy.AO.base = strategy.A_scale.base = (surfaceAq ? BTS : A64);
-    strategy.BO.base = strategy.B_scale.base = (surfaceBq ? BTS : A64);
+    strategy.AO.base = strategy.A_scale.base = strategy.Ag.base = (surfaceAq ? BTS : A64);
+    strategy.BO.base = strategy.B_scale.base = strategy.Bg.base = (surfaceBq ? BTS : A64);
 
-    if (problem.aoPtrDims <= 2) strategy.AO.base = A64;
-    if (problem.boPtrDims <= 2) strategy.BO.base = A64;
+    if (problem.aoPtrDims < 2) strategy.AO.base = A64;
+    if (problem.boPtrDims < 2) strategy.BO.base = A64;
 
-    strategy.AO.newDP = strategy.A_scale.newDP = strategy.A.newDP;
-    strategy.BO.newDP = strategy.B_scale.newDP = strategy.B.newDP;
+    strategy.AO.newDP = strategy.A_scale.newDP = strategy.Ag.newDP = strategy.A.newDP;
+    strategy.BO.newDP = strategy.B_scale.newDP = strategy.Bg.newDP = strategy.B.newDP;
 }
 
 void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags)
@@ -639,10 +639,12 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, c
     }
 
     // No need to use split remainder handling for 2D block accesses as there's no penalty for masking.
-    if (isBlock2D(strategy.A.accessType) && (!strategy.prefetchA || isBlock2D(strategy.A_prefetch.accessType)) && !problem.quantized2DA())
-        strategy.remHandling[LoopM] = RemainderHandling::General;
-    if (isBlock2D(strategy.B.accessType) && (!strategy.prefetchB || isBlock2D(strategy.B_prefetch.accessType)) && !problem.quantized2DB())
-        strategy.remHandling[LoopN] = RemainderHandling::General;
+    if (isBlock2D(strategy.A.accessType) && (!strategy.prefetchA || isBlock2D(strategy.A_prefetch.accessType)))
+        if (!problem.quantized2DA() && !problem.needsAGroupSums())
+            strategy.remHandling[LoopM] = RemainderHandling::General;
+    if (isBlock2D(strategy.B.accessType) && (!strategy.prefetchB || isBlock2D(strategy.B_prefetch.accessType)))
+        if (!problem.quantized2DB() && !problem.needsBGroupSums())
+            strategy.remHandling[LoopN] = RemainderHandling::General;
 
     // Also don't split remainder handling if padded.
     if (gemmAStrategy->padded) strategy.remHandling[LoopM] = RemainderHandling::General;

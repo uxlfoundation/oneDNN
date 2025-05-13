@@ -179,11 +179,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     int MBO = sdp_cfg_.batch_size, MBI = sdp_cfg_.num_head_q;
 
     char *src1_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[0]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_src]]
+                    .get_data_handle());
     char *wei1_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[1]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_wei]]
+                    .get_data_handle());
     char *wei2_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[2]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm2_wei]]
+                    .get_data_handle());
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
     size_t block_size = sdp_registry_.size();
@@ -219,20 +222,25 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
             sub_mm1_post_scale_tid.set_data_handle(
-                    inputs[sdp_cfg_.graph_inport[3]].get_data_handle());
+                    inputs[sdp_cfg_.graph_inport
+                                    [sdp_decomp_config_t::mm1_scale]]
+                            .get_data_handle());
         }
         if (sdp_cfg_.has_soft_capping) {
             auto &sub_mm1_post_soft_cap_tid
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
             sub_mm1_post_soft_cap_tid.set_data_handle(static_cast<char *>(
-                    inputs[sdp_cfg_.graph_inport[4]].get_data_handle()));
+                    inputs[sdp_cfg_.graph_inport
+                                    [sdp_decomp_config_t::mm1_soft_capping]]
+                            .get_data_handle()));
         }
         if (sdp_cfg_.has_attention_mask) {
             auto &sub_mm1_post_add_tid
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
-            const auto &mask_input = inputs[sdp_cfg_.graph_inport[5]];
+            const auto &mask_input = inputs
+                    [sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_add]];
             const auto mask_strides
                     = ltw(mask_input.get_logical_tensor()).vstrides();
             const auto mask_dims = ltw(mask_input.get_logical_tensor()).vdims();
@@ -254,7 +262,9 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         if (sdp_cfg_.has_select) {
             auto &sub_select_cond_tid
                     = res->mem_map[sdp_cfg_.sub_select_cond.get()][tid];
-            const auto &select_cond_input = inputs[sdp_cfg_.graph_inport[6]];
+            const auto &select_cond_input
+                    = inputs[sdp_cfg_.graph_inport
+                                     [sdp_decomp_config_t::select_condition]];
             const auto select_cond_strides
                     = ltw(select_cond_input.get_logical_tensor()).vstrides();
             const auto select_cond_dims
@@ -282,7 +292,9 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
 
             auto &sub_select_src0_tid
                     = res->mem_map[sdp_cfg_.sub_select_src0.get()][tid];
-            const auto &select_src0_input = inputs[sdp_cfg_.graph_inport[7]];
+            const auto &select_src0_input
+                    = inputs[sdp_cfg_.graph_inport
+                                     [sdp_decomp_config_t::select_other_input]];
             const auto select_src0_strides
                     = ltw(select_src0_input.get_logical_tensor()).vstrides();
             const auto select_src0_dims

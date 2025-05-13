@@ -96,19 +96,19 @@ struct gemm_matmul_t : public gpu_primitive_t {
                           return status::success;
                       };
             if (!attr()->zero_points_.has_default_values()) {
-                const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
                 const auto &zp = attr()->zero_points_;
-                CHECK((zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
-                              && zp.has_default_values(
-                                      user_precomp | DNNL_ARG_SRC)
-                              && zp.has_default_values(
-                                      user_precomp | DNNL_ARG_DST))
+                CHECK((zp.has_default_values(
+                              DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_DST))
                                 ? status::success
                                 : status::unimplemented);
                 CHECK(map_gemm_zp(
                         DNNL_ARG_SRC, DNNL_ARG_B, false, orig_dims - 2));
                 CHECK(map_gemm_zp(
                         DNNL_ARG_WEIGHTS, DNNL_ARG_A, false, orig_dims - 2));
+                CHECK(map_gemm_zp(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC,
+                        DNNL_ARG_B, false, orig_dims - 2));
+                CHECK(map_gemm_zp(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_WEIGHTS,
+                        DNNL_ARG_A, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
             }
 

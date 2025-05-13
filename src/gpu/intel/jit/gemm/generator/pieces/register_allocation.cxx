@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -631,6 +631,10 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
     state.B_scaleRegs = state.ra.alloc_range(getRegCount(state.B_scaleLayout));
     state.Ar_scaleRegs = state.ra.alloc_range(getRegCount(state.Ar_scaleLayout));
     state.Br_scaleRegs = state.ra.alloc_range(getRegCount(state.Br_scaleLayout));
+    state.Ag_regs = state.ra.alloc_range(getRegCount(state.Ag_layout));
+    state.Bg_regs = state.ra.alloc_range(getRegCount(state.Bg_layout));
+    state.Agr_regs = state.ra.alloc_range(getRegCount(state.Agr_layout));
+    state.Bgr_regs = state.ra.alloc_range(getRegCount(state.Bgr_layout));
 
     // Allocate multiplication temporaries for Gen9 IGEMM, in pairs.
     if (hw < HW::Gen12LP && problem.isIGEMM()) {

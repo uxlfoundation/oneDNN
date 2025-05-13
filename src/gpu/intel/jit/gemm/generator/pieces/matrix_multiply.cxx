@@ -661,19 +661,19 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
         if (endRepackC) {
             int xr = x - Cr_unrollM + xinc;
             if (xr >= 0)
-                outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, problem, strategy, state);
+                outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, rem, problem, strategy, state);
         }
     } /* x loop */
 
     if (endRepackC) for (int xr = nx - Cr_unrollM + xinc; xr < nx; xr += xinc)
-        outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, problem, strategy, state);
+        outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, rem, problem, strategy, state);
 
 }
 
 // Repack (part of) a C tile, converting types and scaling as needed.
 //  x0 (resp. xr0) are the offsets into the C tile (resp. repacked C tile) in the vectorized dimension.
 template <HW hw>
-void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h,
+void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem,
                                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc, Tc_compute = problem.Tc_compute();
@@ -693,6 +693,20 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
     int ny = strategy.unroll[globalCM ? LoopN : LoopM];
     int nacc = AccumulatorRegister::count(hw, strategy.GRFs, Tc.real().ngen());
 
+    /* Apply late A/B offsets to pre-repacked data */
+    bool doAO2DLate = problem.needsBGroupSums();
+    bool doBO2DLate = problem.needsAGroupSums();
+    if (doAO2DLate || doBO2DLate) {
+        auto period = gcd(problem.aqGroupK, problem.bqGroupK);
+        bool offsetTime = rem ? ((h % period) < minOuterProductCount(hw, problem, strategy))
+                              : (period - (h % period) <= state.cRepackPeriod);
+        if (offsetTime) {
+            if (doAO2DLate) applyLateABOffset(true,  h, problem, strategy, state, x0, xr0, nx);
+            if (doBO2DLate) applyLateABOffset(false, h, problem, strategy, state, x0, xr0, nx);
+        }
+    }
+
+    /* Main repacking logic */
     struct WorkItem {
         Subregister C, Cr;
         int simd, iacc;
@@ -811,6 +825,66 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
     }
 
     processItems();
+}
+
+template <HW hw>
+void BLASKernelGenerator<hw>::applyLateABOffset(bool isA, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int x0, int xr0, int nx)
+{
+    bool cRepack = !state.Cr_layout.empty();
+    const auto &C_layout = cRepack ? state.Cr_layout : state.C_layout;
+    const auto &C_regs   = cRepack ? state.Cr_regs   : state.C_regs[0];
+    auto cm = isLayoutColMajor(C_layout);
+    auto Tao = state.Tao_int, Tbo = state.Tbo_int;
+    auto Tag = problem.Tag, Tbg = problem.Tbg;
+    auto Tc = problem.Tc_compute();
+    auto nec = elementsPerGRF(hw, Tc);
+
+    if (nx < 0) nx = strategy.unroll[cm ? LoopM : LoopN];
+    int ny = strategy.unroll[cm ? LoopN : LoopM];
+
+    int haq = (h / problem.aqGroupK) % state.kaqLate;
+    int hbq = (h / problem.bqGroupK) % state.kbqLate;
+
+    if (isA ? !problem.needsBGroupSums() : !problem.needsAGroupSums()) return;
+
+    for (int xx = 0; xx < nx; xx += 2 * nec) {
+        int xchunk = std::min(nx - xx, 2 * nec);
+        for (int y = 0; y < ny; y++) {
+            auto i = x0 + xx, j = y;
+            auto ir = xr0 + xx, jr = y;
+            if (!cm) std::swap(i, j), std::swap(ir, jr);
+
+            int na, nb, nc;
+            const RegisterBlock *block;
+            auto C = findBlockReg(Tc, C_layout, ir, jr, C_regs, nc, block);
+
+            auto A = isA ? findBlockReg(Tao, state.Ar_offsetLayout, i, haq, state.Ar_offsetRegs, na, block)
+                         : findBlockReg(Tag, state.Agr_layout,      i, haq, state.Agr_regs,      na, block);
+
+            auto B = isA ? findBlockReg(Tbg, state.Bgr_layout,      hbq, j, state.Bgr_regs,      nb, block)
+                         : findBlockReg(Tbo, state.Br_offsetLayout, hbq, j, state.Br_offsetRegs, nb, block);
+
+            int nv = cm ? na : nb;
+            auto V = cm ? A : B;
+            auto N = cm ? B : A;
+
+            auto ne = std::min({nv, nc, xchunk});
+            if (ne != xchunk) stub();
+
+            int vstride = 1;
+            auto downcastW = [](Subregister &s) {
+                if (s.getType() == DataType::ud)     s = s.uw();
+                else if (s.getType() == DataType::d) s = s.w();
+                else return false;
+                return true;
+            };
+
+            downcastW(N);
+            if (downcastW(V)) vstride = 2;
+
+            mad(ne, C(1), C(1), V(vstride), -N(0));
+        }
+    }
 }
 
 #include "internal/namespace_end.hxx"

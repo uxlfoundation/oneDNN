@@ -142,8 +142,9 @@ std::string get_default_tag(size_t length);
 std::string strides2memory_tag(const size_t ndims,
         const dnnl::graph::logical_tensor::dims &strides,
         bool use_x_tag = true);
-
 dnnl::graph::logical_tensor::dims memory_tag2strides(
+        const dnnl::graph::logical_tensor::dims &shape, const std::string &tag);
+bool is_contiguous_memory(const dnnl::graph::logical_tensor::dims &strides,
         const dnnl::graph::logical_tensor::dims &shape, const std::string &tag);
 
 inline bool is_plain(dnnl_format_tag_t fmt_tag) {

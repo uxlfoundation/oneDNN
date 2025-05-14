@@ -638,6 +638,31 @@ std::string strides2memory_tag(const size_t ndims,
     return memory_tag;
 }
 
+bool is_contiguous_memory(const dnnl::graph::logical_tensor::dims &strides,
+        const dnnl::graph::logical_tensor::dims &shape,
+        const std::string &tag) {
+
+    // for invalid strides, a tensor is always treated as a dense memory.
+    bool valid_stride = strides.size() == shape.size()
+            && std::all_of(strides.begin(), strides.end(),
+                    [](const int64_t &x) { return x > 0; });
+    if (!valid_stride) return true;
+
+    std::string template_tag = "abcdefghijk";
+    const size_t ndims = shape.size();
+    // use plain tag as default if the tensor shape rank changed
+    std::string real_tag
+            = ndims == tag.length() ? tag : template_tag.substr(0, ndims);
+
+    dnnl_dim_t s = 1;
+    for (size_t i = 0; i < ndims; ++i) {
+        size_t adim = real_tag[ndims - 1 - i] - 'a';
+        if (strides[adim] != s) return false;
+        s *= (shape[adim] == 0 ? 1 : shape[adim]);
+    }
+    return true;
+}
+
 dnnl::graph::logical_tensor::dims memory_tag2strides(
         const dnnl::graph::logical_tensor::dims &shape,
         const std::string &tag) {

@@ -1335,8 +1335,9 @@ bool get_matmul_dt(const deserialized_op_t &base_op_ref,
     return true;
 }
 
-bool get_matmul_tags(const deserialized_op_t &base_op_ref, std::string &stag,
-        std::string &wtag, std::string &dtag, const int &ndims) {
+bool get_matmul_tags_or_strides(const deserialized_op_t &base_op_ref,
+        std::string &stag, std::string &wtag, std::string &dtag,
+        vdims_t &prb_strides, const int &ndims) {
     logical_tensor::dims src_strides = base_op_ref.in_lts_[0].stride_;
     logical_tensor::dims wei_strides = base_op_ref.in_lts_[1].stride_;
     const logical_tensor::dims &dst_strides = base_op_ref.out_lts_[0].stride_;
@@ -1353,6 +1354,14 @@ bool get_matmul_tags(const deserialized_op_t &base_op_ref, std::string &stag,
     stag = strides2memory_tag(ndims, src_strides, true);
     wtag = strides2memory_tag(ndims, wei_strides, true);
     dtag = strides2memory_tag(ndims, dst_strides, true);
+
+    if (!is_contiguous_memory(src_strides, base_op_ref.in_lts_[0].shape_, stag)
+            || !is_contiguous_memory(
+                    wei_strides, base_op_ref.in_lts_[1].shape_, wtag)
+            || !is_contiguous_memory(
+                    dst_strides, base_op_ref.out_lts_[0].shape_, dtag)) {
+        prb_strides = {src_strides, wei_strides, dst_strides};
+    }
     return true;
 }
 
@@ -1386,6 +1395,12 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             matmul::get_matmul_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
+            matmul::get_matmul_tags_or_strides(base_op_ref,
+                    op_setting.stag.front(), op_setting.wtag.front(),
+                    op_setting.dtag.front(), op_setting.strides.front(),
+                    op_setting.prb_vdims.ndims),
+            res);
+    DNN_GRAPH_CHECK_SETTINGS(
             matmul::get_matmul_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
@@ -1393,11 +1408,6 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             res);
     DNN_GRAPH_CHECK_SETTINGS(matmul::get_matmul_bia_mask(
                                      base_op_ref, op_setting.bia_mask.front()),
-            res);
-    DNN_GRAPH_CHECK_SETTINGS(
-            matmul::get_matmul_tags(base_op_ref, op_setting.stag.front(),
-                    op_setting.wtag.front(), op_setting.dtag.front(),
-                    op_setting.prb_vdims.ndims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);

@@ -300,8 +300,13 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         for (const auto &lt : aop.out_lts_) {
             out_lt_2_op_[lt.id_] = aop;
             // collect graph internal and output tensors memory layout
-            lt_2_mtag_[lt.id_]
+            std::string mtag
                     = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
+            if (!is_contiguous_memory(lt.stride_, lt.shape_, mtag)) {
+                // "not_available" string is handled later inside flex_rewrite.
+                mtag = "not_available";
+            }
+            lt_2_mtag_[lt.id_] = mtag;
         }
     }
 
@@ -349,6 +354,9 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
             // collect graph input tensors memory layout
             std::string mtag
                     = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
+            if (!is_contiguous_memory(lt.stride_, lt.shape_, mtag)) {
+                mtag = "not_available";
+            }
             lt_2_mtag_[lt.id_] = mtag;
         }
     }

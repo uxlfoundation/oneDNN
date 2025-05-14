@@ -121,9 +121,6 @@ int dnn_graph_mem_t::fill_mem_with_data(
     }
 
     int ndims = mem.ndims();
-    dims_t strides(mem.strides(), mem.strides() + ndims);
-    std::string mtag = strides2memory_tag(ndims, strides);
-
     const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
                                               const dnn_mem_t &prim_mem) {
         const void *prim_data_handle = static_cast<const void *>(prim_mem);
@@ -134,8 +131,8 @@ int dnn_graph_mem_t::fill_mem_with_data(
     if (src_dt != dst_dt || src_eng != dst_eng) {
         // If dt or eng is different, need to transfer data under same dt or
         // engine to perform a data copy.
-        dnn_mem_t c_mem(
-                ndims, mem.dims(), dst_dt, mtag, dst_eng, /* prefill = */ true);
+        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mem.strides(), dst_eng,
+                /* prefill = */ true);
         SAFE_V(c_mem.reorder(mem));
         prim_to_graph_memcpy(mem_, c_mem);
     } else {

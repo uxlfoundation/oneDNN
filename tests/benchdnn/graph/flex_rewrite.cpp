@@ -902,8 +902,10 @@ void flex_rewrite_t::infer_output_shape(
 
         for (auto &lt : aop.in_lts_) {
             lt.shape_ = gi[lt.id_];
-            lt.stride_
-                    = memory_tag2strides(gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+            if (dgraph.lt_2_mtag_[lt.id_] != "non_dense_memory") {
+                lt.stride_ = memory_tag2strides(
+                        gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+            }
         }
         // update outputs for the current op
         update_output_info(aop, dgraph, change_stride);
@@ -1457,8 +1459,10 @@ void flex_rewrite_t::update_output_info(deserialized_op_t &aop,
     if (!change_stride) {
         for (auto &lt : aop.out_lts_) {
             lt.shape_ = gi[lt.id_];
-            lt.stride_
-                    = memory_tag2strides(gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+            if (dgraph.lt_2_mtag_[lt.id_] != "non_dense_memory") {
+                lt.stride_ = memory_tag2strides(
+                        gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+            }
         }
         return;
     }

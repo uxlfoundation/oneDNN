@@ -97,6 +97,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int dst_qmask_M = src_qmask_K;
     int dst_qmask_N = wei_qmask_N;
 
+    int per_tensor_mask = 0xfff;
+
     // Check scales
     if (!attr->scales_.has_default_values()) {
         const auto &sc = attr->scales_;
@@ -105,8 +107,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
-            VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                         src_qmask_M + src_qmask_K),
+            VCHECK_MATMUL_UNIMPL(
+                    utils::one_of(mask_src, 0, src_qmask_K,
+                            src_qmask_M + src_qmask_K, per_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {

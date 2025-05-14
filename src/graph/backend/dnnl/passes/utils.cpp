@@ -389,6 +389,13 @@ bool post_binary_fusible(
     auto other_in
             = bin_op->get_input_value(1 - fused_in_off)->get_logical_tensor();
 
+    if (base_op->get_kind() == op_kind::dnnl_matmul) {
+        if (static_cast<dnnl::algorithm>(
+                    bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                == dnnl::algorithm::binary_add)
+            return false;
+    }
+
     // Special check: dnnl_reorder only support fuse non-broadcast binary_add as
     // post-sum
     if (base_op->get_kind() == op_kind::dnnl_reorder) {

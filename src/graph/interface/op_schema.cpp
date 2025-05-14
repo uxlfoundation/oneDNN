@@ -102,15 +102,27 @@ op_schema_t &op_schema_t::set_output(
     return *this;
 }
 
-op_schema_t &op_schema_t::set_commutative_inputs() {
-    assertm(num_inputs_.size() == 1 && *(num_inputs_.begin()) == 2,
-            "commutative inputs can only be enabled for ops with two inputs");
-    commutative_inputs_enabled_ = true;
+op_schema_t &op_schema_t::set_commutative_inputs(
+        const std::set<size_t> &inputs) {
+    assertm(inputs.size() == 2, "the number of commutative inputs must be 2");
+    assertm(num_inputs_.size() == 1 && *(num_inputs_.begin()) > 1,
+            "The number of inputs is at least two");
+    assertm(std::all_of(inputs.begin(), inputs.end(),
+                    [&](size_t idx) { return idx < *(num_inputs_.begin()); }),
+            "each input value must be less than input numbers");
+    commutative_inputs_ = inputs;
     return *this;
 }
 
-bool op_schema_t::get_commutative_inputs() const {
-    return commutative_inputs_enabled_;
+bool op_schema_t::is_commutative_inputs(
+        const size_t input0, const size_t input1) const {
+
+    return is_commutative_op() && commutative_inputs_.count(input0)
+            && commutative_inputs_.count(input1);
+}
+
+bool op_schema_t::is_commutative_op() const {
+    return !commutative_inputs_.empty();
 }
 
 op_schema_t &op_schema_t::set_type_constraints(

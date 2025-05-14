@@ -167,11 +167,14 @@ public:
     op_schema_t &set_output(size_t out_offset, std::string &&out_name,
             std::string &&dtype_string = "any");
 
-    /*! @brief Enable commutative inputs */
-    op_schema_t &set_commutative_inputs();
+    /*! @brief Enable commutative inputs for a specific pair of inputs*/
+    op_schema_t &set_commutative_inputs(const std::set<size_t> &inputs);
 
-    /*! @brief Get whether the commutative inputs option is enabled or not */
-    bool get_commutative_inputs() const;
+    /*! @brief Check whether the inputs are both commutative inputs.*/
+    bool is_commutative_inputs(const size_t input0, const size_t input1) const;
+
+    /*! @brief Check whether the op has commutative inputs*/
+    bool is_commutative_op() const;
 
     op_schema_t &set_type_constraints(
             std::string &&dtype_string, std::set<data_type_t> &&dtypes);
@@ -300,7 +303,7 @@ private:
     std::unordered_map<op_attr_t, attribute_t> attributes_;
     shape_infer_fn tensor_inference_function_ = nullptr;
     std::vector<op_def_constraint_fn> op_def_constraint_functions_;
-    bool commutative_inputs_enabled_ = false;
+    std::set<size_t> commutative_inputs_;
     // type erased key-value storage
     std::unordered_map<std::string, utils::any_t> additional_items_map_;
 };

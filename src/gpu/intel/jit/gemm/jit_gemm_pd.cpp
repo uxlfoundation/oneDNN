@@ -211,18 +211,18 @@ void jit_gemm_pd_t::init_attrs() {
     quant_enabled_ = quant_enabled();
 
     auto &attr_zps = attr()->zero_points_;
-    wei_zp_2d_ = quant_attr_2d(DNNL_ARG_A, attr_zps);
-    src_zp_2d_ = quant_attr_2d(DNNL_ARG_B, attr_zps);
+    bool wei_zp_2d = quant_attr_2d(DNNL_ARG_A, attr_zps);
+    bool src_zp_2d = quant_attr_2d(DNNL_ARG_B, attr_zps);
     cmask_a_ = quant_attr_cmask(DNNL_ARG_A, attr_zps);
     cmask_b_ = quant_attr_cmask(DNNL_ARG_B, attr_zps);
     cmask_c_ = quant_attr_cmask(DNNL_ARG_C, attr_zps);
     if (!attr_zps.has_default_values(DNNL_ARG_A))
-        ao_dims_ = (cmask_a_ > 0 ? (wei_zp_2d_ ? 2 : 1) : 0);
+        ao_dims_ = (cmask_a_ > 0 ? (wei_zp_2d ? 2 : 1) : 0);
     if (!attr_zps.has_default_values(DNNL_ARG_B))
-        bo_dims_ = (cmask_b_ > 0 ? (src_zp_2d_ ? 2 : 1) : 0);
+        bo_dims_ = (cmask_b_ > 0 ? (src_zp_2d ? 2 : 1) : 0);
 
-    if (wei_zp_2d_) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (src_zp_2d_) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
+    if (wei_zp_2d) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
+    if (src_zp_2d) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
     const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
@@ -233,7 +233,7 @@ void jit_gemm_pd_t::init_attrs() {
 
     wei_scales_type_ = wei_scales->get_data_type();
     if (wei_scales_2d_) {
-        if (!wei_zp_2d_) wei_q2d_group_k_ = wei_scales->get_group(0);
+        if (!wei_zp_2d) wei_q2d_group_k_ = wei_scales->get_group(0);
     }
 
     src_scales_type_ = src_scales->get_data_type();
@@ -256,7 +256,7 @@ bool jit_gemm_pd_t::zp_ok() {
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_zp_2d_)
+                    && wei_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
@@ -281,7 +281,7 @@ bool jit_gemm_pd_t::zp_ok() {
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)
-                    && src_zp_2d_)
+                    && src_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(

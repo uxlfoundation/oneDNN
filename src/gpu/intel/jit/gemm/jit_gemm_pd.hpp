@@ -79,7 +79,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    bool wei_zp_2d_ = false, src_zp_2d_ = false;
     int wei_q2d_group_k_ = 0;
     int src_q2d_group_k_ = 0;
     bool src_po_sc_ = false;
@@ -134,6 +133,9 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
             return sum_ab::sum_a_row;
         return sum_ab();
     }
+
+    bool wei_zp_2d() const { return ao_dims_ == 2; }
+    bool src_zp_2d() const { return bo_dims_ == 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 

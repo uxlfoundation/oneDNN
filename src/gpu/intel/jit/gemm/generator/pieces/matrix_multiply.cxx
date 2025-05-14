@@ -838,6 +838,9 @@ void BLASKernelGenerator<hw>::applyLateABOffset(bool isA, int h, const GEMMProbl
     auto Tag = problem.Tag, Tbg = problem.Tbg;
     auto Tc = problem.Tc_compute();
     auto nec = elementsPerGRF(hw, Tc);
+    Subregister A, B;
+
+    if (isA ? !problem.needsBGroupSums() : !problem.needsAGroupSums()) return;
 
     if (nx < 0) nx = strategy.unroll[cm ? LoopM : LoopN];
     int ny = strategy.unroll[cm ? LoopN : LoopM];
@@ -845,7 +848,14 @@ void BLASKernelGenerator<hw>::applyLateABOffset(bool isA, int h, const GEMMProbl
     int haq = (h / problem.aqGroupK) % state.kaqLate;
     int hbq = (h / problem.bqGroupK) % state.kbqLate;
 
-    if (isA ? !problem.needsBGroupSums() : !problem.needsAGroupSums()) return;
+    bool scalarA =  isA && (problem.aoPtrDims <= 0);
+    bool scalarB = !isA && (problem.boPtrDims <= 0);
+    bool scalarV = cm ? scalarA : scalarB;
+
+    int ns;
+    const RegisterBlock *block;
+    if (scalarA) A = findBlockReg(Tao, state.Ar_offsetLayout, 0, 0, state.Ar_offsetRegs, ns, block);
+    if (scalarB) B = findBlockReg(Tbo, state.Br_offsetLayout, 0, 0, state.Br_offsetRegs, ns, block);
 
     for (int xx = 0; xx < nx; xx += 2 * nec) {
         int xchunk = std::min(nx - xx, 2 * nec);
@@ -854,15 +864,18 @@ void BLASKernelGenerator<hw>::applyLateABOffset(bool isA, int h, const GEMMProbl
             auto ir = xr0 + xx, jr = y;
             if (!cm) std::swap(i, j), std::swap(ir, jr);
 
-            int na, nb, nc;
-            const RegisterBlock *block;
+            int na = 2 * nec, nb = 2 * nec, nc;
             auto C = findBlockReg(Tc, C_layout, ir, jr, C_regs, nc, block);
 
-            auto A = isA ? findBlockReg(Tao, state.Ar_offsetLayout, i, haq, state.Ar_offsetRegs, na, block)
-                         : findBlockReg(Tag, state.Agr_layout,      i, haq, state.Agr_regs,      na, block);
+            if (!scalarA) {
+                A = isA ? findBlockReg(Tao, state.Ar_offsetLayout, i, haq, state.Ar_offsetRegs, na, block)
+                        : findBlockReg(Tag, state.Agr_layout,      i, haq, state.Agr_regs,      na, block);
+            }
 
-            auto B = isA ? findBlockReg(Tbg, state.Bgr_layout,      hbq, j, state.Bgr_regs,      nb, block)
-                         : findBlockReg(Tbo, state.Br_offsetLayout, hbq, j, state.Br_offsetRegs, nb, block);
+            if (!scalarB) {
+                B = isA ? findBlockReg(Tbg, state.Bgr_layout,      hbq, j, state.Bgr_regs,      nb, block)
+                        : findBlockReg(Tbo, state.Br_offsetLayout, hbq, j, state.Br_offsetRegs, nb, block);
+            }
 
             int nv = cm ? na : nb;
             auto V = cm ? A : B;
@@ -881,6 +894,7 @@ void BLASKernelGenerator<hw>::applyLateABOffset(bool isA, int h, const GEMMProbl
 
             downcastW(N);
             if (downcastW(V)) vstride = 2;
+            if (scalarV) vstride = 0;
 
             mad(ne, C(1), C(1), V(vstride), -N(0));
         }

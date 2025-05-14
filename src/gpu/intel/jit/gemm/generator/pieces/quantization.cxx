@@ -33,12 +33,13 @@ using std::vector;
 template <HW hw>
 bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+    auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
     bool xo2D = (xoPtrDims == 2);
     bool xs2D = isA ? problem.aScale2D : problem.bScale2D;
     bool xg2D = isA ? problem.needsAGroupSums() : problem.needsBGroupSums();
-    bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && problem.earlyDequantizeA()
-                                : problem.bOffset == ABOffset::Calc && problem.earlyDequantizeB());
+    bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && (problem.earlyDequantizeA() || lateOffset)
+                                : problem.bOffset == ABOffset::Calc && (problem.earlyDequantizeB() || lateOffset));
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
 
     if (!xo2D && !xoTo2D && !xs2D && !xg2D) return true;
@@ -68,9 +69,7 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
     auto &Txs_int    = isA ? state.Ta_scaleInt  : state.Tb_scaleInt;
     auto &Tx_scaleOp = isA ? state.Ta_scaleOp   : state.Tb_scaleOp;
     auto &Txg_int    = isA ? state.Tag_int      : state.Tbg_int;
-
-    auto lateOffset  = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();;
-    auto &lateScale  = isA ? state.lateScale2DA        : state.lateScale2DB;
+    auto &lateScale  = isA ? state.lateScale2DA : state.lateScale2DB;
 
     bool downScale   = isA ? problem.downconvertAScales() : problem.downconvertBScales();
 
@@ -183,7 +182,9 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
         crosspack = 1;
     if (int4SpecialPath && Tx == Type::bf16)
         crosspack = 1;
-    int cpo = div_up(crosspack, cpoDiv);
+
+    int cpo = lateOffset ? 1 : div_up(crosspack, cpoDiv);
+    int cps = lateScale  ? 1 : crosspack;
 
     auto makeQRepack = [&](Type Txq, Type Txq_int, vector<RegisterBlock> &repack, vector<RegisterBlock> &src,
                            int m, int n, int cp, bool forceRepack) {
@@ -191,9 +192,9 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
             makeUnbackedRegLayout(Txq_int, repack, m, n, wantCM, cp, tileR, tileC, false);
     };
 
-    if (xo2D) makeQRepack(Txo, Txo_int,    Xr_offsetLayout, X_offsetLayout, ro,     co,     lateOffset ? 1 : cpo,       false);
-    if (xs2D) makeQRepack(Txs, Tx_scaleOp, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     lateScale  ? 1 : crosspack, lateScale);
-    if (xg2D) makeQRepack(Txg, Txg_int,    Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,                          true);
+    if (xo2D) makeQRepack(Txo, Txo_int,    Xr_offsetLayout, X_offsetLayout, ro,     co,     cpo, false);
+    if (xs2D) makeQRepack(Txs, Tx_scaleOp, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     cps, lateScale);
+    if (xg2D) makeQRepack(Txg, Txg_int,    Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,   true);
 
     if (xoTo2D) {
         if (xoPtrDims == 0)

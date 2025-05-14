@@ -291,12 +291,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                         VDISPATCH_GEMM(utils::one_of(cmask_a, 0, mask_per_oc,
                                                mask_per_ic),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
-                        // Weights zp can only be performantly enabled during upconversion
-                        // for cases that perform decompression.
-                        VDISPATCH_GEMM(wei_decomp_
-                                        || utils::one_of(d->a_type(), s4, u4)
-                                        || !wei_scales_2d_,
-                                VERBOSE_UNSUPPORTED_ZP_CFG);
                     }
                 }
 

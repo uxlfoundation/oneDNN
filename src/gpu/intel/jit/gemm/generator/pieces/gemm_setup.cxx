@@ -1621,10 +1621,10 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     bool bs2D = problem.bScale2D;
     bool ao2D = (problem.aoPtrDims == 2);
     bool bo2D = (problem.boPtrDims == 2);
-    bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D && problem.earlyDequantizeA();
-    bool boTo2D = problem.bOffset == ABOffset::Calc && !bo2D && problem.earlyDequantizeB();
     bool ag2D = problem.needsAGroupSums();
     bool bg2D = problem.needsBGroupSums();
+    bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D && (problem.earlyDequantizeA() || bg2D);
+    bool boTo2D = problem.bOffset == ABOffset::Calc && !bo2D && (problem.earlyDequantizeB() || ag2D);
 
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);

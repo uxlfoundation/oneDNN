@@ -195,8 +195,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     state.ra.safeRelease(state.inputs.offsetBO);
 
     // Load scalar ao/bo from memory as needed.
-    bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA();
-    bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB();
+    bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA() && !problem.needsBGroupSums();
+    bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB() && !problem.needsAGroupSums();
     auto Tc = problem.Tc;
 
     if (Tc.isInteger() && (aoScalarLoad || boScalarLoad)) {

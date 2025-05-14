@@ -192,6 +192,9 @@ struct cudnn_gemm_inner_product_fwd_impl_t
     void execute(cudnnHandle_t cudnn_handle, cublasHandle_t cublas_handle,
             const std::vector<void *> &args) const override {
         assert(args.size() == 10);
+        cudaStream_t cuda_stream;
+        CUDNN_EXECUTE_FUNC(cudnnGetStream, cudnn_handle, &cuda_stream);
+
         auto x = args[0], w = args[1], b = args[2], y = args[3],
              workspace = args[4], src_scale = args[6], wei_scale = args[7],
              dst_scale = args[8], bias_f32 = args[9];
@@ -207,14 +210,14 @@ struct cudnn_gemm_inner_product_fwd_impl_t
         if (src_scale || wei_scale) {
             if (src_scale) {
                 float host_src_scale = 1.0f;
-                CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_src_scale,
-                        (CUdeviceptr)src_scale, sizeof(float));
+                CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_src_scale,
+                        (CUdeviceptr)src_scale, sizeof(float), cuda_stream);
                 scale *= host_src_scale;
             }
             if (wei_scale) {
                 float host_wei_scale = 1.0f;
-                CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_wei_scale,
-                        (CUdeviceptr)wei_scale, sizeof(float));
+                CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_wei_scale,
+                        (CUdeviceptr)wei_scale, sizeof(float), cuda_stream);
                 scale *= host_wei_scale;
             }
         }
@@ -255,8 +258,8 @@ struct cudnn_gemm_inner_product_fwd_impl_t
 
         if (dst_scale) {
             float host_dst_scale = 1.0f;
-            CUDA_EXECUTE_FUNC(cuMemcpy, (CUdeviceptr)&host_dst_scale,
-                    (CUdeviceptr)dst_scale, sizeof(float));
+            CUDA_EXECUTE_FUNC(cuMemcpyAsync, (CUdeviceptr)&host_dst_scale,
+                    (CUdeviceptr)dst_scale, sizeof(float), cuda_stream);
             float inv_scale = 1.0f / host_dst_scale;
             CUDNN_EXECUTE_FUNC(cudnnScaleTensor, cudnn_handle, y_acc_desc_,
                     y_dst, &inv_scale);

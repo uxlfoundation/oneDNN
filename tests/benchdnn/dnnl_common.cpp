@@ -1117,7 +1117,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const double capacity_factor = 0.75;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
-    const double benchdnn_combined_limit = 0.90 * cpu_device_capacity;
+    // Note: used to be 0.90 until large f64 conv cases on Xe2-LPG emerged.
+    const double benchdnn_combined_limit = 0.80 * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {

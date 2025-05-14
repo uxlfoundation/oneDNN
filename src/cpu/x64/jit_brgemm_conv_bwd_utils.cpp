@@ -1500,6 +1500,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.simd_w = isa_max_vlen(isa) / jcp.src_dsz;
     jcp.acc_simd_w = isa_max_vlen(isa) / jcp.acc_dsz;
+    jcp.is_fp8 = one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
+            && one_of(jcp.wei_dt, f8_e5m2, f8_e4m3);
+    jcp.is_fp8_convert_non_amx = jcp.is_fp8 && isa == avx10_2_512;
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;
@@ -1515,8 +1518,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const auto wei_dt
             = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
-    const data_type_t last_oc_block_dt
-            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
+    const data_type_t last_oc_block_dt = get_mac_emu_data_type(
+            wei_dt, isa, isa == avx512_core_fp16 || jcp.is_fp8_convert_non_amx);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc

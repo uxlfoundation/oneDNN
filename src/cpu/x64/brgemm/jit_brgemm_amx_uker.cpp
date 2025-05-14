@@ -706,6 +706,7 @@ int jit_brgemm_amx_uker_base_t::skipped_bd_mask(int inp_bd) noexcept {
 
 size_t jit_brgemm_amx_uker_base_t::A_offset(
         const brgemm_iteration_t &bi, int bdb) const noexcept {
+    printf("rd block: %d, typesize A: %d\n", brg.rd_block, brg.typesize_A);
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.A
             : 0;
@@ -717,6 +718,7 @@ size_t jit_brgemm_amx_uker_base_t::A_offset(
 
 size_t jit_brgemm_amx_uker_base_t::B_offset(
         const brgemm_iteration_t &bi, int ldb) const noexcept {
+    printf("ld block: %d, typsize B: %d\n", brg.ld_block, brg.typesize_B);
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.B
             : 0;

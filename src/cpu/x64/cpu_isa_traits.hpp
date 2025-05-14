@@ -550,6 +550,10 @@ inline data_type_t get_mac_emu_data_type(const data_type_t data_type,
                         isa, avx2, avx2_vnni_2, avx512_core, avx512_core_fp16))
                 return f32;
             break;
+        case f8_e5m2:
+        case f8_e4m3:
+            if (isa == avx10_2_512) return f16;
+            break;
         default: return data_type;
     }
     return data_type;

@@ -241,7 +241,8 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_f16_with_int_wei(),
                     one_of(isa, avx512_core_amx_fp16, avx512_core_fp16))
             && IMPLICATION(bm_conf_utils.is_f8(),
-                    is_superset(isa, avx512_core_amx_fp16));
+                    is_superset(isa, avx512_core_amx_fp16)
+                            || is_superset(isa, avx10_2_512));
     return ok ? status::success : status::unimplemented;
 }
 
@@ -531,7 +532,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
         int n_blk) const {
     const auto wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
     if (bgmmc.ndims > 3) return format_tag::undef;
-    if (this->is_int8() || this->is_f8()) switch (n_blk) {
+    if (this->is_int8() || (this->is_f8() && bgmmc.isa != avx10_2_512))
+        switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
             case 32: return bgmmc.ndims == 3 ? aCB16b32c4b : BA16a32b4a;
@@ -540,6 +542,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
         }
 
     if (this->is_bf16() || this->is_bf16_with_int_wei()
+            || (this->is_f8() && bgmmc.isa == avx10_2_512)
             || ((this->is_f16() || this->is_f32_f16() || this->is_f32_bf16()
                         || this->is_f16_with_int_wei())
                     && (is_superset(bgmmc.isa, avx512_core_amx)
@@ -1199,7 +1202,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             src_d.format_kind() == format_kind::any, is_wei_any,
             dst_d.format_kind() == format_kind::any,
             bias_md.format_kind == format_kind::any);
-
+    //printf("check1 - isa: %d\n", isa);
     VCHECK_BG(check_datatype_cfg(bm_conf_utils), VERBOSE_UNSUPPORTED_DT_CFG);
     VCHECK_BG(check_isa_with_datatype(isa, bm_conf_utils),
             VERBOSE_ISA_DT_MISMATCH);
@@ -1374,7 +1377,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.req_transpose_scales = bgmmc.apply_scales_in_buffer_b
             && bgmmc.is_oscale_per_k && bgmmc.is_oscale_per_n
             && bgmmc.transposed_B;
-
+    printf("use buffer b: %d\n", bgmmc.use_buffer_b);
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
             && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
         // ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`

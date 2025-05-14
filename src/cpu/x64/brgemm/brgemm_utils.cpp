@@ -189,7 +189,8 @@ void set_isa_impl(brgemm_desc_t *brg) {
     } else if (brg->is_fp8) {
         brg->isa_impl = utils::map(true, isa_undef,
                 is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
-                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16);
+                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
+                is_isa_ok(avx10_2_512), avx10_2_512);
     }
 }
 
@@ -242,7 +243,9 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     const int non_int8_vnni_regs
             = (brg->is_int8 && !brg->has_int8_vnni) ? 2 : 0;
 
-    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs;
+    const int fp8_emu_regs = brg->is_fp8_via_convert_non_amx() ? 5 : 0;
+
+    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs + fp8_emu_regs;
 
     // --------------- microkernel ---------------
     // see vmm_inp_shift() in brgemm kernel
@@ -276,10 +279,12 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     assert(IMPLICATION(
             brg->is_bf16_emu, is_superset(brg->isa_impl, avx512_core)));
     const int bf16_emu_regs = brg->is_bf16_emu ? 4 : 0;
+    //    const int fp8_emu_regs = brg->is_fp8_via_convert_non_amx() ? 5 : 0;
 
     const auto store_regs = nstl::max(beta_regs,
-            nstl::max(
-                    postops_regs, nstl::max(compensation_regs, bf16_emu_regs)));
+            nstl::max(postops_regs,
+                    nstl::max(compensation_regs,
+                            nstl::max(bf16_emu_regs, fp8_emu_regs))));
 
     const auto store_max_reg_count = max_isa_regs - store_regs;
 
@@ -288,7 +293,10 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     // ------------ final calculation ------------
     const auto max_bcast_block
             = nstl::min(microkernel_max_bcast_block, store_max_bcast_block);
-
+    printf("fp8_emu_regs: %d, store_regs: %d, store_max_bcast_block: %d, "
+           "microkernel_max_bcast_block: %d, max_bcast_block: %d\n",
+            fp8_emu_regs, store_regs, store_max_bcast_block,
+            microkernel_max_bcast_block, max_bcast_block);
     return max_bcast_block;
 }
 
@@ -707,7 +715,7 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     bool few_regs = utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2);
     bool hint_n_bcast_1_load
             = brg->brgattr.hint_loop_order == brgemm_lo_bl_1load;
-    for (int try_ld_block2 = 4; try_ld_block2 > 0; --try_ld_block2) {
+    for (int try_ld_block2 = 2; try_ld_block2 > 0; --try_ld_block2) {
         adj_ld_block2 = calculate_ldb_params(brg, try_ld_block2);
         brg->n_bcast_1_load
                 = (few_regs && adj_ld_block2 == 4) || hint_n_bcast_1_load;

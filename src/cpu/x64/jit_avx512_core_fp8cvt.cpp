@@ -263,7 +263,8 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
         host_->vcvtnehf82ph(xmm_out, op_in);
         return;
     }
-
+    host_->vcvthf82ph(xmm_out, op_in);
+    return;
     host_->lea(reg64_aux_,
             host_->ptr[host_->rip + label_table_from_f8_]); // base of table
 

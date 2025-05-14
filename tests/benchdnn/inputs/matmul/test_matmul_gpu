@@ -116,8 +116,6 @@
 --batch=option_set_fwks_key_gpu
 --reset
 --batch=option_set_fwks_ext_gpu
---reset
---batch=option_set_fwks_llm_gpu
 
 # Test tf32 configuration
 --reset

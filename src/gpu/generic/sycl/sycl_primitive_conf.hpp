@@ -61,9 +61,11 @@ struct sycl_convolution_common_conf_t {
     bool single_weight_scale;
 
     bool use_data_zeropoints;
+    bool use_wei_zeropoints;
     bool use_dst_zeropoints;
-    bool single_data_zeropoint;
-    bool single_dst_zeropoint;
+    int data_zp_mask;
+    int wei_zp_mask;
+    int dst_zp_mask;
 
     int ndims;
 

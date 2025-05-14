@@ -48,6 +48,8 @@ struct convolution_kernel_fwd_t {
                   DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
         , data_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
                   DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC_0))
+        , wei_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS))
         , dst_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
                   DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST))
         , scales_data_dt_(conf_.do_scale_data
@@ -63,6 +65,11 @@ struct convolution_kernel_fwd_t {
         , zeropoints_data_dt_(conf_.use_data_zeropoints
                           ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
                                        | DNNL_ARG_SRC_0)
+                                    .data_type()
+                          : data_type_t::dnnl_f32)
+        , zeropoints_wei_dt_(conf_.use_wei_zeropoints
+                          ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
+                                       | DNNL_ARG_WEIGHTS)
                                     .data_type()
                           : data_type_t::dnnl_f32)
         , zeropoints_dst_dt_(conf_.use_dst_zeropoints
@@ -85,7 +92,8 @@ struct convolution_kernel_fwd_t {
                         ? load_float_value(data_type::f32, dst_scale_ptr(), 0)
                         : 1.f);
 
-        dims_t data_dims, weights_dims, dst_dims, dst_strides, off;
+        dims_t data_dims, weights_dims, dst_dims, dst_strides;
+        dims_t logical_index;
         for (int i = 0; i < max_supported_ndims; i++) {
             data_dims[i] = (i < data_md().ndims()) ? data_md().dims()[i] : 1;
             weights_dims[i]
@@ -126,18 +134,20 @@ struct convolution_kernel_fwd_t {
 
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / dst_strides[i] % dst_dims[i];
-            }
+            auto dst_tensor = memory_tensor_t(dst_, dst_md());
+            dst_tensor.get_logical_index(idx, logical_index);
 
-            const int n = off[0];
-            const int oc_tot = off[1];
+            auto data_tensor = memory_tensor_t(data_, data_md());
+            auto wei_tensor = memory_tensor_t(weights_, weights_md());
+
+            const int n = logical_index[0];
+            const int oc_tot = logical_index[1];
             const int oc = oc_tot % OC;
             const int g = oc_tot / OC;
 
-            const int od = off[2];
-            const int oh = off[3];
-            const int ow = off[4];
+            const int od = logical_index[2];
+            const int oh = logical_index[3];
+            const int ow = logical_index[4];
 
             float accumulator = 0;
             for (int ic = 0; ic < IC; ++ic) {
@@ -162,20 +172,28 @@ struct convolution_kernel_fwd_t {
                                             ? off_weights_no_groups
                                             : off_weights);
 
-                            auto data = load_float_value(data_md().data_type(),
-                                    data_ptr(), data_idx);
-                            auto weight
-                                    = load_float_value(weights_md().data_type(),
-                                            weights_ptr(), weights_idx);
+                            auto data = data_tensor.load(data_idx);
+                            auto weight = wei_tensor.load(weights_idx);
 
                             if (conf_.use_data_zeropoints) {
-                                int zpoint_idx = conf_.single_data_zeropoint
-                                        ? 0
-                                        : g * IC + ic;
+                                int zpoint_idx = get_zp_idx(off_data,
+                                        data_tensor.md().dims(),
+                                        conf_.data_zp_mask,
+                                        data_tensor.md().ndims());
                                 auto data_zeropoint = load_float_value(
                                         zeropoints_data_dt_,
                                         data_zeropoint_ptr(), zpoint_idx);
                                 data -= data_zeropoint;
+                            }
+                            if (conf_.use_wei_zeropoints) {
+                                int zpoint_idx = get_zp_idx(off_weights,
+                                        wei_tensor.md().dims(),
+                                        conf_.wei_zp_mask,
+                                        wei_tensor.md().ndims());
+                                auto wei_zeropoint = load_float_value(
+                                        zeropoints_wei_dt_, wei_zeropoint_ptr(),
+                                        zpoint_idx);
+                                weight -= wei_zeropoint;
                             }
                             accumulator += data * weight;
                         }
@@ -196,17 +214,20 @@ struct convolution_kernel_fwd_t {
                 accumulator += bias;
             }
 
-            accumulator = conf_.post_ops.apply(accumulator, dst_, idx);
+            accumulator = conf_.post_ops.apply(
+                    accumulator, dst_, dst_md().off_v(logical_index));
 
             if (conf_.do_scale_dst) { accumulator /= sm_dst; }
             if (conf_.use_dst_zeropoints) {
-                int zpoint_idx = conf_.single_dst_zeropoint ? 0 : oc_tot;
+                int zpoint_idx
+                        = get_zp_idx(logical_index, dst_tensor.md().dims(),
+                                conf_.dst_zp_mask, dst_tensor.md().ndims());
                 auto dst_zeropoint = load_float_value(
                         zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
                 accumulator += dst_zeropoint;
             }
-            store_float_value(
-                    dst_md().data_type(), accumulator, dst_ptr(), idx);
+
+            dst_tensor.store_md(accumulator, logical_index);
         }
     }
 
@@ -223,7 +244,26 @@ private:
     void *weights_scale_ptr() const { return weights_scale_.get_pointer(); }
     void *dst_scale_ptr() const { return dst_scale_.get_pointer(); }
     void *data_zeropoint_ptr() const { return data_zeropoints_.get_pointer(); }
+    void *wei_zeropoint_ptr() const { return wei_zeropoints_.get_pointer(); }
     void *dst_zeropoint_ptr() const { return dst_zeropoints_.get_pointer(); }
+
+    using sycl_dims_t = int32_t[6];
+
+    inline dim_t get_zp_idx(const dims_t &logical_index,
+            const sycl_dims_t &dims, int param_mask, int ndims) const {
+        dim_t idx = 0;
+        for (int32_t i = 0; i < ndims; i++) {
+            bool ith_bit_set = (param_mask >> i) & 1;
+            dim_t dimension_offset = 0;
+            dim_t dimension_stride = 1;
+            if (ith_bit_set) {
+                dimension_offset = logical_index[i];
+                dimension_stride = dims[i];
+            }
+            idx = idx * dimension_stride + dimension_offset;
+        }
+        return idx;
+    }
 
     sycl_convolution_fwd_conf_t conf_;
 
@@ -235,10 +275,12 @@ private:
     xpu::sycl::in_memory_arg_t weights_scale_;
     xpu::sycl::in_memory_arg_t dst_scale_;
     xpu::sycl::in_memory_arg_t data_zeropoints_;
+    xpu::sycl::in_memory_arg_t wei_zeropoints_;
     xpu::sycl::in_memory_arg_t dst_zeropoints_;
     data_type_t scales_data_dt_;
     data_type_t scales_weights_dt_;
     data_type_t zeropoints_data_dt_;
+    data_type_t zeropoints_wei_dt_;
     data_type_t zeropoints_dst_dt_;
 };
 
@@ -260,6 +302,8 @@ struct convolution_kernel_bwd_data_t {
                   DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
         , data_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
                   DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC_0))
+        , wei_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
+                  DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS))
         , dst_zeropoints_(CTX_IN_SYCL_KERNEL_MEMORY(
                   DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST))
         , scales_data_dt_(conf_.do_scale_data
@@ -275,6 +319,11 @@ struct convolution_kernel_bwd_data_t {
         , zeropoints_data_dt_(conf_.use_data_zeropoints
                           ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
                                        | DNNL_ARG_SRC_0)
+                                    .data_type()
+                          : data_type_t::dnnl_f32)
+        , zeropoints_wei_dt_(conf_.use_wei_zeropoints
+                          ? ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS
+                                       | DNNL_ARG_WEIGHTS)
                                     .data_type()
                           : data_type_t::dnnl_f32)
         , zeropoints_dst_dt_(conf_.use_dst_zeropoints
@@ -296,9 +345,13 @@ struct convolution_kernel_bwd_data_t {
         const float sm_dst = (conf_.do_scale_dst
                         ? load_float_value(data_type::f32, dst_scale_ptr(), 0)
                         : 1.f);
-
         dims_t data_dims, weights_dims, dst_dims, data_strides, off;
+        auto diff_dst_tensor = memory_tensor_t(diff_dst_, diff_dst_md());
+        auto diff_data_tensor = memory_tensor_t(diff_data_, diff_data_md());
+        auto wei_tensor = memory_tensor_t(weights_, weights_md());
+
         for (int i = 0; i < max_supported_ndims; i++) {
+
             data_dims[i] = (i < diff_data_md().ndims())
                     ? diff_data_md().dims()[i]
                     : 1;
@@ -394,18 +447,29 @@ struct convolution_kernel_bwd_data_t {
                                             weights_ptr(), weights_idx);
 
                             if (conf_.use_data_zeropoints) {
-                                /* 
-                                Zeropoints are only used when this kernel is used to implement fwd pass of deconvolution.
-                                In that case diff_dst is actually data of deconvolution. So in that case data zeropoint goes with diff_dst.
-                                Done to be consistent with OpenCL backend, so both can use the same deconvolution implementation.
-                                */
-                                int zpoint_idx = conf_.single_data_zeropoint
-                                        ? 0
-                                        : ic_tot;
-                                auto data_zeropoint = load_float_value(
+                                // Zeropoints are only used when this kernel is used to implement fwd pass of deconvolution.
+                                // In that case diff_dst is actually data of deconvolution. So in that case data zeropoint goes with diff_dst.
+                                // Done to be consistent with OpenCL backend, so both can use the same deconvolution implementation.
+                                int zpoint_idx = get_zp_idx(off_dst,
+                                        diff_dst_tensor.md().dims(),
+                                        conf_.data_zp_mask,
+                                        diff_dst_tensor.md().ndims());
+                                auto diff_dst_zeropoint = load_float_value(
                                         zeropoints_data_dt_,
                                         data_zeropoint_ptr(), zpoint_idx);
-                                diff_dst -= data_zeropoint;
+                                diff_dst -= diff_dst_zeropoint;
+                            }
+                            if (conf_.use_wei_zeropoints) {
+                                int zpoint_idx = get_zp_idx(no_groups
+                                                ? off_weights_no_groups
+                                                : off_weights,
+                                        wei_tensor.md().dims(),
+                                        conf_.wei_zp_mask,
+                                        wei_tensor.md().ndims());
+                                auto wei_zeropoint = load_float_value(
+                                        zeropoints_wei_dt_, wei_zeropoint_ptr(),
+                                        zpoint_idx);
+                                weight -= wei_zeropoint;
                             }
                             accumulator += diff_dst * weight;
                         }
@@ -430,11 +494,14 @@ struct convolution_kernel_bwd_data_t {
 
             if (conf_.do_scale_dst) { accumulator /= sm_dst; }
             if (conf_.use_dst_zeropoints) {
-                int zpoint_idx = conf_.single_dst_zeropoint ? 0 : g * IC + ic;
-                auto dst_zeropoint = load_float_value(
+                int zpoint_idx = get_zp_idx(data_dims,
+                        diff_data_tensor.md().dims(), conf_.dst_zp_mask,
+                        diff_data_tensor.md().ndims());
+                auto diff_data_zeropoint = load_float_value(
                         zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
-                accumulator += dst_zeropoint;
+                accumulator += diff_data_zeropoint;
             }
+
             store_float_value(diff_data_md().data_type(), accumulator,
                     diff_data_ptr(), idx);
         }
@@ -454,6 +521,25 @@ private:
     void *dst_scale_ptr() const { return dst_scale_.get_pointer(); }
     void *data_zeropoint_ptr() const { return data_zeropoints_.get_pointer(); }
     void *dst_zeropoint_ptr() const { return dst_zeropoints_.get_pointer(); }
+    void *wei_zeropoint_ptr() const { return wei_zeropoints_.get_pointer(); }
+
+    using sycl_dims_t = int32_t[6];
+
+    inline dim_t get_zp_idx(const dims_t &logical_index,
+            const sycl_dims_t &dims, int param_mask, int ndims) const {
+        dim_t idx = 0;
+        for (int32_t i = 0; i < ndims; i++) {
+            bool ith_bit_set = (param_mask >> i) & 1;
+            dim_t dimension_offset = 0;
+            dim_t dimension_stride = 1;
+            if (ith_bit_set) {
+                dimension_offset = logical_index[i];
+                dimension_stride = dims[i];
+            }
+            idx = idx * dimension_stride + dimension_offset;
+        }
+        return idx;
+    }
 
     sycl_convolution_bwd_data_conf_t conf_;
 
@@ -465,10 +551,12 @@ private:
     xpu::sycl::in_memory_arg_t weights_scale_;
     xpu::sycl::in_memory_arg_t dst_scale_;
     xpu::sycl::in_memory_arg_t data_zeropoints_;
+    xpu::sycl::in_memory_arg_t wei_zeropoints_;
     xpu::sycl::in_memory_arg_t dst_zeropoints_;
     data_type_t scales_data_dt_;
     data_type_t scales_weights_dt_;
     data_type_t zeropoints_data_dt_;
+    data_type_t zeropoints_wei_dt_;
     data_type_t zeropoints_dst_dt_;
 };
 

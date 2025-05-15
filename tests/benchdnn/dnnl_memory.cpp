@@ -205,7 +205,12 @@ int dnn_mem_t::reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
     // Assumption is `no_ref_memory` assigned values at construction, and no
     // actual reorder needed. This check is to avoid extra code outside of
     // reorder interface.
-    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+    // Note: pass sparse reorder due to the same reason as described under
+    // `FILL_SPARSE_METADATA`.
+    const bool mem_has_indirect_access = is_sparse_md();
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            && !mem_has_indirect_access)
+        return OK;
 
     const bool do_swap_dt = swap_dt != dnnl_data_type_undef;
     dnnl_data_type_t orig_dt = this->dt();
@@ -839,6 +844,7 @@ int dnn_mem_t::initialize(
         // Filling buffers requires them to be mapped.
         // To save code on updating every case separately, update the logic in
         // this common place.
+        // ANCHOR: FILL_SPARSE_METADATA.
         const bool mem_has_indirect_access = is_sparse_md();
         if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                 || mem_has_indirect_access)

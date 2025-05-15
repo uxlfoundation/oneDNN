@@ -830,7 +830,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     // must be meaningful, otherwise a jump to a random memory location outside
     // of allocated bytes will happen.
     // If there's a sparse memory, non-sparse memory and non-metadata handles
-    // will not reach the filling.
+    // will not reach the filling, unless it's a `packed` encoding. In such case
+    // the reference f32 counterpart must be mapped and allowed to reach the
+    // reorder because metadata needed will be filled as a part of the reorder.
     const bool map_has_sparse_mem = has_sparse_md(mem_map);
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
             && !map_has_sparse_mem)
@@ -904,6 +906,12 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             }
         }
         auto &ref_mem = ref_mem_map[exec_arg];
+
+        // See the comment at the beginning of the function.
+        if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                && is_sparse_wei_packed) {
+            ref_mem.map();
+        }
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:

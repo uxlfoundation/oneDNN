@@ -22,6 +22,7 @@
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/send_plan.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -730,19 +731,44 @@ private:
         auto comp_type = comp_layout_.type();
         auto real_zp = zp;
         auto wei_s16_buf = buf_mgr.get(
-                "zp_wei_s16", simd_ * wei_s16_type.size() * wei_s16_stride);
+                "zp_wei_s16", simd_ * wei_s16_type.size() * wei_s16_stride * 4);
         auto ret = maybe_typecast_zp_src(buf_mgr, zp_type, real_zp, 4);
         auto mad = mad_t::make(hw, comp_type, simd_, zp_type, zp_stride,
                 wei_s16_type, wei_s16_stride);
+        layout_t reorder_wei;
+        std::vector<block_t> blocks, blocks_src;
+        auto b0 = wei_layout_.blocks()[1];
+        auto b1 = wei_layout_.blocks()[0];
+        b0.dim_idx = 0;
+        b1.dim_idx = 1;
+        blocks_src.push_back(b1);
+        blocks_src.push_back(b0);
+        b0.stride = 2;
+        b1.stride = b0.stride * b0.block;
+        blocks.push_back(b0);
+        blocks.push_back(b1);
+        layout_t dst(wei_s16_type, 2, 0, blocks);
+        //dst=dst.make_dense();
+        layout_t src(wei_x8_type, 2, 0, blocks_src);
+        auto rs = create_reorder_stmt(src, dst, wei, wei_s16_buf);
+        ret = ret.append(rs);
         for (int ic = 0; ic < 4; ic++) {
-            auto wei_x8
+            auto s32_type = type_t::s32().with_elems(simd_);
+            auto wei_x8 = load_t::make(s32_type, wei_s16_buf, ic * simd_ * 4);
+            //auto wei_s16 = cast(wei_x8, s32_type.with_elems(simd_));
+
+            auto store_s16 = store_t::make(wei_s16_buf, 0, wei_x8);
+            //auto wei_s16 = cast(wei_x8, wei_s16_type.with_elems(2*simd_));
+            // auto store_s16 = store_t::make(wei_s16_buf, 0, wei_s16,
+            //       wei_s16_stride * type_t::s16().size());
+            /*auto wei_x8
                     = load_t::make(wei_x8_type.with_elems(simd_), wei, ic, 4);
             auto wei_s16 = cast(wei_x8, wei_s16_type.with_elems(simd_));
             auto store_s16 = store_t::make(wei_s16_buf, 0, wei_s16,
-                    wei_s16_stride * type_t::s16().size());
+                    wei_s16_stride * type_t::s16().size());*/
             ret = ret.append(store_s16);
-            ret = ret.append(mad.call(
-                    {comp, comp, real_zp + zp_type.size() * ic, wei_s16_buf}));
+            ret = ret.append(mad.call({comp, comp,
+                    real_zp + zp_type.size() * ic, wei_s16_buf})); //wei_s16_buf
         }
         return ret;
     }

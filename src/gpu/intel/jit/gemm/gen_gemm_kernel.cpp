@@ -562,10 +562,14 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     match_params.push_back(base);
 
+    auto tmp_prob = problem_;
+    tmp_prob.autoTypeConversions(hw_, has_systolic);
+    bool req_cvt = !tmp_prob.Ta.isFP() || !tmp_prob.Tb.isFP();
+
     bool fpmath_tf32 = mode & mode_tf32;
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
-    bool force_cvt = mode & mode_int_cvt;
+    bool force_cvt = (mode & mode_int_cvt) && req_cvt;
     bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
 	    && (mode & mode_strict) && (mode & mode_w_decomp);
 
@@ -644,6 +648,18 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
         add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
             if (dt == Type::f32) { return "[SB]"; }
+            return nullptr;
+        });
+
+        add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
+            if (dt.isInt8() || dt.isInt4()) return "[OH]";
+            if (dt.isF8()) return "H";
+            return nullptr;
+        });
+        add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
+            if (dt == Type::f32) { return "[SB]"; }
+            if (dt.isInt8() || dt.isInt4()) return "[OB]";
+            if (dt.isF8()) return "B";
             return nullptr;
         });
     }

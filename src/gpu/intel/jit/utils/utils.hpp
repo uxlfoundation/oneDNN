@@ -638,8 +638,9 @@ inline uint64_t idiv_magicgu_packed(uint32_t d) {
 // Calculate how many unique filter padding states a conv dimension can produce
 // (see conv_post_op_view_mapper_t for more context)
 inline dim_t max_unique_pad_states(
-        dim_t O, dim_t I, dim_t KD, dim_t P, dim_t S, bool lim) {
-    dim_t retn = 1;
+        dim_t O, dim_t I, dim_t K, dim_t D, dim_t P, dim_t S, bool lim) {
+    if (K == 1) return 1;
+    dim_t KD = (K - 1) * (D + 1) + 1, retn = 1;
     if (I > KD) {
         retn += std::min((O - 1) * S - P, dim_t(0))
                 + std::max((O - 1) * S + (KD - P), I) + (P - I);

@@ -997,7 +997,6 @@ conv_blocking_scheme_t fwd_dw_T_w_I_ngk("ls:[kd,kh,kw],T:[ow],i:[mb,g,#kw]");
 conv_blocking_scheme_t bwd_d_T_wi_I_nio("ls:[oc,kd,kh,kw],T:[ic,iw],i:[mb,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_ni_I_nio("ls:[oc,kd,kh,kw],T:[ic,mb],i:[mb,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_o_I_nio("ls:[oc,kd,kh,kw],T:[oc],i:[mb,ic,oc]");
-conv_blocking_scheme_t bwd_d_T_w_I_on("ls:[oc,kd,kh,kw],T:[iw],i:[oc,mb]");
 conv_blocking_scheme_t bwd_d_T_wi_I_wio("ls:[oc,kd,kh,kw],T:[ic,iw],i:[iw,ic,oc]");
 conv_blocking_scheme_t bwd_d_T_o_I_wio("ls:[oc,kd,kh,kw],T:[oc],i:[iw,ic,oc]");
 conv_blocking_scheme_t bwd_d_dw_T_w_I_wg("ls:[kd,kh,kw],T:[iw],i:[iw,g]");
@@ -1128,19 +1127,15 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd(const conv_config_t &cfg) {
 conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(
         const conv_config_t &cfg) {
     conv_blocking_scheme_list_t ret(conv_tune_level());
-    const auto &m_iter_dim = cfg.prb().ab_swap_transpose
-            ? pvars::ic
-            : select_iter_dim(cfg, {pvars::mb, pvars::iw});
-    bool m_is_mb = (m_iter_dim == pvars::mb);
-    bool m_is_iw = (m_iter_dim == pvars::iw);
-    bool m_is_ic = (m_iter_dim == pvars::ic);
+    auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
+    bool mb_iter = (m_iter_dim == pvars::mb);
+    bool iw_iter = (m_iter_dim == pvars::iw);
     bool ge_xelp = (cfg.hw() >= ngen::HW::XeLP);
-    ret.add(m_is_mb, conv_schemes::bwd_d_T_ni_I_nio);
-    ret.add(m_is_mb, conv_schemes::bwd_d_T_wi_I_nio);
-    ret.add(m_is_mb && ge_xelp, conv_schemes::bwd_d_T_o_I_nio);
-    ret.add(m_is_iw, conv_schemes::bwd_d_T_wi_I_wio);
-    ret.add(m_is_iw && ge_xelp, conv_schemes::bwd_d_T_o_I_wio);
-    ret.add(m_is_ic, conv_schemes::bwd_d_T_w_I_on);
+    ret.add(mb_iter, conv_schemes::bwd_d_T_ni_I_nio);
+    ret.add(mb_iter, conv_schemes::bwd_d_T_wi_I_nio);
+    ret.add(mb_iter && ge_xelp, conv_schemes::bwd_d_T_o_I_nio);
+    ret.add(iw_iter, conv_schemes::bwd_d_T_wi_I_wio);
+    ret.add(iw_iter && ge_xelp, conv_schemes::bwd_d_T_o_I_wio);
     return ret;
 }
 

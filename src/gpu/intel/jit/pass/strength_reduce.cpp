@@ -34,7 +34,7 @@ public:
 
     ~loop_strength_reducer_t() override {
         // Sanity check, all stores must be applied.
-        gpu_assert(post_inc_stores.empty());
+        gpu_assert(post_inc_stores_.empty());
     }
 
     object_t _mutate(const for_t &obj) override {
@@ -55,15 +55,23 @@ public:
     }
 
     object_t _mutate(const stmt_group_t &obj) override {
+        gpu_assert(post_inc_stores_.empty());
+        stmt_t new_obj;
         if (obj.body.is<for_t>()) {
             loops_.emplace_back(obj.body);
-            const for_t *for_obj = obj.body.as_ptr<for_t>();
-            auto body = for_obj ? ir_mutator_t::_mutate(*for_obj) : for_obj;
+            auto body = ir_mutator_t::_mutate(obj.body.as<for_t>());
             if (body.is_same(obj.body)) return obj;
-            auto new_obj = stmt_group_t::make(obj.label, body);
-            return inject_stores_and_pop_loop(new_obj);
+            new_obj = stmt_group_t::make(
+                    obj.label, inject_post_inc_stores(body));
+            new_obj = inject_stores_and_pop_loop(new_obj);
+        } else {
+            new_obj = ir_mutator_t::_mutate(obj);
+            auto body = new_obj.as<stmt_group_t>().body;
+            body = inject_post_inc_stores(body);
+            new_obj = replace_stmt_body(new_obj, body);
         }
-        return ir_mutator_t::_mutate(obj);
+        post_inc_stores_.clear();
+        return new_obj;
     }
 
     // Pattern to handle:
@@ -117,23 +125,9 @@ public:
         // Move this store up, remove from here.
         loops_[init_store_level].init_stores.push_back(init_store_stmt);
         if (!post_inc_store.is_empty()) {
-            auto ret = post_inc_stores.insert({obj.buf, post_inc_store});
-            gpu_assert(ret.second);
-            MAYBE_UNUSED(ret);
+            post_inc_stores_.push_back(post_inc_store);
         }
         return stmt_t();
-    }
-
-    object_t _mutate(const func_call_t &obj) override {
-        for (auto &kv : post_inc_stores) {
-            int refs = count_object(obj, kv.first);
-            if (refs == 1) {
-                auto ret = stmt_seq_t::make(obj, kv.second.stmt());
-                post_inc_stores.erase(kv.first);
-                return std::move(ret);
-            }
-        }
-        return ir_mutator_t::_mutate(obj);
     }
 
 private:
@@ -230,12 +224,20 @@ private:
         return std::move(s);
     }
 
+    object_t inject_post_inc_stores(const stmt_t &_s) {
+        stmt_t s = _s;
+        for (auto &inc_store : post_inc_stores_) {
+            s = s.append(inc_store.stmt());
+        }
+        return std::move(s);
+    }
+
     // Loops, ordered from outermost to innermost. The first loop is dummy, to
     // represent let statements in the top-level scope.
     std::vector<loop_info_t> loops_;
 
     // Buffers whose references are to be updated.
-    object_map_t<expr_t, post_inc_store_info_t> post_inc_stores;
+    std::vector<post_inc_store_info_t> post_inc_stores_;
 
     // Let statements available at the current IR node.
     object_map_t<expr_t, let_info_t> lets_;

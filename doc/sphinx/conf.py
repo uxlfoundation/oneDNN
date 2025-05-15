@@ -243,3 +243,14 @@ def addTocTrees(app, env, docnames):
                 tocTree += "   " + file + "\n"
             tocTree += "\n\n"
             f.write(tocTree)
+
+def get_last_updated(file_path):
+    try:
+        git_cmd = ['git', 'log', '-1', '--format=%ad', '--date=short', file_path]
+        last_updated = subprocess.check_output(git_cmd).decode('utf-8').strip()
+        return last_updated
+    except Exception:
+        return ''
+
+# Format used for the timestamp
+html_last_updated_fmt = '%b %d, %Y'  

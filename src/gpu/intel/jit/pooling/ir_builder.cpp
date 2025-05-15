@@ -451,8 +451,9 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
         stmt = stmt.append(read.stmt());
     } else {
         gpu_assert(acc_size % simd == 0);
-        allocs.push_back(alloc_t::make(
-                acc_buf, into<uint32_t>(acc_size), alloc_kind_t::grf));
+        auto acc_buf_size = std::max(into<int>(acc_size), write.reg_buf_size());
+        allocs.push_back(
+                alloc_t::make(acc_buf, acc_buf_size, alloc_kind_t::grf));
 
         stmt_t fill_stmt, compute_stmt = read.stmt();
         stmt = stmt_t();

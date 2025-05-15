@@ -1247,8 +1247,7 @@ type_t get_accumulation_type(
         const conv_config_t &cfg, const type_t &a, const type_t &b) {
     if (a.is_int()) return type_t::s32();
     if (a.is_f64()) return type_t::f64();
-    if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()
-            && cfg.prb().is_fwd) {
+    if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()) {
         // FIXME: f16 must use f32 accumulator according to documentation.
         // Temporarily keeping f16 to avoid regressions.
         return type_t::f16();

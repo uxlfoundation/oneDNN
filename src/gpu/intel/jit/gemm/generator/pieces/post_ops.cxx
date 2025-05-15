@@ -652,7 +652,7 @@ void BLASKernelGenerator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRF
             const RegisterBlock *C_block;
             Subregister C = findBlockReg(Tacc, state.C_layout, i, j, state.C_regs[0], nc, C_block);
 
-            nc = std::min({nc, strategy.fmaSIMD, 2 * ne});
+            nc = std::min({nc, strategy.fmaSIMD, (hw <= ngen::HW::XeHPG ? 1 : 2) * ne});
 
             auto offR = r[i / ne].sub(i % ne, Tacc.ngen());
             auto offC = c[j / ne].sub(j % ne, Tacc.ngen());

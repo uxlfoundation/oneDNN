@@ -754,7 +754,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     current_lda_ = get_actual_lda();
 
     // Need a temp C buffer if a BRGEMM creates partial results
-    need_buf_c_ = (nthr_k_ > 1);
+    need_buf_c_ = (nthr_k_ > 1 && K > k_chunk_elems_)
+            || (acc_dt != dst_dt || with_sum);
 
     efficiency_score_ = calculate_blocking_scores();
 

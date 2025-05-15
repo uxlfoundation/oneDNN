@@ -102,3 +102,6 @@
 --tag=axb,abx,aBx16b,aBx32b
 --alg=max,avg_np,avg_p
 --batch=shapes_global_pooling
+
+# Regression testing
+--batch=harness_pool_regression

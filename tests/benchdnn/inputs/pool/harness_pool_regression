@@ -1,0 +1,5 @@
+# This shape dispatches to jit:ir and has
+#  (1) no extra zero-padding, so no zero-out statement, and
+#  (2) a number of channels that requires a 3-register (mod 4) accumulation
+#      buffer (ic=208 has the same issue)
+--reset --dir=FWD_I --alg=pooling_max --dt=f16:f16 --tag=aBcd16b mb1ic80_ih160oh160kh3sh1dh0ph1_iw160ow160kw3sw1dw0pw1

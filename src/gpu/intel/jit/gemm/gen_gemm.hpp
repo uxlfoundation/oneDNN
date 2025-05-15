@@ -294,9 +294,10 @@ struct gen_gemm_t : public gpu_gemm_t {
                             bo_dims_ = 2;
                             src_q2d_group_k = zp_group_k;
                         }
-                        const auto src_q2d_group_m = attr_zps.get_group(idx, 0);
+                        const auto src_q2d_group_n = attr_zps.get_group(idx, 0);
                         // Non-trivial M group unsupported.
-                        VDISPATCH_GEMM(src_q2d_group_m == 1,
+                        VDISPATCH_GEMM(
+                                utils::one_of(src_q2d_group_n, 1, desc()->n()),
                                 VERBOSE_UNSUPPORTED_ZP_CFG);
                         // Zero points with non-trivial groups only supported
                         // when target tensor is being dequantized.

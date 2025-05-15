@@ -88,6 +88,9 @@ struct CopyInstruction
     void invalidate()       { simd = 0; }
     bool isInvalid()  const { return (simd == 0); }
 
+    operator bool() const { return !isInvalid(); }
+    bool operator!() const { return isInvalid(); }
+
     bool hasCMod()    const { return cmod != ngen::ConditionModifier::none; }
 
     void moveToIntegerPipe();
@@ -156,8 +159,10 @@ public:
 protected:
     ngen::HW hw;
     bool systolicAvailable;
+    bool freezeCNums = false;
     std::vector<CopyInstruction> insns, newInsns;
     std::vector<CopyTemporary> temps;
+    CopyInstruction invalidInsn;
 
     enum class SortType {
         PhaseOnly, Register, SourceOrder
@@ -169,7 +174,7 @@ protected:
     CopyInstruction &split(CopyInstruction &i, bool sequenced = true);
     template <int n>
     std::array<CopyInstruction*, n> splitMultiple(CopyInstruction &i);
-    CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2);
+    CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2, int maxGap = 3);
     void mergeChanges();
 
     void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false);
@@ -181,6 +186,7 @@ protected:
 
     void checkNoSubbytes();
     void collapseCNums();
+    bool trySwapCNumRanges(int16_t min0, int16_t max0, int16_t min1);
 
     void distributePhases();
     void split2DRegions();
@@ -188,9 +194,11 @@ protected:
     void planEarlyInt4Upconversions();
     void planEmulatedHalveFloat(CopyInstruction &i);
     void planSmallUWToHF(CopyInstruction &i);
+    void planSmallUWToBF(CopyInstruction &i);
     void planBToI4(CopyInstruction &i);
     void planBToHF(CopyInstruction &i);
-    void planS4ToHF(CopyInstruction &i);
+    void planBToBF(CopyInstruction &i);
+    void planS4ToF16(CopyInstruction &i);
     void planEmulatedE3M0ToHF(CopyInstruction &i);
     void planEmulatedHFToE3M0(CopyInstruction &i);
     void planEmulatedF4E2M1ToHF(CopyInstruction &i);

@@ -380,12 +380,25 @@ bool node_outputs_matcher_t::match_op_consumers() {
                 if (out_node->get_node_kind()
                         == pb_node_kind::PB_NODE_KIND_ALTERNATION)
                     continue;
-                // For repetition case, check if multi consumers exist
-                repetition_t *rep_node = dynamic_cast<repetition_t *>(out_node);
-                if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
-                    continue;
-                if (rep_node->get_body()->get_inner_consumer(0)->size() == 1)
-                    continue;
+                // For repetition case, check if multi consumers have been matched
+                bool all_ops_in_map = true;
+                for (const auto &consumer : sorted_consumers) {
+                    op_t &op_ref = consumer.get_op();
+                    op_t *op_ptr = &op_ref;
+                    if (updated_op_map_.find(op_ptr) == updated_op_map_.end()) {
+                        all_ops_in_map = false;
+                        break;
+                    }
+                }
+                if (!all_ops_in_map) {
+                    repetition_t *rep_node
+                            = dynamic_cast<repetition_t *>(out_node);
+                    if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
+                        continue;
+                    if (rep_node->get_body()->get_inner_consumer(0)->size()
+                            == 1)
+                        continue;
+                }
             }
 
             binding_t out_bind(BIND_IN, out_op, op_consumer.get_offset(),

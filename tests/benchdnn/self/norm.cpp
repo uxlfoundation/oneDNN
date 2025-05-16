@@ -141,6 +141,7 @@ static int check_compare_norm() {
 }
 
 void norm() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_norm());
     RUN(check_diff_norm());
     RUN(check_compare_norm());

@@ -102,22 +102,6 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
             }
 
-            bool grouped_a_attr = false, grouped_b_attr = false;
-            const auto &scales = gemm_attr.scales_;
-            const auto &zp = attr()->zero_points_;
-            if (!attr()->scales_.has_default_values()) {
-                if (!scales.get(DNNL_ARG_SRC).has_default_groups())
-                    grouped_a_attr = true;
-                if (!scales.get(DNNL_ARG_WEIGHTS).has_default_groups())
-                    grouped_b_attr = true;
-            }
-            if (zp.has_default_values()) {
-                if (!zp.get(DNNL_ARG_SRC).has_default_groups())
-                    grouped_a_attr = true;
-                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups())
-                    grouped_b_attr = true;
-            }
-
             auto maybe_reshape
                     = [&](dims_t &orig_a_dims, dims_t &orig_b_dims,
                               dims_t &orig_c_dims, dims_t &orig_bias_dims,
@@ -135,9 +119,6 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 //for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
                 auto reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
                 auto reshape_3d = a_md->ndims > 3;
-                // Grouped attrs require non-batch dims to be preserved.
-                if (grouped_a_attr) reshape_2d &= a_md->dims[0] == 1;
-                if (grouped_b_attr) reshape_2d &= b_md->dims[0] == 1;
                 if (reshape_2d || reshape_3d) {
                     auto ndims = a_md->ndims;
                     auto reshape_size = reshape_2d ? 2 : 3;

@@ -733,22 +733,20 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto dt = eff_a_type();
             auto align = utils::max_pow2_div(
                     types::elements_to_bytes(dt, eff_lda()));
-            for (int b = 0; b < batch_dims(); b++) {
-                auto stride_bytes = utils::max_pow2_div(
-                        types::elements_to_bytes(dt, eff_stride_a(b)));
-                align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
-            }
+            for (int b = 0; b < batch_dims(); b++)
+                align = nstl::min(align,
+                        utils::max_pow2_div(
+                                types::elements_to_bytes(dt, eff_stride_a(b))));
             return int(align);
         }
         int eff_align_b() const {
             auto dt = eff_b_type();
             auto align = utils::max_pow2_div(
                     types::elements_to_bytes(dt, eff_ldb()));
-            for (int b = 0; b < batch_dims(); b++) {
-                auto stride_bytes = utils::max_pow2_div(
-                        types::elements_to_bytes(dt, eff_stride_b(b)));
-                align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
-            }
+            for (int b = 0; b < batch_dims(); b++)
+                align = nstl::min(align,
+                        utils::max_pow2_div(
+                                types::elements_to_bytes(dt, eff_stride_b(b))));
             return int(align);
         }
         int align_c() const {

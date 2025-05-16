@@ -34,6 +34,22 @@ static const std::string benchdnn_url
 static const std::string doc_url = benchdnn_url + "/doc/";
 
 namespace parser_utils {
+
+// Current definition works only through the build system. It can be generalized
+// through C++11 `__has_feature` macro, but not every sanitizer has a macro
+// to check against.
+//
+// The function disables `no_ref_memory` modifier for sanitizers testing because
+// many legit places in the library can't work with completely overflowed
+// values, like int32 zero-point values.
+bool has_clang_sanitizers() {
+#if defined(DNNL_ENABLED_CLANG_SANITIZER)
+    return true;
+#else
+    return false;
+#endif
+}
+
 std::string get_pattern(const std::string &option_name, bool with_args) {
     std::string s = std::string("--") + option_name;
     if (with_args) s += "=";
@@ -1294,7 +1310,8 @@ static bool parse_mode(
                 case 'r':
                 case 'R':
                     mode = bench_mode_t::exec;
-                    bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+                    if (!parser_utils::has_clang_sanitizers())
+                        bench_mode_modifier |= mode_modifier_t::no_ref_memory;
                     break;
                 case 'c':
                 case 'C': mode = bench_mode_t::corr; break;

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -717,8 +717,22 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         if (best_imbalance == 1.f) return status::unimplemented;
 
         best_blocking.update_configuration(bgmmc);
+    } else if (is_superset(bm_conf_utils.get_isa(), sve_256)) {
+
+        const matmul_sve512_blocking_params_t::matmul_params_t matmul(
+                bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
+
+        matmul_sve512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
+
+        const float best_imbalance = compute_blocking_heuristic_sve_256(
+                bgmmc, bm_conf_utils, matmul, best_blocking);
+
+        if (best_imbalance == 1.f) return status::unimplemented;
+
+        best_blocking.update_configuration(bgmmc);
     } else {
-        assert(one_of(bm_conf_utils.get_isa(), sve_256));
+        // TODO: Copied verbatim from 256, tweak for 128
+        assert(one_of(bm_conf_utils.get_isa(), sve_128));
 
         const matmul_sve512_blocking_params_t::matmul_params_t matmul(
                 bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);

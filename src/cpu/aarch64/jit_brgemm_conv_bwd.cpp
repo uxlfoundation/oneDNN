@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -180,6 +181,7 @@ status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
 template struct brgemm_convolution_bwd_t<sve_512>;
 template struct brgemm_convolution_bwd_t<sve_256>;
+template struct brgemm_convolution_bwd_t<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

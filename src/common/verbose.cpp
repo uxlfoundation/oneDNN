@@ -637,6 +637,7 @@ int get_arg_index(int arg) {
     switch (arg) {
         case DNNL_ARG_SRC_0: return 0;
         case DNNL_ARG_SRC_1: return 1;
+        case DNNL_ARG_SRC_2: return 2;
         default: return -1;
     }
     return -1;
@@ -648,7 +649,8 @@ std::string get_arg(int arg) {
     std::string s;
     switch (arg) {
         case DNNL_ARG_SRC: // DNNL_ARG_SRC_0
-        case DNNL_ARG_SRC_1: s = "src"; break;
+        case DNNL_ARG_SRC_1:
+        case DNNL_ARG_SRC_2: s = "src"; break;
         case DNNL_ARG_DST: s = "dst"; break;
         case DNNL_ARG_WEIGHTS: s = "wei"; break;
         case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST:
@@ -859,17 +861,25 @@ std::string init_info_binary(const engine_t *e, const pd_t *pd) {
 
     auto src0_md = pd->invariant_src_md(0);
     auto src1_md = pd->invariant_src_md(1);
+    auto src2_md = pd->invariant_src_md(2);
     auto dst_md = pd->invariant_dst_md();
 
     ss << md2fmt_str("src", src0_md, pd->invariant_src_user_format_kind(0))
        << " ";
     ss << md2fmt_str("src", src1_md, pd->invariant_src_user_format_kind(1))
        << " ";
+    if (pd->desc()->alg_kind == alg_kind_t::dnnl_binary_select) {
+        ss << md2fmt_str("src", src2_md, pd->invariant_src_user_format_kind(2))
+           << " ";
+    }
+
     ss << md2fmt_str("dst", dst_md, pd->invariant_dst_user_format_kind());
 
     ss << "," << pd->attr() << ",";
     ss << "alg:" << pd->desc()->alg_kind << ",";
     ss << md2dim_str(src0_md) << ":" << md2dim_str(src1_md);
+    if (pd->desc()->alg_kind == alg_kind_t::dnnl_binary_select)
+        ss << ":" << md2dim_str(src2_md);
 
     return ss.str();
 }

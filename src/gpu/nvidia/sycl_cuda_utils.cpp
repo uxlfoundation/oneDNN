@@ -58,6 +58,15 @@ bool attr_post_ops_ok(const primitive_attr_t *attr) {
     }
 }
 
+bool no_post_ops_check(const primitive_attr_t *attr) {
+    using namespace primitive_kind;
+    const auto &po = attr->post_ops_;
+    switch (po.len()) {
+        case 0: return true;
+        default: return false;
+    }
+}
+
 cudaDeviceProp query_device_properties(const ::sycl::device &dev) {
     auto cuda_dev = compat::get_native<CUdevice>(dev);
     cudaDeviceProp prop {};

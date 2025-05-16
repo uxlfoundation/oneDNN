@@ -73,6 +73,7 @@ static int check_compare() {
 }
 
 void compare() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_compare());
 }
 

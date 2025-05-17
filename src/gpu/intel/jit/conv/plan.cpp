@@ -1247,8 +1247,7 @@ type_t get_accumulation_type(
         const conv_config_t &cfg, const type_t &a, const type_t &b) {
     if (a.is_int()) return type_t::s32();
     if (a.is_f64()) return type_t::f64();
-    if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()
-            && cfg.prb().is_fwd) {
+    if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()) {
         // FIXME: f16 must use f32 accumulator according to documentation.
         // Temporarily keeping f16 to avoid regressions.
         return type_t::f16();
@@ -1290,6 +1289,18 @@ struct fma_context_t {
         // mad with f16 requires aligned regioning for src1/src2.
         if (a_type.is_f16() && acc_type.is_f16()) {
             return layout.make_dense();
+        }
+        if (layout.type().is_bf16() && !hw.systolic_support())
+            return layout.retype(type_t::f32()).make_dense();
+        if (a_type.is_bf16()) {
+            // bf16 mixed mode requires src1 to be converted to f32 when it's
+            // broadcasted.
+            if (is_a && is_src1_broadcast)
+                return layout.retype(type_t::f32()).make_dense();
+            // bf16 mixed mode mad requires src1 to be packed
+            if (is_a) return layout.make_dense();
+            // bf16 mixed mode mad requires src2 to be f32.
+            return layout.retype(type_t::f32()).make_dense();
         }
         bool is_a_xf8_or_xf16_or_xf4 = (a_type.is_fp4() || a_type.is_fp8()
                 || a_type.is_bf16() || a_type.is_f16());

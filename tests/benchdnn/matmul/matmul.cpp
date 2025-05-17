@@ -641,8 +641,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        if (((prb->src_dt() == dnnl_f8_e4m3 || prb->dst_dt() == dnnl_f8_e4m3)
+        if (((prb->src_dt() == dnnl_f8_e4m3 || prb->wei_dt() == dnnl_f8_e4m3
+                     || prb->dst_dt() == dnnl_f8_e4m3)
                     || (prb->src_dt() == dnnl_f8_e5m2
+                            || prb->wei_dt() == dnnl_f8_e5m2
                             || prb->dst_dt() == dnnl_f8_e5m2))
                 && (!po.is_def() || !prb->attr.scales.is_def())) {
             BENCHDNN_PRINT(2,

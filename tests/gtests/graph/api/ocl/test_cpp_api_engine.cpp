@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -126,5 +126,8 @@ TEST(OCLApi, Engine) {
                     device_id, ctx, alloc, cache_blob);
         });
     }
+
+    err = clReleaseContext(ctx);
+    GRAPH_TEST_OCL_CHECK(err);
 }
 #endif

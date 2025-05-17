@@ -241,11 +241,19 @@ status_t init_conf(matmul::brgemm_matmul_conf_t &conf,
                         data_type::s4, data_type::u4);
 
         otag = get_blocked_otag(dst_md);
-        // TODO: enable for itag = {ba, acb}
-        itag = id.matches_one_of_tag(
-                ab, abc, is_bf16_with_int_wei ? otag : format_tag::undef);
-        VDISPATCH_REORDER_IC(!utils::one_of(format_tag::undef, itag, otag),
-                VERBOSE_UNSUPPORTED_TAG);
+        if (id.is_dense()) {
+            // TODO: enable for itag = {ba, acb}
+            itag = id.matches_one_of_tag(
+                    ab, abc, is_bf16_with_int_wei ? otag : format_tag::undef);
+            VDISPATCH_REORDER_IC(!utils::one_of(format_tag::undef, itag, otag),
+                    VERBOSE_UNSUPPORTED_TAG);
+        } else {
+            for (int d = 0; d < ndims - 1; d++) {
+                VDISPATCH_REORDER_IC(id.strides()[d] >= id.strides()[d + 1],
+                        VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+            }
+            itag = ndims >= 2 ? format_tag::abc : format_tag::ab;
+        }
     }
 
     CHECK(matmul::init_conf(conf, batch, M, K, N, in_ld,
@@ -293,8 +301,10 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(
                     type_i == data_type::f32 && type_o == data_type::f32);
     VDISPATCH_REORDER_IC(dt_ok, VERBOSE_UNSUPPORTED_DT);
 
-    VDISPATCH_REORDER_IC(
-            id.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    if (is_plain) {
+        VDISPATCH_REORDER_IC(
+                id.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    }
 
     // plain transpose reorder works for all shapes.
     VDISPATCH_REORDER_IC(is_plain ? ndims >= 2 : utils::one_of(ndims, 2, 3),

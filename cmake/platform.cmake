@@ -335,6 +335,7 @@ elseif(UNIX OR MINGW)
             message(STATUS
                 "Using Clang ${DNNL_ENABLED_CLANG_SANITIZER} "
                 "sanitizer (experimental!)")
+            append(CMAKE_CCXX_SANITIZER_FLAGS "-DDNNL_ENABLED_CLANG_SANITIZER")
             append(CMAKE_CCXX_SANITIZER_FLAGS "-g")
             # Already enabled for x64
             if(NOT DNNL_TARGET_ARCH STREQUAL "X64")

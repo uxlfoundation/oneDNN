@@ -148,6 +148,7 @@ static int check_status_change() {
 }
 
 void res() {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return;
     RUN(check_status_change());
 }
 

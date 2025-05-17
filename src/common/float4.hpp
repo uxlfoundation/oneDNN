@@ -72,6 +72,29 @@ struct float4_e3m0_t {
 };
 static_assert(sizeof(float4_e3m0_t) == 1, "float4_e3m0_t must be 1 byte");
 
+struct nf4_t {
+    uint8_t raw_bits_;
+    nf4_t() = default;
+    constexpr nf4_t(uint8_t r, bool = true) : raw_bits_(r) {}
+    nf4_t(float f) { (*this) = f; }
+    nf4_t(float16_t f) { (*this) = f; }
+    nf4_t(bfloat16_t f) { (*this) = f; }
+
+    nf4_t DNNL_API &operator=(float f);
+    nf4_t DNNL_API &operator=(float16_t f);
+    nf4_t DNNL_API &operator=(bfloat16_t f);
+
+    DNNL_API operator float() const;
+    DNNL_API operator float16_t() const;
+    DNNL_API operator bfloat16_t() const;
+
+    nf4_t &operator+=(const float a) {
+        (*this) = float {*this} + a;
+        return *this;
+    }
+};
+static_assert(sizeof(nf4_t) == 1, "nf4_t must be 1 byte");
+
 } // namespace impl
 } // namespace dnnl
 

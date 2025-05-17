@@ -49,6 +49,10 @@ TEST(test_limits, f4_e3m0) {
     test_limits<impl::float4_e3m0_t>(16.0f, -16.0f, 1.0f);
 }
 
+TEST(test_limits, nf4) {
+    test_limits<impl::nf4_t>(1.0f, -1.0f, 0.0f);
+}
+
 template <typename T>
 void test_conversions() {
     impl::parallel_nd(0xff, [&](uint8_t u8) {
@@ -93,6 +97,10 @@ TEST(test_e2m1_conversion, f4_e2m1) {
 
 TEST(test_e3m0_conversion, f4_e3m0) {
     test_conversions<impl::float4_e3m0_t>();
+}
+
+TEST(test_nf4_conversion, nf4) {
+    test_conversions<impl::nf4_t>();
 }
 
 } // namespace dnnl

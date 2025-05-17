@@ -885,6 +885,8 @@ struct memory : public handle<dnnl_memory_t> {
         f4_e3m0 = dnnl_f4_e3m0,
         /// [MX-compliant 4-bit float data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2-bit exponent and 1 bit mantissa.
         f4_e2m1 = dnnl_f4_e2m1,
+        /// 4-bit float data type with pseudo-normally-distributed values.
+        nf4 = dnnl_nf4,
         /// [MX-compliant 8-bit compliant scale data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 8-bit exponent.
         e8m0 = dnnl_e8m0,
         /// [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf)

@@ -276,6 +276,12 @@ float dnn_mem_t::get_elem(int64_t idx, int buffer_index) const {
             elem = dnnl::impl::float4_e3m0_t(nibble_pair.get(idx % 2));
             break;
         }
+        case dnnl_nf4: {
+            dnnl::impl::nibble2_t nibble_pair(
+                    reinterpret_cast<uint8_t *>(data)[idx / 2]);
+            elem = dnnl::impl::nf4_t(nibble_pair.get(idx % 2));
+            break;
+        }
         default: assert(!"bad data type");
     }
     return elem;
@@ -320,6 +326,12 @@ void dnn_mem_t::set_elem(int64_t idx, float value, int buffer_index) const {
         case dnnl_f4_e3m0: {
             auto dst_val = ((dnnl::impl::nibble2_t *)data)[idx / 2];
             dst_val.set(dnnl::impl::float4_e3m0_t(value).raw_bits_, idx % 2);
+            ((dnnl::impl::nibble2_t *)data)[idx / 2] = dst_val;
+            break;
+        }
+        case dnnl_nf4: {
+            auto dst_val = ((dnnl::impl::nibble2_t *)data)[idx / 2];
+            dst_val.set(dnnl::impl::nf4_t(value).raw_bits_, idx % 2);
             ((dnnl::impl::nibble2_t *)data)[idx / 2] = dst_val;
             break;
         }
@@ -1085,6 +1097,7 @@ int check_zero_padding(
             CASE(dnnl_u4, dnnl::impl::uint4_t);
             CASE(dnnl_f4_e2m1, dnnl::impl::float4_e2m1_t);
             CASE(dnnl_f4_e3m0, dnnl::impl::float4_e3m0_t);
+            CASE(dnnl_nf4, dnnl::impl::nf4_t);
         default: assert(!"bad data_type");
     };
 #undef CASE

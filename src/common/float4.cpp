@@ -158,5 +158,77 @@ float4_e3m0_t::operator float16_t() const {
     return e3m0_table[raw_bits_];
 }
 
+static const float nf4_table[16] = {
+        -1.0,
+        -0.6961928009986877,
+        -0.5250730514526367,
+        -0.39491748809814453,
+        -0.28444138169288635,
+        -0.18477343022823334,
+        -0.09105003625154495,
+        0.0,
+        0.07958029955625534,
+        0.16093020141124725,
+        0.24611230194568634,
+        0.33791524171829224,
+        0.44070982933044434,
+        0.5626170039176941,
+        0.7229568362236023,
+        1.0,
+};
+
+uint8_t float2nf4(float f) {
+    if (f == nf4_table[0x7]) return 0x7; /* fast path for zero */
+    if (f <= nf4_table[0x0]) return 0x0;
+    if (f >= nf4_table[0xF]) return 0xF;
+
+    // There is no NaN or infinity in e2m1, for now we just return zero
+    uint32_t f_raw = float2int(f);
+    uint32_t naninf_mask = 0x7f800000;
+    if ((f_raw & naninf_mask) == naninf_mask) f = 0.0f;
+
+    int idx = 0;
+    float min_diff = ::fabsf(nf4_table[idx] - f);
+    uint8_t raw_bits = idx;
+    for (++idx; idx < 16; ++idx) {
+        float diff = ::fabsf(nf4_table[idx] - f);
+        if (diff < min_diff) {
+            min_diff = diff;
+            raw_bits = idx;
+        }
+        // Special case for midpoint, we round to even (so even index)
+        if ((diff == min_diff) && !(idx & 1)) raw_bits = idx;
+    }
+    assert(raw_bits < 16);
+    return raw_bits;
+}
+
+nf4_t &nf4_t::operator=(bfloat16_t f) {
+    float f32 = f;
+    raw_bits_ = float2nf4(f32);
+    return *this;
+}
+
+nf4_t &nf4_t::operator=(float16_t f) {
+    float f32 = f;
+    raw_bits_ = float2nf4(f32);
+    return *this;
+}
+
+nf4_t &nf4_t::operator=(float f) {
+    raw_bits_ = float2nf4(f);
+    return *this;
+}
+
+nf4_t::operator float() const {
+    assert(raw_bits_ < 16);
+    return nf4_table[raw_bits_];
+}
+
+nf4_t::operator float16_t() const {
+    assert(raw_bits_ < 16);
+    return float16_t(nf4_table[raw_bits_]);
+}
+
 } // namespace impl
 } // namespace dnnl

@@ -190,6 +190,19 @@ struct numeric_limits<float4_e2m1_t> {
 };
 
 template <>
+struct numeric_limits<nf4_t> {
+    static constexpr nf4_t lowest() { return nf4_t(0x0, true); }
+    static constexpr nf4_t min() { return nf4_t(0x8, true); }
+    static constexpr nf4_t max() { return nf4_t(0xf, true); }
+
+    // Dummy values. nf4 does not have meaningful bias/digits/epsilon.
+    static constexpr int bias = 0;
+    static constexpr int digits = 0;
+
+    static constexpr nf4_t epsilon() { return nf4_t(0x7, true); }
+};
+
+template <>
 struct numeric_limits<float8_e8m0_t> {
     static constexpr float8_e8m0_t lowest() {
         return float8_e8m0_t(0x00, true);

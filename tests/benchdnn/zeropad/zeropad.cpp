@@ -116,6 +116,12 @@ static dnnl_status_t perf_func(
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->dt}, FWD_D, res);
 
+    // check on sycl engine if dt is one of supported zeropad dt's
+    // if not supported skip
+    if (is_generic_gpu() && prb->dt == dnnl_f64) {
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+    }
     if (is_nvidia_gpu() || is_amd_gpu()) {
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;

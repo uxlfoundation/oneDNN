@@ -88,10 +88,10 @@ struct ref_matmul_t : public gpu_primitive_t {
                               || utils::one_of(wei_dt_, f8_e5m2, f8_e4m3))
                     && utils::one_of(dst_dt_, f32, bf16, f16, src_dt_);
             const bool is_f4
-                    = ((utils::one_of(src_dt_, f4_e2m1, f4_e3m0)
-                               || utils::everyone_is(wei_dt_, f4_e2m1, f4_e3m0))
+                    = ((utils::one_of(src_dt_, f4_e2m1, f4_e3m0, nf4)
+                               || utils::one_of(wei_dt_, f4_e2m1, f4_e3m0, nf4))
                             && utils::one_of(dst_dt_, f32, bf16, f16, f4_e3m0,
-                                    f4_e2m1, src_dt_));
+                                    f4_e2m1, nf4, src_dt_));
             const bool is_int8 = utils::one_of(src_dt_, u8, s8)
                     && utils::one_of(wei_dt_, u8, s8, u4, s4)
                     && utils::one_of(dst_dt_, f32, s8, u8, s32, f16, bf16);
@@ -122,7 +122,7 @@ struct ref_matmul_t : public gpu_primitive_t {
                             dev_info_->has_native(f64)),
                     VERBOSE_UNSUPPORTED_DT);
             subbyte_pack_ = utils::one_of(
-                    dst_dt_, data_type::f4_e2m1, data_type::f4_e3m0);
+                    dst_dt_, f4_e2m1, f4_e3m0, nf4);
             if (subbyte_pack_) {
                 using namespace dnnl::impl::memory_tracking::names;
                 const memory_desc_wrapper dst_mdw(dst_md(0));

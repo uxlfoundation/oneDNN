@@ -60,7 +60,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(d->sum_ab == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
             "bias reduction");
 
-    subbyte_pack_ = utils::one_of(d->c_type(), f4_e2m1, f4_e3m0);
+    subbyte_pack_ = utils::one_of(d->c_type(), f4_e2m1, f4_e3m0, nf4);
     if (subbyte_pack_) {
         using namespace dnnl::impl::memory_tracking::names;
         const memory_desc_wrapper dst_mdw(dst_md(0));

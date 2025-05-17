@@ -229,6 +229,23 @@ IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e3m0, double, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e3m0, float));
 #endif // MATH_UTILS_DECLARE_F4_E3M0
 
+#ifdef MATH_UTILS_DECLARE_NF4
+nf4 __attribute__((overloadable)) into_nf4(float f) {
+    return as_nf4(cvt_f32_to_nf4(f));
+}
+
+half __attribute__((overloadable)) into_float(nf4 b) {
+    return cvt_nf4_to_f32(b.data);
+}
+
+def_two_step_conversion(nf4, half, float);
+def_two_step_conversion(nf4, int, float);
+def_two_step_conversion(half, nf4, float);
+
+IF_DOUBLE_SUPPORTED(def_two_step_conversion(nf4, double, float));
+IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, nf4, float));
+#endif // MATH_UTILS_DECLARE_NF4
+
 #ifdef MATH_UTILS_DECLARE_E8M0
 // Copy-paste from `cvt_e8m0_to_f32`.
 float __attribute__((overloadable)) into_float(e8m0 b) {

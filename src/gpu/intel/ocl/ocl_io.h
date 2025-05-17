@@ -47,6 +47,7 @@
 #define SIZE_f8_e4m3 1
 #define SIZE_f4_e2m1 0
 #define SIZE_f4_e3m0 0
+#define SIZE_nf4 0
 #define SIZE_e8m0 1
 #define SIZE_bf16 2
 #define SIZE_half 2
@@ -317,6 +318,18 @@ DEF_write(f4_e3m0, float);
 DEF_write(f4_e3m0, int);
 
 #endif // MATH_UTILS_DECLARE_F4_E3M0
+
+#ifdef MATH_UTILS_DECLARE_NF4
+// Loads
+DEF_load_half_byte(half, nf4);
+DEF_load_half_byte(float, nf4);
+
+// Writes
+DEF_write(nf4, half);
+DEF_write(nf4, float);
+DEF_write(nf4, int);
+
+#endif // MATH_UTILS_DECLARE_NF4
 
 #ifdef MATH_UTILS_DECLARE_E8M0
 // Loads

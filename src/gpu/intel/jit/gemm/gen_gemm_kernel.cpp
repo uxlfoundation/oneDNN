@@ -52,6 +52,7 @@ compute::scalar_type_t gen_gemm_kernel_desc_t::scalar_type() const {
         case Type::u64: return compute::scalar_type_t::_ulong;
         case Type::f4_e2m1: return compute::scalar_type_t::_f4_e2m1;
         case Type::f4_e3m0: return compute::scalar_type_t::_f4_e3m0;
+        case Type::nf4: return compute::scalar_type_t::_nf4;
         case Type::bf8: return compute::scalar_type_t::_bfloat8;
         case Type::hf8: return compute::scalar_type_t::_hfloat8;
         case Type::bf16: return compute::scalar_type_t::_bfloat16;
@@ -534,8 +535,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_tf32 = mode & mode_tf32;
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
-    bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
-            && (mode & mode_strict) && (mode & mode_w_decomp);
 
     auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
         if (!has_mode) return;
@@ -581,17 +580,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         return nullptr;
     });
 
-    if (fpmath_strict) {
-        if (problem_.Tb.isInt4() && !(fpmath_f16 || fpmath_bf16)) {
-            match_params.emplace_back(match_params[0]);
-            match_params.back().selector.precisions[1]
-                    = match_params.back().selector.precisions[0];
-        } else {
-            match_params.emplace_back(match_params[0]);
-            match_params.back().selector.precisions[0]
-                    = match_params.back().selector.precisions[1];
-        }
-    }
     add_mode_matches(true, [](Type dt) -> const char * {
         if (dt.isFP4()) return "E";
         return nullptr;

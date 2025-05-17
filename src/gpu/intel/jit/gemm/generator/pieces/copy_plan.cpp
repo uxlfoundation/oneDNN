@@ -674,6 +674,9 @@ void CopyPlan::planTypeConversions()
         } else if (dt == Type::ngen_f4_e3m0() && st == DataType::hf) {
             planEmulatedHFToE3M0(i);
             rerun = true;
+        } else if (st == Type::ngen_nf4() && dt == DataType::hf) {
+            planEmulatedNF4ToHF(i);
+            rerun = true;
         } else if (isFP4(dt)) {
             copyThrough(i, DataType::hf);
             rerun = true;
@@ -1750,6 +1753,88 @@ void CopyPlan::planEmulatedE3M0ToHF(CopyInstruction &i)
         ie[7]->invalidate();
 }
 
+// Emulation sequence for nf4->hf conversion.
+void CopyPlan::planEmulatedNF4ToHF(CopyInstruction &i)
+{
+    // nf4->hf conversion.
+    //
+    // After scaling and shifting, the conversion is essentially
+    //   applying the inverse error function.
+    //
+    // The fast approximation here is adapted from the
+    //   central region approximation in:
+    //         "Approximating the erfinv function," Mike Giles,
+    //         https://people.maths.ox.ac.uk/gilesm/files/gems_erfinv.pdf
+
+    if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
+
+    auto y = i.dst;
+    auto ie = splitMultiple<9>(i);
+
+    auto t0 = newTemp(DataType::hf, i.simd, y.stride, 0, y.offset);
+    auto t1 = newTemp(DataType::hf, i.simd, y.stride, 0, y.offset);
+    auto f = newFlag(i.simd);
+
+    // 1. Copy to u16.
+    ie[0]->src0.type = DataType::u4;
+    ie[0]->dst = t0;
+    ie[0]->dst.type = DataType::uw;
+
+    // 2. Reinterpret as denormal f16 and scale and shift to [-1, 1].
+    ie[1]->op = Opcode::mad;
+    ie[1]->src0 = Immediate::hf(0x9700);    // -7 * 2^(-12)
+    ie[1]->src1 = t0;
+    ie[1]->src2 = Immediate::hf(0x6C00);    // 2^12
+    ie[1]->dst = t0;
+    ie[1]->cmod = ConditionModifier::lt;
+    ie[1]->flag = f;
+
+    // 2a. Scale positive half of range to [0, 1].
+    ie[2]->op = Opcode::mul;
+    ie[2]->src0 = t0;
+    ie[2]->src1 = Immediate::hf(0x6000);    // 2^9
+    ie[2]->dst = y;
+
+    // 2b. Scale negative half of range to [-1, 0].
+    ie[3]->op = Opcode::mad;
+    ie[3]->src0 = Immediate::hf(0x8BFF);    // ~2^(-12)
+    ie[3]->src1 = t0;
+    ie[3]->src2 = Immediate::hf(0x6092);    // ~(2^12 / 7)
+    ie[3]->dst = y;
+    ie[3]->flag = f;
+
+    // 3. erfinv approximation, with special handling for +/-1
+    //     y*(c0 + c1*w * c2*w^2), where w = log2(1 - y*y).
+    ie[4]->op = Opcode::mad;
+    ie[4]->src0 = Immediate::hf(0x3BFF);    // ~1
+    ie[4]->src1 = y;
+    ie[4]->src2 = -y;
+    ie[4]->dst = t0;                        // w
+    ie[4]->cmod = ConditionModifier::gt;
+    ie[4]->flag = f;
+
+    ie[5]->op = Opcode::math;
+    ie[5]->ctrl = static_cast<uint8_t>(MathFunction::log);
+    ie[5]->dst = ie[5]->src0 = t0;
+
+    ie[6]->op = Opcode::mad;
+    ie[6]->src0 = Immediate::hf(0x2EA3);    // c2
+    ie[6]->src1 = t0;
+    ie[6]->src2 = Immediate::hf(0x1DA1);    // c1
+    ie[6]->dst = t1;
+
+    ie[7]->op = Opcode::mad;
+    ie[7]->src0 = Immediate::hf(0x3912);    // c0
+    ie[7]->src1 = t0;
+    ie[7]->src2 = -t1;
+    ie[7]->dst = t1;
+
+    ie[8]->op = Opcode::mul;
+    ie[8]->src0 = ie[8]->dst = y;
+    ie[8]->src1 = t1;
+    ie[8]->flag = f;
+}
+
 // Emulation sequence for hf->hf8 conversion.
 void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
 {
@@ -1900,8 +1985,9 @@ void CopyPlan::legalizeSIMD(bool initial)
             bool hasBF = one_of(DataType::bf, i.dst.type, i.src0.type, i.src1.type, i.src2.type);
             bool dstHF = (i.dst.type == DataType::hf);
             bool bfException = (i.op == Opcode::mov && i.dst.type == DataType::bf && i.dst.stride == 2);
+            bool mathHF = (i.op == Opcode::math && i.dst.type == DataType::hf);
 
-            if (hasF && ((hasBF && !bfException) || (hasHF && hw <= HW::XeLP) || dstHF))
+            if ((hasF && ((hasBF && !bfException) || (hasHF && hw <= HW::XeLP) || dstHF)) || mathHF)
                 simdMax = std::min(simdMax, grf >> 2);
         }
 
@@ -2742,8 +2828,12 @@ void CopyInstruction::dump(const CopyPlan &plan) const
     }
 
     std::cout << getMnemonic(op, HW::Gen9);
-    if (op == Opcode::bfn)
-        std::cout << '.' << std::hex << int(ctrl) << std::dec;
+    switch (op) {
+        case Opcode::bfn:  std::cout << '.' << std::hex << int(ctrl) << std::dec; break;
+        case Opcode::math: std::cout << '.' << static_cast<MathFunction>(ctrl);   break;
+        default: break;
+    }
+
     std::cout << " (" << simd << ")\t";
     if (sat) std::cout << "(sat) ";
     if (cmod != ConditionModifier::none) {

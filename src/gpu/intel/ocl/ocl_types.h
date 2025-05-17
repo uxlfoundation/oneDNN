@@ -618,6 +618,72 @@
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T(v) (cvt_f4_e2m1_to_f32(v))
 
+#elif DT_NF4 == 1
+#if WITH_PUNNING
+#define DATA_T uchar
+#else
+#define DATA_T nf4
+#endif
+#define DATA2_T uchar2
+#define DATA4_T uchar4
+#define DATA8_T uchar8
+#define DATA16_T uchar16
+#define DATA_MAX (uchar)0x07
+#define DATA_MIN (uchar)0x01
+#define DATA_ZERO (uchar)0x00
+#define DATA_ONE (uchar)0x02
+#define DEF_ACC_DATA_T float
+#define DEF_ACC_DATA2_T float2
+#define DEF_ACC_DATA4_T float4
+#define DEF_ACC_DATA8_T float8
+#define POST_OP_DATA_T float
+#define TO_DATA_T(v) cvt_f32_to_nf4((v))
+#define TO_DEF_ACC_DATA_T(v) (cvt_nf4_to_f32(v))
+#define TO_DEF_ACC_DATA2_T(v) (cvt_nf4_to_f32(v))
+#define TO_DEF_ACC_DATA4_T(v) (cvt_nf4_to_f32(v))
+#define TO_DEF_ACC_DATA8_T(v) (cvt_nf4_to_f32(v))
+#define DATA_TO_REF(v) (cvt_nf4_to_f32(v))
+#define CONVERT_DATA_T(v) cvt_f32_to_nf4(v)
+#define CONVERT_DATA2_T(v) cvt_f32_to_nf4(v)
+#define CONVERT_DATA4_T(v) cvt_f32_to_nf4(v)
+#define CONVERT_DATA8_T(v) cvt_f32_to_nf4(v)
+#define CONVERT_FLOAT_T(v) cvt_nf4_to_f32(v)
+#define CONVERT_FLOAT2_T(v) cvt_nf4_to_f32(v)
+#define CONVERT_FLOAT4_T(v) cvt_nf4_to_f32(v)
+#define CONVERT_FLOAT8_T(v) cvt_nf4_to_f32(v)
+
+#define BLOCK_READ intel_sub_group_block_read_uc
+#define BLOCK_WRITE intel_sub_group_block_write_uc
+#define BLOCK_READ2 intel_sub_group_block_read_uc2
+#define BLOCK_READ4 intel_sub_group_block_read_uc4
+#define BLOCK_READ8 intel_sub_group_block_read_uc8
+#define BLOCK_WRITE2 intel_sub_group_block_write_uc2
+#define BLOCK_WRITE4 intel_sub_group_block_write_uc4
+#define BLOCK_WRITE8 intel_sub_group_block_write_uc8
+#define AS_DATA_T as_uchar
+#define AS_DATA2_T as_uchar2
+#define AS_DATA4_T as_uchar4
+#define AS_DATA8_T as_uchar8
+#define AS_DATA16_T as_uchar16
+
+#define AS_UINT_T as_uchar
+#define AS_UINT2_T as_uchar2
+#define AS_UINT4_T as_uchar4
+#define AS_UINT8_T as_uchar8
+#define AS_INT8_T as_uint8
+
+#define BLOCK_DATA_T uchar
+#define BLOCK_DATA2_T uchar2
+#define BLOCK_DATA4_T uchar4
+#define BLOCK_DATA8_T uchar8
+#define AS_BLOCK_DATA_T as_uchar
+#define AS_BLOCK_DATA2_T as_uchar2
+#define AS_BLOCK_DATA4_T as_uchar4
+#define AS_BLOCK_DATA8_T as_uchar8
+
+#define FLT_ACC_DATA_T float
+#define TO_FLT_ACC_DATA_T(v) (cvt_nf4_to_f32(v))
+
 #elif DT_S8 == 1
 #define DATA_T char
 #define DATA2_T char2

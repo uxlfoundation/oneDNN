@@ -2996,9 +2996,10 @@ private:
         vinserti128(ymm, ymm, xmm_half, 1);
     }
     Vmm_lower_t maybe_mask(Vmm_lower_t vmm_lower, bool is_tail) {
-        assert(is_src_int4);
+        //        assert(is_src_int4);
         if (isa_has_masks(conf_->isa)) {
-            return is_tail ? vmm_lower | kTail_int4 | T_z
+            return is_tail ? is_src_int4 ? vmm_lower | kTail_int4 | T_z
+                                         : vmm_lower | kTail | T_z
                            : vmm_lower | kFFFF | T_z;
         } else {
             return vmm_lower;
@@ -3029,6 +3030,9 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::load_data(
         case data_type::f32: uni_vmovups(vmm, op); break;
         case data_type::f16:
         case data_type::bf16: vmovdqu16(vmm, op); break;
+        case data_type::f8_e4m3:
+            vmovdqu8(maybe_mask(vmm_lower, is_tail), op);
+            break;
         case data_type::s8: uni_vpmovsxbd(vmm, op); break;
         case data_type::u8: uni_vpmovzxbd(vmm, op); break;
         // For int4, we see two int4 as one int8 and extend them int32
@@ -3163,6 +3167,9 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
             load(blk_idx, k + 1, n);
             if (req_cvtps2bf16) {
                 vcvtne2ps2bf16(src_vmm0, src_vmm1, src_vmm0);
+            } else if (conf_->is_fp8_non_amx) {
+                const auto src_xmm1 = xmm(src_vmm1.getIdx());
+                vinsertf64x2(src_zmm0, src_zmm0, src_xmm1, 1);
             } else if (is_superset(conf_->isa, avx512_core)) {
                 const auto src_ymm1 = ymm(src_vmm1.getIdx());
                 vinsertf64x4(src_zmm0, src_zmm0, src_ymm1, 1);
@@ -3173,7 +3180,11 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
             uni_vxorps(src_vmm1, src_vmm1, src_vmm1);
         }
 
-        if (is_superset(conf_->isa, avx512_core)) {
+        if (conf_->is_fp8_non_amx) {
+            const auto src_ymm0 = ymm(src_vmm0.getIdx());
+            vpermb(src_zmm0, vmm_permw, src_zmm0);
+            uni_vmovups(store_addr, src_ymm0);
+        } else if (is_superset(conf_->isa, avx512_core)) {
             vpermw(src_zmm0, vmm_permw, src_zmm0);
             uni_vmovups(store_addr, src_zmm0);
         } else {
@@ -3198,12 +3209,18 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
     alignas(64) static constexpr const int16_t bf16_vnni_permute[32]
             = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9,
                     25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31};
+    alignas(64) static constexpr const int8_t f8_vnni_permute[32]
+            = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9,
+                    25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31};
 
     if (is_superset(conf_->isa, avx512_core)) {
         kxnorw(kFFFF, kFFFF, kFFFF); // 1111 1111 1111 1111
 
-        mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
-        vmovdqa64(vmm_permw, ptr[reg_tmp]);
+        if (conf_->is_f8_non_amx) {
+        } else {
+            mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
+            vmovdqa64(vmm_permw, ptr[reg_tmp]);
+        }
 
         if (is_src_int4) {
             alignas(64) static constexpr const uint32_t int4_permute[16]

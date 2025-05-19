@@ -46,6 +46,8 @@ public:
         return sycl_kernel_.get_info<::sycl::info::kernel::function_name>();
     }
     const compute::program_src_t &src() const { return src_; }
+    status_t check_alignment(
+            const compute::kernel_arg_list_t &arg_list) const override;
 
     static status_t make(compute::kernel_t &compute_kernel,
             const ::sycl::kernel &sycl_kernel,

@@ -116,6 +116,7 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         }
     }
     CHECK(check_scalar_arguments(arg_list));
+    CHECK(check_alignment(arg_list));
 
     auto event = queue.submit([&](::sycl::handler &cgh) {
         cgh.depends_on(xpu::sycl::event_t::from(deps).events);
@@ -187,6 +188,25 @@ status_t interop_kernel_t::dump() const {
     xpu::binary_t binary;
     CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
+}
+
+status_t interop_kernel_t::check_alignment(
+        const compute::kernel_arg_list_t &arg_list) const {
+    for (int i = 0; i < arg_list.nargs(); ++i) {
+        auto &arg = arg_list.get(i);
+        if (!arg.is_global()) continue;
+        auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
+        if (!*mem_storage) continue;
+        auto *sycl_mem_storage
+                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
+                        mem_storage);
+        if (sycl_mem_storage->memory_kind() != xpu::sycl::memory_kind::usm)
+            continue;
+        auto *m = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
+                mem_storage);
+        CHECK(compute::kernel_impl_t::check_alignment(m->usm_ptr()));
+    }
+    return status::success;
 }
 
 // This class is to get around std::make_shared requirement to have a public

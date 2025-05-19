@@ -209,12 +209,12 @@ void fill_mask(std::vector<float> &mask, const memory::desc &desc) {
 
 void fill_causal_mask(
         std::vector<float> &mask, const memory::desc &desc, mask_type mask_t) {
-    size_t seq_len = desc.get_dims()[3];
-    size_t query_num = desc.get_dims()[2];
-    size_t batches = desc.get_dims()[1] * desc.get_dims()[0];
-    for (size_t b = 0; b < batches; b++) {
-        for (size_t q = 0; q < query_num; q++) {
-            for (size_t k = 0; k < seq_len; k++) {
+    int64_t seq_len = desc.get_dims()[3];
+    int64_t query_num = desc.get_dims()[2];
+    int64_t batches = desc.get_dims()[1] * desc.get_dims()[0];
+    for (int64_t b = 0; b < batches; b++) {
+        for (int64_t q = 0; q < query_num; q++) {
+            for (int64_t k = 0; k < seq_len; k++) {
                 if (mask_t == mask_type::causal_br
                                 ? ((q + seq_len - query_num) >= k)
                                 : (q >= k)) {

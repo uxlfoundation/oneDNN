@@ -1284,9 +1284,6 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     }
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
                     pd()->attr()->post_ops_, *ctx);
@@ -1297,7 +1294,11 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
     const dim_t N = pd()->across_axis();
     const dim_t C_padded = src_d.padded_dims()[pd()->ndims() - 1];
 
-    parallel(0, [&](const int ithr, const int nthr) {
+    // Note: post_ops_binary_rhs_arg_vec is an std::vector but copy should be small
+    parallel(0, [=](const int ithr, const int nthr) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
         const char *const __restrict src_ptr
@@ -1309,6 +1310,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
         (*stat_and_data_kernel_)(src_ptr, dst_ptr, scale, shift, &mean[N_start],
                 &variance[N_start], src_scales, dst_scales,
                 post_ops_binary_rhs_arg_vec.data(), block_size);
+        return status::success;
     });
     return status::success;
 }
@@ -1354,7 +1356,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
 
     const int max_nthr = pd()->nthr_;
 
-    parallel(max_nthr, [&](int ithr, int nthr) {
+    parallel(max_nthr, [=](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
         const int block_size = N_end - N_start;
@@ -1376,7 +1378,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
                 block_size);
     });
 
-    parallel_nd(C, [&](dim_t c) {
+    parallel_nd(C, [=](dim_t c) {
         float diff_gamma = 0, diff_beta = 0;
         for (dim_t n = 0; n < max_nthr; n++) {
             diff_gamma += reduce[C * n + c];
@@ -1386,7 +1388,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
         diff_shift[c] = diff_beta;
     });
 
-    parallel(max_nthr, [&](int ithr, int nthr) {
+    parallel(max_nthr, [=](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
         const int block_size = N_end - N_start;

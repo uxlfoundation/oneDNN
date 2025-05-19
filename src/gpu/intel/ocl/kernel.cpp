@@ -123,6 +123,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     kernel_wrapper_t *kernel = nullptr;
     CHECK(cache_->get(&kernel));
     CHECK(check_scalar_arguments(arg_list));
+    CHECK(check_alignment(arg_list));
 
     auto stream_ocl_device_info
             = utils::downcast<engine_t *>(stream.engine())->device_info();
@@ -243,6 +244,26 @@ status_t kernel_t::dump() const {
 
 std::string kernel_t::name() const {
     return xpu::ocl::get_kernel_name(ocl_kernel());
+}
+
+status_t kernel_t::check_alignment(
+        const compute::kernel_arg_list_t &arg_list) const {
+    for (int i = 0; i < arg_list.nargs(); ++i) {
+        auto &arg = arg_list.get(i);
+        if (!arg.is_global()) continue;
+        auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
+        if (mem_storage->is_null()) continue;
+        auto *ocl_mem_storage
+                = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
+                        mem_storage);
+        if (ocl_mem_storage->memory_kind() != xpu::ocl::memory_kind::usm)
+            continue;
+        auto *m = utils::downcast<const xpu::ocl::usm_memory_storage_t *>(
+                ocl_mem_storage);
+        auto *usm_ptr = m->usm_ptr();
+        CHECK(compute::kernel_impl_t::check_alignment(usm_ptr));
+    }
+    return status::success;
 }
 
 // This class is to get around std::make_shared requirement to have a public

@@ -58,6 +58,8 @@ public:
     status_t dump() const override;
     std::string name() const override;
     const compute::program_src_t &src() const { return src_; }
+    status_t check_alignment(
+            const compute::kernel_arg_list_t &arg_list) const override;
 
     static status_t make(compute::kernel_t &compute_kernel,
             xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,

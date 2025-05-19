@@ -319,6 +319,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Store Q tile to SLM */
         tile_store_t_sys_src1(
                 Q_tile, (local uint *)&Q_slm[0], D_MAX / 2, q0_copy, 0);
+
+#if Q_ARRIVE_AWAIT_BARRIER
+        intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
+#endif
     }
 
     /* Load scale */
@@ -408,7 +412,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_max_tile, -INFINITY);
 
         /* Wait for Q data to reach SLM */
+#if Q_ARRIVE_AWAIT_BARRIER
+        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
+#else
         barrier(CLK_LOCAL_MEM_FENCE);
+#endif
     }
 
     /* Main loop over k blocks */

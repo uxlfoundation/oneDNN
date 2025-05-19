@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,9 +47,6 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
             : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     const dim_t N = pd()->across_axis();
     const dim_t C = pd()->norm_axis();
 
@@ -68,7 +65,10 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
         return status::success;
     }
 
-    parallel_nd(N, [&](dim_t n) {
+    parallel_nd(N, [=](dim_t n) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
         const size_t s_off = stat_d.off_l(n);
         auto v_mean = calculate_stats ? 0 : mean[s_off];
         auto v_variance = calculate_stats ? 0 : variance[s_off];
@@ -123,6 +123,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
                 variance[s_off] = v_variance;
             }
         }
+        return status::success;
     });
     return status::success;
 }
@@ -182,7 +183,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
     const bool calculate_diff_stats = !pd()->use_global_stats();
 
     if (diff_scale || diff_shift) {
-        parallel_nd(C, [&](dim_t c) {
+        parallel_nd(C, [=](dim_t c) {
             float diff_gamma = 0.f;
             float diff_beta = 0.f;
 
@@ -207,7 +208,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
         });
     }
 
-    parallel_nd(N, [&](dim_t n) {
+    parallel_nd(N, [=](dim_t n) {
         const size_t s_off = stat_d.off_l(n);
         float inv_sqrt_variance = 1.f / sqrtf(variance[s_off] + eps);
         float dd_gamma = 0.f;

@@ -22,6 +22,43 @@
 
 namespace graph {
 
+namespace {
+
+void handle_special_dt_set(
+        ::graph::deserialized_op_t &op, const ::std::string &dt) {
+    auto driver = opkind2driver(opstr2kind(op.kind_));
+    bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
+
+    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
+            || is_f8_quantization) {
+        // pool does not support x8f32 on cpu, and binary does not support
+        // x8x8bf16 on gpu, hence replace output with x8.
+        // f8 data types needs setting output data type to f8
+        op.out_lts_[0].data_type_ = dt;
+    } else if (op.out_lts_[0].data_type_ != "bf16") {
+        if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "s8") {
+            // Use u8 as output data type for two-input operations to avoid
+            // data overflow due to the specific driver logic.
+            op.out_lts_[0].data_type_ = "u8";
+        } else {
+            // Use f32 as output data type since not all primitives support
+            // different data types for input and output.
+            op.out_lts_[0].data_type_ = "f32";
+        }
+    }
+}
+
+int init_ref_prim_and_fill_data(
+        ::std::shared_ptr<ref_primitive_t> &ref_prim, res_t *res) {
+    SAFE(ref_prim->init_prb(res), WARN);
+    SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
+    ref_prim->init_memory_args(::get_test_engine());
+    SAFE_V(ref_prim->init_ref_memory_args(::get_test_engine(), res));
+    return OK;
+}
+
+} // namespace
+
 partition_data_displacer_t::partition_data_displacer_t(
         const deserialized_graph_t &dg, const dnnl::graph::partition &par)
     : dg_(&dg) {
@@ -119,7 +156,9 @@ partition_data_displacer_t::partition_data_displacer_t(
 
                         displace_args_.emplace(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
-                                        filling_type_t::quantization});
+                                        i == 1 ? filling_type_t::
+                                                        quantization_weights
+                                               : filling_type_t::quantization});
                         break;
                     }
                 } else if (parent_op->kind_ == "StaticReshape") {
@@ -372,6 +411,8 @@ int partition_data_displacer_t::displace_input_data(
             s = "Explicit causal mask";
         } else if (filling_type == filling_type_t::quantization) {
             s = "Quantization";
+        } else if (filling_type == filling_type_t::quantization_weights) {
+            s = "Weights Quantization";
         }
         return s;
     };
@@ -381,6 +422,10 @@ int partition_data_displacer_t::displace_input_data(
 
     dnn_mem_t mem_replace;
     if (filling_type == filling_type_t::quantization) {
+        SAFE(gen_quantize_filling(
+                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
+                WARN);
+    } else if (filling_type == filling_type_t::quantization_weights) {
         SAFE(gen_quantize_filling(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
@@ -506,62 +551,34 @@ int partition_data_displacer_t::displace_input_data(
     return OK;
 }
 
-int partition_data_displacer_t::gen_quantize_filling(
+int partition_data_displacer_t::gen_quantized_weights_filling(
         const ::graph::deserialized_op_t &main_op, int arg, dnn_mem_t &mem,
         const ::std::string &dt, res_t *res) {
-    // clone a deserialized op object and modify to specified data type
+    if (!(arg & DNNL_ARG_WEIGHTS)) return FAIL;
+
     ::graph::deserialized_op_t op = main_op;
-    auto driver = opkind2driver(opstr2kind(op.kind_));
-    bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
     bool s8_mem_for_u8_wei = false;
 
     op.in_lts_[0].data_type_ = dt;
-    if (op.in_lts_.size() > 1) {
-        op.in_lts_[1].data_type_ = dt;
-        // Matmul/Conv/Deconv have limited support for quantized configurations.
-        if (op.kind_ == "MatMul" || op.kind_ == "Convolution"
-                || op.kind_ == "ConvTranspose") {
-            if (dt == "u8") {
-                // None of them supports u8u8, replace with u8s8.
-                op.in_lts_[1].data_type_ = "s8";
-                s8_mem_for_u8_wei = arg & DNNL_ARG_WEIGHTS_0;
-            } else if (dt == "s4" || dt == "u4") {
-                // None of them supports x4x4, replace with f32x4f32 or
-                // xf16x4xf16.
-                op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
-            }
-        }
-    }
-    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
-            || is_f8_quantization) {
-        // pool does not support x8f32 on cpu, and binary does not support
-        // x8x8bf16 on gpu, hence replace output with x8.
-        // f8 data types needs setting output data type to f8
-        op.out_lts_[0].data_type_ = dt;
-    } else if (op.out_lts_[0].data_type_ != "bf16") {
-        if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "s8") {
-            // Use u8 as output data type for two-input operations to avoid
-            // data overflow due to the specific driver logic.
-            op.out_lts_[0].data_type_ = "u8";
-        } else {
-            // Use f32 as output data type since not all primitives support
-            // different data types for input and output.
-            op.out_lts_[0].data_type_ = "f32";
+    op.in_lts_[1].data_type_ = dt;
+    if (op.kind_ == "MatMul" || op.kind_ == "Convolution"
+            || op.kind_ == "ConvTranspose") {
+        if (dt == "u8") {
+            // None of them supports u8u8, replace with u8s8.
+            op.in_lts_[1].data_type_ = "s8";
+            s8_mem_for_u8_wei = true;
+        } else if (dt == "s4" || dt == "u4") {
+            // None of them supports x4x4, replace with f32x4f32 or
+            // xf16x4xf16.
+            op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
         }
     }
 
-    ::std::unordered_set<size_t> empty_set;
-    const auto &eng = get_test_engine();
-    ref_primitive_t ref_prim(op);
-    ref_prim.init_prb(res);
-    if (res->state == INVALID_ARGUMENTS) return FAIL;
-    SAFE_V(ref_prim.init_prim(eng, res, /* force_override = */ true));
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
-    ref_prim.init_memory_args(eng);
-    SAFE_V(ref_prim.init_ref_memory_args(eng, res));
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+    handle_special_dt_set(op, dt);
+    auto ref_prim = ::std::make_shared<ref_primitive_t>(op);
+    init_ref_prim_and_fill_data(ref_prim, res);
 
-    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim.get_arg(arg));
+    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
     if (s8_mem_for_u8_wei) {
         // If s8 data is directly read using the u8 data type, it may lead to
         // overflow issues. For complex patterns like SDPA, this could result
@@ -571,6 +588,25 @@ int partition_data_displacer_t::gen_quantize_filling(
         mem = ::std::move(gen_u8_mem);
         return OK;
     }
+    mem = ::std::move(gen_mem);
+
+    return OK;
+}
+
+int partition_data_displacer_t::gen_quantize_filling(
+        const ::graph::deserialized_op_t &main_op, int arg, dnn_mem_t &mem,
+        const ::std::string &dt, res_t *res) {
+    // clone a deserialized op object and modify to specified data type
+    ::graph::deserialized_op_t op = main_op;
+
+    op.in_lts_[0].data_type_ = dt;
+    if (op.in_lts_.size() > 1) op.in_lts_[1].data_type_ = dt;
+
+    handle_special_dt_set(op, dt);
+    auto ref_prim = ::std::make_shared<ref_primitive_t>(op);
+    init_ref_prim_and_fill_data(ref_prim, res);
+
+    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
     mem = ::std::move(gen_mem);
     return OK;
 }

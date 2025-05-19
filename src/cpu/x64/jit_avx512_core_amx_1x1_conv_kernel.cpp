@@ -161,8 +161,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
         int exp_row_count
                 = jcp.tile_width * jcp.nb_oc_blocking * jcp.nb_os_blocking;
         if (row_count_ == exp_row_count) {
-            int oh = ((jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
-            int ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
+            oh = ((jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
+            ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
             size_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
             add(out_ptr, out_offset);
@@ -960,7 +960,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::tile_configure(char *tcfg_buff) {
 
     cfg_tiles((palette_config_t *)tcfg_buff, Ac);
     if (jcp.nb_ic_int > 1 && get_ic_tail()) {
-        int Ac = jcp.typesize_in * get_ic_tail();
+        Ac = jcp.typesize_in * get_ic_tail();
         char *_t = tcfg_buff + max_palette_size_in_bytes;
         cfg_tiles((palette_config_t *)(_t), Ac);
     }

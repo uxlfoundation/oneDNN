@@ -821,8 +821,7 @@ struct jit_bnorm_t : public jit_generator_t {
     void mean_variance_nspc(
             const int num_ch_blks, int num_spat_pts, bool compute_mean) {
 
-        auto mean_compute_avx2_ne_xf16 = [this](int num_ch_blks,
-                                                 int num_spat_pts) {
+        auto mean_compute_avx2_ne_xf16 = [this, &num_ch_blks, &num_spat_pts]() {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ch_idx += 2) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -844,8 +843,8 @@ struct jit_bnorm_t : public jit_generator_t {
             }
         };
 
-        auto variance_compute_avx2_ne_xf16 = [this](int num_ch_blks,
-                                                     int num_spat_pts) {
+        auto variance_compute_avx2_ne_xf16 = [this, &num_ch_blks,
+                                                     &num_spat_pts]() {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ch_idx += 2) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -871,7 +870,7 @@ struct jit_bnorm_t : public jit_generator_t {
             }
         };
 
-        auto mean_compute = [this](int num_ch_blks, int num_spat_pts) {
+        auto mean_compute = [this, &num_ch_blks, &num_spat_pts]() {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ++ch_idx) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -884,7 +883,7 @@ struct jit_bnorm_t : public jit_generator_t {
             }
         };
 
-        auto variance_compute = [this](int num_ch_blks, int num_spat_pts) {
+        auto variance_compute = [this, &num_ch_blks, &num_spat_pts]() {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ++ch_idx) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -927,13 +926,10 @@ struct jit_bnorm_t : public jit_generator_t {
         L(spatial);
         {
             if (is_avx2_ne_xf16_)
-                compute_mean
-                        ? mean_compute_avx2_ne_xf16(num_ch_blks, num_spat_pts)
-                        : variance_compute_avx2_ne_xf16(
-                                num_ch_blks, num_spat_pts);
+                compute_mean ? mean_compute_avx2_ne_xf16()
+                             : variance_compute_avx2_ne_xf16();
             else
-                compute_mean ? mean_compute(num_ch_blks, num_spat_pts)
-                             : variance_compute(num_ch_blks, num_spat_pts);
+                compute_mean ? mean_compute() : variance_compute();
             sub(reg_ctr, num_spat_pts);
             jnz(spatial, T_NEAR);
         }
@@ -2468,9 +2464,8 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute(
     auto scratchpad = ctx.get_scratchpad_grantor();
 
     bnorm_driver_->init_barriers(scratchpad);
-    const int nthr = pd()->nthr_;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
         bnorm_driver_->exec(ithr, nthr, src, nullptr, dst, nullptr, scale,
                 nullptr, shift, nullptr, mean, var, ws, scratchpad);
     });
@@ -2601,9 +2596,8 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::execute(
     auto scratchpad = ctx.get_scratchpad_grantor();
 
     bnorm_driver_->init_barriers(scratchpad);
-    const int nthr = pd()->nthr_;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
         bnorm_driver_->exec(ithr, nthr, src, diff_src, nullptr, diff_dst, scale,
                 diff_scale, nullptr, diff_shift, mean, var, ws, scratchpad);
     });

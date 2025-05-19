@@ -194,7 +194,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
     auto im_d = memory_desc_wrapper(imd);
     auto om_d = memory_desc_wrapper(omd);
 
-    auto check_post_ops = [](const primitive_attr_t *attr) {
+    auto check_post_ops = [&attr]() {
         const auto &po = attr->post_ops_;
         return po.len() == 0 || (po.len() == 1 && po.entry_[0].is_sum(false));
     };
@@ -214,7 +214,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
     VDISPATCH_REORDER_IC(attr->has_default_values(smask_t::scales
                                  | smask_t::zero_points | smask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_REORDER_IC(check_post_ops(attr), VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_REORDER_IC(check_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 
     bool is_tail_present = false;
     dims_t iblocks, oblocks, i_tails, o_tails, i_paddings, o_paddings;

@@ -973,9 +973,9 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             float cur_imbalance = cur_params.get_imbalance();
 
             const int m_chunk_size = 1;
-            int m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
-            int n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
-            int work_amount = bgmmc.batch * m_chunks * n_chunks;
+            int cur_m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
+            int cur_n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
+            int work_amount = bgmmc.batch * cur_m_chunks * cur_n_chunks;
 
             int nthr_bmn = nthr / nthr_k;
             bool skip_config = work_amount < nthr_bmn * 3

@@ -779,11 +779,11 @@ void init_memory_args(
 
     dnnl_dim_t scratchpad_size
             = static_cast<dnnl_dim_t>(kernel_args.scratchpad_size_);
-    int ndims = scratchpad_size ? 1 : 0;
+    int scratchpad_ndims = scratchpad_size ? 1 : 0;
     dnnl_data_type_t dt = scratchpad_size ? dnnl_u8 : dnnl_data_type_undef;
     dnnl_dims_t scratchpad_dims = {scratchpad_size};
-    auto scratchpad_md
-            = dnn_mem_t::init_md(ndims, scratchpad_dims, dt, tag::abx);
+    auto scratchpad_md = dnn_mem_t::init_md(
+            scratchpad_ndims, scratchpad_dims, dt, tag::abx);
 
     const auto &test_engine = get_test_engine();
 

@@ -152,14 +152,15 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
             if (st != status::success) return st;
 
             if (jcp.with_bias || jcp.with_eltwise || jcp.with_binary) {
-                parallel(0, [&](int ithr, int nthr) {
-                    dim_t start, end;
-                    balance211(N * jcp.oc, nthr, ithr, start, end);
+                parallel(0, [&](int local_ithr, int local_nthr) {
+                    dim_t local_start, local_end;
+                    balance211(N * jcp.oc, local_nthr, local_ithr, local_start,
+                            local_end);
 
-                    const size_t first_oc = start % jcp.oc;
-                    const size_t last_oc = (end - 1) % jcp.oc;
-                    const size_t first_os = start / jcp.oc;
-                    const size_t last_os = (end - 1) / jcp.oc;
+                    const size_t first_oc = local_start % jcp.oc;
+                    const size_t last_oc = (local_end - 1) % jcp.oc;
+                    const size_t first_os = local_start / jcp.oc;
+                    const size_t last_os = (local_end - 1) / jcp.oc;
 
                     for (size_t os = first_os; os <= last_os; ++os) {
                         const size_t start_oc = (os == first_os) ? first_oc : 0;
@@ -304,8 +305,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
             const data_t *_weights = weights + curr.g * weights_g_size
                     + curr.oc * weights_oc_size + curr.ic * jcp.ks;
 
-            status_t st = extended_sgemm("N", "N", &m, &N, &K, &one, _source,
-                    &LDA, _weights, &LDB, &beta, _dst, &M);
+            st = extended_sgemm("N", "N", &m, &N, &K, &one, _source, &LDA,
+                    _weights, &LDB, &beta, _dst, &M);
             if (st != status::success) return st;
 
             if (curr.ic == jcp.ic - step.ic) {

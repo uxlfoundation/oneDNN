@@ -3786,9 +3786,10 @@ void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::execute_binary(
         const T &rhs) const {
 
     const auto execute_cmp_binary_lam
-            = [this](const Xbyak::Ymm &dst, const Xbyak::Ymm &lhs, const T &rhs,
-                      const unsigned int cmp_predicate) {
-                  this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
+            = [this](const Xbyak::Ymm &local_dst, const Xbyak::Ymm &local_lhs,
+                      const T &local_rhs, const unsigned int cmp_predicate) {
+                  this->execute_cmp_binary<T>(
+                          local_dst, local_lhs, local_rhs, cmp_predicate);
               };
     helper_binary_t<avx, Xbyak::Ymm>::execute_binary<T>(
             host_, execute_cmp_binary_lam, binary_alg, dst, lhs, rhs);
@@ -3801,9 +3802,10 @@ void jit_uni_binary_injector_t<avx, Xbyak::Xmm>::execute_binary(
         const T &rhs) const {
 
     const auto execute_cmp_binary_lam
-            = [this](const Xbyak::Xmm &dst, const Xbyak::Xmm &lhs, const T &rhs,
-                      const unsigned int cmp_predicate) {
-                  this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
+            = [this](const Xbyak::Xmm &local_dst, const Xbyak::Xmm &local_lhs,
+                      const T &local_rhs, const unsigned int cmp_predicate) {
+                  this->execute_cmp_binary<T>(
+                          local_dst, local_lhs, local_rhs, cmp_predicate);
               };
     helper_binary_t<avx, Xbyak::Xmm>::execute_binary<T>(
             host_, execute_cmp_binary_lam, binary_alg, dst, lhs, rhs);

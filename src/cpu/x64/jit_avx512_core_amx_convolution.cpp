@@ -718,7 +718,6 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 
             int oh_step = jcp.nb_oh_blocking * jcp.oh_per_tile;
             for (int oh = oh_s; oh < oh_e; oh += oh_step) {
-                const int gen_kh = ((jcp.kh - 1) * (jcp.dilate_h + 1) + 1);
                 const int gen_stride_h = nstl::min(jcp.stride_h, gen_kh);
                 if (!is_inp_buffer_relevant) {
                     const int iw = nstl::max(

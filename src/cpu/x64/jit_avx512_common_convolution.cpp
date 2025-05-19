@@ -207,9 +207,8 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int g_blocking = 1;
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
-    int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.aligned_threads, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -333,9 +332,8 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int g_blocking = 1;
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
-    int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.aligned_threads, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -493,9 +491,8 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
-    int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -654,9 +651,8 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int g_blocking = 1;
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.nb_iw;
-    int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -766,9 +762,8 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int g_blocking = 1;
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.ih * jcp.nb_iw;
-    int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -930,9 +925,8 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int g_blocking = 1;
     int nb_groups = jcp.ngroups / g_blocking;
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.id * jcp.ih;
-    int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;

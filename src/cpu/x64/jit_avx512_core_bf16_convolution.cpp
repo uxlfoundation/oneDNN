@@ -79,9 +79,9 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
             = static_cast<dim_t>(jcp.mb) * nb_groups * oc_chunks * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         dim_t start {0}, end {0};
-        balance211(work_amount, nthr, ithr, start, end);
+        balance211(work_amount, local_nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
 
         int n {0}, gg {0}, occ {0}, owb {0};
@@ -180,9 +180,9 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
             * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         dim_t start {0}, end {0};
-        balance211(work_amount, nthr, ithr, start, end);
+        balance211(work_amount, local_nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true
@@ -306,9 +306,9 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
             * jcp.od * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         dim_t start {0}, end {0};
-        balance211(work_amount, nthr, ithr, start, end);
+        balance211(work_amount, local_nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
 
         // The second arg in template means sub_offset0 = true

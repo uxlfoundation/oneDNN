@@ -1057,8 +1057,9 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->typesize_D = types::data_type_size(brg->dt_d);
 
     brg->isa_user = isa;
-    auto is_isa_ok = [&](cpu_isa_t isa) {
-        return mayiuse(isa) && one_of(brg->isa_user, isa_undef, isa);
+    auto is_isa_ok = [&](cpu_isa_t local_isa) {
+        return mayiuse(local_isa)
+                && one_of(brg->isa_user, isa_undef, local_isa);
     };
 
     if (brg->is_f32) {

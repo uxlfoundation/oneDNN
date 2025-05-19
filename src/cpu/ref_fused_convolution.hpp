@@ -300,41 +300,41 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 primitive_attr_t attr_dw;
                 CHECK(get_depthwise_conv_desc(cd_dw, *(conv_pd->dst_md()),
                         root_attr, attr_dw, po_op_iter));
-                primitive_desc_iterator_t it(
+                primitive_desc_iterator_t it_dw(
                         engine, (op_desc_t *)&cd_dw, &attr_dw, nullptr);
-                if (!it.is_initialized()) return status::out_of_memory;
+                if (!it_dw.is_initialized()) return status::out_of_memory;
 
-                std::shared_ptr<primitive_desc_t> append_conv_pd = *(++it);
+                std::shared_ptr<primitive_desc_t> append_conv_pd = *(++it_dw);
                 if (!append_conv_pd) return status::unimplemented;
 
                 CHECK(append_op(append_conv_pd, inout_sp_offset_begin,
                         inout_sp_offset_end, engine));
 
                 const auto &op = op_pds_.back();
-                arg_cache_t arg_cache;
-                arg_cache.append_inout_arg(DNNL_ARG_SRC, inout_sp_offset_begin,
-                        op->src_md(), true);
-                arg_cache.append_ctx_arg(DNNL_ARG_DST);
-                arg_cache.append_ctx_arg(DNNL_ARG_WEIGHTS,
+                arg_cache_t arg_cache_dw;
+                arg_cache_dw.append_inout_arg(DNNL_ARG_SRC,
+                        inout_sp_offset_begin, op->src_md(), true);
+                arg_cache_dw.append_ctx_arg(DNNL_ARG_DST);
+                arg_cache_dw.append_ctx_arg(DNNL_ARG_WEIGHTS,
                         DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
                 for (auto arg : {DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
                     if (!attr_dw.scales_.has_default_values(arg))
-                        arg_cache.append_ctx_arg(DNNL_ARG_ATTR_SCALES | arg,
+                        arg_cache_dw.append_ctx_arg(DNNL_ARG_ATTR_SCALES | arg,
                                 DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_ATTR_SCALES
                                         | arg);
                 // dw_conv src_scale = 1x1_conv dst_scale
                 if (!attr_1x1.scales_.has_default_values(DNNL_ARG_DST))
-                    arg_cache.append_ctx_arg(
+                    arg_cache_dw.append_ctx_arg(
                             DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
                             DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
                 if (op->weights_md(1)->data_type != data_type::undef)
-                    arg_cache.append_ctx_arg(DNNL_ARG_BIAS,
+                    arg_cache_dw.append_ctx_arg(DNNL_ARG_BIAS,
                             DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
                 // Initialize binary post_op.
                 CHECK(attr_dw.set_default_formats(op->dst_md()));
                 for (int idx = 0; idx < attr_dw.post_ops_.len(); ++idx) {
                     if (attr_dw.post_ops_.contain(primitive_kind::binary, idx))
-                        arg_cache.append_ctx_arg(
+                        arg_cache_dw.append_ctx_arg(
                                 (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                         | DNNL_ARG_SRC_1),
                                 (DNNL_ARG_ATTR_MULTIPLE_POST_OP(
@@ -342,7 +342,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                                         | DNNL_ARG_SRC_1));
                 }
 
-                args_.push_back(arg_cache);
+                args_.push_back(arg_cache_dw);
 
                 while (++po_op_iter < end) {
                     if (utils::one_of(po.entry_[po_op_iter].kind,

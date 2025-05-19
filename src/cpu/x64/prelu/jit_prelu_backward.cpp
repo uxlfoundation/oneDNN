@@ -174,9 +174,9 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
         const auto &nelems_tail = res.rem;
         const auto nelems_parallel = nelems_simd + (nelems_tail ? 1 : 0);
 
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [&](const int ithr, const int local_nthr) {
             dim_t start = 0, end = 0;
-            balance211(nelems_parallel, nthr, ithr, start, end);
+            balance211(nelems_parallel, local_nthr, ithr, start, end);
             if (start >= end) return;
 
             const bool ithr_process_tail

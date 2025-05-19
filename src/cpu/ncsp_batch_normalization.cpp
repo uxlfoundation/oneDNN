@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -89,12 +89,11 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
     const dim_t SP_cl_align = utils::rnd_up(SP, simd_w);
     const dim_t N = pd()->MB();
 
-    const int nthr = pd()->nthr_;
-    size_t l3_size_ = platform::get_per_core_cache_size(3) * nthr / 2;
+    size_t l3_size_ = platform::get_per_core_cache_size(3) * pd()->nthr_ / 2;
     size_t data_size = N * C * SP * sizeof(data_t);
     bool do_blocking = (data_size >= l3_size_ / 2 && l3_size_ > 0);
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
         int C_ithr = 0, C_nthr = 0;
         int N_ithr = 0, N_nthr = 0;
         int S_ithr = 0, S_nthr = 0;
@@ -333,12 +332,11 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
     const bool calculate_diff_stats = !pd()->use_global_stats();
     const bool fuse_norm_relu = pd()->fuse_norm_relu();
 
-    const int nthr = pd()->nthr_;
-    size_t l3_size_ = platform::get_per_core_cache_size(3) * nthr / 2;
+    size_t l3_size_ = platform::get_per_core_cache_size(3) * pd()->nthr_ / 2;
     size_t data_size = N * C * SP * sizeof(data_t);
     bool do_blocking = (data_size >= l3_size_ / 2 && l3_size_ > 0);
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
         int C_ithr = 0, C_nthr = 0;
         int N_ithr = 0, N_nthr = 0;
         int S_ithr = 0, S_nthr = 0;

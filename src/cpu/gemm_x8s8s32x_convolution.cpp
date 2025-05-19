@@ -303,9 +303,9 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
                             w_step}
                     : single_gemm_conv_chunk_desc_t {};
 
-            parallel(0, [&](int ithr, int nthr) {
+            parallel(0, [&](int local_ithr, int local_nthr) {
                 dim_t _start {}, _end {};
-                balance211(N * jcp.oc, nthr, ithr, _start, _end);
+                balance211(N * jcp.oc, local_nthr, local_ithr, _start, _end);
 
                 (*pp_ker_)(dst, acc, bia_base, scales, dst_scales[0], sum_scale,
                         1.f / wei_adj_scale, g, n, _start, _end, zp,

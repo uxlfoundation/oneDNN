@@ -223,11 +223,11 @@ dnnl_status_t ref_gemm(const char *transa_, const char *transb_,
         if (!ws_buffers) do_copy = false;
     }
 
-    auto get_thr_block = [&](dim_t &from, dim_t &to, dim_t &myN, dim_t NB,
-                                 dim_t N, int ithr) {
-        from = NB * (ithr);
-        to = NB * (ithr + 1);
-        if (to > N) to = N;
+    auto get_thr_block = [&](dim_t &from, dim_t &to, dim_t &myN, dim_t local_NB,
+                                 dim_t local_N, int ithr) {
+        from = local_NB * (ithr);
+        to = local_NB * (ithr + 1);
+        if (to > local_N) to = local_N;
         myN = to - from;
     };
 

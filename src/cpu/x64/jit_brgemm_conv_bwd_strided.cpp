@@ -938,12 +938,12 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
         int g {0}, icb {0}, k {0};
-        balance211(work_amount, nthr, ithr, start, end);
+        balance211(work_amount, local_nthr, ithr, start, end);
         nd_iterator_init(
                 start, g, jcp.ngroups, icb, jcp.nb_ic, k, jcp.ker_ranges_size);
         for (auto work = start; work < end; work++) {
@@ -1266,7 +1266,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
 
     bool is_first_call_postops = false,
          is_first_call_postops_state_changed = false;
-    const auto call_brgemm = [&](int iw, int brg_idx, int oc_block_s,
+    const auto call_brgemm = [&](int local_iw, int brg_idx, int oc_block_s,
                                      int n_oc_blocks, size_t comp_ker_offs,
                                      bool do_postops, bool do_only_comp) {
         if (brg_idx < 0) {
@@ -1306,7 +1306,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                     const auto wei_base_kh
                             = wei_base_kd + wei_dsz * kh * wei_kw_sz;
                     for (int kw = kw_b; kw < kw_e; kw += SW) {
-                        auto ow = (iw - kw * DW + LP) / SW;
+                        auto ow = (local_iw - kw * DW + LP) / SW;
                         // inp_buffer layout is Cdhw<oc_block>c
                         btc.brg_batch[n_ocb_off + k].ptr.A = diff_dst_base_kh
                                 + src_dsz * (ow /*+ jcp.l_ovf*/) * jcp.ngroups

@@ -244,8 +244,8 @@ uint32_t get_num_ways_in_cache(int level) {
 }
 
 unsigned get_per_core_cache_size(int level) {
-    auto guess = [](int level) {
-        switch (level) {
+    auto guess = [](int local_level) {
+        switch (local_level) {
             case 1: return 32U * 1024;
             case 2: return 512U * 1024;
             case 3: return 1024U * 1024;

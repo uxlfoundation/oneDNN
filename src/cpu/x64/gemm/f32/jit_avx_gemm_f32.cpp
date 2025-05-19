@@ -2174,26 +2174,25 @@ private:
 
 xbyak_gemm_t *get_xbyak_gemm(
         bool isTransA, bool isTransB, float beta, bool hasBias) {
-    auto beta_idx = [](float beta) {
-        return (beta == 0.0) ? 0 : (beta == 1.0 ? 1 : 2);
-    };
+    auto beta_idx
+            = [&beta]() { return (beta == 0.0) ? 0 : (beta == 1.0 ? 1 : 2); };
 
     // Kernel table [isTransA][isTransB][hasBias][beta (0, 1, other)]
     static maybe_unique_ptr<xbyak_gemm_t> kernel_table[2][2][2][3];
     static std::once_flag initialized;
     static std::atomic<dnnl_status_t> st(dnnl_success);
     std::call_once(initialized, [&] {
-        for (bool isTransA : {false, true})
-            for (bool isTransB : {false, true})
-                for (bool hasBias : {false, true})
-                    for (float beta : {0.0f, 1.0f, 2.0f}) {
+        for (bool _isTransA : {false, true})
+            for (bool _isTransB : {false, true})
+                for (bool _hasBias : {false, true})
+                    for (float _beta : {0.0f, 1.0f, 2.0f}) {
                         // nocopy sgemm with bias for beta != 0.0 is not supported
-                        if (hasBias && beta != 0.0) continue;
-                        auto &kern = kernel_table[isTransA][isTransB][hasBias]
-                                                 [beta_idx(beta)];
+                        if (_hasBias && _beta != 0.0) continue;
+                        auto &kern = kernel_table[_isTransA][_isTransB]
+                                                 [_hasBias][beta_idx()];
 
                         kern.reset(new xbyak_gemm_t(
-                                isTransA, isTransB, beta, hasBias));
+                                _isTransA, _isTransB, _beta, _hasBias));
                         if (kern->create_kernel() != dnnl_success) {
                             st = dnnl_runtime_error;
                             return;
@@ -2202,7 +2201,7 @@ xbyak_gemm_t *get_xbyak_gemm(
     });
 
     return (st == dnnl_success)
-            ? kernel_table[isTransA][isTransB][hasBias][beta_idx(beta)].get()
+            ? kernel_table[isTransA][isTransB][hasBias][beta_idx()].get()
             : nullptr;
 }
 

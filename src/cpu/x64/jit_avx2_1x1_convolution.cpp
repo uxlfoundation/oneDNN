@@ -580,8 +580,8 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
 
     auto oc_ic_sp_loop = [&](int sp_start, int sp_end, bool first_image,
                                  data_t *store_to, size_t store_to_ld,
-                                 const data_t *diff_dst, const data_t *src,
-                                 int ithr) {
+                                 const data_t *local_diff_dst,
+                                 const data_t *local_src, int ithr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 
@@ -617,7 +617,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                             ? FLAG_REDUCE_FIRST
                             : 0;
 
-                    p.load_data = diff_dst
+                    p.load_data = local_diff_dst
                             + (oc_b * jcp.reduce_dim + sp)
                                     * (is_ddst_layout_nxc ? jcp.oc
                                                           : jcp.oc_block);
@@ -645,12 +645,12 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                             src_offset += id
                                     * src_d.blocking_desc().strides[ndims - 3];
 
-                        rp.src = src + src_offset;
+                        rp.src = local_src + src_offset;
                         if (oc_b == 0) (*rtus_driver_)(&rp);
 
                         p.bcast_data = rp.ws;
                     } else
-                        p.bcast_data = src
+                        p.bcast_data = local_src
                                 + (ic_b * jcp.reduce_dim + sp)
                                         * (is_src_layout_nxc ? jcp.ic
                                                              : jcp.ic_block);

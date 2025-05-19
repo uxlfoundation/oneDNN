@@ -310,28 +310,29 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::load_compute_data(
               };
 
     const auto load_ws_diffdst = [&, this](int dstIdx, int offset,
-                                         tail_mode tail_proc) {
-        if (tail_proc == tail_mode::NoTail) {
+                                         tail_mode local_tail_proc) {
+        if (local_tail_proc == tail_mode::NoTail) {
             IRB_LOOP(this->load_data(this->zreg(irb, dstIdx),
                     this->EVEX_compress_addr(
                             this->workspace1_, (irb * this->vlen_) + offset)));
         } else
             this->load_data(this->zreg(0, dstIdx),
                     this->EVEX_compress_addr(this->rsp,
-                            get_stack_offset(this->workspace1_, tail_proc)
+                            get_stack_offset(this->workspace1_, local_tail_proc)
                                     + offset),
                     true);
 
         if (utils::one_of(d_type, bf16, f16)
-                || tail_proc != tail_mode::NoTail) {
-            if (tail_proc == tail_mode::NoTail) {
+                || local_tail_proc != tail_mode::NoTail) {
+            if (local_tail_proc == tail_mode::NoTail) {
                 IRB_LOOP(this->load_data(this->zreg(irb, this->z_tmp_),
                         this->EVEX_compress_addr(
                                 this->diffdst_, (irb * this->vlen_) + offset)));
             } else
                 this->load_data(this->zreg(0, this->z_tmp_),
                         this->EVEX_compress_addr(this->rsp,
-                                get_stack_offset(this->diffdst_, tail_proc)
+                                get_stack_offset(
+                                        this->diffdst_, local_tail_proc)
                                         + offset),
                         true);
 
@@ -369,7 +370,7 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::load_compute_data(
     int reg, mask, pos;
     std::vector<std::tuple<int, int, int>> prev_v;
     prev_v.reserve(this->half_ls_);
-    for (int pos = 0; pos < this->half_ls_; ++pos) {
+    for (pos = 0; pos < this->half_ls_; ++pos) {
         prev_v.emplace_back(this->z_prev_[pos], this->tmp_mask_prev_[pos],
                 this->half_ls_ - pos);
     };
@@ -390,7 +391,7 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::load_compute_data(
 
     std::vector<std::tuple<int, int, int>> next_v;
     next_v.reserve(this->half_ls_);
-    for (int pos = 0; pos < this->half_ls_; ++pos) {
+    for (pos = 0; pos < this->half_ls_; ++pos) {
         next_v.emplace_back(
                 this->z_next_[pos], this->tmp_mask_next_[pos], pos + 1);
     }

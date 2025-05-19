@@ -285,7 +285,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     const bool output_has_nans = op_output_has_nans_
             || eltwise::eltwise_alg_returns_nan_or_inf(attr)
             || std::any_of(dt_with_nan.begin(), dt_with_nan.end(),
-                    [&](dnnl_data_type_t dt) { return got_mem.dt() == dt; });
+                    [&](dnnl_data_type_t adt) { return got_mem.dt() == adt; });
     const bool has_exp_eltwise
             = attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
     const bool has_dst_scale = !attr.scales.get(DNNL_ARG_DST).is_def();

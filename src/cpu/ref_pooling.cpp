@@ -335,9 +335,9 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
             = alg == alg_kind::pooling_max ? (ker_t)ker_max : (ker_t)ker_avg;
 
     const int nthr = pd()->nthr_;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         dim_t start = 0, end = 0;
-        balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
+        balance211(diff_src_d.nelems(true), local_nthr, ithr, start, end);
         if (start == end) return;
 
         for (int i = start; i < end; i++)
@@ -353,9 +353,9 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
     });
 
     if (diff_src_d.data_type() != data_type::f32) {
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [&](const int ithr, const int local_nthr) {
             dim_t start = 0, end = 0;
-            balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
+            balance211(diff_src_d.nelems(true), local_nthr, ithr, start, end);
             if (start == end) return;
 
             const auto diff_src_dt_size = diff_src_d.data_type_size();

@@ -253,21 +253,23 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             const dim_t N = static_cast<dim_t>(rnn_.dhc)
                     * (rnn_.n_gates - rnn_.is_orig_gru);
             const dim_t K = rnn_.sic;
-            const dim_t LDA1 = rnn_.src_iter_ld_;
-            const dim_t LDA2 = rnn_.ws_states_iter_ld;
-            const dim_t LDA3 = rnn_.dst_layer_ld_;
             const dim_t LDB = rnn_.weights_iter_ld;
             const dim_t LDC = rnn_.scratch_gates_ld;
             const bool do_sum = !rnn_.is_lbr;
-            if (LDA1 >= K)
-                CHECK(init_matmul_pd(
-                        matmul_iter_1_pd_, M, N, K, LDA1, LDB, LDC, do_sum));
-            if (LDA2 >= K && LDA2 != LDA1)
-                CHECK(init_matmul_pd(
-                        matmul_iter_2_pd_, M, N, K, LDA2, LDB, LDC, do_sum));
-            if (LDA3 >= K && !utils::one_of(LDA3, LDA1, LDA2))
-                CHECK(init_matmul_pd(
-                        matmul_iter_3_pd_, M, N, K, LDA3, LDB, LDC, do_sum));
+            {
+                const dim_t LDA1 = rnn_.src_iter_ld_;
+                const dim_t LDA2 = rnn_.ws_states_iter_ld;
+                const dim_t LDA3 = rnn_.dst_layer_ld_;
+                if (LDA1 >= K)
+                    CHECK(init_matmul_pd(matmul_iter_1_pd_, M, N, K, LDA1, LDB,
+                            LDC, do_sum));
+                if (LDA2 >= K && LDA2 != LDA1)
+                    CHECK(init_matmul_pd(matmul_iter_2_pd_, M, N, K, LDA2, LDB,
+                            LDC, do_sum));
+                if (LDA3 >= K && !utils::one_of(LDA3, LDA1, LDA2))
+                    CHECK(init_matmul_pd(matmul_iter_3_pd_, M, N, K, LDA3, LDB,
+                            LDC, do_sum));
+            }
 
             if (rnn_.is_orig_gru) {
                 const dim_t N_part2 = rnn_.dhc;

@@ -66,11 +66,10 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     const scratch_gates_aoc_t<scratch_data_t> scratch_cell(rnn, scratch_cell_);
     const AOC<src_data_t, 2> ws_Wh_b(ws_grid_, rnn.mb, rnn.dhc);
 
-    const auto get_scales = [](const float *scales, int idx) {
-        return scales ? scales + idx : nullptr;
-    };
-    const float *scales_G1 = get_scales(scales, 1);
-    const float *scales_G2 = get_scales(scales, 2);
+    const auto get_scales
+            = [&scales](int idx) { return scales ? scales + idx : nullptr; };
+    const float *scales_G1 = get_scales(1);
+    const float *scales_G2 = get_scales(2);
 
     const auto postgemm = [&](dim_t i) {
         PRAGMA_OMP_SIMD()

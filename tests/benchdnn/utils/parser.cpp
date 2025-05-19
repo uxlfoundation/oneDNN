@@ -457,10 +457,10 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
 bool parse_impl_filter(impl_filter_t &impl_filter,
         const impl_filter_t &def_impl_filter, bool use_impl, const char *str,
         const std::string &option_name, const std::string &help) {
-    const auto chars2chars = [](const char *str) { return str; };
-    const auto str2impl_filter = [&](const char *str) {
+    const auto chars2chars = [](const char *astr) { return astr; };
+    const auto str2impl_filter = [&](const char *astr) {
         std::vector<std::string> v, def;
-        parse_vector_str(v, def, chars2chars, str);
+        parse_vector_str(v, def, chars2chars, astr);
 
         // Remove all quotes from input string since they affect the search.
         for_(auto &e : v)
@@ -636,7 +636,7 @@ bool parse_tag(std::vector<std::string> &tag,
               "destination.\n    Valid `TAG` values can be found at "
             + doc_url + "knobs_tag.md\n";
 
-    auto ret_string = [](const char *str) { return std::string(str); };
+    auto ret_string = [](const char *astr) { return std::string(astr); };
     bool ok = parse_vector_option(
             tag, def_tag, ret_string, str, option_name, help);
     if (!ok) return false;
@@ -687,7 +687,7 @@ bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
               "for rest)\n    Specifies memory format tag `TAGi` for source "
               "i.\n    Valid `TAGi` values can be found at "
             + doc_url + "knobs_tag.md\n";
-    auto ret_string = [](const char *str) { return std::string(str); };
+    auto ret_string = [](const char *astr) { return std::string(astr); };
     return parse_multivector_option(
             tag, def_tag, ret_string, str, option_name, help);
 }
@@ -853,7 +853,7 @@ bool parse_test_pattern_match(const char *&match, const char *str,
               "descriptors.\n    Matched descriptors are executed, rest are "
               "skipped.\n";
     const char *def_match = "";
-    const auto chars2chars = [](const char *str) { return str; };
+    const auto chars2chars = [](const char *astr) { return astr; };
     return parse_single_value_option(
             match, def_match, chars2chars, str, option_name, help);
 }
@@ -919,10 +919,10 @@ bool parse_strides(std::vector<vdims_t> &strides,
               "`ARG`.\n    If correspondent `DIMS_ARG` is empty, it does not "
               "take an effect.\n    More details at "
             + doc_url + "driver_" + driver_name + ".md\n";
-    auto str2strides = [&](const char *str) -> vdims_t {
+    auto str2strides = [&](const char *astr) -> vdims_t {
         vdims_t strides(STRIDES_SIZE);
         parse_multivector_str(
-                strides, vdims_t(), parser_utils::stoll_safe, str, ':', 'x');
+                strides, vdims_t(), parser_utils::stoll_safe, astr, ':', 'x');
         return strides;
     };
     return parse_vector_option(
@@ -1242,19 +1242,19 @@ bool parse_ctx(std::vector<thr_ctx_t> &ctx,
                     "THREADS_PER_CORE allows to enable/disable hyper-threading "
                     "(TBB runtime only).\n");
 
-    auto str2ctx = [&option_name](const char *str) {
+    auto str2ctx = [&option_name](const char *astr) {
         thr_ctx_t result = default_thr_ctx;
         try {
             size_t start_pos = 0;
             /* concurrency piece */
-            std::string val_str = get_substr(str, start_pos, ':');
+            std::string val_str = get_substr(astr, start_pos, ':');
             if (val_str != "auto") result.max_concurrency = std::stoll(val_str);
             /* core_type piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != eol ? get_substr(astr, start_pos, ':') : "";
             if (val_str != "auto" && !val_str.empty())
                 result.core_type = std::stoll(val_str);
             /* nthr_per_core piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != eol ? get_substr(astr, start_pos, ':') : "";
             if (val_str != "auto" && !val_str.empty())
                 result.nthr_per_core = std::stoll(val_str);
         } catch (const std::invalid_argument &) {

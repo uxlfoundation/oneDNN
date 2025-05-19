@@ -329,15 +329,15 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         : output[output_d.blk_off<!w_groups>(g, oc, ic, w)];
                 const size_t os_off
                         = (g * OC + oc) * oc_stride + ic * ic_stride;
-                const float s = with_src_scales
+                const float src_scale = with_src_scales
                         ? src_scales[src_scales_mask == 0 ? 0 : os_off]
                         : 1.f;
-                const float d = with_dst_scales
+                const float dst_scale = with_dst_scales
                         ? dst_scales[dst_scales_mask == 0 ? 0 : os_off]
                         : 1.f;
 
                 o = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        i, s * adj_scale / d);
+                        i, src_scale * adj_scale / dst_scale);
                 if (req_comp) cp[g * OC + oc] -= (int32_t)o;
                 if (has_asymmetric_comp) zp[g * OC + oc] -= (int32_t)o;
             }
@@ -1274,16 +1274,17 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 : 1.f;
 
         auto ker_out = [&](const data_t<type_i> *inp, data_t<type_o> *out,
-                               const float *src_scales, const float *dst_scales,
+                               const float *local_src_scales,
+                               const float *local_dst_scales,
                                const dim_t g_block) {
             PRAGMA_OMP_SIMD()
             for (dim_t g = 0; g < g_block; g++) {
                 const auto i_off = g * input_d.blocking_desc().strides[0];
                 const float src_scale = with_src_scales
-                        ? src_scales[src_scales_mask == 0 ? 0 : g * OC]
+                        ? local_src_scales[src_scales_mask == 0 ? 0 : g * OC]
                         : 1.f;
                 const float dst_scale = with_dst_scales
-                        ? dst_scales[dst_scales_mask == 0 ? 0 : g * OC]
+                        ? local_dst_scales[dst_scales_mask == 0 ? 0 : g * OC]
                         : 1.f;
                 out[g] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                         inp[i_off], src_scale * adj_scale / dst_scale);
@@ -1307,12 +1308,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             }
         };
 
-        size_t offset = output_d.size() - output_d.additional_buffer_size();
+        size_t comp_offset
+                = output_d.size() - output_d.additional_buffer_size();
         size_t comp_size = output_d.additional_buffer_size(
                 memory_extra_flags::compensation_conv_s8s8);
-        size_t zp_offset = offset + (req_comp ? comp_size : 0);
-        int32_t *cp = req_comp ? reinterpret_cast<int32_t *>(output + offset)
-                               : nullptr;
+        size_t zp_offset = comp_offset + (req_comp ? comp_size : 0);
+        int32_t *cp = req_comp
+                ? reinterpret_cast<int32_t *>(output + comp_offset)
+                : nullptr;
         int32_t *zp = has_asymmetric_comp
                 ? reinterpret_cast<int32_t *>(output + zp_offset)
                 : nullptr;
@@ -1778,12 +1781,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 out = _qz_a1b0<type_i, type_o>()(inp);
         };
 
-        auto wrap_qz = [=](data_t<type_o> &out, data_t<type_i> inp, float alpha,
-                               float beta) {
+        auto wrap_qz = [=](data_t<type_o> &out, data_t<type_i> inp,
+                               float local_alpha, float local_beta) {
             if (f32bf16)
-                out = alpha * inp + (beta ? beta * out : 0);
+                out = local_alpha * inp + (local_beta ? local_beta * out : 0);
             else
-                out = _qz<type_i, type_o>()(inp, out, alpha, beta);
+                out = _qz<type_i, type_o>()(inp, out, local_alpha, local_beta);
         };
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o, int block) {
@@ -1963,12 +1966,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 out = _qz_a1b0<type_i, type_o>()(inp);
         };
 
-        auto wrap_qz = [=](data_t<type_o> &out, data_t<type_i> inp, float alpha,
-                               float beta) {
+        auto wrap_qz = [=](data_t<type_o> &out, data_t<type_i> inp,
+                               float local_alpha, float local_beta) {
             if (f32bf16)
-                out = alpha * inp + (beta ? beta * out : 0);
+                out = local_alpha * inp + (local_beta ? local_beta * out : 0);
             else
-                out = _qz<type_i, type_o>()(inp, out, alpha, beta);
+                out = _qz<type_i, type_o>()(inp, out, local_alpha, local_beta);
         };
 
         auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o,

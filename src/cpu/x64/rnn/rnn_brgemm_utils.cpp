@@ -507,8 +507,8 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
             rnn.LDCproj[3] = rnn.ws_states_layer_ld;
         }
 
-        dim_t n_block = nstl::min(rnn.Nproj, rnn.n_block);
-        dim_t n_tail = nstl::min(rnn.Nproj, rnn.nproj_tail);
+        n_block = nstl::min(rnn.Nproj, rnn.n_block);
+        n_tail = nstl::min(rnn.Nproj, rnn.nproj_tail);
         bool check_LDC = false;
         if (rnn.dt_conf != cpu::rnn_utils::all_f32) {
             check_LDC = rnn.LDCproj[0] < get_dim(n_block, n_tail);

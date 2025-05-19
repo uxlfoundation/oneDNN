@@ -386,20 +386,21 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::compute_loop(
     const size_t bias_stride
             = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
 
-    auto compute = [&](int ur_ch_blocks, bool last_ch_block_flag = false) {
-        if (jcp.is_fused_conv) {
-            mov(aux_reg_input_buffer_ptr, reg_input_buffer_ptr);
-        } else {
-            mov(aux_reg_input, reg_input);
-        }
+    auto compute
+            = [&](int local_ur_ch_blocks, bool last_ch_block_flag = false) {
+                  if (jcp.is_fused_conv) {
+                      mov(aux_reg_input_buffer_ptr, reg_input_buffer_ptr);
+                  } else {
+                      mov(aux_reg_input, reg_input);
+                  }
 
-        mov(aux_reg_kernel, reg_kernel);
-        load_src(ur_ch_blocks, ur_w, last_ch_block_flag);
-        apply_filter_unrolled(
-                ur_ch_blocks, ur_w, pad_l, pad_r, last_ch_block_flag);
-        apply_postops(ur_ch_blocks, ur_w, last_ch_block_flag);
-        store_dst(ur_ch_blocks, ur_w, last_ch_block_flag);
-    };
+                  mov(aux_reg_kernel, reg_kernel);
+                  load_src(local_ur_ch_blocks, ur_w, last_ch_block_flag);
+                  apply_filter_unrolled(local_ur_ch_blocks, ur_w, pad_l, pad_r,
+                          last_ch_block_flag);
+                  apply_postops(local_ur_ch_blocks, ur_w, last_ch_block_flag);
+                  store_dst(local_ur_ch_blocks, ur_w, last_ch_block_flag);
+              };
 
     const bool masked_ch_block_tail = jcp.oc % jcp.ch_block != 0;
     const bool ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
@@ -761,15 +762,15 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::store_dsrc(
 inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::ch_loop_body(
         int ur_ch_blocks, int unroll_w) {
 
-    auto call_compute_body
-            = [&](int ur_ch_blocks, int unroll_w, bool is_last_ch = false) {
-                  mov(aux_reg_ddst, reg_ddst);
-                  mov(aux_reg_kernel, reg_kernel);
+    auto call_compute_body = [&](int local_ur_ch_blocks, int local_unroll_w,
+                                     bool is_last_ch = false) {
+        mov(aux_reg_ddst, reg_ddst);
+        mov(aux_reg_kernel, reg_kernel);
 
-                  load_ddst(ur_ch_blocks, unroll_w);
-                  apply_filter(ur_ch_blocks, unroll_w, is_last_ch);
-                  store_dsrc(ur_ch_blocks, unroll_w, is_last_ch);
-              };
+        load_ddst(local_ur_ch_blocks, local_unroll_w);
+        apply_filter(local_ur_ch_blocks, local_unroll_w, is_last_ch);
+        store_dsrc(local_ur_ch_blocks, local_unroll_w, is_last_ch);
+    };
 
     const bool write_ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
     if (write_ch_loop) {

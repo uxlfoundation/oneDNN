@@ -67,14 +67,15 @@ status_t resampling_desc_init(resampling_desc_t *resampling_desc,
                                .has_runtime_dims_or_strides()),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    auto fill_dst_md = [](const memory_desc_t *i_md, const float *factors,
+    auto fill_dst_md = [](const memory_desc_t *i_md, const float *local_factors,
                                memory_desc_t *o_md) {
         o_md->ndims = i_md->ndims;
         o_md->data_type = i_md->data_type;
         utils::array_copy(o_md->dims, i_md->dims, 2);
         for (int i = 0; i < o_md->ndims - 2; i++) {
             double i_dim_val = static_cast<double>(i_md->dims[2 + i]);
-            o_md->dims[2 + i] = static_cast<dim_t>(i_dim_val * factors[i]);
+            o_md->dims[2 + i]
+                    = static_cast<dim_t>(i_dim_val * local_factors[i]);
         }
         o_md->format_kind = format_kind::any;
     };

@@ -1296,77 +1296,77 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     // * A loop to store output after division.
     // Why loops are needed, see `axis_size_loop_unroll` description.
     void axis_full_cycle(int unroll_inner, bool tail) {
-        const auto vmax_body = [&](int unroll_axis, int unroll_inner,
-                                       bool tail) {
+        const auto vmax_body = [&](int unroll_axis, int local_unroll_inner,
+                                       bool local_tail) {
             for_(dim_t a = 0; a < unroll_axis; a++)
-            for (int i = 0; i < unroll_inner; i++) {
+            for (int i = 0; i < local_unroll_inner; i++) {
                 Vmm vreg_tmp_src = Vmm(i + 1);
-                Vmm vmax = get_vmax(vreg_tmp_src, unroll_inner);
-                Vmm vtmp = get_vsum(vreg_tmp_src, unroll_inner);
+                Vmm vmax = get_vmax(vreg_tmp_src, local_unroll_inner);
+                Vmm vtmp = get_vsum(vreg_tmp_src, local_unroll_inner);
                 // do maxps directly from memory on f32 avx2 for performance
                 // purpose.
-                if (!tail && is_superset(isa, avx2)
+                if (!local_tail && is_superset(isa, avx2)
                         && !is_superset(isa, avx512_core)
                         && src_d_.data_type() == f32) {
                     uni_vmaxps(vmax, vmax, src_ptr(get_src_stride(a, i)));
                 } else {
-                    io_[src_d_.data_type()]->load(
-                            src_ptr(get_src_stride(a, i)), vreg_tmp_src, tail);
-                    uni_vmaxps_maybe_tail(vmax, vreg_tmp_src, vtmp, tail);
+                    io_[src_d_.data_type()]->load(src_ptr(get_src_stride(a, i)),
+                            vreg_tmp_src, local_tail);
+                    uni_vmaxps_maybe_tail(vmax, vreg_tmp_src, vtmp, local_tail);
                 }
             }
         };
 
-        const auto vsum_body = [&](int unroll_axis, int unroll_inner,
-                                       bool tail) {
+        const auto vsum_body = [&](int unroll_axis, int local_unroll_inner,
+                                       bool local_tail) {
             for_(dim_t a = 0; a < unroll_axis; a++)
-            for (int i = 0; i < unroll_inner; i++) {
+            for (int i = 0; i < local_unroll_inner; i++) {
                 Vmm vreg_tmp_src = Vmm(i + 1);
-                Vmm vmax = get_vmax(vreg_tmp_src, unroll_inner);
-                Vmm vsum = get_vsum(vreg_tmp_src, unroll_inner);
+                Vmm vmax = get_vmax(vreg_tmp_src, local_unroll_inner);
+                Vmm vsum = get_vsum(vreg_tmp_src, local_unroll_inner);
                 // AVX2 and below would scratch a register, thus, vmax register
                 // can't be used there. Luckily, tail case only has a single
                 // unroll value, thus, can just use the next reg after `vsum`.
-                Vmm vtmp = tail && !is_superset(isa, avx512_core)
+                Vmm vtmp = local_tail && !is_superset(isa, avx512_core)
                         ? Vmm(vsum.getIdx() + 1)
                         : Vmm();
 
-                io_[src_d_.data_type()]->load(
-                        src_ptr(get_src_stride(a, i)), vreg_tmp_src, tail);
+                io_[src_d_.data_type()]->load(src_ptr(get_src_stride(a, i)),
+                        vreg_tmp_src, local_tail);
                 uni_vsubps(vreg_tmp_src, vreg_tmp_src, vmax);
                 if (is_logsoftmax_) { // store before applying exp
                     if (need_scratchpad_)
                         store(interim_ptr(get_interim_stride(a)), vreg_tmp_src,
-                                f32, tail);
+                                f32, local_tail);
                     else
                         store(dst_ptr(get_dst_stride(a, i)), vreg_tmp_src,
-                                dst_d_.data_type(), tail);
+                                dst_d_.data_type(), local_tail);
                 }
                 exp_injector_->compute_vector(vreg_tmp_src.getIdx());
-                uni_vaddps_maybe_tail(vsum, vreg_tmp_src, vtmp, tail);
+                uni_vaddps_maybe_tail(vsum, vreg_tmp_src, vtmp, local_tail);
                 if (is_softmax_) { // store after applying exp
                     if (need_scratchpad_)
                         store(interim_ptr(get_interim_stride(a)), vreg_tmp_src,
-                                f32, tail);
+                                f32, local_tail);
                     else
                         store(dst_ptr(get_dst_stride(a, i)), vreg_tmp_src,
-                                dst_d_.data_type(), tail);
+                                dst_d_.data_type(), local_tail);
                 }
             }
         };
 
-        const auto store_body = [&](int unroll_axis, int unroll_inner,
-                                        bool tail) {
+        const auto store_body = [&](int unroll_axis, int local_unroll_inner,
+                                        bool local_tail) {
             for_(dim_t a = 0; a < unroll_axis; a++)
-            for (int i = 0; i < unroll_inner; i++) {
+            for (int i = 0; i < local_unroll_inner; i++) {
                 Vmm vreg_tmp_src = Vmm(i + 1);
-                Vmm vsum = get_vsum(vreg_tmp_src, unroll_inner);
+                Vmm vsum = get_vsum(vreg_tmp_src, local_unroll_inner);
                 if (need_scratchpad_)
                     io_[f32]->load(interim_ptr(get_interim_stride(a)),
-                            vreg_tmp_src, tail);
+                            vreg_tmp_src, local_tail);
                 else
-                    io_[dst_d_.data_type()]->load(
-                            dst_ptr(get_dst_stride(a, i)), vreg_tmp_src, tail);
+                    io_[dst_d_.data_type()]->load(dst_ptr(get_dst_stride(a, i)),
+                            vreg_tmp_src, local_tail);
 
                 if (is_softmax_) uni_vmulps(vreg_tmp_src, vreg_tmp_src, vsum);
                 if (is_logsoftmax_)
@@ -1382,7 +1382,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                                 vreg_tmp_src.getIdx(), dst_ptr());
                         rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
                                 vreg_tmp_src.getIdx(), get_dst_stride(a, i));
-                        if (tail)
+                        if (local_tail)
                             rhs_arg_params.vmm_tail_idx_.emplace(
                                     vreg_tmp_src.getIdx());
                     }
@@ -1393,7 +1393,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                     uni_vmulps(vreg_tmp_src, vreg_tmp_src, vdst_scale);
                 }
                 store(dst_ptr(get_dst_stride(a, i)), vreg_tmp_src,
-                        dst_d_.data_type(), tail);
+                        dst_d_.data_type(), local_tail);
             }
         };
 

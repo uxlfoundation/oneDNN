@@ -348,7 +348,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
     const size_t bias_stride
             = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
 
-    auto compute = [&](int ur_ch_blocks, bool is_ch_tail) {
+    auto compute = [&](int local_ur_ch_blocks, bool is_ch_tail) {
         if (jcp.is_fused_conv) {
             mov(aux_reg_input_buffer_ptr, reg_input_buffer_ptr);
         } else {
@@ -356,10 +356,11 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
         }
 
         mov(aux_reg_kernel, reg_kernel);
-        load_src(ur_ch_blocks, ur_w, is_ch_tail);
-        apply_filter_unrolled(ur_ch_blocks, ur_w, pad_l, pad_r, is_ch_tail);
-        apply_postops(ur_ch_blocks, ur_w, is_ch_tail);
-        store_dst(ur_ch_blocks, ur_w, is_ch_tail);
+        load_src(local_ur_ch_blocks, ur_w, is_ch_tail);
+        apply_filter_unrolled(
+                local_ur_ch_blocks, ur_w, pad_l, pad_r, is_ch_tail);
+        apply_postops(local_ur_ch_blocks, ur_w, is_ch_tail);
+        store_dst(local_ur_ch_blocks, ur_w, is_ch_tail);
     };
 
     mov(aux_reg_ch_blocks, reg_ch_blocks);

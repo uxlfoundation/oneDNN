@@ -266,11 +266,12 @@ status_t memory_desc_init_submemory(memory_desc_t &memory_desc,
 
 status_t memory_desc_reshape(memory_desc_t &out_memory_desc,
         const memory_desc_t &in_memory_desc, int ndims, const dims_t dims) {
-    auto volume = [](const dim_t *dims, int ndims) -> dim_t {
+    auto volume = [](const dim_t *local_dims, int local_ndims) -> dim_t {
         dim_t prod = 1;
-        for (int i = 0; i < ndims; ++i) {
-            if (dims[i] == DNNL_RUNTIME_DIM_VAL) return DNNL_RUNTIME_DIM_VAL;
-            prod *= dims[i] > 0 ? dims[i] : 1;
+        for (int i = 0; i < local_ndims; ++i) {
+            if (local_dims[i] == DNNL_RUNTIME_DIM_VAL)
+                return DNNL_RUNTIME_DIM_VAL;
+            prod *= local_dims[i] > 0 ? local_dims[i] : 1;
         }
         return prod;
     };

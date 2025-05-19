@@ -186,12 +186,12 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     const auto OCP = dst_d.padded_dims()[1];
     const auto ndims = pd()->desc()->src_desc.ndims;
 
-    const auto maybe_oscale = [](float &d, dim_t oc, const float *src_scales,
-                                      const float *wei_scales, int wei_mask) {
-        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-        const int wei_scale_idx_mult = wei_mask > 0;
-        d *= src_scales[0] * wei_scales[oc * wei_scale_idx_mult];
-    };
+    const auto maybe_oscale
+            = [&src_scales, &wei_scales](float &d, dim_t oc, int wei_mask) {
+                  // scale_idx_mult = 1 for per_oc scales and 0, otherwise
+                  const int wei_scale_idx_mult = wei_mask > 0;
+                  d *= src_scales[0] * wei_scales[oc * wei_scale_idx_mult];
+              };
 
     parallel_nd(MB, OCP, OD, OH, OW,
             [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
@@ -201,8 +201,7 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
 
                 if (ocp < OC) {
                     tmp_result = dst[dst_off];
-                    maybe_oscale(tmp_result, ocp, src_scales, wei_scales,
-                            wei_scale_mask);
+                    maybe_oscale(tmp_result, ocp, wei_scale_mask);
                     dst[dst_off] = tmp_result;
                 }
             });

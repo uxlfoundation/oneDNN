@@ -189,7 +189,7 @@ struct rtus_driver_t : public jit_generator_t {
          * fail to work on reg_v, reg_zero because of this
          * data_type change, e.g. uni_vpxor doen't
          * work on reg_zero now*/
-        auto Vmm = [this](int idx, size_t typesize) {
+        auto Vmm = [this, &typesize](int idx) {
             Xmm res;
             if (is_nspc_) {
                 switch (isa) {
@@ -229,8 +229,8 @@ struct rtus_driver_t : public jit_generator_t {
             return res;
         };
 
-        reg_zero = Vmm(0, typesize);
-        reg_v = Vmm(1, typesize);
+        reg_zero = Vmm(0);
+        reg_v = Vmm(1);
 
         vlen_ = reg_v.getBit() / 8;
         vlen_shift_ = 0;

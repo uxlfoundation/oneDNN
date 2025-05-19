@@ -117,7 +117,7 @@ void jit_avx512_core_gemv_s8x8s32_kern_t::shuffle_and_add(
 
 void jit_avx512_core_gemv_s8x8s32_kern_t::update_c(
         int nreg_acc, Reg64 Y, int use_mask, Opmask mask_m) {
-    int l, i, k, j, last_it;
+    int l, k, last_it;
     Label store_label;
 
     auto ymm_c = [&](int i) { return Ymm(zmm_a(i).getIdx()); };
@@ -125,7 +125,7 @@ void jit_avx512_core_gemv_s8x8s32_kern_t::update_c(
 
     l = 0;
     for (k = 0; k < nreg_acc; k += 8) {
-        for (i = 0, j = k; i < 8; i += 4, j += 2) {
+        for (int i = 0, j = k; i < 8; i += 4, j += 2) {
             if (j < nreg_acc) {
                 // shuffle per block of 4 registers
                 shuffle_and_add(zmm_c(l), // desc

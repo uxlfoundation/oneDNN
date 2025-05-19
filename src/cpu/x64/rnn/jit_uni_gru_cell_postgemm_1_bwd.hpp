@@ -291,11 +291,11 @@ protected:
             Xmm diff_attn_acc(dattn_acc_idx);
             uni_vhaddps(diff_attn_acc, diff_attn_acc, diff_attn_acc);
             uni_vhaddps(diff_attn_acc, diff_attn_acc, diff_attn_acc);
-            const auto base_args = get_stack_params_address();
+            const auto base_args_augru = get_stack_params_address();
 #ifdef _WIN32
-            mov(addr_attn_reg, ptr[base_args + 56]);
+            mov(addr_attn_reg, ptr[base_args_augru + 56]);
 #else
-            mov(addr_attn_reg, ptr[base_args + 40]);
+            mov(addr_attn_reg, ptr[base_args_augru + 40]);
 #endif
             uni_vmovss(ptr[addr_attn_reg], diff_attn_acc);
         }

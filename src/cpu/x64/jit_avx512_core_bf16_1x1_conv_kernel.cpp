@@ -564,9 +564,9 @@ void jit_avx512_core_bf16_1x1_conv_kernel_t::reduce_loop(
         const int pipeline = saturate(1, 4, pipeline_length_max);
         auto zmm_prm = [zmm_store]() { return zmm_store(); };
         auto get_load_start_idx
-                = [this, pipeline, load_loop_blk](int bcast_count) {
+                = [this, pipeline, load_loop_blk](int local_bcast_count) {
                       return pipeline * jcp.uses_permw_transposition
-                              + (bcast_count % pipeline) * load_loop_blk;
+                              + (local_bcast_count % pipeline) * load_loop_blk;
                   };
         auto pipeline_bcast_ptr = [this, bcast_ptr](int i_reduce, int i_ur,
                                           bool bcast, int pipeline_idx) {
@@ -698,13 +698,13 @@ void jit_avx512_core_bf16_1x1_conv_kernel_t::reduce_loop(
             use_bcast_count++;
             if (bcast_count < div_up(n_reduce, 2)) {
                 int load_idx = get_load_start_idx(bcast_count);
-                int i_reduce = bcast_count * 2;
+                i_reduce = bcast_count * 2;
 
                 if (jcp.uses_permw_transposition) {
                     bool is_reduce_tail = jcp.reduce_loop_unroll % 2
                             && i_reduce + 2 >= jcp.reduce_loop_unroll;
                     Opmask bcast_mask = get_bcast_mask(i_reduce);
-                    int bcast_pl_idx = bcast_count % pipeline;
+                    bcast_pl_idx = bcast_count % pipeline;
                     auto bcast_values = vreg_load(bcast_pl_idx);
 
                     vmovdqu16(bcast_values | bcast_mask | T_z,

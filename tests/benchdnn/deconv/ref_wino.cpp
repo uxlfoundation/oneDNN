@@ -439,15 +439,15 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                 float I[6][6] = {};
                 float _v[6][6] = {};
                 /* diff_src transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
+                for (int64_t i = 0; i < sp.alpha; i++) {
+                    int64_t ydim = hfm * sp.out_dim + i;
                     if ((t_pad <= ydim) && (ydim < hp_max)) {
                         for (int64_t k = 0; k < sp.alpha; k++) {
                             int64_t xdim = wfm * sp.out_dim + k;
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t dst_off = dst_off_f(prb, img, 0, c, 0,
                                         ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)diff_dst_m)[dst_off];
+                                I[i][k] = ((float *)diff_dst_m)[dst_off];
                             }
                         }
                     }

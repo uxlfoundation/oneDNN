@@ -809,17 +809,18 @@ void brgemm_matmul_t<isa>::compute_kernel(
                 n_blk_idx);
 
         const bool use_init_ker = (do_init && gemm_batch == 0);
-        const int brg_ker_idx = pd()->get_brg_kernel_idx(
+        const int brg_ker_idx_k_tail = pd()->get_brg_kernel_idx(
                 false, use_init_ker, m_ker_idx, n_ker_idx, true, prefetch);
-        if (brg_ker_idx < 0) {
+        if (brg_ker_idx_k_tail < 0) {
             assert(!"Requested brgemm kernel was not created.");
             return;
         }
-        const bool is_amx = is_superset(
-                pd()->get_brg_desc(brg_ker_idx).isa_impl, avx512_core_amx);
+        const bool is_amx
+                = is_superset(pd()->get_brg_desc(brg_ker_idx_k_tail).isa_impl,
+                        avx512_core_amx);
         brgemm_palettes_.maybe_tile_configure(
-                is_amx, prev_ker_idx, brg_ker_idx);
-        const auto brg_kernel_k_tail = brg_kernels_[brg_ker_idx].get();
+                is_amx, prev_ker_idx, brg_ker_idx_k_tail);
+        const auto brg_kernel_k_tail = brg_kernels_[brg_ker_idx_k_tail].get();
 
         if (post_ops_applicable) {
             void *scratch = is_amx

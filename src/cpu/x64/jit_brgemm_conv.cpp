@@ -1554,12 +1554,12 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int local_nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
         int g {0}, ocb {0}, adj_k {0};
-        balance211(work_amount, nthr, ithr, start, end);
+        balance211(work_amount, local_nthr, ithr, start, end);
         nd_iterator_init(
                 start, g, jcp.ngroups, ocb, jcp.nb_oc, adj_k, max_ker_sz);
         for (auto work = start; work < end; work++) {

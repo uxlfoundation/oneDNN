@@ -678,22 +678,24 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     bool mayiconvert(dnnl::impl::data_type_t dt_from,
             dnnl::impl::data_type_t dt_to) const {
 
-        auto mayidownconvert = [](dnnl::impl::fpmath_mode_t fpmath_mode,
-                                       dnnl::impl::data_type_t dt_from,
-                                       dnnl::impl::data_type_t dt_to) -> bool {
+        auto mayidownconvert
+                = [](dnnl::impl::fpmath_mode_t fpmath_mode,
+                          dnnl::impl::data_type_t local_dt_from,
+                          dnnl::impl::data_type_t local_dt_to) -> bool {
             using namespace dnnl::impl;
 
-            bool is_compat = is_fpsubtype(dt_to, dt_from);
+            bool is_compat = is_fpsubtype(local_dt_to, local_dt_from);
             auto can_downconvert = [&]() {
                 switch (fpmath_mode) {
-                    case fpmath_mode::strict: return dt_from == dt_to;
+                    case fpmath_mode::strict:
+                        return local_dt_from == local_dt_to;
                     case fpmath_mode::any: return true;
                     case fpmath_mode::bf16:
-                        return is_fpsubtype(data_type::bf16, dt_to);
+                        return is_fpsubtype(data_type::bf16, local_dt_to);
                     case fpmath_mode::f16:
-                        return is_fpsubtype(data_type::f16, dt_to);
+                        return is_fpsubtype(data_type::f16, local_dt_to);
                     case fpmath_mode::tf32:
-                        return is_fpsubtype(data_type::tf32, dt_to);
+                        return is_fpsubtype(data_type::tf32, local_dt_to);
                     default: return false;
                 }
             };

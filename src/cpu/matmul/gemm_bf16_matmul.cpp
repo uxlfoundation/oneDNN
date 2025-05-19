@@ -287,9 +287,9 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
         const dim_t acc_stride = gemm_based::get_scratchpad_block_elements(
                 batch, M, N, use_single_gemm_call, nthr);
 
-        parallel(nthr, [&](int ithr, int nthr) {
+        parallel(nthr, [&](int ithr, int local_nthr) {
             size_t t_work_start {0}, t_work_end {0};
-            balance211(work_amount, nthr, ithr, t_work_start, t_work_end);
+            balance211(work_amount, local_nthr, ithr, t_work_start, t_work_end);
 
             dim_t cur_b {0}, cur_m {0}, cur_n {0};
             dims_t s_dims_idx, w_dims_idx, d_dims_idx;
@@ -385,16 +385,19 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
             const bool force_sequential = pp_kernel_->sequential_kernel();
             const float *pp_scales = params.get_post_processing_scales(scales);
 
-            parallel(force_sequential ? 1 : nthr, [&](int ithr, int nthr) {
-                size_t start {}, end {};
-                balance211((size_t)(M * N), nthr, ithr, start, end);
-                const size_t dst_logical_off = start;
-                const size_t dim1_off = start % N;
-                (*pp_kernel_)(dst, acc, bias, pp_scales, dst_scales[0], start,
-                        dst_logical_off, dim1_off, end, (size_t)N, ldc, nullptr,
-                        post_ops_binary_rhs_arg_vec.data(), dst, 0, ctx,
-                        *pd()->dst_md());
-            });
+            parallel(
+                    force_sequential ? 1 : nthr, [&](int ithr, int local_nthr) {
+                        size_t start {}, end {};
+                        balance211(
+                                (size_t)(M * N), local_nthr, ithr, start, end);
+                        const size_t dst_logical_off = start;
+                        const size_t dim1_off = start % N;
+                        (*pp_kernel_)(dst, acc, bias, pp_scales, dst_scales[0],
+                                start, dst_logical_off, dim1_off, end,
+                                (size_t)N, ldc, nullptr,
+                                post_ops_binary_rhs_arg_vec.data(), dst, 0, ctx,
+                                *pd()->dst_md());
+                    });
         }
     }
 

@@ -1710,7 +1710,7 @@ void brgemm_inner_product_bwd_weights_t<
     if (start == end) return;
 
     int icb_l = 0, ocb_l = 0, kd = 0, kh = 0, kw = 0;
-    const int acc_size = jbgp.ic_block * jbgp.oc_block;
+    int acc_size = jbgp.ic_block * jbgp.oc_block;
 
     for (int ir = reduce_buf_idx_start; ir < reduce_buf_idx_end; ++ir) {
         int counter = start;
@@ -1743,11 +1743,11 @@ void brgemm_inner_product_bwd_weights_t<
         const bool is_f32_bias = jbgp.bia_dt == data_type::f32;
         float *bias_reduced = is_f32_bias ? (float *)ti->diff_bias
                                           : (float *)ti->buffer_bias;
-        int reduce_buf_idx_start = !is_f32_bias;
-        int reduce_buf_idx_end = reduce_buffers - 1;
+        reduce_buf_idx_start = !is_f32_bias;
+        reduce_buf_idx_end = reduce_buffers - 1;
         int oc_chunk_size = jbgp.nb_oc_blocking * jbgp.oc_block;
         int oc = ti->oc_c_start * oc_chunk_size;
-        int acc_size = nstl::min(ti->oc_c_work * oc_chunk_size, jbgp.oc - oc);
+        acc_size = nstl::min(ti->oc_c_work * oc_chunk_size, jbgp.oc - oc);
 
         int ir = reduce_buf_idx_start;
         for (; ir < reduce_buf_idx_end; ++ir) {

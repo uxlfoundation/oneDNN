@@ -570,7 +570,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
             default: assert(!"unimplemented");
         }
     };
-    auto gather_coefficient = [&](Vmm vmm_coeff, int coeff_idx,
+    auto gather_coefficient = [&](Vmm local_vmm_coeff, int coeff_idx,
                                       Vmm vmm_pol_idx) {
         switch (isa) {
             case sse41:
@@ -578,11 +578,11 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
                     Xbyak::Address coeff_addr
                             = ptr[p_table_ + coeffs_off(coeff_idx)
                                     + gpr_idx[idx] * sizeof(float)];
-                    h->pinsrd(vmm_coeff, coeff_addr, idx);
+                    h->pinsrd(local_vmm_coeff, coeff_addr, idx);
                 }
                 break;
             case avx: {
-                Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
+                Xmm xmm_coeff = Xmm(local_vmm_coeff.getIdx());
                 for (int idx = 0; idx < 4; ++idx) {
                     Xbyak::Address coeff_addr
                             = ptr[p_table_ + coeffs_off(coeff_idx)
@@ -599,7 +599,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
                 // since the gather instructions zeros the mask if
                 // successful
                 h->uni_vcmpps(vmm_mask_, vmm_mask_, vmm_mask_, _cmp_eq_oq);
-                h->vgatherdps(vmm_coeff, idx_addr, vmm_mask_);
+                h->vgatherdps(local_vmm_coeff, idx_addr, vmm_mask_);
                 break;
             }
                 // use gather instruction
@@ -610,7 +610,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
                 // we use vpermt2ps to not override the indices
                 // this also enables to save a register for table loading
                 {
-                    Zmm zmm_coeff(vmm_coeff.getIdx());
+                    Zmm zmm_coeff(local_vmm_coeff.getIdx());
                     Zmm zmm_pol_idx(vmm_pol_idx.getIdx());
                     h->uni_vmovups(zmm_coeff, coeffs_address(coeff_idx, 0));
                     h->vpermt2ps(zmm_coeff, zmm_pol_idx,

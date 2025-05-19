@@ -189,7 +189,6 @@ cold_cache_t::cold_cache_t(
                     return;
                 }
                 if (cc_entry[i].is_mapped()) cc_entry[i].unmap();
-                continue;
             }
 
             // Reorders are expensive. If there are multiple buffers to

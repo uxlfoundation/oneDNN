@@ -217,7 +217,7 @@ protected:
                 dims[concat_dim_] = dim;
 
                 memory_desc_t src_img_d;
-                status_t status = memory_desc_init_submemory(
+                status = memory_desc_init_submemory(
                         src_img_d, dst_md_, dims, offsets);
                 if (status != status::success) {
                     desired_format_ok = false;

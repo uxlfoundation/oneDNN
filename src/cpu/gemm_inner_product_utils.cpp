@@ -85,9 +85,10 @@ void ref_pp_kernel_t::operator()(void *dst, const void *acc, const char *bias,
     args.ctx = &ctx;
     args.dst_md = &dst_md;
     auto calculate_dst_value_and_increment_oc =
-            [&](const void *acc, void *dst, size_t off, size_t &oc_value,
-                    const size_t dst_offset) {
-                float d = io::load_float_value(this->acc_data_type_, acc, off);
+            [&](const void *local_acc, void *local_dst, size_t off,
+                    size_t &oc_value, const size_t dst_offset) {
+                float d = io::load_float_value(
+                        this->acc_data_type_, local_acc, off);
                 if (this->do_scale_)
                     d *= scales[oc_value * this->scale_idx_mult_];
                 if (this->do_bias()) {
@@ -98,13 +99,13 @@ void ref_pp_kernel_t::operator()(void *dst, const void *acc, const char *bias,
                 if (do_postops_) {
                     if (this->do_sum_)
                         args.dst_val = io::load_float_value(
-                                this->sum_data_type_, dst, off);
+                                this->sum_data_type_, local_dst, off);
                     args.l_offset = dst_offset;
                     ref_post_ops_->execute(d, args);
                 }
                 if (this->do_dst_scale_) d *= dst_scale;
                 if (this->do_dst_zero_points_) d += dst_zero_points[0];
-                io::store_float_value(this->dst_data_type_, d, dst, off);
+                io::store_float_value(this->dst_data_type_, d, local_dst, off);
                 oc_value = (oc_value == OC - 1) ? 0 : oc_value + 1;
             };
 

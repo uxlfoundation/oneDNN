@@ -1066,10 +1066,11 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
     img = img_s;
 
     auto do_brgemm_call = [&](int g, int bs_d, int bs_h, int ic_b, int oc_b,
-                                  int od_s, int oh_s, int bs_id_s, int bs_ih_s,
-                                  const char *p_src, const char *p_dst, int kd,
-                                  int kh, int kw, bool do_init) {
-        const int id_s = ti->get_id_start(od_s);
+                                  int local_od_s, int oh_s, int bs_id_s,
+                                  int bs_ih_s, const char *p_src,
+                                  const char *p_dst, int kd, int kh, int kw,
+                                  bool do_init) {
+        const int id_s = ti->get_id_start(local_od_s);
         const int ih_s = ti->get_ih_start(oh_s);
 
         const int bs_od_s = utils::saturate(0, jcp.od,
@@ -1087,7 +1088,8 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
                 + (bs_id_s - id_s) * jcp.ih_block * jcp.tr_iw * jcp.ic_block;
         const char *ptr_A = p_src + a_off * jcp.src_dsz;
         const auto b_off = (bs_oh_s - oh_s) * jcp.tr_ow * jcp.oc_block
-                + (bs_od_s - od_s) * jcp.oh_block * jcp.tr_ow * jcp.oc_block;
+                + (bs_od_s - local_od_s) * jcp.oh_block * jcp.tr_ow
+                        * jcp.oc_block;
         const char *ptr_B = p_dst + b_off * jcp.dst_dsz;
         void *ptr_C = (jcp.transform_to_vnni)
                 ? diff_wei + wei_offset_int(g, oc_b, ic_b, kd, kh, kw)

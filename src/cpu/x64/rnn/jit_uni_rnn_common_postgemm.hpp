@@ -407,8 +407,6 @@ protected:
                     mov(weights_scales_reg, ptr[base_args + 16]);
 #endif
                 } else {
-                    float *weights_scales
-                            = pd_->attr()->rnn_weights_qparams_.scales_;
                     mov(weights_scales_reg, size_t(weights_scales));
                 }
 

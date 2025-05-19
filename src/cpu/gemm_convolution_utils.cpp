@@ -1223,7 +1223,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
 
     // TODO: maybe mitigate blocking restriction
     const auto L2 = platform::get_per_core_cache_size(2) / data_size;
-    const int gemm_thrld = 64 * 1024;
+    static constexpr int gemm_thrld = 64 * 1024;
 
     // Heuristic threshold for requested scratchpad memory to avoid
     // possible crash on memory allocation:
@@ -1352,10 +1352,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
             //  2. Gemm size estimation in assumption that it does not work
             //  so effectively for small sizes.
             //  64K - this is heuristic gemm size per thread threshold.
-            const int gemm_thrld = 64 * 1024;
             if (!jcp.outer_threading && !is_3d) {
-                bool is_depthwise
-                        = jcp.ic == 1 && jcp.oc == 1 && jcp.ngroups != 1;
                 const dim_t outer_work = jcp.ngroups * jcp.mb;
                 const float outer_thr_eff
                         = (float)outer_work / rnd_up(outer_work, max_threads);
@@ -1386,7 +1383,6 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     ? (ptrdiff_t)jcp.ic * jcp.ks * jcp.os * jcp.od
                     : 0;
 
-            bool is_depthwise = jcp.ic == 1 && jcp.oc == 1 && jcp.ngroups != 1;
             const size_t outer_work = jcp.ngroups * jcp.mb;
             const float outer_thr_eff
                     = (float)outer_work / rnd_up(outer_work, max_threads);
@@ -1523,10 +1519,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
             //  2. Gemm size estimation in assumption that it does not work
             //  so effectively for small sizes.
             //  64K - this is heuristic gemm size per thread threshold.
-            constexpr size_t gemm_thrld = 64 * 1024;
             if (!jcp.outer_threading && !is_3d) {
-                bool is_depthwise
-                        = jcp.ic == 1 && jcp.oc == 1 && jcp.ngroups != 1;
                 const size_t outer_work = jcp.ngroups * jcp.mb;
                 const float outer_thr_eff
                         = (float)outer_work / rnd_up(outer_work, max_threads);
@@ -1950,7 +1943,6 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     ? (ptrdiff_t)jcp.ic * jcp.ks * jcp.os * jcp.od
                     : 0;
 
-            bool is_depthwise = jcp.ic == 1 && jcp.oc == 1 && jcp.ngroups != 1;
             const size_t outer_work = jcp.ngroups * jcp.mb;
             const float outer_thr_eff
                     = (float)outer_work / rnd_up(outer_work, max_threads);

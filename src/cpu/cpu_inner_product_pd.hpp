@@ -81,38 +81,38 @@ inline void transpose_md(memory_desc_t &md) {
     // in padded_dims.  This is because inner_blks does not
     // account for padding, and should divide the corresponding
     // padded_dim.
-    auto put_a_last = [](memory_desc_t &md) {
-        auto &md_blk = md.format_desc.blocking;
-        md.padded_dims[0] = md.dims[0];
+    auto put_a_last = [](memory_desc_t &local_md) {
+        auto &md_blk = local_md.format_desc.blocking;
+        local_md.padded_dims[0] = local_md.dims[0];
         md_blk.strides[0] = 1;
-        for (int d = 1; d < md.ndims; d++)
-            md_blk.strides[d] *= md.padded_dims[0];
+        for (int d = 1; d < local_md.ndims; d++)
+            md_blk.strides[d] *= local_md.padded_dims[0];
         if (md_blk.inner_nblks > 0) {
             md_blk.inner_idxs[md_blk.inner_nblks] = 0;
-            md_blk.inner_blks[md_blk.inner_nblks] = md.padded_dims[0];
+            md_blk.inner_blks[md_blk.inner_nblks] = local_md.padded_dims[0];
             md_blk.inner_nblks++;
         }
     };
 
-    auto put_a_first = [](memory_desc_t &md) {
-        blocking_desc_t blk = md.format_desc.blocking;
+    auto put_a_first = [](memory_desc_t &local_md) {
+        blocking_desc_t blk = local_md.format_desc.blocking;
         // make the stride for `a` bigger than any other stride and
         // use the fact that memory_desc_init_by_blocking_desc
         // preserves the strides order but actually changes them to
         // densify the descriptor
-        blk.strides[0] = memory_desc_wrapper(md).size();
-        memory_desc_init_by_blocking_desc(md, blk);
+        blk.strides[0] = memory_desc_wrapper(local_md).size();
+        memory_desc_init_by_blocking_desc(local_md, blk);
     };
 
-    auto is_a_last = [](memory_desc_t &md) {
-        auto &md_blk = md.format_desc.blocking;
+    auto is_a_last = [](memory_desc_t &local_md) {
+        auto &md_blk = local_md.format_desc.blocking;
         // The inner_blks condition makes sure that a is a non blocked dimension
         return (md_blk.strides[0] == 1) && (md_blk.inner_nblks == 0);
     };
 
-    auto is_a_first = [&](memory_desc_t &md) {
-        auto &md_blk = md.format_desc.blocking;
-        for (int d = 1; d < md.ndims; d++)
+    auto is_a_first = [&](memory_desc_t &local_md) {
+        auto &md_blk = local_md.format_desc.blocking;
+        for (int d = 1; d < local_md.ndims; d++)
             if (md_blk.strides[0] < md_blk.strides[d]) return false;
         return true;
     };

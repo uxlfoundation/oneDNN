@@ -115,22 +115,23 @@ status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
 static float reduce(float *mem, dim_t size) {
     bool tail = size % 2;
-    const auto reduce_iteration = [&](float *mem) {
+    const auto reduce_iteration = [&](float *local_mem) {
         const auto div_res = std::div(size, (dim_t)2);
         tail = div_res.rem;
         size = div_res.quot;
         if (!tail && !size) {
-            mem[0] = 0;
+            local_mem[0] = 0;
             return;
         }
         dim_t i {0}, off {0};
         if (tail) {
-            if (size) mem[0] += mem[1 + off] + mem[2 + off];
+            if (size) local_mem[0] += local_mem[1 + off] + local_mem[2 + off];
             ++off;
             ++i;
         }
         for (; i < size; i++) {
-            mem[i] = mem[2 * i + off] + mem[(2 * i + 1) + off];
+            local_mem[i]
+                    = local_mem[2 * i + off] + local_mem[(2 * i + 1) + off];
         }
     };
     while (size > 1) {
@@ -189,13 +190,13 @@ void ref_prelu_bwd_t::calculate_scalar(const byte *src, const byte *weights,
     const memory_desc_wrapper data_d(pd()->src_md(0));
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
 
-    const int nthr = pd()->nthr_;
     const dim_t work_amount = data_d.nelems();
-    const int thread_count = nstl::min(nthr, static_cast<int>(work_amount));
+    const int thread_count
+            = nstl::min(pd()->nthr_, static_cast<int>(work_amount));
 
-    std::vector<float> buf_nthr_partial_results(nthr);
+    std::vector<float> buf_nthr_partial_results(pd()->nthr_);
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(pd()->nthr_, [&](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -249,12 +250,11 @@ void ref_prelu_bwd_t::calculate_no_broadcast(const byte *src,
     const memory_desc_wrapper data_d(pd()->src_md(0));
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
 
-    const int nthr = pd()->nthr_;
     const dim_t work_amount = data_d.nelems();
     const int mask = utils::get_dims_mask(
             data_d.dims(), weights_d.dims(), data_d.ndims());
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(pd()->nthr_, [&](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -295,10 +295,9 @@ void ref_prelu_bwd_t::calculate_shared_axes(const byte *src,
         dims_w[i] = (weights_d.dims()[i] != 0) ? weights_d.dims()[i] : 1;
     }
 
-    const int nthr = pd()->nthr_;
     const dim_t work_amount = weights_d.nelems();
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(pd()->nthr_, [&](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

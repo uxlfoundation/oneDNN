@@ -265,8 +265,8 @@ protected:
             // Here we cannot use rbp to have initial stack pointer so we
             // use rsp and offset it with the size of pushed registers in
             // preamble
-            const auto base_args = get_stack_params_address();
-            mov(loop_cnt, ptr[base_args + 24]);
+            const auto base_args_brgemm = get_stack_params_address();
+            mov(loop_cnt, ptr[base_args_brgemm + 24]);
 #endif
         } else {
             mov(loop_cnt, loop_len);

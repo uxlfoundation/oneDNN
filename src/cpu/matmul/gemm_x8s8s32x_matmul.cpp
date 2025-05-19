@@ -316,9 +316,9 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
         bool postops_in_matmul = need_post_processing(pd(), dst_zero_point_f32);
         assert(IMPLICATION(postops_in_matmul, params.has_pp_kernel_));
 
-        parallel(nthr, [&](int ithr, int nthr) {
+        parallel(nthr, [&](int ithr, int local_nthr) {
             size_t t_work_start {0}, t_work_end {0};
-            balance211(work_amount, nthr, ithr, t_work_start, t_work_end);
+            balance211(work_amount, local_nthr, ithr, t_work_start, t_work_end);
 
             dim_t cur_b {0}, cur_m {0}, cur_n {0};
             dims_t s_dims_idx, w_dims_idx, d_dims_idx;
@@ -466,7 +466,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
         // collapse batch into M, if weights batch dimensions are broadcasted.
         M = batch * M;
-        status_t st = status::runtime_error;
+        st = status::runtime_error;
         switch (src_d.data_type()) {
             case data_type::s8: {
                 const int8_t *src_ = reinterpret_cast<const int8_t *>(src);
@@ -502,17 +502,19 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
             if (postops_in_matmul) {
                 const bool force_sequential = pp_kernel_->sequential_kernel();
-                parallel(force_sequential ? 1 : nthr, [&](int ithr, int nthr) {
-                    size_t start {}, end {};
-                    balance211((size_t)(M * N), nthr, ithr, start, end);
-                    const size_t dst_logical_off = start;
-                    const size_t dim1_off = start % N;
-                    (*pp_kernel_)(dst, acc, bias, scales, dst_scales[0], start,
-                            dst_logical_off, dim1_off, end, (size_t)N, ldc,
-                            &dst_zero_point_f32,
-                            post_ops_binary_rhs_arg_vec.data(), dst, 0, ctx,
-                            *pd()->dst_md());
-                });
+                parallel(force_sequential ? 1 : nthr,
+                        [&](int ithr, int local_nthr) {
+                            size_t start {}, end {};
+                            balance211((size_t)(M * N), local_nthr, ithr, start,
+                                    end);
+                            const size_t dst_logical_off = start;
+                            const size_t dim1_off = start % N;
+                            (*pp_kernel_)(dst, acc, bias, scales, dst_scales[0],
+                                    start, dst_logical_off, dim1_off, end,
+                                    (size_t)N, ldc, &dst_zero_point_f32,
+                                    post_ops_binary_rhs_arg_vec.data(), dst, 0,
+                                    ctx, *pd()->dst_md());
+                        });
             }
         }
     }

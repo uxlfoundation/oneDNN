@@ -119,7 +119,7 @@ static inline void compensate_igo(float *compensation,
     // parallelisation overhead if dimensions are small
     const int LD_nthr = nstl::min(L * D, dim_t(nthr));
     const int GO_nthr = nstl::min(G * O, dim_t(nthr / LD_nthr));
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [&](const int ithr, const int) {
         int LD_ithr = -1;
         int GO_ithr = -1;
         dim_t LD_s = -1, LD_e = -1;

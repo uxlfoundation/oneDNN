@@ -536,24 +536,26 @@ static inline void parallel_nd_ext(
     const dim_t work_amount = D0;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd_ext(ithr, nthr, D0, f); });
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, f);
+        });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1,
         const std::function<void(int, int, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd_ext(ithr, nthr, D0, D1, f); });
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, D1, f);
+        });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
         const std::function<void(int, int, dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, D1, D2, f);
         });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
@@ -562,8 +564,8 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, D1, D2, D3, f);
         });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
@@ -573,8 +575,8 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, D1, D2, D3, D4, f);
         });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
@@ -584,8 +586,8 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4 * D5;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, D5, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd_ext(local_ithr, local_nthr, D0, D1, D2, D3, D4, D5, f);
         });
 }
 
@@ -593,31 +595,35 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
 static inline void parallel_nd(dim_t D0, const std::function<void(dim_t)> &f) {
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), D0);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, f); });
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, f);
+        });
 }
 static inline void parallel_nd(
         dim_t D0, dim_t D1, const std::function<void(dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, D1, f); });
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, D1, f);
+        });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2,
         const std::function<void(dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, D1, D2, f); });
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, D1, D2, f);
+        });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3,
         const std::function<void(dim_t, dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2 * D3;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, D1, D2, D3, f);
         });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
@@ -625,8 +631,8 @@ static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, D4, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, D1, D2, D3, D4, f);
         });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
@@ -636,8 +642,8 @@ static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4 * D5;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, D4, D5, f);
+        parallel(nthr, [&](int local_ithr, int local_nthr) {
+            for_nd(local_ithr, local_nthr, D0, D1, D2, D3, D4, D5, f);
         });
 }
 

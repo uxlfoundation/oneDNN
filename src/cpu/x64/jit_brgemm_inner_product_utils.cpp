@@ -581,7 +581,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
                 = comp_work(jbgp.nthr, jbgp.nthr_ic_b, other_work, jbgp.nb_ic);
         while (jbgp.nthr_ic_b > 1) {
             int kthr = jbgp.nthr_ic_b - 1;
-            int nthr_other = jbgp.nthr / kthr;
+            nthr_other = jbgp.nthr / kthr;
 
             int work = comp_work(jbgp.nthr, kthr, other_work, jbgp.nb_ic);
 

@@ -44,9 +44,6 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     float *interim_scratchpad
             = ctx->get_scratchpad_grantor().template get<float>(
                     key_softmax_interim_store);
@@ -72,7 +69,10 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
 
     const int nthr = pd()->nthr_;
 
-    parallel_nd_ext(nthr, outer_size_, [&](int ithr, int, dim_t ou) {
+    parallel_nd_ext(nthr, outer_size_, [=](int ithr, int, dim_t ou) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
         const void *src_data = reinterpret_cast<const char *>(src)
                 + ou * ou_stride * src_dt_size;
         void *dst_data
@@ -189,6 +189,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
                 io::store_float_value(
                         dst_d.data_type(), 0, dst_data, channels_ + i);
         }
+        return status::success;
     });
     return status::success;
 }
@@ -223,7 +224,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
             if (!res.quot)
                 std::memset(dst, 0, res.rem);
             else
-                parallel_nd(res.quot, [&](dim_t i) {
+                parallel_nd(res.quot, [=](dim_t i) {
                     const auto tail = (i + 1 == res.quot) ? res.rem : 0;
                     const auto ptr_dst = reinterpret_cast<unsigned char *>(dst)
                             + i * PAGE_4K;
@@ -237,7 +238,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
     const auto axis_size = pd()->axis_size(true);
     const int nthr = pd()->nthr_;
 
-    parallel_nd_ext(nthr, outer_size_, [&](int ithr, int, dim_t ou) {
+    parallel_nd_ext(nthr, outer_size_, [=](int ithr, int, dim_t ou) {
         const dim_t thr_shift = ithr * axis_size;
 
         float space_max_val = 0, space_denom_val = 0;
@@ -329,7 +330,7 @@ status_t ref_softmax_bwd_t::execute_backward_dense(
     // previous dimension.
     const auto ou_stride = pd()->axis_size();
 
-    parallel_nd(outer_size_, [&](dim_t ou) {
+    parallel_nd(outer_size_, [=](dim_t ou) {
         float sbr = 0;
         size_t off = ou * ou_stride;
         if (pd()->is_softmax()) {
@@ -385,7 +386,7 @@ status_t ref_softmax_bwd_t::execute_backward_generic(
             if (!res.quot)
                 std::memset(diff_src, 0, res.rem);
             else
-                parallel_nd(res.quot, [&](dim_t i) {
+                parallel_nd(res.quot, [=](dim_t i) {
                     const auto tail = (i + 1 == res.quot) ? res.rem : 0;
                     const auto ptr_dst
                             = reinterpret_cast<unsigned char *>(diff_src)
@@ -397,7 +398,7 @@ status_t ref_softmax_bwd_t::execute_backward_generic(
             ctx->memory(DNNL_ARG_DIFF_SRC)->zero_pad(ctx);
     }
 
-    parallel_nd(outer_size_, inner_size_, [&](dim_t ou, dim_t in) {
+    parallel_nd(outer_size_, inner_size_, [=](dim_t ou, dim_t in) {
         dim_t ou_in_offset = ou * channels_ * inner_size_ + in;
         float sbr = 0;
         for (int c = 0; c < channels_; ++c) {

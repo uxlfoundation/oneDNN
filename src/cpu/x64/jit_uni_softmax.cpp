@@ -1669,9 +1669,6 @@ status_t jit_uni_softmax_fwd_t::execute(
     auto scratchpad_ptr = ctx->get_scratchpad_grantor().template get<char>(
             memory_tracking::names::key_softmax_interim_store);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
                     pd()->attr()->post_ops_, *ctx);
@@ -1732,7 +1729,10 @@ status_t jit_uni_softmax_fwd_t::execute(
             inner_stride, axis_stride);
 
     parallel_nd_ext(nthr, outer_size, inner_size,
-            [&](int ithr, int, dim_t ou, dim_t in) {
+            [=](int ithr, int, dim_t ou, dim_t in) {
+                DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+                DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
                 dim_t offset = (ou * outer_stride + in * inner_stride);
                 const char *src_ptr = src + offset * src_data_type_size;
                 char *dst_ptr = dst + offset * dst_data_type_size;
@@ -1760,6 +1760,7 @@ status_t jit_uni_softmax_fwd_t::execute(
                 p.post_ops_binary_rhs_arg_vec
                         = post_ops_binary_rhs_arg_vec.data();
                 (*ker_)(&p);
+                return status::success;
             });
 
     return status::success;
@@ -1798,7 +1799,7 @@ status_t jit_uni_softmax_bwd_t::execute(
     const auto outer_stride = pd()->axis_size(true) * inner_size;
     const auto outer_size = dst_d.nelems(true) / outer_stride;
 
-    parallel_nd(outer_size, inner_size, [&](dim_t ou, dim_t in) {
+    parallel_nd(outer_size, inner_size, [=](dim_t ou, dim_t in) {
         dim_t offset = (ou * outer_stride + in * inner_stride);
         char *diff_src_ptr = diff_src + offset * diff_src_data_type_size;
         const char *dst_ptr = dst + offset * dst_data_type_size;

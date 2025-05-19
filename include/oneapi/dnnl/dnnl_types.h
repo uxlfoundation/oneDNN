@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2025 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -737,6 +738,7 @@ typedef enum {
     dnnl_abCdef32c,
     dnnl_ABcd16a32b,
     dnnl_decbA8a,
+    dnnl_decbA4a,
     dnnl_aCdefB16b32c2b,
     dnnl_aCdefB16b32c4b,
     dnnl_aCdefB16b48c2b,
@@ -964,6 +966,7 @@ typedef enum {
     dnnl_ABcde16a4b,
     dnnl_defcbA16a,
     dnnl_defcbA8a,
+    dnnl_defcbA4a,
     dnnl_AcB16b64a,
     dnnl_AcdB16b64a,
     dnnl_AcdeB16b64a,
@@ -1911,8 +1914,10 @@ typedef enum {
     dnnl_gIdhwO16o64i4o = dnnl_aCdefB16b64c4b,
     dnnl_hwioG16g = dnnl_decbA16a,
     dnnl_hwioG8g = dnnl_decbA8a,
+    dnnl_hwioG4g = dnnl_decbA4a,
     dnnl_dhwioG16g = dnnl_defcbA16a,
     dnnl_dhwioG8g = dnnl_defcbA8a,
+    dnnl_dhwioG4g = dnnl_defcbA4a,
     dnnl_NCdhw40n16c = dnnl_ABcde40a16b,
     dnnl_NCw40n16c = dnnl_ABc40a16b,
     dnnl_NChw40n16c = dnnl_ABcd40a16b,

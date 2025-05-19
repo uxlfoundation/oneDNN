@@ -373,7 +373,7 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     using namespace data_type;
     if (weights_desc->format_kind == format_kind::blocked
             && utils::one_of(
-                    weights_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+                    weights_desc->data_type, s4, u4, f4_e2m1, f4_e3m0, nf4)) {
         const auto &wei_strides = weights_desc->format_desc.blocking.strides;
 
         int n_unit_strides = 0;
@@ -389,7 +389,8 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         }
     }
     if (src_desc->format_kind == format_kind::blocked
-            && utils::one_of(src_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
+            && utils::one_of(
+                    src_desc->data_type, s4, u4, f4_e2m1, f4_e3m0, nf4)) {
         const auto &src_strides = src_desc->format_desc.blocking.strides;
 
         int n_unit_strides = 0;

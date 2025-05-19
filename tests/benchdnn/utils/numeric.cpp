@@ -33,6 +33,10 @@ struct prec_traits<dnnl_f4_e3m0> {
     using type = dnnl::impl::float4_e3m0_t;
 };
 template <>
+struct prec_traits<dnnl_nf4> {
+    using type = dnnl::impl::nf4_t;
+};
+template <>
 struct prec_traits<dnnl_e8m0> {
     using type = dnnl::impl::float8_e8m0_t;
 };
@@ -89,6 +93,7 @@ struct prec_traits<dnnl_u4> {
     switch (dt) { \
         CASE(dnnl_f4_e2m1); \
         CASE(dnnl_f4_e3m0); \
+        CASE(dnnl_nf4); \
         CASE(dnnl_e8m0); \
         CASE(dnnl_f8_e5m2); \
         CASE(dnnl_f8_e4m3); \
@@ -197,6 +202,9 @@ float round_to_nearest_representable_templ(float value) {
         case dnnl_f4_e3m0:
             value = (float)dnnl::impl::float4_e3m0_t(value);
             break;
+        case dnnl_nf4:
+            value = (float)dnnl::impl::nf4_t(value);
+            break;
         case dnnl_e8m0: value = (float)dnnl::impl::float8_e8m0_t(value); break;
         case dnnl_f8_e5m2:
             value = (float)dnnl::impl::float8_e5m2_t(value);
@@ -229,6 +237,6 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value) {
 #undef CASE_ALL
 
 bool is_subbyte_type(const dnnl_data_type_t &type) {
-    return type == dnnl_f4_e2m1 || type == dnnl_f4_e3m0 || type == dnnl_u4
+    return type == dnnl_f4_e2m1 || type == dnnl_f4_e3m0 || type == dnnl_nf4 || type == dnnl_u4
             || type == dnnl_s4;
 }

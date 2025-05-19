@@ -47,6 +47,10 @@ struct prec_traits_t<data_type::f4_e2m1> {
     using type = float4_e2m1_t;
 };
 template <>
+struct prec_traits_t<data_type::nf4> {
+    using type = nf4_t;
+};
+template <>
 struct prec_traits_t<data_type::e8m0> {
     using type = float8_e8m0_t;
 };
@@ -106,6 +110,10 @@ struct data_traits_t<float4_e3m0_t> {
 template <>
 struct data_traits_t<float4_e2m1_t> {
     static constexpr data_type_t data_type = data_type::f4_e2m1;
+};
+template <>
+struct data_traits_t<nf4_t> {
+    static constexpr data_type_t data_type = data_type::nf4;
 };
 template <>
 struct data_traits_t<float8_e8m0_t> {

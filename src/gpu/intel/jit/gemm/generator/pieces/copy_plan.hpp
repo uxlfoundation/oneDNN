@@ -195,6 +195,7 @@ protected:
     void planEmulatedHFToE3M0(CopyInstruction &i);
     void planEmulatedF4E2M1ToHF(CopyInstruction &i);
     void planEmulatedHFToF4E2M1(CopyInstruction &i);
+    void planEmulatedNF4ToHF(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
@@ -225,22 +226,24 @@ void CopyPlan::execute(Generator &g)
 template <typename Generator>
 void CopyInstruction::execute(Generator &g)
 {
+    using namespace ngen;
+
 #define UNARY_OP_CASE(o)                                                            \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate)                                    \
             g.o(ngenModifiers(), dst.ngen(), src0.ngenImmediate());                 \
         else                                                                        \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen());                          \
         break;
 #define BINARY_OP_CASE(o)                                                           \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src1.kind == CopyOperand::Immediate)                                    \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngenImmediate());    \
         else                                                                        \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen());             \
         break;
 #define TERNARY_OP_CASE(o)                                                          \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate) {                                  \
             if (src2.kind == CopyOperand::Immediate)                                \
                 g.o(ngenModifiers(), dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate()); \
@@ -251,20 +254,6 @@ void CopyInstruction::execute(Generator &g)
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate()); \
             else                                                                    \
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
-        }                                                                           \
-        break;
-#define BFN_OP_CASE(o)                                                              \
-    case ngen::Opcode::o:                                                           \
-        if (src0.kind == CopyOperand::Immediate) {                                  \
-            if (src2.kind == CopyOperand::Immediate)                                \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate()); \
-            else                                                                    \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngen()); \
-        } else {                                                                    \
-            if (src2.kind == CopyOperand::Immediate)                                \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate()); \
-            else                                                                    \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
         }                                                                           \
         break;
 
@@ -282,7 +271,29 @@ void CopyInstruction::execute(Generator &g)
         BINARY_OP_CASE(sel)
         TERNARY_OP_CASE(mad)
         TERNARY_OP_CASE(csel)
-        BFN_OP_CASE(bfn)
+        case Opcode::bfn:
+            if (src0.kind == CopyOperand::Immediate) {
+                if (src2.kind == CopyOperand::Immediate)
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate());
+                else
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngen());
+            } else {
+                if (src2.kind == CopyOperand::Immediate)
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate());
+                else
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
+            }
+            break;
+        case Opcode::math: {
+            auto fc = static_cast<MathFunction>(ctrl);
+            if (mathArgCount(g.getHardware(), fc) == 1)
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen());
+            else if (src1.kind == CopyOperand::Immediate)
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngenImmediate());
+            else
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngen());
+            break;
+        }
         default: stub("Unsupported opcode");
     }
 

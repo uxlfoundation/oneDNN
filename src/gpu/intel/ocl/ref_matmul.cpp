@@ -209,7 +209,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto group_K = K / ngroups_k;
 
     const bool subbyte_pack
-            = pd()->subbyte_pack_; //(c_d.data_type() == data_type::f4_e2m1);
+            = pd()->subbyte_pack_;
     const dim_t nelems = c_d.nelems();
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);

@@ -723,6 +723,7 @@ void skip_unimplemented_data_type(
     const bool has_f8_e5m2_support = is_gpu();
     const bool has_f8_e4m3_support = is_gpu();
 #endif
+    const bool has_nf4_support = is_gpu();
 
     for (const auto &i_dt : v_dt) {
         bool need_skip = false;
@@ -733,6 +734,7 @@ void skip_unimplemented_data_type(
             case dnnl_e8m0: need_skip = !has_e8m0_support; break;
             case dnnl_f4_e2m1: need_skip = !has_f4_e2m1_support; break;
             case dnnl_f4_e3m0: need_skip = !has_f4_e3m0_support; break;
+            case dnnl_nf4: need_skip = !has_nf4_support; break;
             case dnnl_f8_e5m2: need_skip = !has_f8_e5m2_support; break;
             case dnnl_f8_e4m3: need_skip = !has_f8_e4m3_support; break;
             default: break;

@@ -77,11 +77,11 @@ struct ref_reorder_t : public gpu_primitive_t {
 
             VDISPATCH_REORDER(
                     utils::one_of(sdt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, f4_e3m0, nf4, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REORDER(
                     utils::one_of(ddt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, f4_e3m0, nf4, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
             auto *compute_engine = utils::downcast<compute::compute_engine_t *>(

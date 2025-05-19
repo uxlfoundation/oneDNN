@@ -69,6 +69,12 @@ int rnd_down(int a, unsigned int b) {
 #define MATH_UTILS_DECLARE_F4_E3M0 1
 #endif
 
+#if DT_NF4 || SRC_DT_NF4 || WEI_DT_NF4 || DST_DT_NF4 \
+        || BIA_DT_NF4 || A_DT_NF4 || A_DT_NF4 || B_DT_NF4 \
+        || C_DT_NF4 || DATA_DT_NF4 || POST_OP_USING_NF4
+#define MATH_UTILS_DECLARE_NF4 1
+#endif
+
 #if DT_S4 || SRC_DT_S4 || WEI_DT_S4 || DST_DT_S4 || BIA_DT_S4 || A_DT_S4 \
         || B_DT_S4 || C_DT_S4 || DATA_DT_S4 || WEI_ZP_DT_S4 || SRC_ZP_DT_S4
 #define MATH_UTILS_DECLARE_S4 1
@@ -767,9 +773,53 @@ float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
 }
 
 #endif
+#if MATH_UTILS_DECLARE_NF4
+#define DECLARE_NF4_TABLE \
+    float nf4_table[16] = { \
+            -1.0, \
+            -0.6961928009986877, \
+            -0.5250730514526367, \
+            -0.39491748809814453, \
+            -0.28444138169288635, \
+            -0.18477343022823334, \
+            -0.09105003625154495, \
+             0.0, \
+             0.07958029955625534, \
+             0.16093020141124725, \
+             0.24611230194568634, \
+             0.33791524171829224, \
+             0.44070982933044434, \
+             0.5626170039176941, \
+             0.7229568362236023, \
+             1.0, \
+        };
+
+
+uchar __attribute__((overloadable)) cvt_f32_to_nf4(float a) {
+    DECLARE_NF4_TABLE
+    if (a <= -1.0f) return 0;
+    if (a >= 1.0f) return 0xF;
+    
+    float min_diff = fabs(a - nf4_table[0]);
+    int min_idx = 0;
+    for (int idx = 1; idx < 16; idx++) {
+        float diff = fabs(a - nf4_table[idx]);
+        if (diff < min_diff) {
+            min_diff = diff;
+            min_idx = idx;
+        }
+    }
+    return min_idx;
+}
+
+float __attribute__((overloadable)) cvt_nf4_to_f32(uchar a) {
+    DECLARE_NF4_TABLE
+    return nf4_table[a & 0xF];
+}
+#endif
 
 #if MATH_UTILS_DECLARE_S4 || MATH_UTILS_DECLARE_U4 \
-        || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0
+        || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0 || MATH_UTILS_DECLARE_NF4
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 
 uchar __attribute__((overloadable))

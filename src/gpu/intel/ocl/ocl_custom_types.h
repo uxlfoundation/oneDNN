@@ -101,6 +101,18 @@ f4_e3m0 as_f4_e3m0(unsigned char data) {
 /*****************************/
 
 typedef struct {
+    char data;
+} nf4;
+
+nf4 as_nf4(unsigned char data) {
+    nf4 res;
+    res.data = data;
+    return res;
+}
+
+/*****************************/
+
+typedef struct {
     char invalid_data;
 } undef_data;
 

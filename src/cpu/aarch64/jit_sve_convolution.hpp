@@ -47,7 +47,7 @@ struct jit_sve_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
 #if defined(DNNL_AARCH64_USE_ACL)
-            if (get_fpmath_mode() == fpmath_mode::bf16) {
+            if (attr()->fpmath_.mode_ == fpmath_mode::bf16) {
                 // prefer ACL to jit for fpmath_mode::bf16 if available
                 // since it supports lower precision calculation
                 return status::unimplemented;

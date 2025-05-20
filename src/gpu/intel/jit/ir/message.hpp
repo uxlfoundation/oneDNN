@@ -79,6 +79,7 @@ enum class send_address_t {
 
 enum class send_cache_hint_t {
     undef,
+    hw_default,
     load_once,
 };
 

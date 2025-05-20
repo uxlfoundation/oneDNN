@@ -18,10 +18,19 @@
 --reset
 --dir=FWD_D
 --dt=f32
+--alg=direct
 mb1_ic64oc256_ih200oh200kh1sh1dh0ph0_iw267ow267kw1sw1dw0pw0
 
 --reset
 --dir=FWD_D
 --dt=f32
+--alg=direct
 --attr-fpmath=bf16
 mb1_ic64oc256_ih200oh200kh1sh1dh0ph0_iw267ow267kw1sw1dw0pw0
+
+--reset
+--dir=FWD_D
+--dt=f32
+--alg=auto
+mb50ic64ih56oc64oh56kh3ph1n"resnet_50:res2a_branch2b*3"
+

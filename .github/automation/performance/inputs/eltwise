@@ -15,9 +15,7 @@
 # limitations under the License.
 # *******************************************************************************
 --reset
---inplace=true
 --alg=gelu_erf
 --dir=FWD_D
 --dt=f32,bf16
---tag=abc
 1536x384

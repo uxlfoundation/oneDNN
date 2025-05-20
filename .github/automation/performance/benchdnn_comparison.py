@@ -61,19 +61,26 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
 
         r2_times = r2_samples[prb]
 
-        res = ttest_ind(r2_times, r1_times, alternative='greater')
+        res = ttest_ind(r2_times, r1_times, alternative="greater")
         r1_med = statistics.median(r1_times)
         r2_med = statistics.median(r2_times)
         times[prb] = (r1_med, r2_med)
         times_str = f" {times[prb][0]} vs {times[prb][1]}"
 
+        if r1_med == 0 or min(r1_times) == 0:
+            warnings.warn(
+                f"Avoiding division by 0. Median is {r1_med} and min is {min(r1_times)} for {prb}"
+            )
+            continue
+
         # pass the test if:
         # the t-test passes (i.e. pvalue > 0.05) OR
-        # both the median time and min time has not 
+        # both the median time and min time has not
         # slowed down by more than 10%
-        passed = res.pvalue > 0.05 or \
-                ((r2_med - r1_med) / r1_med < 0.1 and \
-                (min(r2_times) - min(r1_times)) / min(r1_times) < 0.1)
+        passed = res.pvalue > 0.05 or (
+            (r2_med - r1_med) / r1_med < 0.1
+            and (min(r2_times) - min(r1_times)) / min(r1_times) < 0.1
+        )
         if not passed:
             failed_tests.append(prb + times_str)
             passed = False
@@ -85,14 +92,18 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
     if not failed_tests:
         print("Regression tests passed")
     else:
-        message = "\n----The following regression tests failed:----\n" + \
-                    "\n".join(failed_tests) + "\n"
+        message = (
+            "\n----The following regression tests failed:----\n"
+            + "\n".join(failed_tests)
+            + "\n"
+        )
         if "GITHUB_OUTPUT" in os.environ:
             out_message = message.replace("\n", "%0A")
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                print(f'message={out_message}', file=f)
+                print(f"message={out_message}", file=f)
         print(message)
         raise Exception("Some regression tests failed")
+
 
 if __name__ == "__main__":
     compare_two_benchdnn(sys.argv[1], sys.argv[2])

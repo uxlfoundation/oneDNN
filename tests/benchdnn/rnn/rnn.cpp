@@ -1272,6 +1272,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t &prb, res_t *res) {
+
+    dnnl_set_primitive_cache_capacity(0);
     set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
 
     const auto &prim = prb.prop != dnnl_backward ? v_prim[0] : v_prim[1];

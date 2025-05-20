@@ -560,6 +560,11 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
                     this->ws_md_, 1, ws_dims, data_type::u8, format_tag::x));
         }
     }
+    if (st == status::success && !(rnn_.use_matmul || rnn_.is_brgemm)) {
+        printf("FALLBACK TO GEMM!!!\n"), fflush(0);
+    }
+    //printf("rnn_.use_matmul:%d\n", rnn_.use_matmul), fflush(0);
+    //printf("rnn_.is_brgemm:%d\n", rnn_.is_brgemm), fflush(0);
     return st;
 }
 

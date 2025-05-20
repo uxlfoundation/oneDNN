@@ -216,7 +216,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem_kq.A_scale.setAlignment(
                 int8_t(d->keys() * types::data_type_size(scale_dt)));
         problem_kq.A_scale.layout = MatrixLayout::N;
-        problem_kq.aScale2D = true;
+        problem_kq.asPtrDims = 2;
     }
     if (with_key_zp()) {
         auto zp_dt = key_zp_dt();
@@ -289,7 +289,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
                 / value_group_size() * types::data_type_size(scale_dt)));
         problem_vs.A_scale.layout = MatrixLayout::N;
-        problem_vs.aScale2D = true;
+        problem_vs.asPtrDims = 2;
     }
     if (with_value_zp()) {
         auto zp_dt = value_zp_dt();

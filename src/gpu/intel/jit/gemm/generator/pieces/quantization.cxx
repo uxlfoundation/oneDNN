@@ -35,7 +35,7 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
 {
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
     bool xo2D = (xoPtrDims == 2);
-    bool xs2D = isA ? problem.aScale2D : problem.bScale2D;
+    bool xs2D = isA ? problem.aScale2D() : problem.bScale2D();
     bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && problem.earlyDequantizeA()
                                 : problem.bOffset == ABOffset::Calc && problem.earlyDequantizeB());
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);

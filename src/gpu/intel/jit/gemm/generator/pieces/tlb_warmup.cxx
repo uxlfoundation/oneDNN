@@ -44,7 +44,7 @@ void BLASKernelGenerator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GE
         auto kq = state.ra.allocSub<uint32_t>();
         divDown(mq, state.inputs.m, problem.aqGroupM, strategy, state);
         divDown(kq, state.inputs.k, problem.aqGroupK, strategy, state);
-        if (problem.aScale2D) {
+        if (problem.aScale2D()) {
             tlbWarmup(problem.A_scale, strategy.A_scale, state.inputs.aScalePtr,
                       mq, kq, state.ldaScale, lid, whose++, problem, strategy, state);
         }
@@ -61,7 +61,7 @@ void BLASKernelGenerator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GE
         auto nq = state.ra.allocSub<uint32_t>();
         divDown(kq, state.inputs.k, problem.bqGroupK, strategy, state);
         divDown(nq, state.inputs.n, problem.bqGroupN, strategy, state);
-        if (problem.bScale2D) {
+        if (problem.bScale2D()) {
             tlbWarmup(problem.B_scale, strategy.B_scale, state.inputs.bScalePtr,
                       kq, nq, state.ldbScale, lid, whose++, problem, strategy, state);
         }

@@ -147,7 +147,8 @@ Use the following command to run tests selected by a build configuration:
 
 To modify the coverage, use the
 [`ONEDNN_TEST_SET`](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-test-set)
-build option.
+build option. More information with examples can be found in [build guide](https://uxlfoundation.github.io/oneDNN/dev_guide_build.html#validate-the-build).
+Before submitting any code, it is advised to run the `NIGHTLY` test set.
 
 More details on how to run benchdnn can be found in
 [benchdnn documentation](tests/benchdnn/doc/benchdnn_general_info.md#running-tests).

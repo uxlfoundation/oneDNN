@@ -51,18 +51,6 @@ public:
         return xpu::ocl::convert_to_dnnl(err);
     }
 
-    status_t set_svm_arg(int arg_index, const void *arg_value) {
-#ifdef CL_VERSION_2_0
-        cl_int err = clSetKernelArgSVMPointer(kernel_, arg_index, arg_value);
-        return xpu::ocl::convert_to_dnnl(err);
-#else
-        // SVM is not supported.
-        UNUSED(arg_index);
-        UNUSED(arg_value);
-        return status::runtime_error;
-#endif
-    }
-
     status_t set_usm_arg(
             impl::engine_t *engine, int arg_index, const void *arg_value) {
         return xpu::ocl::usm::set_kernel_arg(
@@ -199,9 +187,6 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             CHECK(kernel->set_arg(i, arg.size(), arg.value()));
             // Assuming local memory arguments contribute to
             // the CL_DEVICE_MAX_PARAMETER_SIZE limit as a pointer type
-            param_bytes += pointer_size;
-        } else if (arg.is_svm_pointer()) {
-            CHECK(kernel->set_svm_arg(i, arg.value()));
             param_bytes += pointer_size;
         } else {
             CHECK(kernel->set_arg(i, arg.size(), arg.value()));

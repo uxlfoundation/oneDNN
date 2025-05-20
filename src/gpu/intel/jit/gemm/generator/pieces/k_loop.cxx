@@ -87,8 +87,8 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
     dequantizeA &= !slmDequantizeA;
     dequantizeB &= !slmDequantizeB;
 
-    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D;
-    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D;
+    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D();
+    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D();
     bool as2DLate = as2D && state.lateScale2DA;
     bool bs2DLate = bs2D && state.lateScale2DB;
     as2D &= !as2DLate;

@@ -253,7 +253,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     : data_type::s32;
             if (swap_ab_) std::swap(ao_type, bo_type);
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
-            int_acc &= !wei_scales_2d_;
+            int_acc &= !wei_scales_2d();
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
@@ -319,15 +319,14 @@ struct gen_gemm_t : public gpu_gemm_t {
             CHECK(kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
-                    swap_ab(), ao_dims_, bo_dims_, wei_scales_2d_,
-                    src_scales_2d_, with_sround_, wei_q2d_group_k_,
-                    src_q2d_group_k_, with_c_zero_points(), with_bias(),
-                    eff_sum_ab(), alpha(), beta(), eff_a_type(), eff_b_type(),
-                    desc()->c_type(), ao_type, bo_type, wei_scales_type_,
-                    src_scales_type_, co_type, acc_type, eff_align_a(),
-                    eff_align_b(), align_c(), eff_m(), eff_n(), d->k(),
-                    eff_lda(), eff_ldb(), d->ldc(), d->batch(),
-                    std::move(gpu_post_ops)));
+                    swap_ab(), ao_dims_, bo_dims_, asc_dims_, bsc_dims_,
+                    with_sround_, wei_q2d_group_k_, src_q2d_group_k_,
+                    with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
+                    beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
+                    ao_type, bo_type, wei_scales_type_, src_scales_type_,
+                    co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
+                    eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                    d->batch(), std::move(gpu_post_ops)));
 
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.

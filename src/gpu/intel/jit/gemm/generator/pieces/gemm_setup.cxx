@@ -819,11 +819,11 @@ void BLASKernelGenerator<hw>::gemmScaleInputs(const GEMMProblem &problem, const 
         scale(problem.Tbo, inputs.ldbo, ldbq);
     if (problem.boPtrDims >= 0)
         scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);
-    if (problem.aScale2D) {
+    if (problem.aScale2D()) {
         scale(problem.Ta_scale, inputs.ldaScale, ldaq);
         scale(problem.Ta_scale, inputs.offsetAScale, inputs.offsetAq);
     }
-    if (problem.bScale2D) {
+    if (problem.bScale2D()) {
         scale(problem.Tb_scale, inputs.ldbScale, ldbq);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
@@ -1538,11 +1538,11 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
 
         if (Cr_unrollX <= panel && fullTileRepack) {
             // Repack full tiles.
-            if (problem.aScale2D && problem.bScale2D)
+            if (problem.aScale2D() && problem.bScale2D())
                 period = gcd(problem.aqGroupK, problem.bqGroupK);
-            else if (problem.aScale2D)
+            else if (problem.aScale2D())
                 period = problem.aqGroupK;
-            else if (problem.bScale2D)
+            else if (problem.bScale2D())
                 period = problem.bqGroupK;
             else
                 period = strategy.repackC ? strategy.repackC : strategy.unroll[LoopK];
@@ -1595,8 +1595,8 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
     }
 
     // Prepare strategies and layouts for 2D A/B grouped quantization parameters (offsets and scales).
-    bool as2D = problem.aScale2D;
-    bool bs2D = problem.bScale2D;
+    bool as2D = problem.aScale2D();
+    bool bs2D = problem.bScale2D();
     bool ao2D = (problem.aoPtrDims == 2);
     bool bo2D = (problem.boPtrDims == 2);
     bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D && problem.earlyDequantizeA();
@@ -2172,8 +2172,8 @@ void BLASKernelGenerator<hw>::gemmCalcQuantizationIncrements(const GEMMProblem &
 {
     bool ao2D = (problem.aoPtrDims == 2);
     bool bo2D = (problem.boPtrDims == 2);
-    bool as2D = problem.aScale2D;
-    bool bs2D = problem.bScale2D;
+    bool as2D = problem.aScale2D();
+    bool bs2D = problem.bScale2D();
 
     auto calcInterleavedQIncrement = [&](bool isA, SubregisterPair &base, LDIncrements &increments) {
         auto inc   = isA ? state.kaqStride  : state.kbqStride;
@@ -2429,11 +2429,11 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
         state.inputs.surfaceAO = interface.getArgumentSurfaceIfExists("ao_ptr");
         state.inputs.surfaceBO = interface.getArgumentSurfaceIfExists("bo_ptr");
     }
-    if (problem.aScale2D) {
+    if (problem.aScale2D()) {
         state.inputs.aScalePtr = interface.getArgumentIfExists("a_scale_ptr");
         state.inputs.surfaceAScale = interface.getArgumentSurfaceIfExists("a_scale_ptr");
     }
-    if (problem.bScale2D) {
+    if (problem.bScale2D()) {
         state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
@@ -2628,13 +2628,13 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
             state.ra.claim(state.inputs.offsetBO);
     }
 
-    if (problem.aScale2D) {
+    if (problem.aScale2D()) {
         state.ra.claim(state.inputs.aScalePtr);
         if (state.inputs.offsetAScale.isValid())
             state.ra.claim(state.inputs.offsetAScale);
     }
 
-    if (problem.bScale2D) {
+    if (problem.bScale2D()) {
         state.ra.claim(state.inputs.bScalePtr);
         if (state.inputs.offsetBScale.isValid())
             state.ra.claim(state.inputs.offsetBScale);

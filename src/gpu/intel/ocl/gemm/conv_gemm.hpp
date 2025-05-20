@@ -202,7 +202,9 @@ struct conv_gemm_t : public gpu_gemm_t {
                         ctx.args().c->clone())));
 
         std::unique_ptr<memory_t, memory_deleter_t> bias = [&] {
-            if (ctx.args().bias) {
+            if (ctx.args().bias
+                    && pd()->conv_pd->src_md(2)->format_kind
+                            != format_kind::undef) {
                 return std::unique_ptr<memory_t, memory_deleter_t>(new memory_t(
                         ctx.stream()->engine(), pd()->conv_pd->src_md(2),
                         ctx.args().bias->clone()));

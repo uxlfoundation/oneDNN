@@ -54,11 +54,16 @@ public:
         tensor_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();
         auto src_tile_layout = src_layout_.map(tile);
+        auto dst_tile_layout = dst_layout_.map(tile);
         const auto &src_tile_blocks = src_tile_layout.blocks();
+        const auto &dst_tile_blocks = dst_tile_layout.blocks();
         gpu_assert(src_tile_blocks.size() <= 1);
+        gpu_assert(dst_tile_blocks.size() <= 1);
         ngen_register_scope_t block_scope(scope.register_allocator());
         int src_stride
                 = src_tile_blocks.empty() ? 1 : (int)src_tile_blocks[0].stride;
+        int dst_stride
+                = dst_tile_blocks.empty() ? 1 : (int)dst_tile_blocks[0].stride;
         int grf_size = ngen::GRF::bytes(hw_);
         src_layout_.for_each_tile(
                 tile, [&](const std::vector<dim_t> &src_start) {
@@ -92,8 +97,11 @@ public:
                     bool s_is_fp8 = src_type.is_fp8();
                     bool d_is_f = dst_type.is_f32();
                     bool native_bf = host->exec_cfg().hw().systolic_support();
+                    bool sd_aligned = (tile_elems == 1
+                            || (dst_stride * ngen::getBytes(d.type())
+                                    == src_stride * ngen::getBytes(s.type())));
 
-                    if (src_stride != 1 || s_is_hf || s_is_fp8
+                    if (src_stride != 1 || !sd_aligned || s_is_hf || s_is_fp8
                             || (s_is_bf && !native_bf)
                             || (s_is_bf && !s_half_grf_aligned)) {
                         auto tmp_type = src_type;

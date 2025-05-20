@@ -155,7 +155,7 @@ public:
         for (int i = 0; i < arg_list.nargs(); i++) {
             auto &arg = arg_list.get(i);
             auto req_arg_type = arg_types()[i];
-            if (!arg.is_global() && !arg.is_local() && !arg.is_svm_pointer()) {
+            if (!arg.is_global() && !arg.is_local()) {
                 if (req_arg_type == gpu::intel::compute::scalar_type_t::undef) {
                     // Types of kernel arguments may not be available when zebin
                     // is used.

@@ -29,6 +29,10 @@ void handle_special_dt_set(
     auto driver = opkind2driver(opstr2kind(op.kind_));
     bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
 
+    if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "u8") {
+        op.in_lts_[1].data_type_ = "s8";
+    }
+
     if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
             || is_f8_quantization) {
         // pool does not support x8f32 on cpu, and binary does not support
@@ -155,11 +159,24 @@ partition_data_displacer_t::partition_data_displacer_t(
                                         == f8_main_op_kind.end()))
                             break;
 
+                        auto quantization_type = filling_type_t::quantization;
+                        if (aop.in_lts_.size() > 1) {
+                            const static std::unordered_set<dnnl_driver_t>
+                                    quant_weight_ops {dnnl_driver_t::conv,
+                                            dnnl_driver_t::deconv,
+                                            dnnl_driver_t::matmul};
+                            auto driver = opkind2driver(opstr2kind(aop.kind_));
+
+                            if (quant_weight_ops.find(driver)
+                                            != quant_weight_ops.end()
+                                    && i == 1)
+                                quantization_type
+                                        = filling_type_t::quantization_weights;
+                        }
+
                         displace_args_.emplace(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
-                                        i == 1 ? filling_type_t::
-                                                        quantization_weights
-                                               : filling_type_t::quantization});
+                                        quantization_type});
                         break;
                     }
                 } else if (parent_op->kind_ == "StaticReshape") {

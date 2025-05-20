@@ -69,7 +69,7 @@ static inline void quantize_igo(int8_t *scratch_quantized,
     init_dims(L, D, I, G, O, src_d);
 
     assert(scales != nullptr);
-    parallel(0, [&](const int ithr, const int nthr) {
+    parallel(0, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(L * D * I, nthr, ithr, start, end);
         for (int ldi = start; ldi < end; ldi++) {
@@ -95,7 +95,7 @@ static inline void quantize_goi(int8_t *scratch_quantized,
     init_dims(L, D, I, G, O, src_d);
 
     assert(scales != nullptr);
-    parallel_nd(L * D, G * O, [&](dim_t ld, dim_t go) {
+    parallel_nd(L * D, G * O, [=](dim_t ld, dim_t go) {
         const float s = scales[(mask == 0) ? 0 : go];
         PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < I; i++) {
@@ -119,7 +119,7 @@ static inline void compensate_igo(float *compensation,
     // parallelisation overhead if dimensions are small
     const int LD_nthr = nstl::min(L * D, dim_t(nthr));
     const int GO_nthr = nstl::min(G * O, dim_t(nthr / LD_nthr));
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int LD_ithr = -1;
         int GO_ithr = -1;
         dim_t LD_s = -1, LD_e = -1;
@@ -170,7 +170,7 @@ static inline void compensate_goi(float *compensation,
     dim_t L, D, I, G, O;
     init_dims(L, D, I, G, O, src_d);
 
-    parallel_nd(L * D, G * O, [&](dim_t ld, dim_t go) {
+    parallel_nd(L * D, G * O, [=](dim_t ld, dim_t go) {
         int32_t compensation_s32 = 0;
         PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < I; i++) {
@@ -260,7 +260,7 @@ private:
                 = utils::array_product(input_d.dims(), input_d.ndims() - 1);
         const dim_t inner_dim = input_d.dims()[input_d.ndims() - 1];
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(outer_dim, nthr, ithr, start, end);
             for (int i = start; i < end; ++i) {
@@ -284,9 +284,10 @@ private:
         assert(type_o == data_type::u8 || type_o == data_type::s8);
 
         const memory_desc_wrapper &input_d = pd()->src_md();
-        const memory_desc_wrapper &output_d = pd()->dst_md();
         const size_t nelems = input_d.nelems();
-        parallel_nd(nelems, [&](size_t i) {
+        parallel_nd(nelems, [=](size_t i) {
+            const memory_desc_wrapper &input_d = pd()->src_md();
+            const memory_desc_wrapper &output_d = pd()->dst_md();
             const float in = (float)input[input_d.off_l(i)] * scale + shift;
             output[output_d.off_l(i)]
                     = q10n::qz_a1b0_t<float, out_data_t>()(in);
@@ -654,7 +655,7 @@ private:
                     = (out_data_t *)ctx->get_scratchpad_grantor()
                               .template get<void>(memory_tracking::names::
                                               key_reorder_rnn_weights_xf16_cvt);
-            parallel_nd(L * D, [&](dim_t ld) {
+            parallel_nd(L * D, [=](dim_t ld) {
                 types::cvt_from_float((bfloat16_t *)input_cvt + ld * G * O * I,
                         (float *)input + ld * G * O * I, G * O * I);
             });
@@ -670,7 +671,7 @@ private:
                                     key_reorder_rnn_weights_transposition);
             const dim_t M = to_igo ? G * O : I;
             const dim_t N = to_igo ? I : G * O;
-            parallel_nd(L * D, N, [&](dim_t ld, dim_t i) {
+            parallel_nd(L * D, N, [=](dim_t ld, dim_t i) {
                 for (dim_t j = 0; j < M; j++) {
                     input_tr[ld * M * N + i * M + j]
                             = input_cvt[ld * M * N + j * N + i];
@@ -939,7 +940,7 @@ private:
                   };
 
         parallel_nd(L, D, G, OB, IB,
-                [&](dim_t l, dim_t d, dim_t g, dim_t ob, dim_t ib) {
+                [=](dim_t l, dim_t d, dim_t g, dim_t ob, dim_t ib) {
                     auto inp = &scratch_quantized[off_plain(
                             l, d, ib * i_block, g, ob * o_block)];
                     auto out = &dst[off_blk(l, d, g, ob, ib)];

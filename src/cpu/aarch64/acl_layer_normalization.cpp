@@ -45,6 +45,9 @@ status_t acl_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
             "src tensor must have between 2 and 5 (inclusive) "
             "dimensions");
 
+    // skip_mean is set for root-mean-square normalization mode.
+    ACL_CHECK_SUPPORT(skip_mean(), "rms normalization is not supported");
+
     // msdNorm only supports lnorm for src in a channels last format.
     // So if channels aren't last (ie. if they aren't dense),
     // then reorder into a channels last format

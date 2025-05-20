@@ -124,6 +124,11 @@ public:
             operator[](k) = value;
     }
 
+    pvar_map_t(const std::initializer_list<std::pair<pvar_t, ValueT>> &keys) {
+        for (auto &k : keys)
+            operator[](k.first) = k.second;
+    }
+
     explicit pvar_map_t(const std::string &s) {
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
             operator[](pvar_t(kv.first)) = ValueT(kv.second);

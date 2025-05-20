@@ -284,12 +284,15 @@ struct brgemm_matmul_conf_utils_t {
                 && !bgmmc.blocked_B;
         bool use_copy_buffer = IMPLICATION(
                 this->is_f32(), use_heuristic && (big_LDB && is_pow2));
-        return is_avx2_simd_tail
+        bool ok = is_avx2_simd_tail
                 || (this->is_f16() && bgmmc.isa == avx512_core_fp16)
                 || (use_copy_buffer && this->check_is_plain(bgmmc.wei_tag))
                 || this->check_is_transposed(bgmmc.wei_tag)
                 || (bgmmc.wei_tag == format_tag::acbd)
                 || (bgmmc.wei_tag == format_tag::adbc);
+        printf("use buffer b: %d, is f8: %d, wei tag: %d\n", ok, this->is_f8(),
+                bgmmc.wei_tag);
+        return ok;
     }
 
     inline dim_t get_actual_LDB() const {
@@ -334,6 +337,8 @@ struct brgemm_matmul_conf_utils_t {
     inline bool is_f16() const { return f16_dt; }
 
     inline bool is_f8() const { return f8_dt; }
+
+    inline bool is_bf8() const { return bf8_dt; }
 
     inline bool is_int8() const { return int8_dt; }
 
@@ -384,7 +389,8 @@ struct brgemm_matmul_conf_utils_t {
 private:
     brgemm_matmul_conf_t &bgmmc;
 
-    const bool f32_dt, bf16_dt, f16_dt, f8_dt, int8_dt, bf32_dt, tf32_dt;
+    const bool f32_dt, bf16_dt, f16_dt, f8_dt, bf8_dt, int8_dt, bf32_dt,
+            tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt;
     const bool A_any_layout;

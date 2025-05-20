@@ -2671,7 +2671,9 @@ template <typename Vmm>
 void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
     preamble();
     sub(rsp, stack_space_needed_);
-
+    printf("brgemm copy b int8 kernel\n");
+    printf("src stride: %d, tr src stride: %d, dot product: %d\n", src_stride_,
+            tr_src_stride_, avx512_core_dot_product_);
     if (avx512_core_dot_product_) {
         mov(reg_tmp.cvt16(), 1);
         vpbroadcastw(vmm_ones_words, reg_tmp.cvt16());

@@ -536,7 +536,9 @@ status_t brgemm_desc_set_attr(
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    if (brg->is_fp8 && !is_superset(brg->isa_impl, avx512_core_amx_fp16))
+    if (brg->is_fp8
+            && !(is_superset(brg->isa_impl, avx512_core_amx_fp16)
+                    || is_superset(brg->isa_impl, avx10_2_512)))
         return status::unimplemented;
 
     return status::success;

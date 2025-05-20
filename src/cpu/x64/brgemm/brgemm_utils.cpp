@@ -189,7 +189,8 @@ void set_isa_impl(brgemm_desc_t *brg) {
     } else if (brg->is_fp8) {
         brg->isa_impl = utils::map(true, isa_undef,
                 is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
-                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16);
+                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
+                is_isa_ok(avx10_2_512), avx10_2_512);
     }
 }
 
@@ -242,7 +243,9 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     const int non_int8_vnni_regs
             = (brg->is_int8 && !brg->has_int8_vnni) ? 2 : 0;
 
-    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs;
+    const int fp8_emu_regs = brg->is_fp8_via_convert_non_amx() ? 5 : 0;
+
+    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs + fp8_emu_regs;
 
     // --------------- microkernel ---------------
     // see vmm_inp_shift() in brgemm kernel

@@ -1179,7 +1179,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     ctx.zp_a_neg_value_ptr = (void *)brgmm_ctx.get_zp_a_neg_val_ptr();
     ctx.zp_b_value_ptr = (void *)brgmm_ctx.get_zp_b_val_ptr();
     ctx.dynamic_src_stride = brgmm_ctx.copy_B_wei_stride();
-
+    //printf("gemm batch: %d, K blk: %d, M blk: %d, N blk: %d, extendable k: %d, wei k blk: %d, wei n blk: %d\n", gemm_batch, bgmmc.K_blk, bgmmc.M_blk, bgmmc.N_blk, bgmmc.extendable_k, bgmmc.wei_k_blk, bgmmc.wei_n_blk);
     for (int gb = 0; gb < gemm_batch; gb++) {
         const int k = k_start + gb * bgmmc.K_blk;
         ctx.src = (void *)brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
@@ -1629,6 +1629,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     const char *get_data_B_kn_ptr(const char *batch_ptr, int k, int n) const {
+        //printf("k: %d, n: %d, B kn off: %d\n", k, n, get_data_B_kn_off(k, n));
         const char *b_ptr = batch_ptr + get_data_B_kn_off(k, n);
         if (bgmmc_.packed_sparse_weights) {
             const dim_t blk_num
@@ -1743,6 +1744,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         UNUSED(n_blk_idx);
         if (!bgmmc_.use_buffer_b) return nullptr;
         int k_blk_local = k_blk_idx % get_K_chunk_size();
+        //printf("buf B - k blk idx: %d, n blk idx: %d, gb: %d, offs: %d\n", k_blk_idx, n_blk_idx, gb, ithr * bgmmc_.buffer_b_per_thread_sz + k_blk_local * bgmmc_.buffer_b_k_brg_stride + gb * bgmmc_.buffer_b_gb_stride);
         return buf_B_ptr_ + ithr * bgmmc_.buffer_b_per_thread_sz
                 + k_blk_local * bgmmc_.buffer_b_k_brg_stride
                 + gb * bgmmc_.buffer_b_gb_stride;

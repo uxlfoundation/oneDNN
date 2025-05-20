@@ -1014,7 +1014,7 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
                         idx, d_offset);
                 if (with_binary_per_oc_bcast_)
                     rhs_arg_params.vmm_idx_to_oc_elem_off_val.emplace(
-                            idx, oc_logical_offset(ldb));
+                            idx, d_offset % brg.dst_md()->dims[1]);
             }
         }
     }

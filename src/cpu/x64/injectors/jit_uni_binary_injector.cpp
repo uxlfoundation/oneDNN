@@ -593,12 +593,12 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         }
         case broadcasting_strategy_t::per_oc:
         case broadcasting_strategy_t::per_oc_spatial: {
-            append_offset_under_mem_addr(
-                    rhs_arg_params.vmm_idx_to_oc_elem_off_addr,
-                    rhs_arg_params.vmm_idx_to_oc_off_reg, vmm_idx, rhs_addr_reg,
-                    rhs_helper_reg, rhs_arg_elem_size, is_first);
-            append_value_offset(rhs_arg_params.vmm_idx_to_oc_elem_off_val,
-                    vmm_idx, rhs_addr_reg, rhs_arg_elem_size);
+            append_oc_offset_opt(rhs_arg_params.vmm_idx_to_oc_elem_off_addr,
+                    rhs_arg_params.vmm_idx_to_oc_off_reg,
+                    rhs_arg_params.vmm_idx_to_oc_elem_off_val, vmm_idx,
+                    rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
+            // append_value_offset(rhs_arg_params.vmm_idx_to_oc_elem_off_val,
+            //         vmm_idx, rhs_addr_reg, rhs_arg_elem_size);
             // append_oc_offset(rhs_arg_params.vmm_idx_to_out_addr,
             //         rhs_arg_params.vmm_idx_to_out_reg,
             //         rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
@@ -671,9 +671,10 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_offset_under_mem_addr(
+void jit_uni_binary_injector_t<isa, Vmm>::append_oc_offset_opt(
         const std::map<int, Xbyak::Address> &vmm_idx_to_elem_addr_off,
-        const std::map<int, Xbyak::Reg64> &vmm_idx_to_elem_reg_off, int vmm_idx,
+        const std::map<int, Xbyak::Reg64> &vmm_idx_to_elem_reg_off,
+        const std::map<int, size_t> &vmm_idx_to_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
         std::size_t elem_size_bytes, bool is_first) const {
 
@@ -698,17 +699,15 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_offset_under_mem_addr(
         } else {
             host_->mov(addr_reg, addr_cache_reg);
         }
+
+        const auto it_off_val = vmm_idx_to_elem_off_val.find(vmm_idx);
+
+        if (it_off_val != vmm_idx_to_elem_off_val.end()) {
+            host_->add(addr_reg, it_off_val->second * elem_size_bytes);
+        }
+    } else {
+        printf("assert\n");
     }
-}
-
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_value_offset(
-        const std::map<int, size_t> &vmm_idx_to_elem_val_off, int vmm_idx,
-        const Xbyak::Reg64 &addr_reg, std::size_t elem_size_bytes) const {
-
-    const auto it_off_val = vmm_idx_to_elem_val_off.find(vmm_idx);
-    if (it_off_val != vmm_idx_to_elem_val_off.end())
-        host_->add(addr_reg, it_off_val->second * elem_size_bytes);
 }
 
 template <cpu_isa_t isa, typename Vmm>

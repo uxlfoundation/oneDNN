@@ -327,15 +327,12 @@ private:
      * Helper functions responsible for preparing rhs tensor slice address.
      */
 
-    void append_offset_under_mem_addr(
+    void append_oc_offset_opt(
             const std::map<int, Xbyak::Address> &vmm_idx_to_elem_addr_off,
             const std::map<int, Xbyak::Reg64> &vmm_idx_to_elem_reg_off,
-            int vmm_idx, const Xbyak::Reg64 &addr_reg,
-            const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes,
-            bool is_first) const;
-    void append_value_offset(
-            const std::map<int, size_t> &vmm_idx_to_elem_val_off, int vmm_idx,
-            const Xbyak::Reg64 &addr_reg, std::size_t elem_size_bytes) const;
+            const std::map<int, size_t> &vmm_idx_to_elem_off_val, int vmm_idx,
+            const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+            std::size_t elem_size_bytes, bool is_first) const;
 
     void append_no_broadcast_offset(
             const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,

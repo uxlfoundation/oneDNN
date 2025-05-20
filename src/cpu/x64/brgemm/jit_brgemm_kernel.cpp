@@ -119,6 +119,11 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             with_binary_non_scalar_bcast_ = binary_injector::
                     any_binary_postop_rhs_non_scalar_broadcast(
                             brg.attr()->post_ops_, dst_md_wrapper);
+
+            std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_)
+                    = bcast_strategies_present_tup(brg.attr->post_ops_.entry_,
+                            dst_md_wrapper, broadcasting_strategy_t::per_oc,
+                            broadcasting_strategy_t::per_oc_spatial);
         }
         if (brg.is_bf16_emu)
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
@@ -271,6 +276,8 @@ private:
 
     bool is_ldb_loop_ = false;
     bool with_binary_non_scalar_bcast_ = false;
+    bool with_binary_per_oc_bcast_ = false;
+    bool with_binary_per_oc_sp_bcast_ = false;
     const int max_effective_vregs;
 
     Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
@@ -718,6 +725,13 @@ void jit_brgemm_kernel_t<Wmm>::advance_ldb_post_op_regs() {
         add(reg_aux_scales, scales_offset(1));
         mov(ptr[rsp + reg_aux_scales_offs_], reg_aux_scales);
     }
+    if (with_binary_per_oc_bcast_) {
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_aux_binary_postops_oc_l_offs_]);
+        add(reg_aux_binary_postops_oc_l, oc_logical_offset(1));
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                reg_aux_binary_postops_oc_l);
+    }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_aux_zp_comp_a, ptr[rsp + reg_aux_zp_comp_a_offs_]);
         add(reg_aux_zp_comp_a, zp_comp_a_offset(1));
@@ -741,6 +755,13 @@ void jit_brgemm_kernel_t<Wmm>::restore_ldb_post_op_regs(dim_t ld_block2) {
         mov(reg_aux_scales, ptr[rsp + reg_aux_scales_offs_]);
         sub(reg_aux_scales, scales_offset(ld_block2 - 1));
         mov(ptr[rsp + reg_aux_scales_offs_], reg_aux_scales);
+    }
+    if (with_binary_per_oc_bcast_) {
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_aux_binary_postops_oc_l_offs_]);
+        sub(reg_aux_binary_postops_oc_l, oc_logical_offset(ld_block2 - 1));
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                reg_aux_binary_postops_oc_l);
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_aux_zp_comp_a, ptr[rsp + reg_aux_zp_comp_a_offs_]);
@@ -767,6 +788,17 @@ void jit_brgemm_kernel_t<Wmm>::advance_bdb_post_op_regs(dim_t adj_bd_block) {
         add(reg_aux_zp_comp_a, bdb_compensation_offset(1));
         mov(ptr[rsp + reg_aux_zp_comp_a_offs_], reg_aux_zp_comp_a);
     }
+    if (with_binary_per_oc_sp_bcast_) {
+        const injector_utils::register_preserve_guard_t register_guard(
+                this, {reg_aux_binary_postops_oc_l});
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_aux_binary_postops_oc_l_offs_
+                        + register_guard.stack_space_occupied()]);
+        add(reg_aux_binary_postops_oc_l, adj_bd_block);
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_
+                    + register_guard.stack_space_occupied()],
+                reg_aux_binary_postops_oc_l);
+    }
 }
 
 template <typename Wmm>
@@ -784,6 +816,18 @@ void jit_brgemm_kernel_t<Wmm>::restore_bdb_post_op_regs(dim_t bd_block2) {
             mov(reg_aux_zp_comp_a, ptr[rsp + reg_aux_zp_comp_a_offs_]);
             sub(reg_aux_zp_comp_a, bdb_compensation_offset(bd_block2 - 1));
             mov(ptr[rsp + reg_aux_zp_comp_a_offs_], reg_aux_zp_comp_a);
+        }
+        if (with_binary_per_oc_sp_bcast_) {
+            post_processed = true;
+            const injector_utils::register_preserve_guard_t register_guard(
+                    this, {reg_aux_binary_postops_oc_l});
+            mov(reg_aux_binary_postops_oc_l,
+                    ptr[rsp + reg_aux_binary_postops_oc_l_offs_
+                            + register_guard.stack_space_occupied()]);
+            sub(reg_aux_binary_postops_oc_l, (bd_block2 - 1) * brg.bd_block);
+            mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_
+                        + register_guard.stack_space_occupied()],
+                    reg_aux_binary_postops_oc_l);
         }
     }
     if (post_processed) mov(reg_buf, ptr[rsp + reg_buf_offs_]);
@@ -819,6 +863,15 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
         add(reg_aux_scales,
                 (is_tail) ? scales_offset(1, true) : scales_offset(ld_block2));
         mov(ptr[rsp + reg_aux_scales_offs_], reg_aux_scales);
+    }
+    if (with_binary_per_oc_bcast_) {
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_aux_binary_postops_oc_l_offs_]);
+        add(reg_aux_binary_postops_oc_l,
+                (is_tail) ? oc_logical_offset(1, true)
+                          : oc_logical_offset(ld_block2));
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                reg_aux_binary_postops_oc_l);
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_aux_zp_comp_a, ptr[rsp + reg_aux_zp_comp_a_offs_]);
@@ -856,6 +909,13 @@ void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(dim_t bd_block2) {
         add(reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2));
         mov(ptr[rsp + reg_zp_comp_b_offs_], reg_zp_comp_b);
     }
+    if (with_binary_per_oc_sp_bcast_) {
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_binary_postops_oc_l_offs_]);
+        add(reg_binary_postops_oc_l, bd_block2 * brg.bd_block);
+        mov(ptr[rsp + reg_binary_postops_oc_l_offs_],
+                reg_aux_binary_postops_oc_l);
+    }
 }
 
 template <typename Wmm>
@@ -877,7 +937,12 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
             mov(reg_scales, ptr[rsp + reg_scales_offs_]);
             mov(ptr[rsp + reg_aux_scales_offs_], reg_scales);
         }
-
+        if (with_binary_per_oc_bcast_) {
+            mov(reg_binary_postops_oc_l,
+                    ptr[rsp + reg_binary_postops_oc_l_offs_]);
+            mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                    reg_binary_postops_oc_l);
+        }
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
             mov(reg_zp_comp_a, ptr[rsp + reg_zp_comp_a_offs_]);
             mov(ptr[rsp + reg_aux_zp_comp_a_offs_], reg_zp_comp_a);
@@ -891,6 +956,12 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_b, ptr[rsp + reg_zp_comp_b_offs_]);
         mov(ptr[rsp + reg_aux_zp_comp_b_offs_], reg_zp_comp_b);
+    }
+    if (with_binary_per_oc_sp_bcast_) {
+        mov(reg_aux_binary_postops_oc_l,
+                ptr[rsp + reg_binary_postops_oc_l_offs_]);
+        mov(ptr[rsp + reg_aux_binary_postops_oc_l_offs_],
+                reg_binary_postops_oc_l);
     }
 }
 
@@ -938,6 +1009,15 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.with_scales) {
         mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
         mov(ptr[rsp + reg_scales_offs_], reg_scales);
+    }
+
+    if (with_binary_per_oc_bcast_) {
+        mov(reg_binary_postops_oc_l, ptr[param1 + GET_OFF(oc_logical_off)]);
+        mov(ptr[rsp + reg_binary_postops_oc_l_offs_], reg_binary_postops_oc_l);
+    } else if (with_binary_per_oc_sp_bcast_) {
+        mov(reg_binary_postops_oc_l,
+                ptr[param1 + GET_OFF(dst_row_logical_off)]);
+        mov(ptr[rsp + reg_binary_postops_oc_l_offs_], reg_binary_postops_oc_l);
     }
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
@@ -1170,6 +1250,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
     const auto guard_space = register_guard.stack_space_occupied();
     if (brg.with_binary) {
         mov(param1, ptr[rsp + abi_param1_offs_ + guard_space]);
+        mov(reg_binary_po_stack_frame, rsp);
     }
 
     if (brg.is_runtime_ldd && bd_block > 1)
@@ -1190,6 +1271,16 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_aux_D);
                 rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
                         vmm_idx, D_offset(bd, ld));
+                if (with_binary_per_oc_bcast_ || with_binary_per_oc_sp_bcast_) {
+                    rhs_arg_params.vmm_idx_to_oc_elem_off_addr.emplace(idx,
+                            ptr[reg_binary_po_stack_frame
+                                    + reg_aux_binary_postops_oc_l_offs_
+                                    + guard_space]);
+                    rhs_arg_params.vmm_idx_to_oc_elem_off_val.emplace(zmm_idx,
+                            with_binary_per_oc_bcast_
+                                    ? D_offset(bd, ld) % brg.dst_md()->dims[1]
+                                    : bd);
+                }
                 if (is_ld_tail) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
             }
         };
@@ -1724,7 +1815,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                         sub(reg_aux_D, ldb_D_offset(ld_block2 - 1));
                         restore_ldb_post_op_regs(ld_block2);
                         post_processed |= utils::one_of(true, brg.with_bias,
-                                brg.with_scales,
+                                brg.with_scales, with_binary_per_oc_bcast_,
                                 brg.zp_type_a != brgemm_broadcast_t::none,
                                 brg.zp_type_c == brgemm_broadcast_t::per_n,
                                 brg.with_dst_scales);
@@ -1741,7 +1832,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                                 brg.zp_type_b != brgemm_broadcast_t::none,
                                 brg.req_comp_pads_with_bcast
                                         && brg.zp_type_a
-                                                != brgemm_broadcast_t::none);
+                                                != brgemm_broadcast_t::none,
+                                with_binary_per_oc_sp_bcast_);
                     }
                     if (post_processed) mov(reg_buf, ptr[rsp + reg_buf_offs_]);
                 }

@@ -2044,6 +2044,10 @@ public:
         return make(buf, size, kind, std::vector<alloc_attr_t>(), body);
     }
 
+    static stmt_t make(const expr_t &buf, const stmt_t &body = {}) {
+        return stmt_t(new alloc_t(buf, body));
+    }
+
     bool is_equal(const object_impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
@@ -2102,7 +2106,18 @@ private:
         , kind(kind)
         , attrs(attrs)
         , body(body) {
-        gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(buf.type().is_ptr()
+                || into<uint32_t>(buf.type().size()) == size)
+                << buf;
+    }
+
+    alloc_t(const expr_t &buf, const stmt_t &body)
+        : stmt_impl_t(_type_info())
+        , buf(buf)
+        , size(buf.type().size())
+        , kind(alloc_kind_t::grf)
+        , body(body) {
+        gpu_assert(!buf.type().is_ptr()) << buf;
     }
 };
 
@@ -2192,7 +2207,6 @@ private:
         , fill_mask0(_fill_mask0) {
         normalize_ptr(value.type(), buf, off);
         gpu_assert(is_var(buf)) << buf;
-        gpu_assert(buf.type().is_ptr()) << buf;
         if (stride == value.type().scalar().size()) stride = default_stride;
         if (!mask.is_empty())
             gpu_assert(mask.type() == type_t::_bool(value.type().elems()));

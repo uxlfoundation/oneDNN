@@ -39,6 +39,7 @@ broadcasting_strategy_t get_rhs_arg_broadcasting_strategy(
             broadcasting_strategy_t::per_mb,
             broadcasting_strategy_t::per_mb_spatial,
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
+            broadcasting_strategy_t::per_spatial,
             broadcasting_strategy_t::batch, broadcasting_strategy_t::spatial,
             broadcasting_strategy_t::no_broadcast};
 
@@ -127,6 +128,21 @@ bool is_per_mb_bcast(const std::bitset<DNNL_MAX_NDIMS> mask,
         per_mb_bcast = per_mb_bcast && mask.test(d);
 
     return per_mb_bcast;
+}
+
+// Checks if mask corresponds to broadcast per batch and height dimensions
+// Returns true if mask (4D) is equal to [1, 1, 0, 0]
+bool is_per_spatial_bcast(const std::bitset<DNNL_MAX_NDIMS> mask,
+        const memory_desc_wrapper &dst_d) {
+    if (!dst_d.is_plain()) return false; // blocked format not supported
+
+    assert(dst_d.ndims() == 4);
+
+    bool per_spatial_bcast = mask.test(0) && mask.test(1);
+    if (!per_spatial_bcast) return false;
+    per_spatial_bcast = per_spatial_bcast && !mask.test(2) && !mask.test(3);
+
+    return per_spatial_bcast;
 }
 
 // Checks if mask corresponds to broadcast per oc and spatial dimensions
@@ -269,9 +285,12 @@ broadcasting_strategy_t get_rhs_arg_broadcasting_strategy(
     else if (is_per_oc_d_bcast(mask, rhs_arg_md, dst_d)
             && is_enabled(broadcasting_strategy_t::per_oc_d)) {
         bcast = broadcasting_strategy_t::per_oc_d;
-    } else if (is_enabled(broadcasting_strategy_t::shared_axes))
+    } else if (is_per_spatial_bcast(mask, dst_d)
+            && is_enabled(broadcasting_strategy_t::per_spatial))
+        bcast = broadcasting_strategy_t::per_spatial; 
+    else if (is_enabled(broadcasting_strategy_t::shared_axes))
         bcast = broadcasting_strategy_t::shared_axes;
-
+   
     return bcast;
 }
 

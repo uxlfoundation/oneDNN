@@ -169,6 +169,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     int thread_num = 1;
     dnnl_threadpool_interop_get_max_concurrency(&thread_num);
     sdp_cfg_.nthr = thread_num;
+    tp_stream->after_exec_hook();
 #endif
 
     thread_local_cache_t<sdp_args_set_t> res_cache;
@@ -326,6 +327,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         sdp_cfg_.sub_mm2_prim.execute(strm, res->sub_mm2_args[tid]);
         sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
     };
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    tp_stream->before_exec_hook();
+#endif
+
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

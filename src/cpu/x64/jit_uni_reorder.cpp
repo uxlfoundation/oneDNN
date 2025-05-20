@@ -2645,7 +2645,7 @@ void jit_uni_reorder_t::omp_driver(const char *in, char *out,
         omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales, src_zp,
                 dst_zp, compensation_reduce_scratch);
     } else {
-        parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
+        parallel(pd()->nthr_, [=](const int ithr, const int nthr) {
             int32_t *compensation_scratch = nullptr;
             if (req_compensation) {
                 compensation_scratch = &compensation_reduce_scratch[ithr
@@ -2703,7 +2703,7 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
     const size_t zp_offset
             = offset + (pd()->prb_.req_s8s8_comp ? GN * comp_dt_size : 0);
 
-    parallel_nd(GN, [&](int idx) {
+    parallel_nd(GN, [=](int idx) {
         int32_t acc = 0;
         for (int ithr = 0; ithr < nthr; ithr++) {
             acc -= compensation_reduce_scratch[ithr * wspace_per_thr_size

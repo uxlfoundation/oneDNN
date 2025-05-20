@@ -163,8 +163,10 @@ status_t jit_gemm_pd_t::init_post_ops() {
 bool jit_gemm_pd_t::quant_attr_2d(int arg, const quant_entries_t &attr) const {
     assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
     int k_idx = (arg == DNNL_ARG_A ? 0 : 1);
+    // TODO Fix mask check to involve dims somehow
     if (!attr.has_default_values(arg) && !attr.has_default_groups(arg)
-            && attr.get_group(arg, k_idx) < desc()->k())
+            && (attr.get_group(arg, k_idx) < desc()->k()
+                    || attr.get_mask(arg) == 4095))
         return true;
     return false;
 }
@@ -174,6 +176,16 @@ int jit_gemm_pd_t::quant_attr_cmask(
     assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C));
     if (!attr.has_default_values(arg)) { return attr.get_mask(arg); }
     return -1;
+}
+
+int jit_gemm_pd_t::quant_attr_ndims(
+        int arg, const quant_entries_t &attr, const memory_desc_t &d) const {
+    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    if (attr.has_default_values(arg)) return -1;
+    int mask = quant_attr_cmask(arg, attr);
+    if (mask <= 0) return 0;
+    if (!quant_attr_2d(arg, attr)) return 1;
+    return (mask == 4095 ? 3 : 2);
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {
@@ -206,35 +218,32 @@ void jit_gemm_pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
+    const auto d = desc();
 
     auto &attr_zps = attr()->zero_points_;
-    bool wei_zp_2d = quant_attr_2d(DNNL_ARG_A, attr_zps);
-    bool src_zp_2d = quant_attr_2d(DNNL_ARG_B, attr_zps);
     cmask_a_ = quant_attr_cmask(DNNL_ARG_A, attr_zps);
     cmask_b_ = quant_attr_cmask(DNNL_ARG_B, attr_zps);
     cmask_c_ = quant_attr_cmask(DNNL_ARG_C, attr_zps);
-    if (!attr_zps.has_default_values(DNNL_ARG_A))
-        ao_dims_ = (cmask_a_ > 0 ? (wei_zp_2d ? 2 : 1) : 0);
-    if (!attr_zps.has_default_values(DNNL_ARG_B))
-        bo_dims_ = (cmask_b_ > 0 ? (src_zp_2d ? 2 : 1) : 0);
+    ao_dims_ = quant_attr_ndims(DNNL_ARG_A, attr_zps, d->a_desc);
+    bo_dims_ = quant_attr_ndims(DNNL_ARG_B, attr_zps, d->b_desc);
+    if (wei_zp_2d()) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
+    if (src_zp_2d()) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
-    if (wei_zp_2d) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (src_zp_2d) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
-
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    const auto &scales = attr()->scales_;
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
-    wei_scales_2d_ = quant_attr_2d(DNNL_ARG_A, attr()->scales_);
-    src_scales_2d_ = quant_attr_2d(DNNL_ARG_B, attr()->scales_);
-    wei_scales_group_k_ = wei_scales->get_group(0);
-    src_scales_group_k_ = src_scales->get_group(1);
+    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    asc_dims_ = quant_attr_ndims(DNNL_ARG_A, scales, d->a_desc);
+    bsc_dims_ = quant_attr_ndims(DNNL_ARG_B, scales, d->b_desc);
+    wei_scales_group_k_ = src_scales->get_group(0);
+    src_scales_group_k_ = wei_scales->get_group(1);
 
     wei_scales_type_ = wei_scales->get_data_type();
-    if (wei_scales_2d_) {
-        if (!wei_zp_2d) wei_q2d_group_k_ = wei_scales->get_group(0);
+    if (wei_scales_2d()) {
+        if (!wei_zp_2d()) wei_q2d_group_k_ = wei_scales->get_group(0);
     }
 
     src_scales_type_ = src_scales->get_data_type();
-    if (src_scales_2d_) { src_q2d_group_k_ = src_scales->get_group(1); }
+    if (src_scales_2d()) { src_q2d_group_k_ = src_scales->get_group(1); }
 }
 
 bool jit_gemm_pd_t::zp_ok() {
@@ -261,7 +270,7 @@ bool jit_gemm_pd_t::zp_ok() {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_scales_2d_)
+                    && wei_scales_2d())
                 return false;
         }
     }
@@ -312,14 +321,16 @@ bool jit_gemm_pd_t::scales_ok() {
             return false;
     }
 
-    if (wei_scales_2d_) {
+    if (wei_scales_2d()) {
         if (wei_q2d_group_k_ != wei_scales_group_k_) return false;
         // Non-trivial N group unsupported.
         if (wei_scales->get_group(1) != 1) return false;
     }
 
-    if (src_scales_2d_) {
-        if (!dy_quant_enabled_ || !utils::one_of(eff_a_type(), s4, u4))
+    if (src_scales_2d()) {
+        if (!dy_quant_enabled_
+                || (!utils::one_of(eff_a_type(), s4, u4)
+                        && attr()->scales_.get_mask(DNNL_ARG_B) != 0xfff))
             return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
@@ -331,8 +342,9 @@ bool jit_gemm_pd_t::scales_ok() {
 }
 
 bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
-    return utils::one_of(
-            mask, (1 << (ndims - 1)), (1 << (ndims - 1)) + (1 << (ndims - 2)));
+    const int per_tensor_mask = 0xfff;
+    return utils::one_of(mask, (1 << (ndims - 1)),
+            (1 << (ndims - 1)) + (1 << (ndims - 2)), per_tensor_mask);
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {

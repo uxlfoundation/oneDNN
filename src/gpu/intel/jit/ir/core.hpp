@@ -1503,7 +1503,6 @@ private:
         , stride(_stride) {
         normalize_ptr(type, buf, off);
         gpu_assert(is_var(buf)) << buf;
-        gpu_assert(buf.type().is_ptr()) << buf;
         if (stride == type.scalar().size()) stride = default_stride;
     }
 };

@@ -24,8 +24,7 @@ set -eo pipefail
 OS=${OS:-"Linux"}
 
 # AArch64 does not officially support graph for now.
-SKIPPED_GRAPH_TEST_FAILURES="test_graph_unit_dnnl_sdp_decomp_cpu"
-SKIPPED_GRAPH_TEST_FAILURES+="|test_graph_unit_dnnl_mqa_decomp_cpu"
+SKIPPED_GRAPH_TEST_FAILURES=""
 
 # described in issue: https://github.com/uxlfoundation/oneDNN/issues/2175
 SKIPPED_TEST_FAILURES="test_benchdnn_modeC_matmul_multidims_cpu"
@@ -39,11 +38,10 @@ if [[ "$OS" == "Linux" ]]; then
     SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_ci_cpu"
     SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_different_dt_ci_cpu"
 
-    SKIPPED_GRAPH_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-gqa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-mqa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
-    SKIPPED_GRAPH_TEST_FAILURES+="|cpu-graph-sdpa-stacked-qkv-cpp"
+    # Note: the order here matters. The first test added to
+    # SKIPPED_GRAPH_TEST_FAILURES should not have a '|' character to avoid
+    # skipping everything.
+    SKIPPED_GRAPH_TEST_FAILURES+="test_benchdnn_modeC_graph_ci_cpu"
     SKIPPED_GRAPH_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
 fi
 

@@ -290,8 +290,6 @@ struct brgemm_matmul_conf_utils_t {
                 || this->check_is_transposed(bgmmc.wei_tag)
                 || (bgmmc.wei_tag == format_tag::acbd)
                 || (bgmmc.wei_tag == format_tag::adbc);
-        printf("use buffer b: %d, is f8: %d, wei tag: %d\n", ok, this->is_f8(),
-                bgmmc.wei_tag);
         return ok;
     }
 

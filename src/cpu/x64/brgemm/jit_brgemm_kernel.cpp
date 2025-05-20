@@ -2377,14 +2377,13 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         mov(ptr[rsp + reg_aux_C_backup_offs_], reg_aux_C);
 
     const Vmm fp8_bcast2 = Vmm(31);
-    const Vmm fp8_load2 = Vmm(28);
-    const Vmm fp8_load1 = Vmm(30);
+    const Vmm fp8_load2 = Vmm(30);
     MAYBE_UNUSED(fp8_bcast2);
     MAYBE_UNUSED(fp8_load2);
-    printf("max eff regs: %d, bcast 1 load: %d, rd loop: %d, bd b: %d, bd e: "
-           "%d, ld block2: %d\n",
-            max_effective_vregs, brg.n_bcast_1_load, rd_loop, bd_b, bd_e,
-            ld_block2);
+    //    printf("max eff regs: %d, bcast 1 load: %d, rd loop: %d, bd b: %d, bd e: "
+    //           "%d, ld block2: %d\n",
+    //            max_effective_vregs, brg.n_bcast_1_load, rd_loop, bd_b, bd_e,
+    //            ld_block2);
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
@@ -2436,8 +2435,6 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 for (dim_t ld = 0; ld < ld_block2; ld++) {
                     auto vmm = accm(ld_block2, bd, ld);
                     if (brg.is_fp8 /* && bd == bd_b*/) {
-                        printf("convert fp8 - rd: %d, bd: %d, ld: %d\n", rd, bd,
-                                ld);
                         load_B(ld, rd, ld);
                         maybe_pre_process_data(brg.dt_b, load(ld), fp8_load2);
                     }
@@ -2701,8 +2698,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         bd_blocks_for_rd_tail = 0;
     } else {
         rows_for_rd_tail = 0;
-        if (brg.rdb_tail != 0 && (brg.is_bf16 || brg.is_f16 || brg.is_int8)
-                || brg.is_fp8) {
+        if (brg.rdb_tail != 0
+                && (brg.is_bf16 || brg.is_f16 || brg.is_int8 || brg.is_fp8)) {
             const auto rd_tail_size = brg.rdb_tail % brg.rd_step;
             rows_for_rd_tail = rd_tail_size
                     ? div_up(brg.rd_step - rd_tail_size, brg.reduce_dim)

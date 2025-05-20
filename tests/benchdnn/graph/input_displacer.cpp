@@ -51,7 +51,8 @@ void handle_special_dt_set(
 int init_ref_prim_and_fill_data(
         ::std::shared_ptr<ref_primitive_t> &ref_prim, res_t *res) {
     SAFE(ref_prim->init_prb(res), WARN);
-    SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
+    SAFE_V(ref_prim->init_prim(
+            ::get_test_engine(), res, /* force_override = */ true));
     ref_prim->init_memory_args(::get_test_engine());
     SAFE_V(ref_prim->init_ref_memory_args(::get_test_engine(), res));
     return OK;
@@ -426,7 +427,7 @@ int partition_data_displacer_t::displace_input_data(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
     } else if (filling_type == filling_type_t::quantization_weights) {
-        SAFE(gen_quantize_filling(
+        SAFE(gen_quantized_weights_filling(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
     } else if (filling_type == filling_type_t::causal_mask) {

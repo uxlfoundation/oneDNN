@@ -558,6 +558,16 @@ int doit(const prb_t *prb, res_t *res) {
     auto ograph = dg.to_graph(prb->fpmath_mode);
     DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
 
+    bool meet_dequantize = false;
+    for (const auto &op : dg.ops_) {
+        if (op.kind_ == "Dequantize" || op.kind_ == "DynamicDequantize")
+            meet_dequantize = true;
+    }
+    if (!meet_dequantize) {
+        res->state = SKIPPED;
+        return OK;
+    }
+
     const auto &partitions = ograph.get_partitions();
     SAFE(skip_unimplemented_partitions(partitions, dg, prb, res), WARN);
     if (res->state == SKIPPED) return OK;

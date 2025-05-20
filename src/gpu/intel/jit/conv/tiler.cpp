@@ -562,6 +562,7 @@ public:
         set_check(check_kind_t::check_slm_usage);
         set_check(check_kind_t::check_bwd_d_optimize);
         set_check(check_kind_t::check_layouts);
+        set_check(check_kind_t::check_slm_k_slicing);
         set_check(check_kind_t::limit_m_iter);
         set_check(check_kind_t::limit_n_iter);
         set_check(check_kind_t::limit_k_iter);
@@ -590,6 +591,7 @@ public:
         if (!check_layouts_ok(ctx)) return false;
         if (!check_k_slicing_utilization_ok(ctx)) return false;
         if (!check_global_reduction_ok(ctx)) return false;
+        if (!check_slm_k_slicing_ok(ctx)) return false;
         if (!limit_m_iter_ok(ctx)) return false;
         if (!limit_n_iter_ok(ctx)) return false;
         if (!limit_k_iter_ok(ctx)) return false;
@@ -660,6 +662,7 @@ private:
         check_layouts,
         check_k_slicing_utilization,
         check_global_reduction,
+        check_slm_k_slicing,
         limit_m_iter,
         limit_n_iter,
         limit_k_iter,
@@ -896,6 +899,16 @@ private:
         if (!is_enabled(check_kind_t::check_global_reduction)) return true;
         dim_t k = padded_gemm_shape_.get(pvars::k, 1);
         return ctx.k_loop * ctx.k_iter >= k;
+    }
+
+    bool check_slm_k_slicing_ok(const context_t &ctx) const {
+        if (!is_enabled(check_kind_t::check_slm_k_slicing)) return true;
+
+        if (ctx.k_tg == 1) return true;
+        // Require power-of-two tile sizes to ensure uniform tile split during
+        // SLM reduction. Otherwise, we may end up with non-uniform split where
+        // some threads do not participate in SLM reduction and final store.
+        return ctx.m_iter % 2 == 0 && ctx.n_iter % 2 == 0;
     }
 
     int hint_min_m_iter() const {

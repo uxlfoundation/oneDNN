@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2018-2024 Intel Corporation
+# Copyright 2018-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,8 @@ endfunction()
 function(register_exe name srcs test)
     add_executable(${name} ${srcs})
     target_link_libraries(${name} ${LIB_PACKAGE_NAME} ${EXTRA_SHARED_LIBS} ${ARGV3})
+    # Force generating RUNPATH for the executable instead of RPATH
+    target_link_options(${name} PRIVATE "LINKER:--enable-new-dtags")
     if("x${test}" STREQUAL "xtest")
         add_dnnl_test(${name} ${name})
         maybe_configure_windows_test(${name} TEST)

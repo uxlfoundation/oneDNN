@@ -76,6 +76,11 @@ enum class dnnl_driver_t {
     others
 };
 
+enum class graph_recognized_pattern_t {
+    sdpa,
+    ordinary,
+};
+
 extern bdnn_state_t convert_state(const dnnl_status_t &s);
 
 // Flags that controls the behavior for handling exceptions. The logic

@@ -2696,15 +2696,13 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
     auto masked_dim_prod = 1;
     auto mask = pd()->prb_.compensation_mask;
     for (int dim = 0; dim < pd()->prb_.ndims; dim++) {
-        if ((mask >> dim) & 1){
-            masked_dim_prod *= od.padded_dims()[dim];
-        }
+        if ((mask >> dim) & 1) { masked_dim_prod *= od.padded_dims()[dim]; }
     }
-    
+
     const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
     const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
-    const size_t zp_offset
-            = offset + (pd()->prb_.req_s8s8_comp ? masked_dim_prod * comp_dt_size : 0);
+    const size_t zp_offset = offset
+            + (pd()->prb_.req_s8s8_comp ? masked_dim_prod * comp_dt_size : 0);
 
     parallel_nd(masked_dim_prod, [&](int idx) {
         int32_t acc = 0;
@@ -2807,6 +2805,7 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
+
     status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
     if (prb_init_status != status::success) return prb_init_status;
     // only uni_reorder supports tail processing now

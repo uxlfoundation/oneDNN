@@ -41,6 +41,7 @@ namespace cpu {
 namespace x64 {
 namespace binary_injector {
 using dnnl::impl::cpu::binary_injector_utils::get_src1_desc;
+using dnnl::impl::cpu::binary_injector_utils::get_src2_desc;
 using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args;
 
 bcast_set_t get_all_strategies_supported_by_injector();
@@ -50,6 +51,8 @@ bool binary_args_broadcast_supported(const post_ops_t &post_ops,
         const bcast_set_t &supported_strategy_set);
 
 bool any_binary_postop_rhs_non_scalar_broadcast(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
+bool any_binary_postop_rhs_with_ternary_scalar_bcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
@@ -311,7 +314,7 @@ private:
             std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
             const rhs_arg_dynamic_params_t &rhs_arg_params,
             const broadcasting_strategy_t rhs_broadcasting_strategy,
-            bool is_first) const;
+            bool is_first, bool is_ternary_input) const;
     /*
      * Loads data and applies particular binary operation.
      */
@@ -319,6 +322,12 @@ private:
             const Xbyak::Address &rhs_addr, bool with_tail,
             const tail_lode_mode_t tail_load_mode) const;
 
+    /*
+     * Loads data and applies binary operation that require ternary inputs.
+     */
+    void inject_binary_with_ternary_op(const dnnl_post_ops::entry_t &post_op,
+            Vmm dst, const Xbyak::Address &rhs_addr, Vmm tmp_vmm,
+            bool with_tail, const tail_lode_mode_t tail_load_mode) const;
     /*
      * Helper functions responsible for preparing rhs tensor slice address.
      */
@@ -328,7 +337,7 @@ private:
             const std::map<int, size_t> &vmm_idx_to_out_elem_off_val,
             int vmm_idx, const Xbyak::Reg64 &addr_reg,
             const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes,
-            bool is_first) const;
+            bool is_first, bool cache_addr) const;
     void calculate_no_broadcast_base(
             Xbyak::Address addr, const Xbyak::Reg64 &out_reg) const;
     void calculate_no_broadcast_partial(const std::size_t offset,

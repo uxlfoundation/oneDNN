@@ -33,6 +33,11 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
         if (post_op.is_binary()) {
             post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(const void *,
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
+            if (post_op.is_binary_with_ternary_op()) {
+                post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(
+                        const void *,
+                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
+            }
         } else if (post_op.is_prelu()) {
             auto *arg = CTX_IN_MEM(const void *,
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS);
@@ -73,6 +78,15 @@ memory_desc_t get_src1_desc(
         memory_desc_t src1_md;
         memory_desc_init_by_tag(src1_md, ndims, src1_dims, data_type::f32, tag);
         return src1_md;
+    }
+}
+
+memory_desc_t get_src2_desc(
+        const post_ops_t::entry_t &post_op, const memory_desc_wrapper &dst_d) {
+    if (post_op.is_binary_with_ternary_op()) {
+        return post_op.binary.src2_desc;
+    } else {
+        return memory_desc_t();
     }
 }
 

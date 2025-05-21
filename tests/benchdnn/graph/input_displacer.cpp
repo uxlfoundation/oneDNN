@@ -24,8 +24,8 @@ namespace graph {
 
 namespace {
 
-void handle_special_dt_set(::graph::deserialized_op_t &op,
-        const ::std::string &dt, int arg, bool &s8_mem_for_u8_wei) {
+void handle_special_dt_set(
+        ::graph::deserialized_op_t &op, const ::std::string &dt) {
     auto driver = opkind2driver(opstr2kind(op.kind_));
     bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
 
@@ -36,7 +36,6 @@ void handle_special_dt_set(::graph::deserialized_op_t &op,
             if (dt == "u8") {
                 // None of them supports u8u8, replace with u8s8.
                 op.in_lts_[1].data_type_ = "s8";
-                s8_mem_for_u8_wei = arg & DNNL_ARG_WEIGHTS_0;
             } else if (dt == "s4" || dt == "u4") {
                 // None of them supports x4x4, replace with f32x4f32 or
                 // xf16x4xf16.
@@ -582,7 +581,7 @@ int partition_data_displacer_t::displace_input_data(
 int partition_data_displacer_t::gen_compressed_sdpa_filling(
         const ::graph::deserialized_op_t &main_op, int arg, dnn_mem_t &mem,
         const ::std::string &dt, res_t *res) {
-    if (!arg & DNNL_ARG_WEIGHTS) return FAIL;
+    if (!(arg & DNNL_ARG_WEIGHTS)) return FAIL;
     bool s8_mem_for_u8_wei = dt == "u8";
 
     auto op = main_op;
@@ -598,6 +597,18 @@ int partition_data_displacer_t::gen_compressed_sdpa_filling(
         op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
     }
 
+    if (op.out_lts_[0].data_type_ != "bf16") {
+        if (op.in_lts_[1].data_type_ == "s8") {
+            // Use u8 as output data type for two-input operations to avoid
+            // data overflow due to the specific driver logic.
+            op.out_lts_[0].data_type_ = "u8";
+        } else {
+            // Use f32 as output data type since not all primitives support
+            // different data types for input and output.
+            op.out_lts_[0].data_type_ = "f32";
+        }
+    }
+
     auto ref_prim = ::std::make_shared<ref_primitive_t>(op);
     init_ref_prim_and_fill_data(ref_prim, res);
 
@@ -609,10 +620,21 @@ int partition_data_displacer_t::gen_compressed_sdpa_filling(
         // into zeros.
         dnn_mem_t gen_u8_mem(gen_mem, dnnl_u8, tag::abx, gen_mem.engine());
         mem = ::std::move(gen_u8_mem);
-        return OK;
-    }
+    } else
+        mem = ::std::move(gen_mem);
 
-    mem = ::std::move(gen_mem);
+    // Reduce data range to avoid false positive results
+    static constexpr int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(mem.nelems(), chunk_size);
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, mem.nelems());
+
+        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            int value = static_cast<int32_t>(mem.get_elem(idx));
+            mem.set_elem(idx, value / 2);
+        }
+    });
     return OK;
 }
 
@@ -621,27 +643,14 @@ int partition_data_displacer_t::gen_quantize_filling(
         const ::std::string &dt, res_t *res) {
     // clone a deserialized op object and modify to specified data type
     ::graph::deserialized_op_t op = main_op;
-    auto driver = opkind2driver(opstr2kind(op.kind_));
-    bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
-    bool s8_mem_for_u8_wei = false;
-
     op.in_lts_[0].data_type_ = dt;
     if (op.in_lts_.size() > 1) op.in_lts_[1].data_type_ = dt;
 
-    handle_special_dt_set(op, dt, arg, s8_mem_for_u8_wei);
+    handle_special_dt_set(op, dt);
     auto ref_prim = ::std::make_shared<ref_primitive_t>(op);
     init_ref_prim_and_fill_data(ref_prim, res);
 
     auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
-    if (s8_mem_for_u8_wei) {
-        // If s8 data is directly read using the u8 data type, it may lead to
-        // overflow issues. For complex patterns like SDPA, this could result
-        // in precision degradation. Using a reorder to convert negative values
-        // into zeros.
-        dnn_mem_t gen_u8_mem(gen_mem, dnnl_u8, tag::abx, gen_mem.engine());
-        mem = ::std::move(gen_u8_mem);
-        return OK;
-    }
     mem = ::std::move(gen_mem);
     return OK;
 }

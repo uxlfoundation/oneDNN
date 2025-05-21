@@ -109,8 +109,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
                     with_binary_per_mb_bcast_, with_binary_channel_bcast_,
                     with_binary_per_mb_w_bcast_, with_binary_per_w_bcast_,
-                    with_binary_batch_bcast_, with_binary_spatial_bcast_,
-                    with_binary_no_bcast_)
+                    with_binary_spatial_bcast_, with_binary_batch_bcast_,
+                    with_binary_spatial_bcast_, with_binary_no_bcast_)
                     = bcast_strategies_present_tup(brg.attr()->post_ops_.entry_,
                             dst_md_wrapper, broadcasting_strategy_t::per_oc,
                             broadcasting_strategy_t::per_oc_spatial,
@@ -118,14 +118,17 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
                             broadcasting_strategy_t::per_mb_spatial,
                             broadcasting_strategy_t::per_mb_w,
                             broadcasting_strategy_t::per_w,
+                            broadcasting_strategy_t::per_spatial,
                             broadcasting_strategy_t::batch,
                             broadcasting_strategy_t::spatial,
                             broadcasting_strategy_t::no_broadcast);
             handle_binary_po_offset_ = with_binary_per_oc_bcast_
                     || with_binary_per_oc_sp_bcast_ || with_binary_per_mb_bcast_
                     || with_binary_channel_bcast_ || with_binary_per_mb_w_bcast_
-                    || with_binary_per_w_bcast_ || with_binary_batch_bcast_
-                    || with_binary_spatial_bcast_ || with_binary_no_bcast_;
+                    || with_binary_per_w_bcast_
+                    || with_binary_per_spatial_bcast_
+                    || with_binary_batch_bcast_ || with_binary_spatial_bcast_
+                    || with_binary_no_bcast_;
         }
         use_ils_ = brg.brgattr.use_interleave_stores;
     }
@@ -209,6 +212,7 @@ private:
     bool with_binary_per_w_bcast_ = false;
     bool with_binary_batch_bcast_ = false;
     bool with_binary_spatial_bcast_ = false;
+    bool with_binary_per_spatial_bcast_ = false;
     bool with_binary_no_bcast_ = false;
     bool prepare_post_ops_registers_once_ = false;
 

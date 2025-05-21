@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2023 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,18 +169,18 @@ void protect_buffer(void *addr, size_t size, engine_kind_t engine_kind) {
             *curr = canary;
         }
     } else {
-        parallel(0, [&](const int ithr, const int nthr) {
-            size_t start = 0, end = 0;
-            balance211(work_amount, nthr, ithr, start, end);
-            uint16_t *ptr_start = reinterpret_cast<uint16_t *>(
-                    page_start + getpagesize() * start);
-            uint16_t *ptr_end = reinterpret_cast<uint16_t *>(
-                    page_start + getpagesize() * end);
+        // parallel(0, [=](const int ithr, const int nthr) {
+        //     size_t start = 0, end = 0;
+        //     balance211(work_amount, nthr, ithr, start, end);
+        //     uint16_t *ptr_start = reinterpret_cast<uint16_t *>(
+        //             page_start + getpagesize() * start);
+        //     uint16_t *ptr_end = reinterpret_cast<uint16_t *>(
+        //             page_start + getpagesize() * end);
 
-            for (uint16_t *curr = ptr_start; curr < ptr_end; curr++) {
-                *curr = canary;
-            }
-        });
+        //     for (uint16_t *curr = ptr_start; curr < ptr_end; curr++) {
+        //         *curr = canary;
+        //     }
+        // });
     }
 }
 

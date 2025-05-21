@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -286,6 +287,7 @@ void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
 
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::bf16>;
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_data_kernel_t {

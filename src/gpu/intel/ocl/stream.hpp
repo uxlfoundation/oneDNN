@@ -102,6 +102,53 @@ struct stream_t : public compute::compute_stream_t {
         return impl()->get_output_event();
     }
 
+#ifdef EXPERIMENTAL_ASYNC_VERBOSE
+
+    void CL_CALLBACK async_tracker_callback(
+            cl_event event, cl_int exec_status, void *timing_data) {
+        if (exec_status != CL_COMPLETE) return;
+        auto *td = static_cast<async_timing_data_t *>(timing_data);
+        cl_ulong start_ns = 0, end_ns = 0;
+        clGetEventProfilingInfo(e, CL_PROFILING_COMMAND_START, sizeof(start_ns),
+                &start_ns, nullptr);
+        clGetEventProfilingInfo(
+                e, CL_PROFILING_COMMAND_END, sizeof(end_ns), &end_ns, nullptr);
+
+        *(td->start_ms) = start_ns * 1e-6;
+        *(td->end_ms) = end_ns * 1e-6;
+        *(td->duration_ms) = (end_ns - start_ns) * 1e-6;
+
+        delete td;
+    }
+
+    status_t register_async_tracker(
+            double *start_ms, double *duration_ms) override {
+        cl_event exec_evt = get_output_event();
+        if (!exec_evt) return status::runtime_error;
+
+        clRetainEvent(exec_evt);
+        async_tracked_event_ = exec_evt;
+
+        auto *td = new TimingData(start_ms, duration_ms);
+
+        cl_int err = clSetEventCallback(
+                exec_evt, CL_COMPLETE, async_tracker_callback, td);
+
+        return (err == CL_SUCCESS) ? status::success : status::runtime_error;
+    }
+
+    status_t get_async_exec_times() {
+        if (!async_tracked_event_) return status::runtime_error;
+
+        cl_int err = clWaitForEvents(1, async_tracked_event_);
+        clReleaseEvent(async_tracked_event_);
+        async_tracked_event_ = nullptr;
+
+        return (err == CL_SUCCESS) ? status::success : status::runtime_error;
+    }
+
+#endif
+
 private:
     xpu::ocl::stream_impl_t *impl() const {
         return (xpu::ocl::stream_impl_t *)impl::stream_t::impl_.get();
@@ -116,6 +163,10 @@ private:
             cl_context ctx, cl_device_id dev, cl_int *err) const;
 
     std::unique_ptr<mdapi_helper_t> mdapi_helper_;
+
+#ifdef EXPERIMENTAL_ASYNC_VERBOSE
+    cl_event async_tracked_event_ = nullptr;
+#endif
 };
 
 } // namespace ocl

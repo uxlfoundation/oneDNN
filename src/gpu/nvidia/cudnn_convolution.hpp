@@ -80,6 +80,10 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
                             desc()->alg_kind == dnnl_convolution_winograd,
                             ndims() < 5 && src_md_.data_type != s8);
             ok = ok
+                    && IMPLICATION(
+                            desc()->alg_kind == dnnl_convolution_winograd,
+                            check_wino_padding());
+            ok = ok
                     && IMPLICATION(!attr()->scales_.has_default_values(),
                             utils::one_of(src_md_.data_type, s8)
                                     && attr_scales_ok());
@@ -139,6 +143,18 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
                         : utils::pick(ndims() - 3, oiw, oihw, oidhw);
                 return set_default_formats_common(dat_tag, wei_tag, dat_tag);
             }
+        }
+
+        bool check_wino_padding() {
+            auto t_pad = padT();
+            auto b_pad = padB();
+            auto l_pad = padL();
+            auto r_pad = padR();
+
+            auto kh = KH();
+            auto kw = KW();
+
+            return l_pad < kw && r_pad < kw && t_pad < kh && b_pad < kh;
         }
 
         bool check_s8_configuration() const {

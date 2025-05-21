@@ -109,6 +109,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             const auto src_dt = src_mdw.data_type();
             const auto dst_dt = dst_mdw.data_type();
             const block_layout_t layout(src_mdw);
+            const arch_t arch = compute_engine->device_info()->gpu_arch();
 
             using namespace data_type;
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -202,7 +203,6 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                 }
             }
 
-            const arch_t arch_ = compute_engine->device_info()->gpu_arch();
             const auto nelems = src_mdw.nelems();
 
             conf.algorithm_number = [&]() {

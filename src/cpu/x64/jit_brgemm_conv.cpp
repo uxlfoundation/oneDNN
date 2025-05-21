@@ -1384,7 +1384,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
         balance211(work_amount, nthr, ithr, start, end);
 
         int n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
-        BRGEMM_CONV_ITERATOR_INIT;
+        BRGEMM_CONV_ITERATOR_INIT(jcp);
         for (auto work = start; work < end; work++) {
             btc.g = g;
             btc.n = n;
@@ -1438,7 +1438,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
                 last_btc.ohb = ohb;
                 last_btc.owb = owb;
             }
-            BRGEMM_CONV_ITERATOR_STEP;
+            BRGEMM_CONV_ITERATOR_STEP(jcp);
         }
         if (is_amx) { amx_tile_release(); }
     });

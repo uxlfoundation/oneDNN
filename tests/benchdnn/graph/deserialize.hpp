@@ -126,17 +126,19 @@ struct deserialized_graph_t {
     std::map<size_t, std::string> lt_2_mtag_;
     std::vector<size_t> graph_inputs_with_mb_;
 
-    // Returns an op based on its ID.
+    // returns an op based on its ID.
     const deserialized_op_t &get_op(size_t id) const;
-    // Returns an op based on its output logical tensor ID.
+    // returns an op based on its output logical tensor ID.
     const deserialized_op_t &get_op_by_out_lt(size_t out_lt_id) const;
-    // Returns an op based on its input logical tensor ID.
+    // returns an op based on its input logical tensor ID.
     const deserialized_op_t &get_op_by_in_lt(size_t in_lt_id) const;
+    // returns the post op that consumes the first output of given op.
+    const deserialized_op_t &get_post_op(const deserialized_op_t &op) const;
 
-    // Outputs the information about graph from operator<< into a string.
+    // outputs the information about graph from operator<< into a string.
     std::string get_string() const;
 
-    // Return the fpmath mode attribute
+    // return the fpmath mode attribute
     std::pair<std::string, std::string> get_fpmath_mode() const {
         return std::make_pair(fpmath_mode_, fpmath_mode_apply_to_int_);
     }
@@ -144,6 +146,10 @@ struct deserialized_graph_t {
     void set_fpmath_mode(const graph_fpmath_mode_t &fpmath_mode) {
         fpmath_mode_ = fpmath_mode.mode_;
         fpmath_mode_apply_to_int_ = bool2str(fpmath_mode.apply_to_int_);
+    }
+
+    graph_recognized_pattern_t get_recognized_pattern() const {
+        return recognized_pattern_;
     }
 
 private:
@@ -172,10 +178,21 @@ private:
             "MaxPoolBackward", "MishBackward", "ReLUBackward",
             "SigmoidBackward", "SoftMaxBackward", "SoftPlusBackward",
             "SqrtBackward", "TanhBackward"};
+    // indicate whether the graph belongs to the recognized patterns.
+    graph_recognized_pattern_t recognized_pattern_
+            = graph_recognized_pattern_t::ordinary;
+    bool is_pattern_detected_ = false;
 
-    // Check whether the tensor supports mb rewrite.
+    // check whether the tensor supports mb rewrite.
     bool check_tensor_with_mb(size_t tensor_id,
             std::unordered_map<size_t, bool> &mb_rewrite_ret) const;
+
+    // check whether the graph is a recoginized pattern, such as SDPA. the
+    // function is intended to be called once during the deserialized graph
+    // loading.
+    void detect_recognized_patterns();
+    // check whether the graph is a scaled dot-product implementation.
+    bool detect_sdpa_impl() const;
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_graph_t &dg);
 

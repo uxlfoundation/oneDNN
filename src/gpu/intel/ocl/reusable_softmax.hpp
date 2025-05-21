@@ -39,7 +39,8 @@ enum softmax_algorithm_id_t {
     one_reduction_per_workgroup,
     one_reduction_per_subgroup,
     vectorized,
-    small
+    small,
+    subgroup_divisible
 };
 
 struct reusable_softmax_params_t {
@@ -75,6 +76,7 @@ struct reusable_softmax_params_t {
     data_type_t dst_data_type;
     int algorithm_number;
     int subgroup_size;
+    int vector_buffer_size;
     bool is_logsoftmax;
     bool is_softmax_inf_as_zero;
 
@@ -117,6 +119,13 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             VDISPATCH_SOFTMAX(
                     utils::one_of(dst_dt, f64, f32, f16, bf16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
+
+            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(src_dt, f16, bf16),
+                                      arch == arch_t::xe_hpc),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(dst_dt, f16, bf16),
+                                      arch == arch_t::xe_hpc),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       compute_engine->mayiuse(
@@ -196,18 +205,24 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             const arch_t arch_ = compute_engine->device_info()->gpu_arch();
             const auto nelems = src_mdw.nelems();
 
-            conf.algorithm_number = [&]() { // -> int
-                if (arch_ != arch_t::xe_hpg) {
-                    if (rt_conf.softmax_axis_stride == 1
-                            && rt_conf.softmax_axis_size >= 128
-                            && nelems > (1 << 17)
+            conf.algorithm_number = [&]() {
+                if (arch != arch_t::xe_hpg
+                        && rt_conf.softmax_axis_stride == 1) {
+                    if (32 <= conf.subgroup_size
+                            && rt_conf.softmax_axis_size % (32 * 8) == 0) {
+                        return subgroup_divisible;
+                    }
+                    if (16 <= conf.subgroup_size
+                            && rt_conf.softmax_axis_size % (16 * 8) == 0) {
+                        return subgroup_divisible;
+                    }
+                    if (rt_conf.softmax_axis_size >= 128 && nelems > (1 << 17)
                             && dnnl::impl::utils::div_up(
                                        rt_conf.softmax_axis_size,
                                        conf.subgroup_size)
                                     <= 1024)
                         return vectorized;
-                    if (rt_conf.softmax_axis_stride == 1
-                            && rt_conf.softmax_axis_size <= conf.subgroup_size
+                    if (rt_conf.softmax_axis_size <= conf.subgroup_size
                             && nelems < (1 << 15))
                         return small;
                 }
@@ -219,6 +234,35 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                     return one_reduction_per_subgroup;
                 return many_reductions_per_workgroup;
             }();
+
+            const int algorithm_number_override
+                    = dnnl::impl::gpu::intel::gpu_utils::dev_getenv(
+                            "ALGORITHM_OVERRIDE", -1);
+            if (algorithm_number_override > -1) {
+                conf.algorithm_number = algorithm_number_override;
+            }
+            const bool algorithm_verbose
+                    = dnnl::impl::gpu::intel::gpu_utils::dev_getenv(
+                            "ALGORITHM_VERBOSE", false);
+            if (algorithm_verbose) {
+                fprintf(stderr, "VERBOSE algorithm_number %d\n",
+                        conf.algorithm_number);
+            }
+
+            // adjust assumed subgroup/workgroup size for
+            // subgroup_divisible kernel to be greatest that
+            // evenly divides softmax axis size
+            if (conf.algorithm_number == subgroup_divisible) {
+                if (32 <= conf.subgroup_size
+                        && rt_conf.softmax_axis_size % (32 * 8) == 0) {
+                    conf.subgroup_size = 32;
+                } else if (16 <= conf.subgroup_size
+                        && rt_conf.softmax_axis_size % (16 * 8) == 0) {
+                    conf.subgroup_size = 16;
+                }
+                conf.vector_buffer_size = (int)utils::div_up(
+                        rt_conf.softmax_axis_size, conf.subgroup_size * 8);
+            }
 
             const size_t max_wg_size = [&]() {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
@@ -251,6 +295,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                     break;
                 case vectorized:
                 case small:
+                case subgroup_divisible:
                     CHECK(init_dispatch_subgroup_per_reduction(compute_engine));
                     break;
             }

@@ -224,15 +224,18 @@ compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
             algorithm_number == one_reduction_per_workgroup);
     kernel_ctx.add_option("-cl-std=CL2.0");
     kernel_ctx.define_int("WORKGROUP_SIZE", 128);
+    kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
 
     if (algorithm_number == vectorized) {
         kernel_ctx.define_int("VECT_DT_N", 8);
         kernel_ctx.define_int("USE_VECTORIZED_KERNEL", true);
-        kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     } else if (algorithm_number == small) {
         kernel_ctx.define_int("VECT_DT_N", 8);
         kernel_ctx.define_int("USE_SMALL_KERNEL", true);
-        kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
+    } else if (algorithm_number == subgroup_divisible) {
+        kernel_ctx.define_int("VECT_DT_N", 8);
+        kernel_ctx.define_int("VECTOR_BUFFER_SIZE", vector_buffer_size);
+        kernel_ctx.define_int("USE_SUBGROUP_DIVISIBLE_KERNEL", true);
     } else {
         kernel_ctx.define_int("USE_GENERAL_KERNEL", true);
     }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -332,6 +332,9 @@ INSTANTIATE_TEST_SUITE_P(SupportedStrategies, bcast_strategy_test_t,
                 std::make_tuple(memory::dims {2, 2, 1, 2},
                         memory::dims {2, 2, 1, 1},
                         impl::broadcasting_strategy_t::spatial),
+                std::make_tuple(memory::dims {2, 2, 2, 2},
+                        memory::dims {1, 1, 2, 2},
+                        impl::broadcasting_strategy_t::per_spatial),
                 // 3d cases
                 std::make_tuple(memory::dims {2, 2, 2}, memory::dims {1, 1, 1},
                         impl::broadcasting_strategy_t::scalar),

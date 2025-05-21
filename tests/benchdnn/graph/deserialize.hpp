@@ -124,17 +124,22 @@ struct deserialized_graph_t {
     std::map<size_t, std::string> lt_2_mtag_;
     std::vector<size_t> graph_inputs_with_mb_;
 
-    // Returns an op based on its ID.
-    const deserialized_op_t &get_op(size_t id) const;
-    // Returns an op based on its output logical tensor ID.
-    const deserialized_op_t &get_op_by_out_lt(size_t out_lt_id) const;
-    // Returns an op based on its input logical tensor ID.
-    const deserialized_op_t &get_op_by_in_lt(size_t in_lt_id) const;
+    // indicate whether the graph is a SDPA case.
+    bool is_sdpa_graph() const;
 
-    // Outputs the information about graph from operator<< into a string.
+    // returns an op based on its ID.
+    const deserialized_op_t &get_op(size_t id) const;
+    // returns an op based on its output logical tensor ID.
+    const deserialized_op_t &get_op_by_out_lt(size_t out_lt_id) const;
+    // returns an op based on its input logical tensor ID.
+    const deserialized_op_t &get_op_by_in_lt(size_t in_lt_id) const;
+    // returns the post op that consumes the first output of given op.
+    const deserialized_op_t &get_post_op(const deserialized_op_t &op) const;
+
+    // outputs the information about graph from operator<< into a string.
     std::string get_string() const;
 
-    // Return the fpmath mode attribute
+    // return the fpmath mode attribute
     std::pair<std::string, std::string> get_fpmath_mode() const {
         return std::make_pair(fpmath_mode_, fpmath_mode_apply_to_int_);
     }
@@ -151,6 +156,10 @@ private:
     std::string fpmath_mode_apply_to_int_;
     std::vector<size_t> input_ports_;
     std::vector<size_t> output_ports_;
+
+    mutable bool is_sdpa_impl = false;
+    mutable bool is_sdpa_detected = false;
+    bool detect_sdpa_impl() const;
 
     std::map<size_t, std::vector<deserialized_op_t>> in_lt_2_ops_;
     std::map<size_t, deserialized_op_t> out_lt_2_op_;
@@ -171,7 +180,7 @@ private:
             "SigmoidBackward", "SoftMaxBackward", "SoftPlusBackward",
             "SqrtBackward", "TanhBackward"};
 
-    // Check whether the tensor supports mb rewrite.
+    // check whether the tensor supports mb rewrite.
     bool check_tensor_with_mb(size_t tensor_id,
             std::unordered_map<size_t, bool> &mb_rewrite_ret) const;
 };

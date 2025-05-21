@@ -2481,65 +2481,116 @@ arg_indices_t sdpa_executable_t::get_arg_indices(
         arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
     }
 
-    // Optional args: scales and zps
-    const fusion_info_t &mm1_fusion_info
-            = (op->has_attr(op_attr::fusion_info_keys)
-                      && op->get_attr<std::vector<int64_t>>(
-                                   op_attr::fusion_info_keys)
-                                      .size()
-                              == 2
-                      && op->get_attr<std::vector<int64_t>>(
-                                 op_attr::fusion_info_keys)[0]
-                              != -1)
-            ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
-                    op_attr::fusion_info_keys)[0])
-            : fusion_info_t();
-
-    if (mm1_fusion_info.with_runtime_scales(true, 0)) {
+    // Optional args:
+    if (op->has_attr(op_attr::with_q_scale)
+            && op->get_attr<bool>(op_attr::with_q_scale)) {
         arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_QUERIES,
                 indices_t {input, index++}});
     }
-    if (mm1_fusion_info.with_runtime_scales(true, 1)) {
+
+    if (op->has_attr(op_attr::with_k_scale)
+            && op->get_attr<bool>(op_attr::with_k_scale)) {
         arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
                 indices_t {input, index++}});
     }
-    if (mm1_fusion_info.with_runtime_zero_points(true, 0)) {
+
+    if (op->has_attr(op_attr::with_q_zp)
+            && op->get_attr<bool>(op_attr::with_q_zp)) {
         arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_QUERIES,
                 indices_t {input, index++}});
     }
-    if (mm1_fusion_info.with_runtime_zero_points(true, 1)) {
+
+    if (op->has_attr(op_attr::with_k_zp)
+            && op->get_attr<bool>(op_attr::with_k_zp)) {
         arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
                 indices_t {input, index++}});
     }
 
-    const fusion_info_t &mm2_fusion_info
-            = (op->has_attr(op_attr::fusion_info_keys)
-                      && op->get_attr<std::vector<int64_t>>(
-                                   op_attr::fusion_info_keys)
-                                      .size()
-                              == 2
-                      && op->get_attr<std::vector<int64_t>>(
-                                 op_attr::fusion_info_keys)[1]
-                              != -1)
-            ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
-                    op_attr::fusion_info_keys)[1])
-            : fusion_info_t();
-    if (mm2_fusion_info.with_runtime_scales(true, 1)) {
+    if (op->has_attr(op_attr::with_v_scale)
+            && op->get_attr<bool>(op_attr::with_v_scale)) {
         arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
                 indices_t {input, index++}});
     }
-    if (mm2_fusion_info.with_runtime_zero_points(true, 1)) {
+
+    if (op->has_attr(op_attr::with_v_zp)
+            && op->get_attr<bool>(op_attr::with_v_zp)) {
         arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
                 indices_t {input, index++}});
     }
-    if (mm2_fusion_info.with_runtime_scales(false, 0)) {
+
+    if (op->has_attr(op_attr::with_o_scale)
+            && op->get_attr<bool>(op_attr::with_o_scale)) {
         arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
                 indices_t {input, index++}});
     }
-    if (mm2_fusion_info.with_runtime_zero_points(false, 0)) {
+
+    if (op->has_attr(op_attr::with_o_zp)
+            && op->get_attr<bool>(op_attr::with_o_zp)) {
         arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
                 indices_t {input, index++}});
     }
+
+    
+
+    // Optional args: scales and zps
+    // const fusion_info_t &mm1_fusion_info
+    //         = (op->has_attr(op_attr::fusion_info_keys)
+    //                   && op->get_attr<std::vector<int64_t>>(
+    //                                op_attr::fusion_info_keys)
+    //                                   .size()
+    //                           == 2
+    //                   && op->get_attr<std::vector<int64_t>>(
+    //                              op_attr::fusion_info_keys)[0]
+    //                           != -1)
+    //         ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
+    //                 op_attr::fusion_info_keys)[0])
+    //         : fusion_info_t();
+
+    // if (mm1_fusion_info.with_runtime_scales(true, 0)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_QUERIES,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm1_fusion_info.with_runtime_scales(true, 1)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm1_fusion_info.with_runtime_zero_points(true, 0)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_QUERIES,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm1_fusion_info.with_runtime_zero_points(true, 1)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+    //             indices_t {input, index++}});
+    // }
+
+    // const fusion_info_t &mm2_fusion_info
+    //         = (op->has_attr(op_attr::fusion_info_keys)
+    //                   && op->get_attr<std::vector<int64_t>>(
+    //                                op_attr::fusion_info_keys)
+    //                                   .size()
+    //                           == 2
+    //                   && op->get_attr<std::vector<int64_t>>(
+    //                              op_attr::fusion_info_keys)[1]
+    //                           != -1)
+    //         ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
+    //                 op_attr::fusion_info_keys)[1])
+    //         : fusion_info_t();
+    // if (mm2_fusion_info.with_runtime_scales(true, 1)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm2_fusion_info.with_runtime_zero_points(true, 1)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm2_fusion_info.with_runtime_scales(false, 0)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+    //             indices_t {input, index++}});
+    // }
+    // if (mm2_fusion_info.with_runtime_zero_points(false, 0)) {
+    //     arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
+    //             indices_t {input, index++}});
+    // }
 
     // Required output args
     arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});

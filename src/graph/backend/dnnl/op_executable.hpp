@@ -2836,7 +2836,7 @@ struct sdpa_executable_t : public op_executable_t {
                 && op->get_attr<bool>(op_attr::with_v_scale)) {
             vs_attr.set_scales(DNNL_ARG_WEIGHTS,
                     op->get_attr<int64_t>(op_attr::v_mask),
-                    op->get_attr<std::vector<int64_t>>(op_attr::k_group_shape),
+                    op->get_attr<std::vector<int64_t>>(op_attr::v_group_shape),
                     dnnl::memory::data_type::f16);
         }
         if (op->has_attr(op_attr::with_v_zp)

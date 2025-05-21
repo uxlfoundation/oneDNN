@@ -817,7 +817,7 @@ float brg_blocking_t::est_eff() {
             int start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
             int n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
-            BRGEMM_CONV_ITERATOR_INIT;
+            BRGEMM_CONV_ITERATOR_INIT(jcp);
 
             for (auto work = start; work < end; work++) {
                 const int ocp = ocb * oc_block;
@@ -827,7 +827,7 @@ float brg_blocking_t::est_eff() {
                 sp_sz = nstl::min(sp - spp, sp_block);
                 thr_job += sp_sz * oc_sz;
 
-                BRGEMM_CONV_ITERATOR_STEP;
+                BRGEMM_CONV_ITERATOR_STEP(jcp);
             }
             thr_jobs[ithr] = thr_job;
         }

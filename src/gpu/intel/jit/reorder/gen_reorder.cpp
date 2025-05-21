@@ -54,6 +54,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                 if (!dnnl_memory_desc_equal(
                             &dst_md_type, &po.entry_[i].binary.src1_desc))
                     return false;
+                if (po.entry_[i].is_binary_with_ternary_op()) return false;
             }
         return true;
     };

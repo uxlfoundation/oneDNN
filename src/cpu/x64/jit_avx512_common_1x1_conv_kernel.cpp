@@ -662,9 +662,16 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     static constexpr bool sum_at_pos_0_only = true;
     static constexpr bool sum_requires_scale_one = true;
     static constexpr bool sum_requires_zp_zero = true;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
+    // temporary workaround that skips avx512 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    post_ops, dst_d));
     if (!post_ops_ok_) return status::unimplemented;
 
     bool args_ok = true && jcp.ngroups == 1 && jcp.src_tag == required_dat_tag

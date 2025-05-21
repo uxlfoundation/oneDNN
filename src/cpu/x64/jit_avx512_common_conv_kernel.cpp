@@ -968,10 +968,17 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     static constexpr bool sum_at_pos_0_only = true;
     static constexpr bool sum_requires_scale_one = true;
     static constexpr bool sum_requires_zp_zero = true;
-    const bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
+    bool post_ops_ok_ = post_ops_ok(post_ops_ok_args_t(avx512_core,
             {eltwise, binary, sum}, jcp.post_ops, &dst_d, sum_at_pos_0_only,
             sum_requires_scale_one, sum_requires_zp_zero));
-    if (!post_ops_ok_) return status::unimplemented;
+    // temporary workaround that skips avx2 implementation for ternary
+    // post-ops with scalar broadcasting to avoid register collisions.
+    post_ops_ok_ = post_ops_ok_
+            && IMPLICATION(jcp.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    post_ops, dst_d));
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     jcp.typesize_in = typesize;
     jcp.typesize_out = typesize;

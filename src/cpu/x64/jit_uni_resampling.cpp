@@ -166,6 +166,13 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
     conf_.with_postops
             = conf_.with_eltwise || conf_.with_binary || conf_.with_sum;
 
+    VDISPATCH_RESAMPLING(
+            IMPLICATION(conf_.with_binary,
+                    !binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    conf_.post_ops, dst_d)),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
     return status::success;
 }
 

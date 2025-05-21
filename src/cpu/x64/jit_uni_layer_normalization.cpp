@@ -1257,7 +1257,10 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
                 accepted_post_ops, attr()->post_ops_, &dst_d, true, true, true,
                 true, get_supported_bcast_strategies(dst_d.ndims()));
 
-        return injector::post_ops_ok(post_ops_args);
+        return injector::post_ops_ok(post_ops_args)
+                && !binary_injector::
+                           any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                   attr()->post_ops_, dst_d);
     };
     VDISPATCH_LNORM(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);

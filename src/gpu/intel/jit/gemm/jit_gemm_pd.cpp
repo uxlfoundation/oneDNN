@@ -122,12 +122,17 @@ status_t jit_gemm_pd_t::init_post_ops() {
                 // TODO: is it inverted?
                 int n_group = src_scales->get_group(0);
                 int k_group = src_scales->get_group(1);
-                dim_t dims[]
-                        = {(mask & (d->batch() > 1 ? 2 : 1)) ? d->n() / n_group
-                                                             : 1,
-                                d->k() / k_group};
-                CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                        src_scales->get_data_type(), format_tag::ab));
+                int ndims = d->c_desc.ndims;
+                std::vector<dim_t> dims;
+                for (int i = ndims - 3; i >= 0; --i) {
+                    if (mask & (i + 1)) dims.push_back(d->c_desc.dims[i]);
+                }
+                dims.push_back((mask & (d->batch() > 1 ? 2 : 1))
+                                ? d->n() / n_group
+                                : 1);
+                dims.push_back(d->k() / k_group);
+                CHECK(memory_desc_init_by_tag(src_scales_md, dims.size(),
+                        dims.data(), src_scales->get_data_type(), get_abx_tag(dims.size())));
             } else {
                 dim_t dims[] = {d->n(), 1};
                 CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
@@ -173,8 +178,7 @@ int jit_gemm_pd_t::quant_entry_ndims(
     for (int i = md.ndims - 1; i >= 0; --i) {
         if ((mask & (1 << i))
                 && ((i < batch_dims() && md.dims[i] > 1)
-                        || (count > 0
-                                || md.dims[i] / attr.get_group(i - batch_dims())
+                        || (md.dims[i] / entry.get_group(i - batch_dims())
                                         > 1)))
             ++count;
     }
@@ -332,7 +336,7 @@ bool jit_gemm_pd_t::scales_ok() {
             return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
-                && wei_scales_group_k_ >= desc()->k())
+                && wei_scales_group_k_ > desc()->k())
             return false;
     }
 
@@ -364,6 +368,7 @@ dim_t jit_gemm_pd_t::ld_binary(int idx) const {
 dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
     switch (binary_srcs_[idx].type) {
         case binary_src_t::binary:
+        case binary_src_t::scales:
         case binary_src_t::bias: {
             const auto &entry = post_ops_.entry_[idx];
             assert(entry.kind == primitive_kind::binary);

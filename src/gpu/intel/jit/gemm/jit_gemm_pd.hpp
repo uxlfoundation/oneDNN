@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/tag_traits.hpp"
 #include "gpu/gpu_gemm_pd.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
 

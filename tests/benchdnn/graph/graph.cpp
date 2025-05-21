@@ -558,10 +558,6 @@ int doit(const prb_t *prb, res_t *res) {
     auto ograph = dg.to_graph(prb->fpmath_mode);
     DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
 
-    if (dg.is_sdpa_graph()) {
-        std::cout << "\n============SDPA case==========\n";
-    }
-
     const auto &partitions = ograph.get_partitions();
     SAFE(skip_unimplemented_partitions(partitions, dg, prb, res), WARN);
     if (res->state == SKIPPED) return OK;

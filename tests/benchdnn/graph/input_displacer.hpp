@@ -27,6 +27,7 @@ namespace graph {
 enum class filling_type_t {
     undef = 0,
     quantization,
+    compressed_sdpa,
     causal_mask,
     // Fill pre-defined fixed values for data filling, such as 0, 1, -inf, and
     // specified shape information for scalar input.
@@ -80,6 +81,8 @@ private:
 
     int gen_quantize_filling(const ::graph::deserialized_op_t &main_op, int arg,
             dnn_mem_t &mem, const ::std::string &dt, res_t *res);
+    int gen_compressed_sdpa_filling(const ::graph::deserialized_op_t &main_op,
+            int arg, dnn_mem_t &mem, const ::std::string &dt, res_t *res);
     // Generates values in the target memory based on predefined set of values
     // from `fill_cfg`.
     int gen_fixed_set_filling(dnn_mem_t &mem, const_dnnl_memory_desc_t md,

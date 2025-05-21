@@ -1065,7 +1065,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 ? output_d.extra().scale_adjust
                 : 1.f;
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *cp, int32_t *zp, const float *s,
                            const float *d, const int d0_block,
                            const int d1_block) {
@@ -1125,7 +1125,12 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 #define get_blk_off(md, batch, d0, d1) \
     (ndims == 3 ? (md).blk_off((batch), (d0), (d1)) : (md).blk_off((d0), (d1)))
 
-        parallel_nd(batch_dim, NB_D1dim, [&](dim_t batch, dim_t D1) {
+        // This is needed to avoid the usage of src_scales_buf[16] for async
+        // runtime.
+        const float src_scale = src_scales[0];
+        const float dst_scale = dst_scales[0];
+
+        parallel_nd(batch_dim, NB_D1dim, [=](dim_t batch, dim_t D1) {
             for (int D0 = 0; D0 < NB_D0dim; D0++) {
                 auto i = &input[get_blk_off(
                         input_d, batch, D0_blksize * D0, D1_blksize * D1)];
@@ -1138,10 +1143,14 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
                         : nullptr;
-                const float *src_scales_ptr
-                        = &src_scales[src_scales_mask == 0 ? 0 : _offset];
-                const float *dst_scales_ptr
-                        = &dst_scales[dst_scales_mask == 0 ? 0 : _offset];
+                const float local_src_scale = src_scale;
+                const float *src_scales_ptr = src_scales_mask == 0
+                        ? &local_src_scale
+                        : &src_scales[_offset];
+                const float local_dst_scale = dst_scale;
+                const float *dst_scales_ptr = dst_scales_mask == 0
+                        ? &local_dst_scale
+                        : &dst_scales[_offset];
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
                         zp_ptr, src_scales_ptr, dst_scales_ptr, d0_block,
                         d1_block);
@@ -2620,7 +2629,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                     src_zps_group0, src_zps_group1, src_zps_d.data_type());
         }
 
-        parallel_nd(input_d.nelems(), [&](dim_t idx) {
+        parallel_nd(input_d.nelems(), [=](dim_t idx) {
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;

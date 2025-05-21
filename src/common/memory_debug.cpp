@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2023 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,7 +169,7 @@ void protect_buffer(void *addr, size_t size, engine_kind_t engine_kind) {
             *curr = canary;
         }
     } else {
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             size_t start = 0, end = 0;
             balance211(work_amount, nthr, ithr, start, end);
             uint16_t *ptr_start = reinterpret_cast<uint16_t *>(

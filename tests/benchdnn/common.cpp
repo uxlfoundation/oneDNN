@@ -181,6 +181,7 @@ void parse_result(res_t &res, const char *pstr) {
         // Only summary time is populated to the highest level report.
         bs.ms[t_name][bt::mode_t::sum] += t.sec(bt::mode_t::sum);
     }
+    if (is_failed) { exit(2); }
 }
 
 /* misc */

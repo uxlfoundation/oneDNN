@@ -1720,7 +1720,9 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    const int nthr = pd()->nthr_;
+    int nthr = pd()->nthr_;
+    if (src_d.nelems(true) < 128) nthr = 1;
+
     const char *dst_orig_ptr = dst;
 
     VDEBUGINFO(1, primitive, softmax,

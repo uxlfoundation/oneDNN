@@ -1530,7 +1530,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         // 1 < parallel_work_amount_ < dnnl_get_max_threads() to avoid potential
         // overhead on spawning different number of OMP threads from layer to
         // layer.
-        if (parallel_work_amount_ == 1 && !parallel_reduction_is_used())
+        if (parallel_work_amount_ <= 32 && !parallel_reduction_is_used())
             nthr_ = nthr_bmn_ = nthr_k_ = 1;
 
         // For Eigen threadpool there is significant advantage to not spawn

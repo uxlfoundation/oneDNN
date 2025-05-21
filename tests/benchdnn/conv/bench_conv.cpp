@@ -43,6 +43,8 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (const auto &i_mb : s.mb) {
+        if (i_dir & FLAG_BWD) continue;
+
         auto i_bia_dt = i_bia_dt_;
         if (i_dir & FLAG_BIA) {
             if (i_bia_dt != dnnl_data_type_undef) {

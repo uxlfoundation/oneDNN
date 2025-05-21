@@ -144,6 +144,7 @@ if(MSVC)
         append(CMAKE_CCXX_NOWARN_FLAGS "/wd4244")
         # workaround: macro outputs defined token in msvs header
         append(CMAKE_CCXX_NOWARN_FLAGS "/wd5105")
+        append(CMAKE_CCXX_FLAGS "/fsanitize=address")
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
         append(CMAKE_CCXX_FLAGS "/MP")

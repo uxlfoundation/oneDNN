@@ -25,7 +25,7 @@ echo "github workspace $GITHUB_WORKSPACE"
 os_type=$(uname)
 
 ACL_WITH_ASSERTS=${ACL_WITH_ASSERTS:-0}
-ACL_VERSION=${ACL_VERSION:-v52.0.1}
+ACL_VERSION=${ACL_VERSION:-v52.0.0}
 
 if [[ "$os_type" == "Linux" ]]; then
   echo "This machine is running Linux"

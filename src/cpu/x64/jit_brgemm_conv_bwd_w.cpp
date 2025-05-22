@@ -312,17 +312,16 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
     const char *diff_weights = nullptr;
     const char *diff_bias = nullptr;
 
-    const brgemm_convolution_bwd_weights_t *self;
-    const memory_tracking::grantor_t scratchpad;
-
     char *tr_src = nullptr;
-    char *tr_diff_dst = nullptr;
     simple_barrier::ctx_t *tr_src_bctx = nullptr;
+    char *tr_diff_dst = nullptr;
     simple_barrier::ctx_t *tr_diff_dst_bctx = nullptr;
 
     float *wei_bia_reduction = nullptr;
     float *bia_reduction = nullptr;
     simple_barrier::ctx_t *wei_bia_reduction_bctx = nullptr;
+
+    const brgemm_convolution_bwd_weights_t *self;
 
     // All nthreads are mapped to a multidimensional "cube" with sizes:
     // (nthr_mb, nthr_g, nthr_oc, nthr_ic).
@@ -347,34 +346,30 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
     const memory_desc_wrapper diff_weights_d;
 
     thread_info_t(const brgemm_convolution_bwd_weights_t *pcnv,
-            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, char *diff_bias_ptr,
+            char *tr_src_ptr, simple_barrier::ctx_t *tr_src_bctx_ptr,
+            char *tr_diff_dst_ptr, simple_barrier::ctx_t *tr_diff_dst_bctx_ptr,
+            float *wei_bia_reduction_ptr,
+            simple_barrier::ctx_t *wei_bia_reduction_bctx_ptr,
+            brgemm_batch_element_t *const __restrict brg_batch_global,
+            char *wsp_tile_global, int ithr)
         : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST))
         , diff_weights(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS))
+        , diff_bias(diff_bias_ptr)
+        , tr_src(tr_src_ptr)
+        , tr_src_bctx(tr_src_bctx_ptr)
+        , tr_diff_dst(tr_diff_dst_ptr)
+        , tr_diff_dst_bctx(tr_diff_dst_bctx_ptr)
+        , wei_bia_reduction(wei_bia_reduction_ptr)
+        , wei_bia_reduction_bctx(wei_bia_reduction_bctx_ptr)
         , self(pcnv)
-        , scratchpad(ctx->get_scratchpad_grantor())
         , ithr(ithr)
         , jcp(self->pd()->jcp_)
         , src_d(self->pd()->src_md())
         , diff_dst_d(self->pd()->diff_dst_md())
         , diff_weights_d(self->pd()->diff_weights_md(0)) {
 
-        diff_bias = self->pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
-                        && self->pd()->jcp_.bia_dt == data_type::f32
-                ? (char *)scratchpad.template get<float>(key_conv_padded_bias)
-                : CTX_OUT_MEM(char *, DNNL_ARG_DIFF_BIAS);
-
-        tr_src = scratchpad.template get<char>(key_conv_tr_src);
-        if (jcp.global_transpose)
-            tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                    key_conv_tr_src_bctx);
-
-        tr_diff_dst = scratchpad.template get<char>(key_conv_tr_diff_dst);
-        if (jcp.global_transpose)
-            tr_diff_dst_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                    key_conv_tr_diff_dst_bctx);
-        wei_bia_reduction
-                = scratchpad.template get<float>(key_conv_wei_bia_reduction);
         bia_reduction = nullptr;
         if (jcp.with_bias) {
             const size_t wei_size = jcp.ngroups * jcp.nb_oc * jcp.oc_block
@@ -384,9 +379,6 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
                     : jcp.nthr_mb - 1;
             bia_reduction = wei_bia_reduction + wei_size * num_wei_buffers;
         }
-
-        wei_bia_reduction_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_wei_bia_reduction_bctx);
 
         ithr_ic_b = ithr % jcp.nthr_ic_b;
         ithr_oc_b = ithr / jcp.nthr_ic_b % jcp.nthr_oc_b;
@@ -430,16 +422,9 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
 
         ic_b_work = ic_b_end - ic_b_start;
 
-        brgemm_batch_element_t *const __restrict brg_batch_global
-                = (jcp.brg_type == brgemm_strd)
-                ? nullptr
-                : scratchpad.template get<brgemm_batch_element_t>(
-                        key_brgemm_primitive_batch);
         brg_batch = brg_batch_global
                 + static_cast<size_t>(ithr) * jcp.adjusted_batch_size;
 
-        auto wsp_tile_global
-                = scratchpad.template get<char>(key_conv_amx_tile_buffer);
         wsp_tile = wsp_tile_global + ithr * 2 * brgemm_convolution_utils::P4K;
     }
 
@@ -1472,7 +1457,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // last elements position may vary depending on position of od_s,
         // oh_block, padding and kh
         parallel_nd(jcp.tr_src_buf_count, jcp.ih_block * jcp.id,
-                [&](size_t isb, size_t is) {
+                [=](size_t isb, size_t is) {
                     const auto tr_src_idx = isb * jcp.tr_src_buf_size
                             + (is + 1) * jcp.tr_iw * jcp.ic_block;
                     char *ts = &tr_src[tr_src_idx * jcp.src_dsz];
@@ -1486,7 +1471,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // Zero out guard elements that cross a buffer boundary to prevent a
         // race condition due to buffer overflows from memory optimization where
         // buffers sharing padding
-        parallel_nd(jcp.tr_src_buf_count, [&](size_t isb) {
+        parallel_nd(jcp.tr_src_buf_count, [=](size_t isb) {
             char *ts = &tr_src[(isb + 1) * jcp.tr_src_buf_size * jcp.src_dsz];
             std::memset(ts, 0, bytes_to_zero);
         });
@@ -1525,11 +1510,48 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    auto scratchpad = ctx->get_scratchpad_grantor();
+
+    char *diff_bias_ptr = pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
+                    && pd()->jcp_.bia_dt == data_type::f32
+            ? (char *)scratchpad.template get<float>(key_conv_padded_bias)
+            : CTX_OUT_MEM(char *, DNNL_ARG_DIFF_BIAS);
+
+    char *tr_src_ptr = scratchpad.template get<char>(key_conv_tr_src);
+    simple_barrier::ctx_t *tr_src_bctx_ptr = nullptr;
+    if (jcp.global_transpose)
+        tr_src_bctx_ptr = scratchpad.template get<simple_barrier::ctx_t>(
+                key_conv_tr_src_bctx);
+
+    char *tr_diff_dst_ptr = scratchpad.template get<char>(key_conv_tr_diff_dst);
+    simple_barrier::ctx_t *tr_diff_dst_bctx_ptr = nullptr;
+    if (jcp.global_transpose)
+        tr_diff_dst_bctx_ptr = scratchpad.template get<simple_barrier::ctx_t>(
+                key_conv_tr_diff_dst_bctx);
+
+    float *wei_bia_reduction_ptr
+            = scratchpad.template get<float>(key_conv_wei_bia_reduction);
+    simple_barrier::ctx_t *wei_bia_reduction_bctx_ptr
+            = scratchpad.template get<simple_barrier::ctx_t>(
+                    key_conv_wei_bia_reduction_bctx);
+
+    brgemm_batch_element_t *const __restrict brg_batch_global
+            = (jcp.brg_type == brgemm_strd)
+            ? nullptr
+            : scratchpad.template get<brgemm_batch_element_t>(
+                    key_brgemm_primitive_batch);
+
+    char *wsp_tile_global
+            = scratchpad.template get<char>(key_conv_amx_tile_buffer);
+
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(jcp.nthr == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
-        thread_info_t thread_info(this, ctx, ithr);
+        thread_info_t thread_info(this, ctx, diff_bias_ptr, tr_src_ptr,
+                tr_src_bctx_ptr, tr_diff_dst_ptr, tr_diff_dst_bctx_ptr,
+                wei_bia_reduction_ptr, wei_bia_reduction_bctx_ptr,
+                brg_batch_global, wsp_tile_global, ithr);
         switch (jcp.harness) {
             case harness_2d_reduction:
                 compute_diff_weights_2d(&thread_info);
@@ -1548,17 +1570,23 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
-            thread_info_t thread_info(this, ctx, ithr);
+            thread_info_t thread_info(this, ctx, diff_bias_ptr, tr_src_ptr,
+                    tr_src_bctx_ptr, tr_diff_dst_ptr, tr_diff_dst_bctx_ptr,
+                    wei_bia_reduction_ptr, wei_bia_reduction_bctx_ptr,
+                    brg_batch_global, wsp_tile_global, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
         });
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
-            thread_info_t thread_info(this, ctx, ithr);
+            thread_info_t thread_info(this, ctx, diff_bias_ptr, tr_src_ptr,
+                    tr_src_bctx_ptr, tr_diff_dst_ptr, tr_diff_dst_bctx_ptr,
+                    wei_bia_reduction_ptr, wei_bia_reduction_bctx_ptr,
+                    brg_batch_global, wsp_tile_global, ithr);
             store_in_vnni_format(&thread_info);
         });
     }

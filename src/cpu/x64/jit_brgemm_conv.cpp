@@ -1272,15 +1272,14 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
             wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
             jcp.scale_adjust_factor);
 
-    brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
+    // Take a pointer to weights to setup all compensation pointers.
+    const char *__restrict wei = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
 
-    const char *const __restrict src = brgemm_ctx.src;
-    const char *__restrict wei = brgemm_ctx.weights;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
 
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
-    auto w = const_cast<char *>(brgemm_ctx.weights);
+    auto w = const_cast<char *>(wei);
     const auto s8s8_comp_offset = jcp.req_cal_comp_pad
             ? jcp.ngroups * jcp.nb_oc * jcp.kd * jcp.kh * jcp.kw * jcp.oc_block
             : jcp.ngroups * jcp.nb_oc * jcp.oc_block;
@@ -1337,7 +1336,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -1348,6 +1347,9 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
         char *const wsp_tile = is_amx
                 ? wsp_tile_global + ithr * jcp.amx_buf_size_per_thread
                 : nullptr;
+
+        brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
+        const char *const __restrict src = brgemm_ctx.src;
 
         brgemm_thread_ctx_t btc(
                 brgemm_ctx, ithr, brg_batch, c_buffer, wsp_tile, wei);
@@ -1447,6 +1449,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
 
     if (!jcp.req_cal_comp_pad) return status::success;
 
+    // TODO: taking them by copy might affect the performance.
     vector<int> adjusted_k;
     vector<int> adjusted_k_l;
     int vpad_k = 0;
@@ -1482,7 +1485,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -1712,7 +1715,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(
         const auto out_ocb_offs
                 = nb_rd * jcp.oc_block * wei_dsz * jcp.vnni_block;
 
-        parallel_nd(jcp.ngroups, jcp.nb_oc, [&](dim_t g, dim_t ocb) {
+        parallel_nd(jcp.ngroups, jcp.nb_oc, [=](dim_t g, dim_t ocb) {
             auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
             const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
             const auto out_ocb = g * jcp.nb_oc + ocb;
@@ -1728,7 +1731,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(
                 = nb_rd * jcp.oc_block * wei_dsz * jcp.vnni_block;
 
         parallel_nd(
-                jcp.ngroups, jcp.nb_oc, KH, [&](dim_t g, dim_t ocb, dim_t kh) {
+                jcp.ngroups, jcp.nb_oc, KH, [=](dim_t g, dim_t ocb, dim_t kh) {
                     auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
                     const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
                     const auto out_ocb = g * jcp.nb_oc + ocb;

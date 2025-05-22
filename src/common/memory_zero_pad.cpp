@@ -92,7 +92,7 @@ void typed_zero_pad_blk(const memory_desc_wrapper &m_d, void *data_handle) {
 
     if (c_tail_s) {
         parallel_nd(A, B, D, E, F,
-                [&](dim_t a, dim_t b, dim_t d, dim_t e, dim_t f) {
+                [=](dim_t a, dim_t b, dim_t d, dim_t e, dim_t f) {
                     auto x = &data[m_d.blk_off(a, b, C - 1, d, e, f)];
                     if (blk_kind == c)
                         zeroize_tail(x, c_tail_s);
@@ -105,7 +105,7 @@ void typed_zero_pad_blk(const memory_desc_wrapper &m_d, void *data_handle) {
 
     if (b_tail_s) {
         parallel_nd(A, C, D, E, F,
-                [&](dim_t a, dim_t c, dim_t d, dim_t e, dim_t f) {
+                [=](dim_t a, dim_t c, dim_t d, dim_t e, dim_t f) {
                     auto x = &data[m_d.blk_off(a, B - 1, c, d, e, f)];
                     if (blk_kind == b)
                         zeroize_tail(x, b_tail_s);
@@ -118,7 +118,7 @@ void typed_zero_pad_blk(const memory_desc_wrapper &m_d, void *data_handle) {
 
     if (a_tail_s) {
         parallel_nd(B, C, D, E, F,
-                [&](dim_t b, dim_t c, dim_t d, dim_t e, dim_t f) {
+                [=](dim_t b, dim_t c, dim_t d, dim_t e, dim_t f) {
                     auto x = &data[m_d.blk_off(A - 1, b, c, d, e, f)];
                     if (blk_kind == a)
                         zeroize_tail(x, a_tail_s);
@@ -170,7 +170,7 @@ void typed_zero_pad_generic_blocked(
     assert(step_dim >= 0 && "no zero padding is required");
     if (step_dim < 0) return;
 
-    parallel_nd(nelems / step, [&](ptrdiff_t e1) {
+    parallel_nd(nelems / step, [=](ptrdiff_t e1) {
         bool need_zero = false;
 
         ptrdiff_t idx = e1;

@@ -71,7 +71,7 @@ public:
             new_obj = replace_stmt_body(new_obj, body);
         }
         post_inc_stores_.clear();
-        return new_obj;
+        return std::move(new_obj);
     }
 
     // Pattern to handle:

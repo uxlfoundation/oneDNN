@@ -300,11 +300,12 @@ status_t jit_uni_ncsp_convolution_fwd_t::reorder_activations(
     exec_args_t r_args;
     r_args[DNNL_ARG_SRC] = in;
     r_args[DNNL_ARG_DST] = out;
-    exec_ctx_t r_ctx(ctx, std::move(r_args));
+    auto r_ctx = std::make_unique<exec_ctx_t>(ctx, std::move(r_args));
 
     nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
-    CHECK(prim->execute(r_ctx));
+    r_ctx->set_scratchpad_grantor(ns.grantor());
+    CHECK(prim->execute(*r_ctx));
+    ctx.stream()->after_exec_hook(r_ctx);
 
     return status::success;
 }

@@ -484,9 +484,13 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         // for each output id of the op, find the ops with the same input id
         // check the input
         for (const auto &out : op.out_lts_) {
-            for (const auto &aop : in_lt_2_ops_[out.id_]) {
-                deg[aop.id_]--;
-                if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+            // if the out tensor is not the output port of the graph, reduce
+            // the in-degree of its consumer.
+            if (in_lt_2_ops_.count(out.id_)) {
+                for (const auto &aop : in_lt_2_ops_[out.id_]) {
+                    deg[aop.id_]--;
+                    if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+                }
             }
         }
     }

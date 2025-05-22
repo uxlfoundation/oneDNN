@@ -174,7 +174,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
     ~brgemm_convolution_fwd_t() = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 protected:
     status_t init(engine_t *engine) override;
@@ -182,7 +182,8 @@ protected:
 private:
     //  brgemm convolution execution context
     struct brgemm_exec_ctx_t {
-        brgemm_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd)
+        brgemm_exec_ctx_t(
+                const std::shared_ptr<exec_ctx_t> &ctx, const pd_t *pd)
             : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
             , weights(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))

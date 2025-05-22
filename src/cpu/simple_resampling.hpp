@@ -40,7 +40,7 @@ struct simple_resampling_base_t {
     virtual ~simple_resampling_base_t() = default;
 
     virtual status_t init() = 0;
-    virtual status_t execute(const exec_ctx_t &ctx) const = 0;
+    virtual status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const = 0;
 
 protected:
     const resampling_pd_t *pd_;
@@ -106,7 +106,7 @@ struct simple_resampling_fwd_t : public primitive_t {
 
     ~simple_resampling_fwd_t() override = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
@@ -153,7 +153,7 @@ struct simple_resampling_bwd_t : public primitive_t {
 
     ~simple_resampling_bwd_t() override = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

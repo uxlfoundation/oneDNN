@@ -115,14 +115,14 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_forward_nspc(ctx) : execute_forward_ncsp(ctx);
     }
 
 private:
-    status_t execute_forward_ncsp(const exec_ctx_t &ctx) const;
-    status_t execute_forward_nspc(const exec_ctx_t &ctx) const;
+    status_t execute_forward_ncsp(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_nspc(const std::shared_ptr<exec_ctx_t> &ctx) const;
     status_t execute_forward_thr_nspc(const int ithr, const int nthr,
             const src_data_t *src_base, const wei_data_t *wei_base,
             const float *bia_base, dst_data_t *dst_base,
@@ -279,15 +279,17 @@ struct gemm_bf16_convolution_bwd_data_t : public primitive_t {
     using diff_src_data_t = typename prec_traits_t<diff_src_data_type>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_backward_data_nspc(ctx)
                        : execute_backward_data_ncsp(ctx);
     }
 
 private:
-    status_t execute_backward_data_ncsp(const exec_ctx_t &ctx) const;
-    status_t execute_backward_data_nspc(const exec_ctx_t &ctx) const;
+    status_t execute_backward_data_ncsp(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_backward_data_nspc(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     status_t execute_backward_data_thr_nspc(const int ithr, const int nthr,
             diff_src_data_t *diff_src_base, const wei_data_t *wei_base,
             const diff_dst_data_t *diff_dst_base,
@@ -351,7 +353,7 @@ struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
         return acc_ker_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_backward_weights_nspc(ctx)
                        : execute_backward_weights_ncsp(ctx);
@@ -366,8 +368,10 @@ private:
             const acc_data_t *weights_reduce_base,
             diff_wei_data_t *weights_base) const;
 
-    status_t execute_backward_weights_ncsp(const exec_ctx_t &ctx) const;
-    status_t execute_backward_weights_nspc(const exec_ctx_t &ctx) const;
+    status_t execute_backward_weights_ncsp(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_backward_weights_nspc(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;

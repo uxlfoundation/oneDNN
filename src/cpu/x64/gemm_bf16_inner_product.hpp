@@ -136,7 +136,7 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
         return (pp_kernel_) ? pp_kernel_->create_kernel() : status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
@@ -145,7 +145,7 @@ private:
     bool postops_in_ip_;
     float beta_;
 
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
@@ -209,12 +209,13 @@ struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
     using diff_src_data_t = typename prec_traits_t<diff_src_data_type>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward_data(ctx);
     }
 
 private:
-    status_t execute_backward_data(const exec_ctx_t &ctx) const;
+    status_t execute_backward_data(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
@@ -321,15 +322,16 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
     using diff_wei_data_t = typename prec_traits_t<diff_wei_data_type>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward_weights(ctx);
     }
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    status_t execute_backward_weights(const exec_ctx_t &ctx) const;
-    void execute_backward_bias(const exec_ctx_t &ctx) const;
+    status_t execute_backward_weights(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_backward_bias(const std::shared_ptr<exec_ctx_t> &ctx) const;
 
     std::unique_ptr<jit_cvt_xf16_to_ps_t> bias_reduction_;
 };

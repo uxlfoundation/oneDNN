@@ -399,14 +399,14 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
     }
 #endif
 
-    status_t execute(const exec_ctx_t &ctx) const override {
-        engine_t *engine = ctx.stream()->engine();
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
+        engine_t *engine = ctx->stream()->engine();
+        const auto scratchpad = ctx->get_scratchpad_grantor();
 
         const auto inout_buffer = scratchpad.get_memory_storage(
                 memory_tracking::names::key_fusion_inout_buffer);
 
-        const auto &ctx_args = ctx.args();
+        const auto &ctx_args = ctx->args();
         const auto op_count = primitives_.size();
         std::vector<std::unique_ptr<memory_t, memory_deleter_t>> inout_memory;
 
@@ -428,11 +428,12 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 }
             }
 
-            exec_ctx_t op_ctx(ctx, std::move(exec_args));
+            auto op_ctx
+                    = std::make_shared<exec_ctx_t>(*ctx, std::move(exec_args));
 
             nested_scratchpad_t ns(ctx,
                     memory_tracking::names::key_fusion_forward_scratchpad, op);
-            op_ctx.set_scratchpad_grantor(ns.grantor());
+            op_ctx->set_scratchpad_grantor(ns.grantor());
             CHECK(op->execute(op_ctx));
         }
 

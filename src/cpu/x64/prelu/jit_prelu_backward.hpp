@@ -53,7 +53,7 @@ public:
     jit_prelu_bwd_t(const pd_t *apd);
     ~jit_prelu_bwd_t() override;
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     using byte = unsigned char;

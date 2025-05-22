@@ -151,7 +151,7 @@ using namespace nhwc_pooling;
 
 template <>
 status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto alg = pd()->desc()->alg_kind;
 
@@ -296,8 +296,7 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
 
         if (are_postops_set) {
             auto *const d = dst + dst_offset_init;
-            ref_post_ops_t::args_t args;
-            args.ctx = &ctx;
+            ref_post_ops_t::args_t args(ctx);
             args.l_offset = get_logical_offset(mb, 0, od, oh, ow);
             args.dst_md = pd()->dst_md();
 
@@ -312,7 +311,7 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
 
 template <data_type_t d_type>
 status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto alg = pd()->desc()->alg_kind;
 
@@ -320,7 +319,7 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *const cvt_src_wsp = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     float *const cvt_dst_wsp = scratchpad.template get<float>(
@@ -468,8 +467,7 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                 }
 
                 if (are_postops_set) {
-                    ref_post_ops_t::args_t args;
-                    args.ctx = &ctx;
+                    ref_post_ops_t::args_t args(ctx);
                     args.l_offset = get_logical_offset(mb, 0, od, oh, ow);
                     args.dst_md = pd()->dst_md();
 
@@ -485,7 +483,7 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
 
 template <>
 status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
@@ -623,13 +621,13 @@ status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
 
 template <data_type_t d_type>
 status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *cvt_dsrc = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     float *cvt_ddst = scratchpad.template get<float>(

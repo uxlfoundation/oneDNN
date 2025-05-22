@@ -32,6 +32,30 @@
 //NOLINTBEGIN(bugprone-macro-parentheses)
 // These macros are actual pieces of code, can't put certain pieces into `()`.
 // TODO: consider making them functions.
+#define DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(attr, scales, arg, scales_buff) \
+    if ((attr)) { \
+        if ((attr)->scales_.has_default_values(arg)) { \
+            utils::array_set(scales_buff, 1.0f, 16); \
+            scales = scales_buff; \
+        } else { \
+            scales = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | (arg)); \
+            const auto scales_d \
+                    = ctx->memory_mdw(DNNL_ARG_ATTR_SCALES | (arg)); \
+            if (scales_d.nelems() == 1) { \
+                const float s = cpu::io::load_float_value( \
+                        scales_d.data_type(), scales, 0); \
+                if (utils::one_of((arg), DNNL_ARG_DST, \
+                            DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST)) { \
+                    utils::array_set(scales_buff, 1.f / s, 16); \
+                } else { \
+                    utils::array_set(scales_buff, s, 16); \
+                } \
+                scales = scales_buff; \
+            } \
+        } \
+    } \
+    MAYBE_UNUSED(scales);
+
 #define DEFINE_ARG_SCALES_BUFFER_ATTR(attr, scales, arg) \
     alignas(16) float CONCAT2(scales, _buf16)[16] = {0}; \
     const float *scales {nullptr}; \
@@ -44,7 +68,7 @@
             VCHECK_ATTR(scales != nullptr, \
                     "Scales buffer for arg %d is missing", (arg)); \
             const auto scales_d \
-                    = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | (arg)); \
+                    = ctx->memory_mdw(DNNL_ARG_ATTR_SCALES | (arg)); \
             VCHECK_ATTR( \
                     utils::one_of(scales_d.data_type(), data_type::f32, \
                             data_type::f16, data_type::bf16, data_type::e8m0), \
@@ -82,7 +106,7 @@
             VCHECK_ATTR(zero_points_ptr != nullptr, \
                     "Zero points buffer for arg %d is missing", (arg)); \
             const auto zero_points_d \
-                    = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | (arg)); \
+                    = ctx->memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | (arg)); \
             VCHECK_ATTR(utils::one_of(zero_points_d.data_type(), \
                                 data_type::s32, data_type::s8, data_type::u8, \
                                 data_type::s4, data_type::u4), \
@@ -100,7 +124,7 @@
         utils::array_set(CONCAT2(CONCAT2(scales, _buf16), mem_arg), 1.0f, 16); \
         scale = CONCAT2(CONCAT2(scales, _buf16), mem_arg); \
     } else { \
-        const auto scale_d = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | mem_arg); \
+        const auto scale_d = ctx->memory_mdw(DNNL_ARG_ATTR_SCALES | mem_arg); \
         VCHECK_ATTR(scale_d.data_type() == data_type::f32, \
                 "Scales data type is not f32"); \
         VCHECK_ATTR(scale_d.ndims() == 1, "Scales ndims is not 1"); \
@@ -113,11 +137,24 @@
         scale = scale_p; \
     }
 
+#define DEFINE_ZERO_POINT_VALUE_ATTR_NORET( \
+        attr, zero_point, mem_arg, default_val) \
+    zero_point = default_val; \
+    if (!attr->zero_points_.has_default_values(mem_arg)) { \
+        const auto zero_points_d \
+                = ctx->memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | mem_arg); \
+        const int32_t *zero_points_ptr = CTX_IN_MEM( \
+                const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | mem_arg); \
+        zero_point = cpu::io::load_int_value( \
+                zero_points_d.data_type(), zero_points_ptr, 0); \
+    } \
+    MAYBE_UNUSED(zero_point);
+
 #define DEFINE_ZERO_POINT_VALUE_ATTR(attr, zero_point, mem_arg) \
     int32_t zero_point = 0; \
     if (!attr->zero_points_.has_default_values(mem_arg)) { \
         const auto zero_points_d \
-                = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | mem_arg); \
+                = ctx->memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | mem_arg); \
         VCHECK_ATTR(utils::one_of(zero_points_d.data_type(), data_type::s32, \
                             data_type::s8, data_type::u8, data_type::s4, \
                             data_type::u4), \

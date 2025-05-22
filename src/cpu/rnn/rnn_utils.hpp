@@ -49,7 +49,8 @@
 
 #if DNNL_X64
 #define rnn_merged_layer_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
+            const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
@@ -57,7 +58,8 @@
             x64::brgemm_batch_element_t *addr_batch_global) const
 
 #define rnn_cell_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
+            const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
             void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
             gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
@@ -78,11 +80,11 @@
             x64::brgemm_batch_element_t *addr_batch_global) const
 
 #define rnn_grid_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            weights_t **weights_layer_, weights_t **weights_iter_, \
-            weights_t **weights_projection_, const float *weights_peephole_, \
-            const float *w_proj_comp, void **bias_, \
-            const src_layer_t *src_layer_, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
+            const rnn_utils::rnn_conf_t &rnn, weights_t **weights_layer_, \
+            weights_t **weights_iter_, weights_t **weights_projection_, \
+            const float *weights_peephole_, const float *w_proj_comp, \
+            void **bias_, const src_layer_t *src_layer_, \
             const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
             const void *src_iter_c_, dst_layer_t *dst_layer_, \
             dst_iter_t *dst_iter_, void *dst_iter_c_, \
@@ -107,7 +109,8 @@
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_) const
 
 #define rnn_cell_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
+            const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
             void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
             gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
@@ -126,11 +129,11 @@
             gemm_acc_t *amx_scratchpad) const
 
 #define rnn_grid_execution_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            weights_t **weights_layer_, weights_t **weights_iter_, \
-            weights_t **weights_projection_, const float *weights_peephole_, \
-            const float *w_proj_comp, void **bias_, \
-            const src_layer_t *src_layer_, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
+            const rnn_utils::rnn_conf_t &rnn, weights_t **weights_layer_, \
+            weights_t **weights_iter_, weights_t **weights_projection_, \
+            const float *weights_peephole_, const float *w_proj_comp, \
+            void **bias_, const src_layer_t *src_layer_, \
             const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
             const void *src_iter_c_, dst_layer_t *dst_layer_, \
             dst_iter_t *dst_iter_, void *dst_iter_c_, \
@@ -147,7 +150,7 @@
 #endif
 
 #define rnn_matmul_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, \
+    dnnl_status_t f(const std::shared_ptr<exec_ctx_t> &ctx, \
             const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
             const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
 

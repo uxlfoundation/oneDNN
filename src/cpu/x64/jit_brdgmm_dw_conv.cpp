@@ -581,7 +581,8 @@ status_t brdgmm_dw_convolution_fwd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t brdgmm_dw_convolution_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const char *const __restrict src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const char *const __restrict weights
@@ -590,7 +591,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     char *const __restrict dst = CTX_OUT_MEM(const char *, DNNL_ARG_DST);
     const std::vector<const void *> post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+                    pd()->attr()->post_ops_, *ctx);
 
     const auto &jcp = pd()->jcp_;
 
@@ -603,7 +604,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 

@@ -25,6 +25,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/primitive_exec_types.hpp"
 #include "common/stream.hpp"
 
 namespace dnnl {

@@ -31,8 +31,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-void ref_deconvolution_fwd_t::compute_fwd_bias_common(const exec_ctx_t &ctx,
-        void *dst, const float *conv_output, bool non_default_attr) const {
+void ref_deconvolution_fwd_t::compute_fwd_bias_common(
+        const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
+        const float *conv_output, bool non_default_attr) const {
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
@@ -58,8 +59,9 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_common(const exec_ctx_t &ctx,
             });
 }
 
-void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(const exec_ctx_t &ctx,
-        void *dst, const float *conv_output, bool non_default_attr) const {
+void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(
+        const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
+        const float *conv_output, bool non_default_attr) const {
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
@@ -81,8 +83,9 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(const exec_ctx_t &ctx,
     });
 }
 
-void ref_deconvolution_fwd_t::compute_fwd_bias_ndhwc(const exec_ctx_t &ctx,
-        void *dst, const float *conv_output, bool non_default_attr) const {
+void ref_deconvolution_fwd_t::compute_fwd_bias_ndhwc(
+        const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
+        const float *conv_output, bool non_default_attr) const {
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
@@ -105,8 +108,9 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ndhwc(const exec_ctx_t &ctx,
 }
 
 template <dim_t blk_size>
-void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
-        void *dst, const float *conv_output, bool non_default_attr) const {
+void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(
+        const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
+        const float *conv_output, bool non_default_attr) const {
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
@@ -137,7 +141,8 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
             });
 }
 
-void ref_deconvolution_fwd_t::compute_fwd_bias(const exec_ctx_t &ctx, void *dst,
+void ref_deconvolution_fwd_t::compute_fwd_bias(
+        const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
         const float *conv_output, bool non_default_attr) const {
     using namespace format_tag;
     switch (pd()->dst_tag_) {
@@ -170,7 +175,7 @@ void ref_deconvolution_fwd_t::compute_fwd_bias(const exec_ctx_t &ctx, void *dst,
 }
 
 status_t ref_deconvolution_fwd_t::compute_oscale(
-        const exec_ctx_t &ctx, float *dst) const {
+        const std::shared_ptr<exec_ctx_t> &ctx, float *dst) const {
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -210,8 +215,9 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     return status_t::dnnl_success;
 }
 
-status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
-        const float *conv_output, void *original_dst) const {
+status_t ref_deconvolution_fwd_t::compute_ref_attrs(
+        const std::shared_ptr<exec_ctx_t> &ctx, const float *conv_output,
+        void *original_dst) const {
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
@@ -249,11 +255,10 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
                             (void *)(&conv_output[dst_off]), sizeof(float));
                     tmp_result = conv_output[dst_off];
 
-                    ref_post_ops_t::args_t args;
+                    ref_post_ops_t::args_t args(ctx);
                     if (pd()->attr()->post_ops_.find(primitive_kind::sum) != -1)
                         args.dst_val = io::load_float_value(
                                 sum_dt, original_dst, dst_off);
-                    args.ctx = &ctx;
                     args.l_offset = dst_l_off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(tmp_result, args);
@@ -291,13 +296,13 @@ dim_t get_weights_off(const memory_desc_wrapper &wei_d, bool with_groups,
 };
 
 template <data_type_t wei_type>
-static void compute_src_zp_compensation(const exec_ctx_t &ctx,
+static void compute_src_zp_compensation(const std::shared_ptr<exec_ctx_t> &ctx,
         const int32_t *src_zero_point, const bool is_src_zp_common,
         typename prec_traits_t<wei_type>::type *wei,
         const cpu_deconvolution_fwd_pd_t *pd) {
     using namespace memory_tracking::names;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_compensation = scratchpad.get<int32_t>(key_deconv_zp);
     const auto G = pd->G();
     const auto KH = pd->KH();
@@ -415,7 +420,7 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
 }
 
 template <data_type_t wei_type>
-static status_t apply_src_zero_point(const exec_ctx_t &ctx,
+static status_t apply_src_zero_point(const std::shared_ptr<exec_ctx_t> &ctx,
         const cpu_deconvolution_fwd_pd_t *deconv_pd, float *conv_output) {
     using wei_data_t = typename prec_traits_t<wei_type>::type;
     using namespace memory_tracking::names;
@@ -428,7 +433,7 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
     const bool is_src_zp_common
             = deconv_pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
     const int32_t *const zp_src_compensation
             = scratchpad.get<int32_t>(key_deconv_zp);
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -466,13 +471,14 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
     return status::success;
 }
 
-status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_deconvolution_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
     const bool ref_bias = pd()->with_bias() && !pd()->conv_supports_bias_;
     const bool non_default_attr = !pd()->attr()->has_default_values();
 
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
     conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
@@ -509,10 +515,10 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
         });
     }
 
-    exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
     auto status = conv_p_->execute(conv_ctx);
     if (status != status::success) return status;
 
@@ -551,17 +557,18 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-status_t ref_deconvolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_deconvolution_bwd_data_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
     conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
     conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);
-    exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
     conv_p_->execute(conv_ctx);
     return status::success;
 }
@@ -672,7 +679,7 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_nCdhwXc(
 
 template <data_type_t dbia_type, data_type_t ddst_type>
 void ref_deconvolution_bwd_weights_t::compute_bias(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using dbia_data_t = typename prec_traits_t<dbia_type>::type;
     using ddst_data_t = typename prec_traits_t<ddst_type>::type;
 
@@ -711,17 +718,18 @@ void ref_deconvolution_bwd_weights_t::compute_bias(
     }
 }
 
-status_t ref_deconvolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_deconvolution_bwd_weights_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
     conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
     conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
-    exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
     status_t status = conv_p_->execute(conv_ctx);
     if (status != status::success) return status;
 
@@ -751,15 +759,15 @@ status_t ref_deconvolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
 using namespace data_type;
 
 template void ref_deconvolution_bwd_weights_t::compute_bias<f32, f32>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template void ref_deconvolution_bwd_weights_t::compute_bias<f32, bf16>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template void ref_deconvolution_bwd_weights_t::compute_bias<bf16, bf16>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template void ref_deconvolution_bwd_weights_t::compute_bias<f32, f16>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template void ref_deconvolution_bwd_weights_t::compute_bias<f16, f16>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

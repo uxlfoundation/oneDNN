@@ -108,10 +108,11 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
 
     ~brgemm_1x1_convolution_fwd_t() override = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward_all(ctx);
 
-        if (pd()->wants_zero_pad_dst()) ctx.memory(DNNL_ARG_DST)->zero_pad(ctx);
+        if (pd()->wants_zero_pad_dst())
+            ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 
         return status::success;
     }
@@ -122,14 +123,15 @@ protected:
 private:
     //  brgemm convolution execution context
     struct brgemm_exec_ctx_t {
-        brgemm_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd)
+        brgemm_exec_ctx_t(
+                const std::shared_ptr<exec_ctx_t> &ctx, const pd_t *pd)
             : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
             , weights(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
             , dst(CTX_OUT_MEM(char *, DNNL_ARG_DST))
             , post_ops_binary_rhs_arg_vec(binary_injector::prepare_binary_args(
-                      pd->attr()->post_ops_, ctx))
-            , wsp_tile(ctx.get_scratchpad_grantor().template get<char>(
+                      pd->attr()->post_ops_, *ctx))
+            , wsp_tile(ctx->get_scratchpad_grantor().template get<char>(
                       memory_tracking::names::key_conv_amx_tile_buffer)) {}
         const char *const __restrict src;
         const char *const __restrict weights;
@@ -161,7 +163,7 @@ private:
             int32_t *src_zp_comp, int32_t *dst_zp_vals,
             int32_t *s8s8_compensation, char *const c_buffer_global) const;
 
-    status_t execute_forward_all(const exec_ctx_t &ctx) const;
+    status_t execute_forward_all(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     static int get_brg_idx(const jit_brgemm_conv_conf_t &jcp,

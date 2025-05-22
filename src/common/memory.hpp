@@ -74,7 +74,7 @@ struct dnnl_memory : public dnnl::impl::c_compatible {
 
     /** returns the underlying memory storage */
     dnnl::impl::memory_storage_t *memory_storage_clean(
-            const dnnl::impl::exec_ctx_t &ctx,
+            const std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx,
             dnnl::impl::status_t &status) const {
         status = zero_pad(ctx);
         return memory_storage(0);
@@ -91,7 +91,8 @@ struct dnnl_memory : public dnnl::impl::c_compatible {
     dnnl::impl::status_t set_data_handle(void *handle, int index = 0) const;
 
     /** zeros padding */
-    dnnl::impl::status_t zero_pad(const dnnl::impl::exec_ctx_t &ctx) const;
+    dnnl::impl::status_t zero_pad(
+            const std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx) const;
 
     dnnl::impl::status_t reset_memory_storage(
             std::unique_ptr<dnnl::impl::memory_storage_t> &&memory_storage);

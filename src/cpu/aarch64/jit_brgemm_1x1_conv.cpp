@@ -393,11 +393,11 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 
 template <cpu_isa_t isa>
 status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -406,7 +406,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
+    const float *oscales = precompute_scales(ctx->get_scratchpad_grantor(),
             src_scales, wei_scales, pd()->OC(), pd()->attr(),
             jcp.scale_adjust_factor);
 

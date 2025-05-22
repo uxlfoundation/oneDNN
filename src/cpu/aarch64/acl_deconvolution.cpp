@@ -21,13 +21,14 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_deconvolution_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     // Lock here is needed because resource_mapper does not support
     // concurrent multithreaded access.
     std::lock_guard<std::mutex> _lock {this->mtx};
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     auto src_base = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);

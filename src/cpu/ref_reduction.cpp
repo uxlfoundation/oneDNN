@@ -100,11 +100,10 @@ void ref_reduction_t<src_type, dst_type, acc_type>::finalize(
 
 template <data_type_t src_type, data_type_t dst_type, data_type_t acc_type>
 status_t ref_reduction_t<src_type, dst_type, acc_type>::execute_ref(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const src_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(dst_t *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(dst_t *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_mdw(pd()->src_md());
     const memory_desc_wrapper dst_mdw(pd()->dst_md());
@@ -145,9 +144,8 @@ status_t ref_reduction_t<src_type, dst_type, acc_type>::execute_ref(
         float acc_f32 = static_cast<float>(acc);
         finalize(acc_f32, alg, p, eps, reduce_size);
 
-        ref_post_ops_t::args_t args;
+        ref_post_ops_t::args_t args(ctx);
         args.dst_val = dst[dst_off];
-        args.ctx = &ctx;
         args.l_offset = l_offset;
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(acc_f32, args);

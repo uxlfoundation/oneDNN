@@ -49,7 +49,7 @@ status_t acl_indirect_gemm_convolution_fwd_t::init(engine_t *engine) {
 }
 
 status_t acl_indirect_gemm_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, data_t>(
             ctx, acl_obj_.get(), pd(), indirect_conv_keys);
 }

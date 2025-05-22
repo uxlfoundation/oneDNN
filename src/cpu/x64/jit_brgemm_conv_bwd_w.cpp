@@ -341,21 +341,19 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
     int cur_brg_idx = -1;
     brgemm_batch_element_t *__restrict brg_batch;
     char *wsp_tile;
-    const exec_ctx_t &exec_ctx;
     const jit_brgemm_conv_conf_t &jcp;
     const memory_desc_wrapper src_d;
     const memory_desc_wrapper diff_dst_d;
     const memory_desc_wrapper diff_weights_d;
 
     thread_info_t(const brgemm_convolution_bwd_weights_t *pcnv,
-            const exec_ctx_t &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
         : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST))
         , diff_weights(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS))
         , self(pcnv)
-        , scratchpad(ctx.get_scratchpad_grantor())
+        , scratchpad(ctx->get_scratchpad_grantor())
         , ithr(ithr)
-        , exec_ctx(ctx)
         , jcp(self->pd()->jcp_)
         , src_d(self->pd()->src_md())
         , diff_dst_d(self->pd()->diff_dst_md())
@@ -1462,8 +1460,8 @@ void brgemm_convolution_bwd_weights_t::reduce_and_convert_diff_weights_and_bias(
 }
 
 void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
-        const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
 
@@ -1522,7 +1520,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
 }
 
 void brgemm_convolution_bwd_weights_t::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     prepare_scratchpad_data(ctx);
 
     const auto &jcp = pd()->jcp_;
@@ -1567,8 +1565,9 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
 
     if (pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
             && jcp.bia_dt == data_type::f32) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
+        auto diff_bias
+                = ctx->get_scratchpad_grantor().template get<const float>(
+                        key_conv_padded_bias);
         auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
         const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
         const int stride = jcp.oc;

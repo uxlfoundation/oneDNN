@@ -680,10 +680,11 @@ status_t jit_uni_softmax_fwd_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_softmax_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_softmax_fwd_t<isa>::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    auto scratchpad_ptr = ctx.get_scratchpad_grantor().template get<char>(
+    auto scratchpad_ptr = ctx->get_scratchpad_grantor().template get<char>(
             memory_tracking::names::key_softmax_interim_store);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
@@ -735,7 +736,8 @@ status_t jit_uni_softmax_bwd_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_softmax_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_softmax_bwd_t<isa>::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto dst = CTX_IN_MEM(const char *, DNNL_ARG_DST);
     auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);

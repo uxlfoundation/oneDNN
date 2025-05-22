@@ -368,7 +368,7 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
 }
 
 status_t brgemm_matmul_copy_reorder_t::execute_body(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace utils;
 
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_FROM);

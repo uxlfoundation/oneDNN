@@ -190,7 +190,8 @@ void typed_zero_pad_generic_blocked(
 }
 
 template <data_type_t dt>
-status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
+status_t typed_zero_pad(
+        const memory_t *memory, const std::shared_ptr<exec_ctx_t> &ctx) {
     const memory_desc_wrapper mdw(memory->md());
     memory_storage_t *memory_storage = memory->memory_storage();
 
@@ -202,7 +203,7 @@ status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     assert(map_size != DNNL_RUNTIME_SIZE_VAL);
 
     void *mapped_ptr
-            = ctx.map_memory_storage(memory_storage, ctx.stream(), map_size);
+            = ctx->map_memory_storage(memory_storage, ctx->stream(), map_size);
 
     auto *data = static_cast<typename prec_traits_t<dt>::type *>(mapped_ptr);
     auto blk = mdw.blocking_desc();
@@ -220,8 +221,8 @@ status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     do { \
         if (blksize == (blksize_)) { \
             typed_zero_pad_blk<dt, blk_kind, blksize_>(mdw, data); \
-            ctx.unmap_memory_storage( \
-                    memory_storage, mapped_ptr, ctx.stream()); \
+            ctx->unmap_memory_storage( \
+                    memory_storage, mapped_ptr, ctx->stream()); \
             return success; \
         } \
     } while (0)
@@ -271,11 +272,12 @@ status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     // the last line of defence
     typed_zero_pad_generic_blocked<dt>(mdw, data);
 
-    ctx.unmap_memory_storage(memory_storage, mapped_ptr, ctx.stream());
+    ctx->unmap_memory_storage(memory_storage, mapped_ptr, ctx->stream());
     return success;
 }
 
-static status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
+static status_t zero_pad(
+        const memory_t *memory, const std::shared_ptr<exec_ctx_t> &ctx) {
     memory_desc_wrapper mdw(memory->md());
     switch (mdw.data_type()) {
         case f16: return typed_zero_pad<f16>(memory, ctx);
@@ -296,17 +298,18 @@ static status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     return unimplemented;
 }
 
-status_t stream_t::zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
+status_t stream_t::zero_pad(
+        const memory_t *memory, const std::shared_ptr<exec_ctx_t> &ctx) {
     return ::zero_pad(memory, ctx);
 }
 
-status_t memory_t::zero_pad(const exec_ctx_t &ctx) const {
+status_t memory_t::zero_pad(const std::shared_ptr<exec_ctx_t> &ctx) const {
     memory_desc_wrapper mdw(md());
     const bool skip_zeroing = false || memory_storage()->is_null()
             || mdw.is_zero() || !mdw.is_blocking_desc();
     if (skip_zeroing) return success;
 
-    stream_t *stream = ctx.stream();
+    stream_t *stream = ctx->stream();
     status_t status;
     if (stream == nullptr) {
         engine_t *engine;
@@ -328,5 +331,6 @@ extern "C" dnnl_status_t DNNL_API dnnl_impl_zero_pad(
         return status::invalid_arguments;
     memory_arg_t mem_arg = {const_cast<memory_t *>(memory), true};
     exec_args_t args = {{0, mem_arg}};
-    return memory->zero_pad(exec_ctx_t(stream, std::move(args)));
+    return memory->zero_pad(
+            std::make_shared<exec_ctx_t>(stream, std::move(args)));
 }

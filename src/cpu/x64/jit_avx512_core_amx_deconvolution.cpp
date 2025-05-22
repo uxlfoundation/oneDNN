@@ -61,7 +61,7 @@ void jit_avx512_core_amx_deconvolution_fwd_t::prepare_padded_bias(
 }
 
 status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
@@ -72,14 +72,14 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
+    const float *oscales = precompute_scales(ctx->get_scratchpad_grantor(),
             src_scales, wei_scales, src_d.dims()[1], dst_d.dims()[1], false,
             wei_scale_mask > 0, pd()->attr());
 

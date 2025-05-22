@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -145,7 +145,8 @@ status_t jit_prelu_bwd_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
-status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_prelu_bwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const byte *const src = CTX_IN_MEM(const byte *, DNNL_ARG_SRC);
     const byte *const weights = CTX_IN_MEM(const byte *, DNNL_ARG_WEIGHTS);
     const byte *const dst_diff = CTX_IN_MEM(const byte *, DNNL_ARG_DIFF_DST);
@@ -207,7 +208,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
         const dim_t nelems_single_mb
                 = utils::array_product(src_d.padded_dims() + 1, ndims - 1);
 
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        auto scratchpad = ctx->get_scratchpad_grantor();
         float *const weights_diff_scratchpad = scratchpad.template get<float>(
                 memory_tracking::names::key_prelu_reduction);
         const auto C_cache_line_aligned = utils::rnd_up(C, alignment);

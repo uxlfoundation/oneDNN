@@ -40,11 +40,10 @@ namespace cpu {
 
 template <data_type_t data_type>
 status_t ref_eltwise_fwd_t<data_type>::execute_forward_nCspBc_padded(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const blocking_desc_t &blk = src_d.blocking_desc();
@@ -80,14 +79,13 @@ status_t ref_eltwise_fwd_t<data_type>::execute_forward_nCspBc_padded(
 
 template <data_type_t data_type>
 status_t ref_eltwise_fwd_t<data_type>::execute_forward_generic(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     /* fast return */
     if (pd()->has_zero_dim_memory()) return status::success;
 
     status_t status = status::success;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
 
@@ -108,8 +106,7 @@ status_t ref_eltwise_fwd_t<data_type>::execute_forward_generic(
                         alg_kind, src[data_p_off], alpha, beta);
                 dim_t data_l_off = (((n * C + c) * D + d) * H + h) * W + w;
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
+                ref_post_ops_t::args_t args(ctx);
                 args.l_offset = data_l_off;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(res, args);
@@ -121,11 +118,10 @@ status_t ref_eltwise_fwd_t<data_type>::execute_forward_generic(
 
 template <data_type_t data_type>
 status_t ref_eltwise_fwd_t<data_type>::execute_forward_dense(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
 
@@ -155,7 +151,7 @@ status_t ref_eltwise_fwd_t<data_type>::execute_forward_dense(
 
 template <data_type_t data_type>
 status_t ref_eltwise_bwd_t<data_type>::execute_backward_generic(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     /* fast return */
     if (pd()->has_zero_dim_memory()) return status::success;
 
@@ -163,8 +159,7 @@ status_t ref_eltwise_bwd_t<data_type>::execute_backward_generic(
     auto src = CTX_IN_MEM(
             const data_t *, pd()->use_dst() ? DNNL_ARG_DST : DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
@@ -193,13 +188,12 @@ status_t ref_eltwise_bwd_t<data_type>::execute_backward_generic(
 
 template <data_type_t data_type>
 status_t ref_eltwise_bwd_t<data_type>::execute_backward_dense(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     const void *src = pd()->use_dst() ? CTX_IN_MEM(const void *, DNNL_ARG_DST)
                                       : CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     const void *diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
-    void *diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
@@ -238,7 +232,7 @@ status_t ref_eltwise_bwd_t<data_type>::execute_backward_dense(
         diff_src_ptr += diff_data_d.offset0();
 
         using namespace memory_tracking::names;
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        auto scratchpad = ctx->get_scratchpad_grantor();
         auto *src_f32 = scratchpad.template get<float>(key_eltwise_src);
         auto *diff_dst_f32
                 = scratchpad.template get<float>(key_eltwise_diff_dst);

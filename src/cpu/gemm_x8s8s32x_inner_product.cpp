@@ -34,14 +34,14 @@ using namespace format_tag;
 using namespace memory_tracking::names;
 
 status_t gemm_x8s8s32x_inner_product_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
-                    this->pd()->attr()->post_ops_, ctx);
+                    this->pd()->attr()->post_ops_, *ctx);
 
     const dim_t MB = pd()->MB();
     const dim_t OC = pd()->OC();
@@ -63,14 +63,14 @@ status_t gemm_x8s8s32x_inner_product_fwd_t::execute_forward(
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *scales = precompute_scales(scratchpad, src_scales, wei_scales,
             IC, OC, false, wei_scale_mask > 0, pd()->attr());
 
     int32_t *acc = pd()->dst_is_acc_
             ? (int32_t *)dst
-            : ctx.get_scratchpad_grantor().template get<int32_t>(
+            : ctx->get_scratchpad_grantor().template get<int32_t>(
                     key_iprod_int_dat_in_acc_dt);
 
     const float onef = 1.0, zerof = 0.0;

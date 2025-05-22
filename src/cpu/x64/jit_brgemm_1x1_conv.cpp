@@ -710,11 +710,11 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
 
 template <cpu_isa_t isa>
 status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));

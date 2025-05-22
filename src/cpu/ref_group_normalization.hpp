@@ -81,7 +81,7 @@ struct ref_group_normalization_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
@@ -127,7 +127,7 @@ struct ref_group_normalization_bwd_t : public primitive_t {
 
     ref_group_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

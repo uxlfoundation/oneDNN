@@ -24,11 +24,12 @@ namespace cpu {
 namespace binary_injector_utils {
 
 std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
-        const exec_ctx_t &ctx, const unsigned first_arg_idx_offset) {
+        const exec_ctx_t &ctx_, const unsigned first_arg_idx_offset) {
     std::vector<const void *> post_ops_binary_rhs_arg_vec;
     post_ops_binary_rhs_arg_vec.reserve(post_ops.entry_.size());
 
     unsigned idx = first_arg_idx_offset;
+    const exec_ctx_t *ctx = &ctx_;
     for (const auto &post_op : post_ops.entry_) {
         if (post_op.is_binary()) {
             post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(const void *,

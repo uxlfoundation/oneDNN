@@ -104,7 +104,7 @@ struct ref_sum_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         using namespace memory_tracking::names;
 
         if (pd()->has_zero_dim_memory()) return status::success;
@@ -113,10 +113,10 @@ struct ref_sum_t : public primitive_t {
         exec_args_t r_args;
 
         auto sum_reduce = pd()->need_output_reorder()
-                ? ctx.get_scratchpad_grantor().get_memory_storage(
+                ? ctx->get_scratchpad_grantor().get_memory_storage(
                         key_sum_reduction)
                 : nullptr;
-        auto dst = ctx.args().at(DNNL_ARG_DST);
+        auto dst = ctx->args().at(DNNL_ARG_DST);
 
         std::unique_ptr<memory_t, memory_deleter_t> acc;
         CHECK(safe_ptr_assign(acc,
@@ -131,15 +131,15 @@ struct ref_sum_t : public primitive_t {
         }
 
         for (int i = 0; i < n; ++i) {
-            r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i);
+            r_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_MULTIPLE_SRC + i);
             r_args[DNNL_ARG_DST] = pd()->need_output_reorder() ? dst_acc : dst;
             r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
                     = {scales_mem_[i].get(), true};
 
-            exec_ctx_t r_ctx(ctx, std::move(r_args));
+            auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
             nested_scratchpad_t ns(ctx, key_nested_multiple + i, reorders_[i]);
-            r_ctx.set_scratchpad_grantor(ns.grantor());
+            r_ctx->set_scratchpad_grantor(ns.grantor());
             reorders_[i]->execute(r_ctx);
         }
 
@@ -147,10 +147,10 @@ struct ref_sum_t : public primitive_t {
             dst_acc.is_const = true;
             r_args[DNNL_ARG_SRC] = dst_acc;
             r_args[DNNL_ARG_DST] = dst;
-            exec_ctx_t r_ctx(ctx, std::move(r_args));
+            auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
             nested_scratchpad_t ns(ctx, key_nested_multiple + n, reorders_[n]);
-            r_ctx.set_scratchpad_grantor(ns.grantor());
+            r_ctx->set_scratchpad_grantor(ns.grantor());
             reorders_[n]->execute(r_ctx);
         }
         return status::success;

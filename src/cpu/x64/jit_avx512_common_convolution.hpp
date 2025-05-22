@@ -85,7 +85,7 @@ struct jit_avx512_common_convolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         if (pd()->ndims() == 3)
             execute_forward_1d(ctx);
         else if (pd()->ndims() == 4)
@@ -95,16 +95,17 @@ struct jit_avx512_common_convolution_fwd_t : public primitive_t {
         else
             assert(false);
 
-        if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
+        if (pd()->wants_zero_pad_dst())
+            ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
         return status::success;
     }
 
 private:
     void prepare_padded_bias(const dst_data_t *&bias,
             const memory_tracking::grantor_t &scratchpad) const;
-    void execute_forward_1d(const exec_ctx_t &ctx) const;
-    void execute_forward_2d(const exec_ctx_t &ctx) const;
-    void execute_forward_3d(const exec_ctx_t &ctx) const;
+    void execute_forward_1d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_forward_2d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_forward_3d(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_avx512_common_conv_fwd_kernel> kernel_;
@@ -161,7 +162,7 @@ struct jit_avx512_common_convolution_bwd_data_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         if (pd()->ndims() == 3)
             execute_backward_data_1d(ctx);
         else if (pd()->ndims() == 4)
@@ -174,9 +175,9 @@ struct jit_avx512_common_convolution_bwd_data_t : public primitive_t {
     }
 
 private:
-    void execute_backward_data_1d(const exec_ctx_t &ctx) const;
-    void execute_backward_data_2d(const exec_ctx_t &ctx) const;
-    void execute_backward_data_3d(const exec_ctx_t &ctx) const;
+    void execute_backward_data_1d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_backward_data_2d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_backward_data_3d(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_avx512_common_conv_bwd_data_kernel_f32> kernel_;
@@ -247,14 +248,14 @@ struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }
 
 private:
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
-    void prepare_scratchpad_data(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void prepare_scratchpad_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     struct thread_info_t;
     void compute_diff_weights_nxc(const thread_info_t *) const;
     void compute_diff_weights(const thread_info_t *) const;

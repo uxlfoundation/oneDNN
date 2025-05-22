@@ -67,14 +67,14 @@ void jit_avx512_core_amx_convolution_fwd_t::prepare_padded_bias(
 
 status_t
 jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
 
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
@@ -90,7 +90,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
             = pd()->with_bias() ? types::data_type_size(bias_d.data_type()) : 0;
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     assert(jcp.is_relo);
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
@@ -101,21 +101,21 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
-    auto inp_p_buffer = ctx.get_scratchpad_grantor().template get<char>(
+    auto inp_p_buffer = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_inp_buffer); // fix the template
-    auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
+    auto wei_buffer = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_wei_buffer); // fix the template
-    auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto wsp = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
-    auto zero_point_pbuff = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto zero_point_pbuff = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_zero_point_pad);
-    auto zp_flags_ = ctx.get_scratchpad_grantor().template get<bool>(
+    auto zp_flags_ = ctx->get_scratchpad_grantor().template get<bool>(
             key_conv_zero_point_flag);
 
     const size_t offset = weights_d.size() - weights_d.additional_buffer_size();
@@ -421,13 +421,13 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
 }
 
 status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -447,7 +447,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const size_t wei_dt_size
             = types::data_type_size(pd()->desc()->weights_desc.data_type);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const auto &jcp = pd()->jcp_;
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
@@ -458,7 +458,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
@@ -469,15 +469,15 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const size_t wei_d_shift
             = (size_t)jcp.kh * jcp.kw * jcp.ic_block_int_np * jcp.oc_block;
 
-    auto inp_p_buffer = ctx.get_scratchpad_grantor().template get<char>(
+    auto inp_p_buffer = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_inp_buffer); // fix the template
-    auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto wsp = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
-    auto zero_point_pbuff = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto zero_point_pbuff = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_zero_point_pad);
-    auto zp_flags_ = ctx.get_scratchpad_grantor().template get<bool>(
+    auto zp_flags_ = ctx->get_scratchpad_grantor().template get<bool>(
             key_conv_zero_point_flag);
 
     const size_t offset = weights_d.size() - weights_d.additional_buffer_size();
@@ -814,7 +814,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 }
 
 status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     const auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
@@ -831,7 +831,7 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
@@ -901,11 +901,11 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t::thread_info_t {
     int ic_b_start = 0, ic_b_end = 0, ic_b_work = 0;
 
     thread_info_t(const jit_avx512_core_amx_convolution_bwd_weights_t *self,
-            const exec_ctx_t &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
         : src(CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST))
         , diff_weights(CTX_OUT_MEM(void *, DNNL_ARG_DIFF_WEIGHTS))
-        , scratchpad(ctx.get_scratchpad_grantor())
+        , scratchpad(ctx->get_scratchpad_grantor())
         , ithr(ithr) {
 
         const auto &jcp = self->kernel_->jcp;
@@ -1934,8 +1934,8 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::
 }
 
 void jit_avx512_core_amx_convolution_bwd_weights_t::prepare_scratchpad_data(
-        const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
 
@@ -1981,10 +1981,10 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::prepare_scratchpad_data(
 }
 
 void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     prepare_scratchpad_data(ctx);
 
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
     kernel_->tile_configure(tcfg);
 
@@ -2037,8 +2037,9 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
 
     if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
             && jcp.bia_dt != data_type::bf16) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
+        auto diff_bias
+                = ctx->get_scratchpad_grantor().template get<const float>(
+                        key_conv_padded_bias);
         auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
         const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
         const int stride = jcp.oc_without_padding;

@@ -15,6 +15,7 @@
 ################################################################################
 
 import itertools
+import fnmatch
 
 
 class Dims:
@@ -86,18 +87,20 @@ class Types:
         def __init__(self, type_str):
             s = type_str.split("(")
             self.A, self.B, self.C = s[0].split(":")
-            self.A, self.B, self.C = self.wildcard_match(self.A, self.B, self.C)
+            self.A, self.B, self.C = self.index_match(self.A, self.B, self.C)
             if len(s) < 2:
                 self.mode = None
             else:
                 self.mode = s[1].strip(")")
 
         @staticmethod
-        def wildcard_match(A, B, C):
-            wildcard_match = A
-            B = B.replace("*", wildcard_match)
-            C = C.replace("*", wildcard_match)
-            return [A, B, C]
+        def index_match(A, B, C):
+            dts = [A, B, C]
+            for i, dt in enumerate(dts):
+                if fnmatch.fnmatch(dt, r"%[0-9]"):
+                    idx = int(dt[1:])
+                    dts[i] = dts[idx]
+            return dts
 
         def __str__(self):
             mode_str = ""
@@ -111,6 +114,23 @@ class Types:
                 mode_str = f"--attr-fpmath={self.mode}"
             return f"--dt={self.A}:{self.B}:{self.C} {mode_str}"
 
+        def matches(self, A, B, C):
+            dts = [self.A, self.B, self.C]
+            patterns = [A, B, C]
+
+            # XXX: Careful here - we want indexing operators to apply to self
+            # (not A/B/C), so that we aren't matching any wildcards/globs.
+            res = True
+            for i in range(3):
+                # Resolve index operators
+                if fnmatch.fnmatch(patterns[i], r"%[0-9]"):
+                    idx = int(patterns[i][1:])
+                    res = res and dts[i] == dts[idx]
+                else:
+                    # Resolve globbing matches
+                    res = res and fnmatch.fnmatch(dts[i], patterns[i])
+            return res
+
         def __eq__(self, other):
             return (self.A, self.B, self.C, self.mode) == (
                 other.A,
@@ -119,11 +139,27 @@ class Types:
                 other.mode,
             )
 
-    def __init__(self, types):
-        if types == "all":
-            self.values = self.supported()
-        else:
-            self.values = [self.Type(x) for x in types.split(",")]
+        def __hash__(self):
+            return hash(self.__str__())
+
+    @staticmethod
+    def expand(A, B, C, cases=None):
+        if cases is None:
+            cases = Types.supported()
+
+        return set(case for case in cases if case.matches(A, B, C))
+
+    def __init__(self, types: str):
+        self.values = set()
+        for x in types.split(","):
+            if x.count(":") == 0:
+                configs = [f"{x}:*:*", f"*:{x}:*", f"*:*:{x}"]
+            else:
+                configs = [x]
+
+            for config in configs:
+                A, B, C = config.split(":")
+                self.values = self.values.union(Types.expand(A, B, C))
 
     def __str__(self):
         return ",".join([str(x) for x in self.values])
@@ -139,8 +175,8 @@ class Types:
             [["f32"], ["u8", "s8"], ["f32", "f16", "bf16"]],
             [
                 ["f16", "bf16"],
-                ["*", "u8", "s8", "u4", "s4"],
-                ["f32", "*", "u8", "s8"],
+                ["%0", "u8", "s8", "u4", "s4"],
+                ["f32", "%0", "u8", "s8"],
             ],
             [["u8", "s8"], ["u8"], ["f32", "bf16", "f16", "s32", "u8", "s8"]],
             [
@@ -161,7 +197,7 @@ class Types:
             return "f32"
 
         def get_fpmath_modes(src, wei, dst):
-            src, wei, dst = Types.Type.wildcard_match(src, wei, dst)
+            src, wei, dst = Types.Type.index_match(src, wei, dst)
             if get_accumulator(wei) == "f32":
                 ret = [""]
                 if "f32" in [src, wei]:

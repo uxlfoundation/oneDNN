@@ -241,6 +241,9 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_f16_with_int_wei(),
                     one_of(isa, avx512_core_amx_fp16, avx512_core_fp16))
             && IMPLICATION(bm_conf_utils.is_f8(),
+                    is_superset(isa, avx512_core_amx_fp16)
+                            || is_superset(isa, avx10_2_512))
+            && IMPLICATION(bm_conf_utils.is_bf8(),
                     is_superset(isa, avx512_core_amx_fp16));
     return ok ? status::success : status::unimplemented;
 }
@@ -272,6 +275,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f8_dt(one_of(bgmmc.src_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
+              && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
+    , bf8_dt(everyone_is(f8_e5m2, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8) && bgmmc.wei_dt == s8
               && one_of(bgmmc.dst_dt, u8, s8, s32, f32, bf16))

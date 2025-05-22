@@ -230,7 +230,7 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(
     memory mem_storage[10];
     exec_args_t args;
     CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
+    auto ctx = std::make_shared<exec_ctx_t>(p_stream.get(), std::move(args));
 
     return cfg_.sdpa_prim_->execute(ctx);
 }
@@ -257,7 +257,7 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
     memory mem_storage[10];
     exec_args_t args;
     CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
+    auto ctx = std::make_shared<exec_ctx_t>(p_stream.get(), std::move(args));
 
     // Relying on the library's internals here. Since graph API is currently
     // enabled only for the Intel vendor it is fine to cast stream to
@@ -303,7 +303,7 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
     memory mem_storage[10];
     exec_args_t args;
     CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
+    auto ctx = std::make_shared<exec_ctx_t>(p_stream.get(), std::move(args));
 
     // TODO (pc): refactor
     auto *ocl_stream

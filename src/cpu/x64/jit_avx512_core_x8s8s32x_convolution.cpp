@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ const float *jit_avx512_core_x8s8s32x_convolution_fwd_t::adjust_oscales(
 }
 
 status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
 
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
@@ -68,7 +68,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
@@ -90,7 +90,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     size_t extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
@@ -193,14 +193,14 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
 }
 
 status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
@@ -224,7 +224,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
@@ -361,14 +361,14 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
 }
 
 status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
@@ -394,7 +394,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
@@ -477,14 +477,14 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
 }
 
 status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
@@ -508,7 +508,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);

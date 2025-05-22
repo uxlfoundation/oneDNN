@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -320,7 +320,7 @@ struct jit_xf16_sum_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
     typedef typename prec_traits<src_data_type>::type src_data_t;
     typedef typename prec_traits<dst_data_type>::type dst_data_t;

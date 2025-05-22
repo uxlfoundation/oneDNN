@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2021 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -52,12 +52,12 @@ struct jit_uni_lrn_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_uni_lrn_fwd_kernel_t<isa, d_type>> ker_, ker_first_,
@@ -86,12 +86,12 @@ struct jit_uni_lrn_bwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward(ctx);
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_uni_lrn_bwd_kernel_t<isa, d_type>> ker_, ker_first_,

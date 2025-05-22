@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 * Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -412,7 +412,7 @@ struct registry_t {
 
     registrar_t registrar();
     grantor_t grantor(const memory_storage_t *mem_storage,
-            const exec_ctx_t &exec_ctx) const;
+            const std::shared_ptr<exec_ctx_t> &exec_ctx) const;
 
     template <typename return_type>
     class common_iterator_t {
@@ -503,11 +503,11 @@ protected:
 struct grantor_t {
     grantor_t(const registry_t &registry,
             const memory_storage_t *base_mem_storage,
-            const exec_ctx_t &exec_ctx)
+            const std::shared_ptr<exec_ctx_t> &exec_ctx)
         : registry_(registry)
         , prefix_(0)
         , base_mem_storage_(base_mem_storage)
-        , exec_ctx_(&exec_ctx) {}
+        , exec_ctx_(exec_ctx) {}
     grantor_t(const grantor_t &parent, const key_t &prefix)
         : registry_(parent.registry_)
         , prefix_(make_prefix(parent.prefix_, prefix))
@@ -572,7 +572,7 @@ protected:
     const registry_t &registry_;
     const key_t prefix_;
     const memory_storage_t *base_mem_storage_;
-    const exec_ctx_t *exec_ctx_;
+    const std::shared_ptr<exec_ctx_t> exec_ctx_;
 
 private:
     char *get_host_storage_ptr(const memory_storage_t *storage) const;
@@ -582,8 +582,8 @@ private:
 inline registrar_t registry_t::registrar() {
     return registrar_t(*this);
 }
-inline grantor_t registry_t::grantor(
-        const memory_storage_t *mem_storage, const exec_ctx_t &exec_ctx) const {
+inline grantor_t registry_t::grantor(const memory_storage_t *mem_storage,
+        const std::shared_ptr<exec_ctx_t> &exec_ctx) const {
     return grantor_t(*this, mem_storage, exec_ctx);
 }
 

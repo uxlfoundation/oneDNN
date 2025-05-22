@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -278,8 +278,9 @@ status_t brgemm_deconvolution_fwd_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
-    const auto &args = ctx.args();
+status_t brgemm_deconvolution_fwd_t<isa>::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    const auto &args = ctx->args();
     exec_args_t conv_args(args);
     if (pd()->has_strides_) {
         conv_args[DNNL_ARG_DIFF_SRC] = args.at(DNNL_ARG_DST);
@@ -288,10 +289,10 @@ status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
         conv_args.erase(DNNL_ARG_SRC);
     }
 
-    exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(ctx, memory_tracking::names::key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
     return conv_p_->execute(conv_ctx);
 }
 

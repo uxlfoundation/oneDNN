@@ -687,7 +687,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t brgemm_convolution_bwd_strided_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
@@ -698,7 +698,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 
     const int wei_scale_mask
             = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;

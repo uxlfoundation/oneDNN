@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ struct ref_softmax_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         if (use_dense_)
             return execute_forward_dense(ctx);
         else
@@ -155,8 +155,10 @@ struct ref_softmax_fwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_forward_dense(const exec_ctx_t &ctx) const;
-    status_t execute_forward_generic(const exec_ctx_t &ctx) const;
+    status_t execute_forward_dense(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_generic(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
@@ -211,7 +213,7 @@ struct ref_softmax_bwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         if (use_dense_)
             return execute_backward_dense(ctx);
         else
@@ -219,8 +221,10 @@ struct ref_softmax_bwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_backward_dense(const exec_ctx_t &ctx) const;
-    status_t execute_backward_generic(const exec_ctx_t &ctx) const;
+    status_t execute_backward_dense(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_backward_generic(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     bool use_dense_;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -129,14 +129,14 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise) return status::unimplemented;
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     void prepare_padded_bias(const char *&bias,
             const memory_tracking::grantor_t &scratchpad) const;

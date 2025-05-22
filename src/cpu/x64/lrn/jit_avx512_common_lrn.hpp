@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
         return lrn_executor_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return lrn_executor_->execute(ctx);
     }
 
@@ -99,7 +99,7 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
         return lrn_executor_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return lrn_executor_->execute(ctx);
     }
 

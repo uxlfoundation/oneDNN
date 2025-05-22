@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -108,7 +108,7 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const auto &_pd = pd();
         const int ndims = _pd->ndims();
         const bool is_dw = _pd->jcp_.is_depthwise;
@@ -124,10 +124,11 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_forward_1d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_2d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_3d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_2d_dw(const exec_ctx_t &ctx) const;
+    status_t execute_forward_1d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_2d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_3d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_2d_dw(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const {
         return static_cast<const pd_t *>(primitive_t::pd().get());
     }

@@ -1386,7 +1386,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::generate() {
 }
 
 status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1402,7 +1402,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
     const auto &jcp = pd()->jcp_;
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1480,7 +1480,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
 }
 
 status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1496,7 +1496,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1638,7 +1638,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
 }
 
 status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1655,7 +1655,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
 
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))

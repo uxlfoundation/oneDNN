@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ struct ref_lrn_fwd_t : public primitive_t {
     ref_lrn_fwd_t(const pd_t *apd) : primitive_t(apd) {}
     typedef typename prec_traits<d_type>::type data_t;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         using namespace format_tag;
         switch (pd()->dat_tag_) {
             case nChw16c: return execute_forward<nChw16c>(ctx); break;
@@ -85,7 +85,7 @@ struct ref_lrn_fwd_t : public primitive_t {
 
 private:
     template <format_tag_t tag>
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
@@ -129,7 +129,7 @@ struct ref_lrn_bwd_t : public primitive_t {
     ref_lrn_bwd_t(const pd_t *apd) : primitive_t(apd) {}
     typedef typename prec_traits<d_type>::type data_t;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         using namespace format_tag;
         switch (pd()->dat_tag_) {
             case nChw16c: return execute_backward<nChw16c>(ctx); break;
@@ -143,7 +143,7 @@ struct ref_lrn_bwd_t : public primitive_t {
 
 private:
     template <format_tag_t tag>
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

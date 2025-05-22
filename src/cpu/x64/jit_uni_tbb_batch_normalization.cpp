@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -2544,7 +2544,7 @@ status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
@@ -2561,7 +2561,7 @@ status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::execute(
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     bnorm_driver_->exec_fwd(src, dst, scale, shift, mean, var, ws, scratchpad);
 
@@ -2668,7 +2668,7 @@ status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto mean = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN);
@@ -2681,7 +2681,7 @@ status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::execute(
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     bnorm_driver_->exec_bwd(src, diff_src, diff_dst, scale, diff_scale,
             diff_shift, mean, var, ws, scratchpad);

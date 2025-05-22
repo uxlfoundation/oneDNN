@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ namespace impl {
 namespace cpu {
 
 status_t ncsp_group_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     const bool save_stats = pd()->is_training();
@@ -43,7 +43,7 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *__restrict cvt_scratch
             = scratchpad.template get<float>(key_gnorm_cvt);
 

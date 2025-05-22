@@ -34,7 +34,7 @@ const std::map<int, conv_key_t> depthwise_conv_keys
 } // namespace
 
 status_t acl_depthwise_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, data_t>(
             ctx, acl_obj_.get(), pd(), depthwise_conv_keys);
 }

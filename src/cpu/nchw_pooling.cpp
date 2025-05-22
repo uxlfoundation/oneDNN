@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ using namespace nstl;
 
 template <>
 status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto alg = pd()->desc()->alg_kind;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
@@ -157,8 +157,7 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
                         set_ws(mb, c, od, oh, ow, 0);
                         ker_max(d, mb, c, od, oh, ow);
 
-                        ref_post_ops_t::args_t args;
-                        args.ctx = &ctx;
+                        ref_post_ops_t::args_t args(ctx);
                         args.l_offset = dst_offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops_->execute(dst[dst_offset], args);
@@ -193,8 +192,7 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
                         d[0] = 0;
                         auto res = ker_avg(d, mb, c, od, oh, ow);
 
-                        ref_post_ops_t::args_t args;
-                        args.ctx = &ctx;
+                        ref_post_ops_t::args_t args(ctx);
                         args.l_offset = dst_offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops_->execute(res, args);
@@ -221,7 +219,7 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
 
 template <data_type_t d_type>
 status_t nchw_pooling_fwd_t<d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto alg = pd()->desc()->alg_kind;
 
@@ -229,7 +227,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *cvt_wsp = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
 
@@ -357,8 +355,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
 
                         ker_max(&d_fp32, mb, c, od, oh, ow);
 
-                        ref_post_ops_t::args_t args;
-                        args.ctx = &ctx;
+                        ref_post_ops_t::args_t args(ctx);
                         args.l_offset = dst_offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops_->execute(d_fp32, args);
@@ -391,8 +388,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                                 + (size_t)ow;
                         float d_fp32 = 0.0f;
                         ker_avg(&d_fp32, mb, c, od, oh, ow);
-                        ref_post_ops_t::args_t args;
-                        args.ctx = &ctx;
+                        ref_post_ops_t::args_t args(ctx);
                         args.l_offset = dst_offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops_->execute(d_fp32, args);
@@ -418,7 +414,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
 
 template <>
 status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto alg = pd()->desc()->alg_kind;
     const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
     const bool is_2d = pd()->desc()->diff_src_desc.ndims == 4;
@@ -561,7 +557,7 @@ status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
 
 template <data_type_t d_type>
 status_t nchw_pooling_bwd_t<d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto alg = pd()->desc()->alg_kind;
     const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
@@ -571,7 +567,7 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *cvt_src = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     float *cvt_dst = scratchpad.template get<float>(

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -166,18 +166,20 @@ status_t gemm_f32_matmul_t::pd_t::configure_attributes() {
     return status::success;
 }
 
-status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t gemm_f32_matmul_t::execute_ref(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace binary_injector_utils;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const weights_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto &po = this->pd()->attr()->post_ops_;
-    const auto post_ops_binary_rhs_arg_vec = prepare_binary_args(po, ctx);
+    const auto post_ops_binary_rhs_arg_vec = prepare_binary_args(po, *ctx);
 
-    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
-    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
-    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
+    const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto weights_d
+            = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
+    const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, pd()->dst_md());
 
     const int ndims = pd()->ndims();
 
@@ -185,7 +187,7 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const int wei_scale_mask
             = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;
     const float *scales = precompute_scales(scratchpad, src_scales, wei_scales,
@@ -222,7 +224,7 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     bool dst_is_acc = params.dst_is_acc_;
     acc_data_t *acc = dst_is_acc
             ? (acc_data_t *)dst
-            : ctx.get_scratchpad_grantor().template get<acc_data_t>(
+            : ctx->get_scratchpad_grantor().template get<acc_data_t>(
                     memory_tracking::names::key_matmul_dst_in_acc_dt);
     // case: dynamic sizes
     bool need_free_acc = false;

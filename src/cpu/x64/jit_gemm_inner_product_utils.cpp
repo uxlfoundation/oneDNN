@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,7 +51,8 @@ struct jit_pp_kernel_t : public pp_kernel_t, public jit_generator {
             size_t runtime_oc, dim_t dst_mb_stride,
             const float *dst_zero_points,
             const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
-            size_t first_mb_matrix_addr_off, const exec_ctx_t &ctx,
+            size_t first_mb_matrix_addr_off,
+            const std::shared_ptr<exec_ctx_t> &ctx,
             const memory_desc_t &dst_md) const override;
 
     status_t create_kernel() override { return jit_generator::create_kernel(); }
@@ -1202,7 +1203,8 @@ void jit_pp_kernel_t<isa>::operator()(void *dst, const void *acc,
         size_t dst_logical_off, size_t dim1_off, size_t end, size_t runtime_oc,
         dim_t dst_mb_stride, const float *dst_zero_points,
         const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
-        size_t first_mb_matrix_addr_off, const exec_ctx_t & /* ctx */,
+        size_t first_mb_matrix_addr_off,
+        const std::shared_ptr<exec_ctx_t> & /* ctx */,
         const memory_desc_t & /* dst_md */) const {
 
     if (end <= start) return;

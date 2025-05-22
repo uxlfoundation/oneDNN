@@ -290,28 +290,28 @@ status_t jit_uni_ncsp_convolution_fwd_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_ncsp_convolution_fwd_t::reorder_activations(
-        const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        const std::shared_ptr<exec_ctx_t> &ctx,
+        const std::shared_ptr<primitive_t> &prim, engine_t *engine,
+        const memory_arg_t &in, const memory_arg_t &out) const {
     using namespace memory_tracking::names;
     exec_args_t r_args;
     r_args[DNNL_ARG_SRC] = in;
     r_args[DNNL_ARG_DST] = out;
-    exec_ctx_t r_ctx(ctx, std::move(r_args));
+    auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
     nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    r_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(prim->execute(r_ctx));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     using namespace memory_tracking::names;
-    engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    engine_t *engine = ctx->stream()->engine();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
@@ -329,54 +329,56 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
 
     // reorder src from ncsp to nspc
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
+            ctx->args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
 
     // maybe reorder dst from ncsp to nspc
     if (pd()->dst_pre_reorder_pd_)
         CHECK(reorder_activations(ctx, dst_pre_reorder_p_, engine,
-                ctx.args().at(DNNL_ARG_DST), {nspc_dst.get(), false}));
+                ctx->args().at(DNNL_ARG_DST), {nspc_dst.get(), false}));
 
     // execute nspc convolution
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args = args; // copy args to include postops mem.
     conv_args[DNNL_ARG_DST] = {nspc_dst.get(), false};
     conv_args[DNNL_ARG_SRC] = {nspc_src.get(), true};
 
-    exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
+    auto nspc_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(
             ctx, memory_tracking::names::key_nested, nspc_conv_p_);
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    nspc_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     // reorder dst from nspc to ncsp
     CHECK(reorder_activations(ctx, dst_post_reorder_p_, engine,
-            {nspc_dst.get(), false}, ctx.args().at(DNNL_ARG_DST)));
+            {nspc_dst.get(), false}, ctx->args().at(DNNL_ARG_DST)));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_fwd_t::execute_matmul(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+    matmul_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_WEIGHTS);
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx->args().at(DNNL_ARG_SRC);
+    matmul_args[DNNL_ARG_DST] = ctx->args().at(DNNL_ARG_DST);
 
     if (pd()->with_bias())
         matmul_args[DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_MULTIPLE_POST_OP(0)]
-                = ctx.args().at(DNNL_ARG_BIAS);
+                = ctx->args().at(DNNL_ARG_BIAS);
 
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    auto matmul_ctx
+            = std::make_shared<exec_ctx_t>(*ctx, std::move(matmul_args));
 
     nested_scratchpad_t ns(ctx, memory_tracking::names::key_nested, matmul_p_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    matmul_ctx->set_scratchpad_grantor(ns.grantor());
 
     return matmul_p_->execute(matmul_ctx);
 }
 
-status_t jit_uni_ncsp_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_ncsp_convolution_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     if (matmul_p_) return execute_matmul(ctx);
     if (nspc_conv_p_) return execute_convolution(ctx);
     return status::runtime_error;
@@ -470,27 +472,27 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::reorder_activations(
-        const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        const std::shared_ptr<exec_ctx_t> &ctx,
+        const std::shared_ptr<primitive_t> &prim, engine_t *engine,
+        const memory_arg_t &in, const memory_arg_t &out) const {
     using namespace memory_tracking::names;
     exec_args_t r_args;
     r_args[DNNL_ARG_SRC] = in;
     r_args[DNNL_ARG_DST] = out;
-    exec_ctx_t r_ctx(ctx, std::move(r_args));
+    auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
     nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    r_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(prim->execute(r_ctx));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
-    engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    engine_t *engine = ctx->stream()->engine();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
@@ -508,11 +510,11 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
                     std::move(nspc_diff_dst_mem))));
 
     CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
+            ctx->args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
+            ctx->args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
 
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst.get(), true};
     conv_args[DNNL_ARG_SRC] = {nspc_src.get(), true};
@@ -520,19 +522,19 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
     if (pd()->with_bias())
         conv_args[DNNL_ARG_DIFF_BIAS] = args.at(DNNL_ARG_DIFF_BIAS);
 
-    exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
+    auto nspc_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(
             ctx, memory_tracking::names::key_nested, nspc_conv_p_);
 
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    nspc_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_convolution(ctx);
 }
 
@@ -670,27 +672,27 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::reorder_activations(
-        const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        const std::shared_ptr<exec_ctx_t> &ctx,
+        const std::shared_ptr<primitive_t> &prim, engine_t *engine,
+        const memory_arg_t &in, const memory_arg_t &out) const {
     using namespace memory_tracking::names;
     exec_args_t r_args;
     r_args[DNNL_ARG_SRC] = in;
     r_args[DNNL_ARG_DST] = out;
-    exec_ctx_t r_ctx(ctx, std::move(r_args));
+    auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
     nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    r_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(prim->execute(r_ctx));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
-    engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    engine_t *engine = ctx->stream()->engine();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_diff_src_mem
@@ -709,48 +711,49 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
                     std::move(nspc_diff_dst_mem))));
 
     CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
+            ctx->args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
 
-    const auto &args = ctx.args();
+    const auto &args = ctx->args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst.get(), true};
     conv_args[DNNL_ARG_DIFF_SRC] = {nspc_diff_src.get(), false};
     conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
 
-    exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
+    auto nspc_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(conv_args));
 
     nested_scratchpad_t ns(
             ctx, memory_tracking::names::key_nested, nspc_conv_p_);
 
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    nspc_ctx->set_scratchpad_grantor(ns.grantor());
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            {nspc_diff_src.get(), false}, ctx.args().at(DNNL_ARG_DIFF_SRC)));
+            {nspc_diff_src.get(), false}, ctx->args().at(DNNL_ARG_DIFF_SRC)));
 
     return status::success;
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::execute_matmul(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     exec_args_t matmul_src_diff_args;
-    matmul_src_diff_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_src_diff_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_src_diff_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_SRC);
+    matmul_src_diff_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_WEIGHTS);
+    matmul_src_diff_args[DNNL_ARG_WEIGHTS] = ctx->args().at(DNNL_ARG_DIFF_DST);
+    matmul_src_diff_args[DNNL_ARG_DST] = ctx->args().at(DNNL_ARG_DIFF_SRC);
 
-    exec_ctx_t matmul_src_diff_ctx(ctx, std::move(matmul_src_diff_args));
+    auto matmul_src_diff_ctx = std::make_shared<exec_ctx_t>(
+            *ctx, std::move(matmul_src_diff_args));
 
     nested_scratchpad_t matmul_src_diff_ns(
             ctx, memory_tracking::names::key_nested, matmul_diff_src_p_);
-    matmul_src_diff_ctx.set_scratchpad_grantor(matmul_src_diff_ns.grantor());
+    matmul_src_diff_ctx->set_scratchpad_grantor(matmul_src_diff_ns.grantor());
 
     return matmul_diff_src_p_->execute(matmul_src_diff_ctx);
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     if (matmul_diff_src_p_)
         return execute_matmul(ctx);
     else

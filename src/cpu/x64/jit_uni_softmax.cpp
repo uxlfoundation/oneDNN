@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1602,10 +1602,11 @@ status_t jit_uni_softmax_fwd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_softmax_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    auto scratchpad_ptr = ctx.get_scratchpad_grantor().template get<char>(
+    auto scratchpad_ptr = ctx->get_scratchpad_grantor().template get<char>(
             memory_tracking::names::key_softmax_interim_store);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
@@ -1613,7 +1614,7 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+                    pd()->attr()->post_ops_, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -1715,7 +1716,8 @@ status_t jit_uni_softmax_bwd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_uni_softmax_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_softmax_bwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto dst = CTX_IN_MEM(const char *, DNNL_ARG_DST);
     auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);

@@ -293,7 +293,7 @@ private:
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         auto input = CTX_IN_MEM(const in_data_t *, DNNL_ARG_FROM);
         auto output = CTX_OUT_MEM(out_data_t *, DNNL_ARG_TO);
         const float scale = pd()->attr()->rnn_data_qparams_.scale_;
@@ -430,7 +430,7 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
 private:
     typedef typename prec_traits<type_i>::type in_data_t;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         // TODO: trivial strides assumed here.
         //       Use proper strides where appropriate
 
@@ -450,11 +450,11 @@ private:
 
         /* Quantize src & compute compensation */
         auto scratch_quantized
-                = (int8_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int8_t * __restrict) ctx->get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_quantization);
         auto scratch_compensation
-                = (int32_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int32_t * __restrict) ctx->get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_reduction);
         float *comp = reinterpret_cast<float *>(
@@ -618,7 +618,7 @@ private:
     typedef typename prec_traits<type_i>::type in_data_t;
     typedef typename prec_traits<type_o>::type out_data_t;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         // TODO: trivial strides assumed here.
         //       Use proper strides where appropriate
 
@@ -650,7 +650,7 @@ private:
         out_data_t *input_cvt = (out_data_t *)input;
         if (type_i == data_type::f32 && type_o == data_type::bf16) {
             input_cvt
-                    = (out_data_t *)ctx.get_scratchpad_grantor()
+                    = (out_data_t *)ctx->get_scratchpad_grantor()
                               .template get<void>(memory_tracking::names::
                                               key_reorder_rnn_weights_xf16_cvt);
             parallel_nd(L * D, [&](dim_t ld) {
@@ -664,7 +664,7 @@ private:
         out_data_t *input_tr = input_cvt;
         if (from_igo != to_igo) {
             input_tr
-                    = (out_data_t *)ctx.get_scratchpad_grantor().template get<void>(
+                    = (out_data_t *)ctx->get_scratchpad_grantor().template get<void>(
                             memory_tracking::names::
                                     key_reorder_rnn_weights_transposition);
             const dim_t M = to_igo ? G * O : I;
@@ -841,7 +841,7 @@ private:
     typedef typename prec_traits<type_i>::type in_data_t;
     typedef typename prec_traits<type_o>::type out_data_t;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         using namespace format_tag;
         using namespace data_type;
         using namespace utils;
@@ -872,11 +872,11 @@ private:
 
         /* Quantize src & compute compensation */
         auto scratch_quantized
-                = (int8_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int8_t * __restrict) ctx->get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_quantization);
         auto scratch_compensation
-                = (int32_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int32_t * __restrict) ctx->get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_reduction);
         float *comp = reinterpret_cast<float *>(dst + compensation_offset);

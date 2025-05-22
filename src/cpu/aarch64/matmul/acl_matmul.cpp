@@ -169,7 +169,8 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
 }
 
 template <bool IsFixedFormat>
-status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_matmul_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src_base = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
@@ -190,7 +191,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
     bool do_act = amp.do_act;
     bool use_dst_acc_for_sum = amp.use_dst_acc_for_sum;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     arm_compute::Tensor src_tensor;
     arm_compute::Tensor wei_tensor;
@@ -346,9 +347,9 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
 }
 
 template status_t acl_matmul_t::execute_forward<true>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template status_t acl_matmul_t::execute_forward<false>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 
 } // namespace matmul
 } // namespace aarch64

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -121,7 +121,7 @@ struct simple_sum_t : public primitive_t {
 
     simple_sum_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
     enum { max_num_arrs = 16 };
     typedef typename prec_traits<src_data_type>::type src_data_t;

@@ -102,7 +102,7 @@ template <data_type_t src_t, data_type_t wei_t, data_type_t dst_t,
         data_type_t bia_t>
 status_t
 acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, src_data_t, wei_data_t,
             dst_data_t, bia_data_t>(ctx, acl_obj_.get(), pd(), gemm_conv_keys);
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     virtual dnnl::impl::status_t enqueue_primitive(
             const primitive_iface_t *primitive_iface,
-            dnnl::impl::exec_ctx_t &ctx);
+            std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx);
 
     /** blocks until all submitted primitives to the stream are completed */
     virtual dnnl::impl::status_t wait() = 0;
@@ -74,7 +74,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
-            const dnnl::impl::exec_ctx_t &ctx);
+            const std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx);
 
     dnnl::impl::stream_impl_t *impl() { return impl_.get(); }
 

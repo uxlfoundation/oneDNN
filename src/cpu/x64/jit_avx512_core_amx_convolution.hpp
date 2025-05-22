@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise)
             return status::unimplemented;
@@ -140,8 +140,9 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_forward_reduced_lowering(const exec_ctx_t &ctx) const;
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward_reduced_lowering(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     void prepare_padded_bias(const char *&bias,
             const memory_tracking::grantor_t &scratchpad) const;
@@ -213,7 +214,7 @@ struct jit_avx512_core_amx_convolution_bwd_data_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise) {
             assert(!"_pd->jcp_.is_depthwise not implemented");
@@ -223,7 +224,7 @@ struct jit_avx512_core_amx_convolution_bwd_data_t : public primitive_t {
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_avx512_core_amx_bwd_data_kernel_t> kernel_;
@@ -280,7 +281,7 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }
@@ -288,8 +289,8 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t : public primitive_t {
 private:
     struct thread_info_t;
 
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
-    void prepare_scratchpad_data(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void prepare_scratchpad_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void compute_diff_weights_2d(const thread_info_t *) const;
     void compute_diff_weights_3d(const thread_info_t *) const;
     void compute_diff_weights(const thread_info_t *) const;

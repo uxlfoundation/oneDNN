@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -166,7 +166,7 @@ struct simple_concat_t : public primitive_t {
 
     simple_concat_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
     typedef typename prec_traits<data_type>::type data_t;
 

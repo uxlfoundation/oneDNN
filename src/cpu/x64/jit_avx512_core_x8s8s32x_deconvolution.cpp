@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1408,7 +1408,7 @@ const float *jit_avx512_core_x8s8s32x_deconvolution_fwd_t::adjust_oscales(
 }
 
 status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1424,7 +1424,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
     const auto &jcp = pd()->jcp_;
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1433,7 +1433,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
                 zp_src_pad_comp_kernel_.get());
 
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     const int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
     const int nb_groups = jcp.nb_ch;
@@ -1443,7 +1443,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     const size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<int8_t *>(weights);
@@ -1511,7 +1511,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
 }
 
 status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1526,11 +1526,11 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1550,7 +1550,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     const size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<int8_t *>(weights);
@@ -1679,7 +1679,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
 }
 
 status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -1694,11 +1694,11 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1721,7 +1721,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     const float *oscales = adjust_oscales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales);
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales);
 
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<int8_t *>(weights);

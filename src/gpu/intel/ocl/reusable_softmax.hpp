@@ -205,18 +205,18 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
             conf.algorithm_number = [&]() { // -> int
                 if (arch != arch_t::xe_hpg) {
-                    if (rt_conf.softmax_axis_stride == 1
-                            && rt_conf.softmax_axis_size >= 128
-                            && nelems > (1 << 17)
-                            && dnnl::impl::utils::div_up(
-                                       rt_conf.softmax_axis_size,
-                                       conf.subgroup_size)
-                                    <= 1024)
-                        return vectorized;
-                    if (rt_conf.softmax_axis_stride == 1
-                            && rt_conf.softmax_axis_size <= conf.subgroup_size
-                            && nelems < (1 << 15))
-                        return small;
+                    // if (rt_conf.softmax_axis_stride == 1
+                    //         && rt_conf.softmax_axis_size >= 128
+                    //         && nelems > (1 << 17)
+                    //         && dnnl::impl::utils::div_up(
+                    //                    rt_conf.softmax_axis_size,
+                    //                    conf.subgroup_size)
+                    //                 <= 1024)
+                    //     return vectorized;
+                    // if (rt_conf.softmax_axis_stride == 1
+                    //         && rt_conf.softmax_axis_size <= conf.subgroup_size
+                    //         && nelems < (1 << 15))
+                    //     return small;
                 }
                 if (rt_conf.softmax_axis_size < 6 && nelems > 64000)
                     return many_reductions_per_workgroup;

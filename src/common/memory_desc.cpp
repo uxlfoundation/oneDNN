@@ -33,11 +33,6 @@ namespace impl {
 
 status_t memory_desc_init_host_side_scalar(
         memory_desc_t &memory_desc, data_type_t data_type) {
-    // filter supported scalar datatype
-    // TODO: shall we let any datatype through, especially for sub byte types?
-    VCHECK_MEMORY(utils::one_of(data_type, data_type::f32, data_type::f16,
-                          data_type::bf16),
-            invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
     memory_desc.ndims = 1;
     memory_desc.dims[0] = 1;
     memory_desc.data_type = data_type;

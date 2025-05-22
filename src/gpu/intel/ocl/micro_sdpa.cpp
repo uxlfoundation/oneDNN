@@ -448,7 +448,7 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     if (pd()->with_value_scales() || pd()->with_value_zp())
         kernel_ctx.define_int("VAL_GROUP_SIZE", pd()->value_group_size());
 
-    def_data_type(kernel_ctx, d->scale_dt, "SCALE");
+    def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", d->invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_type::undef);
@@ -502,6 +502,8 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
 
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
             d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
+
+    kernel_ctx.define_int("HOST_SIDE_SCALE", pd()->with_host_side_scale());
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;
@@ -559,7 +561,40 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    arg_list.append(scale);
+
+    if (pd()->with_host_side_scale()) {
+        const void *handle = scale.data_handle();
+
+        const float scale_value = [&]() {
+            switch (pd()->scale_md()->data_type) {
+                case data_type::f16: return float(*(float16_t *)handle);
+                case data_type::bf16: return float(*(bfloat16_t *)handle);
+                case data_type::f32: return *(float *)handle;
+                default:
+                    assert(!"Unsupported host-side scale datatype");
+                    return 0.f;
+            }
+        }();
+
+        float scale = 1.f, iscale = 1.f;
+        if (pd()->with_attn_scale()) {
+            if (pd()->desc()->invert_scale) {
+                iscale = scale_value;
+                scale = 1.f / iscale;
+            } else {
+                scale = scale_value;
+                iscale = 1.f / scale;
+            }
+        }
+        constexpr float log2e = 1.442695f;
+        scale *= log2e;
+
+        arg_list.append(scale);
+        arg_list.append(iscale);
+    } else {
+        arg_list.append(scale);
+    }
+
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

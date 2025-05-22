@@ -50,6 +50,7 @@ reusable_softmax_fwd_generic(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     }
     if (USE_WORKGROUP_REDUCTION) { max_ = work_group_reduce_max(max_); }
     if (USE_SUBGROUP_REDUCTION) { max_ = sub_group_reduce_max(max_); }
+    max_ = isfinite(max_) ? max_ : -FLT_MAX;
 
     for (off_t c = begin; c < end; c += softmax_axis_stride) {
         denom_ += exp(TO_FLT_ACC_DATA_T(src[c]) - max_);
@@ -57,9 +58,13 @@ reusable_softmax_fwd_generic(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     if (USE_WORKGROUP_REDUCTION) { denom_ = work_group_reduce_add(denom_); }
     if (USE_SUBGROUP_REDUCTION) { denom_ = sub_group_reduce_add(denom_); }
 
-    denom_ = LOGSOFTMAX                              ? log(denom_)
-            : (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) ? 1.0f
-                                                     : 1.0f / denom_;
+    if (LOGSOFTMAX) {
+        denom_ = log(denom_);
+    } else if (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) {
+        denom_ = 1.0f;
+    } else {
+        denom_ = 1.0f / denom_;
+    }
 
     for (off_t c = begin; c < end; c += softmax_axis_stride) {
         FLT_ACC_DATA_T unscaled = LOGSOFTMAX
@@ -147,6 +152,7 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
     }
 
     max_ = sub_group_reduce_max(max_);
+    max_ = isfinite(max_) ? max_ : -FLT_MAX;
 
     for (off_t idx = 0; idx < idx_end; idx += SUBGROUP_SIZE * VECT_SIZE) {
         dk = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
@@ -166,7 +172,14 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         }
     }
     denom_ = sub_group_reduce_add(denom_);
-    denom_ = LOGSOFTMAX ? log(denom_) : 1.0f / denom_;
+
+    if (LOGSOFTMAX) {
+        denom_ = log(denom_);
+    } else if (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) {
+        denom_ = 1.0f;
+    } else {
+        denom_ = 1.0f / denom_;
+    }
 
     dst += data_off;
 
@@ -213,15 +226,22 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 
     d = (off < softmax_axis_size ? COMMON_DATA_TO_X(SRC, src[off]) : -INFINITY);
     max_ = sub_group_reduce_max(d);
+    max_ = isfinite(max_) ? max_ : -FLT_MAX;
 
     if (off < softmax_axis_size) denom_ += exp(d - max_);
 
     denom_ = sub_group_reduce_add(denom_);
-    denom_ = LOGSOFTMAX ? log(denom_) : 1.0f / denom_;
+    if (LOGSOFTMAX) {
+        denom_ = log(denom_);
+    } else if (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) {
+        denom_ = 1.0f;
+    } else {
+        denom_ = 1.0f / denom_;
+    }
     dst += data_off;
 
     if (off < softmax_axis_size) {
-        float from_src = COMMON_DATA_TO_X(SRC, src[off]);
+        float from_src = d;
         float thing = LOGSOFTMAX ? from_src - max_ - denom_
                                  : exp(from_src - max_) * denom_;
         dst[off] = TO_DST(scale * thing);

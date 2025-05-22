@@ -1593,6 +1593,11 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         }
         delimiter = " ";
     }
+    if (pd->with_host_side_scale()) {
+        ss << delimiter << "scale:host";
+    } else {
+        ss << delimiter << "scale:device";
+    }
     if (pd->with_key_zp() || pd->with_value_zp()) {
         ss << delimiter << "attr-zero-points:";
         delimiter = "";

@@ -23,7 +23,7 @@ namespace cpu {
 namespace aarch64 {
 
 status_t acl_post_ops_t::execute(
-        const exec_ctx_t &ctx, void *src, void *dst) const {
+        const std::shared_ptr<exec_ctx_t> &ctx, void *src, void *dst) const {
 
     int post_op_index = post_op_start_index_;
 

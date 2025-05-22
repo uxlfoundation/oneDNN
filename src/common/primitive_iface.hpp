@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@
 
 namespace dnnl {
 namespace impl {
-status_t primitive_execute(
-        const primitive_iface_t *primitive_iface, exec_ctx_t &ctx);
+status_t primitive_execute(const primitive_iface_t *primitive_iface,
+        std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx);
 }
 } // namespace dnnl
 
@@ -64,7 +64,8 @@ struct dnnl_primitive : public dnnl::impl::c_compatible {
     dnnl::impl::status_t get_cache_blob_size(size_t *size) const;
     dnnl::impl::status_t get_cache_blob(
             dnnl::impl::cache_blob_t cache_blob) const;
-    dnnl::impl::status_t execute(dnnl::impl::exec_ctx_t &ctx) const;
+    dnnl::impl::status_t execute(
+            std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx) const;
 
     void retain() { counter_++; }
 

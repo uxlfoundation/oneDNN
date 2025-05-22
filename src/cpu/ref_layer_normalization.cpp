@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ namespace impl {
 namespace cpu {
 
 status_t ref_layer_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper stat_d(pd()->stat_md());
@@ -107,8 +107,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
             d *= src_scales[0];
 
             // post-ops
-            ref_post_ops_t::args_t args;
-            args.ctx = &ctx;
+            ref_post_ops_t::args_t args(ctx);
             args.l_offset = n * C + c;
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(d, args);
@@ -128,7 +127,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
 }
 
 status_t ref_layer_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -146,17 +145,20 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
     auto variance = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto scale = CTX_IN_MEM(void *, DNNL_ARG_SCALE);
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
-    auto diff_scale = use_scale
-            ? CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SCALE, status)
-            : nullptr;
-    CHECK(status);
-    auto diff_shift = use_shift
-            ? CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SHIFT, status)
-            : nullptr;
-    CHECK(status);
+    void *diff_scale = nullptr;
+    if (use_scale) {
+        CTX_OUT_CLEAN_MEM(
+                void *, zeroed_diff_scale, DNNL_ARG_DIFF_SCALE, status);
+        diff_scale = zeroed_diff_scale;
+    }
+    void *diff_shift = nullptr;
+    if (use_shift) {
+        CTX_OUT_CLEAN_MEM(
+                void *, zeroed_diff_shift, DNNL_ARG_DIFF_SHIFT, status);
+        diff_shift = zeroed_diff_shift;
+    }
 
     const dim_t N = pd()->across_axis();
     const dim_t C = pd()->norm_axis();

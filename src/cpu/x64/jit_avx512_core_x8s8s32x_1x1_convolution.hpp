@@ -330,12 +330,12 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const char *src,
             const char *weights, const char *bias, const char *weights_dw,
             const char *bias_dw, char *dst, const float *oscales,

@@ -339,13 +339,13 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
 
 private:
-    void execute_forward(const exec_ctx_t &ctx) const;
+    void execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const data_t *src,
             const data_t *weights, const data_t *bias, const data_t *weights_dw,
             const data_t *bias_dw, data_t *dst,
@@ -452,13 +452,13 @@ struct jit_avx2_1x1_convolution_bwd_data_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_data(ctx);
         return status::success;
     }
 
 private:
-    void execute_backward_data(const exec_ctx_t &ctx) const;
+    void execute_backward_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_avx2_1x1_conv_kernel_f32> kernel_;
@@ -592,13 +592,13 @@ struct jit_avx2_1x1_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }
 
 private:
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_avx2_1x1_conv_kernel_f32> kernel_;

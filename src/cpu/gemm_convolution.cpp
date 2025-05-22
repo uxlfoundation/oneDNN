@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,13 +45,13 @@ struct im_pos_t {
 } // namespace
 
 status_t gemm_convolution_fwd_t::execute_forward_nspc(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src_base = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto bia_base = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
     auto dst_base = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const conv_gemm_conf_t &jcp = pd()->jcp_;
     std::atomic<status_t> st(status::success);
 
@@ -64,10 +64,10 @@ status_t gemm_convolution_fwd_t::execute_forward_nspc(
     return st;
 }
 
-status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
-        const int ithr, const int nthr, const data_t *src_base,
-        const data_t *wei_base, const data_t *bia_base, data_t *dst_base,
-        const memory_tracking::grantor_t &scratchpad) const {
+status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(
+        const std::shared_ptr<exec_ctx_t> &ctx, const int ithr, const int nthr,
+        const data_t *src_base, const data_t *wei_base, const data_t *bia_base,
+        data_t *dst_base, const memory_tracking::grantor_t &scratchpad) const {
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
     // Src Format: mb-spatial-groups-input_channels
@@ -198,8 +198,7 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                                 }
                             }
                             if (!fast_relu_done) {
-                                ref_post_ops_t::args_t args;
-                                args.ctx = &ctx;
+                                ref_post_ops_t::args_t args(ctx);
                                 args.dst_md = pd()->dst_md();
 
                                 for (size_t oc = start_oc; oc <= end_oc; oc++) {
@@ -221,13 +220,13 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
 }
 
 status_t gemm_convolution_fwd_t::execute_forward_ncsp(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
-    auto col = ctx.get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
+    auto col = ctx->get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 
@@ -339,10 +338,9 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                             data_t b = jcp.with_bias ? bias[oc_start + oc] : 0;
                             data_t *d_ = _dst + oc * M;
 
-                            ref_post_ops_t::args_t args;
-                            args.ctx = &ctx;
-                            args.dst_md = pd()->dst_md();
+                            ref_post_ops_t::args_t args(ctx);
                             args.l_offset = d_ - dst;
+                            args.dst_md = pd()->dst_md();
 
                             PRAGMA_OMP_SIMD()
                             for (int oS = 0; oS < m; ++oS) {
@@ -427,14 +425,14 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
 }
 
 status_t gemm_convolution_bwd_data_t::execute_backward_data_nspc(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto diff_dst_base = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto wei_base = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto bia_base = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
     auto diff_src_base = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const conv_gemm_conf_t &jcp = pd()->jcp_;
     std::atomic<status_t> st(status::success);
 
@@ -524,12 +522,12 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_thr_nspc(
 }
 
 status_t gemm_convolution_bwd_data_t::execute_backward_data_ncsp(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
 
-    auto col = ctx.get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
+    auto col = ctx->get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 
@@ -608,17 +606,17 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_ncsp(
 }
 
 status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto diff_weights = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_BIAS);
 
-    auto col = ctx.get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
+    auto col = ctx->get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
     auto wei_reduction
-            = ctx.get_scratchpad_grantor().get<data_t>(key_conv_wei_reduction);
+            = ctx->get_scratchpad_grantor().get<data_t>(key_conv_wei_reduction);
 
     const dim_t K = jcp.os * static_cast<size_t>(jcp.od);
     const size_t src_step
@@ -647,7 +645,7 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
         const int need_reduction = nthr_mb != 1;
         const dim_t LDC = need_reduction ? jcp.oc : jcp.ngroups * jcp.oc;
         data_t *__restrict imtr
-                = ctx.get_scratchpad_grantor().get<data_t>(key_conv_gemm_imtr)
+                = ctx->get_scratchpad_grantor().get<data_t>(key_conv_gemm_imtr)
                 + (ptrdiff_t)ithr * jcp.id * jcp.ic * jcp.is;
 
         if (ithr_g != -1 && ithr_mb != -1) {
@@ -779,15 +777,15 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
 }
 
 status_t gemm_convolution_bwd_weights_t::execute_backward_weights_ncsp(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto diff_weights = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_BIAS);
 
-    auto col = ctx.get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
+    auto col = ctx->get_scratchpad_grantor().get<data_t>(key_conv_gemm_col);
     auto wei_reduction
-            = ctx.get_scratchpad_grantor().get<data_t>(key_conv_wei_reduction);
+            = ctx->get_scratchpad_grantor().get<data_t>(key_conv_wei_reduction);
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 

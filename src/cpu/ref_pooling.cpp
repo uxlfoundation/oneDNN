@@ -45,14 +45,12 @@ using namespace nstl;
 
 template <data_type_t data_type, data_type_t acc_type>
 status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     status_t status = status::success;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
-    CHECK(status);
-    auto ws = CTX_OUT_CLEAN_MEM(unsigned char *, DNNL_ARG_WORKSPACE, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, dst, DNNL_ARG_DST, status);
+    CTX_OUT_CLEAN_MEM(unsigned char *, ws, DNNL_ARG_WORKSPACE, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -185,8 +183,7 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
                 float res = base_res;
                 kernel(res, mb, oc, od, oh, ow);
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
+                ref_post_ops_t::args_t args(ctx);
                 args.l_offset = data_l_off;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(res, args);
@@ -197,19 +194,19 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
     return status::success;
 }
 
-status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_pooling_bwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
     const auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     const auto ws = CTX_IN_MEM(const void *, DNNL_ARG_WORKSPACE);
-    auto diff_src_ptr = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src_ptr, DNNL_ARG_DIFF_SRC, status);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper ws_d(pd()->workspace_md());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     float *cvt_src = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     void *diff_src = (diff_src_d.data_type() != data_type::f32)

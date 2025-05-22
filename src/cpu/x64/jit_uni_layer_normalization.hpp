@@ -131,27 +131,27 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
 
     ~jit_uni_layer_normalization_fwd_t() override = default;
 
-    void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
+    void reorder_stat(const std::shared_ptr<exec_ctx_t> &ctx, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const {
         using namespace memory_tracking::names;
         exec_args_t r_args;
         r_args[DNNL_ARG_SRC] = in;
         r_args[DNNL_ARG_DST] = out;
-        exec_ctx_t r_ctx(ctx, std::move(r_args));
+        auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
         nested_scratchpad_t ns(ctx, key_nested, reorder_);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        r_ctx->set_scratchpad_grantor(ns.grantor());
         reorder_->execute(r_ctx);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         /* LN supports arbitrary layout for input/output statistics.
          * For best performance we compute LN with statistics in the same format
          * as data tensor (i.e. data in abcd, stats in abc) and user's
          * input/output statistics are reordered if necessary */
         using namespace memory_tracking::names;
-        engine_t *engine = ctx.stream()->engine();
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        engine_t *engine = ctx->stream()->engine();
+        auto scratchpad = ctx->get_scratchpad_grantor();
         auto mean_mem = scratchpad.get_memory_storage(key_lnorm_tmp_mean);
         auto variance_mem = scratchpad.get_memory_storage(key_lnorm_tmp_var);
         std::unique_ptr<memory_t, memory_deleter_t> mean;
@@ -165,9 +165,9 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
 
         // reorder input stats
         if (pd()->stats_are_src() && reorder_) {
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_MEAN),
+            reorder_stat(ctx, engine, ctx->args().at(DNNL_ARG_MEAN),
                     {mean.get(), false});
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_VARIANCE),
+            reorder_stat(ctx, engine, ctx->args().at(DNNL_ARG_VARIANCE),
                     {variance.get(), false});
         }
         status_t status = execute_forward(ctx);
@@ -175,16 +175,16 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
         // reorder output stats
         if (!pd()->stats_are_src() && reorder_) {
             reorder_stat(ctx, engine, {mean.get(), true},
-                    ctx.args().at(DNNL_ARG_MEAN));
+                    ctx->args().at(DNNL_ARG_MEAN));
             reorder_stat(ctx, engine, {variance.get(), true},
-                    ctx.args().at(DNNL_ARG_VARIANCE));
+                    ctx->args().at(DNNL_ARG_VARIANCE));
         }
 
         return status::success;
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<stat_and_data_kernel_t> stat_and_data_kernel_;
@@ -296,20 +296,20 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
 
     ~jit_uni_layer_normalization_bwd_t() override = default;
 
-    void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
+    void reorder_stat(const std::shared_ptr<exec_ctx_t> &ctx, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const {
         using namespace memory_tracking::names;
         exec_args_t r_args;
         r_args[DNNL_ARG_SRC] = in;
         r_args[DNNL_ARG_DST] = out;
-        exec_ctx_t r_ctx(ctx, std::move(r_args));
+        auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
         nested_scratchpad_t ns(ctx, key_nested, reorder_);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        r_ctx->set_scratchpad_grantor(ns.grantor());
         reorder_->execute(r_ctx);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         using namespace memory_tracking::names;
         /* LN supports arbitrary layout for input/output statistics.
          * For best performance we compute LN with statistics in the same format
@@ -317,8 +317,8 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
          * input/output statistics are reordered if necessary */
 
         if (reorder_) {
-            engine_t *engine = ctx.stream()->engine();
-            auto scratchpad = ctx.get_scratchpad_grantor();
+            engine_t *engine = ctx->stream()->engine();
+            auto scratchpad = ctx->get_scratchpad_grantor();
             auto mean_mem = scratchpad.get_memory_storage(key_lnorm_tmp_mean);
             auto variance_mem
                     = scratchpad.get_memory_storage(key_lnorm_tmp_var);
@@ -330,9 +330,9 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
             CHECK(safe_ptr_assign(variance,
                     new memory_t(engine, &(pd()->reordered_stat_md_),
                             std::move(variance_mem))));
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_MEAN),
+            reorder_stat(ctx, engine, ctx->args().at(DNNL_ARG_MEAN),
                     {mean.get(), false});
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_VARIANCE),
+            reorder_stat(ctx, engine, ctx->args().at(DNNL_ARG_VARIANCE),
                     {variance.get(), false});
         }
 
@@ -340,7 +340,7 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<diff_ss_kernel_t> diff_ss_kernel_;

@@ -741,7 +741,7 @@ status_t jit_uni_batch_normalization_s8_fwd_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_s8_fwd_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);

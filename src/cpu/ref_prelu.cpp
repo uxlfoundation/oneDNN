@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,7 +64,8 @@ static bool is_padding(const memory_desc_wrapper &md) {
     return false;
 }
 
-status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_prelu_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     const auto src = CTX_IN_MEM(const byte *, DNNL_ARG_SRC);
@@ -75,7 +76,7 @@ status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const auto is_inplace = (src == dst);
     const auto has_padding = is_padding(data_d);
-    if (has_padding && !is_inplace) ctx.zero_pad_output(DNNL_ARG_TO);
+    if (has_padding && !is_inplace) ctx->memory(DNNL_ARG_TO)->zero_pad(ctx);
 
     const int mask = utils::get_dims_mask(
             data_d.dims(), weights_d.dims(), data_d.ndims());
@@ -349,11 +350,12 @@ void ref_prelu_bwd_t::calculate_shared_axes(const byte *src,
     });
 }
 
-status_t ref_prelu_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+status_t ref_prelu_bwd_t::execute_backward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     if (pd()->has_zero_dim_memory()) return status::success;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
     auto scratchpad_buf = scratchpad.template get<float>(
             memory_tracking::names::key_prelu_reduction);
 
@@ -372,9 +374,10 @@ status_t ref_prelu_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const auto is_inplace = (diff_src == diff_dst);
     if (is_padding(diff_src_d) && !is_inplace)
-        ctx.zero_pad_output(DNNL_ARG_DIFF_SRC);
+        ctx->memory(DNNL_ARG_DIFF_SRC)->zero_pad(ctx);
 
-    if (is_padding(diff_weights_d)) ctx.zero_pad_output(DNNL_ARG_DIFF_WEIGHTS);
+    if (is_padding(diff_weights_d))
+        ctx->memory(DNNL_ARG_DIFF_WEIGHTS)->zero_pad(ctx);
 
     switch (bcast_type) {
         case broadcasting_strategy_t::scalar:

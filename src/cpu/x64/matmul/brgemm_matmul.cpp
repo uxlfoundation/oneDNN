@@ -401,7 +401,8 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
+status_t brgemm_matmul_t<isa>::execute_body(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
     DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
@@ -409,9 +410,10 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
-    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
-    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
+    const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto weights_d
+            = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
+    const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
@@ -423,7 +425,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const bool wei_scale_per_n
             = has_wei_scales && (wei_scale_mask & pd()->wei_qmask_N());
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->K(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->K(),
             pd()->N(), wei_scale_per_k, wei_scale_per_n, pd()->attr(),
             jit_scale_precompute_.get(), 1.f, bgmmc.req_transpose_scales);
 
@@ -1171,9 +1173,10 @@ void brgemm_matmul_t<isa>::accumulate(
 
 template <cpu_isa_t isa>
 struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
-    brg_matmul_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd,
-            const float *oscales, int32_t src_zp, int32_t wei_zp,
-            int32_t dst_zp, const float *dst_scales, matmul_helper_t &helper)
+    brg_matmul_exec_ctx_t(const std::shared_ptr<exec_ctx_t> &ctx,
+            const pd_t *pd, const float *oscales, int32_t src_zp,
+            int32_t wei_zp, int32_t dst_zp, const float *dst_scales,
+            matmul_helper_t &helper)
         : bgmmc_(pd->get_brgemm_matmul_conf())
         , src_d_(pd->src_md())
         , wei_d_(pd->weights_md())
@@ -1195,7 +1198,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         oscales_ptr_ = oscales;
         dst_scales_ptr_ = dst_scales;
-        memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+        memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
         const auto &bgmmc = pd->get_brgemm_matmul_conf();
 
         batch_element_ptr_ = scratchpad.template get<brgemm_batch_element_t>(
@@ -1226,7 +1229,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         is_amx_ = is_superset(isa, avx512_core_amx);
         wsp_tile_ptr_ = is_amx_
-                ? ctx.get_scratchpad_grantor().template get<char>(
+                ? ctx->get_scratchpad_grantor().template get<char>(
                         key_conv_amx_tile_buffer)
                 : nullptr;
 
@@ -1261,7 +1264,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         zero_point_c_val_ = dst_zp;
 
         post_ops_binary_rhs_arg_vec_ = binary_injector::prepare_binary_args(
-                pd->attr()->post_ops_, ctx);
+                pd->attr()->post_ops_, *ctx);
         base_brg_ker_idx_ = pd->get_brg_kernel_idx(false, true, 0, 0, false);
         vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
 

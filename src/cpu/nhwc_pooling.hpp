@@ -124,12 +124,12 @@ struct nhwc_pooling_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void array_div_by_const(const dim_t n, const ker_data_t *src,
             const size_t num, ker_data_t *dst) const;
     void array_add(const dim_t n, const ker_data_t *src, ker_data_t *dst) const;
@@ -213,12 +213,12 @@ struct nhwc_pooling_bwd_t : public primitive_t {
     nhwc_pooling_bwd_t(const pd_t *apd) : primitive_t(apd) {}
     using data_t = typename prec_traits_t<d_type>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward(ctx);
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

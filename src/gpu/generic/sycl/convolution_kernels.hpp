@@ -345,7 +345,8 @@ struct convolution_kernel_bwd_data_t {
         const float sm_dst = (conf_.do_scale_dst
                         ? load_float_value(data_type::f32, dst_scale_ptr(), 0)
                         : 1.f);
-        dims_t data_dims, weights_dims, dst_dims, data_strides, off;
+        dims_t data_dims, weights_dims, dst_dims, data_strides;
+        dims_t logical_index;
         auto diff_dst_tensor = memory_tensor_t(diff_dst_, diff_dst_md());
         auto diff_data_tensor = memory_tensor_t(diff_data_, diff_data_md());
         auto wei_tensor = memory_tensor_t(weights_, weights_md());
@@ -395,18 +396,16 @@ struct convolution_kernel_bwd_data_t {
 
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / data_strides[i] % data_dims[i];
-            }
+            diff_data_tensor.get_logical_index(idx, logical_index);
 
-            const int n = off[0];
-            const int ic_tot = off[1];
+            const int n = logical_index[0];
+            const int ic_tot = logical_index[1];
             const int ic = ic_tot % IC;
             const int g = ic_tot / IC;
 
-            const int id = off[2];
-            const int ih = off[3];
-            const int iw = off[4];
+            const int id = logical_index[2];
+            const int ih = logical_index[3];
+            const int iw = logical_index[4];
 
             float accumulator = 0;
             for (int oc = 0; oc < OC; ++oc) {
@@ -490,7 +489,8 @@ struct convolution_kernel_bwd_data_t {
                 accumulator += bias;
             }
 
-            accumulator = conf_.post_ops.apply(accumulator, diff_data_, idx);
+            accumulator = conf_.post_ops.apply(accumulator, diff_data_,
+                    diff_data_md().off_v(logical_index));
 
             if (conf_.do_scale_dst) { accumulator /= sm_dst; }
             if (conf_.use_dst_zeropoints) {
@@ -501,9 +501,7 @@ struct convolution_kernel_bwd_data_t {
                         zeropoints_dst_dt_, dst_zeropoint_ptr(), zpoint_idx);
                 accumulator += diff_data_zeropoint;
             }
-
-            store_float_value(diff_data_md().data_type(), accumulator,
-                    diff_data_ptr(), idx);
+            diff_data_tensor.store_md(accumulator, logical_index);
         }
     }
 
@@ -574,7 +572,8 @@ struct convolution_kernel_bwd_weights_t {
         , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(diff_dst_arg)) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        dims_t data_dims, weights_dims, dst_dims, weights_strides, off;
+        dims_t data_dims, weights_dims, dst_dims, weights_strides,
+                logical_index;
         for (int i = 0; i < max_supported_ndims; i++) {
             data_dims[i] = (i < data_md().ndims()) ? data_md().dims()[i] : 1;
             weights_dims[i] = (i < diff_weights_md().ndims())
@@ -617,25 +616,26 @@ struct convolution_kernel_bwd_weights_t {
         const int DH = conf_.dilation[1];
         const int DW = conf_.dilation[2];
 
+        auto diff_weights_tensor
+                = memory_tensor_t(diff_weights_, diff_weights_md());
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
-            for (int i = 0; i < max_supported_ndims; i++) {
-                off[i] = idx / weights_strides[i] % weights_dims[i];
-            }
 
-            int g = off[0];
-            int oc = off[1];
-            int ic = off[2];
-            int kd = off[3];
-            int kh = off[4];
-            int kw = off[5];
+            diff_weights_tensor.get_logical_index(idx, logical_index);
+
+            int g = logical_index[0];
+            int oc = logical_index[1];
+            int ic = logical_index[2];
+            int kd = logical_index[3];
+            int kh = logical_index[4];
+            int kw = logical_index[5];
             if (no_groups) {
                 g = 0;
-                oc = off[0];
-                ic = off[1];
-                kd = off[2];
-                kh = off[3];
-                kw = off[4];
+                oc = logical_index[0];
+                ic = logical_index[1];
+                kd = logical_index[2];
+                kh = logical_index[3];
+                kw = logical_index[4];
             }
 
             auto bias_backprop_lambda = [&](int D, int H, int W, int OC, int ic,
@@ -699,8 +699,8 @@ struct convolution_kernel_bwd_weights_t {
                     }
                 }
             }
-            store_float_value(diff_weights_md().data_type(),
-                    accumulator_weights, diff_weights_ptr(), idx);
+
+            diff_weights_tensor.store_md(accumulator_weights, logical_index);
         }
     }
 

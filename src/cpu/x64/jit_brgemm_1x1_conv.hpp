@@ -130,15 +130,12 @@ private:
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
             , dst(CTX_OUT_MEM(char *, DNNL_ARG_DST))
             , post_ops_binary_rhs_arg_vec(binary_injector::prepare_binary_args(
-                      pd->attr()->post_ops_, *ctx))
-            , wsp_tile(ctx->get_scratchpad_grantor().template get<char>(
-                      memory_tracking::names::key_conv_amx_tile_buffer)) {}
+                      pd->attr()->post_ops_, *ctx)) {}
         const char *const __restrict src;
         const char *const __restrict weights;
         const char *const __restrict bias;
         char *const __restrict dst;
         const std::vector<const void *> post_ops_binary_rhs_arg_vec;
-        char *const wsp_tile;
     };
 
     void maybe_rtus(int ithr, const char *__restrict src,
@@ -150,18 +147,21 @@ private:
             int od, int oh, int ow, int icc, int *last_brg_idx,
             const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
             int32_t *dst_zp_vals, int32_t *s8s8_compensation,
-            const float *dst_scales, const bool is_last_os = false) const;
-    void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
+            const float *dst_scales, char *const wsp_tile_global,
+            const bool is_last_os = false) const;
+    void execute_os_blocking(const std::shared_ptr<exec_ctx_t> &ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const float *dst_scales, const float *oscales, int32_t src_zp_vals,
             int32_t *src_zp_comp, int32_t *dst_zp_vals,
             int32_t *s8s8_compensation, char *const c_buffer_global,
-            char *inp_buffer_base, uint8_t *inp_buffer_mask_base) const;
-    void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
+            char *inp_buffer_base, uint8_t *inp_buffer_mask_base,
+            char *const wsp_tile_global) const;
+    void execute_full_spatial(const std::shared_ptr<exec_ctx_t> &ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const float *dst_scales, const float *oscales, int32_t src_zp_vals,
             int32_t *src_zp_comp, int32_t *dst_zp_vals,
-            int32_t *s8s8_compensation, char *const c_buffer_global) const;
+            int32_t *s8s8_compensation, char *const c_buffer_global,
+            char *const wsp_tile_global) const;
 
     status_t execute_forward_all(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

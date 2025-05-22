@@ -260,7 +260,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
 
     if (is_fp8_native()) {
-        host_->vcvtnehf82ph(xmm_out, op_in);
+        host_->vcvthf82ph(xmm_out, op_in);
         return;
     }
 
@@ -356,7 +356,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
 
     // f16 <- f8_e4m3
     if (is_fp8_native())
-        host_->vcvtnehf82ph(ymm_mask(xmm_out), op_in);
+        host_->vcvthf82ph(ymm_mask(xmm_out), op_in);
     else
         vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
 
@@ -376,7 +376,7 @@ void fp8_conversion_e5m2_t::vcvt_f32_to_f8(
     host_->vcvtps2phx(op_in.isXMM() ? xmm_out : ymm_mask(xmm_out), op_in);
     // f8_e5m2 <- f16 (RNE)
     if (is_fp8_native())
-        host_->vcvtneph2bf8(xmm_out, ymm_out);
+        host_->vcvtph2bf8(xmm_out, ymm_out);
     else
         vcvt_f16_to_f8(xmm_out, ymm_out);
 }
@@ -386,7 +386,7 @@ void fp8_conversion_e5m2_t::vcvt_f16_to_f8(
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
     if (is_fp8_native()) {
-        host_->vcvtneph2bf8(xmm_out, op_in);
+        host_->vcvtph2bf8(xmm_out, op_in);
         return;
     }
 
@@ -438,7 +438,7 @@ void fp8_conversion_e4m3_t::vcvt_f32_to_f8(
     host_->vcvtps2phx(ymm_mask(xmm_out), op_in);
     // f8_e4m3 <- f16 (RNE)
     if (is_fp8_native())
-        host_->vcvtneph2hf8(xmm_out, ymm_out);
+        host_->vcvtph2hf8(xmm_out, ymm_out);
     else
         vcvt_f16_to_f8(xmm_out, ymm_out);
 }
@@ -448,7 +448,7 @@ void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
     if (is_fp8_native()) {
-        host_->vcvtneph2hf8(xmm_out, op_in);
+        host_->vcvtph2hf8(xmm_out, op_in);
         return;
     }
 

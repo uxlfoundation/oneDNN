@@ -43,14 +43,6 @@ status_t ref_matmul_int8_t::execute_ref(
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_points, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
-
     const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d
             = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
@@ -152,7 +144,11 @@ status_t ref_matmul_int8_t::execute_ref(
     // value to multiply on. This moves scales application inside the kernel.
     // This reference kernel applies scales inside unconditionally as it is
     // always possible to do that.
-    auto ker = [&](const dims_t dst_dims_idx, dim_t m, dim_t n) {
+    auto ker = [=](const dims_t dst_dims_idx, dim_t m, dim_t n,
+                       const float *src_scales, const float *wei_scales,
+                       const float *dst_scales, const int32_t *src_zero_points,
+                       const int32_t *wei_zero_points,
+                       const int32_t *dst_zero_point) {
         float d = 0;
         dims_t src_dims_idx, weights_dims_idx;
         utils::copy_dims_with_mask(src_dims_idx, dst_dims_idx, ndims, src_mask);
@@ -222,7 +218,7 @@ status_t ref_matmul_int8_t::execute_ref(
     };
 
     // bias section
-    auto ker_bias = [&](const dims_t &dst_dims_idx) -> float {
+    auto ker_bias = [=](const dims_t &dst_dims_idx) -> float {
         dims_t bia_dims_idx;
         utils::copy_dims_with_mask(bia_dims_idx, dst_dims_idx, ndims, bia_mask);
         const auto bias_off = bia_d.off_v(bia_dims_idx);
@@ -232,12 +228,21 @@ status_t ref_matmul_int8_t::execute_ref(
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     // computations
-    parallel_nd(batch, M, N, [&](dim_t mb, dim_t m, dim_t n) {
+    parallel_nd(batch, M, N, [=](dim_t mb, dim_t m, dim_t n) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
+        DEFINE_ZERO_POINTS_BUFFER(src_zero_points, DNNL_ARG_SRC);
+        DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
+        DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+
         dims_t dst_dims_idx;
         // account for M, N dims for index calculations
         const size_t l_offset = mb * M * N + m * N + n;
         utils::l_dims_by_l_offset(dst_dims_idx, l_offset, dst_d.dims(), ndims);
-        float d = ker(dst_dims_idx, m, n);
+        float d = ker(dst_dims_idx, m, n, src_scales, wei_scales, dst_scales,
+                src_zero_points, wei_zero_points, dst_zero_point);
         if (bias) d += ker_bias(dst_dims_idx);
 
         const auto dst_off = dst_d.off_v(dst_dims_idx);
@@ -258,6 +263,7 @@ status_t ref_matmul_int8_t::execute_ref(
         }
         io::store_float_value(dst_d.data_type(), d, dst, dst_off);
         utils::dim_iterator(dst_d.dims(), dst_dims_idx, batch_ndims);
+        return status::success;
     });
 
     return status::success;

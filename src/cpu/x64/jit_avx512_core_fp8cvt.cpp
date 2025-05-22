@@ -208,7 +208,7 @@ void fp8_conversion_e5m2_t::perform_f8_to_f16_vnni_conversion(
 
 void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
         const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
-    constexpr int zmm_permute_idx = 3;
+    const int zmm_permute_idx = xmm_aux3_.getIdx();
     prepare_f8_to_f16_vnni_masks(zmm_permute_idx);
     perform_f8_to_f16_vnni_conversion(
             zmm_out1, zmm_out2, op_in, zmm_permute_idx);
@@ -219,7 +219,7 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_out) {
     const Xbyak::Zmm zmm_aux1(xmm_aux1_.getIdx());
     const Xbyak::Zmm zmm_aux2(xmm_aux2_.getIdx());
-    constexpr int zmm_permute_idx = 3;
+    const int zmm_permute_idx = xmm_aux3_.getIdx();
 
     prepare_f8_to_f16_vnni_masks(zmm_permute_idx);
 

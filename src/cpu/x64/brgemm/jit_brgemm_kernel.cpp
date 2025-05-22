@@ -346,11 +346,21 @@ private:
     // note: zmm reserv_5 is not necessary since it's only used for 'vdpbf16ps'
 
     // fp8 emulation convert
-    Vmm vmm_fp8_emu_aux1() const noexcept { return Vmm(1); }
-    Vmm vmm_fp8_emu_aux2() const noexcept { return Vmm(2); }
-    Vmm vmm_fp8_emu_aux3() const noexcept { return Vmm(3); }
-    Vmm vmm_fp8_emu_aux4() const noexcept { return Vmm(4); }
-    Vmm vmm_fp8_emu_aux5() const noexcept { return Vmm(5); }
+    Vmm vmm_fp8_emu_aux1() const noexcept {
+        return Vmm(isa_num_vregs(brg.isa_impl) - 1);
+    }
+    Vmm vmm_fp8_emu_aux2() const noexcept {
+        return Vmm(isa_num_vregs(brg.isa_impl) - 2);
+    }
+    Vmm vmm_fp8_emu_aux3() const noexcept {
+        return Vmm(isa_num_vregs(brg.isa_impl) - 3);
+    }
+    Vmm vmm_fp8_emu_aux4() const noexcept {
+        return Vmm(isa_num_vregs(brg.isa_impl) - 4);
+    }
+    Vmm vmm_fp8_emu_aux5() const noexcept {
+        return Vmm(isa_num_vregs(brg.isa_impl) - 5);
+    }
 
     Zmm zmm_tmp_1() const noexcept { return Zmm(1); }
 

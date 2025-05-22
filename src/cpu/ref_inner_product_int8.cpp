@@ -31,12 +31,12 @@ namespace impl {
 namespace cpu {
 
 status_t ref_inner_product_int8_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
     CHECK(status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -103,9 +103,8 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
         dim_t dst_off = dst_d.off(mb, oc);
         dim_t dst_l_off = (mb * OC + oc);
 
-        ref_post_ops_t::args_t args;
+        ref_post_ops_t::args_t args(ctx);
         args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
-        args.ctx = &ctx;
         args.l_offset = dst_l_off;
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(d, args);

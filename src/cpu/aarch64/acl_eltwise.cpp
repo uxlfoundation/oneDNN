@@ -21,7 +21,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t acl_eltwise_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t acl_eltwise_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_forward(ctx);
 }
 
@@ -37,7 +38,8 @@ const acl_eltwise_fwd_t::pd_t *acl_eltwise_fwd_t::pd() const {
     return static_cast<const pd_t *>(primitive_t::pd().get());
 }
 
-status_t acl_eltwise_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_eltwise_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const void *src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     void *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
@@ -46,7 +48,8 @@ status_t acl_eltwise_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 }
 
 status_t acl_eltwise_fwd_t::execute_forward(
-        const exec_ctx_t &ctx, const void *src, void *dst) const {
+        const std::shared_ptr<exec_ctx_t> &ctx, const void *src,
+        void *dst) const {
 
     auto aep = pd()->aep;
     arm_compute::Tensor src_tensor;

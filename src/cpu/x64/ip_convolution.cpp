@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,41 +23,44 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-status_t ip_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ip_convolution_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args = ctx->args();
 
-    exec_ctx_t conv_ctx(ctx, std::move(ip_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(ip_args));
 
     nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
 
     return ip_p_->execute(conv_ctx);
 }
 
-status_t ip_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
+status_t ip_convolution_bwd_data_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args = ctx->args();
 
-    exec_ctx_t conv_ctx(ctx, std::move(ip_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(ip_args));
 
     nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
 
     return ip_p_->execute(conv_ctx);
 }
 
-status_t ip_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
+status_t ip_convolution_bwd_weights_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args = ctx->args();
 
-    exec_ctx_t conv_ctx(ctx, std::move(ip_args));
+    auto conv_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(ip_args));
 
     nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    conv_ctx->set_scratchpad_grantor(ns.grantor());
 
     return ip_p_->execute(conv_ctx);
 }

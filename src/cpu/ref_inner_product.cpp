@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,13 +27,13 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_inner_product_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -83,9 +83,8 @@ status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         dim_t dst_off = dst_d.off(mb, oc);
         dim_t dst_l_off = (mb * OC + oc);
 
-        ref_post_ops_t::args_t args;
+        ref_post_ops_t::args_t args(ctx);
         args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
-        args.ctx = &ctx;
         args.l_offset = dst_l_off;
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(d, args);
@@ -97,12 +96,11 @@ status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 }
 
 status_t ref_inner_product_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -143,14 +141,12 @@ status_t ref_inner_product_bwd_data_t::execute_backward_data(
 }
 
 status_t ref_inner_product_bwd_weights_t::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
-    auto diff_weights
-            = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_WEIGHTS, status);
-    CHECK(status);
-    auto diff_bias = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_BIAS, status);
+    CTX_OUT_CLEAN_MEM(void *, diff_weights, DNNL_ARG_DIFF_WEIGHTS, status);
+    CTX_OUT_CLEAN_MEM(void *, diff_bias, DNNL_ARG_DIFF_BIAS, status);
     CHECK(status);
 
     const memory_desc_wrapper src_d(pd()->src_md());

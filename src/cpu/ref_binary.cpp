@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_binary_t::execute_ref(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src0 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_0);
     const auto src1 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_1);
     const auto src2 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_2);
@@ -73,7 +74,7 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
         if (has_postops || !dst_d.is_dense(true)) {
             // Use zero-padding implementation as we cannot memset over
             // populated dst memory or submemories.
-            ctx.zero_pad_output(DNNL_ARG_TO);
+            ctx->memory(DNNL_ARG_TO)->zero_pad(ctx);
         } else {
             const auto res = std::div(static_cast<int>(dst_d.size()), PAGE_4K);
             if (!res.quot)
@@ -124,9 +125,8 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
         float acc = compute_binary_scalar(alg, x_f, y_f, c_f);
 
         if (has_postops) {
-            ref_post_ops_t::args_t args;
+            ref_post_ops_t::args_t args(ctx);
             args.dst_val = dst_f;
-            args.ctx = &ctx;
             args.l_offset = i;
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(acc, args);

@@ -948,7 +948,8 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
 jit_int8_matmul_t::jit_int8_matmul_t(const pd_t *apd) : primitive_t(apd) {}
 jit_int8_matmul_t::~jit_int8_matmul_t() = default;
 
-status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_int8_matmul_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto *weights_b = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     const auto *src_b = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
@@ -965,7 +966,7 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
     const auto &b = pd()->get_b();
     const auto &d = pd()->get_d();
 
-    auto &scratchpad = ctx.get_scratchpad_grantor();
+    auto &scratchpad = ctx->get_scratchpad_grantor();
 
     int num_threads = dnnl_get_current_num_threads();
     char *src = scratchpad.template get<char>(key_brgemm_primitive_buffer_a);

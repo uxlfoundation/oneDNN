@@ -53,16 +53,16 @@ struct acl_eltwise_fwd_t : public primitive_t {
     acl_eltwise_fwd_t(const pd_t *apd)
         : primitive_t(apd), act_(std::make_unique<Op>()) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
     status_t init(engine_t *engine) override;
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
 
     // Execute forward with arbitrary src and dst, used by acl_post_ops_t
-    status_t execute_forward(
-            const exec_ctx_t &ctx, const void *src, void *dst) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx,
+            const void *src, void *dst) const;
 
     const pd_t *pd() const;
 

@@ -1460,21 +1460,24 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
 
     vector<int> adjusted_k;
     vector<int> adjusted_k_l;
-    int k = 0;
+    int vpad_k = 0;
     const bool has_relo_large_spatial /* heuristic*/
             = is_relo_with_relo_weights && jcp.oc_block * jcp.ow > 10240;
-    while (k < ker_vpad_sz) {
-        int next_k = k + 1;
-        while (!has_relo_large_spatial && next_k < ker_vpad_sz) {
-            if (kd_bs[next_k] != kd_bs[k] || kd_es[next_k] != kd_es[k]
-                    || kh_bs[next_k] != kh_bs[k] || kh_es[next_k] != kh_es[k]
-                    || kw_bs[next_k] != kw_bs[k] || kw_es[next_k] != kw_es[k])
+    while (vpad_k < ker_vpad_sz) {
+        int vpad_next_k = vpad_k + 1;
+        while (!has_relo_large_spatial && vpad_next_k < ker_vpad_sz) {
+            if (kd_bs[vpad_next_k] != kd_bs[vpad_k]
+                    || kd_es[vpad_next_k] != kd_es[vpad_k]
+                    || kh_bs[vpad_next_k] != kh_bs[vpad_k]
+                    || kh_es[vpad_next_k] != kh_es[vpad_k]
+                    || kw_bs[vpad_next_k] != kw_bs[vpad_k]
+                    || kw_es[vpad_next_k] != kw_es[vpad_k])
                 break;
-            next_k++;
+            vpad_next_k++;
         }
-        adjusted_k.push_back(k);
-        adjusted_k_l.push_back(next_k - k);
-        k = next_k;
+        adjusted_k.push_back(vpad_k);
+        adjusted_k_l.push_back(vpad_next_k - vpad_k);
+        vpad_k = vpad_next_k;
     }
 
     const int max_ker_sz = adjusted_k.size();

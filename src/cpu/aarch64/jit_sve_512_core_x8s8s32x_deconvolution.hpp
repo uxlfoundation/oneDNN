@@ -324,7 +324,7 @@ struct jit_sve_512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         auto ndims = pd()->ndims();
         if (ndims == 3)
             return execute_forward_1d(ctx);
@@ -336,9 +336,9 @@ struct jit_sve_512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_forward_1d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_2d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_3d(const exec_ctx_t &ctx) const;
+    status_t execute_forward_1d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_2d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_3d(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<_jit_sve_512_core_x8s8s32x_deconv_fwd_kernel> kernel_;
     std::unique_ptr<zp::jit_uni_deconv_zp_pad_str_kernel_base_t>

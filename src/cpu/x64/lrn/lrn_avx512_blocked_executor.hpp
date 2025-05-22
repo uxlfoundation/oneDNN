@@ -76,13 +76,11 @@ public:
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         status_t status = status::success;
         const auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-        const auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
-        CHECK(status);
-        const auto ws = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_WORKSPACE, status);
-        CHECK(status);
+        CTX_OUT_CLEAN_MEM(data_t *, dst, DNNL_ARG_DST, status);
+        CTX_OUT_CLEAN_MEM(data_t *, ws, DNNL_ARG_WORKSPACE, status);
 
         const auto ker = ker_.get();
         const auto ker_first = ker_first_.get();
@@ -214,14 +212,12 @@ public:
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         status_t status = status::success;
         const auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
         const auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
         const auto ws = CTX_IN_MEM(const data_t *, DNNL_ARG_WORKSPACE);
-        const auto diff_src
-                = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
-        CHECK(status);
+        CTX_OUT_CLEAN_MEM(data_t *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
         const auto ker = ker_.get();
         const auto ker_first = ker_first_.get();

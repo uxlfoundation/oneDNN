@@ -61,7 +61,7 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
         return lrn_executor_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return lrn_executor_->execute(ctx);
     }
 
@@ -101,7 +101,7 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
         return lrn_executor_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return lrn_executor_->execute(ctx);
     }
 

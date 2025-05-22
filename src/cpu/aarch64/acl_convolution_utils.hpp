@@ -110,7 +110,7 @@ status_t init_scratchpad(op_t &conv, memory_tracking::registrar_t &scratchpad,
 template <typename conv_obj_t, typename conv_pd_t, typename src_data_t,
         typename wei_data_t = src_data_t, typename dst_data_t = src_data_t,
         typename bia_data_t = src_data_t>
-status_t execute_forward_conv_acl(const exec_ctx_t &ctx,
+status_t execute_forward_conv_acl(const std::shared_ptr<exec_ctx_t> &ctx,
         conv_obj_t *acl_conv_obj, const conv_pd_t *pd,
         const std::map<int, conv_key_t> &conv_keys) {
 
@@ -132,7 +132,7 @@ status_t execute_forward_conv_acl(const exec_ctx_t &ctx,
     src_tensor.allocator()->import_memory(const_cast<src_data_t *>(src_base));
     wei_tensor.allocator()->import_memory(const_cast<wei_data_t *>(wei_base));
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute
@@ -191,8 +191,8 @@ status_t execute_forward_conv_acl(const exec_ctx_t &ctx,
 template <typename conv_obj_t, typename conv_pd_t, typename src_data_t,
         typename wei_data_t = src_data_t, typename dst_data_t = src_data_t,
         typename bia_data_t = src_data_t>
-status_t execute_forward_conv_acl(
-        const exec_ctx_t &ctx, conv_obj_t &acl_conv_obj, const conv_pd_t *pd) {
+status_t execute_forward_conv_acl(const std::shared_ptr<exec_ctx_t> &ctx,
+        conv_obj_t &acl_conv_obj, const conv_pd_t *pd) {
     bool with_bias = pd->acp_.with_bias;
     bool use_dst_acc_for_sum = pd->acp_.use_dst_acc_for_sum;
 
@@ -206,7 +206,7 @@ status_t execute_forward_conv_acl(
     acl_conv_obj.wei_tensor.allocator()->import_memory(
             const_cast<wei_data_t *>(wei_base));
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute

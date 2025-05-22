@@ -21,7 +21,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t acl_reorder_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_reorder_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     // Lock here is needed because resource_mapper does not support
     // concurrent multithreaded access.
     std::lock_guard<std::mutex> _lock {this->mtx};

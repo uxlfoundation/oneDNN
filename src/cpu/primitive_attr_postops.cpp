@@ -300,8 +300,8 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
                 assert(args.l_offset >= 0);
                 assert(args.dst_md);
 
-                const exec_ctx_t &ctx = *args.ctx;
-                const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, args.dst_md);
+                auto ctx = args.ctx;
+                const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, args.dst_md);
                 const auto &src1_desc = e.binary.src1_desc;
 
                 const auto off = get_binary_src1_off(
@@ -320,8 +320,8 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
                 assert(args.l_offset >= 0);
                 assert(args.dst_md);
 
-                const exec_ctx_t &ctx = *args.ctx;
-                const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, args.dst_md);
+                auto ctx = args.ctx;
+                const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, args.dst_md);
                 auto prelu_weights_md = *it_prelu_md;
 
                 // Handle for runtime dimensions.

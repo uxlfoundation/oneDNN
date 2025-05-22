@@ -94,13 +94,13 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
 
 private:
-    void execute_forward(const exec_ctx_t &ctx) const;
+    void execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_uni_dw_conv_fwd_kernel_t> kernel_;
@@ -164,13 +164,13 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_data(ctx);
         return status::success;
     }
 
 private:
-    void execute_backward_data(const exec_ctx_t &ctx) const;
+    void execute_backward_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel<isa, diff_dst_type>>
@@ -259,7 +259,7 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         switch (pd()->jcp_.harness) {
             case harness_nxc:
                 execute_backward_weights_nxc(ctx);
@@ -275,10 +275,11 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
     }
 
 private:
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
-    void execute_reduction(const exec_ctx_t &ctx) const;
-    void execute_backward_weights_nxc(const exec_ctx_t &ctx) const;
-    void execute_reduction_nxc(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_reduction(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_backward_weights_nxc(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void execute_reduction_nxc(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;

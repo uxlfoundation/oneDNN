@@ -39,7 +39,7 @@ using namespace dnnl::impl::utils;
 /* convolution forward */
 
 void jit_avx2_1x1_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
@@ -49,13 +49,13 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward(
     auto bias_dw = CTX_IN_MEM(
             const data_t *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
     const auto post_ops_binary_rhs_arg_vec_dw = pd()->jcp_dw_
-            ? binary_injector::prepare_binary_args(pd()->jcp_dw_->post_ops, ctx,
-                    pd()->jcp_.post_ops.entry_.size() + 1)
+            ? binary_injector::prepare_binary_args(pd()->jcp_dw_->post_ops,
+                    *ctx, pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = kernel_->jcp;
     // TODO (Roma): remove this restriction
@@ -75,7 +75,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward(
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
 
-    if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
+    if (pd()->wants_zero_pad_dst()) ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 }
 
 void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
@@ -370,7 +370,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
 /* convolution backward wtr data */
 
 void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
@@ -381,7 +381,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
 
     const auto &jcp = kernel_->jcp;
     auto rtus_space = pd()->rtus_.reduce_src_
-            ? ctx.get_scratchpad_grantor().get<data_t>(key_conv_rtus_space)
+            ? ctx->get_scratchpad_grantor().get<data_t>(key_conv_rtus_space)
             : nullptr;
 
     // TODO (Roma): remove this restriction
@@ -514,13 +514,13 @@ status_t jit_avx2_1x1_convolution_bwd_weights_t::init(engine_t *engine) {
 }
 
 void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto diff_weights = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias_in = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_BIAS);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper src_d(pd()->src_md());

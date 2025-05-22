@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,7 +31,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_group_normalization_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -41,17 +42,24 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
-    auto mean = pd()->stats_is_src()
-            ? const_cast<float *>(CTX_IN_MEM(const float *, DNNL_ARG_MEAN))
-            : CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_MEAN, status);
-    CHECK(status);
-    auto variance = pd()->stats_is_src()
-            ? const_cast<float *>(CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
-            : CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_VARIANCE, status);
-    CHECK(status);
+    float *mean = nullptr;
+    if (pd()->stats_is_src())
+        mean = const_cast<float *>(CTX_IN_MEM(const float *, DNNL_ARG_MEAN));
+    else {
+        CTX_OUT_CLEAN_MEM(float *, zeroed_mean, DNNL_ARG_MEAN, status);
+        mean = zeroed_mean;
+    }
 
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
-    CHECK(status);
+    float *variance = nullptr;
+    if (pd()->stats_is_src())
+        variance = const_cast<float *>(
+                CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE));
+    else {
+        CTX_OUT_CLEAN_MEM(float *, zeroed_variance, DNNL_ARG_VARIANCE, status);
+        variance = zeroed_variance;
+    }
+
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
@@ -129,8 +137,7 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
                 val *= src_scales[0];
 
                 // post-ops
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
+                ref_post_ops_t::args_t args(ctx);
                 args.l_offset = n * C * D * H * W + c * D * H * W + d * H * W
                         + h * W + w;
                 args.dst_md = pd()->dst_md();
@@ -150,7 +157,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_group_normalization_bwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -165,14 +173,11 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
     auto variance = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
 
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     auto scale = CTX_IN_MEM(float *, DNNL_ARG_SCALE);
-    auto diff_scale = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SCALE, status);
-    CHECK(status);
-    auto diff_shift = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SHIFT, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(float *, diff_scale, DNNL_ARG_DIFF_SCALE, status);
+    CTX_OUT_CLEAN_MEM(float *, diff_shift, DNNL_ARG_DIFF_SHIFT, status);
 
     const auto ndims = src_d.ndims();
     const auto N = pd()->MB();

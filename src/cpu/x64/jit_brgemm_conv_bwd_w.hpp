@@ -124,7 +124,7 @@ struct brgemm_convolution_bwd_weights_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }
@@ -132,8 +132,8 @@ struct brgemm_convolution_bwd_weights_t : public primitive_t {
 private:
     struct thread_info_t;
 
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
-    void prepare_scratchpad_data(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    void prepare_scratchpad_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void compute_diff_weights_2d(thread_info_t *) const;
     void compute_diff_weights_3d(thread_info_t *) const;
     void reduce_and_convert_diff_weights_and_bias(thread_info_t *) const;

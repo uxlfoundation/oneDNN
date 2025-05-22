@@ -42,7 +42,7 @@ using namespace nstl;
 template <data_type_t src_type, data_type_t dst_type>
 status_t
 jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::execute_forward_1d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -154,7 +154,7 @@ jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::execute_forward_1d(
 template <data_type_t src_type, data_type_t dst_type>
 status_t
 jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::execute_forward_2d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -298,7 +298,8 @@ jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::execute_forward_2d(
 
 template <data_type_t src_type, data_type_t dst_type>
 status_t jit_sve_512_x8s8s32x_convolution_fwd_t<src_type,
-        dst_type>::execute_forward_2d_dw(const exec_ctx_t &ctx) const {
+        dst_type>::execute_forward_2d_dw(const std::shared_ptr<exec_ctx_t> &ctx)
+        const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -390,7 +391,7 @@ status_t jit_sve_512_x8s8s32x_convolution_fwd_t<src_type,
 template <data_type_t src_type, data_type_t dst_type>
 status_t
 jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::execute_forward_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);

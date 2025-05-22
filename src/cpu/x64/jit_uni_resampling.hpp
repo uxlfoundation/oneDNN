@@ -54,7 +54,7 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
     ~jit_uni_resampling_fwd_t() override = default;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     status_t fill_data_for_interpolation();

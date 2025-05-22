@@ -88,7 +88,7 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
 
     ~brgemm_1x1_convolution_fwd_t() {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward_all(ctx);
 
         if (pd()->wants_zero_pad_dst()) ctx.memory(DNNL_ARG_DST)->zero_pad(ctx);
@@ -102,7 +102,8 @@ protected:
 private:
     //  brgemm convolution execution context
     struct brgemm_exec_ctx_t {
-        brgemm_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd)
+        brgemm_exec_ctx_t(
+                const std::shared_ptr<exec_ctx_t> &ctx, const pd_t *pd)
             : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
             , weights(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
@@ -126,7 +127,7 @@ private:
             const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
             int32_t *dst_zp_vals, int32_t *s8s8_compensation,
             const float *dst_scales) const;
-    status_t execute_forward_all(const exec_ctx_t &ctx) const;
+    status_t execute_forward_all(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     static int get_brg_idx(bool do_initialization, int is_M_tail,

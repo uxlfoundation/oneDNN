@@ -60,7 +60,7 @@ struct primitive_t : public c_compatible {
 
     const std::shared_ptr<primitive_desc_t> &pd() const { return pd_; }
     primitive_kind_t kind() const { return pd_->kind(); }
-    virtual status_t execute(const exec_ctx_t &ctx) const = 0;
+    virtual status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const = 0;
 
     virtual status_t get_cache_blob(
             engine_t *engine, cache_blob_t &cache_blob) const {
@@ -134,7 +134,7 @@ private:
 // This is a helper class which is used for forwarding a scratchpad
 // from master primitive to the nested ones.
 struct nested_scratchpad_t {
-    nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
+    nested_scratchpad_t(const std::shared_ptr<exec_ctx_t> &master_ctx, int key,
             const std::shared_ptr<primitive_t> &nested_p);
     const memory_tracking::grantor_t *grantor() const { return grantor_.get(); }
 
@@ -156,20 +156,22 @@ private:
 // Returns destination memory which has been zero pad initialized. This macro
 // may result in a failure returned via the `status` input since zero pad
 // may fail.
-#define CTX_OUT_CLEAN_MEM(type, arg, status) \
-    static_cast<ARG_PTR_TYPE(type)>(ctx.host_ptr(arg, true, &(status)))
+#define CTX_OUT_CLEAN_MEM(type, var_name, arg, status) \
+    status = ctx->output(arg) ? ctx->output(arg)->zero_pad(ctx) \
+                              : status::success; \
+    CHECK(status); \
+    type var_name = static_cast<ARG_PTR_TYPE(type)>(ctx->host_ptr(arg, 0));
 
 // Returns destination memory which may not have been zero pad initialized.
 #define CTX_OUT_MEM_COMMON(type, arg, index) \
-    static_cast<ARG_PTR_TYPE(type)>(ctx.host_ptr(arg, false, nullptr, index))
+    static_cast<ARG_PTR_TYPE(type)>(ctx->host_ptr(arg, index))
 #define CTX_OUT_MEm(type, arg) CTX_OUT_MEM_COMMON(type, arg, 0)
 #define CTX_OUT_MEm0(type, arg) CTX_OUT_MEM_COMMON(type, arg, 0)
 #define CTX_OUT_MEm1(type, arg) CTX_OUT_MEM_COMMON(type, arg, 1)
 #define CTX_OUT_MEm2(type, arg) CTX_OUT_MEM_COMMON(type, arg, 2)
 
 #define CTX_IN_MEM_COMMON(type, arg, index) \
-    static_cast<const ARG_PTR_TYPE(type)>( \
-            ctx.host_ptr(arg, false, nullptr, index))
+    static_cast<const ARG_PTR_TYPE(type)>(ctx->host_ptr(arg, index))
 #define CTX_IN_MEm(type, arg) CTX_IN_MEM_COMMON(type, arg, 0)
 #define CTX_IN_MEm0(type, arg) CTX_IN_MEM_COMMON(type, arg, 0)
 #define CTX_IN_MEm1(type, arg) CTX_IN_MEM_COMMON(type, arg, 1)

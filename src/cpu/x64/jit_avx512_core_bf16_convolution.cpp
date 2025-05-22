@@ -52,16 +52,16 @@ void jit_avx512_core_bf16_convolution_fwd_t::prepare_padded_bias(
 }
 
 void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const size_t bia_dt_size = pd()->jcp_.typesize_bia;
 
@@ -153,16 +153,16 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
 }
 
 void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const size_t bia_dt_size = pd()->jcp_.typesize_bia;
 
@@ -279,16 +279,16 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
 }
 
 void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const size_t bia_dt_size = pd()->jcp_.typesize_bia;
 
@@ -418,7 +418,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
 }
 
 void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
@@ -586,7 +586,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
 }
 
 void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
@@ -784,11 +784,11 @@ struct jit_avx512_core_bf16_convolution_bwd_weights_t ::thread_info_t {
     int ic_b_start = 0, ic_b_end = 0, ic_b_work = 0;
 
     thread_info_t(const jit_avx512_core_bf16_convolution_bwd_weights_t *self,
-            const exec_ctx_t &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
         : src(CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST))
         , diff_weights(CTX_OUT_MEM(void *, DNNL_ARG_DIFF_WEIGHTS))
-        , scratchpad(ctx.get_scratchpad_grantor())
+        , scratchpad(ctx->get_scratchpad_grantor())
         , ithr(ithr) {
 
         const auto &jcp = self->kernel_->jcp;
@@ -1912,8 +1912,8 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::
 }
 
 void jit_avx512_core_bf16_convolution_bwd_weights_t::prepare_scratchpad_data(
-        const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
 
@@ -1961,7 +1961,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t::prepare_scratchpad_data(
 }
 
 void jit_avx512_core_bf16_convolution_bwd_weights_t ::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     prepare_scratchpad_data(ctx);
 
     const auto &jcp = pd()->jcp_;
@@ -2001,8 +2001,9 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::execute_backward_weights(
 
     if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
             && jcp.bia_dt != data_type::bf16) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
+        auto diff_bias
+                = ctx->get_scratchpad_grantor().template get<const float>(
+                        key_conv_padded_bias);
         auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
         const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
         const int stride = jcp.oc_without_padding;

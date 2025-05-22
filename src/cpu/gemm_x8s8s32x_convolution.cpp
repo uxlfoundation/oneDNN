@@ -109,7 +109,7 @@ static zero_point_call_params_t prepare_zp_params(const conv_gemm_conf_t &jcp,
 }
 
 status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
     auto src_base = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
@@ -119,9 +119,9 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward(
     DEFINE_ZERO_POINTS_BUFFER(zp_dst, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
-                    this->pd()->attr()->post_ops_, ctx);
+                    this->pd()->attr()->post_ops_, *ctx);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     assert(IMPLICATION(jcp.ow_block != jcp.ow, jcp.oh_block == 1));
 
@@ -162,7 +162,8 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
         const char *bia_base, void *dst_base, const float *scales,
         const float *dst_scales, const zero_point_call_params_t &zp,
         const memory_tracking::grantor_t &scratchpad,
-        const void *post_ops_binary_rhs_arg_vec, const exec_ctx_t &ctx) const {
+        const void *post_ops_binary_rhs_arg_vec,
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 
@@ -313,13 +314,13 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
 }
 
 status_t gemm_x8s8s32x_convolution_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst_base = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto wei_base = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     auto bia_base = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto diff_src_base = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 
@@ -339,7 +340,7 @@ status_t gemm_x8s8s32x_convolution_bwd_data_t::execute_backward_data_thr(
         const int ithr, const int nthr, const char *diff_dst_base,
         const int8_t *wei_base, const char *bia_base, char *diff_src_base,
         const memory_tracking::grantor_t &scratchpad,
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
 
     const auto diff_dst_md = memory_desc_wrapper(pd()->diff_dst_md());

@@ -74,16 +74,16 @@ void copy_data_chunk(ker_type &ker, char *tr_data, const char *data,
 
 template <cpu_isa_t isa>
 status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+                    pd()->attr()->post_ops_, *ctx);
 
-    memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -116,7 +116,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             : nullptr;
     const bool is_amx = jbgp.is_amx;
     auto wsp_tile_base = is_amx
-            ? ctx.get_scratchpad_grantor().template get<char>(
+            ? ctx->get_scratchpad_grantor().template get<char>(
                     key_conv_amx_tile_buffer)
             : nullptr;
 
@@ -636,7 +636,7 @@ template struct brgemm_inner_product_fwd_t<avx512_core_amx_fp16>;
 
 template <cpu_isa_t isa>
 void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto diff_dst_ = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto weights_ = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
@@ -662,7 +662,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
 
     const dim_t wei_dt_size = types::data_type_size(jbgp.wei_dt);
 
-    memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
     brgemm_batch_element_t *addr_batch_global
             = scratchpad.template get<brgemm_batch_element_t>(
                     key_brgemm_primitive_batch);
@@ -676,7 +676,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
             ? scratchpad.template get<char>(key_brgemm_primitive_buffer_a)
             : nullptr;
     auto wsp_tile_base = is_amx
-            ? ctx.get_scratchpad_grantor().template get<char>(
+            ? ctx->get_scratchpad_grantor().template get<char>(
                     key_conv_amx_tile_buffer)
             : nullptr;
 
@@ -1044,12 +1044,12 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
     simple_barrier::ctx_t *barrier_ctx;
 
     thread_info_t(const brgemm_inner_product_bwd_weights_t *self,
-            const exec_ctx_t &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
         : src(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST))
         , diff_weights(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS))
         , diff_bias(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_BIAS))
-        , scratchpad(ctx.get_scratchpad_grantor())
+        , scratchpad(ctx->get_scratchpad_grantor())
         , ithr(ithr) {
 
         const auto &jbgp = self->pd()->jbgp_;
@@ -1130,7 +1130,7 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
         }
 
         wsp_tile_base = is_amx
-                ? ctx.get_scratchpad_grantor().template get<char>(
+                ? ctx->get_scratchpad_grantor().template get<char>(
                         key_conv_amx_tile_buffer)
                 : nullptr;
 
@@ -1755,11 +1755,11 @@ void brgemm_inner_product_bwd_weights_t<
 
 template <cpu_isa_t isa>
 void brgemm_inner_product_bwd_weights_t<isa>::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jbgp = pd()->jbgp_;
 
     if (dnnl_thr_syncable() && jbgp.nthr > 1) {
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        auto scratchpad = ctx->get_scratchpad_grantor();
         simple_barrier::ctx_init(scratchpad.template get<simple_barrier::ctx_t>(
                 key_conv_wei_bia_reduction_bctx));
     }

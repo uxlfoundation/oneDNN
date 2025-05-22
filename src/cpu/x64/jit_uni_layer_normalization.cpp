@@ -1262,8 +1262,8 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_layer_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
@@ -1289,7 +1289,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+                    pd()->attr()->post_ops_, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -1314,19 +1314,16 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
 }
 
 status_t jit_uni_layer_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto scale = CTX_IN_MEM(float *, DNNL_ARG_SCALE);
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-
-    auto diff_scale = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SCALE, status);
-    CHECK(status);
-    auto diff_shift = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SHIFT, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
+    CTX_OUT_CLEAN_MEM(float *, diff_scale, DNNL_ARG_DIFF_SCALE, status);
+    CTX_OUT_CLEAN_MEM(float *, diff_shift, DNNL_ARG_DIFF_SHIFT, status);
 
     const float *mean, *variance;
     if (pd()->use_tmp_stats()) {

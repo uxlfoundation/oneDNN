@@ -117,17 +117,17 @@ struct gemm_convolution_fwd_t : public primitive_t {
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_forward_nspc(ctx) : execute_forward_ncsp(ctx);
     }
 
 private:
-    status_t execute_forward_ncsp(const exec_ctx_t &ctx) const;
-    status_t execute_forward_nspc(const exec_ctx_t &ctx) const;
-    status_t execute_forward_thr_nspc(const exec_ctx_t &ctx, const int ithr,
-            const int nthr, const data_t *src_base, const data_t *wei_base,
-            const data_t *bia_base, data_t *dst_base,
+    status_t execute_forward_ncsp(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_nspc(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_thr_nspc(const std::shared_ptr<exec_ctx_t> &ctx,
+            const int ithr, const int nthr, const data_t *src_base,
+            const data_t *wei_base, const data_t *bia_base, data_t *dst_base,
             const memory_tracking::grantor_t &scratchpad) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
@@ -172,15 +172,17 @@ struct gemm_convolution_bwd_data_t : public primitive_t {
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_backward_data_nspc(ctx)
                        : execute_backward_data_ncsp(ctx);
     }
 
 private:
-    status_t execute_backward_data_nspc(const exec_ctx_t &ctx) const;
-    status_t execute_backward_data_ncsp(const exec_ctx_t &ctx) const;
+    status_t execute_backward_data_nspc(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_backward_data_ncsp(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     status_t execute_backward_data_thr_nspc(const int ithr, const int nthr,
             const data_t *diff_dst_base, const data_t *wei_base,
             const data_t *bia_base, data_t *diff_src_base,
@@ -225,15 +227,17 @@ struct gemm_convolution_bwd_weights_t : public primitive_t {
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const bool is_nspc = pd()->jcp_.is_nspc;
         return is_nspc ? execute_backward_weights_nspc(ctx)
                        : execute_backward_weights_ncsp(ctx);
     }
 
 private:
-    status_t execute_backward_weights_ncsp(const exec_ctx_t &ctx) const;
-    status_t execute_backward_weights_nspc(const exec_ctx_t &ctx) const;
+    status_t execute_backward_weights_ncsp(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_backward_weights_nspc(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

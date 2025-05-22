@@ -51,7 +51,7 @@ struct acl_softmax_fwd_t : public primitive_t {
     // constructor
     acl_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
@@ -59,7 +59,7 @@ private:
     const pd_t *pd() const;
 
     status_t init(engine_t *engine) override;
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     std::unique_ptr<arm_compute::experimental::op::CpuSoftmax> softmax_op_;
 }; // acl_softmax_fwd_t
 

@@ -200,7 +200,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         return memory::data_type_size(m.get_desc().get_data_type());
     };
 
-    const auto loop = [&](int tid, int nthr, dim_t bo, dim_t bi) {
+    const auto loop = [=](int tid, int nthr, dim_t bo, dim_t bi) {
         // prepare execution args and allocate real memory
         prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
 

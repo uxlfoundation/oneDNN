@@ -14,6 +14,34 @@
 * limitations under the License.
 *******************************************************************************/
 
+/// @example matmul_perf.cpp
+/// @copybrief matmul_perf_cpp
+/// > Annotated version: @ref matmul_perf_cpp
+
+/// @page matmul_perf_cpp Matrix Multiplication Performance Example
+/// This C++ example runs a simple matrix multiplication (matmul) performance
+/// test using oneDNN.
+///
+/// The workflow includes following steps:
+///   - Set up and execute a matmul operation with the specified engine kind
+///     and matrix dimensions, using f32, f16, bf16 and s8 data types.
+///   - Measure the execution time and prints the achieved performance
+///     in GFlop/s or GOp/s, depending on the data type.
+///
+/// To execute the example, compile it with oneDNN and run the following way:
+/// ~~~sh
+/// ./matmul_perf <engine_kind> <m> [<n> <k>]
+/// ~~~
+/// Input parameters:
+///   - `<engine_kind>`: The kind of oneDNN engine to use (e.g., CPU, GPU).
+///   - `<m>`: (Required) The number of rows in the first matrix.
+///   - `<n>`: (Optional) The number of columns in the second matrix.
+///            If not specified, `n = m`.
+///   - `<k>`: (Optional) The number of columns in the first matrix.
+///            If not specified, `k = m`.
+///
+/// @include matmul_perf.cpp
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>

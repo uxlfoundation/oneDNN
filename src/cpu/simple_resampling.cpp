@@ -44,7 +44,7 @@ struct simple_resampling_kernel_t : public simple_resampling_base_t {
     using dst_data_t = typename prec_traits_t<dst_type>::type;
 
     status_t init() override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     using interpolate_fn_t
@@ -120,7 +120,7 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::init() {
 
 template <data_type_t src_type, data_type_t dst_type>
 status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const int OD = pd_->OD();
     const int OH = pd_->OH();
     const int OW = pd_->OW();
@@ -134,8 +134,7 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
         auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
 
         parallel_nd(nsp_outer_, OD, OH, [&](dim_t nsp0, dim_t od, dim_t oh) {
-            ref_post_ops_t::args_t postops_args;
-            postops_args.ctx = &ctx;
+            ref_post_ops_t::args_t postops_args(ctx);
             postops_args.dst_md = pd_->dst_md();
 
             const bool preserve_zero_padding
@@ -156,7 +155,7 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
     } else {
         const auto diff_dst = CTX_IN_MEM(const src_data_t *, DNNL_ARG_DIFF_DST);
         auto diff_src = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DIFF_SRC);
-        ref_post_ops_t::args_t empty_args;
+        ref_post_ops_t::args_t empty_args(ctx);
 
         parallel_nd(nsp_outer_, ID, IH, IW,
                 [&](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
@@ -616,7 +615,8 @@ status_t simple_resampling_fwd_t::init(engine_t *engine) {
     return kernel_->init();
 }
 
-status_t simple_resampling_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t simple_resampling_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return kernel_->execute(ctx);
 }
 
@@ -630,7 +630,8 @@ status_t simple_resampling_bwd_t::init(engine_t *engine) {
     return kernel_->init();
 }
 
-status_t simple_resampling_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t simple_resampling_bwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     return kernel_->execute(ctx);
 }
 } // namespace cpu

@@ -98,7 +98,7 @@ struct jit_avx512_core_amx_deconvolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         const auto &_pd = pd();
         if (_pd->jcp_.is_depthwise) {
             assert(!"_pd->jcp_.is_depthwise not implemented");
@@ -108,7 +108,7 @@ struct jit_avx512_core_amx_deconvolution_fwd_t : public primitive_t {
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     void prepare_padded_bias(const char *&bias,
             const memory_tracking::grantor_t &scratchpad) const;

@@ -108,7 +108,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
 
     ~brgemm_convolution_bwd_strided_t() override = default;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 protected:
     status_t init(engine_t *engine) override;
@@ -116,13 +116,14 @@ protected:
 private:
     //  brgemm convolution execution context
     struct brgemm_bwd_exec_ctx_t {
-        brgemm_bwd_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd)
+        brgemm_bwd_exec_ctx_t(
+                const std::shared_ptr<exec_ctx_t> &ctx, const pd_t *pd)
             : diff_dst(CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST))
             , weights(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
             , diff_src(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC))
             , post_ops_binary_rhs_arg_vec(binary_injector::prepare_binary_args(
-                      pd->attr()->post_ops_, ctx)) {}
+                      pd->attr()->post_ops_, *ctx)) {}
         const char *const __restrict diff_dst;
         const char *const __restrict weights;
         const char *const __restrict bias;

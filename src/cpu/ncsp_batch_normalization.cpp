@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ using namespace data_type;
 
 template <data_type_t d_type>
 status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const bool calculate_stats = !pd()->stats_is_src();
     const bool save_stats = pd()->is_training();
@@ -53,7 +53,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
 
     acc_data_t *mean, *variance;
@@ -298,7 +298,7 @@ template struct ncsp_batch_normalization_fwd_t<f16>;
 
 template <data_type_t d_type>
 status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto use_scale = pd()->use_scale();
 
@@ -313,7 +313,7 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
     acc_data_t *tmp_data_ = scratchpad.template get<acc_data_t>(key_bnorm_cvt);
 

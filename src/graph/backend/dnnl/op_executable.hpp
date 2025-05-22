@@ -2786,7 +2786,8 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
 
-        exec_ctx_t ctx(stream.get(), std::move(exec_args));
+        auto ctx = std::make_shared<exec_ctx_t>(
+                stream.get(), std::move(exec_args));
         sdpa_prim_->execute(ctx);
     }
 
@@ -2813,7 +2814,7 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
         auto strm_t = stream.get();
-        exec_ctx_t ctx(strm_t, std::move(exec_args));
+        auto ctx = std::make_shared<exec_ctx_t>(strm_t, std::move(exec_args));
         auto *sycl_stream_impl = dnnl::impl::utils::downcast<
                 dnnl::impl::xpu::sycl::stream_impl_t *>(strm_t->impl());
 
@@ -2851,7 +2852,8 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
 
-        exec_ctx_t ctx(stream.get(), std::move(exec_args));
+        auto ctx = std::make_shared<exec_ctx_t>(
+                stream.get(), std::move(exec_args));
 
         auto *ocl_stream
                 = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(

@@ -305,13 +305,13 @@ struct jit_sse41_1x1_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
 
 private:
-    void execute_forward(const exec_ctx_t &ctx) const;
+    void execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const data_t *src,
             const data_t *weights, const data_t *bias, const data_t *weights_dw,
             const data_t *bias_dw, data_t *dst,

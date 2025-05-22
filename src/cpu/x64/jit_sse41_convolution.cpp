@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2023 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,8 @@ using namespace dnnl::impl::utils;
     pd()->ndims() == 3 ? wht_blk_off_(f, g, oc, ic, kw) \
                        : wht_blk_off_(f, g, oc, ic, kh, kw)
 
-void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+void jit_sse41_convolution_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = kernel_->jcp;
 
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
@@ -45,7 +46,7 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto bias = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -143,7 +144,7 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         }
     });
 
-    if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
+    if (pd()->wants_zero_pad_dst()) ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 }
 
 } // namespace x64

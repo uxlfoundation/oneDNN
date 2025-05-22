@@ -186,8 +186,8 @@ status_t acl_binary_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx, const void *src0,
-        const void *src1, void *dst) const {
+status_t acl_binary_t::execute_forward(const std::shared_ptr<exec_ctx_t> &ctx,
+        const void *src0, const void *src1, void *dst) const {
 
     auto asp = pd()->asp_;
 
@@ -212,7 +212,8 @@ status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx, const void *src0,
     return status::success;
 }
 
-status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_binary_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto src0 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_0);
     auto src1 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_1);
@@ -221,7 +222,7 @@ status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx) const {
     return execute_forward(ctx, src0, src1, dst);
 }
 
-status_t acl_binary_t::execute(const exec_ctx_t &ctx) const {
+status_t acl_binary_t::execute(const std::shared_ptr<exec_ctx_t> &ctx) const {
     return execute_forward(ctx);
 }
 

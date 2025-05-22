@@ -73,14 +73,14 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
 #define DECLARE_COMMON_PARAMS() \
     auto input = CTX_IN_MEM(const data_t<type_i> *, DNNL_ARG_FROM); \
     auto output = CTX_OUT_MEM(data_t<type_o> *, DNNL_ARG_TO); \
-    const auto &scratchpad = ctx.get_scratchpad_grantor(); \
+    const auto &scratchpad = ctx->get_scratchpad_grantor(); \
     MAYBE_UNUSED(scratchpad); \
-    const auto input_d = ctx.memory_mdw(DNNL_ARG_FROM, pd->src_md()); \
-    const auto output_d = ctx.memory_mdw(DNNL_ARG_TO, pd->dst_md()); \
+    const auto input_d = ctx->memory_mdw(DNNL_ARG_FROM, pd->src_md()); \
+    const auto output_d = ctx->memory_mdw(DNNL_ARG_TO, pd->dst_md()); \
     DEFINE_ARG_SCALES_BUFFER_ATTR(pd->attr(), src_scales, DNNL_ARG_FROM); \
     DEFINE_ARG_SCALES_BUFFER_ATTR(pd->attr(), dst_scales_, DNNL_ARG_TO); \
     const auto src_scales_d \
-            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM); \
+            = ctx->memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM); \
     MAYBE_UNUSED(src_scales_d); \
     int src_scales_mask, dst_scales_mask; \
     CHECK(get_scales_mask(pd->attr(), &src_scales_mask, &dst_scales_mask)); \
@@ -93,7 +93,7 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
     MAYBE_UNUSED(dst_scales); \
     DEFINE_ZERO_POINTS_BUFFER_ATTR(pd->attr(), src_zero_points, DNNL_ARG_FROM) \
     const auto src_zps_d \
-            = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM); \
+            = ctx->memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM); \
     MAYBE_UNUSED(src_zps_d); \
     int src_zp = src_zero_points ? src_zero_points[0] : 0; \
     MAYBE_UNUSED(src_zp); \
@@ -275,7 +275,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         static constexpr bool w_groups = utils::one_of(
@@ -454,7 +455,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -531,7 +533,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         // This kernel is used primarily for tensors with multiple inner
         // blocks for which generic zero padding must be used.
         // TODO: apply zero padding inside parallel_nd()
-        ctx.zero_pad_output(DNNL_ARG_TO);
+        ctx->memory(DNNL_ARG_TO)->zero_pad(ctx);
 
         auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *c, int32_t *zp, const float *s,
@@ -672,7 +674,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -843,7 +846,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -892,7 +896,7 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         // This kernel is used primarily for tensors with multiple inner
         // blocks for which generic zero padding must be used.
         // TODO: apply zero padding inside parallel_nd()
-        ctx.zero_pad_output(DNNL_ARG_TO);
+        ctx->memory(DNNL_ARG_TO)->zero_pad(ctx);
 
         auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *zp, const float *s, const float *d,
@@ -1018,7 +1022,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -1223,7 +1228,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         constexpr bool is_1d
@@ -1387,7 +1393,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         return sizeof(float) * blksize * blksize * dnnl_get_max_threads();
     }
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -1505,7 +1512,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         return sizeof(float) * blksize * W * dnnl_get_max_threads();
     }
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         const dim_t blksize = 16;
@@ -1586,7 +1594,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace format_tag;
 
@@ -1716,7 +1725,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         const auto &flat_d = order_keep ? input_d : output_d;
@@ -1871,7 +1881,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         const auto &flat_d = order_keep ? input_d : output_d;
@@ -2075,7 +2086,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         input += input_d.blk_off(0);
@@ -2185,7 +2197,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
                 * output_d.sub_byte_data_type_multiplier();
     }
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace utils;
 
@@ -2304,7 +2317,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
         return output_d.size();
     }
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace utils;
 
@@ -2449,7 +2463,8 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace utils;
 
@@ -2578,13 +2593,14 @@ struct simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL,
 
     GET_SCRATCHPAD_SIZE_ZERO();
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx) {
         DECLARE_COMMON_PARAMS();
 
         // This kernel is used also for tensors with multiple inner
         // blocks for which generic zero padding must be used.
         // TODO: apply zero padding inside parallel_nd()
-        ctx.zero_pad_output(DNNL_ARG_TO);
+        ctx->memory(DNNL_ARG_TO)->zero_pad(ctx);
 
         const int ndims = input_d.ndims();
         const auto &scales = pd->attr()->scales_;
@@ -2741,7 +2757,7 @@ struct simple_reorder_t : public primitive_t {
 
     simple_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return simple_reorder_impl<SIMPLE_REORDER_TEMPL_CALL, spec>::execute(
                 pd(), ctx);
     }

@@ -86,7 +86,7 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
         auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
         auto ws = CTX_OUT_MEM(char *, DNNL_ARG_WORKSPACE);
@@ -101,9 +101,9 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
 
 private:
     void execute_forward(const data_t *src, data_t *dst, char *indices,
-            const exec_ctx_t &ctx) const;
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     void execute_forward_3d(const data_t *src, data_t *dst, char *indices,
-            const exec_ctx_t &ctx) const;
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 
@@ -155,7 +155,7 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
         auto ws = CTX_IN_MEM(const char *, DNNL_ARG_WORKSPACE);
         auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
@@ -170,9 +170,9 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
 
 private:
     void execute_backward(const data_t *diff_dst, const char *indices,
-            data_t *diff_src, const exec_ctx_t &ctx) const;
+            data_t *diff_src, const std::shared_ptr<exec_ctx_t> &ctx) const;
     void execute_backward_3d(const data_t *diff_dst, const char *indices,
-            data_t *diff_src, const exec_ctx_t &ctx) const;
+            data_t *diff_src, const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 

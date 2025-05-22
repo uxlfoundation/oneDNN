@@ -202,12 +202,12 @@ struct jit_uni_x8s8s32x_deconvolution_fwd_t : public primitive_t {
     ~jit_uni_x8s8s32x_deconvolution_fwd_t() override;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
-    status_t execute_forward_1d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_2d(const exec_ctx_t &ctx) const;
-    status_t execute_forward_3d(const exec_ctx_t &ctx) const;
+    status_t execute_forward_1d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_2d(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_forward_3d(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
             const float *src_scales, const float *wei_scales) const;

@@ -35,13 +35,13 @@ using namespace dnnl::impl::data_type;
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type>
 void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -51,14 +51,14 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     f32_data_t *bias = nullptr;
     if (pd()->desc()->bias_desc.data_type == bf16) {
         auto bias_in = CTX_IN_MEM(const bf16_data_t *, DNNL_ARG_BIAS);
-        bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        bias = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                 key_conv_bias_bf16_convert_wsp);
         cvt_bfloat16_to_float(bias, bias_in, jcp.oc_without_padding);
         utils::array_set(bias + jcp.oc_without_padding, 0.f,
                 jcp.oc - jcp.oc_without_padding);
     } else if (pd()->desc()->bias_desc.data_type == f16) {
         auto bias_in = CTX_IN_MEM(const f16_data_t *, DNNL_ARG_BIAS);
-        bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        bias = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                 key_conv_bias_f16_convert_wsp);
         cvt_float16_to_float(bias, bias_in, jcp.oc_without_padding);
         utils::array_set(bias + jcp.oc_without_padding, 0.f,
@@ -67,7 +67,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
         auto bias_in = CTX_IN_MEM(const f32_data_t *, DNNL_ARG_BIAS);
         if (pd()->wants_padded_bias()) {
             auto padded_bias
-                    = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+                    = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                             key_conv_padded_bias);
             utils::array_copy(padded_bias, bias_in, jcp.oc_without_padding);
             utils::array_set(padded_bias + jcp.oc_without_padding, 0.f,
@@ -164,7 +164,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
         }
     });
 
-    if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
+    if (pd()->wants_zero_pad_dst()) ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 }
 
 REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16,
@@ -179,8 +179,8 @@ REG_AVX2_ISA(template struct jit_uni_dw_convolution_fwd_t<avx2, f32>);
 REG_SSE41_ISA(template struct jit_uni_dw_convolution_fwd_t<sse41, f32>);
 
 template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
-void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
-        diff_src_type>::execute_backward_data(const exec_ctx_t &ctx) const {
+void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type, diff_src_type>::
+        execute_backward_data(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -329,9 +329,9 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
     : primitive_t(apd), acc_ker_(nullptr), kernel_(nullptr) {}
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_backward_weights_nxc(const exec_ctx_t &ctx)
-        const {
+void jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
+        execute_backward_weights_nxc(
+                const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = pd()->jcp_;
 
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
@@ -340,14 +340,14 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
 
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bias_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
 
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
@@ -450,26 +450,25 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 }
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_backward_weights(const exec_ctx_t &ctx)
-        const {
+void jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
+        execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto diff_weights
             = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
 
     auto diff_wei_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
 
     const auto &jcp = pd()->jcp_;
 
     float *diff_bias = nullptr;
     if (jcp.bia_dt == bf16) {
-        diff_bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        diff_bias = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                 key_conv_bias_bf16_convert_wsp);
     } else {
         diff_bias = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
@@ -579,21 +578,21 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
  */
 template <>
 void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto &jcp = pd()->jcp_;
     assert(jcp.dwei_dt == bf16);
 
     auto diff_wei_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
     auto diff_weights
             = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
@@ -650,15 +649,15 @@ void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
 
 template <>
 void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bias_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
 
     const auto &jcp = pd()->jcp_;
@@ -725,21 +724,21 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
 }
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_reduction(const exec_ctx_t &ctx) const {
+void jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
+        execute_reduction(const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto &jcp = pd()->jcp_;
     assert(everyone_is(f32, diff_weights_type, jcp.dwei_dt));
 
     auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bias_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
@@ -787,19 +786,19 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 }
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_reduction_nxc(const exec_ctx_t &ctx) const {
+void jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
+        execute_reduction_nxc(const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto &jcp = pd()->jcp_;
     auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
@@ -881,16 +880,16 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
 template <>
 void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
 
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx->get_scratchpad_grantor().template get<f32_data_t>(
                     key_conv_bia_reduction);
 
     const auto &jcp = pd()->jcp_;

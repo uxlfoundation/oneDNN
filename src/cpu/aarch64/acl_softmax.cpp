@@ -144,7 +144,8 @@ status_t acl_softmax_fwd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t acl_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_softmax_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 

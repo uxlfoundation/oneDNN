@@ -57,12 +57,12 @@ struct acl_gemm_convolution_fwd_t : public primitive_t {
     using dst_data_t = typename prec_traits_t<dst_type>::type;
     using bia_data_t = typename prec_traits_t<bia_type>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<acl_obj_t<Op>> acl_obj_;
 }; // acl_gemm_convolution_fwd_t

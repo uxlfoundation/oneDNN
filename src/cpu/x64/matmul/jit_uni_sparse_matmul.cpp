@@ -345,15 +345,15 @@ jit_uni_sparse_matmul_t::jit_uni_sparse_matmul_t(const pd_t *apd)
     : primitive_t(apd) {}
 jit_uni_sparse_matmul_t::~jit_uni_sparse_matmul_t() = default;
 
-status_t jit_uni_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_sparse_matmul_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto *weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     const auto *src_values = CTX_IN_MEM(const float *, DNNL_ARG_SRC, 0);
     const auto *src_indices = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 1);
     const auto *src_pointers = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 2);
 
     status_t status = status::success;
-    auto dst = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(float *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());

@@ -34,16 +34,16 @@ using namespace dnnl::impl::primitive_kind;
 
 template <impl::data_type_t data_type>
 status_t gemm_inner_product_fwd_t<data_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
-                    this->pd()->attr()->post_ops_, ctx);
+                    this->pd()->attr()->post_ops_, *ctx);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto acc_ptr = scratchpad.template get<data_t>(
             memory_tracking::names::key_gemm_tmp_buffer);
     auto acc = pd()->sum_through_pp_kernel_ ? acc_ptr : dst;
@@ -90,7 +90,7 @@ status_t gemm_inner_product_fwd_t<data_type>::execute_forward(
 
 template <impl::data_type_t data_type>
 status_t gemm_inner_product_bwd_data_t<data_type>::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
@@ -121,7 +121,7 @@ status_t gemm_inner_product_bwd_data_t<data_type>::execute_backward_data(
 
 template <impl::data_type_t data_type>
 status_t gemm_inner_product_bwd_weights_t<data_type>::execute_backward_weights(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto diff_weights = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_WEIGHTS);

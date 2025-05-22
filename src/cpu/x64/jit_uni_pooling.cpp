@@ -256,7 +256,7 @@ public:
     transpose_facade_base_t(const jit_pool_conf_t &jpp,
             const memory_desc_wrapper &src_d, const memory_desc_wrapper &dst_d,
             const memory_desc_wrapper &indices_d, const char *indices,
-            const data_type_t wsp_dt, const exec_ctx_t &ctx)
+            const data_type_t wsp_dt, const std::shared_ptr<exec_ctx_t> &ctx)
         : src_sp_(static_cast<dim_t>(jpp.id) * jpp.ih * jpp.iw)
         , dst_sp_(static_cast<dim_t>(jpp.od) * jpp.oh * jpp.ow)
         , src_slice_(src_sp_ * jpp.c_block)
@@ -274,7 +274,7 @@ public:
         , execute_transpose_input_(nullptr)
         , execute_transpose_output_(nullptr) {
 
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        auto scratchpad = ctx->get_scratchpad_grantor();
 
         if (transpose_src_)
             cvt_slice_src_wsp_ = scratchpad.template get<wsp_data_t>(
@@ -373,7 +373,7 @@ public:
             const memory_desc_wrapper &dst_d,
             const memory_desc_wrapper &indices_d, const data_type_t wsp_dt,
             const data_t *src, data_t *dst, char *indices,
-            const exec_ctx_t &ctx)
+            const std::shared_ptr<exec_ctx_t> &ctx)
         : transpose_facade_base_t<wsp_data_t, d_type>(
                 jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx) {
 
@@ -420,7 +420,7 @@ public:
             const memory_desc_wrapper &dst_d,
             const memory_desc_wrapper &indices_d, const data_type_t wsp_dt,
             data_t *src, const data_t *dst, const char *indices,
-            const exec_ctx_t &ctx)
+            const std::shared_ptr<exec_ctx_t> &ctx)
         : transpose_facade_base_t<wsp_data_t, d_type>(
                 jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx)
         , c_tail_(jpp.c_without_padding % jpp.c_block) {
@@ -486,7 +486,8 @@ private:
 struct bwd_f32_accum_for_bf16_t {
     using value_type = typename prec_traits_t<data_type::f32>::type;
 
-    bwd_f32_accum_for_bf16_t(const jit_pool_conf_t &jpp, const exec_ctx_t &ctx);
+    bwd_f32_accum_for_bf16_t(
+            const jit_pool_conf_t &jpp, const std::shared_ptr<exec_ctx_t> &ctx);
 
     value_type *get_addr_2d(int ithr, dim_t ih) const {
         return blk_data(ithr, 0, ih, 0);
@@ -519,11 +520,11 @@ private:
 };
 
 bwd_f32_accum_for_bf16_t::bwd_f32_accum_for_bf16_t(
-        const jit_pool_conf_t &jpp, const exec_ctx_t &ctx)
+        const jit_pool_conf_t &jpp, const std::shared_ptr<exec_ctx_t> &ctx)
     : jpp_ {jpp} {
     if (jpp_.needs_f32_accum_for_bf16) {
         accum_d_ = memory_desc_wrapper(jpp_.tmp_md);
-        auto &scratchpad = ctx.get_scratchpad_grantor();
+        auto &scratchpad = ctx->get_scratchpad_grantor();
         wsp_ = scratchpad.template get<value_type>(
                 memory_tracking::names::key_pool_src_f32_accum);
         assert(wsp_);
@@ -692,7 +693,8 @@ jit_uni_pooling_fwd_t<isa, d_type>::~jit_uni_pooling_fwd_t() = default;
 
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
-        data_t *dst, char *indices, const exec_ctx_t &ctx) const {
+        data_t *dst, char *indices,
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const memory_desc_wrapper src_d = pd()->src_md();
     const memory_desc_wrapper dst_d = pd()->dst_md();
@@ -701,7 +703,7 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
             = indices ? types::data_type_size(indices_d.data_type()) : 0;
     const auto &jpp = pd()->jpp_;
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jpp.post_ops, *ctx);
 
     using wsp_data_t = typename prec_traits_t<wsp_dt_>::type;
     using namespace jit_uni_pooling_utils;
@@ -821,7 +823,8 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
 
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
-        data_t *dst, char *indices, const exec_ctx_t &ctx) const {
+        data_t *dst, char *indices,
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     const auto &jpp = pd()->jpp_;
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -830,7 +833,7 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
     const size_t ind_dt_size
             = indices ? types::data_type_size(indices_d.data_type()) : 0;
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jpp.post_ops, *ctx);
 
     using wsp_data_t = typename prec_traits_t<wsp_dt_>::type;
     using namespace jit_uni_pooling_utils;
@@ -1034,7 +1037,7 @@ status_t jit_uni_pooling_bwd_t<isa, d_type>::init(engine_t *engine) {
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
         const data_t *diff_dst, const char *indices, data_t *diff_src,
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     using namespace jit_uni_pooling_utils;
     using wsp_data_t = typename prec_traits_t<wsp_dt_>::type;
@@ -1163,7 +1166,7 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
         const data_t *diff_dst, const char *indices, data_t *diff_src,
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper indices_d(pd()->workspace_md());

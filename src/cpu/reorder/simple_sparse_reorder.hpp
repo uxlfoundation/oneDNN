@@ -107,14 +107,15 @@ struct simple_sparse_reorder_impl<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         return tmp_output_sz + nnz_per_blocks_sz;
     }
 
-    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx,
+    static status_t execute(const cpu_reorder_pd_t *pd,
+            const std::shared_ptr<exec_ctx_t> &ctx,
             const std::shared_ptr<primitive_t> &reorder) {
         auto output_values = CTX_OUT_MEM(data_t<type_o> *, DNNL_ARG_TO, 0);
         auto output_offsets = CTX_OUT_MEM(int64_t *, DNNL_ARG_TO, 1);
         auto output_bitmask = CTX_OUT_MEM(uint64_t *, DNNL_ARG_TO, 2);
 
-        engine_t *engine = ctx.stream()->engine();
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+        engine_t *engine = ctx->stream()->engine();
+        const auto scratchpad = ctx->get_scratchpad_grantor();
         auto wspace_mem_storage = scratchpad.get_memory_storage(
                 memory_tracking::names::key_reorder_space);
 
@@ -124,19 +125,19 @@ struct simple_sparse_reorder_impl<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
                         std::move(wspace_mem_storage))));
 
         exec_args_t r_args;
-        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_FROM);
+        r_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_FROM);
         r_args[DNNL_ARG_DST] = {wspace_mem.get(), false};
-        exec_ctx_t r_ctx(ctx, std::move(r_args));
+        auto r_ctx = std::make_shared<exec_ctx_t>(*ctx, std::move(r_args));
 
         nested_scratchpad_t ns(
                 ctx, memory_tracking::names::key_nested, reorder);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        r_ctx->set_scratchpad_grantor(ns.grantor());
         reorder->execute(r_ctx);
 
         auto *wspace = scratchpad.template get<data_t<type_o>>(
                 memory_tracking::names::key_reorder_space);
 
-        const auto output_d = ctx.memory_mdw(DNNL_ARG_TO, pd->dst_md());
+        const auto output_d = ctx->memory_mdw(DNNL_ARG_TO, pd->dst_md());
         const auto nelems = output_d.nelems(true);
         const auto blk_sz = output_d.blk_size();
         const auto nblks = nelems / blk_sz;
@@ -250,7 +251,7 @@ struct simple_sparse_reorder_t : public primitive_t {
         return pd()->reorder_pd_->create_primitive(reorder_, engine);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return simple_sparse_reorder_impl<
                 SIMPLE_SPARSE_REORDER_TEMPL_CALL>::execute(pd(), ctx, reorder_);
     }

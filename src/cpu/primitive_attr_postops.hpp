@@ -57,10 +57,11 @@ struct ref_eltwise_scalar_fwd_t {
 
 struct ref_post_ops_t {
     struct args_t {
-        args_t() : dst_val(0.f), ctx(nullptr), l_offset(-1), dst_md(nullptr) {}
+        args_t(const std::shared_ptr<exec_ctx_t> ctx)
+            : dst_val(0.f), ctx(ctx), l_offset(-1), dst_md(nullptr) {}
 
         float dst_val; // sum arg
-        const exec_ctx_t *ctx; // binary arg
+        const std::shared_ptr<exec_ctx_t> ctx; // binary arg
         dim_t l_offset; // binary arg
         const memory_desc_t *dst_md; // binary arg
     };
@@ -71,7 +72,7 @@ struct ref_post_ops_t {
 
     status_t init(const memory_desc_t *dst_md);
 
-    void execute(float &res, const args_t &args = args_t()) const;
+    void execute(float &res, const args_t &args) const;
 
     static bool primitive_kind_ok(const post_ops_t &po) {
         using namespace primitive_kind;

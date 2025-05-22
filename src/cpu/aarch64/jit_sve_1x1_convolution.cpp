@@ -42,7 +42,7 @@ using namespace dnnl::impl::utils;
 template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type,
         cpu_isa_t isa_>
 void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
-        isa_>::execute_forward(const exec_ctx_t &ctx) const {
+        isa_>::execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto &jcp = kernel_->jcp;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
@@ -53,14 +53,14 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
     auto bias_dw = CTX_IN_MEM(
             const dst_data_t *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
     const auto post_ops_binary_rhs_arg_vec_dw = pd()->dw_conv_pd_
             ? binary_injector::prepare_binary_args(
                     pd()->dw_conv_pd_->jcp_.post_ops, ctx,
                     pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     if (pd()->wants_padded_bias()) {
         auto padded_bias
@@ -77,7 +77,7 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
 
-    if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
+    if (pd()->wants_zero_pad_dst()) ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 }
 
 template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type,
@@ -448,7 +448,8 @@ template struct jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type, cpu_isa_t isa_>
 void jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
-        isa_>::execute_backward_data(const exec_ctx_t &ctx) const {
+        isa_>::execute_backward_data(const std::shared_ptr<exec_ctx_t> &ctx)
+        const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -459,7 +460,7 @@ void jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
 
     const auto &jcp = kernel_->jcp;
     auto rtus_space = pd()->rtus_.reduce_src_
-            ? ctx.get_scratchpad_grantor().template get<diff_src_data_t>(
+            ? ctx->get_scratchpad_grantor().template get<diff_src_data_t>(
                     key_conv_rtus_space)
             : nullptr;
 
@@ -624,7 +625,8 @@ status_t jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type, cpu_isa_t isa_>
 void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
-        diff_src_type, isa_>::execute_backward_weights(const exec_ctx_t &ctx)
+        diff_src_type,
+        isa_>::execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx)
         const {
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
@@ -637,7 +639,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
 
     const auto &jcp = kernel_->jcp;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
     auto rtus_space = pd()->rtus_.reduce_src_
             ? scratchpad.get<data_t>(key_conv_rtus_space)
             : NULL;

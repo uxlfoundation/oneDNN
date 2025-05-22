@@ -1438,7 +1438,7 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src_i8 = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto dst_i8 = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
@@ -1447,7 +1447,7 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
 
     const auto &jpp = pd()->jpp_;
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jpp.post_ops, *ctx);
     /* Calculate when the memory-access will happen outisde of the memory
      * boundary, if so, compute a safe memory access. */
     const auto src_safe_access = reinterpret_cast<char *>(

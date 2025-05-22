@@ -1261,7 +1261,8 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
 };
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_convolution_fwd_t<isa>::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
@@ -1272,7 +1273,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(scratchpad,
@@ -1442,7 +1443,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
         if (is_amx) { amx_tile_release(); }
     });
 
-    if (_pd->wants_zero_pad_dst()) ctx.memory(DNNL_ARG_DST)->zero_pad(ctx);
+    if (_pd->wants_zero_pad_dst()) ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
 
     return status::success;
 }
@@ -1699,7 +1700,8 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
 }
 
 template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
+void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(
+        const std::shared_ptr<exec_ctx_t> &ctx,
         const char *__restrict input_weights,
         const char *__restrict &wei) const {
     const auto _pd = pd();
@@ -1708,7 +1710,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
     wei = input_weights;
     if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
 
-    auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
+    auto wei_buffer = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_wei_buffer);
 
     auto nb_rd = div_up(_pd->rd, jcp.vnni_block);

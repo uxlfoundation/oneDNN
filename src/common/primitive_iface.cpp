@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #endif
 
 #include "cache_hit_types.hpp"
+#include "dnnl_thread.hpp"
 #include "primitive.hpp"
 #include "primitive_desc_iface.hpp"
 #include "primitive_exec_types.hpp"
@@ -44,15 +45,17 @@ namespace {
 // primitives outputs.
 //
 // A proper approach would be an implementation-specific unpoisoning.
-void unpoison_outputs(const exec_args_t &args) {
-    for (const auto &arg : args) {
-        if (arg.second.is_const) continue;
-        auto *mem = arg.second.mem;
-        void *p;
-        mem->get_data_handle(&p);
-        size_t s = memory_desc_wrapper(*mem->md()).size();
-        msan_unpoison(p, s);
-    }
+void unpoison_outputs(std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx) {
+    dnnl::impl::parallel(1, [ctx](int, int) {
+        for (const auto &arg : ctx->args()) {
+            if (arg.second.is_const) continue;
+            auto *mem = arg.second.mem;
+            void *p;
+            mem->get_data_handle(&p);
+            size_t s = memory_desc_wrapper(*mem->md()).size();
+            msan_unpoison(p, s);
+        }
+    });
 }
 } // namespace
 
@@ -84,9 +87,9 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
     return safe_ptr_assign((*primitive_iface), p_iface.first);
 }
 
-status_t primitive_execute(
-        const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
-    auto stream = ctx.stream();
+status_t primitive_execute(const primitive_iface_t *primitive_iface,
+        std::shared_ptr<dnnl::impl::exec_ctx_t> &ctx) {
+    auto stream = ctx->stream();
     status_t status = success;
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -108,16 +111,17 @@ status_t primitive_execute(
             // TODO: invariant arg names for training?
             const auto pd_src_md
                     = primitive_iface->pd()->impl()->invariant_src_md();
-            const auto src_md = ctx.memory_mdw(DNNL_ARG_SRC, pd_src_md).md_;
+            const auto src_md = ctx->memory_mdw(DNNL_ARG_SRC, pd_src_md).md_;
             const auto pd_wei_md
                     = primitive_iface->pd()->impl()->invariant_wei_md();
-            const auto wei_md = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd_wei_md).md_;
+            const auto wei_md
+                    = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd_wei_md).md_;
             const auto pd_bia_md
                     = primitive_iface->pd()->impl()->invariant_bia_md();
-            const auto bia_md = ctx.memory_mdw(DNNL_ARG_BIAS, pd_bia_md).md_;
+            const auto bia_md = ctx->memory_mdw(DNNL_ARG_BIAS, pd_bia_md).md_;
             const auto pd_dst_md
                     = primitive_iface->pd()->impl()->invariant_dst_md();
-            const auto dst_md = ctx.memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
+            const auto dst_md = ctx->memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
 
             std::string info = primitive_iface->pd()->info_with_runtime_dims(
                     src_md, wei_md, bia_md, dst_md);
@@ -135,7 +139,7 @@ status_t primitive_execute(
     if (enable_itt) itt::primitive_task_end();
 #endif
 
-    if (msan_enabled) unpoison_outputs(ctx.args());
+    if (msan_enabled) unpoison_outputs(ctx);
 
     return status;
 }
@@ -197,8 +201,10 @@ status_t dnnl_primitive_execute(const primitive_iface_t *primitive_iface,
     if (status != status::success) return status;
 
     stream->before_exec_hook();
-
-    exec_ctx_t ctx(stream, std::move(args));
+    // ctx is allocated on heap behind a shared_ptr
+    // This allows to copy it to all parallel lamdba closure
+    // and tie its lifetime to parallel tasks
+    auto ctx = std::make_shared<exec_ctx_t>(stream, std::move(args));
 #ifdef DNNL_ENABLE_STACK_CHECKER
     stack_checker::stack_checker_t sc("dnnl_primitive_execute");
     const auto *pd_iface = primitive_iface->pd();
@@ -211,6 +217,7 @@ status_t dnnl_primitive_execute(const primitive_iface_t *primitive_iface,
 #else
     status = dnnl::impl::primitive_execute(primitive_iface, ctx);
 #endif
+
     stream->after_exec_hook();
 
     return status;
@@ -316,10 +323,10 @@ const primitive_desc_iface_t *dnnl_primitive::pd() const {
     return pd_.get();
 }
 
-status_t dnnl_primitive::execute(exec_ctx_t &ctx) const {
+status_t dnnl_primitive::execute(std::shared_ptr<exec_ctx_t> &ctx) const {
     const memory_storage_t *mem_storage = nullptr;
     if (primitive_->pd()->attr()->scratchpad_mode_ == scratchpad_mode::user) {
-        memory_t *scratchpad_memory = ctx.output(DNNL_ARG_SCRATCHPAD);
+        memory_t *scratchpad_memory = ctx->output(DNNL_ARG_SCRATCHPAD);
         mem_storage = scratchpad_memory ? scratchpad_memory->memory_storage()
                                         : nullptr;
     } else if (scratchpad_) {
@@ -328,11 +335,11 @@ status_t dnnl_primitive::execute(exec_ctx_t &ctx) const {
 
     auto scratchpad_grantor
             = primitive_->pd()->scratchpad_registry().grantor(mem_storage, ctx);
-    ctx.set_scratchpad_grantor(&scratchpad_grantor);
-    ctx.set_resource_mapper(&resource_mapper_);
+    ctx->set_scratchpad_grantor(&scratchpad_grantor);
+    ctx->set_resource_mapper(&resource_mapper_);
 
     auto status = primitive_->execute(ctx);
-    ctx.set_scratchpad_grantor(nullptr);
+    ctx->set_scratchpad_grantor(nullptr);
     return status;
 }
 

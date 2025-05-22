@@ -237,12 +237,12 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<brgemm_kernel_t>
@@ -416,13 +416,13 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_data(ctx);
         return status::success;
     }
 
 private:
-    void execute_backward_data(const exec_ctx_t &ctx) const;
+    void execute_backward_data(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<brgemm_kernel_t>
@@ -625,7 +625,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_backward_weights(ctx);
         return status::success;
     }
@@ -643,7 +643,7 @@ private:
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
     std::unique_ptr<jit_amx_ip_trans_diff_wei> diff_wei_trans_kernel_;
 
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
+    void execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     void compute_diff_weights_and_bias(const thread_info_t *ti) const;
     void reduce_and_convert_diff_weights_and_bias(

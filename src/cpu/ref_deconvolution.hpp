@@ -295,29 +295,30 @@ struct ref_deconvolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
-    void compute_fwd_bias_common(const exec_ctx_t &ctx, void *dst,
-            const float *conv_output, bool non_default_attr) const;
+    void compute_fwd_bias_common(const std::shared_ptr<exec_ctx_t> &ctx,
+            void *dst, const float *conv_output, bool non_default_attr) const;
 
-    void compute_fwd_bias_ncdhw(const exec_ctx_t &ctx, void *dst,
-            const float *conv_output, bool non_default_attr) const;
+    void compute_fwd_bias_ncdhw(const std::shared_ptr<exec_ctx_t> &ctx,
+            void *dst, const float *conv_output, bool non_default_attr) const;
 
-    void compute_fwd_bias_ndhwc(const exec_ctx_t &ctx, void *dst,
-            const float *conv_output, bool non_default_attr) const;
+    void compute_fwd_bias_ndhwc(const std::shared_ptr<exec_ctx_t> &ctx,
+            void *dst, const float *conv_output, bool non_default_attr) const;
 
     template <dim_t blk_size>
-    void compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx, void *dst,
+    void compute_fwd_bias_nCdhwXc(const std::shared_ptr<exec_ctx_t> &ctx,
+            void *dst, const float *conv_output, bool non_default_attr) const;
+
+    status_t compute_oscale(
+            const std::shared_ptr<exec_ctx_t> &ctx, float *dst) const;
+
+    void compute_fwd_bias(const std::shared_ptr<exec_ctx_t> &ctx, void *dst,
             const float *conv_output, bool non_default_attr) const;
 
-    status_t compute_oscale(const exec_ctx_t &ctx, float *dst) const;
-
-    void compute_fwd_bias(const exec_ctx_t &ctx, void *dst,
-            const float *conv_output, bool non_default_attr) const;
-
-    status_t compute_ref_attrs(const exec_ctx_t &ctx, const float *conv_output,
-            void *original_dst) const;
+    status_t compute_ref_attrs(const std::shared_ptr<exec_ctx_t> &ctx,
+            const float *conv_output, void *original_dst) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::shared_ptr<primitive_t> conv_p_;
@@ -424,7 +425,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
     }
 #endif
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
@@ -553,7 +554,7 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
         return pd()->conv_pd_->create_primitive(conv_p_, engine);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
@@ -575,7 +576,7 @@ private:
             const typename prec_traits_t<ddst_type>::type *diff_dst) const;
 
     template <data_type_t dbia_type, data_type_t ddst_type>
-    void compute_bias(const exec_ctx_t &ctx) const;
+    void compute_bias(const std::shared_ptr<exec_ctx_t> &ctx) const;
     std::shared_ptr<primitive_t> conv_p_;
 };
 

@@ -73,7 +73,7 @@ def setup_collect_args(parser, req):
     parser.add_argument(
         "--collect",
         default="corr",
-        help="benchdnn collection type, can be one of [corr, perf]",
+        help="benchdnn collection type, can be one of [corr, perf, run]",
     )
     parser.add_argument("-n", "--name", default="", help="sample name")
 
@@ -113,6 +113,8 @@ def collect_main(args):
 
     if args.collect == "corr":
         benchdnn_args = f"--engine={args.engine} --matmul --mode-modifier=P {get_optional_args(args)}"
+    elif args.collect == "run":
+        benchdnn_args = f"--engine={args.engine} --matmul --mode=R --mode-modifier=P {get_optional_args(args)}"
     elif args.collect == "perf":
         benchdnn_args = f"--engine={args.engine} --matmul --mode=F --cold-cache=all --perf-template=sample,{args.name},%prb%,%0Gflops%,%0Gbw% --memory-kind=usm_device --attr-scratchpad=user {get_optional_args(args)}"
         if args.name.find(",") != -1:

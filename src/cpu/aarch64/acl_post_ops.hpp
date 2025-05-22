@@ -162,8 +162,8 @@ struct acl_post_ops_t {
 
     bool has_sum() const { return sum_index >= 0; }
 
-    status_t execute(
-            const exec_ctx_t &ctx, void *src, void *dst = nullptr) const;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx, void *src,
+            void *dst = nullptr) const;
 
 private:
     // Index of the sum post op if there is one, < 0 means no sum

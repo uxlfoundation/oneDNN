@@ -305,7 +305,7 @@ struct acl_deconvolution_fwd_t : public primitive_t {
 
     acl_deconvolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
@@ -326,7 +326,7 @@ struct acl_deconvolution_fwd_t : public primitive_t {
 private:
     // To guard the const execute_forward, the mutex must be 'mutable'
     mutable std::mutex mtx;
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 }; // acl_deconvolution_fwd_t
 

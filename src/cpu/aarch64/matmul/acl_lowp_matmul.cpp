@@ -270,9 +270,10 @@ status_t acl_lowp_matmul_t::create_resource(
     return status::success;
 }
 
-status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
+status_t acl_lowp_matmul_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     std::lock_guard<std::mutex> _lock {this->mtx};
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     bool with_bias = pd()->almc_.with_bias;
 

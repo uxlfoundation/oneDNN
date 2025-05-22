@@ -35,7 +35,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_matmul_t::execute_ref(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
@@ -45,12 +46,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto seed = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_DROPOUT_SEED);
     const auto rnd_seed
             = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_ROUNDING_SEED);
-    auto dropout_mask = CTX_OUT_CLEAN_MEM(
-            unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK, status);
-    CHECK(status);
-
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(
+            unsigned char *, dropout_mask, DNNL_ARG_ATTR_DROPOUT_MASK, status);
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -58,10 +56,11 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
 
-    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
-    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
-    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
-    const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS, pd()->weights_md(1));
+    const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto weights_d
+            = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
+    const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, pd()->dst_md());
+    const auto bia_d = ctx->memory_mdw(DNNL_ARG_BIAS, pd()->weights_md(1));
 
     const memory_desc_wrapper dropout_mask_d(
             pd()->attr()->dropout_.dropout_desc_);
@@ -115,7 +114,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = (wei_scale_mask & pd()->wei_qmask_N()) ? 1 : 0;
     const auto &wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_scales_d
-            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+            = ctx->memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
@@ -214,10 +213,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         if (with_dropout)
                             d = ref_dropout(
                                     d, dropout_mask, dst_off, *p, *seed);
-                        ref_post_ops_t::args_t args;
+                        ref_post_ops_t::args_t args(ctx);
                         args.dst_val
                                 = io::load_float_value(sum_dt, dst, dst_off);
-                        args.ctx = &ctx;
                         args.l_offset = l_offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops->execute(d, args);

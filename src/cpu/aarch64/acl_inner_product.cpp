@@ -21,7 +21,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t acl_inner_product_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     // Lock here is needed because resource_mapper does not support
     // concurrent multithreaded access.
@@ -41,7 +42,7 @@ status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto wei_base = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     acl_obj.wei_tensor.allocator()->import_memory(const_cast<void *>(wei_base));
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto scratchpad = ctx->get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute

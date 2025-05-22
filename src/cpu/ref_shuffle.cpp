@@ -30,7 +30,7 @@ namespace cpu {
 using namespace format_tag;
 
 template <int data_type_size>
-status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
+status_t ref_shuffle_t::execute_(const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace prop_kind;
     using namespace utils;
     using data_t = typename typesize_traits_t<data_type_size>::type;
@@ -42,8 +42,7 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     auto i_arg = pd()->is_fwd() ? DNNL_ARG_SRC : DNNL_ARG_DIFF_DST;
     auto o_arg = pd()->is_fwd() ? DNNL_ARG_DST : DNNL_ARG_DIFF_SRC;
     auto input = CTX_IN_MEM(const data_t *, i_arg);
-    auto output = CTX_OUT_CLEAN_MEM(data_t *, o_arg, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(data_t *, output, o_arg, status);
 
     const auto axis = pd()->axis();
     const auto axis_size = pd()->axis_size();
@@ -133,11 +132,11 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
 }
 
 template status_t ref_shuffle_t::execute_<sizeof(float)>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template status_t ref_shuffle_t::execute_<sizeof(bfloat16_t)>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 template status_t ref_shuffle_t::execute_<sizeof(int8_t)>(
-        const exec_ctx_t &ctx) const;
+        const std::shared_ptr<exec_ctx_t> &ctx) const;
 
 } // namespace cpu
 } // namespace impl

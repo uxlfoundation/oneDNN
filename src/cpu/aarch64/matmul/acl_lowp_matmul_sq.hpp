@@ -89,7 +89,8 @@ struct acl_lowp_matmul_sq_t : public primitive_t {
 
     status_t create_resource(engine_t *engine, resource_mapper_t &mapper) const;
 
-    status_t execute(const exec_ctx_t &ctx) const;
+    status_t execute(std::shared_ptr<exec_ctx_t> status_t execute(
+            exec_ctx_t &ctx) ctx) const;
 
 private:
     mutable std::mutex mtx_;

@@ -113,13 +113,13 @@ struct jit_sse41_convolution_fwd_t : public primitive_t {
         return kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         execute_forward(ctx);
         return status::success;
     }
 
 private:
-    void execute_forward(const exec_ctx_t &ctx) const;
+    void execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<jit_sse41_conv_fwd_kernel_f32> kernel_;
 };

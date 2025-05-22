@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -184,7 +184,8 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
 
 template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
 void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_1d(const exec_ctx_t &ctx) const {
+        dst_type>::execute_forward_1d(const std::shared_ptr<exec_ctx_t> &ctx)
+        const {
     const auto &jcp = pd()->jcp_;
 
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
@@ -192,9 +193,9 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -310,7 +311,8 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
 
 template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
 void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_2d(const exec_ctx_t &ctx) const {
+        dst_type>::execute_forward_2d(const std::shared_ptr<exec_ctx_t> &ctx)
+        const {
 
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
@@ -318,9 +320,9 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
+            = binary_injector::prepare_binary_args(jcp.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -470,16 +472,17 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
 
 template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
 void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_3d(const exec_ctx_t &ctx) const {
+        dst_type>::execute_forward_3d(const std::shared_ptr<exec_ctx_t> &ctx)
+        const {
     const auto &jcp = pd()->jcp_;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -638,7 +641,8 @@ template struct jit_avx512_common_convolution_fwd_t<data_type::f32>;
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type>
 void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_1d(const exec_ctx_t &ctx) const {
+        diff_src_type>::
+        execute_backward_data_1d(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -750,7 +754,8 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type>
 void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_2d(const exec_ctx_t &ctx) const {
+        diff_src_type>::
+        execute_backward_data_2d(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -914,7 +919,8 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type>
 void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_3d(const exec_ctx_t &ctx) const {
+        diff_src_type>::
+        execute_backward_data_3d(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -1179,12 +1185,12 @@ struct jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     int ic_b_work, ic_b_start = 0, ic_b_end = 0;
 
     thread_info_t(const jit_avx512_common_convolution_bwd_weights_t *self,
-            const exec_ctx_t &ctx, int ithr)
+            const std::shared_ptr<exec_ctx_t> &ctx, int ithr)
         : src(CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC))
         , diff_dst(CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST))
         , diff_weights(
                   CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS))
-        , scratchpad(ctx.get_scratchpad_grantor())
+        , scratchpad(ctx->get_scratchpad_grantor())
         , tr_src(scratchpad.template get<src_data_t>(key_conv_tr_src))
         , tr_diff_dst(scratchpad.template get<diff_dst_data_t>(
                   key_conv_tr_diff_dst))
@@ -1790,9 +1796,9 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
 template <data_type_t src_type, data_type_t diff_dst_type,
         data_type_t diff_weights_type>
 void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
-        diff_weights_type>::prepare_scratchpad_data(const exec_ctx_t &ctx)
-        const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+        diff_weights_type>::
+        prepare_scratchpad_data(const std::shared_ptr<exec_ctx_t> &ctx) const {
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     if (dnnl_thr_syncable() && nthr_mb_ > 1) {
         simple_barrier::ctx_init(scratchpad.template get<simple_barrier::ctx_t>(
@@ -1808,8 +1814,8 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
 template <data_type_t src_type, data_type_t diff_dst_type,
         data_type_t diff_weights_type>
 void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
-        diff_weights_type>::execute_backward_weights(const exec_ctx_t &ctx)
-        const {
+        diff_weights_type>::
+        execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const {
     prepare_scratchpad_data(ctx);
 
 #if DNNL_THR_SYNC == 1
@@ -1905,7 +1911,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     /* TODO: put that into compute_diff_bias() */
     auto &jcp = pd()->jcp_;
     if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {
-        auto diff_bias = ctx.get_scratchpad_grantor()
+        auto diff_bias = ctx->get_scratchpad_grantor()
                                  .template get<const diff_weights_data_t>(
                                          key_conv_padded_bias);
         auto diff_bias_in

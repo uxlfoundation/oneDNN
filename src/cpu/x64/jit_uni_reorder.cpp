@@ -2747,8 +2747,9 @@ status_t jit_uni_reorder_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
-status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
-    const auto &scratchpad = ctx.get_scratchpad_grantor();
+status_t jit_uni_reorder_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
+    const auto &scratchpad = ctx->get_scratchpad_grantor();
 
     auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
@@ -2817,7 +2818,8 @@ status_t jit_blk_reorder_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
-status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_blk_reorder_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
     DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);

@@ -105,12 +105,12 @@ memory_t *exec_ctx_t::output(int arg) const {
     return ma.mem;
 }
 
-status_t exec_ctx_t::zero_pad_output(int arg) const {
-    memory_t *mem = this->output(arg);
-    if (mem == nullptr) return status::success;
+// status_t exec_ctx_t::zero_pad_output(int arg) const {
+//     memory_t *mem = this->output(arg);
+//     if (mem == nullptr) return status::success;
 
-    return mem->zero_pad(*this);
-}
+//     return mem->zero_pad(shared_from_this());
+// }
 
 memory_t *exec_ctx_t::memory(int arg) const {
     assert(args_.count(arg) == 1);
@@ -124,17 +124,10 @@ void exec_ctx_t::register_memory_mapping(void *handle, void *host_ptr) {
     memory_mapping_.insert({handle, host_ptr});
 }
 
-void *exec_ctx_t::host_ptr(
-        int arg, bool do_zeropad, status_t *status_, int index) const {
-    status_t status = status::success;
-    if (status_) *status_ = status;
-
+void *exec_ctx_t::host_ptr(int arg, int index) const {
     if (args_.count(arg) != 1) return nullptr;
 
     auto *mem = args_.at(arg).mem;
-    if (do_zeropad) status = mem->zero_pad(*this);
-    if (status_) *status_ = status;
-
     auto *mem_storage = mem->memory_storage(index);
     return host_ptr(mem_storage);
 }

@@ -174,7 +174,7 @@ struct _ref_rnn_common_t : public primitive_t {
     status_t init(engine_t *engine) override;
     ~_ref_rnn_common_t() override { delete rnn_postgemm_; }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 protected:
 #if DNNL_X64

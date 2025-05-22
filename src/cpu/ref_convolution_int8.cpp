@@ -51,13 +51,12 @@ void quantize(float &d, dim_t g, dim_t C, dim_t c, const float *dst_scales) {
 } // namespace
 
 status_t ref_convolution_int8_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -257,9 +256,8 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                 dim_t dst_l_off = (mb * OC * G + g * OC + oc) * OD * OH * OW
                         + od * OH * OW + oh * OW + ow;
 
-                ref_post_ops_t::args_t args;
+                ref_post_ops_t::args_t args(ctx);
                 args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
-                args.ctx = &ctx;
                 args.l_offset = dst_l_off;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(d, args);
@@ -278,12 +276,11 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
 }
 
 status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     DEFINE_ARG_SCALES_BUFFER(diff_src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);

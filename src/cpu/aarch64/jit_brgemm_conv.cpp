@@ -1081,7 +1081,8 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
 };
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_convolution_fwd_t<isa>::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
@@ -1092,7 +1093,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
+    const float *oscales = precompute_scales(ctx->get_scratchpad_grantor(),
             src_scales, wei_scales, _pd->OC(), _pd->attr(),
             jcp.scale_adjust_factor);
 
@@ -1116,7 +1117,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                     + (jcp.s8s8_compensation_required ? s8s8_comp_offset : 0)
             : nullptr;
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
     brgemm_batch_element_t *const __restrict brg_batch_global
             = brgemm_convolution_utils::uses_batch_elements(
                       jcp.brg_type, jcp.exec_type)

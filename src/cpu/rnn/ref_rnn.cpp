@@ -859,9 +859,10 @@ rnn_matmul_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
     matmul_args[DNNL_ARG_WEIGHTS] = {src_mem.get(), true};
     matmul_args[DNNL_ARG_DST] = {dst_mem.get(), false};
 
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    auto matmul_ctx
+            = std::make_shared<exec_ctx_t>(*ctx, std::move(matmul_args));
     nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    matmul_ctx->set_scratchpad_grantor(ns.grantor());
 
     return matmul_prim->execute(matmul_ctx);
 }
@@ -1995,7 +1996,7 @@ rnn_weights_assign_sig((_ref_rnn_common_t<aprop, src_type, weights_type,
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
 status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const rnn_conf_t &rnn = this->pd()->rnn_;
     auto src_layer = CTX_IN_MEM(const src_layer_t *, DNNL_ARG_SRC_LAYER);
     auto augru_attention
@@ -2034,7 +2035,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             iter_weights_n_comp + rnn.weights_iter_comp_offset);
     auto w_projection_comp = reinterpret_cast<const float *>(
             projection_weights_n_comp + rnn.weights_projection_comp_offset);
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     auto ptr_wei_layer
             = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_layer);
@@ -2141,7 +2142,7 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     (float *)augru_attention, rnn.n_iter * rnn.mb);
             augru_attention = bf32_augru_attention;
         }
-        engine_t *engine = ctx.stream()->engine();
+        engine_t *engine = ctx->stream()->engine();
         auto wei_layer_mem
                 = scratchpad.get_memory_storage(key_rnn_bf32_wei_layer_trans);
         auto wei_iter_mem
@@ -2152,12 +2153,13 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     new memory_t(engine, &wei_layer_desc,
                             std::move(wei_layer_mem))));
             exec_args_t reorder_args;
-            reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_LAYER);
+            reorder_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_WEIGHTS_LAYER);
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
-            exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
+            auto reorder_ctx = std::make_shared<exec_ctx_t>(
+                    *ctx, std::move(reorder_args));
             nested_scratchpad_t ns(
                     ctx, key_nested_multiple, bf32_wei_layer_reorder_);
-            reorder_ctx.set_scratchpad_grantor(ns.grantor());
+            reorder_ctx->set_scratchpad_grantor(ns.grantor());
             CHECK(bf32_wei_layer_reorder_->execute(reorder_ctx));
             w_layer = scratchpad.template get<weights_t>(
                     key_rnn_bf32_wei_layer_trans);
@@ -2170,12 +2172,13 @@ status_t _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     new memory_t(
                             engine, &wei_iter_desc, std::move(wei_iter_mem))));
             exec_args_t reorder_args;
-            reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_ITER);
+            reorder_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_WEIGHTS_ITER);
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
-            exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
+            auto reorder_ctx = std::make_shared<exec_ctx_t>(
+                    *ctx, std::move(reorder_args));
             nested_scratchpad_t ns(
                     ctx, key_nested_multiple, bf32_wei_iter_reorder_);
-            reorder_ctx.set_scratchpad_grantor(ns.grantor());
+            reorder_ctx->set_scratchpad_grantor(ns.grantor());
             CHECK(bf32_wei_iter_reorder_->execute(reorder_ctx));
             w_iter = scratchpad.template get<weights_t>(
                     key_rnn_bf32_wei_iter_trans);

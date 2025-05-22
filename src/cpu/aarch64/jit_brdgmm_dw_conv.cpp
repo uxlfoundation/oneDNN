@@ -478,7 +478,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t brdgmm_dw_convolution_fwd_t<isa>::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const char *const __restrict src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const char *const __restrict weights
             = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
@@ -495,7 +495,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::execute(
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
+    const float *oscales = precompute_scales(ctx->get_scratchpad_grantor(),
             src_scales, wei_scales, pd()->OC(), pd()->attr());
 
     const int chb_step = jcp.nb_ch_blocking;

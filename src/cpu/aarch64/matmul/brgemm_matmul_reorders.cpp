@@ -144,7 +144,7 @@ status_t brgemm_matmul_matrix_B_reorder_t::pd_t::create(
 }
 
 status_t brgemm_matmul_matrix_B_reorder_t::execute_body(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace utils;
 
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_FROM);

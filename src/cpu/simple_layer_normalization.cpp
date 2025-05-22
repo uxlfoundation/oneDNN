@@ -80,11 +80,11 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t simple_layer_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const bool use_scale = pd()->use_scale();
     const bool use_shift = pd()->use_shift();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
@@ -169,8 +169,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean) + sv;
                     d *= src_scales[0];
-                    ref_post_ops_t::args_t args;
-                    args.ctx = &ctx;
+                    ref_post_ops_t::args_t args(ctx);
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
@@ -185,8 +184,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean);
                     d *= src_scales[0];
-                    ref_post_ops_t::args_t args;
-                    args.ctx = &ctx;
+                    ref_post_ops_t::args_t args(ctx);
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
@@ -202,8 +200,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean) + sv;
                     d *= src_scales[0];
-                    ref_post_ops_t::args_t args;
-                    args.ctx = &ctx;
+                    ref_post_ops_t::args_t args(ctx);
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
@@ -218,8 +215,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean);
                     d *= src_scales[0];
-                    ref_post_ops_t::args_t args;
-                    args.ctx = &ctx;
+                    ref_post_ops_t::args_t args(ctx);
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
@@ -278,21 +274,19 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t simple_layer_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
 
     const bool use_scale = pd()->use_scale();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto scale = CTX_IN_MEM(float *, DNNL_ARG_SCALE);
-    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
+    CTX_OUT_CLEAN_MEM(void *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
-    auto diff_scale = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SCALE, status);
-    CHECK(status);
-    auto diff_shift = CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_DIFF_SHIFT, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(float *, diff_scale, DNNL_ARG_DIFF_SCALE, status);
+    CTX_OUT_CLEAN_MEM(float *, diff_shift, DNNL_ARG_DIFF_SHIFT, status);
 
     const float *mean, *variance;
     if (pd()->use_tmp_stats()) {

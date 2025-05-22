@@ -42,14 +42,14 @@ using namespace dnnl::impl::cpu::x64::bf16_support;
 
 template <data_type_t dst_data_type>
 status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
-                    this->pd()->attr()->post_ops_, ctx);
+                    this->pd()->attr()->post_ops_, *ctx);
 
     const dim_t M = pd()->OC();
     const dim_t N = pd()->MB();
@@ -63,7 +63,7 @@ status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
 
     acc_data_t *acc = pd()->dst_is_acc_
             ? (acc_data_t *)dst
-            : ctx.get_scratchpad_grantor().template get<acc_data_t>(
+            : ctx->get_scratchpad_grantor().template get<acc_data_t>(
                     key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0;
@@ -93,7 +93,7 @@ status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
 template <data_type_t diff_src_data_type>
 status_t
 gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
@@ -110,7 +110,7 @@ gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
 
     acc_data_t *acc = pd()->diff_src_is_acc_
             ? (acc_data_t *)diff_src
-            : ctx.get_scratchpad_grantor().template get<acc_data_t>(
+            : ctx->get_scratchpad_grantor().template get<acc_data_t>(
                     key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0, beta = 0.0;
@@ -139,7 +139,7 @@ gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
 
 template <data_type_t diff_wei_data_type>
 status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
-        execute_backward_weights(const exec_ctx_t &ctx) const {
+        execute_backward_weights(const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto diff_weights = CTX_OUT_MEM(diff_wei_data_t *, DNNL_ARG_DIFF_WEIGHTS);
@@ -159,7 +159,7 @@ status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
 
     acc_data_t *acc = pd()->diff_wei_is_acc_
             ? (acc_data_t *)diff_weights
-            : ctx.get_scratchpad_grantor().template get<acc_data_t>(
+            : ctx->get_scratchpad_grantor().template get<acc_data_t>(
                     key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0, beta = 0.0;
@@ -196,7 +196,7 @@ status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
 
 template <data_type_t diff_wei_data_type>
 void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
-        execute_backward_bias(const exec_ctx_t &ctx) const {
+        execute_backward_bias(const std::shared_ptr<exec_ctx_t> &ctx) const {
     if (!pd()->with_bias()) return;
 
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
@@ -222,7 +222,7 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
             = nthr_MB == 1 && diff_bias_d.data_type() == data_type::f32;
     float *diff_bias_acc = diff_bias_is_acc
             ? (float *)diff_bias
-            : (float *)ctx.get_scratchpad_grantor().template get<acc_data_t>(
+            : (float *)ctx->get_scratchpad_grantor().template get<acc_data_t>(
                     key_iprod_bias_bf16_convert_wsp);
 
     parallel(pd()->bias_reduction_nthr_, [&](int ithr, int nthr) {

@@ -52,7 +52,8 @@ struct ref_pp_kernel_t : public pp_kernel_t {
             size_t runtime_oc, dim_t dst_mb_stride,
             const float *dst_zero_points,
             const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
-            size_t first_mb_matrix_addr_off, const exec_ctx_t &ctx,
+            size_t first_mb_matrix_addr_off,
+            const std::shared_ptr<exec_ctx_t> &ctx,
             const memory_desc_t &dst_md) const override;
 
     status_t create_kernel() override {
@@ -76,13 +77,13 @@ void ref_pp_kernel_t::operator()(void *dst, const void *acc, const char *bias,
         dim_t dst_mb_stride, const float *dst_zero_points,
         const void * /* post_ops_binary_rhs_arg_vec */,
         const void * /* dst_orig */, size_t /* first_mb_matrix_addr_off */,
-        const exec_ctx_t &ctx, const memory_desc_t &dst_md) const {
+        const std::shared_ptr<exec_ctx_t> &ctx,
+        const memory_desc_t &dst_md) const {
     if (end <= start) return;
 
     const size_t OC = this->runtime_oc() ? runtime_oc : this->OC_;
 
-    ref_post_ops_t::args_t args;
-    args.ctx = &ctx;
+    ref_post_ops_t::args_t args(ctx);
     args.dst_md = &dst_md;
     auto calculate_dst_value_and_increment_oc =
             [&](const void *acc, void *dst, size_t off, size_t &oc_value,

@@ -79,13 +79,13 @@ struct ref_reduction_t : public primitive_t {
     using acc_t = typename prec_traits_t<acc_type>::type;
     using dst_t = typename prec_traits_t<dst_type>::type;
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_ref(ctx);
     }
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_ref(const exec_ctx_t &ctx) const;
+    status_t execute_ref(const std::shared_ptr<exec_ctx_t> &ctx) const;
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
 
     void accumulate(

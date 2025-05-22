@@ -108,12 +108,12 @@ struct ref_convolution_fwd_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
 };
@@ -166,12 +166,13 @@ struct ref_convolution_bwd_data_t : public primitive_t {
 
     ref_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward_data(ctx);
     }
 
 private:
-    status_t execute_backward_data(const exec_ctx_t &ctx) const;
+    status_t execute_backward_data(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
@@ -225,12 +226,13 @@ struct ref_convolution_bwd_weights_t : public primitive_t {
 
     ref_convolution_bwd_weights_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward_weights(ctx);
     }
 
 private:
-    status_t execute_backward_weights(const exec_ctx_t &ctx) const;
+    status_t execute_backward_weights(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

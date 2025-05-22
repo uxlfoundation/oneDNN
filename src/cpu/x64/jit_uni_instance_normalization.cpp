@@ -728,7 +728,7 @@ status_t jit_uni_instance_normalization_fwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_instance_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -737,7 +737,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     auto stat_reduction = scratchpad.template get<float>(key_gnorm_reduction);
     auto tmp_mean = scratchpad.template get<float>(key_gnorm_tmp_mean);
     auto tmp_var = scratchpad.template get<float>(key_gnorm_tmp_var);
@@ -757,7 +757,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+                    pd()->attr()->post_ops_, *ctx);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());

@@ -111,11 +111,14 @@ ref_resampling_fwd_t::ref_resampling_fwd_t(const pd_t *apd)
 
 ref_resampling_fwd_t::~ref_resampling_fwd_t() = default;
 
-void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
-    if (this->pd()->has_zero_dim_memory()) return;
+status_t ref_resampling_fwd_t::execute_forward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
+
+    if (this->pd()->has_zero_dim_memory()) return status;
+
     const auto src = CTX_IN_MEM(const byte *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(byte *, DNNL_ARG_DST, status);
+    CTX_OUT_CLEAN_MEM(byte *, dst, DNNL_ARG_DST, status);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -192,8 +195,7 @@ void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                             ih.wei[0], iw.wei[0]);
                 }
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
+                ref_post_ops_t::args_t args(ctx);
                 args.dst_md = pd()->dst_md();
                 args.l_offset = data_l_off;
                 args.dst_val = io::load_float_value(dst_dt, dst, data_p_off);
@@ -201,6 +203,7 @@ void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
                 store_fn(res, dst, data_p_off);
             });
+    return status;
 }
 
 ref_resampling_bwd_t::ref_resampling_bwd_t(const pd_t *apd)
@@ -208,11 +211,13 @@ ref_resampling_bwd_t::ref_resampling_bwd_t(const pd_t *apd)
 
 ref_resampling_bwd_t::~ref_resampling_bwd_t() = default;
 
-void ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
-    if (this->pd()->has_zero_dim_memory()) return;
+status_t ref_resampling_bwd_t::execute_backward(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
+    if (this->pd()->has_zero_dim_memory()) return status;
+
     const auto diff_dst = CTX_IN_MEM(const byte *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_CLEAN_MEM(byte *, DNNL_ARG_DIFF_SRC, status);
+    CTX_OUT_CLEAN_MEM(byte *, diff_src, DNNL_ARG_DIFF_SRC, status);
 
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
@@ -290,6 +295,7 @@ void ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
                             get_offset(diff_src_d, mb, ch, id, ih, iw));
                 });
     }
+    return status;
 }
 
 } // namespace cpu

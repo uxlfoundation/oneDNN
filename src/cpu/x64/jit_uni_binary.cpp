@@ -1150,7 +1150,8 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
     }
 }
 
-status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_binary_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src0 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_0);
     const auto src1 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_1);
     const auto src2 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_2);
@@ -1158,7 +1159,7 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto &post_ops = pd()->attr()->post_ops_;
     const auto &post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(post_ops, ctx);
+            = binary_injector::prepare_binary_args(post_ops, *ctx);
     const float *scales[2];
     ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
     ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);

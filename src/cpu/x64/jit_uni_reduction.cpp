@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -165,7 +165,8 @@ status_t jit_uni_reduction_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_uni_reduction_t::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_reduction_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
 
@@ -175,7 +176,7 @@ status_t jit_uni_reduction_t::execute(const exec_ctx_t &ctx) const {
     const std::size_t dst_dt_size = pd()->get_conf().dst_dt_size;
     const auto &post_ops = pd()->attr()->post_ops_;
     const auto &post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(post_ops, ctx);
+            = binary_injector::prepare_binary_args(post_ops, *ctx);
 
     parallel_nd(idle_size, [&](dim_t i) {
         const dim_t src_off = i * reduce_size * src_dt_size;

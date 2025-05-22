@@ -59,7 +59,7 @@ struct jit_uni_eltwise_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
@@ -90,7 +90,7 @@ struct jit_uni_eltwise_bwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

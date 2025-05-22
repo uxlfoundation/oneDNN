@@ -91,12 +91,12 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
     ~jit_uni_ncsp_convolution_fwd_t() override = default;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
-    status_t execute_convolution(const exec_ctx_t &ctx) const;
-    status_t execute_matmul(const exec_ctx_t &ctx) const;
-    status_t reorder_activations(const exec_ctx_t &ctx,
+    status_t execute_convolution(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_matmul(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t reorder_activations(const std::shared_ptr<exec_ctx_t> &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;
     const pd_t *pd() const {
@@ -140,11 +140,11 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
     ~jit_uni_ncsp_convolution_bwd_weights_t() override = default;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
-    status_t execute_convolution(const exec_ctx_t &ctx) const;
-    status_t reorder_activations(const exec_ctx_t &ctx,
+    status_t execute_convolution(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t reorder_activations(const std::shared_ptr<exec_ctx_t> &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;
     const pd_t *pd() const {
@@ -192,12 +192,12 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
     ~jit_uni_ncsp_convolution_bwd_data_t() override = default;
 
     status_t init(engine_t *engine) override;
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override;
 
 private:
-    status_t execute_convolution(const exec_ctx_t &ctx) const;
-    status_t execute_matmul(const exec_ctx_t &ctx) const;
-    status_t reorder_activations(const exec_ctx_t &ctx,
+    status_t execute_convolution(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t execute_matmul(const std::shared_ptr<exec_ctx_t> &ctx) const;
+    status_t reorder_activations(const std::shared_ptr<exec_ctx_t> &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const;
     const pd_t *pd() const {

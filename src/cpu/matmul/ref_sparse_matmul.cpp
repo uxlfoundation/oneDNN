@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,21 +27,22 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_sparse_matmul_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     status_t status = status::success;
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
-    CHECK(status);
+    CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
-    const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
-    const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
-    const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
+    const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto weights_d
+            = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
+    const auto dst_d = ctx->memory_mdw(DNNL_ARG_DST, pd()->dst_md());
 
     const dim_t M = dst_d.dims()[0];
     const dim_t N = dst_d.dims()[1];
     const dim_t K = src_d.dims()[1];
 
     const data_type_t mm_dt = src_d.data_type();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
 
     parallel_nd(M, N, [&](dim_t i, dim_t j) {
         const dim_t dst_idx = i * N + j;

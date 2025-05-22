@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,35 +24,36 @@
 #include "c_types_map.hpp"
 #include "memory.hpp"
 #include "memory_storage.hpp"
+#include "resource.hpp"
 
 // __VA_ARGS__here is an index of the buffer. It is empty unless the memory
 // argument is sparse.
 #define CTX_IN_STORAGE(arg, ...) CTX_IN_STORAGe##__VA_ARGS__(arg)
 
 #define CTX_IN_STORAGe(arg) \
-    (ctx.input(arg) ? *(ctx.input(arg)->memory_storage()) \
-                    : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->input(arg) ? *(ctx->input(arg)->memory_storage()) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
 #define CTX_IN_STORAGe0(arg) \
-    (ctx.input(arg) ? *ctx.input(arg)->memory_storage(0) \
-                    : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->input(arg) ? *ctx->input(arg)->memory_storage(0) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
 #define CTX_IN_STORAGe1(arg) \
-    (ctx.input(arg) ? *ctx.input(arg)->memory_storage(1) \
-                    : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->input(arg) ? *ctx->input(arg)->memory_storage(1) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
 #define CTX_IN_STORAGe2(arg) \
-    (ctx.input(arg) ? *ctx.input(arg)->memory_storage(2) \
-                    : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->input(arg) ? *ctx->input(arg)->memory_storage(2) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
 
 // Returns destination memory which may not have been zero pad initialized.
 #define CTX_OUT_STORAGE(arg) \
-    (ctx.output(arg) ? *(ctx.output(arg)->memory_storage()) \
-                     : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->output(arg) ? *(ctx->output(arg)->memory_storage()) \
+                      : dnnl::impl::memory_storage_t::empty_storage())
 
 // Returns destination memory which has been zero pad initialized. This macro
 // may result in a failure returned via the `status` input since zero pad
 // may fail.
 #define CTX_OUT_CLEAN_STORAGE(arg, status) \
-    (ctx.output(arg) ? *(ctx.output(arg)->memory_storage_clean(ctx, status)) \
-                     : dnnl::impl::memory_storage_t::empty_storage())
+    (ctx->output(arg) ? *(ctx->output(arg)->memory_storage_clean(ctx, status)) \
+                      : dnnl::impl::memory_storage_t::empty_storage())
 
 namespace dnnl {
 namespace impl {
@@ -75,7 +76,7 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
 
 /** Primitive execution context (helps passing stream, memories, and events. */
 struct resource_mapper_t;
-struct exec_ctx_t {
+struct exec_ctx_t : public std::enable_shared_from_this<exec_ctx_t> {
     explicit exec_ctx_t(stream_t *stream) : stream_(stream) {}
     exec_ctx_t(stream_t *stream, exec_args_t &&args)
         : stream_(stream), args_(std::move(args)) {}
@@ -92,12 +93,11 @@ struct exec_ctx_t {
     memory_t *output(int arg) const;
     memory_t *memory(int arg) const;
 
-    status_t zero_pad_output(int arg) const;
+    // status_t zero_pad_output(int arg) const;
 
     void register_memory_mapping(void *handle, void *host_ptr);
 
-    void *host_ptr(int arg, bool do_zeropad = false, status_t *status = nullptr,
-            int index = 0) const;
+    void *host_ptr(int arg, int index = 0) const;
     void *host_ptr(const memory_storage_t *mem_storage) const;
 
     void *map_memory_storage(const memory_storage_t *storage, stream_t *stream,

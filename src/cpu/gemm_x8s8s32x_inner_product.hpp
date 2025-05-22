@@ -123,12 +123,12 @@ struct gemm_x8s8s32x_inner_product_fwd_t : public primitive_t {
         return pp_kernel_->create_kernel();
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<inner_product_utils::pp_kernel_t> pp_kernel_;

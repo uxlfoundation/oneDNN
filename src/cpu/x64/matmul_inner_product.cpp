@@ -376,50 +376,55 @@ status_t matmul_inner_product_bwd_weights_t::pd_t::init_matmul_params(
     return status::success;
 }
 
-status_t matmul_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t matmul_inner_product_fwd_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t matmul_args = ctx.args();
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    exec_args_t matmul_args = ctx->args();
+    auto matmul_ctx
+            = std::make_shared<exec_ctx_t>(*ctx, std::move(matmul_args));
 
     nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    matmul_ctx->set_scratchpad_grantor(ns.grantor());
 
     return matmul_->execute(matmul_ctx);
 }
 
-status_t matmul_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
+status_t matmul_inner_product_bwd_data_t::execute(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_SRC);
+    matmul_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_DIFF_DST);
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx->args().at(DNNL_ARG_WEIGHTS);
+    matmul_args[DNNL_ARG_DST] = ctx->args().at(DNNL_ARG_DIFF_SRC);
 
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    auto matmul_ctx
+            = std::make_shared<exec_ctx_t>(*ctx, std::move(matmul_args));
 
     nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    matmul_ctx->set_scratchpad_grantor(ns.grantor());
 
     return matmul_->execute(matmul_ctx);
 }
 
 status_t matmul_inner_product_bwd_weights_t::execute(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_WEIGHTS);
+    matmul_args[DNNL_ARG_SRC] = ctx->args().at(DNNL_ARG_DIFF_DST);
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx->args().at(DNNL_ARG_SRC);
+    matmul_args[DNNL_ARG_DST] = ctx->args().at(DNNL_ARG_DIFF_WEIGHTS);
 
     if (pd()->with_bias())
-        matmul_args[DNNL_ARG_REDUCE] = ctx.args().at(DNNL_ARG_DIFF_BIAS);
+        matmul_args[DNNL_ARG_REDUCE] = ctx->args().at(DNNL_ARG_DIFF_BIAS);
 
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    auto matmul_ctx
+            = std::make_shared<exec_ctx_t>(*ctx, std::move(matmul_args));
 
     nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    matmul_ctx->set_scratchpad_grantor(ns.grantor());
     return matmul_->execute(matmul_ctx);
 }
 

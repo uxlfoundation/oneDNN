@@ -107,20 +107,20 @@ struct gemm_x8s8s32x_convolution_fwd_t : public primitive_t {
         return (pp_ker_) ? pp_ker_->create_kernel() : status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_forward(ctx);
     }
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward(const std::shared_ptr<exec_ctx_t> &ctx) const;
     status_t execute_forward_thr(const int ithr, const int nthr,
             const char *src_base, const int8_t *wei_base, const char *bia_base,
             void *dst_base, const float *scales, const float *dst_scales,
             const zero_point_call_params_t &zp,
             const memory_tracking::grantor_t &scratchpad,
             const void *post_ops_binary_rhs_arg_vec,
-            const exec_ctx_t &ctx) const;
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
 
     using pp_ker_t = gemm_x8s8s32x_convolution_utils::pp_ker_t;
     std::unique_ptr<pp_ker_t> pp_ker_;
@@ -176,17 +176,18 @@ struct gemm_x8s8s32x_convolution_bwd_data_t : public primitive_t {
 
     gemm_x8s8s32x_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const std::shared_ptr<exec_ctx_t> &ctx) const override {
         return execute_backward_data(ctx);
     }
 
 private:
-    status_t execute_backward_data(const exec_ctx_t &ctx) const;
+    status_t execute_backward_data(
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     status_t execute_backward_data_thr(const int ithr, const int nthr,
             const char *diff_dst_base, const int8_t *wei_base,
             const char *bia_base, char *diff_src_base,
             const memory_tracking::grantor_t &scratchpad,
-            const exec_ctx_t &ctx) const;
+            const std::shared_ptr<exec_ctx_t> &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

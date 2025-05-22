@@ -60,14 +60,14 @@ void jit_avx512_core_amx_1x1_convolution_fwd_t::prepare_padded_bias(
 }
 
 status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
 
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -75,7 +75,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
+            ctx->get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
@@ -97,7 +97,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
     const size_t wei_dt_size
             = types::data_type_size(pd()->desc()->weights_desc.data_type);
 
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
+    prepare_padded_bias(bias, ctx->get_scratchpad_grantor());
 
     const auto &jcp = pd()->jcp_;
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
@@ -108,13 +108,13 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             : nullptr;
 
     const bool is_ic_tail = jcp.ic_without_padding % jcp.ic_block_int_np;
-    auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto wsp = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
     int32_t *wsp_tile = (is_ic_tail)
-            ? ctx.get_scratchpad_grantor().template get<int32_t>(
+            ? ctx->get_scratchpad_grantor().template get<int32_t>(
                     key_conv_amx_tile_buffer)
             : nullptr;
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
 
     const size_t wei_oc_shift = static_cast<size_t>(

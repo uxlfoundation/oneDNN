@@ -83,7 +83,7 @@ jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::maybe_adjust_dw_oscales(
 
 /* convolution forward */
 status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     const auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
@@ -93,10 +93,10 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     auto bias_dw = CTX_IN_MEM(
             const char *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
     const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
+            = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, *ctx);
     const auto post_ops_binary_rhs_arg_vec_dw = pd()->jcp_dw_
-            ? binary_injector::prepare_binary_args(pd()->jcp_dw_->post_ops, ctx,
-                    pd()->jcp_.post_ops.entry_.size() + 1)
+            ? binary_injector::prepare_binary_args(pd()->jcp_dw_->post_ops,
+                    *ctx, pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
@@ -111,7 +111,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad = ctx->get_scratchpad_grantor();
     const float *oscales = adjust_oscales(scratchpad, src_scales, wei_scales);
 
     const float *dw_oscales

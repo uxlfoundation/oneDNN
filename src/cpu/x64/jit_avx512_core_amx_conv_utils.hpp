@@ -124,8 +124,8 @@ private:
     int end_overflow_; // d_b_overflow
 };
 
-inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
-        const jit_conv_conf_t &jcp,
+inline void execute_backward_convolution_body(
+        const std::shared_ptr<exec_ctx_t> &ctx, const jit_conv_conf_t &jcp,
         const std::unique_ptr<jit_avx512_core_amx_bwd_data_kernel_t> &kernel,
         const char *diff_dst, const char *weights, const char *bias,
         const float *oscales, const float *dst_scales, char *diff_src,
@@ -148,11 +148,11 @@ inline void execute_backward_convolution_body(const exec_ctx_t &ctx,
             : wht_blk_off(weights_d, 0, 0, jcp.nb_ic_blocking);
     const size_t wht_d_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-    auto inp_p_buffer = ctx.get_scratchpad_grantor().template get<char>(
+    auto inp_p_buffer = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_inp_buffer);
-    auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
+    auto wsp = ctx->get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
 
     const int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;

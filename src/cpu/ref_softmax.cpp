@@ -37,7 +37,8 @@ static bool is_padding(const memory_desc_wrapper &md) {
     return false;
 }
 
-status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
+status_t ref_softmax_fwd_t::execute_forward_dense(
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -47,7 +48,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     float *interim_scratchpad
-            = ctx.get_scratchpad_grantor().template get<float>(
+            = ctx->get_scratchpad_grantor().template get<float>(
                     key_softmax_interim_store);
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -173,8 +174,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
             val *= src_scales[0];
 
             // post-ops
-            ref_post_ops_t::args_t args;
-            args.ctx = &ctx;
+            ref_post_ops_t::args_t args(ctx);
             args.l_offset = ou * ou_stride + c;
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(val, args);
@@ -194,7 +194,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 }
 
 status_t ref_softmax_fwd_t::execute_forward_generic(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     using namespace memory_tracking::names;
 
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -204,7 +204,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
     float *interim_scratchpad
-            = ctx.get_scratchpad_grantor().template get<float>(
+            = ctx->get_scratchpad_grantor().template get<float>(
                     key_softmax_interim_store);
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -231,7 +231,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                 });
         } else
             // needed for submemory correctness
-            ctx.zero_pad_output(DNNL_ARG_DST);
+            ctx->memory(DNNL_ARG_DST)->zero_pad(ctx);
     }
 
     const auto axis_size = pd()->axis_size(true);
@@ -243,7 +243,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
         float space_max_val = 0, space_denom_val = 0;
         float *space_max = &space_max_val, *space_denom = &space_denom_val;
         if (inner_size_ > 1) {
-            space_max = ctx.get_scratchpad_grantor().template get<float>(
+            space_max = ctx->get_scratchpad_grantor().template get<float>(
                                 key_softmax_reduction)
                     + ou * 2 * inner_size_;
             space_denom = space_max + inner_size_;
@@ -299,8 +299,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                 d *= src_scales[0];
 
                 // post-ops
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
+                ref_post_ops_t::args_t args(ctx);
                 args.l_offset = ou_in_offset + c * inner_size_;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(d, args);
@@ -315,7 +314,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
 
 // softmax along last physical dimension
 status_t ref_softmax_bwd_t::execute_backward_dense(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto dst = CTX_IN_MEM(const void *, DNNL_ARG_DST);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto diff_src = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_SRC);
@@ -368,7 +367,7 @@ status_t ref_softmax_bwd_t::execute_backward_dense(
 }
 
 status_t ref_softmax_bwd_t::execute_backward_generic(
-        const exec_ctx_t &ctx) const {
+        const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto dst = CTX_IN_MEM(const void *, DNNL_ARG_DST);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto diff_src = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_SRC);
@@ -395,7 +394,7 @@ status_t ref_softmax_bwd_t::execute_backward_generic(
                 });
         } else
             // needed for submemory correctness
-            ctx.zero_pad_output(DNNL_ARG_DIFF_SRC);
+            ctx->memory(DNNL_ARG_DIFF_SRC)->zero_pad(ctx);
     }
 
     parallel_nd(outer_size_, inner_size_, [&](dim_t ou, dim_t in) {

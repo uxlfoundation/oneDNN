@@ -75,21 +75,25 @@ Examples
      - CPU
      - :ref:`doxid-graph_cpu_getting_started_cpp`
      -
-   * - 
+   * -
      - CPU
      - :ref:`doxid-graph_cpu_inference_int8_cpp`
      -
-   * - 
+   * -
      - CPU/GPU
      - :ref:`doxid-graph_sycl_getting_started_cpp`
      -
-   * - 
+   * -
      - CPU
      - :ref:`doxid-graph_cpu_single_op_partition_cpp`
      -
-   * - 
+   * -
      - GPU
      - :ref:`doxid-graph_sycl_single_op_partition_cpp`
+     -
+   * -
+     - GPU
+     - :ref:`doxid-graph_gpu_opencl_getting_started_cpp`
      -
 
 

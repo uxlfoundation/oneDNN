@@ -42,6 +42,8 @@ struct gemm_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_CONV(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -146,6 +148,8 @@ struct gemm_convolution_bwd_data_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, undef, f32, f32),
@@ -202,6 +206,8 @@ struct gemm_convolution_bwd_weights_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),

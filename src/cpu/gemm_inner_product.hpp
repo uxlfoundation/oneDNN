@@ -45,6 +45,8 @@ struct gemm_inner_product_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
 
+            VDISPATCH_INNER_PRODUCT(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_INNER_PRODUCT(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_INNER_PRODUCT(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");

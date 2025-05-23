@@ -387,10 +387,10 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_CONV(
             impl::is_dense_format_kind({src_md(0), weights_md(0), dst_md(0)}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
+    printf("before init conf - isa: %d\n", isa);
     CHECK(brgemm_convolution_utils::init_conf(jcp_, isa, *desc(), src_md_,
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
-
+    printf("after inti conf\n");
     // 1. The unrolled kernel can be used for exec_trans and exec_base and for
     // amx only. For exec_base it makes sense to use unrolled kernel only if
     // there is no padding by width.

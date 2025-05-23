@@ -363,11 +363,11 @@ private:
     }
     Vmm vmm_fp8_load() const noexcept {
         // Re-use it as output when converting fp8 to f16 vnni
-        return Vmm(isa_num_vregs(brg.isa_impl) - 5);
+        return Vmm(isa_num_vregs(brg.isa_impl) - 1);
     }
     Vmm vmm_fp8_bcst() const noexcept {
         // Re-use it as output when converting fp8 to f16 vnni
-        return Vmm(isa_num_vregs(brg.isa_impl) - 4);
+        return Vmm(isa_num_vregs(brg.isa_impl) - 2);
     }
 
     Zmm zmm_tmp_1() const noexcept { return Zmm(1); }
@@ -684,10 +684,14 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
         const Xbyak::Operand &op, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask, dim_t tail_size) {
     Vmm vmm = vmm_in;
+    //    Ymm ymm = Ymm(vmm_in.getIdx());
     const bool has_tail = op.isMEM()
             && tail_size != vreg_traits_t<Vmm>::vlen / sizeof(float);
     if (IMPLICATION(has_tail, is_superset(brg.isa_impl, avx512_core))) {
         vmm = vmm_mask(vmm_in, mask_flag, store, ktail_mask);
+        //        ymm = vmm_mask(ymm, mask_flag, store, ktail_mask);
+        //        if (utils::one_of(data_type::f8_e5m2, data_type::f8_e4m3))
+        //            load_bytes(vmm_in, op.getAddress(), tail_size, true);
     } else {
         load_data(type_in, vmm_in, op.getAddress(), tail_size);
         if (types::is_integral_dt(type_in)) uni_vcvtdq2ps(vmm_in, vmm_in);

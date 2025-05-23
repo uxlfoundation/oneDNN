@@ -274,10 +274,10 @@ bool jit_gemm_pd_t::zp_ok() {
         if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
             if (!valid_2d_mask(cmask_b_, ndims)) return false;
 
-            const auto src_q2d_group_m = attr_zps.get_group(DNNL_ARG_B, 0);
+            const auto src_q2d_group_n = attr_zps.get_group(DNNL_ARG_B, 0);
             zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_B, 1);
             // Non-trivial M group unsupported.
-            if (src_q2d_group_m != 1) return false;
+            if (!utils::one_of(src_q2d_group_n, 1, desc()->n())) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)

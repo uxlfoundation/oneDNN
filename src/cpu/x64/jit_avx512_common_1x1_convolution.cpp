@@ -60,6 +60,9 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
             : std::vector<const void *> {};
 
     auto scratchpad = ctx->get_scratchpad_grantor();
+    auto rtus_space = pd()->rtus_.reduce_src_
+            ? scratchpad.get<src_data_t>(key_conv_rtus_space)
+            : nullptr;
 
     if (pd()->wants_padded_bias()) {
         auto padded_bias
@@ -70,9 +73,15 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         bias = padded_bias;
     }
 
+    const memory_tracking::grantor_t dw_scratchpad(
+            scratchpad, memory_tracking::names::prefix_fusion);
+    const auto dw_conv_buffer
+            = dw_scratchpad.get<dst_data_t>(key_fusion_inout_buffer);
+
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
-                dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
+                dst, rtus_space, dw_conv_buffer,
+                post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
 
@@ -85,7 +94,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         const src_data_t *src, const wei_data_t *weights,
         const dst_data_t *bias, const wei_data_t *weights_dw,
         const dst_data_t *bias_dw, dst_data_t *dst,
-        const memory_tracking::grantor_t &scratchpad,
+        const src_data_t *rtus_space, dst_data_t *dw_conv_buffer,
         const void *post_ops_binary_rhs_arg_vec,
         const void *post_ops_binary_rhs_arg_vec_dw) const {
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -98,9 +107,6 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
             pd()->arg_md(DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS));
 
     const auto &jcp = kernel_->jcp;
-    auto rtus_space = pd()->rtus_.reduce_src_
-            ? scratchpad.get<src_data_t>(key_conv_rtus_space)
-            : nullptr;
 
     const int ndims = src_d.ndims();
     const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
@@ -136,8 +142,6 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
             jcp.src_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
 
     // Begin: declare Variables needed for dw conv.
-    memory_tracking::grantor_t dw_scratchpad(
-            scratchpad, memory_tracking::names::prefix_fusion);
     dst_data_t *pbuf;
     size_t row_offset;
     const int nb_buffer = jcp.nb_load_blocking;
@@ -378,8 +382,6 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
 
     auto conv_dw = [&]() {
         // Set variables
-        auto dw_conv_buffer
-                = dw_scratchpad.get<dst_data_t>(key_fusion_inout_buffer);
         auto &jcp_dw = pd()->dw_conv_pd_->jcp_;
 
         const auto dw_conv_buffer_size_

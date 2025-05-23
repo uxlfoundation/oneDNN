@@ -343,7 +343,7 @@ private:
             const src_data_t *src, const wei_data_t *weights,
             const dst_data_t *bias, const wei_data_t *weights_dw,
             const dst_data_t *bias_dw, dst_data_t *dst,
-            const memory_tracking::grantor_t &scratchpad,
+            const src_data_t *rtus_space, dst_data_t *dw_conv_buffer,
             const void *post_ops_binary_rhs_arg_vec,
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

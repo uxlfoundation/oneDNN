@@ -165,7 +165,7 @@ def setup_matmul_subparser(subparsers):
         "-t",
         "--types",
         default="all",
-        help='dt:dt:dt(optional fpmath-mode), comma separated list of type configurations or "all" for every supported type',
+        help='dt:dt:dt(optional fpmath-mode), comma separated list of type configurations. "%%N" will match the Nth given data type. Giving a single data type instead of 3 will match any supported configurations using that type.',
     )
 
 

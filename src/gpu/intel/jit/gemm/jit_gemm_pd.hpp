@@ -159,6 +159,8 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool src_scales_2d() const { return src_scales_2d_; }
 
     bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
+    int quant_attr_ndims(
+            int arg, const quant_entries_t &attr, const memory_desc_t &d) const;
 
     int quant_attr_cmask(int arg, const quant_entries_t &attr) const;
     bool dy_quant_enabled();

@@ -324,6 +324,14 @@ struct attr_t {
                 int64_t mask = -1;
                 mask_input_t mask_input = mask_input_t::none;
                 std::string tag = tag::any;
+
+                // For the src2 tensor when the algorithm takes ternary inputs
+                dnnl_data_type_t src2_dt = dnnl_data_type_undef;
+                policy_t src2_policy = policy_t::COMMON;
+                int64_t src2_mask = -1;
+                mask_input_t src2_mask_input = mask_input_t::none;
+                std::string src2_tag = tag::any;
+
             } binary;
             struct {
                 policy_t policy = policy_t::COMMON;
@@ -333,6 +341,7 @@ struct attr_t {
             bool is_convolution_kind() const;
             bool is_eltwise_kind() const;
             bool is_binary_kind() const;
+            bool is_binary_kind_with_ternary_op() const;
             bool is_prelu_kind() const;
         };
 

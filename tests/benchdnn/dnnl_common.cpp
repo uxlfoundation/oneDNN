@@ -1388,6 +1388,14 @@ void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
                         = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
                 const auto &po_md = query_md(const_pd, po_arg);
                 add_md_size(po_md, check_mem_size_args);
+
+                if (query_post_ops_has_binary_alg_kind(
+                            const_attr_po, idx, dnnl_binary_select)) {
+                    int po_arg_src2 = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
+                            | DNNL_ARG_SRC_2;
+                    const auto &po_md_src2 = query_md(const_pd, po_arg_src2);
+                    add_md_size(po_md_src2, check_mem_size_args);
+                }
             }
         }
     }
@@ -1845,15 +1853,36 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
     const bool is_rounding_seed = (exec_arg == DNNL_ARG_ATTR_ROUNDING_SEED);
 
     if (is_post_ops_arg) {
-        if (exec_arg & DNNL_ARG_SRC_1) {
-            const int bin_po_idx
-                    = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
-            assert(bin_po_idx < attr.post_ops.len());
+        const int bin_po_idx
+                = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
+        assert(bin_po_idx < attr.post_ops.len());
+        const bool exact_match_for_src1_arg = !(exec_arg
+                ^ (DNNL_ARG_ATTR_MULTIPLE_POST_OP(bin_po_idx)
+                        | DNNL_ARG_SRC_1));
+        const bool exact_match_for_src2_arg = !(exec_arg
+                ^ (DNNL_ARG_ATTR_MULTIPLE_POST_OP(bin_po_idx)
+                        | DNNL_ARG_SRC_2));
+
+        if (exact_match_for_src1_arg) {
             const auto alg = attr.post_ops.entry[bin_po_idx].kind;
-            // Binary post-op filling.
-            fill_cfg_t def_binary_cfg(mem.dt(), -16.f, 16.f, /* int = */ true,
-                    alg, "def_binary_post_op");
+            // Binary post-op filling for src1 tensor
+            fill_cfg_t def_binary_cfg(mem.dt(), -16.f, 16.f,
+                    /* int = */ true, alg, "def_binary_post_op_src1");
             const auto it = fill_cfg_map.find(DNNL_ARG_SRC_1);
+            const bool has_external_cfg = it != fill_cfg_map.end();
+            const fill_cfg_t &binary_fill_cfg
+                    = has_external_cfg ? (*it).second : def_binary_cfg;
+            TIME_FILL(SAFE(fill_random_real(mem, ref_mem, res, binary_fill_cfg),
+                    WARN));
+        } else if (exact_match_for_src2_arg) {
+            assert(attr.post_ops.entry[bin_po_idx]
+                            .is_binary_kind_with_ternary_op());
+            const auto alg = attr.post_ops.entry[bin_po_idx].kind;
+            // Binary post-op filling for src2 conditional tensor
+            // Use values bigger than 1 to ensure it works correctly.
+            fill_cfg_t def_binary_cfg(mem.dt(), 0, 16.f,
+                    /* int = */ true, alg, "def_binary_post_op_src2");
+            const auto it = fill_cfg_map.find(DNNL_ARG_SRC_2);
             const bool has_external_cfg = it != fill_cfg_map.end();
             const fill_cfg_t &binary_fill_cfg
                     = has_external_cfg ? (*it).second : def_binary_cfg;

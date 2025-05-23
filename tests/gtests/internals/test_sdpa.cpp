@@ -21,6 +21,9 @@
 #include "test_utils.hpp"
 
 #include <oneapi/dnnl/dnnl.hpp>
+#ifdef DNNL_WITH_SYCL
+#include "oneapi/dnnl/dnnl_sycl.hpp"
+#endif
 
 #include <memory>
 #include <random>
@@ -248,16 +251,19 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     CHECK(dnnl_memory_create(
             &mem2, desc2.get(), eng.get(), DNNL_MEMORY_ALLOCATE));
 
-    void *mapped_ptr = nullptr;
-    CHECK(dnnl_memory_map_data(mem2, &mapped_ptr));
-
-    for (size_t i = 0; i < desc2.get_size(); i++) {
-        ((uint8_t *)mapped_ptr)[i] = 0xFF;
-    }
-    CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
-
     void *handle;
     CHECK(dnnl_memory_get_data_handle(mem2, &handle));
+#ifdef DNNL_WITH_SYCL
+    auto sycl_queue = dnnl::sycl_interop::get_queue(s);
+    sycl_queue.fill<uint8_t>(handle, 0xFF, desc2.get_size());
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    void *mapped_ptr = nullptr;
+    CHECK(dnnl_memory_map_data(mem2, &mapped_ptr));
+    memset(mapped_ptr, 0xFF, desc2.get_size());
+    CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
+#endif
+
     return memory(desc, eng, handle);
 }
 
@@ -966,7 +972,50 @@ memory as(dnnl::stream &strm, memory &mem, memory::data_type dt) {
     auto md = memory::desc(sz, dt, mem.get_desc().get_strides());
     auto out = memory(md, mem.get_engine());
     dnnl::reorder(mem, out).execute(strm, mem, out);
+    return out;
+}
+
+memory reshape(dnnl::stream &strm, memory &mem, const memory::desc &md) {
+    auto out = memory(md, mem.get_engine());
+
+#ifdef DNNL_WITH_SYCL
+    size_t size = md.get_size();
+    auto mkind = dnnl::sycl_interop::get_memory_kind(mem);
+    if (mkind == dnnl::sycl_interop::memory_kind::buffer) {
+        auto buffer = dnnl::sycl_interop::get_buffer<uint8_t>(mem);
+        auto src = buffer.get_host_access();
+        uint8_t *src_ptr = src.get_pointer();
+        if (!src_ptr) throw std::runtime_error("get_pointer returned nullptr.");
+
+        auto out_buffer = dnnl::sycl_interop::get_buffer<uint8_t>(out);
+        auto dst = out_buffer.get_host_access();
+        uint8_t *dst_ptr = dst.get_pointer();
+        if (!dst_ptr) throw std::runtime_error("get_pointer returned nullptr.");
+
+        for (size_t i = 0; i < size; ++i)
+            ((uint8_t *)dst_ptr)[i] = src_ptr[i];
+    } else {
+        assert(mkind == dnnl::sycl_interop::memory_kind::usm);
+        uint8_t *src_ptr = (uint8_t *)mem.get_data_handle();
+        uint8_t *dst_ptr = (uint8_t *)out.get_data_handle();
+        if (!src_ptr)
+            throw std::runtime_error("get_data_handle returned nullptr.");
+        auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
+        sycl_queue.memcpy(dst_ptr, src_ptr, size).wait();
+    }
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     strm.wait();
+    void *mem_ptr_ = (void *)mem.map_data();
+    if (mem_ptr_ == nullptr)
+        throw std::runtime_error("Failed to map mem in resize");
+    void *out_ptr_ = (void *)out.map_data();
+    if (out_ptr_ == nullptr)
+        throw std::runtime_error("Failed to map out in resize");
+    memcpy(out_ptr_, mem_ptr_, mem.get_desc().get_size());
+    mem.unmap_data(mem_ptr_);
+    out.unmap_data(out_ptr_);
+#endif
     return out;
 }
 
@@ -1004,12 +1053,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     auto scale_f32 = as(strm, scale, mdt::f32);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
-    scale_f32 = memory(
-            memory::desc {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde},
-            scale_f32.get_engine(), scale_f32.get_data_handle());
-    mask_f32 = memory(memory::desc {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]},
-                              mdt::f32, memory::format_tag::abcde},
-            mask_f32.get_engine(), mask_f32.get_data_handle());
+
+    scale_f32 = reshape(strm, scale_f32,
+            {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
+    mask_f32 = reshape(strm, mask_f32,
+            {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
+                    memory::format_tag::abcde});
     if (scale_dt != mdt::undef) {
         if (invert_scale)
             bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
@@ -1036,20 +1085,18 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     }
 
     auto original_k_sz = key.get_desc().get_dims();
-    const memory::dims k_sz = {p.mb, head_group_batches, head_kv_group_size,
+    const memory::dims k_sz {p.mb, head_group_batches, head_kv_group_size,
             original_k_sz[2], original_k_sz[3]};
-    const memory::dims v_sz = {p.mb, head_group_batches, head_kv_group_size,
+    const memory::dims v_sz {p.mb, head_group_batches, head_kv_group_size,
             p.seq_len, p.head_size};
-    const memory::dims q_sz = {p.mb, head_group_batches, head_q_group_size,
+    const memory::dims q_sz {p.mb, head_group_batches, head_q_group_size,
             p.query_num, p.head_size};
-    const memory::dims m_sz = {1, 1, 1, mask.get_desc().get_dims()[2],
+    const memory::dims m_sz {1, 1, 1, mask.get_desc().get_dims()[2],
             mask.get_desc().get_dims()[3]};
-    auto grouped_key_md = memory::desc(k_sz, p.dt, memory::format_tag::abcde);
-    auto grouped_value_md
-            = memory::desc(v_sz, mdt::f32, memory::format_tag::abcde);
-    auto grouped_query_md
-            = memory::desc(q_sz, p.qdt, memory::format_tag::abcde);
-    auto grouped_mask_md = memory::desc(
+    memory::desc grouped_key_md(k_sz, p.dt, memory::format_tag::abcde);
+    memory::desc grouped_value_md(v_sz, mdt::f32, memory::format_tag::abcde);
+    memory::desc grouped_query_md(q_sz, p.qdt, memory::format_tag::abcde);
+    memory::desc grouped_mask_md(
             m_sz, mask.get_desc().get_data_type(), memory::format_tag::abcde);
 
     memory key_dequantized;
@@ -1073,19 +1120,14 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             key_dequantize_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM]
                     = key_zp;
         key_dequantize_prim.execute(strm, key_dequantize_args);
-        key_dequantized = memory(grouped_key_md, key.get_engine(),
-                key_dequantized.get_data_handle());
-        strm.wait();
+        key_dequantized = reshape(strm, key_dequantized, grouped_key_md);
     } else {
         auto keytmp = as(strm, key, p.dt);
-
         grouped_key_md = p.with_key_transposed
                 ? memory::desc(k_sz, p.dt, memory::format_tag::abced)
                 : memory::desc(k_sz, p.dt, memory::format_tag::abcde);
 
-        strm.wait();
-        key_dequantized = memory(
-                grouped_key_md, key.get_engine(), keytmp.get_data_handle());
+        key_dequantized = reshape(strm, keytmp, grouped_key_md);
     }
 
     memory value_dequantized;
@@ -1109,27 +1151,22 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             value_dequantize_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM]
                     = value_zp;
         value_dequantize_prim.execute(strm, value_dequantize_args);
-        value_dequantized = memory(grouped_value_md, value.get_engine(),
-                value_dequantized.get_data_handle());
-        strm.wait();
+        value_dequantized = reshape(strm, value_dequantized, grouped_value_md);
     } else {
         auto value32 = as(strm, value, mdt::f32);
-        strm.wait();
-        value_dequantized = memory(grouped_value_md, value.get_engine(),
-                value32.get_data_handle());
+        value_dequantized = reshape(strm, value32, grouped_value_md);
     }
 
-    memory grouped_query = memory(
-            grouped_query_md, query.get_engine(), query.get_data_handle());
+    memory grouped_query = reshape(strm, query, grouped_query_md);
 
     const memory::dims score_sz = {p.mb, head_group_batches, head_q_group_size,
             p.query_num, p.seq_len};
-    auto score_md = memory::desc(score_sz, mdt::f32, memory::format_tag::abcde);
+    memory::desc score_md {score_sz, mdt::f32, memory::format_tag::abcde};
 
     auto score = memory(score_md, eng);
     auto score2 = memory(score_md, eng);
     auto bmm1_pd = matmul::primitive_desc(eng, grouped_query_md,
-            key_dequantized.get_desc(), score.get_desc(), bmm1_attr);
+            key_dequantized.get_desc(), score_md, bmm1_attr);
     auto bmm1_prim = matmul(bmm1_pd);
 
     primitive_attr softmax_attr;
@@ -1144,10 +1181,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr bmm2_attr;
 
     bmm2_attr.set_scratchpad_mode(scratchpad_mode::library);
-    auto grouped_output = memory(
-            grouped_query_md, output.get_engine(), output.get_data_handle());
-    auto bmm2_pd = matmul::primitive_desc(eng, score.get_desc(),
-            value_dequantized.get_desc(), grouped_output.get_desc(), bmm2_attr);
+    auto grouped_output = double_and_resize(grouped_query_md, eng);
+    auto bmm2_pd = matmul::primitive_desc(
+            eng, score_md, grouped_value_md, grouped_query_md, bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
 
     std::unordered_map<int, memory> bmm1_args = {{DNNL_ARG_SRC, grouped_query},
@@ -1169,7 +1205,6 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     const auto loop = [&]() {
         bmm1_prim.execute(strm, bmm1_args);
-
         //strm.wait();
         //print_mem(score, "score");
 
@@ -1192,13 +1227,54 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // Warmup run.
     // Execute primitives of sdpa.
     loop();
+
+#ifdef DNNL_WITH_SYCL
+    // copy data from grouped_output to output
+    auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
+    sycl_queue.memcpy(output.get_data_handle(),
+            grouped_output.get_data_handle(), grouped_query_md.get_size());
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    strm.wait();
+    void *output_ptr_ = (void *)output.map_data();
+    void *grouped_output_ptr_ = (void *)grouped_output.map_data();
+    memcpy(output_ptr_, grouped_output_ptr_, grouped_query_md.get_size());
+    grouped_output.unmap_data(grouped_output_ptr_);
+    output.unmap_data(output_ptr_);
+#endif
+
     strm.wait();
 }
 
 template <typename T>
-void check_memory(memory &gold, memory &test) {
-    T *mapped_ptr_gold = (T *)gold.map_data();
-    T *mapped_ptr_test = (T *)test.map_data();
+void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
+
+    T *mapped_ptr_gold = nullptr;
+    T *mapped_ptr_test = nullptr;
+#ifdef DNNL_WITH_SYCL
+    auto mkind = dnnl::sycl_interop::get_memory_kind(gold);
+
+    size_t size = gold.get_desc().get_size();
+    std::vector<uint8_t> gold_data(size);
+    std::vector<uint8_t> test_data(size);
+    mapped_ptr_gold = (T *)gold_data.data();
+    mapped_ptr_test = (T *)test_data.data();
+
+    if (mkind == dnnl::sycl_interop::memory_kind::buffer) {
+    } else {
+        uint8_t *ptr_gold = (uint8_t *)gold.get_data_handle();
+        uint8_t *ptr_test = (uint8_t *)test.get_data_handle();
+
+        auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
+        sycl_queue.memcpy(gold_data.data(), ptr_gold, size);
+        sycl_queue.memcpy(test_data.data(), ptr_test, size).wait();
+    }
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    mapped_ptr_gold = (T *)gold.map_data();
+    mapped_ptr_test = (T *)test.map_data();
+#endif
+    strm.wait();
 
     auto dims = gold.get_desc().get_dims();
     auto strides = gold.get_desc().get_strides();
@@ -1255,8 +1331,10 @@ void check_memory(memory &gold, memory &test) {
         }
     }
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
+#endif
 
     int threshold = total * 0.0006;
 
@@ -1348,21 +1426,20 @@ GPU_TEST_P(sdpa_test_t, compare) {
 
     auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
     loop_quantized();
-    strm.wait();
+
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
             t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
             t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
             invert_scale);
-    strm.wait();
 
 #if 0
     if (::getenv("SKIP_CHECK")) return;
 #endif
     if (t.m_output.get_desc().get_data_type() == mdt::f16)
-        check_memory<float16_t>(t.m_output, t.m_output_quantized);
+        check_memory<float16_t>(t.m_output, t.m_output_quantized, strm);
     else if (t.m_output.get_desc().get_data_type() == mdt::bf16)
-        check_memory<bfloat16_t>(t.m_output, t.m_output_quantized);
+        check_memory<bfloat16_t>(t.m_output, t.m_output_quantized, strm);
 
 #if 0
     for (auto &kv : hist) {

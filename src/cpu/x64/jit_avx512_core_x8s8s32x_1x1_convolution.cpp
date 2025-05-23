@@ -128,7 +128,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     }
     auto dw_conv_buffer = dw_scratchpad.get<char>(key_fusion_inout_buffer);
 
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, oscales, dst_scales, dw_oscales, dw_dst_scales,
                 src_zero_point, dst_zero_point, rtus_space, dw_conv_buffer,

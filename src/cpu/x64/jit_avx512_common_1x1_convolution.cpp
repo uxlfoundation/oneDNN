@@ -78,7 +78,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
     const auto dw_conv_buffer
             = dw_scratchpad.get<dst_data_t>(key_fusion_inout_buffer);
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, rtus_space, dw_conv_buffer,
                 post_ops_binary_rhs_arg_vec.data(),
@@ -484,7 +484,7 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_call_s();
         auto rp = rtus_driver_t<avx512_core>::call_params_t();
 

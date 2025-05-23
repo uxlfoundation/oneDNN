@@ -268,6 +268,9 @@ class BinaryPostOp(PostOp):
     dt: str
     mask: int = 0
     tag: str = "any"
+    src2_dt: str = "s8"
+    src2_mask: int = 0
+    src2_tag: str = "any"
 
 
 @dataclass(eq=False)

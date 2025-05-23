@@ -73,7 +73,10 @@ function(register_benchdnn_test engine driver test_file)
     endif()
 
     set(mode_modifier "")
-    if(${engine} MATCHES "gpu" AND NOT WIN32)
+    if(${engine} MATCHES "gpu"
+       AND NOT WIN32
+       AND NOT ${DNNL_GPU_VENDOR} MATCHES "NVIDIA"
+       AND NOT ${DNNL_GPU_VENDOR} MATCHES "AMD")
         set(mode_modifier "--mode-modifier=P")
     endif()
 

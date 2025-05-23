@@ -28,6 +28,10 @@ Examples
      - :ref:`doxid-sycl_interop_buffer_cpp`
      -
    * -
+     - CPU/GPU
+     - :ref:`doxid-sycl_interop_usm_cpp`
+     -
+   * -
      - GPU
      - :ref:`doxid-gpu_opencl_interop_cpp`
      -

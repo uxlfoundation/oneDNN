@@ -47,7 +47,8 @@ cold_cache_t::cold_cache_t(
         const std::vector<dnnl_exec_arg_t> &dnnl_args, dnnl_stream_t stream)
     : cold_cache_input_(cold_cache_input)
     , enabled_(use_cold_cache(dnnl_args))
-    , n_buffers_top_limit_(is_gpu() ? gpu_n_buffers_top_limit_ : SIZE_MAX) {
+    , n_buffers_top_limit_(
+              is_gpu() ? gpu_n_buffers_top_limit_ : cpu_n_buffers_top_limit_) {
 
     // Note: there's an additional return from ctor below if it was identified
     // that no buffers are needed.

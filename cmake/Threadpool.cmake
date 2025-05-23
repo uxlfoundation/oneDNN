@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2020-2021 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,11 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
     endif()
 
     if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
+        # TODO: maybe switch to `target_compile_features` to require and not
+        # silently set the standard.
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
         find_package(Eigen3 REQUIRED 3.3 NO_MODULE)
         if(Eigen3_FOUND)
             list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)

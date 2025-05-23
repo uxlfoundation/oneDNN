@@ -62,7 +62,7 @@ void jit_avx2_convolution_fwd_t::execute_forward(
     const size_t work_amount
             = jcp.mb * jcp.ngroups * ocb_work * jcp.od * jcp.oh;
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

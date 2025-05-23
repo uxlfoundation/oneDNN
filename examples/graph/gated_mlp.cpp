@@ -123,22 +123,17 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
     fc_up.add_inputs({src, wei1});
     fc_up.add_outputs({out1});
 
-    // activation swish: sigmoid
+    // activation gelu-tanh
     auto out2 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
-    auto swi_sig = op(id++, op::kind::Sigmoid, "swish/sigmoid");
-    swi_sig.add_inputs({out0});
-    swi_sig.add_outputs({out2});
-
-    // activation swish: multiply
-    auto out3 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
-    auto swi_mul = op(id++, op::kind::Multiply, "swish/multiply");
-    swi_mul.add_inputs({out0, out2});
-    swi_mul.add_outputs({out3});
+    auto gelu = op(id++, op::kind::GELU, "gelu");
+    gelu.set_attr<std::string>(op::attr::mode, "gelu_tanh");
+    gelu.add_input(out0);
+    gelu.add_output(out2);
 
     // multiplication
     auto out4 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
     auto mul = op(id++, op::kind::Multiply, "mul");
-    mul.add_inputs({out3, out1});
+    mul.add_inputs({out2, out1});
     mul.add_outputs({out4});
 
     // fc_down
@@ -152,8 +147,7 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
     dnnl::graph::graph mlp(ekind);
     mlp.add_op(fc_gate);
     mlp.add_op(fc_up);
-    mlp.add_op(swi_sig);
-    mlp.add_op(swi_mul);
+    mlp.add_op(gelu);
     mlp.add_op(mul);
     mlp.add_op(fc_down);
     mlp.finalize();
@@ -265,8 +259,8 @@ void mlp_perf(engine::kind ekind, int argc, char **argv) {
     }
 
     bench(ekind, dnnl_f32, params, 2000.0 /*ms*/);
-    bench(ekind, dnnl_bf16, params, 2000.0 /*ms*/);
-    bench(ekind, dnnl_f16, params, 2000.0 /*ms*/);
+    // bench(ekind, dnnl_bf16, params, 2000.0 /*ms*/);
+    // bench(ekind, dnnl_f16, params, 2000.0 /*ms*/);
 }
 
 int main(int argc, char **argv) {

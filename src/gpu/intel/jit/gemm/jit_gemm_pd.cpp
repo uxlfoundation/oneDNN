@@ -168,7 +168,23 @@ bool jit_gemm_pd_t::quant_attr_2d(int arg, const quant_entries_t &attr) const {
         return true;
     return false;
 }
-
+int jit_gemm_pd_t::quant_attr_ndims(
+        int arg, const quant_entries_t &attr, const memory_desc_t &d) const {
+    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    if (attr.has_default_values(arg)) return -1;
+    int mask = quant_attr_cmask(arg, attr);
+    if (mask == 0) return 0;
+    if (attr.has_default_groups(arg)) return mask > 0;
+    int count = 0;
+    for (int i = 0; i < d.ndims; ++i) {
+        if ((mask & (i + 1))
+                && (i < batch_dims()
+                        || (d.dims[i] / attr.get_group(arg, i - batch_dims())
+                                > 1)))
+            ++count;
+    }
+    return count;
+}
 int jit_gemm_pd_t::quant_attr_cmask(
         int arg, const quant_entries_t &attr) const {
     assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C));
@@ -209,20 +225,19 @@ void jit_gemm_pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
+    const auto d = desc();
 
     auto &attr_zps = attr()->zero_points_;
-    bool wei_zp_2d = quant_attr_2d(DNNL_ARG_A, attr_zps);
-    bool src_zp_2d = quant_attr_2d(DNNL_ARG_B, attr_zps);
+
+    // Swap descriptors to follow column major format.
+    ao_dims_ = quant_attr_ndims(DNNL_ARG_A, attr_zps, d->b_desc);
+    bo_dims_ = quant_attr_ndims(DNNL_ARG_B, attr_zps, d->a_desc);
     cmask_a_ = quant_attr_cmask(DNNL_ARG_A, attr_zps);
     cmask_b_ = quant_attr_cmask(DNNL_ARG_B, attr_zps);
     cmask_c_ = quant_attr_cmask(DNNL_ARG_C, attr_zps);
-    if (!attr_zps.has_default_values(DNNL_ARG_A))
-        ao_dims_ = (cmask_a_ > 0 ? (wei_zp_2d ? 2 : 1) : 0);
-    if (!attr_zps.has_default_values(DNNL_ARG_B))
-        bo_dims_ = (cmask_b_ > 0 ? (src_zp_2d ? 2 : 1) : 0);
 
-    if (wei_zp_2d) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (src_zp_2d) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
+    if (ao_dims_ >= 2) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
+    if (bo_dims_ >= 2) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
     const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
@@ -233,7 +248,7 @@ void jit_gemm_pd_t::init_attrs() {
 
     wei_scales_type_ = wei_scales->get_data_type();
     if (wei_scales_2d_) {
-        if (!wei_zp_2d) wei_q2d_group_k_ = wei_scales->get_group(0);
+        if (ao_dims_ < 2) wei_q2d_group_k_ = wei_scales->get_group(0);
     }
 
     src_scales_type_ = src_scales->get_data_type();

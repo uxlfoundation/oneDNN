@@ -150,6 +150,9 @@ is computed as:
 > dM = dS_{masked} \in \mathbb{R}^{B \times H_{q} \times S_{q} \times S_{kv}}
 > $$
 
+Note $dS_{masked}$ is an intermediate tensor, if we want to define it as an output
+tensor for the whole graph ($dM$), we need to explicitly mark it with an `End` operation.
+
 ## Support in Frameworks and Libraries
 
 ### cuDNN

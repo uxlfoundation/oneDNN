@@ -229,7 +229,7 @@ struct EmulationImplementation {
                                         : i * rd.getHS();
         int noffset = rd.getOffset() + advance;
         if (noffset >= ne) {
-            noffset--;
+            noffset -= ne;
             rd.setBase(rd.getBase() + 1);
         }
         rd.setOffset(noffset);

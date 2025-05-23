@@ -21,10 +21,6 @@ Examples
      -
    * -
      - CPU/GPU
-     - :ref:`doxid-performance_profiling_cpp`
-     -
-   * -
-     - CPU/GPU
      - :ref:`doxid-cross_engine_reorder_cpp`
      - :ref:`doxid-cross_engine_reorder_c`
    * -
@@ -38,6 +34,14 @@ Examples
    * -
      - CPU/GPU
      - :ref:`doxid-bnorm_u8_via_binary_postops_cpp`
+     -
+   * - Performance
+     - CPU/GPU
+     - :ref:`doxid-performance_profiling_cpp`
+     -
+   * -
+     - CPU/GPU
+     - :ref:`doxid-matmul_perf_cpp`
      -
    * - f32 inference
      - CPU/GPU

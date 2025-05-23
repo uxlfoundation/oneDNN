@@ -21,15 +21,15 @@ Examples
      -
    * -
      - CPU/GPU
-     - :ref:`doxid-performance_profiling_cpp`
-     -
-   * -
-     - CPU/GPU
      - :ref:`doxid-cross_engine_reorder_cpp`
      - :ref:`doxid-cross_engine_reorder_c`
    * -
      - CPU/GPU
      - :ref:`doxid-sycl_interop_buffer_cpp`
+     -
+   * -
+     - CPU/GPU
+     - :ref:`doxid-sycl_interop_usm_cpp`
      -
    * -
      - GPU
@@ -38,6 +38,14 @@ Examples
    * -
      - CPU/GPU
      - :ref:`doxid-bnorm_u8_via_binary_postops_cpp`
+     -
+   * - Performance
+     - CPU/GPU
+     - :ref:`doxid-performance_profiling_cpp`
+     -
+   * -
+     - CPU/GPU
+     - :ref:`doxid-matmul_perf_cpp`
      -
    * - f32 inference
      - CPU/GPU
@@ -75,21 +83,25 @@ Examples
      - CPU
      - :ref:`doxid-graph_cpu_getting_started_cpp`
      -
-   * - 
+   * -
      - CPU
      - :ref:`doxid-graph_cpu_inference_int8_cpp`
      -
-   * - 
+   * -
      - CPU/GPU
      - :ref:`doxid-graph_sycl_getting_started_cpp`
      -
-   * - 
+   * -
      - CPU
      - :ref:`doxid-graph_cpu_single_op_partition_cpp`
      -
-   * - 
+   * -
      - GPU
      - :ref:`doxid-graph_sycl_single_op_partition_cpp`
+     -
+   * -
+     - GPU
+     - :ref:`doxid-graph_gpu_opencl_getting_started_cpp`
      -
 
 

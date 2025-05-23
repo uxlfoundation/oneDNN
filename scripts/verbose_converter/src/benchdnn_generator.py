@@ -141,6 +141,15 @@ class Converter(metaclass=ConverterMeta):
         return ":".join([po.alg] + args)
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):
+        if po.alg == "select":
+            src1_arg = ".".join([po.dt, po.mask])
+            if po.tag != "any":
+                src1_arg = src1_arg + f".{po.tag}"
+            src2_arg = f"{po.src2_mask}"
+            if po.src2_tag != "any":
+                src2_arg = src2_arg + f".{po.tag}"
+            return ":".join([po.alg, src1_arg, src2_arg])
+
         if po.tag != "any":
             return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
         return f"{po.alg}:{po.dt}:{po.mask}"

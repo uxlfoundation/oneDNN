@@ -329,7 +329,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
     if (!IMPLICATION(one_of(data_type::f8_e5m2, dt_bias, dt_d)
                         || one_of(data_type::f8_e4m3, dt_bias, dt_d),
-                mayiuse(avx512_core_amx_fp16)))
+                utils::one_of(true, mayiuse(avx512_core_amx_fp16),
+                        mayiuse(avx10_2_512))))
         return status::unimplemented;
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
@@ -536,7 +537,10 @@ status_t brgemm_desc_set_attr(
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
 
-    if (brg->is_fp8 && !is_superset(brg->isa_impl, avx512_core_amx_fp16))
+    if (brg->is_fp8
+            && !utils::one_of(true,
+                    is_superset(brg->isa_impl, avx512_core_amx_fp16),
+                    is_superset(brg->isa_impl, avx10_2_512)))
         return status::unimplemented;
 
     return status::success;

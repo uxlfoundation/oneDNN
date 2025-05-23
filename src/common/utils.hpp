@@ -646,6 +646,14 @@ inline bool validate_dims(int ndims, const dims_t dims) {
     return true;
 }
 
+inline bool is_threadpool_runtime() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    return true;
+#else
+    return false;
+#endif
+}
+
 } // namespace utils
 
 int32_t fetch_and_add(int32_t *dst, int32_t val);

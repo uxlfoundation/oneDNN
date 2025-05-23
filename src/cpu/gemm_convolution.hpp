@@ -42,6 +42,8 @@ struct gemm_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_CONV(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);

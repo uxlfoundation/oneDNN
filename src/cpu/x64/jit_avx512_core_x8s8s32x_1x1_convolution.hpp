@@ -341,9 +341,8 @@ private:
             const char *bias_dw, char *dst, const float *oscales,
             const float *dst_scales, const float *dw_oscales,
             const float *dw_dst_scales, const int32_t *src_zero_point,
-            const int32_t *dst_zero_point,
-            const memory_tracking::grantor_t &scratchpad,
-            const void *post_ops_binary_rhs_arg_vec,
+            const int32_t *dst_zero_point, char *rtus_space,
+            char *dw_conv_buffer, const void *post_ops_binary_rhs_arg_vec,
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,

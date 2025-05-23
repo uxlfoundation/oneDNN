@@ -112,15 +112,26 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
 
     auto scratchpad = ctx->get_scratchpad_grantor();
+    auto rtus_space = pd()->rtus_.reduce_src_
+            ? scratchpad.get<char>(key_conv_rtus_space)
+            : nullptr;
+
     const float *oscales = adjust_oscales(scratchpad, src_scales, wei_scales);
+
+    memory_tracking::grantor_t dw_scratchpad(
+            scratchpad, memory_tracking::names::prefix_fusion);
 
     const float *dw_oscales
             = maybe_adjust_dw_oscales(scratchpad, dst_scales, dw_wei_scales);
+    if (pd()->jcp_.with_dw_conv && pd()->jcp_dw_) {
+        dw_oscales = dw_scratchpad.get<float>(key_conv_adjusted_scales);
+    }
+    auto dw_conv_buffer = dw_scratchpad.get<char>(key_fusion_inout_buffer);
 
     parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, oscales, dst_scales, dw_oscales, dw_dst_scales,
-                src_zero_point, dst_zero_point, scratchpad,
+                src_zero_point, dst_zero_point, rtus_space, dw_conv_buffer,
                 post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
@@ -133,7 +144,7 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
         char *dst, const float *oscales, const float *dst_scales,
         const float *dw_oscales, const float *dw_dst_scales,
         const int32_t *src_zero_point, const int32_t *dst_zero_point,
-        const memory_tracking::grantor_t &scratchpad,
+        char *rtus_space, char *dw_conv_buffer,
         const void *post_ops_binary_rhs_arg_vec,
         const void *post_ops_binary_rhs_arg_vec_dw) const {
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -150,10 +161,6 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
     const size_t bia_dt_size = pd()->with_bias()
             ? types::data_type_size(pd()->desc()->bias_desc.data_type)
             : 0;
-
-    auto rtus_space = pd()->rtus_.reduce_src_
-            ? scratchpad.get<char>(key_conv_rtus_space)
-            : nullptr;
 
     const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
@@ -193,8 +200,6 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
     // Begin: declare Variables needed for dw conv.
     const auto jcp_dw = pd()->jcp_dw_;
     const auto &dw_pd = pd()->dw_conv_pd_;
-    memory_tracking::grantor_t dw_scratchpad(
-            scratchpad, memory_tracking::names::prefix_fusion);
 
     size_t dw_bia_dt_size = 0;
     int32_t *compensation_dw {nullptr};
@@ -208,7 +213,6 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
         compensation_dw = (jcp_dw->signed_input)
                 ? reinterpret_cast<int32_t *>(w + offset)
                 : nullptr;
-        dw_oscales = dw_scratchpad.get<float>(key_conv_adjusted_scales);
     }
 
     char *pbuf {nullptr};
@@ -445,7 +449,6 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
 
     auto conv_dw = [&]() {
         auto jcp_dw = pd()->jcp_dw_;
-        auto dw_conv_buffer = dw_scratchpad.get<char>(key_fusion_inout_buffer);
 
         const auto dw_conv_buffer_size_
                 = (size_t)jcp_dw->kh * jcp.ow * nb_buffer * jcp.oc_block;

@@ -90,7 +90,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const int work_amount = jcp.mb * chb_work * jcp.oh;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

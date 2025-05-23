@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -209,7 +209,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -335,7 +335,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -495,7 +495,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;

@@ -162,7 +162,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         const int gen_kh = (jcp.kh - 1) * dilate_h + 1;
         const int oh_work = jcp.oh_pad;
         parallel_nd(
-                ngroups, oc_chunks, oh_work, [&](dim_t g, dim_t occ, dim_t oh) {
+                ngroups, oc_chunks, oh_work, [=](dim_t g, dim_t occ, dim_t oh) {
                     auto p = jit_conv_call_s();
 
                     const int oh_ = oh >= zp_buff_b_pad_start
@@ -196,7 +196,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
     // input data reuse and parallelize input data reorders
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer
@@ -517,7 +517,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         const int od_work = jcp.od_pad;
         const int oh_work = jcp.oh_pad;
         parallel_nd(ngroups, oc_chunks, od_work, oh_work,
-                [&](dim_t g, dim_t occ, dim_t od, dim_t oh) {
+                [=](dim_t g, dim_t occ, dim_t od, dim_t oh) {
                     auto p = jit_conv_call_s();
 
                     const int od_ = od >= zp_buff_back_pad_start
@@ -566,7 +566,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
     // input data reuse and parallelize input data reorders
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer

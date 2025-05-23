@@ -114,7 +114,6 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
         printf("%6ld ", (long)s);
     }
 
-    if (mem.get_desc().get_data_type() == dnnl_bf16) { printf("bf16\n"); }
     void *mapped_ptr_ = (void *)mem.map_data();
     size_t padlen = std::max(get_idxs_str_len(ndims)
                     - static_cast<int>(std::string("   i :").size()),
@@ -324,6 +323,7 @@ std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt) {
         case mdt::f32: ss << "f32"; break;
         case mdt::s32: ss << "s32"; break;
         case mdt::f16: ss << "f16"; break;
+        case mdt::bf16: ss << "bf16"; break;
         case mdt::s8: ss << "s8"; break;
         case mdt::u8: ss << "u8"; break;
         case mdt::s4: ss << "s4"; break;

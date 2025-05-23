@@ -45,6 +45,8 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(!utils::is_threadpool_runtime(),
+                    "Threadpool is not supported");
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(
                     expect_data_types(bf16, bf16, dnnl::impl::data_type::undef,

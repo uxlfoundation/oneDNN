@@ -249,6 +249,20 @@ supported, positioned after `MASK_INPUT`, to specify physical memory format.
 - `mul`
 - `ne`
 - `sub`
+- `select`
+
+For the `select` algorithm, the operation also requires a third conditional 
+tensor to be specified. A different format is thus used for providing the 
+arguments for both the tensors:
+
+```
+--attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]
+```
+
+The arguments for each tensor are are delimited using `.`, with the arguments 
+for the third tensor positioned after that of the second and are separated by `:`. 
+The arguments are optional for the third tensor and the data type value for 
+the third tensor is fixed at `s8`. 
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

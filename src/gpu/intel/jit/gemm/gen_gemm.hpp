@@ -67,6 +67,12 @@ struct gen_gemm_t : public gpu_gemm_t {
             int stepping = dev_info_->stepping_id();
             init_attrs();
             const auto d = desc();
+
+            VDISPATCH_GEMM(
+                    IMPLICATION(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3),
+                            arch_ >= arch_t::xe_hpc),
+                    VERBOSE_UNSUPPORTED_DT); /* temporary; pending gemmstone pulldown */
+
             CHECK(set_default_formats(false));
 
             with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -97,9 +97,14 @@ inline int read_num_threads_from_env() {
 
 #if defined(DNNL_TEST_THREADPOOL_USE_EIGEN)
 
+#define EIGEN_USE_THREADS
+
 #include <memory>
+
 #include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "unsupported/Eigen/CXX11/ThreadPool"
+#include "xla_threadpool/parallel_loop_runner.h"
 
 #if EIGEN_WORLD_VERSION + 10 * EIGEN_MAJOR_VERSION < 33
 #define STR_(x) #x
@@ -121,33 +126,25 @@ namespace testing {
 class threadpool_t : public dnnl::threadpool_interop::threadpool_iface {
 private:
     std::unique_ptr<EigenThreadPool> tp_;
+    std::unique_ptr<Eigen::ThreadPoolDevice> device_;
+    std::unique_ptr<ParallelLoopRunner> runner_;
 
 public:
     explicit threadpool_t(int num_threads = 0) {
         if (num_threads <= 0) num_threads = read_num_threads_from_env();
         tp_.reset(new EigenThreadPool(num_threads));
+        device_.reset(
+                new Eigen::ThreadPoolDevice(tp_.get(), tp_->NumThreads()));
+        runner_.reset(new ParallelLoopRunner(device_.get()));
     }
-    int get_num_threads() const override { return tp_->NumThreads(); }
-    bool get_in_parallel() const override {
-        return tp_->CurrentThreadId() != -1;
-    }
+    int get_num_threads() const override { return runner_->num_threads(); }
+    bool get_in_parallel() const override { return runner_->is_in_runner(); }
     uint64_t get_flags() const override { return ASYNCHRONOUS; }
     void parallel_for(int n, const std::function<void(int, int)> &fn) override {
-        int nthr = get_num_threads();
-        int njobs = std::min(n, nthr);
-
-        for (int i = 0; i < njobs; i++) {
-            tp_->Schedule([i, n, njobs, fn]() {
-                int start, end;
-                impl::balance211(n, njobs, i, start, end);
-                for (int j = start; j < end; j++)
-                    fn(j, n);
-            });
-        }
+        runner_->Parallelize(
+                n, [fn_ = fn, n](size_t task_index) { fn_(task_index, n); });
     }
-    void wait() override {
-        // Nothing to do, runtime is synchronous
-    }
+    void wait() override { BlockUntilReady(runner_->done_event()); }
 };
 
 } // namespace testing

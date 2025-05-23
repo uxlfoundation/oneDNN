@@ -286,10 +286,12 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
     auto task_primitive_kind = itt::primitive_task_get_current_kind();
     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
 #endif
+#if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
     if (nthr == 1) {
         f(0, 1);
         return;
     }
+#endif
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 #pragma omp parallel num_threads(nthr)
     {
@@ -330,11 +332,7 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         }
         threadpool_utils::activate_threadpool(tp);
     } else {
-        bool async = tp->get_flags()
-                & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
-        counting_barrier_t b;
-        if (async) b.init(nthr);
-        tp->parallel_for(nthr, [&, tp](int ithr, int nthr) {
+        tp->parallel_for(nthr, [=, f_ = std::move(f)](int ithr, int nthr) {
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
             if (!is_master) {
                 threadpool_utils::activate_threadpool(tp);
@@ -342,16 +340,14 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
                 if (itt_enable) itt::primitive_task_start(task_primitive_kind);
 #endif
             }
-            f(ithr, nthr);
+            f_(ithr, nthr);
             if (!is_master) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
                 if (itt_enable) itt::primitive_task_end();
 #endif
                 threadpool_utils::deactivate_threadpool();
             }
-            if (async) b.notify();
         });
-        if (async) b.wait();
     }
 #endif
 #endif
@@ -540,24 +536,26 @@ static inline void parallel_nd_ext(
     const dim_t work_amount = D0;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd_ext(ithr, nthr, D0, f); });
+        parallel(nthr, [f_ = std::move(f), D0](int ithr, int nthr) {
+            for_nd_ext(ithr, nthr, D0, f_);
+        });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1,
         const std::function<void(int, int, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd_ext(ithr, nthr, D0, D1, f); });
+        parallel(nthr, [f_ = std::move(f), D0, D1](int ithr, int nthr) {
+            for_nd_ext(ithr, nthr, D0, D1, f_);
+        });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
         const std::function<void(int, int, dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, f);
+        parallel(nthr, [f_ = std::move(f), D0, D1, D2](int ithr, int nthr) {
+            for_nd_ext(ithr, nthr, D0, D1, D2, f_);
         });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
@@ -566,8 +564,8 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, f);
+        parallel(nthr, [f_ = std::move(f), D0, D1, D2, D3](int ithr, int nthr) {
+            for_nd_ext(ithr, nthr, D0, D1, D2, D3, f_);
         });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
@@ -577,9 +575,10 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, f);
-        });
+        parallel(nthr,
+                [f_ = std::move(f), D0, D1, D2, D3, D4](int ithr, int nthr) {
+                    for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, f_);
+                });
 }
 static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
         dim_t D3, dim_t D4, dim_t D5,
@@ -588,40 +587,46 @@ static inline void parallel_nd_ext(int nthr, dim_t D0, dim_t D1, dim_t D2,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4 * D5;
     nthr = adjust_num_threads(nthr, work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, D5, f);
-        });
+        parallel(nthr,
+                [f_ = std::move(f), D0, D1, D2, D3, D4, D5](
+                        int ithr, int nthr) {
+                    for_nd_ext(ithr, nthr, D0, D1, D2, D3, D4, D5, f_);
+                });
 }
 
 /* parallel_nd section */
 static inline void parallel_nd(dim_t D0, const std::function<void(dim_t)> &f) {
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), D0);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, f); });
+        parallel(nthr, [f_ = std::move(f), D0](int ithr, int nthr) {
+            for_nd(ithr, nthr, D0, f_);
+        });
 }
 static inline void parallel_nd(
         dim_t D0, dim_t D1, const std::function<void(dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, D1, f); });
+        parallel(nthr, [f_ = std::move(f), D0, D1](int ithr, int nthr) {
+            for_nd(ithr, nthr, D0, D1, f_);
+        });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2,
         const std::function<void(dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr,
-                [&](int ithr, int nthr) { for_nd(ithr, nthr, D0, D1, D2, f); });
+        parallel(nthr, [f_ = std::move(f), D0, D1, D2](int ithr, int nthr) {
+            for_nd(ithr, nthr, D0, D1, D2, f_);
+        });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3,
         const std::function<void(dim_t, dim_t, dim_t, dim_t)> &f) {
     const dim_t work_amount = D0 * D1 * D2 * D3;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, f);
+        parallel(nthr, [f_ = std::move(f), D0, D1, D2, D3](int ithr, int nthr) {
+            for_nd(ithr, nthr, D0, D1, D2, D3, f_);
         });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
@@ -629,9 +634,10 @@ static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, D4, f);
-        });
+        parallel(nthr,
+                [f_ = std::move(f), D0, D1, D2, D3, D4](int ithr, int nthr) {
+                    for_nd(ithr, nthr, D0, D1, D2, D3, D4, f_);
+                });
 }
 static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
         dim_t D5,
@@ -640,9 +646,11 @@ static inline void parallel_nd(dim_t D0, dim_t D1, dim_t D2, dim_t D3, dim_t D4,
     const dim_t work_amount = D0 * D1 * D2 * D3 * D4 * D5;
     int nthr = adjust_num_threads(dnnl_get_current_num_threads(), work_amount);
     if (nthr)
-        parallel(nthr, [&](int ithr, int nthr) {
-            for_nd(ithr, nthr, D0, D1, D2, D3, D4, D5, f);
-        });
+        parallel(nthr,
+                [f_ = std::move(f), D0, D1, D2, D3, D4, D5](
+                        int ithr, int nthr) {
+                    for_nd(ithr, nthr, D0, D1, D2, D3, D4, D5, f_);
+                });
 }
 
 } // namespace impl

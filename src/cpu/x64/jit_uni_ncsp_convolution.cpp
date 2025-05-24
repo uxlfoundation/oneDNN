@@ -215,6 +215,10 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init(engine_t *engine) {
     using namespace data_type;
     using namespace utils;
 
+    // TODO: debug me and remove me.
+    VDISPATCH_CONV(
+            !utils::is_threadpool_runtime(), "Threadpool is not supported");
+
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),

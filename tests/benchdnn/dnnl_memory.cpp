@@ -1018,6 +1018,14 @@ static int check_zero_padding_impl(
     std::atomic<int> ok(true);
 
     for (int dim_m_idx = 0; dim_m_idx < ndims; ++dim_m_idx) {
+        if (dims[dim_m_idx] != pdims[dim_m_idx]) {
+            BENCHDNN_PRINT(
+                    8, "[CHECK_ZERO_PAD]: Arg:%d\n", exec_arg2data_kind(arg));
+            break;
+        }
+    }
+
+    for (int dim_m_idx = 0; dim_m_idx < ndims; ++dim_m_idx) {
         if (dims[dim_m_idx] == pdims[dim_m_idx]) continue;
 
         auto dim_l = product(pdims, pdims + dim_m_idx);

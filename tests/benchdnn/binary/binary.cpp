@@ -55,7 +55,7 @@ int fill_mem(
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
-    int min_val = MAX2(-8, static_cast<int>(lowest_dt(mem_dt.dt())));
+    int min_val = static_cast<int>(MAX2(-8.f, lowest_dt(mem_dt.dt())));
     // Tenrary op supports a third input which can't be negative so far.
     if (input_idx == 2) min_val = 0;
 

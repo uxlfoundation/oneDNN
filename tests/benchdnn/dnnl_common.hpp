@@ -612,6 +612,8 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
     // and ref CPU failures.
     if (prim_ref) {
         BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
+    } else {
+        BENCHDNN_PRINT(8, "%s\n", "[NAIVE_REF]: Start");
     }
 
     TIME_REF(compute_ref(prb, dir, ref_args, prim_ref));

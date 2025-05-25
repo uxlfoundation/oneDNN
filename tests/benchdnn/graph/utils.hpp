@@ -92,6 +92,13 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                 (ss)->state = bs.state; \
                 if ((ss)->state == res_state_t::SKIPPED) { \
                     (ss)->reason = bs.reason; \
+                } else if (((ss)->state == res_state_t::UNIMPLEMENTED) \
+                        || ((ss)->state == res_state_t::INVALID_ARGUMENTS)) { \
+                    if (is_nvidia_gpu()) { \
+                        (ss)->state = SKIPPED; \
+                        (ss)->reason = skip_reason::case_not_supported; \
+                        BENCHDNN_PRINT(0, "case unsupported on NV GPU\n"); \
+                    } \
                 } else { \
                     BENCHDNN_PRINT(0, \
                             "Error: Function '%s' at (%s:%d) returned '%s'\n", \

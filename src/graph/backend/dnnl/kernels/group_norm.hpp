@@ -93,6 +93,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(group_norm_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(group_norm_fwd_t)
+    KERNEL_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

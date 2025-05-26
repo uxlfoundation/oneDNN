@@ -99,6 +99,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(reorder_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(reorder_t)
+    KERNEL_RESET_ENGINE
 };
 
 using float_reorder = reorder_t</* quantized */ false>;

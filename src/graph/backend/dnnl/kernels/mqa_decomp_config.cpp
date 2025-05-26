@@ -467,6 +467,25 @@ dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
     return attr;
 }
 
+#define DECLARE_RESET_ENGINE(primitive_name, primitive_type) \
+    { \
+        const auto desc_t = primitive_name.get_primitive_desc()->impl(); \
+        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
+        primitive_type::primitive_desc new_pd(&new_pd_t); \
+        primitive_name = primitive_type(new_pd); \
+    }
+
+impl::status_t mqa_decomp_config_t::reset_engine(const dnnl::engine &p_engine) {
+    DECLARE_RESET_ENGINE(sub_mm1_prim, matmul);
+    DECLARE_RESET_ENGINE(sub_mm2_prim, matmul);
+    DECLARE_RESET_ENGINE(sub_softmax_prim, softmax_forward);
+    sub_reorder0.reset_engine(p_engine);
+    sub_reorder1.reset_engine(p_engine);
+    sub_reorder2.reset_engine(p_engine);
+    sub_reorder3.reset_engine(p_engine);
+    return dnnl_success;
+}
+
 template status_t
 mqa_decomp_config_t::construct_params<false, dnnl::memory::data_type::f32>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,

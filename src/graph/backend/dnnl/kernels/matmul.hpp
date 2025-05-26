@@ -99,6 +99,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(matmul_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(matmul_t)
+    KERNEL_RESET_ENGINE
 };
 
 using float_matmul = matmul_t</* quantized */ false>;

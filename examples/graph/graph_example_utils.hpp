@@ -577,7 +577,7 @@ public:
         is_free_ptr_[ptr] = true;
     }
     void clear() {
-        dnnl::graph::set_compiled_partition_cache_capacity(0);
+        // dnnl::graph::set_compiled_partition_cache_capacity(0);
         map_size_ptr_.clear();
         is_free_ptr_.clear();
     }

@@ -68,6 +68,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(dummy_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(dummy_kernel_t)
+    KERNEL_RESET_ENGINE
 };
 
 kernel_ptr dummy_kernel_creator();

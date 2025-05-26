@@ -91,6 +91,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(shuffle_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(shuffle_fwd_t)
+    KERNEL_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

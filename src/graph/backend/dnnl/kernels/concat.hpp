@@ -91,6 +91,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(concat_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(concat_t)
+    KERNEL_RESET_ENGINE
 };
 
 using float_concat = concat_t</* quantized */ false>;

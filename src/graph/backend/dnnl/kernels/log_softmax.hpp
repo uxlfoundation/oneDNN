@@ -94,6 +94,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(logsoftmax_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(logsoftmax_fwd_t)
+    KERNEL_RESET_ENGINE
 };
 
 #if BUILD_TRAINING
@@ -154,6 +155,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(logsoftmax_bwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(logsoftmax_bwd_t)
+    KERNEL_RESET_ENGINE
 };
 #endif
 

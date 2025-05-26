@@ -40,8 +40,8 @@ bcast_set_t get_all_strategies_supported_by_injector() {
             broadcasting_strategy_t::per_mb,
             broadcasting_strategy_t::per_mb_spatial,
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
-            broadcasting_strategy_t::per_spatial,
-            broadcasting_strategy_t::batch, broadcasting_strategy_t::spatial,
+            broadcasting_strategy_t::per_hw, broadcasting_strategy_t::batch,
+            broadcasting_strategy_t::spatial,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -469,7 +469,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
                     broadcasting_strategy_t::per_mb_spatial,
                     broadcasting_strategy_t::per_mb_w,
                     broadcasting_strategy_t::per_mb,
-                    broadcasting_strategy_t::per_spatial,
+                    broadcasting_strategy_t::per_hw,
                     broadcasting_strategy_t::batch);
     const bool should_preserve_w_offset_conversion_regs = use_offset_conversions
             && rhs_broadcasting_strategy == broadcasting_strategy_t::per_w;
@@ -717,8 +717,8 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
 
             return host_->ptr_b[rhs_addr_reg];
         }
-        case broadcasting_strategy_t::per_spatial: {
-            append_spatial_offset(rhs_arg_params.vmm_idx_to_out_addr,
+        case broadcasting_strategy_t::per_hw: {
+            append_hw_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
@@ -1750,7 +1750,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_partial(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_spatial_offset(
+void jit_uni_binary_injector_t<isa, Vmm>::append_hw_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -1781,16 +1781,15 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_spatial_offset(
             const auto r8 = host_->r8;
 
             const injector_utils::conditional_register_preserve_guard_t
-                    register_guard {is_out_reg
-                                    ? utils::one_of(
-                                              it_out_reg->second, rax, rdx, r8)
-                                    : false,
+                    register_guard {is_out_reg ? utils::one_of(
+                                            it_out_reg->second, rax, rdx, r8)
+                                               : false,
                             host_,
                             {is_out_reg ? it_out_reg->second : Xbyak::Reg64()}};
 
             switch (layout) {
                 case injector_utils::layout_t::ncsp:
-                    calculate_spatial_ncsp_base(strides, tmp_reg);
+                    calculate_hw_ncsp_base(strides, tmp_reg);
                     break;
                 case injector_utils::layout_t::c_blocked:
                     assert(!"Unimplemented");
@@ -1798,7 +1797,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_spatial_offset(
                 case injector_utils::layout_t::nspc:
                     assert(!"Unimplemented");
                     break;
-                case injector_utils::layout_t::cspn: 
+                case injector_utils::layout_t::cspn:
                     assert(!"Unimplemented");
                     break;
                 default: assert(!"Unknown layout");
@@ -1820,7 +1819,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_spatial_offset(
         if (it_off_val != vmm_idx_to_out_elem_off_val.end()) {
             switch (layout) {
                 case injector_utils::layout_t::ncsp:
-                    calculate_spatial_ncsp_partial(strides, it_off_val->second,
+                    calculate_hw_ncsp_partial(strides, it_off_val->second,
                             tmp_reg, elem_size_bytes);
                     break;
                 case injector_utils::layout_t::c_blocked:
@@ -1839,10 +1838,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_spatial_offset(
     }
 }
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_spatial_ncsp_partial(
+void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
-    // offset = nCDHW + cDHW + dHW + hW + w (for 5D)
     // offset = nCHW + cHW + hW + w (for 4D)
     // per_spatial_off = offset % HW
 
@@ -1862,12 +1860,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_spatial_ncsp_partial(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_spatial_ncsp_base(
+void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
-    // offset = nCDHW + cDHW + dHW + hW + w (for 5D)
     // offset = nCHW + cHW + hW + w (for 4D)
     // per_spatial_off = hW + w
-    // per_spatial_off = offset % HW 
+    // per_spatial_off = offset % HW
 
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
@@ -1877,7 +1874,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_spatial_ncsp_base(
 
     host_->mov(rax, tmp_reg);
 
-    dim_t divisor =  strides[ndims - 3]; // HW 
+    dim_t divisor = strides[ndims - 3]; // HW
     host_->mov(tmp_reg, divisor);
     host_->xor_(rdx, rdx);
     host_->div(tmp_reg); // rdx = offset % HW

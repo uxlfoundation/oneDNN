@@ -761,7 +761,7 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         // Divide number of threads by batch size and limiting it by a number
         // of outer_dims nelems to parallel over it when needed.
         parallel_nd(
-                batch, thr_per_nelems_group, [&](dim_t b, dim_t nelems_group) {
+                batch, thr_per_nelems_group, [=](dim_t b, dim_t nelems_group) {
                     dim_t start = 0, end = 0;
                     balance211(nelems0_simd + has_tail, thr_per_nelems_group,
                             nelems_group, start, end);
@@ -808,7 +808,7 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         // Compute strategy:
         // Compute number of vectors, divide it equally between all threads.
         // Last one will also handle a tail if present.
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(nelems0_simd + has_tail, nthr, ithr, start, end);
             if (start >= end) return;
@@ -865,7 +865,7 @@ void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
     // threads. Last one will also handle a tail if present.
     const dim_t nthr = nstl::min(
             nelems0_simd + has_tail, (dim_t)dnnl_get_current_num_threads());
-    parallel_nd(MB, nthr, [&](dim_t b, dim_t ithr) {
+    parallel_nd(MB, nthr, [=](dim_t b, dim_t ithr) {
         dim_t start = 0, end = 0;
         balance211(nelems0_simd + has_tail, nthr, ithr, start, end);
         if (start >= end) return;
@@ -954,7 +954,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             }
         };
 
-        parallel_nd(MB, C_blocks, [&](dim_t mb, dim_t C_blk) {
+        parallel_nd(MB, C_blocks, [=](dim_t mb, dim_t C_blk) {
             jit_binary_call_s p;
             p.spat_offt_count = SP * simd_w * dst_type_size;
             const dim_t off = mb * nelems_slice_src0 + C_blk * SP * simd_w;
@@ -969,7 +969,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             kernel_blocked(&p, C_blk);
         });
     } else if (op_type == op_t::n_spatial_c) {
-        const auto src1_off = [&](dim_t mb, dim_t sp, dim_t off) -> dim_t {
+        const auto src1_off = [=](dim_t mb, dim_t sp, dim_t off) -> dim_t {
             switch (bcast_type) {
                 case bcast_t::per_batch: return sp * C;
                 case bcast_t::none: return off;
@@ -979,7 +979,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
         // Compute strategy:
         // Each line of channels is individual, parallel over MB and spatial.
-        parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+        parallel_nd(MB, SP, [=](dim_t mb, dim_t sp) {
             jit_binary_call_s p;
             p.spat_offt_count = C * dst_type_size;
             const auto off = mb * nelems_slice_src0 + sp * C;
@@ -994,7 +994,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             (*kernel)(&p);
         });
     } else if (op_type == op_t::n_c_spatial) {
-        const auto src1_off = [&](dim_t mb, dim_t c, dim_t off) -> dim_t {
+        const auto src1_off = [=](dim_t mb, dim_t c, dim_t off) -> dim_t {
             switch (bcast_type) {
                 case bcast_t::scalar: return mb * nelems_slice_src1;
                 case bcast_t::per_batch: return c * SP;
@@ -1005,7 +1005,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
         // Compute strategy:
         // Each line of spatial is individual, parallel over MB and C.
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
             jit_binary_call_s p;
             p.spat_offt_count = SP * dst_type_size;
             const auto off = mb * nelems_slice_src0 + c * SP;
@@ -1084,7 +1084,7 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
                                                      : kernel_blocked_no_tail;
 
         parallel_nd(MB, C_blocks, N, SP_no_bcast,
-                [&](dim_t mb, dim_t C_blk, dim_t n, dim_t sp) {
+                [=](dim_t mb, dim_t C_blk, dim_t n, dim_t sp) {
                     jit_binary_call_s p;
                     p.spat_offt_count = simd_w * dst_type_size;
                     const auto off = mb * nelems_slice_src0
@@ -1109,7 +1109,7 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
         // Each line of channels is individual, parallel over MB and spatial
         // (broadcasted and not broadcasted spatial dims separately).
 
-        parallel_nd(MB, N, SP_no_bcast, [&](dim_t mb, dim_t n, dim_t sp) {
+        parallel_nd(MB, N, SP_no_bcast, [=](dim_t mb, dim_t n, dim_t sp) {
             jit_binary_call_s p;
             p.spat_offt_count = C * dst_type_size;
             const auto off
@@ -1132,7 +1132,7 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
         // without not broadcasted dims. Use a kernel which broadcasts c_i
         // value into a vector register.
 
-        parallel_nd(MB, C, N, [&](dim_t mb, dim_t c, dim_t n) {
+        parallel_nd(MB, C, N, [=](dim_t mb, dim_t c, dim_t n) {
             jit_binary_call_s p;
             p.spat_offt_count = SP_no_bcast * dst_type_size;
             const auto off = mb * nelems_slice_src0 + c * N * SP_no_bcast

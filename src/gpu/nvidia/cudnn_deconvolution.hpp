@@ -429,6 +429,12 @@ struct cudnn_deconvolution_bwd_weights_t : public gpu::primitive_t {
                     diff_dst_md_ = *conv_pd_->src_md();
                 if (diff_bias_md_.format_kind == format_kind::any)
                     CHECK(memory_desc_init_by_tag(diff_bias_md_, x));
+                if (with_bias()) {
+                    // cudnnConvolutionBackwardBias does not support mixed types
+                    if (diff_bias_md_.data_type != diff_dst_md_.data_type) {
+                        return status::unimplemented;
+                    }
+                }
                 init_scratchpad();
                 return status::success;
             }

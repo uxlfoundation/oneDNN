@@ -358,6 +358,7 @@ The proposed definition for the Dropout operation is as follows:
 | Input                         | `offset`          | Offset for the Philox random number generator used in Dropout.                 |
 | Attribute                     | `p`               | The dropout probability (e.g., 0.1 for 10% dropout), with values in the range [0, 1). |
 | Output                        | `dst`             | The input tensor with randomly dropped elements scaled by the inverse of the keep probability (`1 - p`). |
+| Output                        | `mask`            | The optional mask output tensor.                                               |
 
 The backward pass for Dropout is mathematically identical to the forward pass.
 The only difference lies in the interpretation of the input (`src` in the
@@ -391,7 +392,7 @@ The proposed definition for the RNG operation is as follows:
 | Attribute                     | `p`               | The probability ratio, with values in the range [0, 1).                         |
 | Output                        | `dst`             | A tensor of random numbers with the same shape as `src`.                        |
 
-With RNG, the Dropout functionality can be implemented using a combination of
+The RNG operation supports only Philox random number generator. With RNG, the Dropout functionality can be implemented using a combination of
 RNG, Multiply, and Multiply operations.
 
 ![Dropout using RNG and Multiply](images/dropout.png)

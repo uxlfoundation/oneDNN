@@ -334,7 +334,7 @@ INSTANTIATE_TEST_SUITE_P(SupportedStrategies, bcast_strategy_test_t,
                         impl::broadcasting_strategy_t::spatial),
                 std::make_tuple(memory::dims {2, 2, 2, 2},
                         memory::dims {1, 1, 2, 2},
-                        impl::broadcasting_strategy_t::per_spatial),
+                        impl::broadcasting_strategy_t::per_hw),
                 // 3d cases
                 std::make_tuple(memory::dims {2, 2, 2}, memory::dims {1, 1, 1},
                         impl::broadcasting_strategy_t::scalar),

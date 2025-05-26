@@ -57,6 +57,11 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     }
     attr_info_ = attr_info_t::create(attributes_with_po);
 
+    const auto &po = attributes_with_po->post_ops_;
+    for (auto i = 0; i < po.len(); ++i)
+        VDISPATCH_GEMM(!po.entry_[i].is_binary_with_ternary_op(),
+                VERBOSE_UNSUPPORTED_POSTOP);
+
     VDISPATCH_GEMM(d->sum_ab == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
             "bias reduction");
 

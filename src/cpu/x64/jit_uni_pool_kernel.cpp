@@ -131,15 +131,15 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     // 4 bytes. jit_io_helper_t is not used for processing indices of type u8.
     if (jpp.ind_dt == data_type::s32) dtypes.insert(data_type::f32);
     if (jpp.needs_f32_accum_for_bf16) dtypes.insert(data_type::f32);
-    
+
     typename io_mdt_helper::saturation_map_t saturation_confs;
     if (dtypes.count(data_type::u8)) {
-        saturation_confs[data_type::u8] = io::io_saturation_conf_t(0, 1, tmp_gpr);
+        saturation_confs[data_type::u8]
+                = io::io_saturation_conf_t(0, 1, tmp_gpr);
     }
 
-    io_ = io_mdt_helper(
-        this, jpp.isa, dtypes, {}, io_tail_conf, io_bf16_conf,
-        saturation_confs, utils::nullopt, io_fp8_conf);
+    io_ = io_mdt_helper(this, jpp.isa, dtypes, {}, io_tail_conf, io_bf16_conf,
+            saturation_confs, utils::nullopt, io_fp8_conf);
 }
 
 static status_t set_binary_postops_formats(
@@ -222,6 +222,10 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
                                  : pd.src_desc.data_type;
     jpp.dst_dt = jpp.is_backward ? pd.diff_dst_desc.data_type
                                  : pd.dst_desc.data_type;
+
+    if (jpp.src_dt == data_type::u8 && jpp.dst_dt == data_type::u8) {
+        return status::unimplemented;
+    }
 
     jpp.tmp_md = memory_desc_t();
 

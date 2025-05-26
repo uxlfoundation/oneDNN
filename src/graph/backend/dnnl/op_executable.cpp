@@ -1798,7 +1798,7 @@ void genindex_executable_t ::execute(const stream &stream,
     auto output_ptr = static_cast<int32_t *>(output.get_data_handle());
 
     stream.get()->before_exec_hook();
-    dnnl::impl::parallel_nd(nelems_, [&](dim_t i) {
+    dnnl::impl::parallel_nd(nelems_, [=](dim_t i) {
         dims_t input_dims; // decomposition for physical offsets
         dnnl::impl::utils::l_dims_by_l_offset(
                 input_dims, i, output_dims_, ndims_);

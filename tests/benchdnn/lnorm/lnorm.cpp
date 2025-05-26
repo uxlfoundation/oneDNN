@@ -455,6 +455,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             {prb->dt[0], prb->dt[1], prb->ss_dt}, prb->dir, res);
     skip_unimplemented_sum_po(
             prb->attr, res, dnnl_layer_normalization, prb->dt[0]);
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_layer_normalization);
 
     if (is_gpu() && prb->attr.post_ops.len() != 0) {

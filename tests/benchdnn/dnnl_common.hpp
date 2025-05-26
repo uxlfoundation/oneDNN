@@ -262,6 +262,7 @@ void skip_unimplemented_data_type(
 void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
         dnnl_primitive_kind_t pkind, dnnl_data_type_t src_dt,
         dnnl_data_type_t dst_dt = dnnl_data_type_undef);
+void skip_unimplemented_binary_po(const attr_t &attr, res_t *res);
 void skip_unimplemented_prelu_po(
         const attr_t &attr, res_t *res, dnnl_primitive_kind_t pkind);
 void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,

@@ -803,6 +803,20 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
     }
 }
 
+void skip_unimplemented_binary_po(const attr_t &attr, res_t *res) {
+    const auto &po = attr.post_ops;
+    if (po.is_def()) return;
+
+    if (is_gpu()) {
+        const int select_idx = po.find(attr_t::post_ops_t::kind_t::SELECT);
+        if (select_idx != -1) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+    }
+}
+
 void skip_unimplemented_prelu_po(
         const attr_t &attr, res_t *res, dnnl_primitive_kind_t pkind) {
     const auto &po = attr.post_ops;

@@ -208,6 +208,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     const auto ddt = prb->ddt;
     skip_unimplemented_data_type({sdt, ddt}, prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_reorder, sdt);
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_reorder);
 
     const bool s32_src_ok = IMPLICATION(sdt == dnnl_s32,

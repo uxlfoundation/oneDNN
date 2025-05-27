@@ -344,7 +344,7 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
             const auto bd_block_eff = bd_block_disb * brgemm_microkernel_eff;
 
             float block_foot_print = static_cast<float>(brg->typesize_A)
-                    * (bd_block * brg->reduce_dim);
+                    * bd_block * brg->reduce_dim;
             if (block_foot_print <= static_cast<float>(L1)
                     && (bd_block_eff > best_bd_block_eff)) {
                 brg->bd_block = bd_block;

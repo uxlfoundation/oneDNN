@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -583,7 +583,9 @@ void jit_avx512_dw_conv_fwd_kernel_bf16::generate() {
         mov(reg_tail_32, zmm_16b_mask >> oc_tail_shift);
         kmovw(k_oc_tail_mask, reg_tail_32);
         if (need_extended_mask) {
-            auto zmm_32b_mask = (1 << (oc_tail + jcp.ch_block)) - 1;
+            // Computing the mask the other way around overflows int32_t for
+            // `oc_tail + jcp.ch_block == 31`.
+            auto zmm_32b_mask = INT_MAX >> (31 - (oc_tail + jcp.ch_block));
             mov(reg_tail_32, zmm_32b_mask);
             kmovd(k_ch_tail_mask_extended, reg_tail_32);
         }

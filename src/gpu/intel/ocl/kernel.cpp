@@ -233,12 +233,22 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+        bool save_event = true;
+#else
         bool save_event = save_events_ || stream.is_profiling_enabled();
+#endif
+
         cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
                 range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
                 nullptr, save_event ? &event.unwrap() : nullptr);
         OCL_CHECK(err);
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+        ocl_stream->register_async_tracker(event);
+#endif
     }
 
     if (stream.is_profiling_enabled()) {

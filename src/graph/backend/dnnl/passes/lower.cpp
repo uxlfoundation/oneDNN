@@ -698,6 +698,40 @@ static status_t select_handler(
     return status::success;
 }
 
+static status_t matmul_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    /// Currently matmul primitive doesn't support data type combination
+    /// f32+xf16->xf16:
+    /// 0:UNIMPLEMENTED (0 ms) __REPRO: --matmul --engine=gpu
+    /// --allow-enum-tags-only=false --dt=f32:bf16:bf16 --stag=abcd --wtag=abcd
+    /// --dtag=abcd --attr-scratchpad=user 32x16x384x384:32x16x384x64
+    /// Handle it by inserting reorder for the f32 input.
+    const auto &src = op->get_input_value(0)->get_logical_tensor();
+    const auto &wei = op->get_input_value(1)->get_logical_tensor();
+
+    auto new_matmul_op = std::make_shared<op_t>(op_kind::dnnl_matmul);
+    new_matmul_op->merge_attributes(op->get_attributes());
+    rewriter.replace_op(op, new_matmul_op);
+    insert_empty_scratchpad(new_matmul_op);
+
+    if (src.data_type == wei.data_type) { return status::success; }
+
+    size_t insert_reorder_idx;
+    data_type_t target_dtype;
+    if (src.data_type == graph::data_type::f32) {
+        insert_reorder_idx = 0; // insert typecast before src
+        target_dtype = wei.data_type;
+    } else {
+        insert_reorder_idx = 1; // insert typecast before wei
+        target_dtype = src.data_type;
+    }
+    auto reorder_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+    reorder_op->set_attr<bool>(op_attr::change_layout, false);
+    rewriter.insert_op_before(reorder_op, new_matmul_op, insert_reorder_idx);
+    reorder_op->get_output_value(0)->set_data_type(target_dtype);
+    return status::success;
+}
+
 static status_t gen_index_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_gen_index);
@@ -720,7 +754,7 @@ static status_t gen_index_handler(
 
 static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         // matmul
-        ITEM(MatMul, common_handler<op_kind::kDnnl_matmul>),
+        ITEM(MatMul, matmul_handler),
         // conv
         ITEM(Convolution, common_handler<op_kind::kDnnl_convolution>),
         ITEM(ConvolutionBackwardData,

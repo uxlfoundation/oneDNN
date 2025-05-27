@@ -161,7 +161,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         const int gen_kh = (jcp.kh - 1) * dilate_h + 1;
         const int oh_work = jcp.oh_pad;
         parallel_nd(
-                ngroups, oc_chunks, oh_work, [&](dim_t g, dim_t occ, dim_t oh) {
+                ngroups, oc_chunks, oh_work, [=](dim_t g, dim_t occ, dim_t oh) {
                     auto p = jit_conv_args_t();
 
                     const int oh_ = oh >= zp_buff_b_pad_start
@@ -195,7 +195,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
     // input data reuse and parallelize input data reorders
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer
@@ -530,7 +530,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         const int od_work = jcp.od_pad;
         const int oh_work = jcp.oh_pad;
         parallel_nd(ngroups, oc_chunks, od_work, oh_work,
-                [&](dim_t g, dim_t occ, dim_t od, dim_t oh) {
+                [=](dim_t g, dim_t occ, dim_t od, dim_t oh) {
                     auto p = jit_conv_args_t();
 
                     const int od_ = od >= zp_buff_back_pad_start
@@ -579,7 +579,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
     // input data reuse and parallelize input data reorders
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer
@@ -881,7 +881,7 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
     const bool is_1d = jcp.ndims == 3;
     const bool is_3d = jcp.ndims == 5;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -2180,7 +2180,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
             key_conv_amx_tilecfg);
 
     const auto &jcp = pd()->jcp_;
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -2213,7 +2213,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(nthr_, [&](const int ithr, const int nthr) {
+        parallel(nthr_, [=](const int ithr, const int nthr) {
             assert(nthr_ == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
@@ -2221,25 +2221,28 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(nthr_, [&](const int ithr, const int nthr) {
+        parallel(nthr_, [=](const int ithr, const int nthr) {
             assert(nthr_ == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             store_in_vnni_format(&thread_info);
         });
     }
 
-    if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
-            && jcp.bia_dt != data_type::bf16) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
-        auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
+                && jcp.bia_dt != data_type::bf16) {
+            auto diff_bias
+                    = ctx.get_scratchpad_grantor().template get<const float>(
+                            key_conv_padded_bias);
+            auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 } // namespace x64

@@ -79,7 +79,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
             = static_cast<dim_t>(jcp.mb) * nb_groups * oc_chunks * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -180,7 +180,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
             * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -306,7 +306,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
             * jcp.od * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -429,7 +429,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning
@@ -597,7 +597,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning
@@ -1965,7 +1965,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::execute_backward_weights(
     prepare_scratchpad_data(ctx);
 
     const auto &jcp = pd()->jcp_;
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -1992,25 +1992,28 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(nthr_, [&](const int ithr, const int nthr) {
+        parallel(nthr_, [=](const int ithr, const int nthr) {
             assert(nthr_ == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
         });
     }
 
-    if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
-            && jcp.bia_dt != data_type::bf16) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
-        auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (pd()->with_bias() && (jcp.oc_without_padding % jcp.oc_block != 0)
+                && jcp.bia_dt != data_type::bf16) {
+            auto diff_bias
+                    = ctx.get_scratchpad_grantor().template get<const float>(
+                            key_conv_padded_bias);
+            auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 } // namespace x64

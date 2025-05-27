@@ -1398,7 +1398,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -1520,6 +1520,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
 
     if (!jcp.req_cal_comp_pad) return status::success;
 
+    // TODO: taking them by copy might affect the performance.
     vector<int> adjusted_k;
     vector<int> adjusted_k_l;
     int vpad_k = 0;
@@ -1555,7 +1556,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -1798,7 +1799,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
         const auto out_ocb_offs
                 = nb_rd * jcp.oc_block * wei_dsz * jcp.vnni_block;
 
-        parallel_nd(jcp.ngroups, jcp.nb_oc, [&](dim_t g, dim_t ocb) {
+        parallel_nd(jcp.ngroups, jcp.nb_oc, [=](dim_t g, dim_t ocb) {
             auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
             const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
             const auto out_ocb = g * jcp.nb_oc + ocb;
@@ -1814,7 +1815,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
                 = nb_rd * jcp.oc_block * wei_dsz * jcp.vnni_block;
 
         parallel_nd(
-                jcp.ngroups, jcp.nb_oc, KH, [&](dim_t g, dim_t ocb, dim_t kh) {
+                jcp.ngroups, jcp.nb_oc, KH, [=](dim_t g, dim_t ocb, dim_t kh) {
                     auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
                     const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
                     const auto out_ocb = g * jcp.nb_oc + ocb;

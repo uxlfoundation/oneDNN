@@ -83,8 +83,7 @@ public:
     // 2. only support fp16 data type
     // 3. only support 4-dims tensor
     status_t initial_check(const std::shared_ptr<subgraph_t> &sg,
-            const std::vector<logical_tensor_t> &inputs,
-            bool v1_kernel = false);
+            const std::vector<logical_tensor_t> &inputs);
 
     // Initialize parameters and primitive.
     status_t init(std::shared_ptr<subgraph_t> &sg, const dnnl::engine &p_engine,

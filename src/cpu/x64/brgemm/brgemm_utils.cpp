@@ -717,8 +717,8 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
                 / (((adj_ld_block2) + bd_block) * max_bcast_block);
         const auto bd_block_eff = bd_block_disb * brgemm_microkernel_eff;
 
-        float block_foot_print = static_cast<float>(brg->typesize_A)
-                * (bd_block * brg->reduce_dim);
+        float block_foot_print = static_cast<float>(brg->typesize_A) * bd_block
+                * brg->reduce_dim;
         if (block_foot_print <= static_cast<float>(L1)
                 && (bd_block_eff > best_bd_block_eff)) {
             brg->bd_block = bd_block;

@@ -385,7 +385,9 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
         BENCHDNN_PRINT(
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");
         sycl::ext::oneapi::experimental::command_graph graph {
-                queue.get_context(), queue.get_device()};
+                queue.get_context(), queue.get_device(),
+                {sycl::ext::oneapi::experimental::property::graph::
+                                assume_buffer_outlives_graph {}}};
 
         graph.begin_recording(queue);
         status = exec_func(stream, dnnl_args);

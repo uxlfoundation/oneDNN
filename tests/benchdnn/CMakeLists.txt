@@ -88,7 +88,7 @@ function(register_benchdnn_test engine driver test_file)
         set(benchdnn_target ${target_name}_${engine})
 
         if(DNNL_TEST_SET_HAS_GRAPH_EXE EQUAL 1)
-            string(PREPEND cmd "--execution-mode=graph")
+            string(PREPEND cmd "--execution-mode=graph ")
         endif()
 
         if(NOT WIN32 OR DNNL_BUILD_FOR_CI)

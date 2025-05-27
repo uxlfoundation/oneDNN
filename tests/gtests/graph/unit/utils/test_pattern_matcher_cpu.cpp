@@ -870,6 +870,77 @@ TEST(test_utils_pattern_matcher, Repetition) {
     ASSERT_EQ(fusion_ops.size(), 4U);
 }
 
+/*
+Graph:
+     MatMul
+    /     \
+   Add    Add
+     \     /
+    GreaterEqual
+
+Pattern:
+      MatMul
+         |
+     (Multiply)
+      /     \
+     Add    Add
+      \     /
+    GreaterEqual
+*/
+TEST(test_utils_pattern_matcher, EmptySubgraphFollowedByMultiConsumerSubgraph) {
+    auto graphp = std::make_shared<pb_graph_t>();
+    auto pmatmul = graphp->append_op(MatMul);
+
+    auto mul_body = std::make_shared<pb_graph_t>();
+    auto pmul = mul_body->append_op(Multiply);
+    mul_body->create_input_port(0, pmul, 0);
+    mul_body->create_output_port(0, pmul, 0);
+    auto pmul_subgraph
+            = graphp->append_optional(mul_body, {in_edge(0, pmatmul, 0)});
+
+    auto ge_body = std::make_shared<pb_graph_t>();
+    auto pa1 = ge_body->append_op(Add);
+    auto pa2 = ge_body->append_op(Add);
+    auto pge = ge_body->append_op(
+            GreaterEqual, {in_edge(0, pa1, 0), {in_edge(1, pa2, 0)}});
+    ge_body->create_input_port(0, pa1, 0);
+    ge_body->create_input_port(0, pa2, 0);
+    ge_body->create_output_port(0, pge, 0);
+    graphp->append_optional(ge_body, {in_edge(0, pmul_subgraph, 0)});
+
+    graph_t agraph;
+    op_t matmul {0, MatMul, "matmul"};
+    op_t add1 {1, Add, "add1"};
+    op_t add2 {2, Add, "add1"};
+    op_t ge {3, GreaterEqual, "ge"};
+
+    auto lts = create_logical_tensors(8);
+    lts[7].data_type = data_type::boolean;
+
+    matmul.add_input(lts[0]);
+    matmul.add_input(lts[1]);
+    matmul.add_output(lts[2]);
+    add1.add_input(lts[2]);
+    add1.add_input(lts[3]);
+    add1.add_output(lts[4]);
+    add2.add_input(lts[2]);
+    add2.add_input(lts[5]);
+    add2.add_output(lts[6]);
+    ge.add_input(lts[4]);
+    ge.add_input(lts[6]);
+    ge.add_output(lts[7]);
+
+    ASSERT_EQ(agraph.add_op(&matmul), status::success);
+    ASSERT_EQ(agraph.add_op(&add1), status::success);
+    ASSERT_EQ(agraph.add_op(&add2), status::success);
+    ASSERT_EQ(agraph.add_op(&ge), status::success);
+    agraph.finalize();
+
+    std::vector<op_t *> fusion_ops;
+    EXPECT_TRUE(match_pattern(agraph.get_ops()[0].get(), graphp, fusion_ops));
+    ASSERT_EQ(fusion_ops.size(), 4U);
+}
+
 TEST(test_utils_pattern_matcher, RepetitionFail) {
     /* 
     Pattern:

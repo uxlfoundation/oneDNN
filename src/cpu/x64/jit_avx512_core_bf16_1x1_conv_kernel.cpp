@@ -1023,10 +1023,15 @@ void jit_avx512_core_bf16_1x1_conv_kernel::generate() {
         mov(reg_trans_tmp.cvt32(), (1 << load_dim_tail) - 1);
         kmovw(k_load_dim_tail_mask, reg_trans_tmp.cvt32());
 
-        if (is_out_layout_nxc())
-            mov(reg_trans_tmp.cvt32(),
-                    (1 << (load_dim_tail + jcp.load_block)) - 1);
-        else {
+        if (is_out_layout_nxc()) {
+            // Computing the mask the other way around overflows int32_t for
+            // `load_dim_tail + jcp.load_block == 31`.
+            // Note: just "-1U" causes CL's warning:
+            // C4146: unary minus operator applied to unsigned type
+            auto zmm_32b_mask = static_cast<uint32_t>(-1)
+                    >> (32 - (load_dim_tail + jcp.load_block));
+            mov(reg_trans_tmp.cvt32(), zmm_32b_mask);
+        } else {
             const auto half_mask = (1 << load_dim_tail) - 1;
             mov(reg_trans_tmp.cvt32(), ((half_mask << 16) + half_mask));
         }

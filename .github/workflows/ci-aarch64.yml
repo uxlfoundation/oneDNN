@@ -23,6 +23,7 @@ on:
   push:
     branches: [main, "rls-*"]
     paths:
+      - ".github/automation/performance/**"
       - ".github/automation/*"
       - ".github/automation/aarch64/**"
       - ".github/workflows/aarch64-acl.yml"
@@ -38,6 +39,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - ".github/automation/performance/**"
       - ".github/automation/*"
       - ".github/automation/aarch64/**"
       - ".github/workflows/aarch64-acl.yml"

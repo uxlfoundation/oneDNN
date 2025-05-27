@@ -24,14 +24,14 @@ IFS=$'\n' # Prevents shuffling from using spaces as delimiters
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 TESTS=(
-        "$1 --matmul --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/matmul_nightly >> $3"
-        "$2 --matmul --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/matmul_nightly >> $4"
-        "$1 --conv --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/conv_nightly >> $3"
-        "$2 --conv --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/conv_nightly >> $4"
-        "$1 --eltwise --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/eltwise_nightly >> $3"
-        "$2 --eltwise --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/eltwise_nightly >> $4"
-        "$1 --reorder --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/reorder_nightly >> $3"
-        "$2 --reorder --mode=P --perf-template=%prb%,%-time% --batch=${SCRIPT_DIR}/inputs/reorder_nightly >> $4"
+        "$1 --matmul --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/matmul_nightly >> $3"
+        "$2 --matmul --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/matmul_nightly >> $4"
+        "$1 --conv --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/conv_nightly >> $3"
+        "$2 --conv --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/conv_nightly >> $4"
+        "$1 --eltwise --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/eltwise_nightly >> $3"
+        "$2 --eltwise --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/eltwise_nightly >> $4"
+        "$1 --reorder --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/reorder_nightly >> $3"
+        "$2 --reorder --mode=P --perf-template=%prb%,%-time%,%-ctime% --batch=${SCRIPT_DIR}/inputs/reorder_nightly >> $4"
     )
 
 N=5

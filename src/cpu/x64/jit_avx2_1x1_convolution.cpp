@@ -69,7 +69,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward(
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
@@ -404,7 +404,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 

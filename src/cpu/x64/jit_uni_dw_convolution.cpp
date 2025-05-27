@@ -90,7 +90,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const int work_amount = jcp.mb * chb_work * jcp.oh;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -191,7 +191,7 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
     const auto &jcp = pd()->jcp_;
 
-    auto kernel_params = [&](int ur_str_w, int iw, int oh, int ih,
+    auto kernel_params = [=](int ur_str_w, int iw, int oh, int ih,
                                  int i_t_overflow, int i_b_overflow,
                                  int stride_off_h, int ch, int n,
                                  int work_remaining) {
@@ -240,7 +240,7 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
     const dim_t work_amount = static_cast<dim_t>(jcp.mb) * chb_work * jcp.ih;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         dim_t n {0}, chb {0}, ih {0};

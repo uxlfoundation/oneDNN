@@ -112,7 +112,7 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward(
         bias_dw = const_cast<float *>(bias_in);
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
@@ -466,7 +466,7 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
     auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
     auto scratchpad = ctx.get_scratchpad_grantor();
     const auto &jcp = kernel_->jcp;
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
         execute_backward_data_thr(
                 ithr, nthr, diff_dst, weights, diff_src, scratchpad);

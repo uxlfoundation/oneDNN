@@ -548,7 +548,7 @@ void dnn_mem_t::memset_rng(size_t size, int buffer_index) const {
 
     if (is_opencl) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        const auto *ocl_compute_engine = dnnl::impl::utils::downcast<
+        auto *ocl_compute_engine = static_cast<
                 dnnl::impl::gpu::intel::compute::compute_engine_t *>(engine_);
         stream_t stream(engine_);
 

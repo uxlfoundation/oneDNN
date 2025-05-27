@@ -1572,10 +1572,10 @@ status_t jit_uni_x8s8s32x_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
      * the threshold L1_cache_size is empirical */
     size_t wei_size
             = sizeof(float) * jcp.ic * jcp.oc * jcp.kh * jcp.kw * jcp.kd;
-    size_t out_size
-            = jcp.mb * jcp.typesize_out * jcp.oc * jcp.oh * jcp.ow * jcp.od;
-    size_t inp_size
-            = jcp.mb * jcp.typesize_in * jcp.ic * jcp.ih * jcp.iw * jcp.id;
+    size_t out_size = static_cast<size_t>(jcp.mb) * jcp.typesize_out * jcp.oc
+            * jcp.oh * jcp.ow * jcp.od;
+    size_t inp_size = static_cast<size_t>(jcp.mb) * jcp.typesize_in * jcp.ic
+            * jcp.ih * jcp.iw * jcp.id;
     size_t total_size = jcp.ngroups * (wei_size + out_size + inp_size);
     const unsigned int L1_cache_size = platform::get_per_core_cache_size(1);
 

@@ -1087,17 +1087,16 @@ status_t jit_avx512_common_conv_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
         return res_ow_block;
     };
 
-    const unsigned int L1_cache_size = platform::get_per_core_cache_size(1);
+    const size_t L1_cache_size = platform::get_per_core_cache_size(1);
     if (mayiuse(avx512_core)) {
         int try_nb_oc_blocking = 2;
         unsigned int ker_inp_size = typesize * div_up(jcp.iw, jcp.stride_w)
                 * jcp.ic_block * jcp.kh * jcp.kd;
         unsigned int ker_out_size
                 = typesize * jcp.ow * jcp.oc_block * try_nb_oc_blocking;
-        unsigned int ker_wei_size = typesize * jcp.kh * jcp.kw * jcp.ic_block
-                * jcp.oc_block * try_nb_oc_blocking * jcp.kd;
-        unsigned int ker_total_size
-                = ker_inp_size + ker_out_size + ker_wei_size;
+        size_t ker_wei_size = static_cast<size_t>(typesize) * jcp.kh * jcp.kw
+                * jcp.ic_block * jcp.oc_block * try_nb_oc_blocking * jcp.kd;
+        size_t ker_total_size = ker_inp_size + ker_out_size + ker_wei_size;
 
         bool embd_bcast_condition_base = true
                 && (jcp.kw == 3 && jcp.ow <= 28

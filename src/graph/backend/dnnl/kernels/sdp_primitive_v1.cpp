@@ -40,7 +40,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-status_t sdp_primitive_v1_kernel_t::compile_impl(
+template <bool quantized>
+status_t sdp_primitive_v1_kernel_t<quantized>::compile_impl(
         const dnnl_partition_impl_t *part, const engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
@@ -68,8 +69,26 @@ status_t sdp_primitive_v1_kernel_t::compile_impl(
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_implicit_causal_mask);
+    if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_typecast);
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_quantize);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_matmul_or_conv);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_runtime_u8_to_s8_for_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
+    }
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
+    if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
+    }
 
     pipeline.reset_visualize_arg(true, false);
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
@@ -109,7 +128,8 @@ status_t sdp_primitive_v1_kernel_t::compile_impl(
     return status::success;
 }
 
-void sdp_primitive_v1_kernel_t::prepare_args_set(
+template <bool quantized>
+void sdp_primitive_v1_kernel_t<quantized>::prepare_args_set(
         const execution_args_set_t *res, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const scratchpad_t &scratchpad) {
     // update the data of partition in/outputs args
@@ -129,8 +149,9 @@ void sdp_primitive_v1_kernel_t::prepare_args_set(
     }
 }
 
-status_t sdp_primitive_v1_kernel_t::execute_impl(const stream_t *g_stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t sdp_primitive_v1_kernel_t<quantized>::execute_impl(
+        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
@@ -151,8 +172,9 @@ status_t sdp_primitive_v1_kernel_t::execute_impl(const stream_t *g_stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t sdp_primitive_v1_kernel_t::sycl_execute_impl(const stream_t *g_stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t sdp_primitive_v1_kernel_t<quantized>::sycl_execute_impl(
+        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
@@ -189,8 +211,9 @@ status_t sdp_primitive_v1_kernel_t::sycl_execute_impl(const stream_t *g_stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t sdp_primitive_v1_kernel_t::ocl_execute_impl(const stream_t *g_stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t sdp_primitive_v1_kernel_t<quantized>::ocl_execute_impl(
+        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
     auto deps = cl_deps;
@@ -221,7 +244,8 @@ status_t sdp_primitive_v1_kernel_t::ocl_execute_impl(const stream_t *g_stream,
 }
 #endif
 
-struct sdp_primitive_v1_kernel_t;
+template struct sdp_primitive_v1_kernel_t<true>;
+template struct sdp_primitive_v1_kernel_t<false>;
 
 } // namespace dnnl_impl
 } // namespace graph

@@ -124,9 +124,10 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));
                 } else { // per-group quantization
-                    // oneDNN only supports weights-decompressed matmul
+                    // oneDNN only supports weights-decompressed matmul and sdpa
                     if (in_scales_indices != 1
-                            || op->get_kind() != op_kind::dnnl_matmul)
+                            || (op->get_kind() != op_kind::dnnl_matmul
+                                    && op->get_kind() != op_kind::dnnl_sdpa))
                         continue;
                     const auto &group_shape
                             = in_scales_op->get_attr<std::vector<int64_t>>(
@@ -166,9 +167,10 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                         ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_s32;
                 if (qtype == "per_group") {
-                    // oneDNN only supports weights-decompressed matmul
+                    // oneDNN only supports weights-decompressed matmul and sdpa
                     if (in_zps_indices != 1
-                            || op->get_kind() != op_kind::dnnl_matmul)
+                            || (op->get_kind() != op_kind::dnnl_matmul
+                                    && op->get_kind() != op_kind::dnnl_sdpa))
                         break;
                     const auto &group_shape
                             = in_zps_op->get_attr<std::vector<int64_t>>(

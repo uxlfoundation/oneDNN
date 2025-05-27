@@ -2809,12 +2809,28 @@ struct sdpa_executable_t : public op_executable_t {
             md_mask = make_dnnl_memory_desc(
                     op->get_input_value(idx++)->get_logical_tensor());
 
-        dnnl::primitive_attr attr;
+        dnnl::primitive_attr attr, qk_attr, vs_attr;
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
         attr.set_fpmath_mode(
                 static_cast<dnnl::fpmath_mode>(mgr.get_fpmath_mode().mode_));
         if (op->has_attr(op_attr::is_invert_scale))
             is_invert_scale_ = op->get_attr<bool>(op_attr::is_invert_scale);
+        // sdpa should have 2 fusion info key from mm1 and mm2
+        if (op->has_attr(op_attr::fusion_info_keys)
+                && op->get_attr<std::vector<int64_t>>(op_attr::fusion_info_keys)
+                                .size()
+                        == 2) {
+            int64_t key_qk = op->get_attr<std::vector<int64_t>>(
+                    op_attr::fusion_info_keys)[0];
+            if (key_qk != -1) {
+                qk_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_qk));
+            }
+            int64_t key_vs = op->get_attr<std::vector<int64_t>>(
+                    op_attr::fusion_info_keys)[1];
+            if (key_vs != -1) {
+                vs_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_vs));
+            }
+        }
 
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
@@ -2827,7 +2843,7 @@ struct sdpa_executable_t : public op_executable_t {
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
                 is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-                attr.get());
+                attr.get(), qk_attr.get(), vs_attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {
@@ -2851,6 +2867,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -2858,6 +2900,12 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
 
         exec_ctx_t ctx(stream.get(), std::move(exec_args));
         sdpa_prim_->execute(ctx);
@@ -2879,6 +2927,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -2886,6 +2960,12 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
         auto strm_t = stream.get();
         exec_ctx_t ctx(strm_t, std::move(exec_args));
         auto *sycl_stream_impl = dnnl::impl::utils::downcast<
@@ -2918,6 +2998,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -2925,6 +3031,12 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
 
         exec_ctx_t ctx(stream.get(), std::move(exec_args));
 

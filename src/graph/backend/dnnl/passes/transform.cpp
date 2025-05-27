@@ -4366,6 +4366,27 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
+    // Handle quantization parameters from both matmuls
+    for (const auto &matmul : {candidates[0], candidates.back()}) {
+        auto inputs = matmul->get_input_values();
+        for (size_t idx = 2; idx < inputs.size(); ++idx) {
+            auto qparam_val = inputs[idx];
+            qparam_val->remove_consumer(*matmul, idx);
+            sdpa_op->connect_input(input_idx++, qparam_val);
+        }
+    }
+
+    std::vector<int64_t> keys;
+    for (const auto &matmul : {candidates[0], candidates.back()}) {
+        int64_t key = -1;
+        if (matmul->has_attr(op_attr::fusion_info_key)
+                && matmul->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
+            key = matmul->get_attr<int64_t>(op_attr::fusion_info_key);
+        }
+        keys.push_back(key);
+    }
+    sdpa_op->set_attr<std::vector<int64_t>>(op_attr::fusion_info_keys, keys);
+
     auto final_output = candidates.back()->get_output_value(0);
     final_output->set_producer(*sdpa_op);
     sdpa_op->add_output(final_output);

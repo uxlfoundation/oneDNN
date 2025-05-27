@@ -628,7 +628,13 @@ void _jit_avx512_core_bf16_fwd_kernel<Vmm>::generate() {
         kmovd(k_oc_tail_mask, reg_tail_32);
         kmovd(postops_mask, reg_tail_32);
         if (need_extended_mask) {
-            mov(reg_tail_32, (1 << (jcp.oc_tail + jcp.simd_w)) - 1);
+            // Computing the mask the other way around overflows int32_t for
+            // `jcp.oc_tail + jcp.simd_w == 31`.
+            // Note: just "-1U" causes CL's warning:
+            // C4146: unary minus operator applied to unsigned type
+            auto zmm_32b_mask = static_cast<uint32_t>(-1)
+                    >> (32 - (jcp.oc_tail + jcp.simd_w));
+            mov(reg_tail_32, zmm_32b_mask);
             kmovd(k_oc_tail_mask_extended, reg_tail_32);
         }
         L(done);

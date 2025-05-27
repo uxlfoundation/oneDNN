@@ -75,6 +75,7 @@ struct reusable_softmax_params_t {
     data_type_t src_data_type;
     data_type_t dst_data_type;
     int algorithm_number;
+    int group_size;
     int subgroup_size;
     int vector_buffer_size;
     bool is_logsoftmax;
@@ -260,8 +261,18 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                         && rt_conf.softmax_axis_size % (16 * 8) == 0) {
                     conf.subgroup_size = 16;
                 }
+
+                bool avoid_large_spatial
+                        = (src_md()->dims[0] * src_md()->dims[1] > 128)
+                        && (desc()->softmax_axis > 1);
+
+                conf.group_size = avoid_large_spatial ? conf.subgroup_size
+                                                      : conf.subgroup_size
+                                * utils::div_up((int)rt_conf.softmax_axis_size,
+                                        conf.subgroup_size * 8);
+
                 conf.vector_buffer_size = (int)utils::div_up(
-                        rt_conf.softmax_axis_size, conf.subgroup_size * 8);
+                        rt_conf.softmax_axis_size, conf.group_size * 8);
             }
 
             const size_t max_wg_size = [&]() {
@@ -295,8 +306,10 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                     break;
                 case vectorized:
                 case small:
-                case subgroup_divisible:
                     CHECK(init_dispatch_subgroup_per_reduction(compute_engine));
+                    break;
+                case subgroup_divisible:
+                    CHECK(init_dispatch_subgroup_divisible(compute_engine));
                     break;
             }
 
@@ -307,6 +320,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
         status_t init_dispatch_workgroup_per_reduction(
                 gpu::engine_t *engine, const size_t num_workers_per_workgroup);
         status_t init_dispatch_subgroup_per_reduction(gpu::engine_t *engine);
+        status_t init_dispatch_subgroup_divisible(gpu::engine_t *engine);
 
         reusable_softmax_params_t conf;
         reusable_softmax_runtime_params_t rt_conf;

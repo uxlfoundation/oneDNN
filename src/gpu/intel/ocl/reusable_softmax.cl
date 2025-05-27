@@ -254,34 +254,38 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 #endif
 
 #ifdef USE_SUBGROUP_DIVISIBLE_KERNEL
-__attribute__((reqd_work_group_size(SUBGROUP_SIZE, 1, 1)))
+
+__attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         __global float *src_scale, __global float *dst_scale,
         dim_t softmax_axis_size, dim_t softmax_axis_stride,
         dim_t softmax_axis_chunk_size, dispatch_gws_rt_params_t gws_params) {
     float scale = 1.0f;
-    const int data_off = (get_global_id(0) / SUBGROUP_SIZE) * softmax_axis_size;
-    COMMON_DATA8_T d[VECTOR_BUFFER_SIZE];
+    const int data_off = (get_global_id(0) / GROUP_SIZE) * softmax_axis_size;
+    COMMON_DATA8_T d[VECTOR_BUFFER_SIZE]; // need to make sure this is right...
+
     COMMON_DATA_T max_ = -COMMON_DATA_MAX;
     COMMON_DATA_T denom_ = COMMON_DATA_ZERO;
-    int last_buf = (softmax_axis_size % (SUBGROUP_SIZE * 8) != 0)
-            ? (((softmax_axis_size + (SUBGROUP_SIZE * 8) - 1)
-                       / (SUBGROUP_SIZE * 8))
+    int last_buf = (softmax_axis_size % (GROUP_SIZE * 8) != 0)
+            ? (((softmax_axis_size + (GROUP_SIZE * 8) - 1) / (GROUP_SIZE * 8))
                     - 1)
-            : ((softmax_axis_size + (SUBGROUP_SIZE * 8) - 1)
-                    / (SUBGROUP_SIZE * 8));
+            : ((softmax_axis_size + (GROUP_SIZE * 8) - 1) / (GROUP_SIZE * 8));
     src += data_off;
     int sid = get_sub_group_id();
     for (int k = 0; k < last_buf; ++k) {
-        int idx = k * SUBGROUP_SIZE;
+        int idx = sid * SUBGROUP_SIZE;
         d[k] = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
                 VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx * 8])));
         for (int i = 0; i < 8; ++i) {
             max_ = max(d[k][i], max_);
         }
     }
-    max_ = sub_group_reduce_max(max_);
+    if (GROUP_SIZE == SUBGROUP_SIZE) {
+        max_ = sub_group_reduce_max(max_);
+    } else {
+        max_ = work_group_reduce_max(max_);
+    }
 
     if (LOGSOFTMAX) {
         for (int k = 0; k < last_buf; ++k) {
@@ -297,7 +301,13 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
                 denom_ += d[k][i];
         }
     }
-    denom_ = sub_group_reduce_add(denom_);
+
+    if (GROUP_SIZE == SUBGROUP_SIZE) {
+        denom_ = sub_group_reduce_add(denom_);
+
+    } else {
+        denom_ = work_group_reduce_add(denom_);
+    }
     if (LOGSOFTMAX) {
         denom_ = log(denom_);
     } else if (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) {
@@ -308,9 +318,10 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 
     dst += data_off;
     for (int k = 0; k < last_buf; ++k) {
-        int idx = k * SUBGROUP_SIZE;
+        int idx = sid * SUBGROUP_SIZE;
         d[k] = LOGSOFTMAX ? d[k] - max_ - denom_ : d[k] * denom_;
         COMMON_STORE_DATA8(DST, &dst[idx * 8], scale * d[k]);
     }
 }
+
 #endif

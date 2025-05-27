@@ -69,7 +69,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward(
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
@@ -404,7 +404,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 
@@ -578,7 +578,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto oc_ic_sp_loop = [&](int sp_start, int sp_end, bool first_image,
+    auto oc_ic_sp_loop = [=](int sp_start, int sp_end, bool first_image,
                                  data_t *store_to, size_t store_to_ld,
                                  const data_t *diff_dst, const data_t *src,
                                  int ithr) {
@@ -661,7 +661,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         }
     };
 
-    auto maybe_zero_icpad = [&](const int g_start, const int g_end,
+    auto maybe_zero_icpad = [=](const int g_start, const int g_end,
                                     const int ocb_start, const int ocb_end) {
         // write zeros to IC padded region.
         const int ic_tail = jcp.ic_without_padding % jcp.ic_block;
@@ -684,7 +684,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         }
     };
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         assert(nthr == rw->balancer().nthr_);
 
         const int w_njobs = rw->balancer().ithr_njobs(ithr);
@@ -770,7 +770,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
             rw->reduce(ithr, diff_weights, reducer_wei_scratchpad);
     };
 
-    auto ker_bias = [&](int ithr, int nthr) {
+    auto ker_bias = [=](int ithr, int nthr) {
         assert(nthr == rb->balancer().nthr_);
 
         const int b_job_start = rb->balancer().ithr_job_off(ithr);
@@ -826,14 +826,14 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
     if (dnnl_thr_syncable()) {
         assert(IMPLICATION(pd()->with_bias(),
                 rw->balancer().nthr_ == rb->balancer().nthr_));
-        parallel(rw->balancer().nthr_, [&](const int ithr, const int nthr) {
+        parallel(rw->balancer().nthr_, [=](const int ithr, const int nthr) {
             ker(ithr, nthr);
             if (pd()->with_bias()) ker_bias(ithr, nthr);
         });
     } else {
         parallel(rw->balancer().nthr_,
-                [&](int ithr, int nthr) { ker(ithr, nthr); });
-        parallel(rw->balancer().nthr_, [&](int ithr, int nthr) {
+                [=](int ithr, int nthr) { ker(ithr, nthr); });
+        parallel(rw->balancer().nthr_, [=](int ithr, int nthr) {
             assert(nthr == rw->balancer().nthr_);
             MAYBE_UNUSED(nthr);
             if (rw->balancer().ithr_njobs(ithr) == 0) return;
@@ -841,8 +841,8 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         });
         if (pd()->with_bias()) {
             parallel(rb->balancer().nthr_,
-                    [&](int ithr, int nthr) { ker_bias(ithr, nthr); });
-            parallel(rb->balancer().nthr_, [&](int ithr, int nthr) {
+                    [=](int ithr, int nthr) { ker_bias(ithr, nthr); });
+            parallel(rb->balancer().nthr_, [=](int ithr, int nthr) {
                 assert(nthr == rb->balancer().nthr_);
                 MAYBE_UNUSED(nthr);
                 if (rb->balancer().ithr_njobs(ithr) == 0) return;
@@ -851,16 +851,18 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         }
     }
 
-    /* TODO: put this in ker_bias */
-    if (is_bias_padded) {
-        assert(IMPLICATION(!is_ddst_layout_nxc, jcp.ngroups == 1));
-        const int padded_stride = utils::rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int ithr, const int nthr) {
+        /* TODO: put this in ker_bias */
+        if (is_bias_padded) {
+            assert(IMPLICATION(!is_ddst_layout_nxc, jcp.ngroups == 1));
+            const int padded_stride = utils::rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 } // namespace x64

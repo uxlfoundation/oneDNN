@@ -236,7 +236,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     const auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     parallel_nd(G, MB, OC, OD, OH, OW,
-            [&](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+            [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
                 int acc = 0;
                 if (src_d.is_plain() && weights_d.is_plain()
                         && src_ic_stride == 1 && weights_kw_stride == 1)
@@ -456,7 +456,7 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
     };
 
     parallel_nd(G, MB, IC, ID, IH, IW,
-            [&](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
+            [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
                 int acc = 0;
                 if (diff_dst_d.is_plain() && weights_d.is_plain()
                         && diff_dst_oc_stride == 1 && weights_kw_stride == 1)

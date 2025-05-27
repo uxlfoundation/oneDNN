@@ -90,7 +90,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const int work_amount = jcp.mb * chb_work * jcp.oh;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -191,7 +191,7 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
     const auto &jcp = pd()->jcp_;
 
-    auto kernel_params = [&](int ur_str_w, int iw, int oh, int ih,
+    auto kernel_params = [=](int ur_str_w, int iw, int oh, int ih,
                                  int i_t_overflow, int i_b_overflow,
                                  int stride_off_h, int ch, int n,
                                  int work_remaining) {
@@ -240,7 +240,7 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
     const dim_t work_amount = static_cast<dim_t>(jcp.mb) * chb_work * jcp.ih;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         dim_t n {0}, chb {0}, ih {0};
@@ -329,6 +329,26 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
     : primitive_t(apd), acc_ker_(nullptr), kernel_(nullptr) {}
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
+status_t
+jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
+        const exec_ctx_t &ctx) const {
+    switch (pd()->jcp_.harness) {
+        case harness_nxc:
+            execute_backward_weights_nxc(ctx);
+            execute_reduction_nxc(ctx);
+            break;
+        case harness_mb_reduction:
+            execute_backward_weights(ctx);
+            parallel(1, [=](const int ithr, const int nthr) {
+                execute_reduction(ctx);
+            });
+            break;
+        default: assert(!"Invalid harness type");
+    }
+    return status::success;
+}
+
+template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
 void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         diff_weights_type>::execute_backward_weights_nxc(const exec_ctx_t &ctx)
         const {
@@ -354,7 +374,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
 
     const int ch_block = jcp.ch_block;
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         auto conv_params = jit_dw_conv_args_t();
         const int h_block_size = jcp.oh_blk_size;
 
@@ -481,7 +501,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     const int ch_block = jcp.ch_block;
 
     auto set_kernel_params
-            = [&](jit_dw_conv_args_t *conv_params, const int batch,
+            = [=](jit_dw_conv_args_t *conv_params, const int batch,
                       const int group, const int oh_start, const int work_size,
                       const unsigned char exec_flag, const size_t kh_padding,
                       const size_t filter_off) {
@@ -513,7 +533,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                   conv_params->input = &src[src_off * ch_block];
               };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
         auto conv_params = jit_dw_conv_args_t();
@@ -810,7 +830,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
     // TODO: maybe add 'KH' as another parallel dimension to increase partition
     // space
-    parallel_nd(jcp.nb_ch, [&](int NB_CH) {
+    parallel_nd(jcp.nb_ch, [=](int NB_CH) {
         const size_t nb_ch_step
                 = static_cast<size_t>(jcp.kh * jcp.kw * jcp.ch_block);
         const size_t wei_offset = NB_CH * nb_ch_step;
@@ -868,15 +888,18 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         }
     });
 
-    if (diff_weights_type == bf16) {
-        cvt_float_to_bfloat16((bfloat16_t *)&(diff_weights[0]),
-                (const float *)&(diff_wei_reduction_buffer[0]), wei_size);
-    }
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (diff_weights_type == bf16) {
+            cvt_float_to_bfloat16((bfloat16_t *)&(diff_weights[0]),
+                    (const float *)&(diff_wei_reduction_buffer[0]), wei_size);
+        }
 
-    if (jcp.bia_dt == bf16) {
-        auto diff_bias_in = CTX_OUT_MEM(bf16_data_t *, DNNL_ARG_DIFF_BIAS);
-        cvt_float_to_bfloat16(diff_bias_in, diff_bias, jcp.oc_without_padding);
-    }
+        if (jcp.bia_dt == bf16) {
+            auto diff_bias_in = CTX_OUT_MEM(bf16_data_t *, DNNL_ARG_DIFF_BIAS);
+            cvt_float_to_bfloat16(
+                    diff_bias_in, diff_bias, jcp.oc_without_padding);
+        }
+    });
 }
 
 template <>

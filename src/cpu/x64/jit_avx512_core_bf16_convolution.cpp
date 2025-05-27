@@ -79,7 +79,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_1d(
             = static_cast<dim_t>(jcp.mb) * nb_groups * oc_chunks * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -180,7 +180,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
             * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -306,7 +306,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
             * jcp.od * jcp.oh * jcp.nb_ow;
 
     int nthr = jcp.aligned_threads ? jcp.aligned_threads : jcp.nthr;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         auto par_conv = jit_conv_args_t();
@@ -429,7 +429,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning
@@ -597,7 +597,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning

@@ -61,6 +61,9 @@ void jit_avx2_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const size_t work_amount
             = jcp.mb * jcp.ngroups * ocb_work * jcp.od * jcp.oh;
 
+    // Lambda captures by copy, the bias logic must stay afront the lambda,
+    // otherwise, `bias` will be captured unmodified and lead to a crash inside
+    // the kernel.
     if (pd()->wants_padded_bias()) {
         auto padded_bias = ctx.get_scratchpad_grantor().get<data_t>(
                 key_conv_padded_bias);
@@ -70,7 +73,7 @@ void jit_avx2_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -235,7 +238,7 @@ void jit_avx2_convolution_bwd_data_t::execute_backward_data(
             jcp.dst_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
     const int oc_step = is_ddst_layout_nxc ? jcp.nb_oc_blocking : 1;
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

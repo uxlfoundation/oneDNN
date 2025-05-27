@@ -93,11 +93,38 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_MATMUL(attr()->has_default_values(
-                             smask_t::post_ops | smask_t::fpmath_mode),
-            VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_MATMUL(
             !has_runtime_dims_or_strides(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+    VDISPATCH_MATMUL(
+            attr()->has_default_values(smask_t::post_ops | smask_t::fpmath_mode
+                    | smask_t::accumulation_mode),
+            VERBOSE_UNSUPPORTED_ATTR);
+
+    VDISPATCH_MATMUL(utils::one_of(true,
+                             (is_fp32_ok
+                                     && !utils::one_of(attr()->acc_mode_,
+                                             accumulation_mode::f16,
+                                             accumulation_mode::s32)),
+                             (is_fp16_ok
+                                     && !utils::one_of(attr()->acc_mode_,
+                                             accumulation_mode::s32)),
+                             (is_bf16_ok
+                                     && !utils::one_of(attr()->acc_mode_,
+                                             accumulation_mode::f16,
+                                             accumulation_mode::f32,
+                                             accumulation_mode::s32)),
+                             (is_bf16f32_ok
+                                     && !utils::one_of(attr()->acc_mode_,
+                                             accumulation_mode::f16,
+                                             accumulation_mode::s32))),
+            "accumulation mode is not valid for the data type combination");
+
+    if (is_fp16_ok) {
+        const bool use_fp32_acc = utils::one_of(attr()->acc_mode_,
+                accumulation_mode::strict, accumulation_mode::f32);
+        amp_.gemm_info.set_use_fp32_acc(use_fp32_acc);
+    }
 
     if (weights_format_kind_ == format_kind::any) {
         CHECK(acl_matmul_utils::init_conf_matmul<true>(
@@ -125,6 +152,7 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
     CHECK(acl_post_ops.init(engine, attr_.post_ops_, dst_md_, act_info,
             amp_.gemm_info.accumulate() ? 1 : 0));
     amp_.gemm_info.set_activation_info(act_info);
+
     if (act_info.enabled()
             && !arm_compute::experimental::op::ll::CpuGemmAssemblyDispatch::
                        is_activation_supported(act_info)) {

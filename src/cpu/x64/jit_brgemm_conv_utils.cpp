@@ -851,14 +851,15 @@ float brg_blocking_t::est_eff() {
     l++;
     loop[l].src.set(src_is, 1);
     loop[l].dst.set(0, 1);
-    auto wei_is = kw_block * oc_blocking_size;
+    dim_t wei_is = kw_block * oc_blocking_size;
     loop[l].wei.set(wei_is, 1);
     // -- brgemm kernel: loop by ur in sp_block --
     l++;
     const auto nb_ur = div_up(sp_block, ur);
     loop[l].src.set(kd_block * kh_block * src_is, 1);
     loop[l].dst.set(ur * oc_block, 1);
-    wei_is = kd_block * kh_block * kw_block * oc_blocking_size;
+    wei_is = static_cast<dim_t>(kd_block) * kh_block * kw_block
+            * oc_blocking_size;
     loop[l].wei.set(wei_is, nb_ur);
 
     // -- harness: loop by k_blocks in ks --
@@ -874,7 +875,7 @@ float brg_blocking_t::est_eff() {
     const auto ic_chunks = div_up(nb_ic, nb_ic_blocking);
     loop[l].src.set(kd * kh * rnd_inp_simd(sp_block, kw, ic_blocking_size), 1);
     loop[l].dst.set(sp_block * oc_block, ic_chunks);
-    wei_is = kd * kh * kw * oc_blocking_size;
+    wei_is = static_cast<dim_t>(kd) * kh * kw * oc_blocking_size;
     loop[l].wei.set(wei_is, 1);
 
     const auto dim_oc = (loop_order == loop_ndhwgc) ? 1 : sp_amount;
@@ -901,13 +902,13 @@ float brg_blocking_t::est_eff() {
 
     src_is = kd * kh * rnd_inp_simd(sp_block, kw, ic);
 
-    auto wei_op = kd * kh * kw * ocblock * ic;
+    dim_t wei_op = kd * kh * kw * ocblock * ic;
     if (loop_order == loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
         loop[l].src.set(src_is, nb_oc_thr);
         loop[l].dst.set(sp_block * oc_block, 1);
-        wei_is = kd * kh * kw * oc_block * ic;
+        wei_is = static_cast<dim_t>(kd) * kh * kw * oc_block * ic;
         wei_op = kd * kh * kw * nsimd_oc_thr * ic;
         loop[l].wei.set(wei_is, 1);
     }
@@ -947,7 +948,9 @@ float brg_blocking_t::est_eff() {
             static_cast<dim_t>(mb), div_up(job, sp_amount * ngroups * nb_oc));
     loop[l].src.set(od_thr * oh_thr * src_is, 1);
     loop[l].dst.set(od_thr * oh_thr * sp_thr * nsimd_oc_thr * simd_w, 1);
-    loop[l].wei.set(kd * kh * kw * nsimd_oc_thr * simd_w * ic, mb_thr);
+    loop[l].wei.set(
+            static_cast<dim_t>(kd) * kh * kw * nsimd_oc_thr * simd_w * ic,
+            mb_thr);
 
     const auto src_op = static_cast<dim_t>(mb_thr) * od_thr * oh_thr * sp_thr
             * kd * kh * kw * ic;

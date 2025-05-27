@@ -426,9 +426,7 @@ class BinaryConverter(AlgorithmMixin, MultiSourceMixin, Converter):
 
     @property
     def shapes(self):
-        shapes_str = self.entry.shapes.split(" ", 1)[0]
-        src0_shape, src1_shape, _ = shapes_str.split(":")
-        return f"{src0_shape}:{src1_shape}"
+        return ":".join(self.entry.shapes.split(":", 2)[:2])
 
     @property
     def dts(self):

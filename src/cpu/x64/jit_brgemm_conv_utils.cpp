@@ -841,7 +841,7 @@ float brg_blocking_t::est_eff() {
             0.5f);
 
     const auto sp_amount = static_cast<dim_t>(nb_od) * nb_oh * nb_sp;
-    const auto work_amount = mb * ngroups * nb_oc * sp_amount;
+    const auto work_amount = sp_amount * mb * ngroups * nb_oc;
     const auto sp_eff = (static_cast<float>(sp) / rnd_up(sp, sp_block));
 
     const auto thr_eff = static_cast<float>(work_amount)
@@ -849,7 +849,7 @@ float brg_blocking_t::est_eff() {
 
     const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
 
-    const auto job = div_up(work_amount, nthr);
+    const auto job = div_up(work_amount, static_cast<dim_t>(nthr));
 
     auto job_eff = 1.f;
     if (job < nthr) {

@@ -1837,6 +1837,39 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+status_t insert_typecast_for_matmul(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+
+    for (auto &cur_op : sg->get_ops()) {
+        if (sg->get_engine_kind() == graph::engine_kind::cpu) {
+            // CPU supports matmul with different input data types
+            continue;
+        }
+        if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
+
+        auto in0_dtype
+                = cur_op->get_input_value(0)->get_logical_tensor().data_type;
+        auto in1_dtype
+                = cur_op->get_input_value(1)->get_logical_tensor().data_type;
+        if (in0_dtype == in1_dtype) continue;
+        if (in0_dtype == graph::data_type::f32) {
+            // insert typecast
+            auto tc_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+            rewriter.insert_op_before(tc_op, cur_op, 1);
+            tc_op->get_output_value(0)->set_data_type(graph::data_type::f32);
+        }
+        if (in1_dtype == graph::data_type::f32) {
+            // insert typecast
+            auto tc_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+            rewriter.insert_op_before(tc_op, cur_op, 0);
+            tc_op->get_output_value(0)->set_data_type(graph::data_type::f32);
+        }
+    }
+
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 status_t pool_fwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
 

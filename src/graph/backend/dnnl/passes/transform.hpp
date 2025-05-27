@@ -66,6 +66,13 @@ status_t conv_bwd_data_canonicalization(std::shared_ptr<subgraph_t> &sg);
 
 status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg);
 
+/// TODO: currenly matmul gpu primitive doesn't support data type combination
+/// f32+xf16->xf16
+/// 0:UNIMPLEMENTED (0 ms) __REPRO: --matmul --engine=gpu
+/// --allow-enum-tags-only=false --dt=f32:bf16:bf16 --stag=abcd --wtag=abcd
+/// --dtag=abcd --attr-scratchpad=user 32x16x384x384:32x16x384x64
+status_t insert_typecast_for_matmul(std::shared_ptr<subgraph_t> &sg);
+
 status_t pool_fwd_canonicalization(std::shared_ptr<subgraph_t> &sg);
 
 status_t pool_bwd_canonicalization(std::shared_ptr<subgraph_t> &sg);

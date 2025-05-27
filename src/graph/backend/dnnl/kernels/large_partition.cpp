@@ -126,6 +126,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, insert_to_group_for_conv_or_deconv);
     BACKEND_DNNL_ADD_PASS(pipeline, conv_bwd_data_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, conv_bwd_weights_canonicalization);
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_typecast_for_matmul);
     BACKEND_DNNL_ADD_PASS(pipeline, batchnorm_bwd_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, pool_fwd_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, pool_bwd_canonicalization);

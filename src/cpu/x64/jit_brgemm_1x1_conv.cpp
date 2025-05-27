@@ -580,7 +580,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
     const int os_chunks = div_up(jcp.nb_os, jcp.nb_os_blocking);
     const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_oc * os_chunks;
 
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
         brgemm_batch_element_t *const brg_batch
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size;
@@ -673,7 +673,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
     const int work_amount
             = jcp.mb * jcp.ngroups * jcp.nb_oc * OD * OH * jcp.nb_ow;
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
         brgemm_batch_element_t *const brg_batch
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size;

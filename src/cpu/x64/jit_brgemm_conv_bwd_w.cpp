@@ -1477,7 +1477,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // last elements position may vary depending on position of od_s,
         // oh_block, padding and kh
         parallel_nd(jcp.tr_src_buf_count, jcp.ih_block * jcp.id,
-                [&](size_t isb, size_t is) {
+                [=](size_t isb, size_t is) {
                     const auto tr_src_idx = isb * jcp.tr_src_buf_size
                             + (is + 1) * jcp.tr_iw * jcp.ic_block;
                     char *ts = &tr_src[tr_src_idx * jcp.src_dsz];
@@ -1491,37 +1491,40 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // Zero out guard elements that cross a buffer boundary to prevent a
         // race condition due to buffer overflows from memory optimization where
         // buffers sharing padding
-        parallel_nd(jcp.tr_src_buf_count, [&](size_t isb) {
+        parallel_nd(jcp.tr_src_buf_count, [=](size_t isb) {
             char *ts = &tr_src[(isb + 1) * jcp.tr_src_buf_size * jcp.src_dsz];
             std::memset(ts, 0, bytes_to_zero);
         });
     }
 
-    if (jcp.global_transpose && jcp.nthr_oc_b > 1) {
-        const int tr_src_bctx_size = jcp.nthr / jcp.nthr_oc_b;
-        auto tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_tr_src_bctx);
-        for (int i = 0; i < tr_src_bctx_size; ++i)
-            simple_barrier::ctx_init(&tr_src_bctx[i]);
-    }
-    if (jcp.global_transpose) {
-        if (jcp.nthr_ic_b > 1) {
-            const int tr_diff_dst_bctx_size = jcp.nthr / jcp.nthr_ic_b;
-            auto tr_diff_dst_bctx
-                    = scratchpad.template get<simple_barrier::ctx_t>(
-                            key_conv_tr_diff_dst_bctx);
-            for (int i = 0; i < tr_diff_dst_bctx_size; ++i)
-                simple_barrier::ctx_init(&tr_diff_dst_bctx[i]);
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (jcp.global_transpose && jcp.nthr_oc_b > 1) {
+            const int tr_src_bctx_size = jcp.nthr / jcp.nthr_oc_b;
+            auto tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
+                    key_conv_tr_src_bctx);
+            for (int i = 0; i < tr_src_bctx_size; ++i)
+                simple_barrier::ctx_init(&tr_src_bctx[i]);
         }
-    }
+        if (jcp.global_transpose) {
+            if (jcp.nthr_ic_b > 1) {
+                const int tr_diff_dst_bctx_size = jcp.nthr / jcp.nthr_ic_b;
+                auto tr_diff_dst_bctx
+                        = scratchpad.template get<simple_barrier::ctx_t>(
+                                key_conv_tr_diff_dst_bctx);
+                for (int i = 0; i < tr_diff_dst_bctx_size; ++i)
+                    simple_barrier::ctx_init(&tr_diff_dst_bctx[i]);
+            }
+        }
 
-    if (jcp.nthr_mb > 1
-            || pd()->diff_weights_md(0)->data_type != data_type::f32) {
-        // TODO: don't use barrier for case
-        // diff_weights_type != data_type::f32 && nthr_mb_ == 1
-        simple_barrier::ctx_init(scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_wei_bia_reduction_bctx));
-    }
+        if (jcp.nthr_mb > 1
+                || pd()->diff_weights_md(0)->data_type != data_type::f32) {
+            // TODO: don't use barrier for case
+            // diff_weights_type != data_type::f32 && nthr_mb_ == 1
+            simple_barrier::ctx_init(
+                    scratchpad.template get<simple_barrier::ctx_t>(
+                            key_conv_wei_bia_reduction_bctx));
+        }
+    });
 }
 
 void brgemm_convolution_bwd_weights_t::execute_backward_weights(
@@ -1530,7 +1533,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(jcp.nthr == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -1553,7 +1556,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
@@ -1561,25 +1564,28 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             store_in_vnni_format(&thread_info);
         });
     }
 
-    if (pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
-            && jcp.bia_dt == data_type::f32) {
-        auto diff_bias = ctx.get_scratchpad_grantor().template get<const float>(
-                key_conv_padded_bias);
-        auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
+                && jcp.bia_dt == data_type::f32) {
+            auto diff_bias
+                    = ctx.get_scratchpad_grantor().template get<const float>(
+                            key_conv_padded_bias);
+            auto diff_bias_in = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 } // namespace x64

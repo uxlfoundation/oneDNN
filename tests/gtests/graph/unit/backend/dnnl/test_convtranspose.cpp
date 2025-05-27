@@ -729,6 +729,7 @@ TEST(test_convtranspose_compile,
 }
 
 TEST_P(test_convtranspose_add_compile_t, TestConvTransposeAddCompile) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     TestConvTransposeAdd();
 }
 

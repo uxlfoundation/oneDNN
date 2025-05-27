@@ -44,46 +44,67 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
     if len(r1) != len(r2):
         warnings.warn("The number of benchdnn runs do not match")
 
-    r1_samples = defaultdict(list)
-    r2_samples = defaultdict(list)
+    r1_exec = defaultdict(list)
+    r1_ctime = defaultdict(list)
+    r2_exec = defaultdict(list)
+    r2_ctime = defaultdict(list)
 
-    for k, v in r1:
-        r1_samples[k].append(float(v[:-1]))
-    for k, v in r2:
-        r2_samples[k].append(float(v[:-1]))
+    for key, exec_time, ctime in r1:
+        r1_exec[key].append(float(exec_time))
+        r1_ctime[key].append(float(ctime))
+
+    for key, exec_time, ctime in r2:
+        r2_exec[key].append(float(exec_time))
+        r2_ctime[key].append(float(ctime))
 
     failed_tests = []
     times = {}
-    for prb, r1_times in r1_samples.items():
-        if prb not in r2_samples:
+    for prb in r1_exec:
+        if prb not in r2_exec:
             warnings.warn(f"{prb} exists in {file1} but not {file2}")
             continue
+        exec1 = r1_exec[prb]
+        exec2 = r2_exec[prb]
+        ctime1 = r1_ctime[prb]
+        ctime2 = r2_ctime[prb]
+        res = ttest_ind(exec2, exec1, alternative="greater")
+        r1_med_exec = statistics.median(exec1)
+        r2_med_exec = statistics.median(exec2)
+        r1_med_ctime = statistics.median(ctime1)
+        r2_med_ctime = statistics.median(ctime2)
 
-        r2_times = r2_samples[prb]
-
-        res = ttest_ind(r2_times, r1_times, alternative="greater")
-        r1_med = statistics.median(r1_times)
-        r2_med = statistics.median(r2_times)
-        times[prb] = (r1_med, r2_med)
-        times_str = f" {times[prb][0]} vs {times[prb][1]}"
-
-        if r1_med == 0 or min(r1_times) == 0:
+        if r1_med_exec == 0 or min(exec1) == 0:
             warnings.warn(
-                f"Avoiding division by 0. Median is {r1_med} and min is {min(r1_times)} for {prb}"
+                f"Avoiding division by 0. Median is {r1_med_exec} and min is {min(exec1)} for {prb}"
             )
             continue
 
-        # pass the test if:
-        # the t-test passes (i.e. pvalue > 0.05) OR
-        # both the median time and min time has not
-        # slowed down by more than 10%
-        passed = res.pvalue > 0.05 or (
-            (r2_med - r1_med) / r1_med < 0.1
-            and (min(r2_times) - min(r1_times)) / min(r1_times) < 0.1
+        if r1_med_ctime == 0 or min(ctime1) == 0:
+            warnings.warn(
+                f"Avoiding division by 0. Creation median is {r1_med_ctime} and min is {min(ctime1)} for {prb}"
+            )
+            continue
+
+        # A test fails if either:
+        # - Execution time shows statistically significant regression (t-test p ≤ 0.05 and ≥ 10% slowdown in median and min value)
+        # - Creation time shows ≥ 10% slowdown in median and min value
+        exec_regressed = not (
+            res.pvalue > 0.05
+            or (
+                (r2_med_exec - r1_med_exec) / r1_med_exec < 0.1
+                and (min(exec2) - min(exec1)) / min(exec1) < 0.1
+            )
         )
-        if not passed:
-            failed_tests.append(prb + times_str)
-            passed = False
+        ctime_regressed = not (
+            (r2_med_ctime - r1_med_ctime) / r1_med_ctime < 0.1
+            and (min(ctime2) - min(ctime1)) / min(ctime1) < 0.1
+        )
+
+        if exec_regressed or ctime_regressed:
+            failed_tests.append(
+                f"{prb} exec: {r1_med_exec:.4f} → {r2_med_exec:.4f}, "
+                f"ctime: {r1_med_ctime:.5f} → {r2_med_ctime:.5f}"
+            )
 
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:

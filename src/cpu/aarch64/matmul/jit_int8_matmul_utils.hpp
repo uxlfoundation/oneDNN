@@ -72,7 +72,8 @@ private:
     void gen_reo_a();
     void gen_reo_b();
     void reo_A_8x8(int, int);
-    void reo_B_8x24(int, int);
+    // here N is the blocking (no.of elements in a block) along N dimension(can be 8,16,24)
+    void reo_B_8xN(int, int);
     void generate() override;
 
     dyn_vals_t dyn_;

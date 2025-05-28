@@ -80,8 +80,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 
     void generate() override {
         const bool is_fwd = pd_->is_fwd();
-        preamble();
 
+        preamble();
         XReg param = param1;
         add_imm(X_TMP_0, param, GET_OFF(src), X_TMP_1);
         ldr(reg_src, ptr(X_TMP_0));
@@ -94,19 +94,9 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         add_imm(X_TMP_0, param, GET_OFF(work_amount), X_TMP_1);
         ldr(reg_work_amount, ptr(X_TMP_0));
         eltwise_injector_->load_table_addr();
-
-        // Predicates used for load and store operations.
-        // Initially set to ptrue until we have "< vector length"
-        // number of items to process.
-        ptrue(pg_s.s);
-        ptrue(pg_h.h);
-
-        Label tail_predication;
-        Label vectorized_loop_start, vectorized_loop_end;
-
+        Label vectorized_loop_start, remainder_loop_start, remainder_loop_end;
         cmp(reg_work_amount, simd_w());
-        b(LT, tail_predication);
-
+        b(LT, remainder_loop_start);
         L(vectorized_loop_start);
 
         // TODO: consider improving.
@@ -120,53 +110,39 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // can be relevantly easy controlled, this will cost much from code
         // perspective and will complicate the compute logic significantly.
 
+        load_vector(vmm_src.s, reg_src);
         if (is_bf16()) {
-            ld1h(vmm_src.h, pg_h / T_z, ptr(reg_src));
             // Convert BF16 input to FP32, apply eltwise op, then convert back to BF16:
             // - unpack BF16 to FP32 by zero-extending
             // - compute eltwise alg in FP32
             // - down convert back to BF16 using bfcvt, and pack result
-            mov(tmp0.s, pg_s, vmm_src.s);
-            lsl(vmm_src.s, vmm_src.s, 16);
-            and_(tmp0.s, 0xFFFF0000);
+            unpack_bf16(vmm_src, tmp0);
             eltwise_injector_->compute_vector_range(
                     {vmm_src.getIdx(), tmp0.getIdx()});
-            bfcvt(vmm_src.h, pg_h, vmm_src.s);
-            bfcvtnt(vmm_src.h, pg_h, tmp0.s);
-            st1h(vmm_src.h, pg_h / T_z, ptr(reg_dst));
+            pack_bf16(vmm_src, tmp0);
         } else if (is_f16()) {
-            ld1h(vmm_src.h, pg_h / T_z, ptr(reg_src));
             // Convert FP16 to FP32, apply eltwise op, then convert back to FP16:
             // - upcast FP16 to FP32 using fcvt
             // - compute eltwise alg in FP32
             // - downcast FP32 back to FP16 using fcvt, and pack result
-            mov(tmp0.s, pg_s, vmm_src.s);
-            fcvt(vmm_src.s, pg_h, vmm_src.h);
-            // Next two lines could be replaced by fcvtlt(tmp0.s, P_ALL_ONE, tmp0.h)
-            // Not currently implemented in xbyak
-            lsr(tmp0.s, tmp0.s, 16);
-            fcvt(tmp0.s, pg_h, tmp0.h);
+            unpack_fp16(vmm_src, tmp0);
             eltwise_injector_->compute_vector_range(
                     {vmm_src.getIdx(), tmp0.getIdx()});
-            fcvt(vmm_src.h, pg_s, vmm_src.s);
-            // Next three lines could be replaced by fcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s)
-            // Not currently implemented in xbyak
-            fcvt(tmp0.h, pg_s, tmp0.s);
-            lsl(tmp0.s, tmp0.s, 16);
-            orr(vmm_src.h, pg_h, tmp0.h);
-            st1h(vmm_src.h, pg_h / T_z, ptr(reg_dst));
-        } else {
-            ld1w(vmm_src.s, pg_s / T_z, ptr(reg_src));
+            pack_fp16(vmm_src, tmp0);
+        } else { // f32
             eltwise_injector_->compute_vector(vmm_src.getIdx());
             if (!is_fwd) {
-                ld1w(ZReg(vmm_diff_dst.getIdx()).s, pg_s / T_z,
-                        ptr(reg_diff_dst));
-                fmul(vmm_src.s, vmm_src.s, vmm_diff_dst);
+                load_vector(vmm_diff_dst, reg_diff_dst);
+                fmul(TRegS(vmm_src.getIdx()), TRegS(vmm_src.getIdx()),
+                        vmm_diff_dst);
             }
-            st1w(vmm_src.s, pg_s / T_z, ptr(reg_dst));
         }
 
         const auto shift = vlen();
+        store_vector(reg_dst, vmm_src.s);
+        // Update pointers for the next iteration
+        // Note: we use X_TMP_0 as a temporary register to avoid conflicts with
+        // other registers.
         add_imm(reg_src, reg_src, shift, X_TMP_0);
         add_imm(reg_dst, reg_dst, shift, X_TMP_0);
         if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, shift, X_TMP_0);
@@ -175,24 +151,47 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         cmp(reg_work_amount, simd_w());
         b(GE, vectorized_loop_start);
 
-        L(tail_predication);
+        // tail processing
+        L(remainder_loop_start);
 
         cmp(reg_work_amount, 0);
-        b(LE, vectorized_loop_end);
+        b(LE, remainder_loop_end);
 
-        // Instead of a tail loop, we use SVE predication to only load
-        // the remainder elements, with the inactive elements of the vector
-        // set to 0. This is done outside of the vectorized_loop to avoid
-        // unnecessary overhead.
-        mov_imm(X_TMP_1, 0);
-        whilelt(pg_s.s, X_TMP_1, reg_work_amount);
-        if (is_bf16() || is_f16()) {
-            whilelt(pg_h.h, X_TMP_1, reg_work_amount);
+        if (is_bf16()) {
+            ld1(v_bf16[0], ptr(reg_src));
+            unpack_bf16(vmm_src, tmp0);
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+            pack_bf16(vmm_src, tmp0);
+        } else if (is_f16()) {
+            ld1(v_f16[0], ptr(reg_src));
+            unpack_fp16(vmm_src, tmp0);
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+            pack_fp16(vmm_src, tmp0);
+        } else {
+            ld1(xmm_src[0], ptr(reg_src));
+            eltwise_injector_->compute_vector(xmm_src.getIdx());
+            if (!is_fwd) {
+                ld1(xmm_diff_dst[0], ptr(reg_diff_dst));
+                fmul(vmm_src.s, vmm_src.s, vmm_diff_dst);
+            }
         }
 
-        b(vectorized_loop_start);
+        if (is_bf16()) {
+            st1(v_bf16[0], ptr(reg_dst));
+        } else if (is_f16()) {
+            st1(v_f16[0], ptr(reg_dst));
+        } else {
+            st1(xmm_src[0], ptr(reg_dst));
+        }
 
-        L(vectorized_loop_end);
+        add_imm(reg_src, reg_src, dtype_size(), X_TMP_0);
+        add_imm(reg_dst, reg_dst, dtype_size(), X_TMP_0);
+        add_imm(reg_diff_dst, reg_diff_dst, dtype_size(), X_TMP_0);
+        subs(reg_work_amount, reg_work_amount, 1);
+
+        b(remainder_loop_start);
+
+        L(remainder_loop_end);
 
         postamble();
 
@@ -226,13 +225,175 @@ private:
     VReg4S xmm_diff_dst {2};
     TRegS vmm_diff_dst {2};
     TReg tmp0 {2};
+    TReg tmp1 {7};
     std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
-    PReg pg_s {5};
-    PReg pg_h {7};
+
+    /**
+     * @brief Load a vector from memory into a SIMD/SVE register.
+     *
+     * - **ASIMD (NEON)**: Loads a full-width fixed SIMD vector from the specified address.
+     * - **SVE**:
+     *   - Uses a scalable vector length.
+     *   - Utilizes a predicate register (P register) to control active lanes.
+     *   - Defaults to `PTRUE`, i.e., all lanes are active by default.
+     *
+     * @param dst  Destination SIMD/SVE register to receive the data.
+     * @param addr Source memory address (base register) with aligned vector data.
+     */
+    void load_vector(TRegS &dst, const XReg addr);
+
+    /**
+     * @brief Store a SIMD/SVE vector register to memory.
+     *
+     * - **ASIMD (NEON)**: Stores the full-width fixed SIMD vector to the specified address.
+     * - **SVE**:
+     *   - Uses a scalable vector length.
+     *   - Utilizes a predicate register (P register) to control active lanes.
+     *   - Defaults to `PTRUE`, i.e., all lanes are active by default.
+     *
+     * @param addr Destination memory address (base register) where data will be stored.
+     * @param src  Source SIMD/SVE register providing the data.
+     */
+    void store_vector(const XReg &addr, const TRegS src);
+
+    /**
+     * @brief Unpack two BFloat16 values from a single register into two target registers.
+    * 
+    * ASIMD (NEON) version: unpack in low/high half order.
+    * SVE version: unpack in even/odd element order.
+    *
+    * @param v0 Destination register for first (low/even) half.
+    * @param v1 Destination register for second (high/odd) half.
+    */
+    void unpack_bf16(TReg &v0, TReg &v1);
+
+    /**
+     * @brief Pack two BFloat16 values from two registers into a single register.
+     * 
+     * ASIMD (NEON) version: pack from low/high half order.
+     * SVE version: pack from even/odd element order.
+     *
+     * @param v0 Source register providing first (low/even) half.
+     * @param v1 Source register providing second (high/odd) half.
+     */
+    void pack_bf16(TReg &v0, TReg &v1);
+
+    /**
+     * @brief Unpack two IEEE‑754 FP16 values from a single register into two target registers.
+     * 
+     * ASIMD (NEON) version: unpack in low/high half order.
+     * SVE version: unpack in even/odd element order.
+     *
+     * @param v0 Destination register for first (low/even) half.
+     * @param v1 Destination register for second (high/odd) half.
+     */
+    void unpack_fp16(TReg &v0, TReg &v1);
+
+    /**
+     * @brief Pack two IEEE‑754 FP16 values from two registers into a single register.
+     * 
+     * ASIMD (NEON) version: pack from low/high half order.
+     * SVE version: pack from even/odd element order.
+     *
+     * @param v0 Source register providing first (low/even) half.
+     * @param v1 Source register providing second (high/odd) half.
+     */
+    void pack_fp16(TReg &v0, TReg &v1);
 };
 
+// Template specializations for load_vector
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::load_vector(
+        TRegS &dst, const XReg addr) {
+    ld1(dst, ptr(addr));
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::load_vector(
+        TRegS &dst, const XReg addr) {
+    ld1w(dst, P_ALL_ONE / T_z, ptr(addr));
+}
+
+// Template specializations for store_vector
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::store_vector(
+        const XReg &addr, const TRegS src) {
+    st1(src, ptr(addr));
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::store_vector(
+        const XReg &addr, const TRegS src) {
+    st1w(src, P_ALL_ONE / T_z, ptr(addr));
+}
+
+// Template specializations for unpack_bf16
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_bf16(
+        TReg &v0, TReg &v1) {
+    movi(tmp1.s, 0x0);
+    zip2(VReg8H(v1.getIdx()), VReg8H(tmp1.getIdx()), VReg8H(v0.getIdx()));
+    zip1(VReg8H(v0.getIdx()), VReg8H(tmp1.getIdx()), VReg8H(v0.getIdx()));
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_bf16(
+        TReg &v0, TReg &v1) {
+    mov(v1.s, P_ALL_ONE, v0.s);
+    lsl(v0.s, v0.s, 16);
+    and_(v1.s, 0xFFFF0000);
+}
+
+// Template specializations for pack_bf16
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_bf16(TReg &v0, TReg &v1) {
+    uzp2(v0.h, v0.h, v1.h);
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_bf16(
+        TReg &v0, TReg &v1) {
+    bfcvt(v0.h, P_ALL_ONE, v0.s);
+    bfcvtnt(v0.h, P_ALL_ONE, v1.s);
+}
+
+// Template specializations for unpack_fp16
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_fp16(
+        TReg &v0, TReg &v1) {
+    mov(VReg16B(v1.getIdx()), VReg16B(v0.getIdx()));
+    fcvtl(v0.s, VReg4H(v0.getIdx())); // low 4 float16 to float32
+    fcvtl2(v1.s, VReg8H(v1.getIdx())); // high 4 float16 to float32
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_fp16(
+        TReg &v0, TReg &v1) {
+    mov(v1.s, P_ALL_ONE, v0.s);
+    fcvt(v0.s, P_ALL_ONE, v0.h);
+    lsr(v1.s, v1.s, 16);
+    fcvt(v1.s, P_ALL_ONE, v1.h);
+}
+
+// Template specializations for pack_fp16
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_fp16(TReg &v0, TReg &v1) {
+    fcvtn(VReg4H(v0.getIdx()), v0.s);
+    fcvtn2(VReg8H(v0.getIdx()), v1.s);
+}
+
+template <>
+inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_fp16(
+        TReg &v0, TReg &v1) {
+    fcvt(v0.h, P_ALL_ONE, v0.s);
+    // Next three lines could be replaced by fcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s)
+    // Not currently implemented in xbyak
+    fcvt(v1.h, P_ALL_ONE, v1.s);
+    lsl(v1.s, v1.s, 16);
+    orr(v0.h, P_ALL_ONE, v1.h);
+}
 } // namespace
 
 template <cpu_isa_t isa, data_type_t d_type>
@@ -370,6 +531,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
 
 // Jit uni eltwise is fully vector length agnostic, so we use sve_128
 // as alias for VLA SVE.
+template struct jit_uni_eltwise_fwd_t<asimd, data_type::f32>;
+template struct jit_uni_eltwise_fwd_t<asimd, data_type::bf16>;
+template struct jit_uni_eltwise_fwd_t<asimd, data_type::f16>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;

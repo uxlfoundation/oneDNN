@@ -105,6 +105,10 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace data_type;
     using namespace utils;
 
+    // TODO: debug me and remove me.
+    VDISPATCH_CONV(
+            !utils::is_threadpool_runtime(), "Threadpool is not supported");
+
     VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
             VERBOSE_BAD_ALGORITHM);

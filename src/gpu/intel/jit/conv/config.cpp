@@ -1564,7 +1564,7 @@ public:
         : prb_(prb) {
         for (auto &d : tile) {
             auto bmnk = to_gemm(d, prb);
-            if (!utils::one_of(std::move(bmnk), pvars::m, pvars::n)) continue;
+            if (!utils::one_of(bmnk, pvars::m, pvars::n)) continue;
 
             entries_.emplace_back();
             entry_t &e = entries_.back();

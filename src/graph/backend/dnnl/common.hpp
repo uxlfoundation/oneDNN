@@ -44,7 +44,6 @@ using memory = dnnl::memory;
 using desc = memory::desc;
 using format_tag = memory::format_tag;
 using format_kind = memory::format_kind;
-using tag = memory::format_tag;
 using data_type = typename memory::data_type;
 using dims = typename memory::dims;
 using dim = memory::dim;

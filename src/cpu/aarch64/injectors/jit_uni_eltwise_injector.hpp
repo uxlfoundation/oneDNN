@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -251,6 +252,7 @@ private:
     void gelu_erf_compute_vector_bwd(const TRegS &vmm_src);
     void hardswish_compute_vector_bwd(const TRegS &vmm_src);
     void hardsigmoid_compute_vector_bwd(const TRegS &vmm_src);
+    void load_1word_replicate(const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr);
 
     enum key_t {
         scale = 0, // scale argument
@@ -336,8 +338,7 @@ private:
         } else {
             x_addr = x_table;
         }
-
-        h->ldr(TReg(zreg.getIdx()), ptr(x_addr));
+        load_1word_replicate(zreg, x_addr);
         return zreg;
     }
 

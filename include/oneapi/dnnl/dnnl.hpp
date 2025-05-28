@@ -1703,6 +1703,7 @@ struct memory : public handle<dnnl_memory_t> {
         aCB16c8b = dnnl_aCB16c8b,
         BA8b8a = dnnl_BA8b8a,
         BA16b8a = dnnl_BA16b8a,
+        AB2a4b = dnnl_AB2a4b,
 
         format_tag_last = dnnl_format_tag_last,
 

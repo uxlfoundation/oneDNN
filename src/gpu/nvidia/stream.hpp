@@ -38,6 +38,11 @@ public:
     cublasHandle_t &get_cublas_handle(CUstream cuda_stream = nullptr);
     cudnnHandle_t &get_cudnn_handle(CUstream cuda_stream = nullptr);
 
+    void begin_recording_if_graph(
+            const ::sycl::interop_handle &ih, CUstream cuda_stream);
+    void end_recording_if_graph(
+            const ::sycl::interop_handle &ih, CUstream cuda_stream);
+
     static status_t create_stream(impl::stream_t **stream,
             impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
         std::unique_ptr<nvidia::stream_t> s(
@@ -85,6 +90,12 @@ public:
 
     void register_deps(::sycl::handler &cgh) const {
         return impl()->register_deps(cgh);
+    }
+
+    void after_exec_hook() override {
+        // Forget any previous dependencies, otherwise when graph recording
+        // we will try to create edges on commands outside of the graph.
+        impl()->sycl_ctx().set_deps(xpu::sycl::event_t());
     }
 
     status_t interop_task(std::function<void(::sycl::handler &)>);

@@ -42,6 +42,54 @@ cudnnHandle_t &stream_t::get_cudnn_handle(CUstream cuda_stream) {
     e->activate_stream_cudnn(cuda_stream);
     return *(e->get_cudnn_handle());
 }
+
+// If interop_handle is being submitted to a SYCL queue that is recording to a
+// graph, then put cuda stream into capture mode.
+void stream_t::begin_recording_if_graph(
+        const ::sycl::interop_handle &ih, CUstream cuda_stream) {
+#if SYCL_EXT_ONEAPI_ENQUEUE_NATIVE_COMMAND >= 2
+    if (!ih.ext_codeplay_has_graph()) { return; }
+    // After CUDA 12.3 we can use cuStreamBeginCaptureToGraph to capture
+    // the stream directly in the native graph, rather than needing to
+    // instantiate the stream capture as a new graph.
+#if CUDA_VERSION >= 12030
+    CUgraph cuda_graph = ih.ext_codeplay_get_native_graph<
+            sycl::backend::ext_oneapi_cuda>();
+    CUDA_EXECUTE_FUNC(cuStreamBeginCaptureToGraph, cuda_stream, cuda_graph,
+            nullptr, nullptr, 0, CU_STREAM_CAPTURE_MODE_GLOBAL);
+#else
+    CUDA_EXECUTE_FUNC(
+            cuStreamBeginCapture, cuda_stream, CU_STREAM_CAPTURE_MODE_GLOBAL);
+#endif
+#endif
+}
+
+void stream_t::end_recording_if_graph(
+        const ::sycl::interop_handle &ih, CUstream cuda_stream) {
+#if SYCL_EXT_ONEAPI_ENQUEUE_NATIVE_COMMAND >= 2
+    if (!ih.ext_codeplay_has_graph()) { return; }
+
+    CUgraph cuda_graph = ih.ext_codeplay_get_native_graph<
+            sycl::backend::ext_oneapi_cuda>();
+#if CUDA_VERSION >= 12030
+    CUDA_EXECUTE_FUNC(cuStreamEndCapture, cuda_stream, &cuda_graph);
+#else
+    // cuStreamEndCapture returns a new graph, if we overwrite
+    // "cuda_graph" it won't be picked up by the SYCL runtime, as
+    // "ext_codeplay_get_native_graph" returns a passed-by-value pointer.
+    CUgraph recorded_graph;
+    CUDA_EXECUTE_FUNC(cuStreamEndCapture, cuda_stream, &recorded_graph);
+
+    // Add graph to native graph as a child node
+    // Need to return a node object for the node to be created,
+    // can't be nullptr.
+    CUgraphNode node;
+    CUDA_EXECUTE_FUNC(cuGraphAddChildGraphNode, &node, cuda_graph, nullptr, 0,
+            recorded_graph);
+#endif
+#endif
+}
+
 // the stream_t will not own this. it is an observer pointer
 CUstream stream_t::get_underlying_stream() {
     return compat::get_native<CUstream>(queue());

@@ -95,7 +95,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                     attr_compat_2d &= (trivial_zp_group || a_md->dims[0] == 1);
                 }
 
-            auto map_gemm_zp = [&](int arg, int gemm_arg, bool reshape = false,
+            auto map_gemm_zp = [&](int arg, bool reshape = false,
                                        int diff_dims = 0, dim_t g_dim = 0) {
                 const auto &zp = attr()->zero_points_;
                 if (zp.has_default_values(arg)) return status::success;
@@ -142,7 +142,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
             if (!attr()->zero_points_.has_default_values()) {
                 CHECK(map_gemm_zp(DNNL_ARG_SRC, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, false, orig_dims - 2));
-                CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
+                CHECK(map_gemm_zp(DNNL_ARG_DST));
             }
 
             auto maybe_reshape
@@ -294,9 +294,9 @@ struct gemm_matmul_t : public gpu_primitive_t {
                                 trivial_sc_group ? a_dim : 0));
                     }
                     if (!attr()->zero_points_.has_default_values()) {
-                        CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, DNNL_ARG_A, true,
+                        CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, true,
                                 orig_dims - reshape_size));
-                        CHECK(map_gemm_zp(DNNL_ARG_SRC, DNNL_ARG_B, true,
+                        CHECK(map_gemm_zp(DNNL_ARG_SRC, true,
                                 orig_dims - reshape_size,
                                 trivial_zp_group ? a_dim : 0));
                     }

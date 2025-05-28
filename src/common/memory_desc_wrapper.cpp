@@ -996,6 +996,7 @@ status_t memory_desc_wrapper::compute_blocking(
         C(aCB8b24c, {0, 2, 1}, {8, 24}, {1, 2});
         C(aCB8b16c, {0, 2, 1}, {8, 16}, {1, 2});
         C(aCB8b8c, {0, 2, 1}, {8, 8}, {1, 2});
+        C(AB2a4b, {0, 1}, {2, 4}, {0, 1});
         default: break;
     }
 

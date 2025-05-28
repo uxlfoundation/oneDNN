@@ -53,8 +53,6 @@ using prop_kind = dnnl::prop_kind;
 using algorithm = dnnl::algorithm;
 using exec_args = std::unordered_map<int, memory>;
 
-using constant_cache_t = graph::constant_tensor_cache_t;
-
 using pd_cache_t = std::unordered_map<op_t *, graph::utils::any_t>;
 struct dnnl_allocator_t {
     static void *malloc(size_t size, const dnnl::engine &p_engine,

@@ -104,7 +104,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:reusable", reusable_softmax_fwd_t);
 
         status_t init(impl::engine_t *engine) {
-            using arch_t = compute::gpu_arch_t;
+            // using arch_t = compute::gpu_arch_t;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
 
@@ -113,7 +113,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             const auto src_dt = src_mdw.data_type();
             const auto dst_dt = dst_mdw.data_type();
             const block_layout_t layout(src_mdw);
-            const arch_t arch = compute_engine->device_info()->gpu_arch();
+            // const arch_t arch = compute_engine->device_info()->gpu_arch();
 
             using namespace data_type;
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -210,32 +210,32 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             const auto nelems = src_mdw.nelems();
 
             conf.algorithm_number = [&]() {
-                if ((true || arch != arch_t::xe_hpg)
-                        && rt_conf.softmax_axis_stride == 1) {
-                    if (32 <= conf.subgroup_size
-                            && rt_conf.softmax_axis_size % (32 * 8) == 0) {
+                if (rt_conf.softmax_axis_stride == 1) {
+                    if (rt_conf.softmax_axis_size < 32) { return small; }
+                    const int byte_alignment_read = 4;
+                    const int byte_alignment_write = 16;
+                    const bool is_read_aligned
+                            = (axis_size() * types::data_type_size(src_dt))
+                                    % byte_alignment_read
+                            == 0;
+                    const bool is_write_aligned
+                            = (axis_size() * types::data_type_size(dst_dt))
+                                    % byte_alignment_write
+                            == 0;
+
+                    fprintf(stderr, "@@ align %d, %d\n", is_read_aligned,
+                            is_write_aligned);
+                    if (is_read_aligned || is_write_aligned) {
                         return subgroup_divisible;
                     }
-                    if (16 <= conf.subgroup_size
-                            && rt_conf.softmax_axis_size % (16 * 8) == 0) {
-                        return subgroup_divisible;
-                    }
-                    if (rt_conf.softmax_axis_size >= 128 && nelems > (1 << 17)
-                            && dnnl::impl::utils::div_up(
-                                       rt_conf.softmax_axis_size,
-                                       conf.subgroup_size)
-                                    <= 1024)
-                        return vectorized;
-                    if (rt_conf.softmax_axis_size <= conf.subgroup_size
-                            && nelems < (1 << 15))
-                        return small;
                 }
                 if (rt_conf.softmax_axis_size < 6 && nelems > 64000)
                     return many_reductions_per_workgroup;
                 if (rt_conf.softmax_axis_size > 128)
                     return one_reduction_per_workgroup;
-                if (rt_conf.softmax_axis_size <= 128)
-                    return subgroup_divisible; //  one_reduction_per_subgroup;
+                if (rt_conf.softmax_axis_size <= 128) {
+                    return one_reduction_per_subgroup;
+                }
                 return many_reductions_per_workgroup;
             }();
 
@@ -244,13 +244,6 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                             "ALGORITHM_OVERRIDE", -1);
             if (algorithm_number_override > -1) {
                 conf.algorithm_number = algorithm_number_override;
-            }
-            const bool algorithm_verbose
-                    = dnnl::impl::gpu::intel::gpu_utils::dev_getenv(
-                            "ALGORITHM_VERBOSE", false);
-            if (algorithm_verbose) {
-                fprintf(stderr, "VERBOSE algorithm_number %d\n",
-                        conf.algorithm_number);
             }
 
             // adjust assumed subgroup/workgroup size for
@@ -276,6 +269,14 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
                 conf.vector_buffer_size = (int)utils::div_up(
                         rt_conf.softmax_axis_size, conf.group_size * 8);
+            }
+
+            const bool algorithm_verbose
+                    = dnnl::impl::gpu::intel::gpu_utils::dev_getenv(
+                            "ALGORITHM_VERBOSE", false);
+            if (algorithm_verbose) {
+                fprintf(stderr, "VERBOSE algorithm_number %d\n",
+                        conf.algorithm_number);
             }
 
             const size_t max_wg_size = [&]() {

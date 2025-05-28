@@ -2383,6 +2383,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     if (max_prefetch_offset > INT_MAX)
         mov(ptr[rsp + reg_aux_C_backup_offs_], reg_aux_C);
 
+    if (brg.is_fp8_via_convert()) mov(ptr[rsp + reg_val_tmp_1_], reg64_fp8_aux);
+
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
@@ -2451,6 +2453,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             }
         }
     }
+
+    if (brg.is_fp8_via_convert()) mov(reg64_fp8_aux, ptr[rsp + reg_val_tmp_1_]);
 
     if (max_prefetch_offset > INT_MAX)
         mov(reg_aux_C, ptr[rsp + reg_aux_C_backup_offs_]);

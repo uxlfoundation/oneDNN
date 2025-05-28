@@ -53,12 +53,16 @@ static bool impl_supports_datatype(data_type_t data_type) {
         case data_type::f16:
             return x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2);
+        case data_type::f8_e5m2:
+            return x64::mayiuse(x64::avx10_2_512_amx_2)
+                    || x64::mayiuse(x64::avx512_core_amx_fp16);
+        case data_type::f8_e4m3:
+            return x64::mayiuse(x64::avx10_2_512)
+                    || x64::mayiuse(x64::avx512_core_amx_fp16);
         case data_type::f32:
         case data_type::s32:
         case data_type::s8:
-        case data_type::u8:
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3: return true;
+        case data_type::u8: return true;
         default: return false;
     }
 }

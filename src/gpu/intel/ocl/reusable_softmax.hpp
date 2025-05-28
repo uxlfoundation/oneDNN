@@ -80,8 +80,11 @@ struct reusable_softmax_params_t {
     int vector_buffer_size;
     bool is_logsoftmax;
     bool is_softmax_inf_as_zero;
+    bool is_read_aligned;
+    bool is_write_aligned;
 
-    uint8_t padding[6] = {0};
+    // uint8_t padding[6] = {0};
+    uint8_t padding[4] = {0};
 
     compute::dispatch_compile_params_t gws_params;
 };
@@ -232,7 +235,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                 if (rt_conf.softmax_axis_size > 128)
                     return one_reduction_per_workgroup;
                 if (rt_conf.softmax_axis_size <= 128)
-                    return one_reduction_per_subgroup;
+                    return subgroup_divisible; //  one_reduction_per_subgroup;
                 return many_reductions_per_workgroup;
             }();
 
@@ -312,6 +315,17 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                     CHECK(init_dispatch_subgroup_divisible(compute_engine));
                     break;
             }
+
+            const int byte_alignment_read = 4;
+            const int byte_alignment_write = 16;
+            if ((axis_size() * types::data_type_size(src_dt))
+                            % byte_alignment_read
+                    == 0)
+                conf.is_read_aligned = true;
+            if ((axis_size() * types::data_type_size(dst_dt))
+                            % byte_alignment_write
+                    == 0)
+                conf.is_write_aligned = true;
 
             return status::success;
         }

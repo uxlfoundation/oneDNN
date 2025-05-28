@@ -255,73 +255,209 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
 
 #ifdef USE_SUBGROUP_DIVISIBLE_KERNEL
 
+#define VECT_SIZE 8
+
+#define LOAD_FLOAT8(prefix, ptr) \
+    DATA_TO_FLOAT8(prefix, \
+            BLOCK_TO_DATA8(prefix, \
+                    READ_BLOCK8(prefix, \
+                            (__global BLOCK_T(ALIAS(prefix)) *)(ptr))))
+
+#define STORE_FLOAT8(prefix, ptr, val) \
+    WRITE_BLOCK8(prefix, (__global BLOCK_T(ALIAS(prefix)) *)(ptr), \
+            DATA_TO_BLOCK8(prefix, FLOAT_TO_DATA8(prefix, val)))
+
+#define LOAD_DOUBLE8(prefix, ptr) \
+    DATA_TO_DOUBLE8(prefix, \
+            BLOCK_TO_DATA8(prefix, \
+                    READ_BLOCK8(prefix, \
+                            (__global BLOCK_T(ALIAS(prefix)) *)(ptr))))
+
+#define STORE_DOUBLE8(prefix, ptr, val) \
+    WRITE_BLOCK8(prefix, (__global BLOCK_T(ALIAS(prefix)) *)(ptr), \
+            DATA_TO_BLOCK8(prefix, DOUBLE_TO_DATA8(prefix, val)))
+
+#if DST_DT_F64
+#define UP_CASE_DATA DOUBLE
+#define COMMON_DATA_T double
+#define COMMON_DATA_MAX DBL_MAX
+#define COMMON_DATA_ZERO 0.0
+#else
+#define UP_CASE_DATA FLOAT
+#define COMMON_DATA_T float
+#define COMMON_DATA_MAX FLT_MAX
+#define COMMON_DATA_ZERO 0.0f
+#endif
+
+#define COMMON_DATA8_T CONCAT2(COMMON_DATA_T, 8)
+
+#define COMMON_DATA_TO_X(x, y) CONCAT2(DATA_TO_, UP_CASE_DATA)(x, y)
+#define COMMON_X_TO_DATA(x, y) CONCAT2(UP_CASE_DATA, _TO_DATA)(x, y)
+
+#define COMMON_LOAD_DATA8(x, y) CONCAT3(LOAD_, UP_CASE_DATA, 8)(x, y)
+#define COMMON_STORE_DATA8(x, y, z) CONCAT3(STORE_, UP_CASE_DATA, 8)(x, y, z)
+
+#define SUB_GROUP_SIZE SUBGROUP_SIZE
+
 __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) __kernel void
 reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         __global float *src_scale, __global float *dst_scale,
         dim_t softmax_axis_size, dim_t softmax_axis_stride,
         dim_t softmax_axis_chunk_size, dispatch_gws_rt_params_t gws_params) {
-    float scale = 1.0f;
-    const int data_off = (get_global_id(0) / GROUP_SIZE) * softmax_axis_size;
-    COMMON_DATA8_T d[VECTOR_BUFFER_SIZE]; // need to make sure this is right...
 
+    const int SV = GROUP_SIZE * VECT_SIZE;
+    const bool HAS_TAIL = (softmax_axis_size % SV != 0);
+    // #define HAS_TAIL true
+    const int NUM_BUF = VECTOR_BUFFER_SIZE;
+    // const bool IS_READ_ALIGNED = false;
+    // const bool IS_WRITE_ALIGNED = false;
+    const dim_t SOFTMAX_AXIS_SIZE = softmax_axis_size;
+    // const dim_t SOFTMAX_AXIS_SIZE_ = softmax_axis_size;
+
+    float scale = 1.0f;
+    if (src_scale) { scale = *src_scale; }
+    if (dst_scale) { scale /= *dst_scale; }
+
+    const int data_off = (get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+
+    COMMON_DATA8_T d[NUM_BUF];
     COMMON_DATA_T max_ = -COMMON_DATA_MAX;
     COMMON_DATA_T denom_ = COMMON_DATA_ZERO;
-    int last_buf = (softmax_axis_size % (GROUP_SIZE * 8) != 0)
-            ? (((softmax_axis_size + (GROUP_SIZE * 8) - 1) / (GROUP_SIZE * 8))
-                    - 1)
-            : ((softmax_axis_size + (GROUP_SIZE * 8) - 1) / (GROUP_SIZE * 8));
+
+    int last_buf = HAS_TAIL ? (NUM_BUF - 1) : NUM_BUF;
+
     src += data_off;
     int sid = get_sub_group_id();
-    for (int k = 0; k < last_buf; ++k) {
-        int idx = sid * SUBGROUP_SIZE;
-        d[k] = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[idx * 8])));
-        for (int i = 0; i < 8; ++i) {
+
+    if (IS_READ_ALIGNED) { // #if IS_READ_ALIGNED
+        for (int k = 0; k < last_buf; ++k) {
+#if GROUP_SIZE == SUB_GROUP_SIZE
+          int idx = k * SUB_GROUP_SIZE;
+#else
+          int idx = HAS_TAIL ? k * SUB_GROUP_SIZE : sid * SUB_GROUP_SIZE;
+#endif
+          d[k] = COMMON_LOAD_DATA8(SRC, &src[idx * VECT_SIZE]);
+          for (int i = 0; i < VECT_SIZE; ++i) {
             max_ = max(d[k][i], max_);
+          }
         }
-    }
-    if (GROUP_SIZE == SUBGROUP_SIZE) {
-        max_ = sub_group_reduce_max(max_);
-    } else {
-        max_ = work_group_reduce_max(max_);
-    }
-
-    if (LOGSOFTMAX) {
-        for (int k = 0; k < last_buf; ++k) {
-            for (int i = 0; i < 8; ++i) {
-                denom_ += LOGSOFTMAX ? exp(d[k][i] - max_)
-                                     : exp(d[k][i] - max_);
+        if (HAS_TAIL) { // #if HAS_TAIL
+            int k = last_buf;
+            for (int i = 0; i < VECT_SIZE; ++i) {
+              int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                        + get_sub_group_local_id();
+              d[k][i] = (off < SOFTMAX_AXIS_SIZE
+                         ? COMMON_DATA_TO_X(SRC, src[off])
+                         : -COMMON_DATA_MAX);
+              max_ = max(d[k][i], max_);
             }
+        } // #endif
+    } else { // #else // subgroup block read requires 4-byte alignment
+        for (int k = 0; k < NUM_BUF; ++k) {
+          for (int i = 0; i < VECT_SIZE; ++i) {
+            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                      + get_sub_group_local_id();
+            d[k][i] = (off < SOFTMAX_AXIS_SIZE
+                       ? DATA_TO_FLOAT(SRC, src[off])
+                       : -FLT_MAX);
+            max_ = max(d[k][i], max_);
+          }
         }
-    } else {
-        for (int k = 0; k < last_buf; ++k) {
+    } // #endif
+
+#if GROUP_SIZE == SUB_GROUP_SIZE
+    max_ = sub_group_reduce_max(max_);
+#else
+    max_ = work_group_reduce_max(max_);
+#endif
+
+    for (int k = 0; k < last_buf; ++k) {
+        if (LOGSOFTMAX) { // #if LOGSOFTMAX
+            for (int i = 0; i < VECT_SIZE; ++i)
+                denom_ += exp(d[k][i] - max_);
+        } else { // #else
             d[k] = exp(d[k] - max_);
-            for (int i = 0; i < 8; ++i)
+            for (int i = 0; i < VECT_SIZE; ++i)
                 denom_ += d[k][i];
-        }
+        } // #endif
     }
 
-    if (GROUP_SIZE == SUBGROUP_SIZE) {
-        denom_ = sub_group_reduce_add(denom_);
+    if (HAS_TAIL) { // #if HAS_TAIL
+        int k = last_buf;
+        if (LOGSOFTMAX) { // #if LOGSOFTMAX
+            for (int i = 0; i < VECT_SIZE; ++i) {
+                int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                        + get_sub_group_local_id();
+                if (off < SOFTMAX_AXIS_SIZE) denom_ += exp(d[k][i] - max_);
+            }
+        } else { // #else
+            d[k] = exp(d[k] - max_);
+            for (int i = 0; i < VECT_SIZE; ++i) {
+                int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                        + get_sub_group_local_id();
+                if (off < SOFTMAX_AXIS_SIZE) denom_ += d[k][i];
+            }
+        } // #endif
+    } // #endif
 
-    } else {
-        denom_ = work_group_reduce_add(denom_);
-    }
-    if (LOGSOFTMAX) {
+#if GROUP_SIZE == SUB_GROUP_SIZE
+    denom_ = sub_group_reduce_add(denom_);
+#else
+    denom_ = work_group_reduce_add(denom_);
+#endif
+
+    if (LOGSOFTMAX) { // #if LOGSOFTMAX
         denom_ = log(denom_);
-    } else if (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) {
-        denom_ = 1.0f;
-    } else {
-        denom_ = 1.0f / denom_;
-    }
+    } else { // #else
+        denom_ = (SOFTMAX_INF_AS_ZERO && denom_ == 0.f) ? 1.0f : 1.0f / denom_;
+    } // #endif
 
     dst += data_off;
-    for (int k = 0; k < last_buf; ++k) {
-        int idx = sid * SUBGROUP_SIZE;
-        d[k] = LOGSOFTMAX ? d[k] - max_ - denom_ : d[k] * denom_;
-        COMMON_STORE_DATA8(DST, &dst[idx * 8], scale * d[k]);
-    }
+    if (IS_WRITE_ALIGNED) { // #if IS_WRITE_ALIGNED
+        for (int k = 0; k < last_buf; ++k) {
+#if GROUP_SIZE == SUB_GROUP_SIZE
+            int idx = k * SUB_GROUP_SIZE;
+#else
+            int idx = HAS_TAIL ? k * SUB_GROUP_SIZE : sid * SUB_GROUP_SIZE;
+#endif
+            if (LOGSOFTMAX) { // #if LOGSOFTMAX
+                d[k] = d[k] - max_ - denom_;
+            } else { // #else
+                d[k] = d[k] * denom_;
+            } // #endif
+
+            COMMON_STORE_DATA8(DST, &dst[idx * VECT_SIZE], scale * d[k]);
+        }
+        if (HAS_TAIL) { // #if HAS_TAIL // subgroup block write requires 16-byte alignment
+            int k = last_buf;
+            if (LOGSOFTMAX) { // #if LOGSOFTMAX
+                d[k] = d[k] - max_ - denom_;
+            } else { // #else
+                d[k] = d[k] * denom_;
+            } // #endif
+            for (int i = 0; i < VECT_SIZE; i++) {
+                int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                        + get_sub_group_local_id();
+                if (off < SOFTMAX_AXIS_SIZE)
+                    dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);
+            }
+        } // #endif
+    } else { // #else // for test-cases not aligned by 16 bytes needed for block write
+        for (int k = 0; k < NUM_BUF; k++) {
+            if (LOGSOFTMAX) { // #if LOGSOFTMAX
+                d[k] = d[k] - max_ - denom_;
+            } else { // #else
+                d[k] = d[k] * denom_;
+            } // #endif
+            for (int i = 0; i < VECT_SIZE; i++) {
+                int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+                        + get_sub_group_local_id();
+                if (off < SOFTMAX_AXIS_SIZE)
+                    dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);
+            }
+        }
+    } // #endif
 }
 
 #endif

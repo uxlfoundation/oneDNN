@@ -251,6 +251,9 @@ compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
         kernel_ctx.define_int("VECT_DT_N", 8);
         kernel_ctx.define_int("VECTOR_BUFFER_SIZE", vector_buffer_size);
         kernel_ctx.define_int("USE_SUBGROUP_DIVISIBLE_KERNEL", true);
+        kernel_ctx.define_int("IS_READ_ALIGNED", is_read_aligned);
+        kernel_ctx.define_int("IS_WRITE_ALIGNED", is_write_aligned);
+
     } else {
         kernel_ctx.define_int("USE_GENERAL_KERNEL", true);
     }

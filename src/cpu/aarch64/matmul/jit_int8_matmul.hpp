@@ -58,7 +58,10 @@ struct jit_int8_matmul_t : public primitive_t {
                     = weights_d.matches_one_of_tag(format_tag::ab,
                               format_tag::abc, format_tag::abcd,
                               format_tag::BA24b8a, format_tag::aCB24c8b,
-                              format_tag::abDC24d8c)
+                              format_tag::abDC24d8c, format_tag::BA16b8a,
+                              format_tag::aCB16c8b, format_tag::abDC16d8c,
+                              format_tag::BA8b8a, format_tag::aCB8c8b,
+                              format_tag::abDC8d8c)
                             != format_tag::undef
                     || weights_d.format_kind() == format_kind::any;
             const bool is_src = src_d.matches_one_of_tag(format_tag::ab,
@@ -84,6 +87,8 @@ struct jit_int8_matmul_t : public primitive_t {
                 return -1;
             return k + n * 2 + m * 2 * 2 + z * 2 * 2 * 2;
         }
+
+        int m_block_sz, n_block_sz, mm_parallel_work;
 
     private:
         brg_int8_t brg_;

@@ -60,7 +60,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
             const auto &zp = attr()->zero_points_;
 
             dim_t k_dim = a_md->dims[orig_dims - 1];
-            dim_t alt_dim = a_md->dims[orig_dims - 2];
+            dim_t m_dim = a_md->dims[orig_dims - 2];
             bool attr_compat_2d = true;
             bool per_tensor_sc = false, per_tensor_zp = false;
             bool trivial_sc_group = false, trivial_zp_group = false;
@@ -71,11 +71,11 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 per_tensor_eq |= (1 << i);
             }
             // 2D reshape is incompatible with grouped attrs unless they are trivial.
-            if (!scales.has_default_values())
+            if (!scales.has_default_values() && orig_dims > 2)
                 if (!scales.get(DNNL_ARG_SRC).has_default_groups()) {
                     trivial_sc_group
                             = ((k_dim / scales.get_group(DNNL_ARG_SRC, 1) <= 1)
-                                    && (alt_dim
+                                    && (m_dim
                                                     / scales.get_group(
                                                             DNNL_ARG_SRC, 0)
                                             <= 1));
@@ -84,14 +84,14 @@ struct gemm_matmul_t : public gpu_primitive_t {
                             && trivial_sc_group;
                     attr_compat_2d &= (trivial_sc_group || a_md->dims[0] == 1);
                 }
-            if (!zp.has_default_values())
+            if (!zp.has_default_values() && orig_dims > 2)
                 if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
                     trivial_zp_group = ((k_dim / zp.get_group(DNNL_ARG_SRC, 1)
                                                 <= 1)
-                            && (alt_dim / zp.get_group(DNNL_ARG_SRC, 0) <= 1));
+                            && (m_dim / zp.get_group(DNNL_ARG_SRC, 0) <= 1));
                     per_tensor_zp = utils::one_of(zp.get_mask(DNNL_ARG_SRC),
                                             per_tensor_mask, per_tensor_eq)
-                            && trivial_sc_group;
+                            && trivial_zp_group;
                     attr_compat_2d &= (trivial_zp_group || a_md->dims[0] == 1);
                 }
 
@@ -179,7 +179,6 @@ struct gemm_matmul_t : public gpu_primitive_t {
                             return status::unimplemented;
                     }
                     dims_t a_dims, b_dims, c_dims, bia_dims;
-                    auto new_scales = gemm_attr.scales_;
                     if (reshape_2d) {
                         a_dims[0] = a_dim;
                         a_dims[1] = a_md->dims[a_md->ndims - 1];
@@ -286,7 +285,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                             tmp_post_ops.entry_[i].prelu.mask = new_mask;
                         }
                     }
-
+                    auto new_scales = gemm_attr.scales_;
                     if (!attr()->scales_.has_default_values()) {
                         CHECK(adjust_scales(new_scales, DNNL_ARG_A,
                                 orig_dims - reshape_size, 0));

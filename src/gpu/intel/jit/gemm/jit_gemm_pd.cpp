@@ -160,36 +160,32 @@ status_t jit_gemm_pd_t::init_post_ops() {
     return status::success;
 }
 
-bool jit_gemm_pd_t::quant_attr_2d(int arg, const quant_entries_t &attr) const {
+bool jit_gemm_pd_t::quant_entry_2d(
+        int arg, const quant_entries_t &entry) const {
     assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
     int k_idx = (arg == DNNL_ARG_A ? 0 : 1);
-    if (!attr.has_default_values(arg) && !attr.has_default_groups(arg)
-            && attr.get_group(arg, k_idx) < desc()->k())
+    if (!entry.has_default_values(arg) && !entry.has_default_groups(arg)
+            && entry.get_group(arg, k_idx) < desc()->k())
         return true;
     return false;
 }
-int jit_gemm_pd_t::quant_attr_ndims(
-        int arg, const quant_entries_t &attr, const memory_desc_t &d) const {
-    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    if (attr.has_default_values(arg)) return -1;
-    int mask = quant_attr_cmask(arg, attr);
+
+// Obtain dimension count for gemmstone (common scales give count 0).
+int jit_gemm_pd_t::quant_entry_ndims(
+        const quant_entry_t &entry, const memory_desc_t &md) const {
+    if (entry.has_default_values()) return -1;
+    int mask = entry.get_mask();
     if (mask == 0) return 0;
-    if (attr.has_default_groups(arg)) return mask > 0;
+    if (entry.has_default_groups()) return mask > 0;
     int count = 0;
-    for (int i = 0; i < d.ndims; ++i) {
-        if ((mask & (i + 1))
-                && (i < batch_dims()
-                        || (d.dims[i] / attr.get_group(arg, i - batch_dims())
+    for (int i = 0; i < md.ndims; ++i) {
+        if ((mask & (1 << i))
+                && ((i < batch_dims() && md.dims[i] > 1)
+                        || (md.dims[i] / entry.get_group(i - batch_dims())
                                 > 1)))
             ++count;
     }
     return count;
-}
-int jit_gemm_pd_t::quant_attr_cmask(
-        int arg, const quant_entries_t &attr) const {
-    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C));
-    if (!attr.has_default_values(arg)) { return attr.get_mask(arg); }
-    return -1;
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {
@@ -225,24 +221,24 @@ void jit_gemm_pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
-    const auto d = desc();
+    const auto &d = desc();
 
     auto &attr_zps = attr()->zero_points_;
 
     // Swap descriptors to follow column major format.
-    ao_dims_ = quant_attr_ndims(DNNL_ARG_A, attr_zps, d->b_desc);
-    bo_dims_ = quant_attr_ndims(DNNL_ARG_B, attr_zps, d->a_desc);
-    cmask_a_ = quant_attr_cmask(DNNL_ARG_A, attr_zps);
-    cmask_b_ = quant_attr_cmask(DNNL_ARG_B, attr_zps);
-    cmask_c_ = quant_attr_cmask(DNNL_ARG_C, attr_zps);
+    ao_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
+    bo_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
+    cmask_a_ = attr_zps.get(DNNL_ARG_A).get_mask();
+    cmask_b_ = attr_zps.get(DNNL_ARG_B).get_mask();
+    cmask_c_ = attr_zps.get(DNNL_ARG_C).get_mask();
 
     if (ao_dims_ >= 2) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
     if (bo_dims_ >= 2) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
     const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
-    wei_scales_2d_ = quant_attr_2d(DNNL_ARG_A, attr()->scales_);
-    src_scales_2d_ = quant_attr_2d(DNNL_ARG_B, attr()->scales_);
+    wei_scales_2d_ = quant_entry_2d(DNNL_ARG_A, attr()->scales_);
+    src_scales_2d_ = quant_entry_2d(DNNL_ARG_B, attr()->scales_);
     wei_scales_group_k_ = wei_scales->get_group(0);
     src_scales_group_k_ = src_scales->get_group(1);
 

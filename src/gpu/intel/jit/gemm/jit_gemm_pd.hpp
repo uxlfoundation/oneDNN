@@ -92,9 +92,9 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     int zp_group_k_a_ = -1;
     int zp_group_k_b_ = -1;
 
-    int cmask_a_ = -1;
-    int cmask_b_ = -1;
-    int cmask_c_ = -1;
+    int cmask_a_ = INT_MIN;
+    int cmask_b_ = INT_MIN;
+    int cmask_c_ = INT_MIN;
 
     int src_scales_group_k_ = -1;
     int wei_scales_group_k_ = -1;
@@ -158,11 +158,10 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool wei_scales_2d() const { return wei_scales_2d_; }
     bool src_scales_2d() const { return src_scales_2d_; }
 
-    bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
-    int quant_attr_ndims(
-            int arg, const quant_entries_t &attr, const memory_desc_t &d) const;
+    bool quant_entry_2d(int arg, const quant_entries_t &entry) const;
+    int quant_entry_ndims(
+            const quant_entry_t &entry, const memory_desc_t &md) const;
 
-    int quant_attr_cmask(int arg, const quant_entries_t &attr) const;
     bool dy_quant_enabled();
     bool wei_decomp();
     bool quant_enabled();

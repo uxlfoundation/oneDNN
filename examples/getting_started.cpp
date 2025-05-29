@@ -31,7 +31,7 @@
 using namespace dnnl;
 // [Prologue]
 
-/// @page getting_started_cpp Getting started
+/// @page getting_started_cpp oneDNN API Basic Workflow Tutorial
 ///
 /// This C++ API example demonstrates the basics of the oneDNN programming model.
 ///

@@ -395,7 +395,8 @@ fall back to an explicit GEMM algorithm.
 @anchor dg_winograd_conv
 ### Winograd Convolution
 
-oneDNN supports the Winograd convolution algorithm on GPU systems.
+oneDNN supports the Winograd convolution algorithm on GPU and AArch64 CPU systems.
+Winograd does not support threadpool on AArch64 CPU systems.
 
 The following side effects should be weighed against the (potential)
 performance boost achieved from using the Winograd algorithm:

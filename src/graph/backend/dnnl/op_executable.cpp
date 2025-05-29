@@ -370,15 +370,11 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
                       op->get_input_value(0)->get_logical_tensor())
                       .is_constant()
             && is_constant_cache_enabled(p_engine);
-    const bool use_strided_src = !const_activation
-            && ((src.get_ndims() == 4
-                        && is_format(src, dnnl::memory::format_tag::acbd))
-                    || ((src.get_ndims() == 2 || src.get_ndims() == 3)
-                            && p_engine.get_kind() == dnnl::engine::kind::gpu));
+    const bool use_strided_src = !const_activation;
     // convert src memory desc to any when:
     // 1) not the situation mentioned above
     // 2) the given md is blocked and convert to queried layout is necessary
-    if (can_use_blocked_layout && (!use_strided_src || !is_plain(src))) {
+    if (can_use_blocked_layout && !use_strided_src) {
         src = to_format_any(src);
     }
     auto wei = make_dnnl_memory_desc(
@@ -390,30 +386,25 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
                                 op->get_input_value(1)->get_logical_tensor())
                                 .is_constant()
             && is_constant_cache_enabled(p_engine);
-    const bool use_strided_wei = wei.get_ndims() == 4
-            && (is_format(wei, dnnl::memory::format_tag::adbc)
-                    || is_format(wei, dnnl::memory::format_tag::abdc)
-                    || is_format(wei, dnnl::memory::format_tag::acbd));
-    if (const_weight || (can_use_blocked_layout && !use_strided_wei)) {
+    const bool use_strided_wei = !const_weight;
+    if (can_use_blocked_layout && !use_strided_wei) {
         wei = to_format_any(wei);
     }
     auto dst = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
     const bool keep_dst_layout = op->has_attr(op_attr::keep_dst_layout)
             && op->get_attr<bool>(op_attr::keep_dst_layout);
-    const bool use_strided_dst
-            = ((src.get_ndims() == 2 || src.get_ndims() == 3)
-                      && p_engine.get_kind() == dnnl::engine::kind::gpu)
-            || keep_dst_layout;
-    if (can_use_blocked_layout && !use_strided_dst) {
-        dst = to_format_any(dst);
-    } else if (dst.get_format_kind() == dnnl::memory::format_kind::any
+    const bool use_strided_dst = true;
+
+    if (dst.get_format_kind() == dnnl::memory::format_kind::any
             && !keep_dst_layout) {
         // convert to strided for avoiding blocked activation. The format kind
         // of dst is possible to be any when:
         // 1) It is created with internal logical tensor
         // 2) It is the partition output and defined by user
         dst = to_ncx_format(dst);
+    } else if (can_use_blocked_layout && !use_strided_dst) {
+        dst = to_format_any(dst);
     } else {
         // do nothing
     }

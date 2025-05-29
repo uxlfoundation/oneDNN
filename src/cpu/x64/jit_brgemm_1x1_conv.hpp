@@ -149,14 +149,16 @@ private:
             int32_t *dst_zp_vals, int32_t *s8s8_compensation,
             const float *dst_scales, char *const wsp_tile_global,
             const bool is_last_os = false) const;
-    void execute_os_blocking(const std::shared_ptr<exec_ctx_t> &ctx,
+    void execute_os_blocking(
+            const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const float *dst_scales, const float *oscales, int32_t src_zp_vals,
             int32_t *src_zp_comp, int32_t *dst_zp_vals,
             int32_t *s8s8_compensation, char *const c_buffer_global,
             char *inp_buffer_base, uint8_t *inp_buffer_mask_base,
             char *const wsp_tile_global) const;
-    void execute_full_spatial(const std::shared_ptr<exec_ctx_t> &ctx,
+    void execute_full_spatial(
+            const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const float *dst_scales, const float *oscales, int32_t src_zp_vals,
             int32_t *src_zp_comp, int32_t *dst_zp_vals,

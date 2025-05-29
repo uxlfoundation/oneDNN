@@ -1336,6 +1336,8 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
+    auto brgemm_ctx = std::make_shared<brgemm_exec_ctx_t>(ctx, pd());
+
     parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
@@ -1348,11 +1350,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
                 ? wsp_tile_global + ithr * jcp.amx_buf_size_per_thread
                 : nullptr;
 
-        brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
-        const char *const __restrict src = brgemm_ctx.src;
+        const char *const __restrict src = brgemm_ctx.get()->src;
 
         brgemm_thread_ctx_t btc(
-                brgemm_ctx, ithr, brg_batch, c_buffer, wsp_tile, wei);
+                *brgemm_ctx, ithr, brg_batch, c_buffer, wsp_tile, wei);
         brgemm_thread_ctx_t last_btc = btc;
 
         assert(IMPLICATION(!jcp.copy_input, !jcp.copy_block_only));

@@ -571,7 +571,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
-        const std::shared_ptr<exec_ctx_t> &ctx,
+        const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
         const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
         int32_t *dst_zp_vals, int32_t *s8s8_compensation,
@@ -611,8 +611,6 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         else
             assert(!"Unknown loop order");
 
-        brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
-
         for (auto work = start; work < end; work++) {
             if (jcp.is_rtus && (last_n != n || last_g != g))
                 std::memset(inp_buffer_mask, 0, jcp.inp_buffer_mask_size);
@@ -630,10 +628,10 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                         = jcp.is_rtus ? inp_buffer + rtus_offset : nullptr;
                 for (int icc = 0; icc < pd()->ic_chunks_; icc++) {
                     if (jcp.is_rtus)
-                        maybe_rtus(ithr, brgemm_ctx.src, inp_buffer_sp,
+                        maybe_rtus(ithr, brgemm_ctx.get()->src, inp_buffer_sp,
                                 inp_buffer_mask, g, n, icc, od, oh, ow);
                     const bool is_last_os = (osb_start + osb) == jcp.nb_os - 1;
-                    exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer,
+                    exec_ker(*brgemm_ctx, ithr, brg_batch, c_buffer,
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
                             &last_brg_idx, oscales, src_zp_vals, src_zp_comp,
                             dst_zp_vals, s8s8_compensation, dst_scales,
@@ -657,7 +655,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
 
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
-        const std::shared_ptr<exec_ctx_t> &ctx,
+        const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
         const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
         int32_t *dst_zp_vals, int32_t *s8s8_compensation,
@@ -688,12 +686,10 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         else
             assert(!"Unknown loop order");
 
-        brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
-
         for (auto work = start; work < end; work++) {
             for (int icc = 0; icc < pd()->ic_chunks_; icc++) {
                 const int ow = owb * jcp.ow_block;
-                exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
+                exec_ker(*brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
                         ocb, od, oh, ow, icc, &last_brg_idx, oscales,
                         src_zp_vals, src_zp_comp, dst_zp_vals,
                         s8s8_compensation, dst_scales, wsp_tile_global);
@@ -768,13 +764,15 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
             ? scratchpad.template get<char>(key_conv_amx_tile_buffer)
             : nullptr;
 
+    auto brgemm_ctx = std::make_shared<brgemm_exec_ctx_t>(ctx, pd());
+
     if (jcp.is_os_blocking) {
-        execute_os_blocking(ctx, brg_batch_global, dst_scales, oscales,
+        execute_os_blocking(brgemm_ctx, brg_batch_global, dst_scales, oscales,
                 src_zero_point, zp_compensation, dst_zp_vals, s8s8_compensation,
                 c_buffer_global, inp_buffer_base, inp_buffer_mask_base,
                 wsp_tile_global);
     } else {
-        execute_full_spatial(ctx, brg_batch_global, dst_scales, oscales,
+        execute_full_spatial(brgemm_ctx, brg_batch_global, dst_scales, oscales,
                 src_zero_point, zp_compensation, dst_zp_vals, s8s8_compensation,
                 c_buffer_global, wsp_tile_global);
     }

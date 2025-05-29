@@ -1651,6 +1651,10 @@ REG_XE3_ISA(template void convert_ir_to_ngen(const stmt_t &body,
 REG_XE3P_ISA(template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::Xe3p> *host, const expr_binding_t &expr_binding));
 #endif
+#if XE4
+REG_XE4_ISA(template void convert_ir_to_ngen(const stmt_t &body,
+        ir_kernel_t<ngen::HW::Xe4> *host, const expr_binding_t &expr_binding));
+#endif
 
 } // namespace jit
 } // namespace intel

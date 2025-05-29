@@ -257,4 +257,10 @@
 #define REG_XE3P_ISA(...)
 #endif
 
+#if BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XE4
+#define REG_XE4_ISA(...) __VA_ARGS__
+#else
+#define REG_XE4_ISA(...)
+#endif
+
 #endif

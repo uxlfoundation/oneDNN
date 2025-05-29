@@ -699,7 +699,8 @@ struct EmulationImplementation { // NOLINT(readability-identifier-naming)
         } else if (dstQ && s0D && ((s1W && !s1Immed) && !emulateDWxDW)) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
-            if(dstLo.getBase() == src0.getBase() && src0.getOffset() == dstLo.getOffset())
+            if (dstLo.getBase() == src0.getBase()
+                    && src0.getOffset() == dstLo.getOffset())
                 stub();
             g.mov(mod, dstLo, src1);
             g.mul(mod, dst, src0, dstLo);

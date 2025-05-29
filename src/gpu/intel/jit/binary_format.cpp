@@ -212,6 +212,13 @@ public:
                             engine, skip_check);
                     break;
 #endif
+#if XE4
+                case compute::gpu_arch_t::xe4:
+                    kernel = binary_format_kernel_t<HW::Xe4>::make_kernel(
+                            engine, skip_check);
+                    break;
+#endif
+
                 case compute::gpu_arch_t::unknown:
                     VWARN(common, runtime,
                             "unknown gpu platform - optimizations are disabled "

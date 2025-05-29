@@ -196,8 +196,13 @@ TEST_P(sycl_engine_test_t, SubDevice) {
                     // context.
                     ASSERT_NO_THROW(
                             eng = sycl_interop::make_engine(sub_dev_i,
-                                    sub_dev_i.get_platform()
+                                    sub_dev_i
+                                            .get_platform()
+#if defined(SYCL_KHR_DEFAULT_CONTEXT)
+                                            .khr_get_default_context()));
+#else
                                             .ext_oneapi_get_default_context()));
+#endif
                     test_subdevice(eng);
                 }
             },

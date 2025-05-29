@@ -64,7 +64,7 @@ author = ''
 
 # Add Doxyrest extensions ``doxyrest`` and ``cpplexer``:
 
-extensions = ['doxyrest', 'cpplexer']
+extensions = ['doxyrest', 'cpplexer', 'sphinx_copybutton']
 
 # If you used INTRO_FILE in 'doxyrest-config.lua' to force-include it
 # into 'index.rst', exclude it from the Sphinx input (otherwise, there
@@ -194,6 +194,7 @@ mathjax3_config = {
 def setup(app):
     app.connect('env-before-read-docs', fixFileNameRefs)
     app.connect('env-before-read-docs', addTocTrees)
+    app.add_js_file('doxyrest_code_copy_button.js',priority=300)
 
 def fixFileNameRefs(app, env, docnames):
 

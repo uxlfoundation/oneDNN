@@ -136,6 +136,8 @@ The following tools are required to build oneDNN documentation:
 * [Doxyrest] 2.1.2 or later
 * [Sphinx] 4.0.2 or later
 * [sphinx-book-theme] 0.0.41 or later
+* [sphinx-copybutton] 0.5.2
+* [graphviz] 2.40.1
 
 Configurations of CPU and GPU engines may introduce additional build time
 dependencies.
@@ -145,6 +147,8 @@ dependencies.
 [Doxyrest]: https://github.com/vovkos/doxyrest
 [Sphinx]: https://www.sphinx-doc.org/en/master/usage/installation.html
 [sphinx-book-theme]: https://sphinx-book-theme.readthedocs.io/en/latest
+[sphinx-copybutton]:https://sphinx-copybutton.readthedocs.io/en/latest/
+[graphviz]:https://www.linuxfromscratch.org/blfs/view/8.2/general/graphviz.html
 
 ### CPU Engine
 
@@ -444,6 +448,7 @@ and OpenCL Driver](https://github.com/intel/compute-runtime)
 * [Intel Metrics Discovery Application Programming
 Interface](https://github.com/intel/metrics-discovery)
 * [spdlog](https://github.com/gabime/spdlog)
+* [sphinx-copybutton](https://github.com/executablebooks/sphinx-copybutton)
 
 This third-party software, even if included with the distribution of
 the Intel software, may be governed by separate license terms,

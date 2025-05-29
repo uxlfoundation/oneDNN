@@ -118,6 +118,7 @@ Team: @uxlfoundation/onednn-arch
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Ankit Manerikar    | @avmanerikar          | Intel Corporation | Code Owner |
 | Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
+| Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
 
 ## Graph API
 

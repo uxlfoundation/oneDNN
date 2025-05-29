@@ -29,3 +29,11 @@
 # Test that cases when M == 1 are handled correctly.
 --reset
 --stag=ba,ab --wtag=ab --dtag=ab --dt=bf16 1x2:2x256
+
+# test per_hw binary post-op broadcast (mask=12)
+--reset
+--dt=bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=add:f32:12:acdb
+--attr-scratchpad=user
+80x16x49x32:80x16x32x49_n"per_hw_binary_po_broadcast_mask12"

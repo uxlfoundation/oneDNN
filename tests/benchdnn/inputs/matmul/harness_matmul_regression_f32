@@ -28,3 +28,11 @@
 # test special tag that can be matched with adbc
 --reset
 --stag=dabc --wtag=abx --dtag=abx 1x2x2x32:2x2x32x7
+
+# test per_hw binary post-op broadcast (mask=12)
+--reset
+--dt=f32
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=add:f32:12:acdb
+--attr-scratchpad=user
+80x16x49x32:80x16x32x49_n"per_hw_binary_po_broadcast_mask12"

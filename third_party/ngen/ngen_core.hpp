@@ -254,6 +254,9 @@ enum class Core {
 #if XE3P
     Xe3p,
 #endif
+#if XE4
+    Xe4,
+#endif
 };
 
 typedef Core HW;
@@ -282,6 +285,9 @@ enum class ProductFamily : int {
     GenericXe3,
 #if XE3P
     GenericXe3p,
+#endif
+#if XE4
+    GenericXe4,
 #endif
 };
 
@@ -318,6 +324,9 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
 #if XE3P
         case ProductFamily::GenericXe3p:
 #endif
+#if XE4
+        case ProductFamily::GenericXe4:
+#endif
             return PlatformType::Unknown;
         // Guaranteed discrete
         case ProductFamily::GenericXeHP:
@@ -348,12 +357,18 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
 #if XE3P
         case HW::Xe3p:  return ProductFamily::GenericXe3p;
 #endif
+#if XE4
+        case HW::Xe4:   return ProductFamily::GenericXe4;
+#endif
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
+#if XE4
+    if (family >= ProductFamily::GenericXe4)   return Core::Xe4;
+#endif
 #if XE3P
     if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
 #endif

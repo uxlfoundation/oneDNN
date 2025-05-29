@@ -205,8 +205,7 @@ TEST(test_reduce_execute_subgraph_fp32, ReduceAdd) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass
-                = get_pass("reduction_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -300,8 +299,7 @@ TEST(test_reduce_execute_subgraph_fp32, ReduceRelu) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass
-                = get_pass("reduction_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -398,8 +396,7 @@ TEST(test_reduce_execute_subgraph_fp32, ReduceSwish) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass
-                = get_pass("reduction_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -514,8 +511,7 @@ TEST(test_reduce_execute_subgraph_fp32, ReduceWith3PostOps_CPU) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass
-                = get_pass("reduction_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

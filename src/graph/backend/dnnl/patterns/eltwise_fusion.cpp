@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(eltwise_fusion)
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, eltwise_binary_fusion)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_eltwise_binary)
         .set_priority(8.2f)
         .set_kind(partition_kind_t::unary_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",

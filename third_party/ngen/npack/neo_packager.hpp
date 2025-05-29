@@ -193,6 +193,13 @@ inline HW decodeGfxCoreFamily(GfxCoreFamily family)
         case GfxCoreFamily::XeHPG:    return HW::XeHPG;
         case GfxCoreFamily::XeHPC:    return HW::XeHPC;
         case GfxCoreFamily::Xe2:      return HW::Xe2;
+        case GfxCoreFamily::Xe3:      return HW::Xe3;
+#if XE3P
+        case GfxCoreFamily::Xe3p:     return HW::Xe3p;
+#endif
+#if XE4
+        case GfxCoreFamily::Xe4:      return HW::Xe4;
+#endif
         default:                      return HW::Unknown;
     }
 }
@@ -211,6 +218,9 @@ inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
         case HW::Xe3:     return GfxCoreFamily::Xe3;
 #if XE3P
         case HW::Xe3p:    return GfxCoreFamily::Xe3p;
+#endif
+#if XE4
+        case HW::Xe4:     return GfxCoreFamily::Xe4;
 #endif
         default:          return GfxCoreFamily::Unknown;
     }
@@ -232,6 +242,9 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
 #if XE3P
     if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
+#endif
+#if XE4
+    if (family == ProductFamily::JGS) return NGEN_NAMESPACE::ProductFamily::GenericXe4;
 #endif
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
@@ -314,7 +327,11 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
 #if XE3P
         case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
 #endif
-        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
+#if XE4
+        case 40: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe4; break;
+#endif
+
+	default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
     if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)

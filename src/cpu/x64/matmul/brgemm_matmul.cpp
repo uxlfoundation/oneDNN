@@ -240,8 +240,16 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                             | primitive_attr_t::skip_mask_t::fpmath_mode,
                     dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_MATMUL(attr()->post_ops_.check_sum_consistency(dst_dt, is_int8),
+    const auto &po = attr()->post_ops_;
+
+    VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
+
+    VDISPATCH_MATMUL(
+            !binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
+                    po, dst_d),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_MATMUL(check_attr_zero_points(), VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);

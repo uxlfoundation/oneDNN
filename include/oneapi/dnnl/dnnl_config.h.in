@@ -219,6 +219,7 @@
 #cmakedefine01 BUILD_XE2
 #cmakedefine01 BUILD_XE3
 #cmakedefine01 BUILD_XE3P
+#cmakedefine01 BUILD_XE4
 // GeMM kernels ISA controls
 #cmakedefine01 BUILD_GEMM_KERNELS_ALL
 #cmakedefine01 BUILD_GEMM_KERNELS_NONE

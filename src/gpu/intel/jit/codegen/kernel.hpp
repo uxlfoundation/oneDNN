@@ -78,6 +78,10 @@ struct ir_generator_t : public generator_base_t {
 #if XE3P
                 REG_XE3P_ISA(CASE(Xe3p));
 #endif
+#if XE4
+                REG_XE4_ISA(CASE(Xe4));
+#endif
+
                 default: gpu_assert(false) << "Unexpected GPU architecture";
             }
 #undef CASE

@@ -72,6 +72,9 @@ REG_XE3_ISA(template struct post_op_injector_t<generator_t<gpu_xe3>>);
 #if XE3P
 REG_XE3P_ISA(template struct post_op_injector_t<generator_t<gpu_xe3p>>);
 #endif
+#if XE4
+REG_XE4_ISA(template struct post_op_injector_t<gpu_xe4>);
+#endif
 
 } // namespace jit
 } // namespace intel

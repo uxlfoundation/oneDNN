@@ -78,17 +78,27 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     CHECK(get_ocl_device_enabled_systolic_intel(device, mayiuse_systolic));
     CHECK(get_ocl_device_enabled_native_float_atomics(
             device, native_extensions, is_xelpg));
-#if XE3P
-    is_efficient_64bit = OpenCLCodeGenerator<HW::Unknown>::detectEfficient64Bit(
-            context, device, getCore(product.family));
-#endif
-    auto status
-            = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
-    if (status != status::success) {
-        VWARN(common, runtime,
-                "ngen fallback (gpu does not support binary format kernels)");
+
+    if (hw <= ngen::HW::Xe3) {
+        auto status = jit::gpu_supports_binary_format(
+                &mayiuse_ngen_kernels, engine);
+        if (status != status::success) {
+            VWARN(common, runtime,
+                    "ngen fallback (gpu does not support binary format "
+                    "kernels)");
+            mayiuse_ngen_kernels = false;
+        }
+#if XE4 // remove after integrating ngen Xe4 support
+    } else if (hw == ngen::HW::Xe4) {
         mayiuse_ngen_kernels = false;
-    }
+#endif
+    } else if (hw != ngen::HW::Unknown)
+        mayiuse_ngen_kernels = true;
+
+#if XE3P
+    is_efficient_64bit = jit::generator_t<HW::Unknown>::detectEfficient64Bit(
+            context, device, hw);
+#endif
 
     ip_version = 0;
     OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL,

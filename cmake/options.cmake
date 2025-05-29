@@ -146,7 +146,7 @@ set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
+    Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P, XE4.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be

@@ -738,6 +738,7 @@ static auto hw_names = nstl::to_array({
         make_enum_name(ngen::Core::Xe2, "xe2"),
         make_enum_name(ngen::Core::Xe3, "xe3"),
         make_enum_name(ngen::Core::Xe3p, "xe3p"),
+        make_enum_name(ngen::Core::Xe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
 
@@ -757,6 +758,7 @@ static auto product_family_names = nstl::to_array({
         make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
         make_enum_name(ngen::ProductFamily::GenericXe3, "xe3"),
         make_enum_name(ngen::ProductFamily::GenericXe3p, "xe3p"),
+        make_enum_name(ngen::ProductFamily::GenericXe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
 

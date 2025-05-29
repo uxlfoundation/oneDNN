@@ -61,6 +61,9 @@ constexpr gpu_gen_t gpu_xe3 = ngen::HW::Xe3;
 #if XE3P
 constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
 #endif
+#if XE4
+constexpr gpu_gen_t gpu_xe4 = ngen::HW::Xe4;
+#endif
 
 template <typename ngen_generator_t>
 struct eltwise_injector_f32_t;
@@ -180,6 +183,9 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         REG_XE3_ISA(CASE(gpu_xe3));
 #if XE3P
         REG_XE3P_ISA(CASE(gpu_xe3p));
+#endif
+#if XE4
+        REG_XE4_ISA(CASE(gpu_xe4));
 #endif
         default: break;
     }

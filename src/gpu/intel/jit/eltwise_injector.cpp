@@ -1116,6 +1116,9 @@ REG_XE3P_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe3p>>);
 #ifdef NGEN_ASM
 template struct eltwise_injector_f32_t<ir_asm_kernel_t>;
 #endif
+#if XE4
+REG_XE4_ISA(template struct eltwise_injector_f32_t<gpu_xe4>);
+#endif
 
 } // namespace jit
 } // namespace intel

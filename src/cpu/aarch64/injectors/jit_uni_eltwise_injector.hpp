@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,11 +80,12 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg);
 
 } // namespace eltwise_injector
 
-template <cpu_isa_t isa>
 struct jit_uni_eltwise_injector_f32 {
-    using TReg = typename cpu_isa_traits<isa>::TReg;
-    using TRegS = typename cpu_isa_traits<isa>::TRegS;
-
+    typedef Xbyak_aarch64::ZReg TReg;
+    typedef Xbyak_aarch64::ZRegB TRegB;
+    typedef Xbyak_aarch64::ZRegH TRegH;
+    typedef Xbyak_aarch64::ZRegS TRegS;
+    typedef Xbyak_aarch64::ZRegD TRegD;
     // Arguments description:
     // host - jit generator which is filled with instructions
     // alg, alpha, beta, scale - user eltwise arguments
@@ -116,7 +118,7 @@ struct jit_uni_eltwise_injector_f32 {
         , use_dst_(use_dst)
         , preserve_vmm_(preserve_vmm)
         , preserve_p_table_(preserve_p_table) {
-        assert(eltwise_injector::is_supported(isa, alg_));
+        assert(eltwise_injector::is_supported(sve_128, alg_));
 
         register_table_entries();
     }
@@ -174,7 +176,7 @@ private:
     const size_t vlen = get_sve_length();
     static constexpr size_t preserved_vecs_max = 9;
     static constexpr size_t preserved_gprs_max = 4;
-    static constexpr size_t vecs_count = cpu_isa_traits<isa>::n_vregs;
+    static constexpr size_t vecs_count = 32;
     static constexpr int n_mantissa_bits = 23;
     static constexpr int k_mask_size = 8;
 

@@ -565,7 +565,8 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
                 break;
             case avx512_core_fp16:
             case avx512_core_bf16:
-            case avx512_core: break;
+            case avx512_core:
+            case avx10_2_512: break;
             default: assert(!"unimplemented");
         }
     };
@@ -605,6 +606,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
             case avx512_core_fp16:
             case avx512_core_bf16:
             case avx512_core:
+            case avx10_2_512:
                 // we use vpermt2ps to not override the indices
                 // this also enables to save a register for table loading
                 {
@@ -2923,6 +2925,9 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::register_table_entries() {
     }
 }
 
+template struct jit_uni_eltwise_injector_t<avx10_2_512>;
+template struct jit_uni_eltwise_injector_t<avx10_2_512, Xbyak::Ymm>;
+template struct jit_uni_eltwise_injector_t<avx10_2_512, Xbyak::Xmm>;
 template struct jit_uni_eltwise_injector_t<avx512_core_fp16>;
 template struct jit_uni_eltwise_injector_t<avx512_core_fp16, Xbyak::Ymm>;
 template struct jit_uni_eltwise_injector_t<avx512_core_fp16, Xbyak::Xmm>;

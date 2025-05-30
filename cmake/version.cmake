@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2024 Intel Corporation
+# Copyright 2019-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,11 +29,12 @@ list(GET VERSION_LIST 2 DNNL_VERSION_PATCH)
 
 find_package(Git)
 if(GIT_FOUND)
-    execute_process(COMMAND ${GIT_EXECUTABLE} -c log.showSignature=false log --no-abbrev-commit --oneline -1 --format=%H
+    execute_process(COMMAND ${GIT_EXECUTABLE} --git-dir ${PROJECT_SOURCE_DIR}/.git -c log.showSignature=false log --no-abbrev-commit --oneline -1 --format=%H
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         RESULT_VARIABLE RESULT
         OUTPUT_VARIABLE DNNL_VERSION_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
 endif()
 
 if(NOT GIT_FOUND OR RESULT)

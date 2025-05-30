@@ -2465,14 +2465,14 @@ arg_indices_t genindex_executable_t::get_arg_indices(
 
 arg_indices_t sdpa_executable_t::get_arg_indices(
         const op_t *op, fusion_info_mgr_t &mgr) {
-    UNUSED(mgr);
-
     arg_indices_t arg_indices;
-    // add input args
+    // Required input args: query, key, value
     size_t index = 0;
     arg_indices.insert({DNNL_ARG_QUERIES, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_KEYS, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_VALUES, indices_t {input, index++}});
+
+    // Optional args: scale, mask
     if (op->get_attr<bool>(op_attr::with_scale)) {
         arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, index++}});
     }
@@ -2481,7 +2481,67 @@ arg_indices_t sdpa_executable_t::get_arg_indices(
         arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
     }
 
-    // add output args
+    // Optional args: scales and zps
+    const fusion_info_t &mm1_fusion_info
+            = (op->has_attr(op_attr::fusion_info_keys)
+                      && op->get_attr<std::vector<int64_t>>(
+                                   op_attr::fusion_info_keys)
+                                      .size()
+                              == 2
+                      && op->get_attr<std::vector<int64_t>>(
+                                 op_attr::fusion_info_keys)[0]
+                              != -1)
+            ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
+                    op_attr::fusion_info_keys)[0])
+            : fusion_info_t();
+
+    if (mm1_fusion_info.with_runtime_scales(true, 0)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_QUERIES,
+                indices_t {input, index++}});
+    }
+    if (mm1_fusion_info.with_runtime_scales(true, 1)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                indices_t {input, index++}});
+    }
+    if (mm1_fusion_info.with_runtime_zero_points(true, 0)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_QUERIES,
+                indices_t {input, index++}});
+    }
+    if (mm1_fusion_info.with_runtime_zero_points(true, 1)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+                indices_t {input, index++}});
+    }
+
+    const fusion_info_t &mm2_fusion_info
+            = (op->has_attr(op_attr::fusion_info_keys)
+                      && op->get_attr<std::vector<int64_t>>(
+                                   op_attr::fusion_info_keys)
+                                      .size()
+                              == 2
+                      && op->get_attr<std::vector<int64_t>>(
+                                 op_attr::fusion_info_keys)[1]
+                              != -1)
+            ? mgr.get_info(op->get_attr<std::vector<int64_t>>(
+                    op_attr::fusion_info_keys)[1])
+            : fusion_info_t();
+    if (mm2_fusion_info.with_runtime_scales(true, 1)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+                indices_t {input, index++}});
+    }
+    if (mm2_fusion_info.with_runtime_zero_points(true, 1)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
+                indices_t {input, index++}});
+    }
+    if (mm2_fusion_info.with_runtime_scales(false, 0)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+                indices_t {input, index++}});
+    }
+    if (mm2_fusion_info.with_runtime_zero_points(false, 0)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
+                indices_t {input, index++}});
+    }
+
+    // Required output args
     arg_indices.insert({DNNL_ARG_DST, indices_t {output, 0}});
     arg_indices.insert({DNNL_ARG_SCRATCHPAD, indices_t {output, 1}});
     return arg_indices;

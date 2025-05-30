@@ -125,6 +125,11 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
     CHECK(acl_post_ops.init(engine, attr_.post_ops_, dst_md_, act_info,
             amp_.gemm_info.accumulate() ? 1 : 0));
     amp_.gemm_info.set_activation_info(act_info);
+    if (is_fp16_ok) {
+        const bool use_fp32_acc = utils::one_of(attr()->acc_mode_,
+                accumulation_mode::strict, accumulation_mode::f32);
+        amp_.gemm_info.set_use_fp32_acc(use_fp32_acc);
+    }
     if (act_info.enabled()
             && !arm_compute::experimental::op::ll::CpuGemmAssemblyDispatch::
                        is_activation_supported(act_info)) {

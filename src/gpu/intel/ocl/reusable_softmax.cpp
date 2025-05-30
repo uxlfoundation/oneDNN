@@ -95,6 +95,20 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
     return status::success;
 }
 
+status_t reusable_softmax_fwd_t::pd_t::init_dispatch_subgroup_divisible(
+        gpu::engine_t *engine) {
+    compute::range_t lws {(size_t)conf.group_size};
+    compute::range_t gws {(size_t)conf.group_size};
+    for (int i = 0; i < ndims(); i++) {
+        if (i == desc()->softmax_axis) { continue; }
+        gws[0] *= src_md()->dims[i];
+    }
+
+    rt_conf.gws_params.nd_range = compute::nd_range_t(gws, lws);
+
+    return status::success;
+}
+
 status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
         gpu::engine_t *engine) {
     using dims_vec_t = std::vector<dim_idx_t>;
@@ -224,15 +238,22 @@ compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
             algorithm_number == one_reduction_per_workgroup);
     kernel_ctx.add_option("-cl-std=CL2.0");
     kernel_ctx.define_int("WORKGROUP_SIZE", 128);
+    kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
+    kernel_ctx.define_int("GROUP_SIZE", group_size);
 
     if (algorithm_number == vectorized) {
         kernel_ctx.define_int("VECT_DT_N", 8);
         kernel_ctx.define_int("USE_VECTORIZED_KERNEL", true);
-        kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     } else if (algorithm_number == small) {
         kernel_ctx.define_int("VECT_DT_N", 8);
         kernel_ctx.define_int("USE_SMALL_KERNEL", true);
-        kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
+    } else if (algorithm_number == subgroup_divisible) {
+        kernel_ctx.define_int("VECT_DT_N", 8);
+        kernel_ctx.define_int("VECTOR_BUFFER_SIZE", vector_buffer_size);
+        kernel_ctx.define_int("USE_SUBGROUP_DIVISIBLE_KERNEL", true);
+        kernel_ctx.define_int("IS_READ_ALIGNED", is_read_aligned);
+        kernel_ctx.define_int("IS_WRITE_ALIGNED", is_write_aligned);
+
     } else {
         kernel_ctx.define_int("USE_GENERAL_KERNEL", true);
     }

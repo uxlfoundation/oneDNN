@@ -10,3 +10,4 @@ dependencies:
   - graphviz=2.40.1
   - sphinx=4.0.2
   - sphinx-book-theme=0.0.41
+  - sphinx-copybutton=0.5.2

@@ -101,6 +101,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             using arch_t = compute::gpu_arch_t;
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
+            const arch_t arch = compute_engine->device_info()->gpu_arch();
 
             const memory_desc_wrapper src_mdw(src_md());
             const memory_desc_wrapper dst_mdw(dst_md());
@@ -117,6 +118,13 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             VDISPATCH_SOFTMAX(
                     utils::one_of(dst_dt, f64, f32, f16, bf16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
+
+            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(src_dt, f16, bf16),
+                                      arch == arch_t::xe_hpc),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(dst_dt, f16, bf16),
+                                      arch == arch_t::xe_hpc),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       compute_engine->mayiuse(
@@ -193,11 +201,10 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                 }
             }
 
-            const arch_t arch_ = compute_engine->device_info()->gpu_arch();
             const auto nelems = src_mdw.nelems();
 
             conf.algorithm_number = [&]() { // -> int
-                if (arch_ != arch_t::xe_hpg) {
+                if (arch != arch_t::xe_hpg) {
                     if (rt_conf.softmax_axis_stride == 1
                             && rt_conf.softmax_axis_size >= 128
                             && nelems > (1 << 17)

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -271,7 +271,7 @@ void conv_relu_blocked(memory user_src, memory user_wei, memory user_dst,
     /// input data to blocked format if required.
     /// The input data user_src is NCHW, so this conditional will be triggered:
     ///
-    /// @note The reoders are applied using oneDNN `reorder` primitive.
+    /// @note The reorders are applied using oneDNN `reorder` primitive.
     /// @page performance_profiling_cpp
     /// @snippet performance_profiling.cpp Conditionally create and execute reorder prims
     // [Conditionally create and execute reorder prims]

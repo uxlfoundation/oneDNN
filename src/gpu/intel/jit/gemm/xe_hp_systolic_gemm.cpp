@@ -144,7 +144,13 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
                         && IMPLICATION(b_zp_, !packed_a()),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
+        const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
         const auto &zp = attr()->zero_points_;
+
+        VDISPATCH_GEMM(zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                        && zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                        && zp.has_default_values(user_precomp | DNNL_ARG_DST),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
 
         if (!zp.has_default_values(DNNL_ARG_SRC)) {
             VDISPATCH_GEMM(

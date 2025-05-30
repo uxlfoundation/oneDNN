@@ -241,10 +241,30 @@ void jit_gemm_pd_t::init_attrs() {
 }
 
 bool jit_gemm_pd_t::zp_ok() {
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
     auto &attr_zps = attr()->zero_points_;
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
+
+    if (!attr_zps.has_default_values(user_precomp | DNNL_ARG_DST)) {
+        return false;
+    }
+
+    bool with_a_group_sums_
+            = !attr_zps.has_default_values(user_precomp | DNNL_ARG_A);
+    bool with_b_group_sums_
+            = !attr_zps.has_default_values(user_precomp | DNNL_ARG_B);
+
+    if ((attr_zps.get_data_type(user_precomp | DNNL_ARG_A) != data_type::s32)
+            && with_a_group_sums_) {
+        return false;
+    }
+    if ((attr_zps.get_data_type(user_precomp | DNNL_ARG_B) != data_type::s32)
+            && with_b_group_sums_) {
+        return false;
+    }
+    if (swap_ab_) std::swap(with_a_group_sums_, with_b_group_sums_);
 
     if (!attr_zps.has_default_values(DNNL_ARG_A)) {
         // Groups determine supported masks.
@@ -253,18 +273,8 @@ bool jit_gemm_pd_t::zp_ok() {
             const auto wei_q2d_group_n = attr_zps.get_group(DNNL_ARG_A, 1);
             // Non-trivial N group unsupported.
             if (wei_q2d_group_n != 1) return false;
-            // Zero points with non-trivial groups only supported
-            // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_zp_2d())
-                return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
-                return false;
-            // Weights zp can only be performantly enabled during upconversion
-            // for cases that perform decompression.
-            if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_scales_2d_)
                 return false;
         }
     }
@@ -322,8 +332,7 @@ bool jit_gemm_pd_t::scales_ok() {
     }
 
     if (src_scales_2d_) {
-        if (!dy_quant_enabled_ || !utils::one_of(eff_a_type(), s4, u4))
-            return false;
+        if (!dy_quant_enabled_) return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
                 && wei_scales_group_k_ >= desc()->k())

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -97,11 +97,23 @@ status_t primitive_execute(
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+        // tracks the execution times for the primitive asynchronously by
+        // directly querying the event times for the stream.
+        // gets rid of the synchronization overheads on the host device
+        double start_ms, end_ms, duration_ms;
+        if (!stream->is_profiling_enabled()) start_ms = get_msec();
+        status = stream->enqueue_primitive(primitive_iface, ctx);
+        CHECK(stream->get_async_exec_times(&start_ms, &end_ms, &duration_ms));
+#else
         stream->wait();
         double start_ms = get_msec();
         status = stream->enqueue_primitive(primitive_iface, ctx);
         stream->wait();
         double duration_ms = get_msec() - start_ms;
+#endif
+
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.

@@ -63,16 +63,20 @@ protected:
 // jit kernels
 namespace {
 
-template <cpu_isa_t isa>
 struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
+    typedef Xbyak_aarch64::ZReg TReg;
+    typedef Xbyak_aarch64::ZRegB TRegB;
+    typedef Xbyak_aarch64::ZRegH TRegH;
+    typedef Xbyak_aarch64::ZRegS TRegS;
+    typedef Xbyak_aarch64::ZRegD TRegD;
 
     jit_uni_kernel_t(const eltwise_pd_t *pd) : jit_uni_eltwise_kernel_t(pd) {
         const auto &desc = *pd_->desc();
         // there's no auxiliary vregs on fwd path
         const bool is_fwd = pd_->is_fwd();
         const bool save_state = is_fwd ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32(this,
                 desc.alg_kind, desc.alpha, desc.beta, 1.f, save_state,
                 reg_injector_table, injector_mask, injector_p_tmp0, is_fwd,
                 pd_->use_dst()));
@@ -166,7 +170,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
             st1w(vmm_src.s, pg_s / T_z, ptr(reg_dst));
         }
 
-        const auto shift = cpu_isa_traits<isa>::vlen;
+        const auto shift = get_sve_length();
         add_imm(reg_src, reg_src, shift, X_TMP_0);
         add_imm(reg_dst, reg_dst, shift, X_TMP_0);
         if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, shift, X_TMP_0);
@@ -200,10 +204,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     }
 
 private:
-    using TReg = typename cpu_isa_traits<isa>::TReg;
-    using TRegS = typename cpu_isa_traits<isa>::TRegS;
-
-    int vlen() { return cpu_isa_traits<isa>::vlen; }
+    int vlen() { return get_sve_length(); }
     int simd_w() { return vlen() / dtype_size(); }
 
     XReg reg_src = x11;
@@ -223,7 +224,7 @@ private:
     VReg4S xmm_diff_dst {2};
     TRegS vmm_diff_dst {2};
     TReg tmp0 {2};
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
     PReg pg_s {5};
@@ -232,17 +233,17 @@ private:
 
 } // namespace
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <data_type_t d_type>
+status_t jit_uni_eltwise_fwd_t<d_type>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper src_d(src_md());
 
-    bool ok = mayiuse(isa) && is_fwd()
+    bool ok = mayiuse(sve_128) && is_fwd()
             && utils::everyone_is(
                     d_type, src_md()->data_type, dst_md()->data_type)
             && !has_zero_dim_memory() && src_d.is_dense(true)
-            && eltwise_injector::is_supported(isa, desc_.alg_kind)
+            && eltwise_injector::is_supported(sve_128, desc_.alg_kind)
             // refer to a comment in jit_uni_kernel why this is needed
             && IMPLICATION(!src_d.is_dense(), is_zero_preserved())
             && attr()->has_default_values() && set_default_formats_common()
@@ -250,22 +251,21 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return ok ? status::success : status::unimplemented;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::jit_uni_eltwise_fwd_t(const pd_t *apd)
+template <data_type_t d_type>
+jit_uni_eltwise_fwd_t<d_type>::jit_uni_eltwise_fwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::~jit_uni_eltwise_fwd_t() = default;
+template <data_type_t d_type>
+jit_uni_eltwise_fwd_t<d_type>::~jit_uni_eltwise_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
+template <data_type_t d_type>
+status_t jit_uni_eltwise_fwd_t<d_type>::init(engine_t *engine) {
+    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
+template <data_type_t d_type>
+status_t jit_uni_eltwise_fwd_t<d_type>::execute(const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
@@ -295,18 +295,18 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <data_type_t d_type>
+status_t jit_uni_eltwise_bwd_t<d_type>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper data_d(data_md());
 
-    bool ok = mayiuse(isa) && !is_fwd()
+    bool ok = mayiuse(sve_128) && !is_fwd()
             && utils::everyone_is(d_type, data_md()->data_type,
                     diff_src_md()->data_type, diff_dst_md()->data_type)
             && !has_zero_dim_memory() && set_default_formats_common()
             && data_d.is_dense(true)
-            && eltwise_injector::is_supported(isa, desc_.alg_kind)
+            && eltwise_injector::is_supported(sve_128, desc_.alg_kind)
             // refer to a comment in jit_uni_kernel why this is needed
             && IMPLICATION(!data_d.is_dense(), is_zero_preserved())
             && data_d == memory_desc_wrapper(diff_dst_md())
@@ -316,22 +316,21 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return ok ? status::success : status::unimplemented;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::jit_uni_eltwise_bwd_t(const pd_t *apd)
+template <data_type_t d_type>
+jit_uni_eltwise_bwd_t<d_type>::jit_uni_eltwise_bwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::~jit_uni_eltwise_bwd_t() = default;
+template <data_type_t d_type>
+jit_uni_eltwise_bwd_t<d_type>::~jit_uni_eltwise_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
+template <data_type_t d_type>
+status_t jit_uni_eltwise_bwd_t<d_type>::init(engine_t *engine) {
+    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
+template <data_type_t d_type>
+status_t jit_uni_eltwise_bwd_t<d_type>::execute(const exec_ctx_t &ctx) const {
     auto src = pd()->use_dst() ? CTX_IN_MEM(const data_t *, DNNL_ARG_DST)
                                : CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
@@ -365,16 +364,10 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template struct jit_uni_eltwise_fwd_t<sve_512, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_512, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_256, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;
+template struct jit_uni_eltwise_fwd_t<data_type::f32>;
+template struct jit_uni_eltwise_fwd_t<data_type::bf16>;
+template struct jit_uni_eltwise_fwd_t<data_type::f16>;
+template struct jit_uni_eltwise_bwd_t<data_type::f32>;
 
 } // namespace aarch64
 } // namespace cpu

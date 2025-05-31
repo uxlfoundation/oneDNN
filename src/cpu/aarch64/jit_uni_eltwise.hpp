@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2017-2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,13 +37,12 @@ namespace aarch64 {
 
 struct jit_uni_eltwise_kernel_t;
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <impl::data_type_t d_type>
 struct jit_uni_eltwise_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_eltwise_fwd_t);
+        DECLARE_COMMON_PD_T("jit: sve", jit_uni_eltwise_fwd_t);
 
         status_t init(engine_t *engine);
     };
@@ -61,13 +61,12 @@ private:
     std::unique_ptr<jit_uni_eltwise_kernel_t> kernel_;
 };
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <impl::data_type_t d_type>
 struct jit_uni_eltwise_bwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_bwd_pd_t {
         using cpu_eltwise_bwd_pd_t::cpu_eltwise_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_eltwise_bwd_t);
+        DECLARE_COMMON_PD_T("jit: sve", jit_uni_eltwise_bwd_t);
 
         status_t init(engine_t *engine);
     };

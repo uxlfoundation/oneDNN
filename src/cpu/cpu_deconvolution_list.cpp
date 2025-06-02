@@ -51,6 +51,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_deconvolution_fwd_t)
+            CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx10_2_512>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_fp16>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_bf16>)
             CPU_INSTANCE_AVX512(brgemm_deconvolution_fwd_t<avx512_core_vnni>)

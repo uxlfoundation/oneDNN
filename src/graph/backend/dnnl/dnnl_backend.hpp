@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2024 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,34 +94,12 @@ public:
 
     status_t get_partitions(
             graph_t &agraph, partition_policy_t policy) override {
-        // Note: This environment variable is internal and for test purpose. It
-        // can be changed or removed without prior notice. Users should avoid
-        // using it in their applications. Enabling the environment variable may
-        // cause some tests and examples to fail.
-        const bool disable_dnnl_bkd
-                = graph::utils::getenv_int_internal("DISABLE_DNNL_BACKEND", 0)
-                > 0;
-        if (disable_dnnl_bkd) return status::success;
-
-        // Note: This environment variable is internal and for test/debug
-        // purpose. It can be changed or removed without prior notice. Users
-        // should avoid using it in their applications. Enabled by default.
-        const bool enable_large_partition
-                = graph::utils::getenv_int_internal("ENABLE_LARGE_PARTITION", 1)
-                > 0;
-
-        // FIXME(xx): Here we only changes the passes in registry. If json file
-        // existed, pm will run passes according to the json file, the env var
-        // will not take effect.
         // - priority == 50.f: data type check pass (fixed highest priority)
         // - 50.f > priority > 20.f: large fusion pattern
         // - 20.f >= priority > 8.f: normal fusion pattern
         // - priority <= 8.f: debug fusion pattern (single op fusion)
-        const float priority_ths = (policy == graph::partition_policy::fusion
-                                           && enable_large_partition)
-                ? std::numeric_limits<float>::max()
-                : policy == graph::partition_policy::fusion ? 20.0f
-                                                            : 8.0f;
+        const float priority_ths
+                = (policy == graph::partition_policy::fusion) ? 100.f : 8.0f;
 
         const auto &dnnl_pass_filter
                 = [priority_ths](const graph::pass::pass_base_ptr &pass,

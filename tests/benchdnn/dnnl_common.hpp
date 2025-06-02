@@ -262,6 +262,7 @@ void skip_unimplemented_data_type(
 void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
         dnnl_primitive_kind_t pkind, dnnl_data_type_t src_dt,
         dnnl_data_type_t dst_dt = dnnl_data_type_undef);
+void skip_unimplemented_binary_po(const attr_t &attr, res_t *res);
 void skip_unimplemented_prelu_po(
         const attr_t &attr, res_t *res, dnnl_primitive_kind_t pkind);
 void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
@@ -612,6 +613,8 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
     // and ref CPU failures.
     if (prim_ref) {
         BENCHDNN_PRINT(1, "run ref: %s\n", res->prim_ref_repro.c_str());
+    } else {
+        BENCHDNN_PRINT(8, "%s\n", "[NAIVE_REF]: Start");
     }
 
     TIME_REF(compute_ref(prb, dir, ref_args, prim_ref));

@@ -482,6 +482,7 @@ TEST(test_pool_execute, AvgPoolIncludePad) {
 }
 
 TEST(test_pool_execute, AvgPoolBackwardExcludePad) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *eng = get_engine();
 
@@ -541,6 +542,7 @@ TEST(test_pool_execute, AvgPoolBackwardExcludePad) {
 }
 
 TEST(test_pool_execute, AvgPoolBackwardIncludePad) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *eng = get_engine();
 

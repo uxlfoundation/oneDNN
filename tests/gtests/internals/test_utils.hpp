@@ -76,7 +76,6 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
                     eng);
             write_to_dnnl_memory<float>((const float *)handle, mem_f32_mem);
             dnnl::reorder(mem_f32_mem, mem).execute(s, mem_f32_mem, mem);
-            s.wait();
         } else if (mem.get_desc().get_data_type() != dnnl_s32
                 && std::is_same<T, int>::value) {
             dnnl::memory mem_s32_mem(
@@ -85,7 +84,6 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
                     eng);
             write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem);
             dnnl::reorder(mem_s32_mem, mem).execute(s, mem_s32_mem, mem);
-            s.wait();
         } else if ((mem.get_desc().get_data_type() == dnnl_u8
                            || mem.get_desc().get_data_type() == dnnl_s8
                            || mem.get_desc().get_data_type() == dnnl_s4
@@ -98,19 +96,17 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
             write_to_dnnl_memory<unsigned>(
                     (const unsigned *)handle, mem_u32_mem);
             dnnl::reorder(mem_u32_mem, mem).execute(s, mem_u32_mem, mem);
-            s.wait();
-        } else if ((mem.get_desc().get_data_type() == dnnl_f32
-                           && std::is_same<T, float>::value)
-                || (mem.get_desc().get_data_type() == dnnl_s32
-                        && std::is_same<T, int>::value)) {
-            void *mapped_ptr = mem.map_data();
-            if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
-            mem.unmap_data(mapped_ptr);
         } else {
-            // PC: this branch is identical to the one above
+#ifdef DNNL_WITH_SYCL
+            void *mapped_ptr = (uint8_t *)mem.get_data_handle();
+            auto sycl_queue = dnnl::sycl_interop::get_queue(s);
+            sycl_queue.memcpy(mapped_ptr, handle, size);
+#else
+            s.wait();
             void *mapped_ptr = mem.map_data();
             if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
             mem.unmap_data(mapped_ptr);
+#endif
         }
         return;
     }
@@ -158,6 +154,14 @@ void fill_random_quantized(std::vector<T> &out, const dnnl::memory::desc &desc,
             size_t chunk = std::min(nrand, elems - i);
             std::memcpy(&out[i], random_data_f.data(), chunk * sizeof(T));
         }
+    }
+}
+
+template <typename T>
+void fill_value(std::vector<T> &out, const dnnl::memory::desc &desc, T value) {
+    auto elems = product(desc.get_dims());
+    for (int i = 0; i < elems; i++) {
+        out[i] = value;
     }
 }
 

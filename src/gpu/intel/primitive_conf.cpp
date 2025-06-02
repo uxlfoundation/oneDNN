@@ -568,6 +568,7 @@ bool post_ops_with_binary_ok(const primitive_attr_t *attr,
                 && (is_eltwise(po_idx) || is_sum(po_idx) || is_binary(po_idx)
                         || is_prelu(po_idx));
         if (is_binary(po_idx)) {
+            if (p.entry_[po_idx].is_binary_with_ternary_op()) return false;
             const auto &bin_desc = p.entry_[po_idx].binary.src1_desc;
             bool has_runtime_dims = false;
             int num_size_one_dims = 0;

@@ -512,8 +512,7 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
                 ? algorithm::pooling_avg_exclude_padding
                 : algorithm::pooling_avg_include_padding;
     } else {
-        BACKEND_DNNL_ENFORCE(
-                0, "Currently only int8 MaxPool/AvgPool is supported.");
+        assert(!"only int8 MaxPool/AvgPool is supported.");
     }
 
     dnnl::pooling_forward::primitive_desc pd(p_engine, prop, algo, src, dst,
@@ -594,9 +593,7 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
                 ? algorithm::pooling_avg_exclude_padding
                 : algorithm::pooling_avg_include_padding;
     } else {
-        BACKEND_DNNL_ENFORCE(0,
-                "Currently only MaxPoolBackprop/AvgPoolBackprop is "
-                "supported.");
+        assert(!"only MaxPoolBackprop/AvgPoolBackprop is supported.");
     }
 
     if (op->get_attr<std::string>(op_attr::kind) == "maxpool") {
@@ -979,9 +976,7 @@ eltwise_executable_t::desc_t eltwise_executable_t::create_desc(
 
     const algorithm algo = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));
-    if (algo == algorithm::undef) {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported eltwise op.");
-    }
+    if (algo == algorithm::undef) { assert(!"unsupported eltwise op."); }
 
     dnnl::eltwise_forward::primitive_desc pd;
     pd = dnnl::eltwise_forward::primitive_desc(p_engine, prop_kind::forward,
@@ -1156,7 +1151,7 @@ resampling_executable_t::desc_t resampling_executable_t::create_desc(
     } else if (mode == "linear" || mode == "bilinear" || mode == "trilinear") {
         algo = algorithm::resampling_linear;
     } else {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported resampling mode.");
+        assert(!"unsupported resampling mode.");
     }
 
     dnnl::resampling_forward::primitive_desc pd;
@@ -1193,7 +1188,7 @@ resampling_bwd_executable_t::desc_t resampling_bwd_executable_t::create_desc(
     } else if (mode == "linear" || mode == "bilinear" || mode == "trilinear") {
         algo = algorithm::resampling_linear;
     } else {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported resampling mode.");
+        assert(!"unsupported resampling mode.");
     }
 
     auto src = make_dnnl_memory_desc(
@@ -1503,9 +1498,7 @@ reduction_executable_t::desc_t reduction_executable_t::create_desc(
 
     const algorithm alg = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));
-    if (alg == algorithm::undef) {
-        BACKEND_DNNL_ENFORCE(0, "Unsupported reduction op.");
-    }
+    if (alg == algorithm::undef) { assert(!"unsupported reduction op."); }
     float p = op->has_attr(op_attr::p) ? op->get_attr<float>(op_attr::p) : 0.f;
 
     float eps = 0.0f;

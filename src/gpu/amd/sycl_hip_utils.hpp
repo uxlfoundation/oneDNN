@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -134,7 +134,7 @@ inline status_t convert_data_type(const memory_desc_t *mem_desc,
         case data_type_t::dnnl_s8: {
             if (vectorized
                     && mem_desc->format_desc.blocking.inner_blks[0] == 4) {
-#if MIOPEN_HAS_INT8X4
+#if defined(MIOPEN_HAS_INT8X4)
                 *miopen_data_type = miopenDataType_t::miopenInt8x4;
 #else
                 return status::unimplemented;

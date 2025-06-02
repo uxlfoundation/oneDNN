@@ -1729,6 +1729,7 @@ public:
     }
 
     object_t _mutate(const let_t &obj) override {
+
         // Attempt to inline
         expr_t value;
         if (cset_.is_single_value(obj.var, value)) {
@@ -1736,6 +1737,8 @@ public:
                     cast_t::make(obj.var.as<var_t>().type, value));
             return mutate(body);
         }
+
+        if (obj.var.type().is_mutable()) return ir_mutator_t::_mutate(obj);
 
         // External variable.
         if (obj.value.is_empty()) return ir_mutator_t::_mutate(obj);

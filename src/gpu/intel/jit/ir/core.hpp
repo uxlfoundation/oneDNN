@@ -640,6 +640,7 @@ private:
     int elems_ = 0;
     type_attr_t attr_;
     bool is_slm_ = false;
+    bool is_ptr_ = false;
 };
 
 // type_t to dnnl_data_type_t convertor.
@@ -1816,8 +1817,9 @@ class var_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(var_t)
 
-    static expr_t make(const type_t &type, const std::string &name) {
-        return expr_t(new var_t(type, name));
+    static expr_t make(const type_t &type, const std::string &name,
+            bool is_mutable = false) {
+        return expr_t(new var_t(type, name, is_mutable));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1830,10 +1832,11 @@ public:
     IR_DECLARE_TRAVERSERS()
 
     std::string name;
+    bool is_mutable = false;
 
 private:
-    var_t(const type_t &type, const std::string &name)
-        : expr_impl_t(_type_info(), type), name(name) {}
+    var_t(const type_t &type, const std::string &name, bool is_mutable)
+        : expr_impl_t(_type_info(), type), name(name), is_mutable(is_mutable) {}
 };
 
 // Convertor from C++ type to IR expression.

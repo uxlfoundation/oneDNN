@@ -126,16 +126,10 @@ void vanilla_rnn(engine::kind engine_kind) {
 
     // Create primitive descriptor.
     auto vanilla_rnn_fwd_pd = vanilla_rnn_forward::primitive_desc(
-            engine, 
-            prop_kind::forward_training, 
-            dnnl::algorithm::eltwise_tanh,
-            rnn_direction::unidirectional_left2right, 
-            src_layer_md,
+            engine, prop_kind::forward_training, dnnl::algorithm::eltwise_tanh,
+            rnn_direction::unidirectional_left2right, src_layer_md,
             memory::desc(), //src_iter_md
-            weights_layer_md, 
-            weights_iter_md, 
-            bias_md, 
-            dst_layer_md,
+            weights_layer_md, weights_iter_md, bias_md, dst_layer_md,
             memory::desc() //dst_iter_md
     );
 
@@ -148,7 +142,8 @@ void vanilla_rnn(engine::kind engine_kind) {
     // primitive and the one provided by the user are different. In this case,
     // we create additional memory objects with internal buffers that will
     // contain the reordered data.
-    if (vanilla_rnn_fwd_pd.weights_desc() != user_weights_layer_mem.get_desc()) {
+    if (vanilla_rnn_fwd_pd.weights_desc()
+            != user_weights_layer_mem.get_desc()) {
         weights_layer_mem = memory(vanilla_rnn_fwd_pd.weights_desc(), engine);
         reorder(user_weights_layer_mem, weights_layer_mem)
                 .execute(engine_stream, user_weights_layer_mem,
@@ -157,7 +152,8 @@ void vanilla_rnn(engine::kind engine_kind) {
 
     if (vanilla_rnn_fwd_pd.weights_iter_desc()
             != user_weights_iter_mem.get_desc()) {
-        weights_iter_mem = memory(vanilla_rnn_fwd_pd.weights_iter_desc(), engine);
+        weights_iter_mem
+                = memory(vanilla_rnn_fwd_pd.weights_iter_desc(), engine);
         reorder(user_weights_iter_mem, weights_iter_mem)
                 .execute(
                         engine_stream, user_weights_iter_mem, weights_iter_mem);
@@ -257,24 +253,20 @@ void vanilla_rnn(engine::kind engine_kind) {
     write_to_dnnl_memory(diff_dst_layer_data.data(), diff_dst_layer_mem);
     write_to_dnnl_memory(
             diff_weights_layer_data.data(), diff_user_weights_layer_mem);
-    write_to_dnnl_memory(diff_weights_iter_data.data(), diff_user_weights_iter_mem);
+    write_to_dnnl_memory(
+            diff_weights_iter_data.data(), diff_user_weights_iter_mem);
     write_to_dnnl_memory(diff_bias_data.data(), diff_bias_mem);
 
     // Create backward primitive descriptor.
     auto vanilla_rnn_bwd_pd = vanilla_rnn_backward::primitive_desc(engine,
             prop_kind::backward, algorithm::eltwise_tanh,
-            rnn_direction::unidirectional_left2right, 
-            src_layer_md,
+            rnn_direction::unidirectional_left2right, src_layer_md,
             memory::desc(), //src_iter_md
-            weights_layer_md, 
-            weights_iter_md, 
-            bias_md, dst_layer_md,
+            weights_layer_md, weights_iter_md, bias_md, dst_layer_md,
             memory::desc(), //dst_iter_md
             diff_src_layer_md,
             memory::desc(), //diff_src_iter_md
-            diff_weights_layer_md, 
-            diff_weights_iter_md, 
-            diff_bias_md,
+            diff_weights_layer_md, diff_weights_iter_md, diff_bias_md,
             diff_dst_layer_md,
             memory::desc(), //diff_dst_iter_md
             vanilla_rnn_fwd_pd);
@@ -286,15 +278,18 @@ void vanilla_rnn(engine::kind engine_kind) {
     // primitive and the one provided by the user are different. In this case,
     // we create additional memory objects with internal buffers that will
     // contain the reordered data.
-    if (vanilla_rnn_bwd_pd.weights_desc() != user_weights_layer_mem.get_desc()) {
+    if (vanilla_rnn_bwd_pd.weights_desc()
+            != user_weights_layer_mem.get_desc()) {
         weights_layer_mem = memory(vanilla_rnn_bwd_pd.weights_desc(), engine);
         reorder(user_weights_layer_mem, weights_layer_mem)
                 .execute(engine_stream, user_weights_layer_mem,
                         weights_layer_mem);
     }
 
-    if (vanilla_rnn_bwd_pd.diff_weights_desc() != diff_user_weights_layer_mem.get_desc()) {
-        diff_weights_layer_mem = memory(vanilla_rnn_bwd_pd.diff_weights_desc(), engine);
+    if (vanilla_rnn_bwd_pd.diff_weights_desc()
+            != diff_user_weights_layer_mem.get_desc()) {
+        diff_weights_layer_mem
+                = memory(vanilla_rnn_bwd_pd.diff_weights_desc(), engine);
         reorder(diff_user_weights_layer_mem, diff_weights_layer_mem)
                 .execute(engine_stream, diff_user_weights_layer_mem,
                         diff_weights_layer_mem);
@@ -302,23 +297,26 @@ void vanilla_rnn(engine::kind engine_kind) {
 
     if (vanilla_rnn_bwd_pd.weights_iter_desc()
             != user_weights_iter_mem.get_desc()) {
-        weights_iter_mem = memory(vanilla_rnn_bwd_pd.weights_iter_desc(), engine);
+        weights_iter_mem
+                = memory(vanilla_rnn_bwd_pd.weights_iter_desc(), engine);
         reorder(user_weights_iter_mem, weights_iter_mem)
                 .execute(
                         engine_stream, user_weights_iter_mem, weights_iter_mem);
-    }   
+    }
 
     if (vanilla_rnn_bwd_pd.diff_weights_iter_desc()
             != diff_user_weights_iter_mem.get_desc()) {
-        diff_weights_iter_mem = memory(vanilla_rnn_bwd_pd.diff_weights_iter_desc(), engine);
+        diff_weights_iter_mem
+                = memory(vanilla_rnn_bwd_pd.diff_weights_iter_desc(), engine);
         reorder(diff_user_weights_iter_mem, diff_weights_iter_mem)
-                .execute(
-                        engine_stream, diff_user_weights_iter_mem, diff_weights_iter_mem);
-    }       
+                .execute(engine_stream, diff_user_weights_iter_mem,
+                        diff_weights_iter_mem);
+    }
 
-
-    auto diff_src_iter_mem = memory(vanilla_rnn_fwd_pd.diff_src_iter_desc(), engine);
-    auto diff_dst_iter_mem = memory(vanilla_rnn_fwd_pd.diff_dst_iter_desc(), engine);    
+    auto diff_src_iter_mem
+            = memory(vanilla_rnn_fwd_pd.diff_src_iter_desc(), engine);
+    auto diff_dst_iter_mem
+            = memory(vanilla_rnn_fwd_pd.diff_dst_iter_desc(), engine);
     // Create the primitive.
     auto vanilla_rnn_bwd_prim = vanilla_rnn_backward(vanilla_rnn_bwd_pd);
 

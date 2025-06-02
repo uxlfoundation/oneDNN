@@ -175,7 +175,7 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
 //===----------------------------------------------------------------------===//
 
 void BlockUntilReady(AsyncValue* async_value) {
-  if (__builtin_expect(async_value->IsAvailable(), 1)) return;
+  if (LIKELY(async_value->IsAvailable())) return;
 
   std::mutex mtx;
   std::condition_variable cv;

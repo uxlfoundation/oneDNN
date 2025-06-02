@@ -548,7 +548,7 @@ class AsyncValuePtr {
   template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
   void AndThen(Waiter&& waiter) const {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
-      if (__builtin_expect(ptr.IsError(), 0)) {
+      if (UNLIKELY(ptr.IsError())) {
         return waiter(ptr.GetError());
       } else {
         return waiter(&ptr.get());
@@ -563,7 +563,7 @@ class AsyncValuePtr {
     // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (__builtin_expect(ref.IsError(), 0)) {
+              if (UNLIKELY(ref.IsError())) {
                 return waiter(ref.GetError());
               } else {
                 return waiter(&ref.get());
@@ -591,7 +591,7 @@ class AsyncValuePtr {
   template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
   void AndThen(Waiter&& waiter) const {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
-      if (__builtin_expect(ptr.IsError(), 0)) {
+      if (UNLIKELY(ptr.IsError())) {
         return waiter(ptr.GetError());
       } else {
         return waiter(std::error_code());
@@ -606,7 +606,7 @@ class AsyncValuePtr {
     // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (__builtin_expect(ref.IsError(), 0)) {
+              if (UNLIKELY(ref.IsError())) {
                 return waiter(ref.GetError());
               } else {
                 return waiter(std::error_code());
@@ -628,7 +628,7 @@ class AsyncValuePtr {
   AsyncValueRef<R> Map(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
-      if (__builtin_expect(ptr.IsError(), 0)) {
+      if (UNLIKELY(ptr.IsError())) {
         result.SetError(ptr.GetError());
       } else {
         result.emplace(f(*ptr));
@@ -645,7 +645,7 @@ class AsyncValuePtr {
     // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
             [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (__builtin_expect(ref.IsError(), 0)) {
+              if (UNLIKELY(ref.IsError())) {
                 result.SetError(ref.GetError());
               } else {
                 result.emplace(f(*ref));
@@ -672,7 +672,7 @@ class AsyncValuePtr {
   AsyncValueRef<R> TryMap(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
-      if (__builtin_expect(ptr.IsError(), 0)) {
+      if (UNLIKELY(ptr.IsError())) {
         result.SetError(ptr.GetError());
       } else {
         auto status_or = f(*ptr);
@@ -694,7 +694,7 @@ class AsyncValuePtr {
     // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
             [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (__builtin_expect(ref.IsError(), 0)) {
+              if (UNLIKELY(ref.IsError())) {
                 result.SetError(ref.GetError());
               } else {
                 auto status_or = f(*ref);
@@ -758,7 +758,7 @@ class AsyncValuePtr {
     // If async value is in concrete state, we can immediately call the functor.
     // We don't handle errors here and prefer a generic code path below because
     // error handling is never on a performance critical path.
-    if (__builtin_expect(IsConcrete(), 1)) {
+    if (LIKELY(IsConcrete())) {
       if constexpr (std::is_invocable_v<F, T&>) {
         return f(get());
       } else {
@@ -768,7 +768,7 @@ class AsyncValuePtr {
 
     auto promise = MakePromise<R>();
     AndThen([f = std::forward<F>(f), promise, ptr = *this]() mutable {
-      if (__builtin_expect(ptr.IsError(), 0)) {
+      if (UNLIKELY(ptr.IsError())) {
         promise->SetError(ptr.GetError());
       } else {
         if constexpr (std::is_invocable_v<F, T&>) {
@@ -792,7 +792,7 @@ class AsyncValuePtr {
     // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
             [f = std::forward<F>(f), promise, ref = CopyRef()]() mutable {
-              if (__builtin_expect(ref.IsError(), 0)) {
+              if (UNLIKELY(ref.IsError())) {
                 promise->SetError(ref.GetError());
               } else {
                 if constexpr (std::is_invocable_v<F, T&>) {
@@ -866,9 +866,9 @@ class CountDownAsyncValueRef {
   // available.
   bool CountDown(size_t count, const std::error_code& status = std::error_code()) {
     assert(state_->ref.IsUnavailable() && "AsyncValue must be unavailable");
-    assert(state_->cnt.load() >= count && "Invalid count down value");
+    assert(static_cast<size_t>(state_->cnt.load()) >= count && "Invalid count down value");
 
-    if (__builtin_expect(status.value(), 0)) {
+    if (UNLIKELY(status.value())) {
       std::lock_guard<std::mutex> lock(state_->mutex);
       state_->is_error.store(true, std::memory_order_release);
       state_->status = status;
@@ -893,9 +893,9 @@ class CountDownAsyncValueRef {
 
     // If this was the last count down, we have to decide if we set async value
     // to concrete or error state.
-    if (__builtin_expect(is_complete, 0)) {
+    if (UNLIKELY(is_complete)) {
       bool is_error = state_->is_error.load(std::memory_order_acquire);
-      if (__builtin_expect(is_error, 0)) {
+      if (UNLIKELY(is_error)) {
         // Ownership of the CountDownAsyncValueRef can be transferred to
         // AsyncValueRef itself (via the `AndThen` callback), and `ref.SetError`
         // call can destroy the `state_` and the `mutex`. We take the error
@@ -1138,7 +1138,7 @@ AsyncValueRef<T> TryMakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
   auto result = MakeUnconstructedAsyncValueRef<T>();
   executor.Execute([result, f = std::forward<F>(f)]() mutable {
     std::optional<typename R::value_type> status_or = f();
-    if (__builtin_expect(status_or, 1)) {
+    if (LIKELY(status_or)) {
       result.emplace(std::move(*status_or));
     } else {
       result.SetError(std::make_error_code(std::errc::invalid_argument));

@@ -1584,11 +1584,11 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << delimiter << "attr-scales:";
         delimiter = "";
         if (pd->with_key_scales()) {
-            ss << delimiter << "kq:" << desc->kq_scales;
+            ss << delimiter << "key:" << desc->kq_scales;
             delimiter = "+";
         }
         if (pd->with_value_scales()) {
-            ss << delimiter << "vs:" << desc->vs_scales;
+            ss << delimiter << "val:" << desc->vs_scales;
             delimiter = "+";
         }
         delimiter = " ";
@@ -1597,11 +1597,11 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << delimiter << "attr-zero-points:";
         delimiter = "";
         if (pd->with_key_zp()) {
-            ss << delimiter << "kq:" << desc->kq_zero_points;
+            ss << delimiter << "key:" << desc->kq_zero_points;
             delimiter = "+";
         }
         if (pd->with_value_zp()) {
-            ss << delimiter << "vs:" << desc->vs_zero_points;
+            ss << delimiter << "val:" << desc->vs_zero_points;
             delimiter = "+";
         }
         delimiter = " ";

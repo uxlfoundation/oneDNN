@@ -18,10 +18,9 @@
 #include "state.hpp"
 #include "hw_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
-
-#include "internal/namespace_start.hxx"
-
 
 Subregister SubregisterPair::getReg(int idx) const
 {
@@ -62,7 +61,7 @@ void CommonState::wipeActiveVFlags()
     raVFlag.freeVFlagTempAllocs();
 }
 
-void CommonState::allocEmulate64Temp(const ngen::EmulationStrategy &estrategy)
+void CommonState::allocEmulate64Temp(const EmulationStrategy &estrategy)
 {
     int ntemp = 0;
     if (estrategy.emulateDWxDW)  ntemp = 1;
@@ -73,4 +72,10 @@ void CommonState::allocEmulate64Temp(const ngen::EmulationStrategy &estrategy)
         emulate.temp[q] = ra.alloc();
 }
 
-#include "internal/namespace_end.hxx"
+void GEMMState::setTacc(Type T)
+{
+    Tacc = T;
+    C_layout.cast(T);
+}
+
+GEMMSTONE_NAMESPACE_END

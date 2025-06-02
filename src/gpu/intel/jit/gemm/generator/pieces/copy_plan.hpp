@@ -25,8 +25,15 @@
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
+#ifndef GEMMSTONE_ENABLE_COPY_PLAN_DUMP
+#if   defined(DNNL_DEV_MODE)
+#define GEMMSTONE_ENABLE_COPY_PLAN_DUMP 1
+#else
+#define GEMMSTONE_ENABLE_COPY_PLAN_DUMP 0
+#endif
+#endif
 
 class CopyPlan;
 
@@ -35,16 +42,15 @@ struct CopyOperand
     int16_t grf = 0;
     uint8_t offset = 0;
     int8_t stride = 1;
-    uint8_t inVS = 0, inW = 0;                          // Incoming region parameters.
+    uint8_t vs = 0, width = 0;                          // 2D region parameters.
     ngen::DataType type = ngen::DataType::invalid;
     ngen::DataType range = ngen::DataType::invalid;
     enum : uint8_t {GRF, Immediate, Flag, Null} kind = Null;
     bool temp = false;                                  // Operand is a temporary?
     bool overwrite = false;                             // Operand can be trashed?
     bool overwriteStride = false;                       // Padding area between strides can be trashed?
-    bool neg = false;                                   // Negate (-) rd operator
-    bool abs = false;                                   // Absolute Value abs() rd operator
-    bool inv = false;                                   // Invert (~) rd operator
+    bool neg = false;
+    bool abs = false;
     uint64_t value = 0;                                 // Immediate value, or temporary index
 
     bool isNull() const { return kind == Null; }
@@ -64,13 +70,14 @@ struct CopyOperand
     CopyOperand(ngen::RegData rd);
     CopyOperand(ngen::Immediate imm) : type(imm.getType()), kind(Immediate), value(imm) {}
     CopyOperand(int imm) : CopyOperand(ngen::Immediate(imm)) {}
-#if defined(DNNL_DEV_MODE)
-    void dump() const;
-#endif
 
     CopyOperand operator-() const;
-    CopyOperand operator~() const;
 
+    friend CopyOperand abs(CopyOperand o) { o.abs = true; return o; }
+
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
+    void dump() const;
+#endif
 };
 
 struct CopyInstruction
@@ -88,6 +95,9 @@ struct CopyInstruction
     void invalidate()       { simd = 0; }
     bool isInvalid()  const { return (simd == 0); }
 
+    operator bool() const { return !isInvalid(); }
+    bool operator!() const { return isInvalid(); }
+
     bool hasCMod()    const { return cmod != ngen::ConditionModifier::none; }
 
     void moveToIntegerPipe();
@@ -96,10 +106,10 @@ struct CopyInstruction
 
     template <typename Generator>
     inline void execute(Generator &g);
-#if defined(DNNL_DEV_MODE)
+
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     void dump(const CopyPlan &plan) const;
 #endif
-
 };
 
 struct CopyTemporary
@@ -134,6 +144,7 @@ public:
     using FlagAllocator = std::function<void(int bytes, ngen::FlagRegister &flag)>;
 
     CopyPlan(ngen::HW hw_, bool systolicAvailable_) : hw(hw_), systolicAvailable(systolicAvailable_) {}
+
     CopyInstruction &append(CopyInstruction &&i);
     CopyInstruction &append(ngen::Opcode op, int simd, const CopyOperand &dst, const CopyOperand &src0, const CopyOperand &src1 = CopyOperand(), const CopyOperand &src2 = CopyOperand());
     CopyInstruction &append(ngen::Opcode op, int simd, ngen::InstructionModifier mod, const CopyOperand &dst, const CopyOperand &src0, const CopyOperand &src1 = CopyOperand(), const CopyOperand &src2 = CopyOperand());
@@ -147,17 +158,21 @@ public:
 
     template <typename Generator>
     inline void execute(Generator &g);
-#if defined(DNNL_DEV_MODE)
+
+    int tempFlagBytes() const;
+
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     void dump() const;
     int cycleCount() const;
 #endif
-    int tempFlagBytes() const;
 
 protected:
     ngen::HW hw;
     bool systolicAvailable;
+    bool freezeCNums = false;
     std::vector<CopyInstruction> insns, newInsns;
     std::vector<CopyTemporary> temps;
+    CopyInstruction invalidInsn;
 
     enum class SortType {
         PhaseOnly, Register, SourceOrder
@@ -169,7 +184,7 @@ protected:
     CopyInstruction &split(CopyInstruction &i, bool sequenced = true);
     template <int n>
     std::array<CopyInstruction*, n> splitMultiple(CopyInstruction &i);
-    CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2);
+    CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2, int maxGap = 3);
     void mergeChanges();
 
     void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false);
@@ -181,6 +196,7 @@ protected:
 
     void checkNoSubbytes();
     void collapseCNums();
+    bool trySwapCNumRanges(int16_t min0, int16_t max0, int16_t min1);
 
     void distributePhases();
     void split2DRegions();
@@ -188,18 +204,23 @@ protected:
     void planEarlyInt4Upconversions();
     void planEmulatedHalveFloat(CopyInstruction &i);
     void planSmallUWToHF(CopyInstruction &i);
-    void planBToI4(CopyInstruction &i);
+    void planSmallUWToBF(CopyInstruction &i);
     void planBToHF(CopyInstruction &i);
-    void planS4ToHF(CopyInstruction &i);
-    void planEmulatedE3M0ToHF(CopyInstruction &i);
-    void planEmulatedHFToE3M0(CopyInstruction &i);
-    void planEmulatedF4E2M1ToHF(CopyInstruction &i);
-    void planEmulatedHFToF4E2M1(CopyInstruction &i);
+    void planBToBF(CopyInstruction &i);
+    void planS4ToF16(CopyInstruction &i);
+    void planUnpack4To16(CopyInstruction &i);
+    void planUnpack8To16High(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
+    void planInt4Downconversion(CopyInstruction &i);
+    void planEmulatedSIMD1(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
+    void planEmulatedHF8ToBF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
-    void planFP8SIMD1Mov(CopyInstruction &i);
-    void planEmulatedFP8E8M0ToHF(CopyInstruction &i);
+    void planEmulatedF4ToHF(CopyInstruction &i);
+    void planEmulatedF4ToBF(CopyInstruction &i);
+    void planEmulatedNF4ToHF(CopyInstruction &i);
+    void planEmulatedHFToF4(CopyInstruction &i);
+    void planE8M0ToF(CopyInstruction &i);
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();
@@ -213,6 +234,7 @@ protected:
     void optimizeWriteSpread();
     void optimizeIntegerDownconvert();
     void optimizeSaturate();
+    void optimizeMoveToIntPipe();
 };
 
 
@@ -225,22 +247,24 @@ void CopyPlan::execute(Generator &g)
 template <typename Generator>
 void CopyInstruction::execute(Generator &g)
 {
+    using namespace ngen;
+
 #define UNARY_OP_CASE(o)                                                            \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate)                                    \
             g.o(ngenModifiers(), dst.ngen(), src0.ngenImmediate());                 \
         else                                                                        \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen());                          \
         break;
 #define BINARY_OP_CASE(o)                                                           \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src1.kind == CopyOperand::Immediate)                                    \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngenImmediate());    \
         else                                                                        \
             g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen());             \
         break;
 #define TERNARY_OP_CASE(o)                                                          \
-    case ngen::Opcode::o:                                                           \
+    case Opcode::o:                                                           \
         if (src0.kind == CopyOperand::Immediate) {                                  \
             if (src2.kind == CopyOperand::Immediate)                                \
                 g.o(ngenModifiers(), dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate()); \
@@ -251,20 +275,6 @@ void CopyInstruction::execute(Generator &g)
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate()); \
             else                                                                    \
                 g.o(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
-        }                                                                           \
-        break;
-#define BFN_OP_CASE(o)                                                              \
-    case ngen::Opcode::o:                                                           \
-        if (src0.kind == CopyOperand::Immediate) {                                  \
-            if (src2.kind == CopyOperand::Immediate)                                \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate()); \
-            else                                                                    \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngen()); \
-        } else {                                                                    \
-            if (src2.kind == CopyOperand::Immediate)                                \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate()); \
-            else                                                                    \
-                g.o(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen()); \
         }                                                                           \
         break;
 
@@ -282,16 +292,37 @@ void CopyInstruction::execute(Generator &g)
         BINARY_OP_CASE(sel)
         TERNARY_OP_CASE(mad)
         TERNARY_OP_CASE(csel)
-        BFN_OP_CASE(bfn)
+        case Opcode::bfn:
+            if (src0.kind == CopyOperand::Immediate) {
+                if (src2.kind == CopyOperand::Immediate)
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngenImmediate());
+                else
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngenImmediate(), src1.ngen(), src2.ngen());
+            } else {
+                if (src2.kind == CopyOperand::Immediate)
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngenImmediate());
+                else
+                    g.bfn(ngenModifiers(), ctrl, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
+            }
+            break;
+        case Opcode::math: {
+            auto fc = static_cast<MathFunction>(ctrl);
+            if (mathArgCount(g.getHardware(), fc) == 1)
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen());
+            else if (src1.kind == CopyOperand::Immediate)
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngenImmediate());
+            else
+                g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngen());
+            break;
+        }
         default: stub("Unsupported opcode");
     }
 
 #undef UNARY_OP_CASE
 #undef BINARY_OP_CASE
 #undef TERNARY_OP_CASE
-#undef BFN_OP_CASE
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

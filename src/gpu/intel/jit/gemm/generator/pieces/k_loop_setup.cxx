@@ -17,25 +17,25 @@
 
 #include "alloc_utils.hpp"
 #include "compute_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
 #include "state_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
 
-
-static void makeAiBiKCloneLayout(HW hw, bool isA, vector<RegisterBlock> &Xi_layout, vector<vector<RegisterBlock>> &Xi_layoutK,
+static void makeAiBiKCloneLayout(HW hw, bool isA, RegisterLayout &Xi_layout, vector<RegisterLayout> &Xi_layoutK,
                                  vector<GRFMultirange> &Xi_regsRem, int kx_slm,
                                  const GEMMStrategy &strategy, GEMMState &state);
 
 // Prepare for inner loop. Returns true on success.
 template <HW hw>
-bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Ta = problem.Ta, Tb = problem.Tb;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
@@ -125,7 +125,7 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
     bool b2D = isBlock2D(strategy.B.accessType);
     bool ai2D = strategy.slmA && isBlock2D(state.Ai_strategy.accessType);
     bool bi2D = strategy.slmB && isBlock2D(state.Bi_strategy.accessType);
-    if (a2D || ai2D) {
+    if (a2D || ai2D) {                              // TODO: logic doesn't look right for ai2D case
         ka_loadRem = state.A_layout[0].nc;
         if (!isColMajor(problem.A.layout))
             ka_loadRem *= state.A_layout[0].count;
@@ -156,14 +156,14 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
 
     if (strategy.kDescRem) {
         if (ka_loadRem == 1) {
-            int frag = checkDescriptorRemainder(Ta_load, unrollM, strategy.ka_load, true, false, problem.A, strategy.A);
+            int frag = checkDescriptorRemainder(hw, Ta_load, unrollM, strategy.ka_load, true, false, problem.A, strategy.A);
             if (frag > 1) {
                 ka_loadRem = frag;
                 A_lateKRem = A_descRem = true;
             }
         }
         if (kb_loadRem == 1 && !A_descRem) {
-            int frag = checkDescriptorRemainder(Tb_load, strategy.kb_load, unrollN, false, false, problem.B, strategy.B);
+            int frag = checkDescriptorRemainder(hw, Tb_load, strategy.kb_load, unrollN, false, false, problem.B, strategy.B);
             if (frag > 1) {
                 kb_loadRem = frag;
                 B_lateKRem = B_descRem = true;
@@ -184,12 +184,13 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
         }
 
     // Fragment the A, B layouts into smaller blocks (usually 1 row/column) for remainder loads.
-    if (!getSubblocks(Ta_load, state.A_layoutRem, state.A_addrsRem, state.A_layout, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded, problem.A, strategy.A)) return false;
-    if (!getSubblocks(Tb_load, state.B_layoutRem, state.B_addrsRem, state.B_layout, state.B_addrs, false, 0, kb_loadRem, strategy.B.padded, problem.B, strategy.B)) return false;
+    state.A_layoutRem = state.A_layout.trySlice(state.A_addrsRem, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded);
+    state.B_layoutRem = state.B_layout.trySlice(state.B_addrsRem, state.B_addrs, false, 0, kb_loadRem, strategy.B.padded);
+    if (!state.A_layoutRem || !state.B_layoutRem) return false;
 
     // Add k masking now for block 2D loads. Otherwise it is done later, or not at all.
-    if (a2D && (ka_loadRem > 1)) addRemainder(Ta_load, state.A_layoutRem, false, true, AvoidFragment, problem.A, strategy.A);
-    if (b2D && (kb_loadRem > 1)) addRemainder(Tb_load, state.B_layoutRem, true, false, AvoidFragment, problem.B, strategy.B);
+    if (a2D && (ka_loadRem > 1)) addRemainder(state.A_layoutRem, false, true, AvoidFragment);
+    if (b2D && (kb_loadRem > 1)) addRemainder(state.B_layoutRem, true, false, AvoidFragment);
 
     // Manually set k remainder flags in the overaligned case.
     if (ka_loadRem > 1 && !A_lateKRem) for (auto &block: state.A_layoutRem)
@@ -226,12 +227,12 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
 
     if (ai2D && (ka_loadRem > 1) && state.Ai_strategy.address2D) {
         Ai_hasKRem = true;
-        addRemainder(Ta_ext, state.Ai_layoutRem, false, true, AvoidFragment, state.Ai, state.Ai_strategy);
+        addRemainder(state.Ai_layoutRem, false, true, AvoidFragment);
     }
 
     if (bi2D && (kb_loadRem > 1) && state.Bi_strategy.address2D) {
         Bi_hasKRem = true;
-        addRemainder(Tb_ext, state.Bi_layoutRem, true, false, AvoidFragment, state.Bi, state.Bi_strategy);
+        addRemainder(state.Bi_layoutRem, true, false, AvoidFragment);
     }
 
     if (strategy.slmA && !Ai_hasKRem)
@@ -253,8 +254,8 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
             bool success = false;
 
             if (h < int(Ai_addrsK.size())) {
-                success = getSubblocks(Ta_ext, Ai_layoutK[h], Ai_addrsK[h], Ai_layoutRem, state.Ai_addrs,
-                                       true, h, h + 1, state.Ai_strategy.padded, state.Ai, state.Ai_strategy);
+                Ai_layoutK[h] = Ai_layoutRem.trySlice(Ai_addrsK[h], state.Ai_addrs, true, h, h + 1, state.Ai_strategy.padded);
+                success = Ai_layoutK[h].valid();
             }
 
             if (!success && h == 0) stub();
@@ -263,8 +264,8 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
                 // Maybe the subblock is OK, but we didn't get an address register. Try again without
                 //  asking for address registers.
                 Ai_addrsK.resize(1);
-                success = getSubblocks(Ta_ext, Ai_layoutK[h], Ai_layoutRem,
-                                       true, h, h + 1, state.Ai_strategy.padded, state.Ai, state.Ai_strategy, true);
+                Ai_layoutK[h] = Ai_layoutRem.trySlice(true, h, h + 1, state.Ai_strategy.padded, true);
+                success = Ai_layoutK[h].valid();
             }
 
             if (!success) {
@@ -277,7 +278,7 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
 
                 aioShareRem = false;
                 if (state.aioShare || state.aoReuseA)
-                    Ao_regsRem = state.ra.alloc_range(getRegCount(state.Ao_layout));
+                    Ao_regsRem = state.ra.alloc_range(state.Ao_layout.regs());
                 break;
             }
         }
@@ -290,16 +291,16 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
             bool success = false;
 
             if (h < int(Bi_addrsK.size())) {
-                success = getSubblocks(Tb_ext, Bi_layoutK[h], Bi_addrsK[h], Bi_layoutRem, state.Bi_addrs,
-                                       false, h, h + 1, state.Bi_strategy.padded, state.Bi, state.Bi_strategy);
+                Bi_layoutK[h] = Bi_layoutRem.trySlice(Bi_addrsK[h], state.Bi_addrs, false, h, h + 1, state.Bi_strategy.padded);
+                success = Bi_layoutK[h].valid();
             }
 
             if (!success && h == 0) stub();
 
             if (!success) {
                 Bi_addrsK.resize(1);
-                success = getSubblocks(Tb_ext, Bi_layoutK[h], Bi_layoutRem,
-                                       false, h, h + 1, state.Bi_strategy.padded, state.Bi, state.Bi_strategy, true);
+                Bi_layoutK[h] = Bi_layoutRem.trySlice(false, h, h + 1, state.Bi_strategy.padded, true);
+                success = Bi_layoutK[h].valid();
             }
 
             if (!success) {
@@ -311,7 +312,7 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
 
                 bioShareRem = false;
                 if (state.bioShare || state.boReuseB)
-                    Bo_regsRem = state.ra.alloc_range(getRegCount(state.Bo_layout));
+                    Bo_regsRem = state.ra.alloc_range(state.Bo_layout.regs());
                 break;
             }
         }
@@ -344,13 +345,13 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
     std::tie(tileM_A, tileK_A, tileK_B, tileN_B) = targetKernelTiling(hw, problem, strategy);
 
     if (!repackA && repackARem) {
-        makeUnbackedRegLayout(Ta, state.Ar_layout, unrollM, ka_repackRem, isLayoutColMajor(state.A_layout), crosspackA, tileM_A, tileK_A);
-        state.Ar_regs = state.ra.alloc_range(getRegCount(state.Ar_layout), getHint(HintType::A0, strategy));
+        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, ka_repackRem, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A);
+        state.Ar_regs = state.ra.allocRange(state.Ar_layout.regs(), getHint(HintType::A0, strategy));
     }
 
     if (!repackB && repackBRem) {
-        makeUnbackedRegLayout(Tb, state.Br_layout, kb_repackRem, unrollN, isLayoutColMajor(state.B_layout), crosspackB, tileK_B, tileN_B);
-        state.Br_regs = state.ra.alloc_range(getRegCount(state.Br_layout), getHint(HintType::B0, strategy));
+        state.Br_layout = RegisterLayout(hw, Tb, kb_repackRem, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B);
+        state.Br_regs = state.ra.allocRange(state.Br_layout.regs(), getHint(HintType::B0, strategy));
     }
 
     state.remActiveA = state.remActiveB = state.remActiveSLM = false;
@@ -362,7 +363,7 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
 
 // Tear down after a single k loop.
 template <HW hw>
-void BLASKernelGenerator<hw>::kLoopTeardown(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::kLoopTeardown(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (state.K != state.k)
         state.ra.safeRelease(state.K);
@@ -384,7 +385,7 @@ void BLASKernelGenerator<hw>::kLoopTeardown(const GEMMProblem &problem, const GE
 
 // Prepare for GEMM k loop with m/n masked A/B accesses. Returns true if ka_lda/kb_ldb need recalculating.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmPrepMaskedAB(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmPrepMaskedAB(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     bool recalc = false;
     bool shrinkUK = false;
@@ -441,8 +442,8 @@ bool BLASKernelGenerator<hw>::gemmPrepMaskedAB(const GEMMProblem &problem, GEMMS
 
 // Calculate kSLMA/kSLMB -- countdown variables for SLM copies.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcKSLM(const Subregister &kSLM, const Subregister &lid, int kgran, int kdiv, int krep,
-                                           const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
+void Generator<hw>::gemmCalcKSLM(const Subregister &kSLM, const Subregister &lid, int kgran, int kdiv, int krep,
+                                 const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
 {
     if (kBase.isInvalid()) kBase = state.K;
 
@@ -466,7 +467,7 @@ void BLASKernelGenerator<hw>::gemmCalcKSLM(const Subregister &kSLM, const Subreg
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcKSLMA(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
+void Generator<hw>::gemmCalcKSLMA(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
 {
     int kgran, kdiv, krep;
     switch (state.effCoopA) {
@@ -494,7 +495,7 @@ void BLASKernelGenerator<hw>::gemmCalcKSLMA(const GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcKSLMB(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
+void Generator<hw>::gemmCalcKSLMB(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Subregister kBase)
 {
     int kgran, kdiv, krep;
     switch (state.effCoopB) {
@@ -523,8 +524,8 @@ void BLASKernelGenerator<hw>::gemmCalcKSLMB(const GEMMProblem &problem, const GE
 
 // Calculate barrier count for a k loop.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcKLoopBarrierCount(Subregister &count, const Subregister &k, int cooldown,
-                                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmCalcKLoopBarrierCount(Subregister &count, const Subregister &k, int cooldown,
+                                              const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     int barrierFreq = strategy.barrierFreq;
     int unrollK     = strategy.unroll[LoopK];
@@ -563,15 +564,15 @@ void BLASKernelGenerator<hw>::gemmCalcKLoopBarrierCount(Subregister &count, cons
 }
 
 // Make a remainder layout by duplicating the k = 0 slice, allocating extra registers as needed.
-static void makeAiBiKCloneLayout(HW hw, bool isA, vector<RegisterBlock> &Xi_layout, vector<vector<RegisterBlock>> &Xi_layoutK,
+static void makeAiBiKCloneLayout(HW hw, bool isA, RegisterLayout &Xi_layout, vector<RegisterLayout> &Xi_layoutK,
                                  vector<GRFMultirange> &Xi_regsRem, int kx_slm,
                                  const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto regCountK = getRegCount(Xi_layoutK[0]);
+    auto regCountK = Xi_layoutK[0].regs();
     auto regCount = regCountK * kx_slm;
     auto offsetK = isA ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
 
-    Xi_layout = Xi_layoutK[0];
+    auto Xi_list = Xi_layoutK[0].allBlocks();
 
     for (int h1 = 1; h1 < kx_slm; h1++) {
         Xi_layoutK[h1] = Xi_layoutK[h1 - 1];
@@ -580,9 +581,11 @@ static void makeAiBiKCloneLayout(HW hw, bool isA, vector<RegisterBlock> &Xi_layo
 
             auto oblock = block;
             oblock.*offsetK += h1;
-            Xi_layout.push_back(std::move(oblock));
+            Xi_list.push_back(std::move(oblock));
         }
     }
+
+    Xi_layout = RegisterLayout(Xi_layoutK[0].type(), Xi_layoutK[0].addressing(), Xi_layoutK[0].addressingStrategy(), std::move(Xi_list));
 
     int extraRegs = regCount - Xi_regsRem[0].getLen();
     if (extraRegs > 0) {
@@ -591,4 +594,4 @@ static void makeAiBiKCloneLayout(HW hw, bool isA, vector<RegisterBlock> &Xi_layo
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

@@ -15,35 +15,35 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "state_utils.hpp"
 #include "ngen_object_helpers.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
-
-#include "internal/namespace_start.hxx"
 
 // Ugly helpers handling address shifts. constexpr if would clean this all up.
 template <HW hw>
 template <typename BO>
 typename std::enable_if<!std::is_base_of<RegData, BO>::value, BO>::type
-BLASKernelGenerator<hw>::startShift(const BO &ptr, int shift, CommonState &state)
+Generator<hw>::startShift(const BO &ptr, int shift, CommonState &state)
 {
     return ptr >> shift;
 }
 
 template <HW hw>
-Subregister BLASKernelGenerator<hw>::startShift(const MultishiftSubregister &ptr, int shift, CommonState &state)
+Subregister Generator<hw>::startShift(const MultishiftSubregister &ptr, int shift, CommonState &state)
 {
     return ptr >> shift;
 }
 
 template <HW hw>
-SubregisterPair BLASKernelGenerator<hw>::startShift(const SubregisterPair &ptr, int shift, CommonState &state)
+SubregisterPair Generator<hw>::startShift(const SubregisterPair &ptr, int shift, CommonState &state)
 {
     if (shift == 0)
         return ptr;
@@ -54,7 +54,7 @@ SubregisterPair BLASKernelGenerator<hw>::startShift(const SubregisterPair &ptr, 
 template <HW hw>
 template <typename BO>
 typename std::enable_if<std::is_base_of<RegData, BO>::value, BO>::type
-BLASKernelGenerator<hw>::startShift(const BO &ptr, int shift, CommonState &state)
+Generator<hw>::startShift(const BO &ptr, int shift, CommonState &state)
 {
     BO ptrShifted = ptr;
 
@@ -70,19 +70,19 @@ BLASKernelGenerator<hw>::startShift(const BO &ptr, int shift, CommonState &state
 template <HW hw>
 template <typename BO, typename BI>
 typename std::enable_if<!std::is_base_of<RegData, BO>::value>::type
-BLASKernelGenerator<hw>::doneShift(const BO &ptr, const BI &ptrShifted, int shift, CommonState &state) {}
+Generator<hw>::doneShift(const BO &ptr, const BI &ptrShifted, int shift, CommonState &state) {}
 
 template <HW hw>
 template <typename BO, typename BI>
 typename std::enable_if<std::is_base_of<RegData, BO>::value>::type
-BLASKernelGenerator<hw>::doneShift(const BO &ptr, const BI &ptrShifted, int shift, CommonState &state)
+Generator<hw>::doneShift(const BO &ptr, const BI &ptrShifted, int shift, CommonState &state)
 {
     if (shift > 0)
         state.ra.release(ptrShifted);
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::doneShift(const SubregisterPair &ptr, const SubregisterPair &ptrShifted, int shift, CommonState &state)
+void Generator<hw>::doneShift(const SubregisterPair &ptr, const SubregisterPair &ptrShifted, int shift, CommonState &state)
 {
     if (shift > 0)
         doneShift(ptr.getReg(0), ptrShifted.getReg(0), shift, state);
@@ -112,8 +112,8 @@ static inline bool canRelAddr(const RegisterBlock &blockSrc, const RegisterBlock
     if (!blockSrc.isLoadBlock() || !blockDst.isLoadBlock())
         return false;
 
-    auto accessSrc = implAccessType(atype, astrategy, blockSrc);
-    auto accessDst = implAccessType(atype, astrategy, blockDst);
+    auto accessSrc = blockSrc.implAccessType(atype, astrategy);
+    auto accessDst = blockDst.implAccessType(atype, astrategy);
     if (accessSrc == AccessType::Block && accessDst == AccessType::Block)
         return true;
     if (accessSrc == AccessType::Scattered && accessDst == AccessType::Scattered) {
@@ -137,10 +137,10 @@ static inline int getPartialCrosspack(Type T, const MatrixAddressing &atype, con
 //  the base pointer (a Subregister, MultishiftSubregister or integer) and leading dimension.
 template <HW hw>
 template <typename BO>
-void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const RegisterBlock &block, const Subregister &bld,
-                                        const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                        const CommonStrategy &strategy, CommonState &state,
-                                        const Address2DParams &params, LDMultiples ldMultiples)
+void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const RegisterBlock &block, const Subregister &bld,
+                              const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                              const CommonStrategy &strategy, CommonState &state,
+                              const Address2DParams &params, LDMultiples ldMultiples)
 {
     bool a64 = astrategy.base.getModel() == ModelA64;
 
@@ -157,7 +157,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
     if (!block.isLoadBlock())
         return;
 
-    auto effAccessType = effectiveAccessType(atype, astrategy, block);
+    auto effAccessType = block.effectiveAccessType(atype, astrategy);
     switch (effAccessType) {
         case AccessType::Scattered:
         case AccessType::ChannelScattered:
@@ -293,7 +293,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
             // Assemble some information.
             bool memCM = isColMajor(atype.layout);
             int bw, bh, bcount, multiX;
-            getBlock2DWH(bw, bh, bcount, atype, block, &multiX);
+            block.getBlock2DWH(bw, bh, bcount, atype, &multiX);
 
             auto iremR = params.remR, iremC = params.remC;
             if (!block.remainderR) iremR.invalidate();
@@ -363,8 +363,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
                 if (T.paddedSize() < widthAlign)
                     or_(1, addr[0].ud(2), addr[0].ud(2), widthAlign - 1);
             } else if (remW.isInvalid() && remH.isInvalid())
-                emov(1, addr[0].uq(1), (((uint64_t)bw * (uint64_t)bcount * block.ebytes - 1)
-                        | ((uint64_t)bh * block.ebytes - 1) << 32), strategy, state);
+                emov(1, addr[0].uq(1), ((uint64_t(bw) * bcount * block.ebytes - 1) | (uint64_t(bh) * block.ebytes - 1) << 32), strategy, state);
             else {
                 if (remW.isValid() && multiX > 1) stub();
                 remW.isValid() ? addScaled(1, addr[0].ud(2), -1, remW.uw(), T, state, true)
@@ -398,7 +397,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
             int xCacheLines = roundup_pow2(div_up(nx * T, 64) + trailing);
             int n = block.simdSize;
 
-            bool allocLDMultiples = (ny > 2) && ensureLDMultiples(xCacheLines);
+            bool allocLDMultiples = (ny > 2) && ensureLDMultiples(ny);
             extendIndexVec(xCacheLines, state);
             auto ivBase = accessIndexVec(0, state);
 
@@ -446,11 +445,11 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
 
 // Shift an address block by a combination of a fixed and LD offset.
 template <HW hw>
-void BLASKernelGenerator<hw>::offsetAddr(const GRFRange &addrDst, const GRFRange &addrSrc,
-                                         const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
-                                         int offsetFixed, int offsetLD, const Subregister &ld,
-                                         const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                         const CommonStrategy &strategy, CommonState &state, const LDMultiples &ldMultiples)
+void Generator<hw>::offsetAddr(const GRFRange &addrDst, const GRFRange &addrSrc,
+                               const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
+                               int offsetFixed, int offsetLD, const Subregister &ld,
+                               const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                               const CommonStrategy &strategy, CommonState &state, const LDMultiples &ldMultiples)
 {
     bool a64 = (astrategy.base.getModel() == ModelA64);
 
@@ -490,11 +489,14 @@ void BLASKernelGenerator<hw>::offsetAddr(const GRFRange &addrDst, const GRFRange
 
 // Output code for initializing address/header GRFs for one block based on another block's headers.
 template <HW hw>
-void BLASKernelGenerator<hw>::setupAddrRel(Type T, const GRFRange &addrDst, const GRFRange &addrSrc,
-                                           const RegisterBlock &blockDst, const RegisterBlock &blockSrc, const vector<RegisterBlock> &layout,
-                                           const Subregister &ld, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                           const CommonStrategy &strategy, CommonState &state, const LDMultiples &ldMultiples)
+void Generator<hw>::setupAddrRel(const GRFRange &addrDst, const GRFRange &addrSrc,
+                                 const RegisterBlock &blockDst, const RegisterBlock &blockSrc, const RegisterLayout &layout,
+                                 const Subregister &ld, const CommonStrategy &strategy, CommonState &state, const LDMultiples &ldMultiples)
 {
+    auto T = layout.type();
+    auto &atype = layout.addressing();
+    auto &astrategy = layout.addressingStrategy();
+
     int deltaR = blockDst.offsetR - blockSrc.offsetR;
     int deltaC = blockDst.offsetC - blockSrc.offsetC;
 
@@ -524,7 +526,7 @@ void BLASKernelGenerator<hw>::setupAddrRel(Type T, const GRFRange &addrDst, cons
         updateBlock2DSizes(addrDst, blockDst, blockSrc, atype);
 }
 
-static inline int findBaseBlock(Type T, const RegisterBlock &block, const vector<RegisterBlock> &layout, int start, int end,
+static inline int findBaseBlock(const RegisterBlock &block, const RegisterLayout &layout, int start, int end,
                                 const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
 {
     int bbase = -1;
@@ -545,14 +547,15 @@ static inline int findBaseBlock(Type T, const RegisterBlock &block, const vector
 //  ptr is an integer, Subregister, or MultishiftSubregister holding the base pointer/offset.
 template <HW hw>
 template <typename BO>
-void BLASKernelGenerator<hw>::setupAddr(Type T, const vector<GRFRange> &addr, const BO &ptr, const vector<RegisterBlock> &layout, const Subregister &ld,
-                                        const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                        const CommonStrategy &strategy, CommonState &state,
-                                        const Address2DParams &params, const LDMultiples &ldMultiples, int start)
+void Generator<hw>::setupAddr(const vector<GRFRange> &addr, const BO &ptr, const RegisterLayout &layout, const Subregister &ld,
+                              const CommonStrategy &strategy, CommonState &state,
+                              const Address2DParams &params, const LDMultiples &ldMultiples, int start)
 {
-    auto nblocks = int(layout.size());
+    auto T = layout.type();
+    auto &atype = layout.addressing();
+    auto &astrategy = layout.addressingStrategy();
 
-    for (int b = start; b < nblocks; b++) {
+    for (int b = start; b < layout.blocks(); b++) {
         auto &block = layout[b];
 
         // Skip non-load blocks.
@@ -575,7 +578,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const vector<GRFRange> &addr, co
             if (bparams.remC.isValid())                  min_(1, bparams.remC, block.offsetC ? bparams.remC : params.remC, block.nc);
         }
         // Look for a block to base this one off of.
-        int bbase = findBaseBlock(T, block, layout, 0, b, atype, astrategy);
+        int bbase = findBaseBlock(block, layout, 0, b, atype, astrategy);
 
         if (bbase < 0) {
             // No base address, set up a new base address.
@@ -585,7 +588,7 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const vector<GRFRange> &addr, co
 
         // Increment as appropriate.
         if (bbase >= 0) {
-            setupAddrRel(T, addr[b], addr[bbase], block, layout[bbase], layout, ld, atype, astrategy, strategy, state, ldMultiples);
+            setupAddrRel(addr[b], addr[bbase], block, layout[bbase], layout, ld, strategy, state, ldMultiples);
         } else if (!astrategy.address2D) {
             int offsetFixed = 0, offsetLD = 0;
             switch (atype.layout) {
@@ -607,62 +610,62 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const vector<GRFRange> &addr, co
 // The amount may be an immediate, Subregister, or MultishiftSubregister.
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void BLASKernelGenerator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
-                                      const RegisterBlock &layoutDst, const RegisterBlock &layoutSrc,
-                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                      const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
+                            const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
+                            const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                            const CommonStrategy &strategy, CommonState &state)
 {
-    auto incShifted = startShift(inc, layoutDst.addrShift, state);
+    auto incShifted = startShift(inc, blockDst.addrShift, state);
 
-    incAddrShifted(addrDst, addrSrc, incShifted, incR, incC, layoutDst, layoutSrc, atype, astrategy, strategy, state);
+    incAddrShifted(addrDst, addrSrc, incShifted, incR, incC, blockDst, blockSrc, atype, astrategy, strategy, state);
 
-    doneShift(inc, incShifted, layoutDst.addrShift, state);
+    doneShift(inc, incShifted, blockDst.addrShift, state);
 }
 
 template <HW hw>
 template <typename I>
-void BLASKernelGenerator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc,
-                                      const RegisterBlock &layoutDst, const RegisterBlock &layoutSrc,
-                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                      const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc,
+                            const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
+                            const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                            const CommonStrategy &strategy, CommonState &state)
 {
     if (astrategy.address2D) stub();
-    incAddr(addrDst, addrSrc, inc, Subregister(), Subregister(), layoutDst, layoutSrc, atype, astrategy, strategy, state);
+    incAddr(addrDst, addrSrc, inc, Subregister(), Subregister(), blockDst, blockSrc, atype, astrategy, strategy, state);
 }
 
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void BLASKernelGenerator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
-                                             const RegisterBlock &layoutDst, const RegisterBlock &layoutSrc,
-                                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                             const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
+                                   const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
+                                   const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                                   const CommonStrategy &strategy, CommonState &state)
 {
     // Handle non-load blocks.
-    if (!layoutDst.isLoadBlock())
+    if (!blockDst.isLoadBlock())
         return;
-    if (!layoutSrc.isLoadBlock())
+    if (!blockSrc.isLoadBlock())
         stub();
 
     // Skip offset blocks.
-    if (layoutDst.offsetAddr != 0)
+    if (blockDst.offsetAddr != 0)
         return;
 
-    if (layoutDst.addrShift != layoutSrc.addrShift)
+    if (blockDst.addrShift != blockSrc.addrShift)
         stub();
 
     auto cinc  = avoidConflict(hw, inc, addrSrc[0]);
     auto cincR = avoidConflict(hw, incR, addrSrc[0]);
     auto cincC = avoidConflict(hw, incC, addrSrc[0]);
 
-    switch (effectiveAccessType(atype, astrategy, layoutSrc)) {
+    switch (blockSrc.effectiveAccessType(atype, astrategy)) {
         case AccessType::PseudoBlock:
-            if (layoutSrc.ebytes != layoutDst.ebytes) stub();
+            if (blockSrc.ebytes != blockDst.ebytes) stub();
             // fall through
         case AccessType::ChannelScattered:
         case AccessType::Scattered:
         case AccessType::CacheLine: {
-            int naddrDst = layoutDst.simdSize;
-            int naddrSrc = layoutSrc.simdSize;
+            int naddrDst = blockDst.simdSize;
+            int naddrSrc = blockSrc.simdSize;
             if (naddrDst > naddrSrc) stub();
             if (astrategy.base.getModel() == ModelA64) {
                 auto simd = 2 * elementsPerGRF(hw, Type::u64);
@@ -687,10 +690,10 @@ void BLASKernelGenerator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFR
                 mov<uint32_t>(8, addrDst[0], addrSrc[0]);
             if (astrategy.address2D) {
                 if (isColMajor(atype.layout)) {
-                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, layoutDst.extra, layoutDst.ebytes * 8, state, true);
+                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, true);
                     if (cincC != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincC);
                 } else {
-                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, layoutDst.extra, layoutDst.ebytes * 8, state, true);
+                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, true);
                     if (cincR != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincR);
                 }
             } else
@@ -703,46 +706,42 @@ void BLASKernelGenerator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFR
 // The amount may be an immediate or a subregister.
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void BLASKernelGenerator<hw>::incAddr(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const vector<RegisterBlock> &layout,
-                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                      const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
+                            const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    for (int b = 0; b < nblocks; b++)
-        incAddr(addr[b], addr[b], inc, incR, incC, layout[b], layout[b], atype, astrategy, strategy, state);
+    for (int b = 0; b < layout.blocks(); b++) {
+        incAddr(addr[b], addr[b], inc, incR, incC, layout[b], layout[b],
+                layout.addressing(), layout.addressingStrategy(), strategy, state);
+    }
 }
 
 template <HW hw>
 template <typename I>
-void BLASKernelGenerator<hw>::incAddr(const vector<GRFRange> &addr, I inc, const vector<RegisterBlock> &layout,
-                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                      const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, const RegisterLayout &layout,
+                            const CommonStrategy &strategy, CommonState &state)
 {
-    if (astrategy.address2D) stub();
-    incAddr(addr, inc, Subregister(), Subregister(), layout, atype, astrategy, strategy, state);
+    if (layout.addressingStrategy().address2D) stub();
+    incAddr(addr, inc, Subregister(), Subregister(), layout, strategy, state);
 }
 
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void BLASKernelGenerator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const vector<RegisterBlock> &layout,
-                                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                             const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
+                                   const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    for (int b = 0; b < nblocks; b++)
-        incAddrShifted(addr[b], addr[b], inc, incR, incC, layout[b], layout[b], atype, astrategy, strategy, state);
+    for (int b = 0; b < layout.blocks(); b++) {
+        incAddrShifted(addr[b], addr[b], inc, incR, incC, layout[b], layout[b],
+                       layout.addressing(), layout.addressingStrategy(), strategy, state);
+    }
 }
 
 template <HW hw>
 template <typename I>
-void BLASKernelGenerator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, const vector<RegisterBlock> &layout,
-                                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                             const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, const RegisterLayout &layout,
+                                   const CommonStrategy &strategy, CommonState &state)
 {
-    if (astrategy.address2D) stub();
-    incAddrShifted(addr, inc, Subregister(), Subregister(), layout, atype, astrategy, strategy, state);
+    if (layout.addressingStrategy().address2D) stub();
+    incAddrShifted(addr, inc, Subregister(), Subregister(), layout, strategy, state);
 }
 
 template <typename T> struct NegativeType    { using type = T;       };
@@ -756,46 +755,43 @@ template <> struct NegativeType<int64_t>     { using type = int32_t; };
 // The amount may be an immediate or a MultishiftSubregister.
 template <HW hw>
 template <typename A, typename I, typename Ir, typename Ic>
-void BLASKernelGenerator<hw>::incDecAddr(const A &addr, I inc, Ir incR, Ic incC, const vector<RegisterBlock> &layout,
-                                         const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                         const CommonStrategy &strategy, CommonState &state, bool decrement)
+void Generator<hw>::incDecAddr(const A &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
+                               const CommonStrategy &strategy, CommonState &state, bool decrement)
 {
     typename NegativeType<I>::type  signedInc  = decrement ? -inc  : inc;
     typename NegativeType<Ir>::type signedIncR = decrement ? -incR : incR;
     typename NegativeType<Ic>::type signedIncC = decrement ? -incC : incC;
 
-    incAddr(addr, signedInc, signedIncR, signedIncC, layout, atype, astrategy, strategy, state);
+    incAddr(addr, signedInc, signedIncR, signedIncC, layout, strategy, state);
 }
 
 template <HW hw>
 template <typename A, typename I>
-void BLASKernelGenerator<hw>::incDecAddr(const A &addr, I inc, const vector<RegisterBlock> &layout,
-                                         const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                         const CommonStrategy &strategy, CommonState &state, bool decrement)
+void Generator<hw>::incDecAddr(const A &addr, I inc, const RegisterLayout &layout,
+                               const CommonStrategy &strategy, CommonState &state, bool decrement)
 {
-    if (astrategy.address2D) stub();
-    incDecAddr(addr, inc, Subregister(), Subregister(), layout, atype, astrategy, strategy, state, decrement);
+    if (layout.addressingStrategy().address2D) stub();
+    incDecAddr(addr, inc, Subregister(), Subregister(), layout, strategy, state, decrement);
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::incAddrK(Type T, const vector<GRFRange> &addr, bool column, int k,
-                                       const SubregisterPair &ld, const LDIncrements &incs, const vector<RegisterBlock> &layout,
-                                       const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                       const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::incAddrK(const vector<GRFRange> &addr, bool column, int k,
+                             const SubregisterPair &ld, const LDIncrements &incs, const RegisterLayout &layout,
+                             const CommonStrategy &strategy, CommonState &state)
 {
-    if (isColMajor(atype.layout) == column) {
+    if (isColMajor(layout.addressing().layout) == column) {
         bool release = false;
         auto inc = lookupIncrement(incs, ld, k, strategy, state, &release);
-        incAddr(addr, inc, layout, atype, astrategy, strategy, state);
+        incAddr(addr, inc, layout, strategy, state);
         if (release) state.ra.safeRelease(inc);
     } else
-        incAddr(addr, k * T, layout, atype, astrategy, strategy, state);
+        incAddr(addr, k * layout.type(), layout, strategy, state);
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::setAddrRemainder(Type T, const GRFRange &addr, const RegisterBlock &block, const Subregister &remR, const Subregister &remC,
-                                               const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                               const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::setAddrRemainder(Type T, const GRFRange &addr, const RegisterBlock &block, const Subregister &remR, const Subregister &remC,
+                                     const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                                     const CommonStrategy &strategy, CommonState &state)
 {
     if (!isBlock2D(astrategy.accessType) || astrategy.address2D) return;
 
@@ -806,7 +802,7 @@ void BLASKernelGenerator<hw>::setAddrRemainder(Type T, const GRFRange &addr, con
     auto &remW = memCM ? thisRemR : thisRemC;
     auto &remH = memCM ? thisRemC : thisRemR;
     int bw, bh, bcount, multiX;
-    getBlock2DWH(bw, bh, bcount, atype, block, &multiX);
+    block.getBlock2DWH(bw, bh, bcount, atype, &multiX);
 
     if (!block.remainderR)                   thisRemR.invalidate();
     if (!block.remainderC)                   thisRemC.invalidate();
@@ -830,15 +826,12 @@ void BLASKernelGenerator<hw>::setAddrRemainder(Type T, const GRFRange &addr, con
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::setAddrRemainder(Type T, const vector<GRFRange> &addr, const vector<RegisterBlock> &layout,
-                                               const Subregister &remR, const Subregister &remC,
-                                               const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                               const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::setAddrRemainder(const vector<GRFRange> &addr, const RegisterLayout &layout,
+                                     const Subregister &remR, const Subregister &remC,
+                                     const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    for (int b = 0; b < nblocks; b++)
-        setAddrRemainder(T, addr[b], layout[b], remR, remC, atype, astrategy, strategy, state);
+    for (int b = 0; b < layout.blocks(); b++)
+        setAddrRemainder(layout.type(), addr[b], layout[b], remR, remC, layout.addressing(), layout.addressingStrategy(), strategy, state);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

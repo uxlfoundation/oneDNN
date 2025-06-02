@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+ * Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,31 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-
 #include "layout_utils.hpp"
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
-
-bool canDequantizeInt4(Type Tsrc, Type Tdst,
-                       const vector<RegisterBlock> &layoutSrc, const vector<RegisterBlock> &layoutDst,
-                       const vector<RegisterBlock> layoutOffset, const vector<RegisterBlock> layoutScale)
+bool canDequantizeInt4(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                       const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale)
 {
+    auto Tsrc = layoutSrc.type(), Tdst = layoutDst.type();
     if (!Tsrc.isInt4() || !one_of(Tdst, Type::f16, Type::bf16, Type::f32))
         return false;
 
-    if (layoutOffset.empty() || layoutScale.empty()) {
-        int m, n, md, nd;
-        getLayoutDims(layoutSrc, m, n);
-        getLayoutDims(layoutDst, md, nd);
-
-        if (m < md || n < nd) return false;
-    }
+    if (layoutOffset.empty() || layoutScale.empty())
+        if (layoutSrc.rows() < layoutDst.rows() || layoutSrc.cols() < layoutDst.cols())
+            return false;
 
     return true;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

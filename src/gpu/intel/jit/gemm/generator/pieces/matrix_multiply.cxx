@@ -16,41 +16,41 @@
 
 
 #include "compute_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
-
-#include "internal/namespace_start.hxx"
 
 
 // Do one or more outer products (k = 1 slices) of A*B, updating C.
 //  ha and hb are the k indices within the A and B chunks, respectively.
 //  A_copy, B_copy are the indices of the A, B copies to use.
 template <HW hw>
-void BLASKernelGenerator<hw>::outerProduct(int h, int ha, int hb, int opCount, bool rem,
-                                           const vector<RegisterBlock> &A_layout, const vector<RegisterBlock> &B_layout,
-                                           const GRFMultirange &A_regs, const GRFMultirange &B_regs,
-                                           const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::outerProduct(int h, int ha, int hb, int opCount, bool rem,
+                                 const RegisterLayout &A_layout, const RegisterLayout &B_layout,
+                                 const GRFMultirange &A_regs, const GRFMultirange &B_regs,
+                                 const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (strategy.dotVL)
-        innerProductFMA(h, ha, hb, opCount, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
+        innerProductFMA(h, ha, hb, opCount, rem, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
     else if (strategy.systolic)
         outerProductSystolic(h, ha, hb, opCount, rem, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
     else
-        outerProductFMA(h, ha, hb, opCount, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
+        outerProductFMA(h, ha, hb, opCount, rem, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
 }
 
 // FMA or dp4a-based outer product implementation.
 template <HW hw>
-void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount, const vector<RegisterBlock> &A_layout, const vector<RegisterBlock> &B_layout,
-                                              const GRFMultirange &A_regs, const GRFMultirange &B_regs,
-                                              const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::outerProductFMA(int h, int ha, int hb, int opCount, bool rem, const RegisterLayout &A_layout, const RegisterLayout &B_layout,
+                                    const GRFMultirange &A_regs, const GRFMultirange &B_regs,
+                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
 
@@ -67,10 +67,18 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
     int accNum = 0;
     Subregister Clast;
     int nec = elementsPerGRF(hw, Tc);
-    bool globalCM = isLayoutColMajor(state.C_layout);
+    bool globalCM = state.C_layout.colMajor();
     int fmaSIMD = strategy.fmaSIMD;
 
-    if (!state.Cr_layout.empty()) stub();       /* No repacking support currently */
+    bool repackC = !state.Cr_layout.empty();
+    bool startRepackC = false, endRepackC = false;
+    int Cr_unrollM = state.Cr_layout.rows(), Cr_unrollN = state.Cr_layout.cols();
+    int Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
+    if (repackC) {
+        auto rphase = align_down(h, opCount) % state.cRepackPeriod;
+        startRepackC = rem || (rphase == 0);
+        endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
+    }
 
     bool csplit = false, mixedRC = false;
     int icompCount = 1, ocompCount = 1, ivcompCount = 1, ovcompCount = 1;
@@ -80,6 +88,9 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
         auto Cacc = AccumulatorRegister(accNum).sub(0, Tc.real().ngen());
         auto Csrc = (hh == 0                    && ivfirst) ? C : Cacc;
         auto Cdst = (hh == opCount - minOPCount && ivlast)  ? C : Cacc;
+        if (startRepackC && hh == 0)
+            Csrc = null.retype(Csrc.getType())[0];
+
         bool thisNoAccSBSet = (noAccSBSet && Cacc == Csrc);
         if (thisNoAccSBSet) {
             mod |= NoAccSBSet;
@@ -92,11 +103,19 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
             auto Ar = A.reinterpret(0, isSigned(A.getType()) ? DataType::d : DataType::ud);
             auto Br = B.reinterpret(0, isSigned(B.getType()) ? DataType::d : DataType::ud);
 
-            colMajor           ? dp4a(mod, Cdst(1), Csrc(1), Ar(1), Br(0))
+            if (Csrc.isNull()) {
+                colMajor       ? dp4a(mod, Cdst(1), 0, Ar(1), Br(0))
+                               : dp4a(mod, Cdst(1), 0, Br(1), Ar(0));
+            } else {
+                colMajor       ? dp4a(mod, Cdst(1), Csrc(1), Ar(1), Br(0))
                                : dp4a(mod, Cdst(1), Csrc(1), Br(1), Ar(0));
+            }
         } else if (C.isARF() && hw < HW::XeHP) {
             colMajor           ? mac(mod, C(1), A(1), bcastSrc)
                                : mac(mod, C(1), bcastSrc, B(1));
+        } else if (Csrc.isNull()) {
+            colMajor           ? mul(mod, C(1), A(1), bcastSrc)
+                               : mul(mod, C(1), B(1), bcastSrc);
         } else {
             // Always put broadcast in src2 for better bank conflict avoidance.
             colMajor           ? mad(mod, Cdst(1), Csrc(1), A(1), bcastSrc) :
@@ -126,7 +145,7 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
     //   y = non-vectorized dimension
     int nx = globalCM ? strategy.unroll[LoopM] : strategy.unroll[LoopN];
     int ny = globalCM ? strategy.unroll[LoopN] : strategy.unroll[LoopM];
-    int nx1 = (mixedMode) ? nx : fmaSIMD;
+    int nx1 = mixedMode ? nx : std::min(nx, fmaSIMD);
 
     // Prepare for chaining FMAs through accumulator registers.
     int necAcc = nec * (csplit ? 2 : 1);
@@ -150,147 +169,170 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
     } else
         noAccSBSet = false;
 
+    if (repackC && Cr_unrollX < nx && (Cr_unrollX % nx1))
+            stub("Invalid C repack panel size");
+
     // Last A/B blocks found.
     const RegisterBlock *A_blockLast = nullptr, *B_blockLast = nullptr;
 
     for (int x0 = 0; x0 < nx; x0 += nx1) {
-    for (int ovcomp = 0; ovcomp < ovcompCount; ovcomp++) {
-    for (int ocomp = 0; ocomp < ocompCount; ocomp++) {
-    for (int y0 = 0; y0 < ny; y0 += ny1) {
-    for (int x1 = 0; x1 < nx1 && (x0 + x1) < nx;) {
-        int x1New = x1;
-        for (int ivcomp = 0; ivcomp < ivcompCount; ivcomp++) {
-        for (int hh = 0; hh < opCount; hh += minOPCount) {
-            accNum = 0;
-            for (int y1 = 0; y1 < ny1 && y0 + y1 < ny; y1++) {
-            for (int x1i = x1; (x1i < x1 + nx1i) && (x0 + x1i < nx);) {
-                auto x = x0 + x1i;
-                auto y = y0 + y1;
-                auto i = globalCM ? x : y;
-                auto j = globalCM ? y : x;
-                auto hha = ha + hh;
-                auto hhb = hb + hh;
-                auto ia = i, jb = j;
+        for (int ovcomp = 0; ovcomp < ovcompCount; ovcomp++) {
+        for (int ocomp = 0; ocomp < ocompCount; ocomp++) {
+        for (int y0 = 0; y0 < ny; y0 += ny1) {
+        for (int x1 = 0; x1 < nx1 && (x0 + x1) < nx;) {
+            int x1New = x1;
+            for (int ivcomp = 0; ivcomp < ivcompCount; ivcomp++) {
+            for (int hh = 0; hh < opCount; hh += minOPCount) {
+                accNum = 0;
+                for (int y1 = 0; y1 < ny1 && y0 + y1 < ny; y1++) {
+                for (int x1i = x1; (x1i < x1 + nx1i) && (x0 + x1i < nx);) {
+                    auto x = x0 + x1i;
+                    auto y = y0 + y1;
+                    auto i = globalCM ? x : y;
+                    auto j = globalCM ? y : x;
+                    auto hha = ha + hh;
+                    auto hhb = hb + hh;
+                    auto ia = i, jb = j;
 
-                int fmaCount = 1;
+                    int fmaCount = 1;
 
-                for (int icomp = 0; icomp < icompCount; icomp++) {
-                    // Find the appropriate A and B registers.
-                    int na, nb;
-                    int vcomp = ivcomp + ovcomp;
-                    int ncomp = (vcomp ^ ocomp) + icomp;
-                    int compA = globalCM ? vcomp : ncomp;
-                    int compB = globalCM ? ncomp : vcomp;
+                    for (int icomp = 0; icomp < icompCount; icomp++) {
+                        // Find the appropriate A and B registers.
+                        int na, nb;
+                        int vcomp = ivcomp + ovcomp;
+                        int ncomp = (vcomp ^ ocomp) + icomp;
+                        int compA = globalCM ? vcomp : ncomp;
+                        int compB = globalCM ? ncomp : vcomp;
 
-                    const RegisterBlock *A_block, *B_block;
-                    Subregister A = findBlockReg(Ta, A_layout, ia, hha, A_regs, na, A_block, compA);
-                    Subregister B = findBlockReg(Tb, B_layout, hhb, jb, B_regs, nb, B_block, compB);
+                        const RegisterBlock *A_block, *B_block;
+                        Subregister A = A_layout.find(ia, hha, A_regs, &na, &A_block, compA);
+                        Subregister B = B_layout.find(hhb, jb, B_regs, &nb, &B_block, compB);
 
-                    // Check for expected crosspack.
-                    if (globalCM ? (aCP && A_block->crosspack != aCP)
-                                 : (bCP && B_block->crosspack != bCP)) stub();
+                        // Check for expected crosspack.
+                        if (globalCM ? (aCP && A_block->crosspack != aCP)
+                                     : (bCP && B_block->crosspack != bCP)) stub();
 
-                    // Check if we should specify {Atomic}.
-                    bool atomic = (atomicFMA && (A_block == A_blockLast) && (B_block == B_blockLast));
-                    A_blockLast = A_block;
-                    B_blockLast = B_block;
+                        // Check if we should specify {Atomic}.
+                        bool atomic = (atomicFMA && (A_block == A_blockLast) && (B_block == B_blockLast));
+                        A_blockLast = A_block;
+                        B_blockLast = B_block;
 
-                    // Find the appropriate C register.
-                    int C_buffer = csplit ? 0 : (icomp + ocomp);
-                    int compC    = csplit ? ocomp : 0;
-                    int nc;
-                    const RegisterBlock *C_block;
-                    Subregister C = findBlockReg(Tc, state.C_layout, i, j, state.C_regs[C_buffer], nc, C_block, compC);
-                    if (C_block->crosspack > 1) stub();
+                        // Find the appropriate C register.
+                        int C_buffer = csplit ? 0 : (icomp + ocomp);
+                        int compC    = csplit ? ocomp : 0;
+                        int nc;
+                        const RegisterBlock *C_block;
+                        auto C = repackC ? state.Cr_layout.find(i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, &nc, &C_block, compC)
+                                         : state.C_layout.find(i, j, state.C_regs[C_buffer], &nc, &C_block, compC);
+                        if (C_block->crosspack > 1) stub();
 
-                    // Swap out C register for an accumulator, if necessary.
-                    if (strategy.cAccumulators) {
-                        auto C_roff = C.getBase() - state.C_regs[0].ranges[0].getBase();
-                        if (C_roff < state.C_accCount)
-                            C = AccumulatorRegister(C_roff).sub(C.getOffset(), Tc.ngen());
-                    }
-
-                    InstructionModifier mod;
-
-                    // Use requested execution size if possible, but limited to available elements.
-                    // Decide on kernel type based on register block layouts.
-                    bool canColMajor = (A_block->colMajor && globalCM);
-                    bool canRowMajor = (!B_block->colMajor && !globalCM);
-                    bool colMajor = globalCM;
-
-                    if (!canColMajor && !canRowMajor)
-                        fmaCount = 1;
-                    else if (canColMajor)
-                        fmaCount = rounddown_pow2(std::min({fmaSIMD, na, nc}));
-                    else
-                        fmaCount = rounddown_pow2(std::min({fmaSIMD, nb, nc}));
-
-                    int simdSize = fmaCount;
-
-                    // Crosspacked kernels: ensure broadcast matrix is contiguous in k.
-                    if (minOPCount > 1) {
-                        bool nativeDir = (globalCM ? B_block->colMajor : !A_block->colMajor);
-                        auto bcastCrosspack = (globalCM ? B_block : A_block)->crosspack;
-                        if (nativeDir) {
-                            if ((globalCM ? nb : na) < minOPCount) stub();
-                            if (bcastCrosspack > 1) stub();
-                        } else {
-                            if (bcastCrosspack % minOPCount) stub();
+                        // Swap out C register for an accumulator, if necessary.
+                        if (strategy.cAccumulators) {
+                            auto C_roff = C.getBase() - state.C_regs[0].ranges[0].getBase();
+                            if (C_roff < state.C_accCount)
+                                C = AccumulatorRegister(C_roff).sub(C.getOffset(), Tc.ngen());
                         }
-                    }
 
-                    // Add Atomic if appropriate.
-                    if (atomic) mod |= Atomic;
+                        InstructionModifier mod;
 
-                    // Handle broadcast duties.
-                    Subregister bcastSrcSub = colMajor ? B : A;
-                    RegData bcastSrc = bcastSrcSub;
+                        // Use requested execution size if possible, but limited to available elements.
+                        // Decide on kernel type based on register block layouts.
+                        bool canColMajor = (A_block->colMajor && globalCM);
+                        bool canRowMajor = (!B_block->colMajor && !globalCM);
+                        bool colMajor = globalCM;
 
-                    bool ivfirst = mixedRC || (ivcomp == 0);
-                    bool ivlast  = mixedRC || (ivcomp == ivcompCount - 1);
+                        if (!canColMajor && !canRowMajor)
+                            fmaCount = 1;
+                        else if (canColMajor)
+                            fmaCount = rounddown_pow2(std::min({fmaSIMD, na, nc}));
+                        else
+                            fmaCount = rounddown_pow2(std::min({fmaSIMD, nb, nc}));
 
-                    // Finally, perform the long-awaited FMA.
-                    outputFMA(simdSize | mod, A, B, C, bcastSrc, colMajor, hh, ivfirst, ivlast);
-                    Clast = C;
+                        int simdSize = fmaCount;
 
-                    if (kChain > 1 && accNum >= accCount) stub();
-                    accNum += std::max(minAccPerFMA, div_up(fmaCount, necAcc));
-                } /* icomp */
+                        // Crosspacked kernels: ensure broadcast matrix is contiguous in k.
+                        if (minOPCount > 1) {
+                            bool nativeDir = (globalCM ? B_block->colMajor : !A_block->colMajor);
+                            auto bcastCrosspack = (globalCM ? B_block : A_block)->crosspack;
+                            if (nativeDir) {
+                                if ((globalCM ? nb : na) < minOPCount) stub();
+                                if (bcastCrosspack > 1) stub();
+                            } else {
+                                if (bcastCrosspack % minOPCount) stub();
+                            }
+                        }
 
-                x1i += fmaCount;
-                x1New = x1i;
-            } /* x1i */
-            } /* y1 */
-        } /* hh */
-        } /* ivcomp */
-        x1 = x1New;
-    } /* x1 */
-    } /* y0 */
-    } /* ocomp */
-    } /* ovcomp */
+                        // Add Atomic if appropriate.
+                        if (atomic) mod |= Atomic;
+
+                        // Handle broadcast duties.
+                        Subregister bcastSrcSub = colMajor ? B : A;
+                        RegData bcastSrc = bcastSrcSub;
+
+                        bool ivfirst = mixedRC || (ivcomp == 0);
+                        bool ivlast  = mixedRC || (ivcomp == ivcompCount - 1);
+
+                        // Finally, perform the long-awaited FMA.
+                        outputFMA(simdSize | mod, A, B, C, bcastSrc, colMajor, hh, ivfirst, ivlast);
+                        Clast = C;
+
+                        if (kChain > 1 && accNum >= accCount) stub();
+                        accNum += std::max(minAccPerFMA, div_up(fmaCount, necAcc));
+                    } /* icomp */
+
+                    x1i += fmaCount;
+                    x1New = x1i;
+                } /* x1i */
+                } /* y1 */
+            } /* hh */
+            } /* ivcomp */
+            x1 = x1New;
+        } /* x1 */
+        } /* y0 */
+        } /* ocomp */
+        } /* ovcomp */
+
+        if (endRepackC) {
+            int xr = x0 - Cr_unrollX + nx1;
+            if (xr >= 0)
+                outerProductRepackC(xr, xr % Cr_unrollX, nx1, h, rem, problem, strategy, state);
+        }
     } /* x0 */
+
+    if (endRepackC) for (int xr = nx - Cr_unrollX + nx1; xr < nx; xr += nx1)
+        outerProductRepackC(xr, xr % Cr_unrollX, nx1, h, rem, problem, strategy, state);
 }
 
 // FMA-based inner product (dot) implementation.
 template <HW hw>
-void BLASKernelGenerator<hw>::innerProductFMA(int h, int ha, int hb, int opCount, const vector<RegisterBlock> &A_layout, const vector<RegisterBlock> &B_layout,
-                                              const GRFMultirange &A_regs, const GRFMultirange &B_regs,
-                                              const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::innerProductFMA(int h, int ha, int hb, int opCount, bool rem, const RegisterLayout &A_layout, const RegisterLayout &B_layout,
+                                    const GRFMultirange &A_regs, const GRFMultirange &B_regs,
+                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
     int vl = strategy.dotVL;
-    const auto &C_layout = state.C_layout;
-    const auto &C_regs = state.C_regs[0];
+    bool useDP4A = (hw >= HW::Gen12LP && problem.isIGEMM());
 
-    if (!state.Cr_layout.empty()) stub();       /* No repacking support currently */
+    bool repackC = !state.Cr_layout.empty();
+    bool startRepackC = false, endRepackC = false;
+    if (repackC) {
+        if (state.Cr_layout.rows() != state.C_layout.rows()) stub();
+        if (state.Cr_layout.cols() != state.C_layout.cols()) stub();
+        auto rphase = align_down(h, opCount) % state.cRepackPeriod;
+        startRepackC = rem || (rphase == 0);
+        endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
+    }
     if (strategy.kChain > 1) stub();
 
-    bool globalCM = isLayoutColMajor(state.C_layout);
+    const auto &C_layout = repackC ? state.Cr_layout : state.C_layout;
+    const auto &C_regs   = repackC ? state.Cr_regs   : state.C_regs[0];
+
+    bool globalCM = C_layout.colMajor();
     ha = align_down(ha, opCount);
     hb = align_down(hb, opCount);
 
     int nx = globalCM ? strategy.unroll[LoopM] : strategy.unroll[LoopN];
     int ny = globalCM ? strategy.unroll[LoopN] : strategy.unroll[LoopM];
+    int oc = useDP4A ? 4 : 1;
 
     for (int y0 = 0; y0 < ny; y0++) {
     for (int x0 = 0; x0 < nx; x0++) {
@@ -299,49 +341,59 @@ void BLASKernelGenerator<hw>::innerProductFMA(int h, int ha, int hb, int opCount
         auto i0 = globalCM ? x0 : y0, i0c = globalCM ? x0c : y0;
         auto j0 = globalCM ? y0 : x0, j0c = globalCM ? y0 : x0c;
 
-        const RegisterBlock *A_block, *B_block, *C_block;
+        const RegisterBlock *A_block = nullptr, *B_block = nullptr;
         int na, nb, nc;
-        auto A = findBlockReg(Ta, A_layout, i0, h0 + ha, A_regs, na, A_block);
-        auto B = findBlockReg(Tb, B_layout, h0 + hb, j0, B_regs, nb, B_block);
-        auto C = findBlockReg(Tc, C_layout, i0c, j0c, C_regs, nc, C_block);
+        auto A = A_layout.find(i0, h0 + ha, A_regs, &na, &A_block);
+        auto B = B_layout.find(h0 + hb, j0, B_regs, &nb, &B_block);
+        auto C = C_layout.find(i0c, j0c, C_regs, &nc);
 
         if (A_block->colMajor || !B_block->colMajor) stub();
 
-        int ne = std::min({na, nb, nc, vl, strategy.fmaSIMD});
+        int ne = std::min({na / oc, nb / oc, nc, vl, strategy.fmaSIMD});
 
-        mad(ne, C(1), C(1), A(1), B(1));
-
-        h0 += ne;
+        if (useDP4A) {
+            auto Ar = A.reinterpret(0, isSigned(A.getType()) ? DataType::d : DataType::ud);
+            auto Br = B.reinterpret(0, isSigned(B.getType()) ? DataType::d : DataType::ud);
+            startRepackC ? dp4a(ne, C(1),    0, Ar(1), Br(1))
+                         : dp4a(ne, C(1), C(1), Ar(1), Br(1));
+        } else {
+            startRepackC ? mul(ne, C(1),       A(1), B(1))
+                         : mad(ne, C(1), C(1), A(1), B(1));
+        }
+        h0 += ne * oc;
     } /* h0 */
     } /* x0 */
     } /* y0 */
+
+    if (endRepackC)
+        outerProductRepackC(0, 0, nx * vl, h, rem, problem, strategy, state);
 }
 
 // Accumulate multiple outer products using the systolic array.
 template <HW hw>
-void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, bool rem,
-                                                   const vector<RegisterBlock> &A_layout, const vector<RegisterBlock> &B_layout,
-                                                   const GRFMultirange &A_regs, const GRFMultirange &B_regs,
-                                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, bool rem,
+                                         const RegisterLayout &A_layout, const RegisterLayout &B_layout,
+                                         const GRFMultirange &A_regs, const GRFMultirange &B_regs,
+                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
-    bool globalCM = isLayoutColMajor(state.C_layout);
+    bool globalCM = state.C_layout.colMajor();
     auto params = systolicParams(hw, problem, strategy);
     auto ksys = params.ksys;
     auto osys = params.osys;
     auto sdepth = params.sdepth;
     auto rcountMax = params.rcountMax;
     int dpaswTile = strategy.dpasw ? (globalCM ? strategy.B.tileC : strategy.A.tileR) : 0;
-    bool rsFix = (strategy.readSuppressionWA && hasMasking(globalCM ? A_layout : B_layout));
+    bool rsFix = (strategy.readSuppressionWA && (globalCM ? A_layout : B_layout).hasMasking());
     bool canAtomicNon8x8 = (hw >= HW::XeHPC);
     bool sum = globalCM ? state.systolicSumA
                         : state.systolicSumB;
     bool snake = strategy.fmaBoustrophedon && !sum;
     bool repackC = !state.Cr_layout.empty();
     bool startRepackC = false, endRepackC = false;
-    int Cr_unrollM = 0, Cr_unrollN = 0;
+    int Cr_unrollM = state.Cr_layout.rows(), Cr_unrollN = state.Cr_layout.cols();
+    int Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
     if (repackC) {
-        getLayoutDims(state.Cr_layout, Cr_unrollM, Cr_unrollN);
         auto rphase = align_down(h, opCount) % state.cRepackPeriod;
         startRepackC = rem || (rphase == 0);
         endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
@@ -399,8 +451,10 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());
 
-            useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0)
-                     :  dpas(mod, sdepth, rc, C0, srcC0, V0, N0);
+            {
+                useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0) :
+                            dpas(mod, sdepth, rc, C0, srcC0, V0, N0);
+            }
         };
 
         for (int oncomp = 0; oncomp < oncompCount; oncomp++, reverse = !reverse) {
@@ -426,30 +480,30 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
                     int i = globalCM ? x : y;
                     int j = globalCM ? y : x;
 
-                    A = findBlockReg(Ta, A_layout, i, hha, A_regs, na, A_block, cxCompA, compA);
-                    B = findBlockReg(Tb, B_layout, hhb, j, B_regs, nb, B_block, cxCompB, compB);
+                    A = A_layout.find(i, hha, A_regs, &na, &A_block, cxCompA, compA);
+                    B = B_layout.find(hhb, j, B_regs, &nb, &B_block, cxCompB, compB);
                     if (repackC)
-                        C = findBlockReg(Tc, state.Cr_layout, i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, nc, C_block, cxCompC);
+                        C = state.Cr_layout.find(i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, &nc, &C_block, cxCompC);
                     else
-                        C = findBlockReg(Tc, state.C_layout, i, j, state.C_regs[cBuffer], nc, C_block, cxCompC);
+                        C = state.C_layout.find(i, j, state.C_regs[cBuffer], &nc, &C_block, cxCompC);
                 } else if (state.systolicSumA) {
-                    A = findBlockReg(Ta, A_layout, x, hha, A_regs, na, A_block);
+                    A = A_layout.find(x, hha, A_regs, &na, &A_block);
                     B = state.sysSumAll1s[0];
                     nb = elementsPerGRF(hw, Tb);
                     B_block = &sumBlock;
                     if (repackC)
-                        C = findBlockReg(Tc, state.Asr_layout, x % Cr_unrollM, 0, state.Asr_regs, nc, C_block);
+                        C = state.Asr_layout.find(x % Cr_unrollM, 0, state.Asr_regs, &nc, &C_block);
                     else
-                        C = findBlockReg(Tc, state.As_layout, x, 0, state.As_regs, nc, C_block);
+                        C = state.As_layout.find(x, 0, state.As_regs, &nc, &C_block);
                 } else {
                     A = state.sysSumAll1s[0];
                     na = elementsPerGRF(hw, Ta);
                     A_block = &sumBlock;
-                    B = findBlockReg(Tb, B_layout, hhb, x, B_regs, nb, B_block);
+                    B = B_layout.find(hhb, x, B_regs, &nb, &B_block);
                     if (repackC)
-                        C = findBlockReg(Tc, state.Bsr_layout, 0, x % Cr_unrollN, state.Bsr_regs, nc, C_block);
+                        C = state.Bsr_layout.find(0, x % Cr_unrollN, state.Bsr_regs, &nc, &C_block);
                     else
-                        C = findBlockReg(Tc, state.Bs_layout, 0, x, state.Bs_regs, nc, C_block);
+                        C = state.Bs_layout.find(0, x, state.Bs_regs, &nc, &C_block);
                 }
 
                 int nv = globalCM ? na : nb;
@@ -499,32 +553,32 @@ void BLASKernelGenerator<hw>::outerProductSystolic(int h, int ha, int hb, int op
         } /* y loop */
         } /* oncomp loop */
 
-        bool finishChain = !strategy.extendedAtomicFMA || (x + osys >= nx) || (repackC && x >= (Cr_unrollM - 2*xinc));
+        bool finishChain = !strategy.extendedAtomicFMA || (x + osys >= nx) || (repackC && x >= (Cr_unrollX - 2*xinc));
         issueDPAS(finishChain);
 
         if (endRepackC) {
-            int xr = x - Cr_unrollM + xinc;
+            int xr = x - Cr_unrollX + xinc;
             if (xr >= 0)
-                outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, problem, strategy, state);
+                outerProductRepackC(xr, xr % Cr_unrollX, xinc, h, rem, problem, strategy, state);
         }
     } /* x loop */
 
-    if (endRepackC) for (int xr = nx - Cr_unrollM + xinc; xr < nx; xr += xinc)
-        outerProductRepackC(xr, xr % Cr_unrollM, xinc, h, problem, strategy, state);
+    if (endRepackC) for (int xr = nx - Cr_unrollX + xinc; xr < nx; xr += xinc)
+        outerProductRepackC(xr, xr % Cr_unrollX, xinc, h, rem, problem, strategy, state);
 
 }
 
 // Repack (part of) a C tile, converting types and scaling as needed.
 //  x0 (resp. xr0) are the offsets into the C tile (resp. repacked C tile) in the vectorized dimension.
 template <HW hw>
-void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h,
-                                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc, Tc_compute = problem.Tc_compute();
     const auto &C_layout = state.C_layout, &Cr_layout = state.Cr_layout;
     const auto &C_regs = state.C_regs[0], &Cr_regs = state.Cr_regs;
     int nec = elementsPerGRF(hw, Tc_compute);
-    bool globalCM = isLayoutColMajor(C_layout);
+    bool globalCM = C_layout.colMajor();
     bool scaleA = state.lateScale2DA, scaleB = state.lateScale2DB;
 
     bool sumA = problem.needsASums();
@@ -537,6 +591,20 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
     int ny = strategy.unroll[globalCM ? LoopN : LoopM];
     int nacc = AccumulatorRegister::count(hw, strategy.GRFs, Tc.real().ngen());
 
+    /* Apply late A/B offsets to pre-repacked data */
+    bool doAO2DLate = problem.needsBGroupSums();
+    bool doBO2DLate = problem.needsAGroupSums();
+    if (doAO2DLate || doBO2DLate) {
+        auto period = gcd(problem.aqGroupK, problem.bqGroupK);
+        bool offsetTime = rem ? ((h % period) < minOuterProductCount(hw, problem, strategy))
+                              : (period - (h % period) <= state.cRepackPeriod);
+        if (offsetTime) {
+            if (doAO2DLate) applyLateABOffset(true,  h, problem, strategy, state, x0, xr0, nx);
+            if (doBO2DLate) applyLateABOffset(false, h, problem, strategy, state, x0, xr0, nx);
+        }
+    }
+
+    /* Main repacking logic */
     struct WorkItem {
         Subregister C, Cr;
         int simd, iacc;
@@ -577,39 +645,37 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
             auto ir = globalCM ? xr : y;
             auto jr = globalCM ? y : xr;
 
-            int ne = 0, ner = 0, nes[2] = {0, 0};
-            const RegisterBlock *C_block = nullptr, *Cr_block = nullptr;
-            const RegisterBlock *sblock = nullptr;
+            int ne, ner, nes[2];
+            const RegisterBlock *C_block, *Cr_block;
             Subregister C, Cr;
 
             bool doASum = sumA && y == ny;
             bool doBSum = sumB && y == ny;
 
             if (y < ny) {
-                C  = findBlockReg(Tc, C_layout, i, j, C_regs, ne, C_block);
-                Cr = findBlockReg(Tc_compute, Cr_layout, ir, jr, Cr_regs, ner, Cr_block);
+                C  =  C_layout.find(i,  j,  C_regs,  &ne,  &C_block);
+                Cr = Cr_layout.find(ir, jr, Cr_regs, &ner, &Cr_block);
             } else if (doASum) {
-                C  = findBlockReg(Tc, state.As_layout, x, 0, state.As_regs, ne, C_block);
-                Cr = findBlockReg(Tc_compute, state.Asr_layout, xr, 0, state.Asr_regs, ner, Cr_block);
+                C  =  state.As_layout.find(x,  0, state.As_regs,  &ne,  &C_block);
+                Cr = state.Asr_layout.find(xr, 0, state.Asr_regs, &ner, &Cr_block);
             } else if (doBSum) {
-                C  = findBlockReg(Tc, state.Bs_layout, 0, x, state.Bs_regs, ne, C_block);
-                Cr = findBlockReg(Tc_compute, state.Bsr_layout, 0, xr, state.Bsr_regs, ner, Cr_block);
-            }
+                C  =  state.Bs_layout.find(0, x,  state.Bs_regs,  &ne,  &C_block);
+                Cr = state.Bsr_layout.find(0, xr, state.Bsr_regs, &ner, &Cr_block);
+            } else stub();
 
             std::array<Subregister, 2> scale;
             std::array<int, 2> scaleStride = {0, 0};
             int nscale = 0;
             if (scaleA && !doBSum) {
+                // TODO: handle non-repacked case correctly.
                 int hs = (h / problem.aqGroupK) % state.kaqLate;
-                scale[nscale] = findBlockReg(state.Ta_scaleInt, state.Ar_scaleLayout,
-                                             i, hs, state.Ar_scaleRegs, nes[nscale], sblock);
+                scale[nscale] = state.Ar_scaleLayout.find(i, hs, state.Ar_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 1 : 0;
                 nscale++;
             }
             if (scaleB && !doASum) {
                 int hs = (h / problem.bqGroupK) % state.kbqLate;
-                scale[nscale] = findBlockReg(state.Tb_scaleInt, state.Br_scaleLayout,
-                                             hs, j, state.Br_scaleRegs, nes[nscale], sblock);
+                scale[nscale] = state.Br_scaleLayout.find(hs, j, state.Br_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 0 : 1;
                 nscale++;
             }
@@ -619,15 +685,14 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
             if (scaleStride[1] == 1) ne = std::min(ne, nes[1]);
 
             if (ne < xchunk) stub();
-            if ((C_block && C_block->crosspack != 1)
-                    || (Cr_block && Cr_block->crosspack != 1)) stub();
+            if (C_block->crosspack != 1 || Cr_block->crosspack != 1) stub();
 
             WorkItem item = {C, Cr, ne, iacc, scale, scaleStride};
             bool coalesce = false;
 
             if (!items.empty()) {
                 auto &last = items.back();
-                coalesce = true;
+                coalesce = Tc.isFP();
                 coalesce &= (ne == nec && last.simd == nec);
                 coalesce &= (C.getBase() == last.C.getBase() + 1);
                 coalesce &= (Cr.getBase() == last.Cr.getBase() + 1);
@@ -646,7 +711,9 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
             else
                 items.push_back(item);
 
-            iacc += (ne > xchunk) ? 2 : 1;
+            iacc += (ne > nec) ? 2 : 1;
+            if (Tc.isInteger() && (iacc & 1))
+                iacc++; /* only even accumulators allowed for integer types */
             if (iacc >= nacc) {
                 processItems();
                 iacc = 0;
@@ -657,4 +724,78 @@ void BLASKernelGenerator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h
     processItems();
 }
 
-#include "internal/namespace_end.hxx"
+template <HW hw>
+void Generator<hw>::applyLateABOffset(bool isA, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int x0, int xr0, int nx)
+{
+    bool cRepack = !state.Cr_layout.empty();
+    const auto &C_layout = cRepack ? state.Cr_layout : state.C_layout;
+    const auto &C_regs   = cRepack ? state.Cr_regs   : state.C_regs[0];
+    auto cm = C_layout.colMajor();
+    auto Tc = problem.Tc;
+    auto nec = elementsPerGRF(hw, Tc);
+    Subregister A, B;
+
+    if (isA ? !problem.needsBGroupSums() : !problem.needsAGroupSums()) return;
+
+    if (nx < 0) nx = strategy.unroll[cm ? LoopM : LoopN];
+    int ny = strategy.unroll[cm ? LoopN : LoopM];
+
+    int haq = (h / problem.aqGroupK) % state.kaqLate;
+    int hbq = (h / problem.bqGroupK) % state.kbqLate;
+
+    if (isA ? (problem.aqGroupK < problem.bqGroupK)
+            : (problem.bqGroupK < problem.aqGroupK))
+        stub("Incompatible group sizes: group sums cannot be used for offset calculation");
+
+    bool scalarA =  isA && (problem.aoPtrDims <= 0);
+    bool scalarB = !isA && (problem.boPtrDims <= 0);
+    bool scalarV = cm ? scalarA : scalarB;
+
+    if (scalarA) A = state.Ar_offsetLayout.find(0, 0, state.Ar_offsetRegs);
+    if (scalarB) B = state.Br_offsetLayout.find(0, 0, state.Br_offsetRegs);
+
+    for (int xx = 0; xx < nx; xx += 2 * nec) {
+        int xchunk = std::min(nx - xx, 2 * nec);
+        for (int y = 0; y < ny; y++) {
+            auto i = x0 + xx, j = y;
+            auto ir = xr0 + xx, jr = y;
+            if (!cm) std::swap(i, j), std::swap(ir, jr);
+
+            int na = 2 * nec, nb = 2 * nec, nc;
+            auto C = C_layout.find(ir, jr, C_regs, &nc);
+
+            if (!scalarA) {
+                A = isA ? state.Ar_offsetLayout.find(i, haq, state.Ar_offsetRegs, &na)
+                        : state.Agr_layout.find(i, haq, state.Agr_regs, &na);
+            }
+
+            if (!scalarB) {
+                B = isA ? state.Bgr_layout.find(hbq, j, state.Bgr_regs, &nb)
+                        : state.Br_offsetLayout.find(hbq, j, state.Br_offsetRegs, &nb);
+            }
+
+            int nv = cm ? na : nb;
+            auto V = cm ? A : B;
+            auto N = cm ? B : A;
+
+            auto ne = std::min({nv, nc, xchunk});
+            if (ne != xchunk) stub();
+
+            int vstride = 1;
+            auto downcastW = [](Subregister &s) {
+                if (s.getType() == DataType::ud)     s = s.uw();
+                else if (s.getType() == DataType::d) s = s.w();
+                else return false;
+                return true;
+            };
+
+            downcastW(N);
+            if (downcastW(V)) vstride = 2;
+            if (scalarV) vstride = 0;
+
+            mad(ne, C(1), C(1), V(vstride), -N(0));
+        }
+    }
+}
+
+GEMMSTONE_NAMESPACE_END

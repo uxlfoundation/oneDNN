@@ -23,7 +23,7 @@
 
 #include <string>
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 void parseStrategy(const char *str, ngen::HW hw, const GEMMProblem &problem, GEMMStrategy &strategy);
 
@@ -35,6 +35,6 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2);
 
 std::string unparseStrategy(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

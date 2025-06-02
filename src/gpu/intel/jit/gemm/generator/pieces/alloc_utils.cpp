@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@
 
 #include "alloc_utils.hpp"
 
-using namespace ngen;
-using std::vector;
-
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
+
+using namespace ngen;
+using std::vector;
 
 
 GRFMultirange tryChunkAlloc(int nreg, int chunk, Bundle hint, BundleGroup mask, CommonState &state)
@@ -51,7 +51,7 @@ GRFMultirange chunkAlloc(int nreg, int chunk, Bundle hint, BundleGroup mask, Com
     return r;
 }
 
-GRFMultirange trySplitAlloc(HW hw, Type T, const vector<RegisterBlock> &layout, std::array<Bundle, 2> hints,
+GRFMultirange trySplitAlloc(HW hw, Type T, const RegisterLayout &layout, std::array<Bundle, 2> hints,
                             BundleGroup mask, CommonState &state, int copies)
 {
     auto oddHint = Bundle(0, 0).group_size(hw) * elementsPerGRF(hw, T);
@@ -61,7 +61,7 @@ GRFMultirange trySplitAlloc(HW hw, Type T, const vector<RegisterBlock> &layout, 
         int length, offset, index, hint;
     };
     vector<Request> requests;
-    requests.reserve(layout.size());
+    requests.reserve(layout.blocks());
 
     for (auto &block: layout) {
         if (block.isLoadBlock()) {
@@ -114,7 +114,7 @@ GRFMultirange trySplitAlloc(HW hw, Type T, const vector<RegisterBlock> &layout, 
     return r;
 }
 
-GRFMultirange splitOrChunkAlloc(HW hw, Type T, const vector<RegisterBlock> &layout, int chunk, std::array<Bundle, 2> hints,
+GRFMultirange splitOrChunkAlloc(HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<Bundle, 2> hints,
                                 BundleGroup mask, CommonState &state, bool forceChunk)
 {
     if (!forceChunk) {
@@ -122,7 +122,7 @@ GRFMultirange splitOrChunkAlloc(HW hw, Type T, const vector<RegisterBlock> &layo
         if (!r.empty())
             return r;
     }
-    return chunkAlloc(getRegCount(layout), chunk, hints[0], mask, state);
+    return chunkAlloc(layout.regs(), chunk, hints[0], mask, state);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

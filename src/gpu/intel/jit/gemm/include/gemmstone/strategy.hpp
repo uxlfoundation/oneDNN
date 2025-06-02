@@ -17,17 +17,17 @@
 #ifndef GEMMSTONE_GUARD_STRATEGY_HPP
 #define GEMMSTONE_GUARD_STRATEGY_HPP
 
-#include "config.hpp"
+#include "gemmstone/config.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
 
-#include "driver_info.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "ngen_emulation.hpp"
-#include "problem.hpp"
-#include "type.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/type.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 /* Zero-padding to allow various types to be bytewise compared. */
 #define ZPAD(x, bytes) uint8_t pad##x[bytes] = {};
@@ -191,18 +191,21 @@ struct GEMMStrategyPOD : public CommonStrategy {
     WalkOrder cWalkOrder = WalkOrder::HW2D;      // Order for traversing tiles of C
     bool persistent = false;                     // Use persistent thread model?
     bool reverse[2] = {false, false};            // Reverse m/n walk order?
+    bool scramble[2] = {false, false};           // Scramble m/n walk order?
     bool fmaBoustrophedon = false;               // Use boustrophedon ordering inside FMA/DPAS blocks?
-                                    ZPAD(A, 3)
+                                    ZPAD(A, 1)
     int fmaSIMD = 0;                             // Vector length for FMA (0 = default = 2 GRFs).
     int kChain = 1;                              // # of FMAs to chain in k dimension.
     int dotVL = 0;                               // If > 0, use dot products of the given length, instead of outer products.
     int wg[3] = {0,0,0};                         // m/n/k workgroup sizes, 0 if unconstrained. Indexed by LoopType.
     WGType forceWGUpdate = WGDynamic;            // Force work group update type.
-                                    ZPAD(B, 3)
+    bool forceFixedWGK = false;                  // Force fixed k workgroup size.
+                                    ZPAD(B, 2)
     int wgPadFactor = 1;                         // If > 1, pad workgroup with empty threads.
     MatrixAddressingStrategy A, B, C;            // Strategies for accessing A/B/C.
     MatrixAddressingStrategy AO, BO, CO;         // Strategies for accessing A/B/C offsets.
     MatrixAddressingStrategy A_scale, B_scale;   // Strategies for accessing A/B scales.
+    MatrixAddressingStrategy Ag, Bg;             // Strategies for accessing A/B groupwise reductions.
     int ka_load, kb_load;                        // How much of A/B is loaded at once, in k dimension
     int ka_load_masked = 0, kb_load_masked = 0;  // Same as above, when masking m/n (0 = default = same as ka/kb_load)
     bool loadBFirst = false;                     // If true, load B before A (default A then B).
@@ -379,14 +382,13 @@ struct GEMMStrategy : public GEMMStrategyPOD
     }
 
     bool fixedWG(const GEMMProblem &problem) const { return (getWGType(problem) == WGFixed); }
+    bool fixedWGK() const { return forceFixedWGK || kInterleave || (kParallelLocal && wgPadFactor > 1); }
+
     bool linearOrder() const { return cWalkOrder != WalkOrder::HW2D; }
 
-    bool legalAAlignment(const GEMMProblem &problem, int align) {
-        return (problem.A.layout != MatrixLayout::N) || ((unroll[LoopM] * problem.Ta) % align == 0);
-    }
-    bool legalBAlignment(const GEMMProblem &problem, int align) {
-        return (problem.B.layout != MatrixLayout::T) || ((unroll[LoopN] * problem.Tb) % align == 0);
-    }
+    bool legalAAlignment(const GEMMProblem &problem, int align) { return problem.isLegalAAlignment(align, unroll[LoopM]); }
+    bool legalBAlignment(const GEMMProblem &problem, int align) { return problem.isLegalBAlignment(align, unroll[LoopN]); }
+
     int kAlign(const GEMMProblem &problem) const;
 
     int statusFlagStride() const { return 64 * (int(fuseBeta) + int(fusePostOps)); }
@@ -416,6 +418,6 @@ bool useAutoAtomic(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &
 void downgradeAPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy);
 void downgradeBPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

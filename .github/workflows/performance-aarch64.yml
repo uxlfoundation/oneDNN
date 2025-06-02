@@ -23,21 +23,27 @@ on:
     inputs:
       onednn_base_hash:
         required: false
+        type: string
         description: 'Baseline onednn commit'
       onednn_new_hash:
         required: false
+        type: string
         description: 'New onednn commit'
       acl_base_hash:
         required: false
+        type: string
         description: 'Baseline acl commit'
       acl_new_hash: 
         required: false
+        type: string
         description: 'New acl commit'
       num_threads:
         required: false
+        type: string
         description: 'Number of threads to use'
       benchdnn_command:
         required: false
+        type: string
         description: 'benchdnn command to run'
       
 

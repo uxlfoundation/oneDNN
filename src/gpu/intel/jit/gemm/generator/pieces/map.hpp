@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,13 +20,15 @@
 
 #include "internal/ngen_includes.hpp"
 
+#include "gemmstone/type.hpp"
+#include "gemmstone/strategy.hpp"
+
 #include "grf_multirange.hpp"
 #include "hw_utils.hpp"
-#include "register_block.hpp"
-#include "type.hpp"
-#include "strategy.hpp"
+#include "register_layout.hpp"
 
-#include "internal/namespace_start.hxx"
+
+GEMMSTONE_NAMESPACE_START
 
 static inline bool canDualGRF(ngen::HW hw, ngen::DataType dt, const CommonStrategy &strategy);
 
@@ -87,7 +89,7 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, 
 // Perform a unary register-wise operation on a register block.
 template <typename F>
 static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &regs,
-                       const std::vector<RegisterBlock> &layout, const CommonStrategy &strategy, F f,
+                       const RegisterLayout &layout, const CommonStrategy &strategy, F f,
                        int cxComponent = -1)
 {
     using namespace ngen;
@@ -148,7 +150,7 @@ static inline void map(ngen::HW hw, const GRFMultirange &r1, const GRFMultirange
 }
 
 template <typename T, typename F>
-static inline void map(ngen::HW hw, const GRFMultirange &regs, const std::vector<RegisterBlock> &layout,
+static inline void map(ngen::HW hw, const GRFMultirange &regs, const RegisterLayout &layout,
                        const CommonStrategy &strategy, F f) {
     map(hw, ngen::getDataType<T>(), regs, layout, strategy, f);
 }
@@ -164,6 +166,6 @@ static inline bool canDualGRF(ngen::HW hw, ngen::DataType dt, const CommonStrate
     return (strategy.dualGRF && (elementsPerGRF(hw, dt) < 32));
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

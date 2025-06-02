@@ -18,6 +18,7 @@
 name: "Performance AArch64"
 
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       onednn_base_hash:

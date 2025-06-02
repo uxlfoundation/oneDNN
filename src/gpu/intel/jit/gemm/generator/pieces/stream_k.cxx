@@ -16,10 +16,10 @@
 
 
 #include "atomic_fusions.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
@@ -27,7 +27,7 @@ using std::vector;
 
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmStreamKPrepareSlice2(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmStreamKPrepareSlice2(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto done = state.ra.alloc_sub<uint32_t>();
     auto statusInc = state.ra.alloc_sub<uint32_t>();
@@ -55,8 +55,8 @@ void BLASKernelGenerator<hw>::gemmStreamKPrepareSlice2(const GEMMProblem &proble
 
 // Variable k-slicing/stream-k main logic.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
-                                               const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
+                                     const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (!strategy.kParallelVariable) return;
 
@@ -281,4 +281,4 @@ void BLASKernelGenerator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKern
     state.ra.safeRelease(h1);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

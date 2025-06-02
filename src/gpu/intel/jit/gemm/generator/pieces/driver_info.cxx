@@ -15,16 +15,17 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "kernel_queries.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 
-#include "internal/namespace_start.hxx"
 
 // Get driver information from this strategy.
 template <HW hw>
-CommonDriverInfo BLASKernelGenerator<hw>::driverInfo(GEMMProblem problem, const GEMMStrategy &strategy)
+CommonDriverInfo Generator<hw>::driverInfo(GEMMProblem problem, const GEMMStrategy &strategy)
 {
     CommonDriverInfo info;
 
@@ -72,12 +73,15 @@ CommonDriverInfo BLASKernelGenerator<hw>::driverInfo(GEMMProblem problem, const 
     if (strategy.zeroTempC)                                       info.flags |= FlagZeroTempC;
     if (useAutoAtomic(hw, problem, strategy, true))               info.flags |= FlagAutoAtomic;
     if (strategy.shrinkWGK)                                       info.flags |= FlagShrinkWGK;
-    if (strategy.kInterleave)                                     info.flags |= FlagFixedWGK;
-    if (strategy.kParallelLocal && strategy.wgPadFactor > 1)      info.flags |= FlagFixedWGK;
+    if (strategy.fixedWGK())                                      info.flags |= FlagFixedWGK;
     if (problem.alpha.pointer())                                  info.flags |= FlagAlphaPtr;
     if (problem.beta.pointer())                                   info.flags |= FlagBetaPtr;
     if (strategy.nondeterministic(problem))                       info.flags |= FlagNondeterministic;
+    if (strategy.scramble[LoopM])                                 info.flags |= FlagScrambleM;
+    if (strategy.scramble[LoopN])                                 info.flags |= FlagScrambleN;
     if (strategy.tlbWarmup)                                       info.flags |= FlagExtraWG;
+    if (problem.needsAGroupSums())                                info.flags |= FlagAGroupSums;
+    if (problem.needsBGroupSums())                                info.flags |= FlagBGroupSums;
     info.flags |= (strategy.fillGoal << FlagShiftFillGoal) & FlagMaskFillGoal;
     info.slm = int(gemmSLMSize(hw, problem, strategy));
     info.perKSLM = int(gemmPerKSLMSize(hw, problem, strategy));
@@ -93,4 +97,4 @@ CommonDriverInfo BLASKernelGenerator<hw>::driverInfo(GEMMProblem problem, const 
     return info;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

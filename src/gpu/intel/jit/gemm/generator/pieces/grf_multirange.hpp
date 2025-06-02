@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@
 #define GEMMSTONE_GUARD_GRF_MULTIRANGE_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
+#include "gemmstone/type.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // GRFMultirange represents a sequence of GRF registers, not necessarily contiguous.
 // It is a generalization of nGEN's GRFRange, which represents a contiguous range of registers.
@@ -74,8 +74,6 @@ struct GRFMultirange {
         return result;
     }
 
-    GRFMultirange subrange(ngen::HW hw, Type T, const RegisterBlock &block) const;
-
     bool contiguous(int start, int count) const {
         for (auto &r : ranges) {
             if (start < r.getLen())
@@ -120,6 +118,6 @@ struct GRFMultirange {
     void clear()       { ranges.clear(); }
 };
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

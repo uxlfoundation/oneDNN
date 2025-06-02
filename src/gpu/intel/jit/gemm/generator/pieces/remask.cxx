@@ -15,27 +15,27 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "map.hpp"
 #include "layout_utils.hpp"
 #include "remask.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 template <HW hw>
-void BLASKernelGenerator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, Subregister remQ,
-                                                  const CommonStrategy &strategy, CommonState &state,
-                                                  int fixedOffQ, const Subregister &variableOffQ)
+void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, Subregister remQ,
+                                        const CommonStrategy &strategy, CommonState &state,
+                                        int fixedOffQ, const Subregister &variableOffQ)
 {
     if (T.paddedSize() > 4) T = Type::u32;
 
     if (setup) {
-        bool halfByte = T.is4Bit();
+        bool halfByte = T.is4();
         if (halfByte) {
             nq = div_up(nq, 2);
             T = Type::u8;
@@ -110,10 +110,11 @@ void BLASKernelGenerator<hw>::setupTeardownRemask(Type T, int index, bool setup,
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::remaskLayout(Type T, int index, bool column,
-                                           const std::vector<RegisterBlock> &layout, const GRFMultirange &regs,
-                                           const CommonStrategy &strategy, CommonState &state, int offset)
+void Generator<hw>::remaskLayout(int index, bool column,
+                                 const RegisterLayout &layout, const GRFMultirange &regs,
+                                 const CommonStrategy &strategy, CommonState &state, int offset)
 {
+    auto T = layout.type();
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
         bool colMajor = block.colMajor;
@@ -132,7 +133,7 @@ void BLASKernelGenerator<hw>::remaskLayout(Type T, int index, bool column,
                 auto j0 = jj0 + block.offsetC;
 
                 int ne;
-                auto sub = findBlockReg(T, block, ii0, jj0, regs, ne, qCX, component);
+                auto sub = block.find(T, ii0, jj0, regs, &ne, qCX, component);
 
                 auto necp = ne * crosspack;
                 necp = std::min(necp, 2 * elementsPerGRF(hw, Tr));
@@ -167,14 +168,14 @@ void BLASKernelGenerator<hw>::remaskLayout(Type T, int index, bool column,
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::remaskLayoutSingle(Type T, int index, bool column, int nq, Subregister remQ,
-                                                 const std::vector<RegisterBlock> &layout, const GRFMultirange &regs,
-                                                 const CommonStrategy &strategy, CommonState &state,
-                                                 int fixedOffQ, const Subregister &variableOffQ, int maskOff)
+void Generator<hw>::remaskLayoutSingle(int index, bool column, int nq, Subregister remQ,
+                                       const RegisterLayout &layout, const GRFMultirange &regs,
+                                       const CommonStrategy &strategy, CommonState &state,
+                                       int fixedOffQ, const Subregister &variableOffQ, int maskOff)
 {
-    setupTeardownRemask(T, index, true, nq, remQ, strategy, state, fixedOffQ, variableOffQ);
-    remaskLayout(T, index, column, layout, regs, strategy, state, maskOff);
-    setupTeardownRemask(T, index, false, nq, remQ, strategy, state);
+    setupTeardownRemask(layout.type(), index, true, nq, remQ, strategy, state, fixedOffQ, variableOffQ);
+    remaskLayout(index, column, layout, regs, strategy, state, maskOff);
+    setupTeardownRemask(layout.type(), index, false, nq, remQ, strategy, state);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

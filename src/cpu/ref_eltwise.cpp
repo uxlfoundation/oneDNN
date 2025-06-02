@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -228,7 +228,8 @@ status_t ref_eltwise_bwd_t<data_type>::execute_backward_dense(
                         alg_kind, diff_dst_ptr[i], src_ptr[i], alpha, beta);
             }
         });
-    } else if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
+    } else if (utils::one_of(data_type, data_type::bf16, data_type::f16,
+                       data_type::f8_e5m2, data_type::f8_e4m3)) {
         const data_t *src_ptr = static_cast<const data_t *>(src);
         const data_t *diff_dst_ptr = static_cast<const data_t *>(diff_dst);
         data_t *diff_src_ptr = static_cast<data_t *>(diff_src);

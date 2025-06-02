@@ -170,8 +170,12 @@ static inline int format_type_checker(const char *, ...) {
 // anyway to condition collecting stamp/duration)
 #define VPROF(stamp, apitype, logtype, logsubtype, info, duration) \
     { \
-        VFORMAT(stamp, dnnl::impl::verbose_t::exec_profile, apitype, logtype, \
-                logsubtype, "%s,%g", info, duration); \
+        auto flag = dnnl::impl::verbose_t::exec_profile; \
+        if (strcmp(#logtype, "create") == 0 \
+                || strcmp(#logtype, "create_nested") == 0) \
+            flag = dnnl::impl::verbose_t::create_profile; \
+        VFORMAT(stamp, flag, apitype, logtype, logsubtype, "%s,%g", info, \
+                duration); \
     }
 
 struct verbose_t {

@@ -385,7 +385,9 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
         BENCHDNN_PRINT(
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");
         sycl::ext::oneapi::experimental::command_graph graph {
-                queue.get_context(), queue.get_device()};
+                queue.get_context(), queue.get_device(),
+                {sycl::ext::oneapi::experimental::property::graph::
+                                assume_buffer_outlives_graph {}}};
 
         graph.begin_recording(queue);
         status = exec_func(stream, dnnl_args);
@@ -803,6 +805,20 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
     }
 }
 
+void skip_unimplemented_binary_po(const attr_t &attr, res_t *res) {
+    const auto &po = attr.post_ops;
+    if (po.is_def()) return;
+
+    if (is_gpu()) {
+        const int select_idx = po.find(attr_t::post_ops_t::kind_t::SELECT);
+        if (select_idx != -1) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+    }
+}
+
 void skip_unimplemented_prelu_po(
         const attr_t &attr, res_t *res, dnnl_primitive_kind_t pkind) {
     const auto &po = attr.post_ops;
@@ -1117,7 +1133,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const double capacity_factor = 0.75;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
-    const double benchdnn_combined_limit = 0.90 * cpu_device_capacity;
+    // Note: used to be 0.90 until large f64 conv cases on Xe2-LPG emerged.
+    const double benchdnn_combined_limit = 0.80 * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {

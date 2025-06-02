@@ -449,6 +449,7 @@ public:
 };
 
 TEST_P(batch_norm_4d_t, TestBatchnorm) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     Test();
 }
 
@@ -473,6 +474,7 @@ INSTANTIATE_TEST_SUITE_P(test_batch_norm_execute, batch_norm_4d_t,
                         graph::data_type::f32}));
 
 TEST(test_batch_norm_compile, BatchNormBackwardFp32) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = dnnl::impl::graph::dnnl_impl::dims;
 
     graph::op_t bn_op(graph::op_kind::BatchNormTrainingBackward);
@@ -668,6 +670,7 @@ TEST(test_batch_norm_compile, BatchNormBackwardFp32WithSingleOutput) {
 }
 
 TEST(test_batch_norm_compile, BatchNormForwardTrainingWith1DSpatialInput) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
 
     using dims = graph::dnnl_impl::dims;
     using ltw = graph::logical_tensor_wrapper_t;
@@ -802,6 +805,7 @@ TEST(test_batch_norm_compile, BatchNormForwardTrainingWith1DSpatialInput) {
 }
 
 TEST(test_batch_norm_compile, BatchNormForwardTrainingWith0DSpatialInput) {
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
 
     using dims = graph::dnnl_impl::dims;
     using ltw = graph::logical_tensor_wrapper_t;

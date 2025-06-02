@@ -55,7 +55,7 @@ int fill_mem(
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
-    int min_val = MAX2(-8, static_cast<int>(lowest_dt(mem_dt.dt())));
+    int min_val = static_cast<int>(MAX2(-8.f, lowest_dt(mem_dt.dt())));
     // Tenrary op supports a third input which can't be negative so far.
     if (input_idx == 2) min_val = 0;
 
@@ -128,6 +128,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     std::vector<dnnl_data_type_t> dts = {prb->sdt[0], prb->sdt[1], prb->ddt};
     skip_unimplemented_data_type(dts, prb->dir, res);
     skip_unimplemented_arg_scale(prb->attr, res);
+    skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_binary);
 
     if (is_gpu()) {

@@ -140,16 +140,16 @@ class Converter(metaclass=ConverterMeta):
         args = self._get_nondefault_args(values, defaults=(0.0, 0.0, 1.0))
         return ":".join([po.alg] + args)
 
-    def _convert_binary_post_op(self, po: ir.BinaryPostOp):
-        if po.alg == "select":
-            src1_arg = ".".join([po.dt, po.mask])
-            if po.tag != "any":
-                src1_arg = src1_arg + f".{po.tag}"
-            src2_arg = f"{po.src2_mask}"
-            if po.src2_tag != "any":
-                src2_arg = src2_arg + f".{po.tag}"
-            return ":".join([po.alg, src1_arg, src2_arg])
+    def _convert_select_post_op(self, po: ir.SelectPostOp):
+        src1_arg = f"{po.dt}.{po.mask}"
+        if po.tag != "any":
+            src1_arg = src1_arg + f".{po.tag}"
+        src2_arg = f"{po.src2_mask}"
+        if po.src2_tag != "any":
+            src2_arg = src2_arg + f".{po.tag}"
+        return ":".join([po.alg, src1_arg, src2_arg])
 
+    def _convert_binary_post_op(self, po: ir.BinaryPostOp):
         if po.tag != "any":
             return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
         return f"{po.alg}:{po.dt}:{po.mask}"
@@ -170,6 +170,9 @@ class Converter(metaclass=ConverterMeta):
             elif post_op.alg == "prelu":
                 prelu_po = cast(ir.PreLUPostOp, post_op)
                 results.append(self._convert_prelu_post_op(prelu_po))
+            elif post_op.alg == "binary_select":
+                select_po = cast(ir.SelectPostOp, post_op)
+                results.append(self._convert_select_post_op(select_po))
             elif post_op.alg.startswith("binary_"):
                 binary_po = cast(ir.BinaryPostOp, post_op)
                 results.append(self._convert_binary_post_op(binary_po))
@@ -426,9 +429,7 @@ class BinaryConverter(AlgorithmMixin, MultiSourceMixin, Converter):
 
     @property
     def shapes(self):
-        shapes_str = self.entry.shapes.split(" ", 1)[0]
-        src0_shape, src1_shape, _ = shapes_str.split(":")
-        return f"{src0_shape}:{src1_shape}"
+        return ":".join(self.entry.shapes.split(":", 2)[:2])
 
     @property
     def dts(self):

@@ -303,6 +303,8 @@ class ParserImpl:
                 parsed.append(self.parse_prelu_post_op(spec))
             elif alg.startswith("eltwise_"):
                 parsed.append(self.parse_eltwise_post_op(spec, alg))
+            elif alg == "binary_select":
+                parsed.append(self.parse_select_post_op(spec))
             elif alg.startswith("binary_"):
                 parsed.append(self.parse_binary_post_op(spec, alg))
             else:
@@ -355,6 +357,19 @@ class ParserImpl:
             post_op.beta = spec.read_float()
         if spec.read_literal(":"):
             post_op.scale = spec.read_float()
+        return post_op
+
+    @staticmethod
+    def parse_select_post_op(spec) -> ir.SelectPostOp:
+        if not spec.read_literal(":"):
+            raise ParseError("Expected src1 data type for select post-op")
+        dt = spec.read_str()
+        post_op = ir.SelectPostOp(dt=dt)
+        spec.read_literal(":")
+        post_op.mask = spec.read_uint()
+        if spec.read_literal(":"):
+            post_op.tag = spec.read_str()
+        # benchdnn can't do anything with src2 info yet.
         return post_op
 
     @staticmethod

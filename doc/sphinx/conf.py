@@ -146,7 +146,8 @@ html_theme_options = {
     "use_repository_button": True,
     "use_download_button": True,
     "path_to_docs": "doc",
-    "use_issues_button": True
+    "use_issues_button": True,
+    "extra_footer": "oneDNN is licensed under Apache License Version 2.0. Refer to the <a href='https://github.com/uxlfoundation/oneDNN/blob/main/LICENSE'>LICENSE</a> file for the full license text and copyright notice."
 }
 
 mathjax3_config = {

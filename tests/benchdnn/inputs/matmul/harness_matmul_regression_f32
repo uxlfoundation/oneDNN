@@ -28,3 +28,7 @@
 # test special tag that can be matched with adbc
 --reset
 --stag=dabc --wtag=abx --dtag=abx 1x2x2x32:2x2x32x7
+
+# test dst strides
+--reset
+--strides=16x1::16x1 3x1:1x1_n"non_unit_dims_with_strides"

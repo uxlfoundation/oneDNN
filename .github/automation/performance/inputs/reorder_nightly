@@ -24,4 +24,4 @@
 
 --stag=abx,axb,aBx4b,aBx8b
 --dtag=abx,axb,aBx4b,aBx8b
-4x256x5x5
+8x256x7x7

@@ -651,7 +651,7 @@ void init_data_tags(const conv_config_t &cfg, const memory_desc_t &src_md,
 void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         dim_t *odhw, dim_t *pdhw, dim_t *ddhw) {
     const bool is_bwd_d = (prb.prop_kind() == prop_kind::backward_data);
-    using memory_dims = std::vector<dim_t>;
+    using memory_dims = std::array<dim_t, 3>;
     memory_dims I {prb.id, prb.ih, prb.iw};
     memory_dims O {prb.od, prb.oh, prb.ow};
     memory_dims K {prb.kd, prb.kh, prb.kw};
@@ -670,31 +670,53 @@ void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         return (s->dims[2 + i] > 1) || (d->dims[2 + i] > 1)
                 || (w->dims[2 + i + prb.with_groups] > 1);
     };
-    auto move_back = [&](int i, int off) {
-        if (off == 0) return;
-        I[i - off] = O[i - off] = K[i - off] = S[i - off] = 1;
-        D[i - off] = P[i - off] = 0;
-        std::swap(I[i - off], I[i]);
-        std::swap(O[i - off], O[i]);
-        std::swap(K[i - off], K[i]);
-        std::swap(S[i - off], S[i]);
-        std::swap(D[i - off], D[i]);
-        std::swap(P[i - off], P[i]);
+    std::array<bool, 3> C = {
+            // original conv spatials
+            (off <= 0) && has_dim(0 - off),
+            (off <= 1) && has_dim(1 - off),
+            (off <= 2) && has_dim(2 - off),
     };
-    bool has_d = (off <= 0) && has_dim(0 - off);
-    bool has_h = (off <= 1) && has_dim(1 - off);
-    bool has_w = (off <= 2) && has_dim(2 - off);
-    if (!has_d && !has_h && !has_w) has_w = true;
-    move_back(1, has_d * (!has_h == has_w));
-    move_back(2, !has_w * (!has_h + 1));
-
+    std::array<bool, 3> V = {
+            // converted 'visible' spatials
+            (I[0] > 1) || (O[0] > 1) || (K[0] > 1),
+            (I[1] > 1) || (O[1] > 1) || (K[1] > 1),
+            (I[2] > 1) || (O[2] > 1) || (K[2] > 1),
+    };
+    std::array<bool, 3> H = {
+            // converted 'hidden' spatials
+            !V[0] && ((S[0] > 1) || (D[0] > 0) || (P[0] > 0)),
+            !V[1] && ((S[1] > 1) || (D[1] > 0) || (P[1] > 0)),
+            !V[2] && ((S[2] > 1) || (D[2] > 0) || (P[2] > 0)),
+    };
+    // go here if there are gaps in spatials and 'visible' spatials are present
+    if (!(V[0] || H[0]) && (V[1] || V[2])) { // 4 cases: 11V, 1VV, 1HV, 1VH
+        auto move_back = [&](int i, int off) {
+            if (off == 0) return;
+            I[i - off] = O[i - off] = K[i - off] = S[i - off] = 1;
+            D[i - off] = P[i - off] = 0;
+            std::swap(I[i - off], I[i]);
+            std::swap(O[i - off], O[i]);
+            std::swap(K[i - off], K[i]);
+            std::swap(S[i - off], S[i]);
+            std::swap(D[i - off], D[i]);
+            std::swap(P[i - off], P[i]);
+        };
+        if (!H[0] && !H[1] && !H[2]) { // 11V or 1VV
+            move_back(1, C[0] * (!C[1] == C[2]));
+            move_back(2, !C[2] * (!C[1] + 1));
+        } else { // 1HV or 1VH
+            move_back(1, (C[1] && H[1] && V[2]) || (C[0] && V[1] && H[2]));
+            move_back(2, C[1] && H[1] && V[2]);
+        }
+    }
+    // compute the required dimensions
     for (int i = off; i < int(K.size()); i++) {
-        const auto KD = (K[i] - 1) * (D[i] + 1) + 1;
         gpu_assert(w->dims[2 + i + prb.with_groups - off] == K[i]);
         O[i] = ir_utils::max_unique_pad_states(
-                O[i], I[i], KD, P[i], S[i], true);
-        I[i] = std::min(KD, I[i]);
+                O[i], I[i], K[i], D[i], P[i], S[i], true);
+        I[i] = std::min((K[i] - 1) * (D[i] + 1) + 1, I[i]);
     }
+    // return the dimensions to the user
     for (int i = 0; i < 3; i++) {
         idhw[i] = (i < off) ? 0 : I[i];
         odhw[i] = (i < off) ? 0 : O[i];
@@ -1565,7 +1587,7 @@ public:
         : prb_(prb) {
         for (auto &d : tile) {
             auto bmnk = to_gemm(d, prb);
-            if (!utils::one_of(std::move(bmnk), pvars::m, pvars::n)) continue;
+            if (!utils::one_of(bmnk, pvars::m, pvars::n)) continue;
 
             entries_.emplace_back();
             entry_t &e = entries_.back();

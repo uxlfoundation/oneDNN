@@ -37,6 +37,16 @@
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
 
+// Tile debugging example for s_tile
+//
+// example: declare print tile function macro for S_tile
+// DECLARE_2D_TILE_PRINT(s_tile_type, float, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+//                       ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+//                       ugemm_kq_c_type_nblock1)
+//
+// example: Prints the entire S_tile in the (0, 1, 0) work group
+// print_tile(S_tile, "%7.2f", 0, 1, 0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+
 #ifdef QRY_DT_F16
 #define VEC_TYPE2 half2
 #elif defined(QRY_DT_BF16)

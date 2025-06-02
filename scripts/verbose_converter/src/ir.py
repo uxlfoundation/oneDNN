@@ -16,7 +16,7 @@
 
 import enum
 import string
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from dataclasses import MISSING, dataclass, fields
 from typing import Dict, List, Optional, Union
@@ -163,10 +163,9 @@ class Dropout(Mapping):
         return self.tag or ""
 
 
-class FormattedMapping(Mapping):
+class FormattedMapping(Mapping, ABC):
     @abstractmethod
-    def _format(self, _) -> str:
-        raise NotImplementedError
+    def _format(self, _) -> str: ...
 
     def __str__(self):
         return self._format(str)
@@ -175,7 +174,6 @@ class FormattedMapping(Mapping):
         return self._format(hash_str)
 
 
-@dataclass(eq=False)
 class PostOp(FormattedMapping):
     alg: str
 
@@ -197,10 +195,20 @@ class PostOp(FormattedMapping):
         args = [self.alg] + required_args[::-1] + optional_args[::-1]
         return ":".join(map(convert, args))
 
+    def __iter__(self):
+        yield "alg"
+        yield from super().__iter__()
+
+    def __len__(self):
+        return 1 + super().__len__()
+
 
 @dataclass(eq=False)
 class SumPostOp(PostOp):
-    alg: str = "sum"
+    @property
+    def alg(self):
+        return "sum"
+
     scale: float = 1.0
     zp: int = 0
     dt: str = ""
@@ -220,28 +228,23 @@ class DepthwiseScales(Mapping):
 
 
 @dataclass(eq=False)
-class KSPMixin:
+class DepthwisePostOp(PostOp):
+    @property
+    def alg(self):
+        return "dw"
+
     ksp: str
-
-
-@dataclass(eq=False)
-class DepthwisePostOp(PostOp, KSPMixin):
-    alg: str = "dw"
     dst_dt: str = "f32"
     wei_dt: str = "f32"
     scales: DepthwiseScales = DepthwiseScales()
 
-    def __len__(self):
-        return 1 + super().__len__()
-
-    def __iter__(self):
-        yield "alg"
-        yield from super().__iter__()
-
 
 @dataclass(eq=False)
 class PreLUPostOp(PostOp):
-    alg: str = "prelu"
+    @property
+    def alg(self):
+        return "prelu"
+
     mask: int = 0
     has_scaleshift: bool = False
 
@@ -257,14 +260,38 @@ class PreLUPostOp(PostOp):
 
 
 @dataclass(eq=False)
-class EltwisePostOp(PostOp):
+class AlgPostOp(PostOp):
+    alg: str
+
+    def __iter__(self):
+        yield from FormattedMapping.__iter__(self)
+
+    def __len__(self):
+        return FormattedMapping.__len__(self)
+
+
+@dataclass(eq=False)
+class EltwisePostOp(AlgPostOp):
+    alg: str
     alpha: float = 0.0
     beta: float = 0.0
     scale: float = 1.0
 
 
 @dataclass(eq=False)
-class BinaryPostOp(PostOp):
+class BinaryPostOp(AlgPostOp):
+    alg: str
+    dt: str
+    mask: int = 0
+    tag: str = "any"
+
+
+@dataclass(eq=False)
+class SelectPostOp(PostOp):
+    @property
+    def alg(self):
+        return "binary_select"
+
     dt: str
     mask: int = 0
     tag: str = "any"

@@ -20,6 +20,7 @@
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
+#include "problem.hpp"
 #include "state_utils.hpp"
 
 using namespace ngen;
@@ -280,8 +281,6 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     if (!getRegLayout(Tco, CO_layout, cor, coc, remR, remC, false, AvoidFragment, 0, 0, CO, CO_strategy))
         return false;
 
-    auto CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
-
     allocAddrRegs(CO_addrs, CO_layout, CO, CO_strategy, state);
     setupAddr(Tco, CO_addrs, base, CO_layout, ld, CO, CO_strategy, strategy, state);
 
@@ -301,28 +300,78 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         if (checkRemY)
             cmp(simt | gt | state.flagAP, remY, 0);
 
-        for (int y = 0; y < unrollY; y++) {
-            if (checkRemY) {
-                simtCF ? goto12(16 | ~state.flagAP, lDone)
-                       :   jmpi(1  | ~state.flagAP, lDone);
-            }
-            loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
-            if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
-                inv(simd, r, r);
-            });
-            if (checkRemY && (y + 1 < unrollY))
-                cmp(simt | gt | state.flagAP, remY, y + 1);
-            if (coColMajor == globalCM)
-                incAddr(CO_addrs, ld, int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
-            else
-                incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
-
-            gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout, y, y+1);
+        // Reserve some registers for use in gemmVectorBinaryOpC if needed
+        int nreserve = op == BinaryOp::Prelu ? 2 : 0; // temp regs used in the operation
+        bool needRepack = (state.Tacc != Tco);
+        if (needRepack) {
+            vector<RegisterBlock> repackLayout;
+            makeUnbackedRegLayout(state.Tacc, repackLayout, cor, coc, !column);
+            nreserve += getRegCount(repackLayout);
         }
+        ngen::GRFRange reserve;
+        reserve = state.ra.alloc_range(nreserve);
+
+        constexpr int max_grouped_ops = 16;
+        std::array<ngen::GRFRange, max_grouped_ops> allCORegs;
+
+        int grouped_ops = 0;
+        for (auto &r : allCORegs) {
+            r = state.ra.tryAllocRange(getRegCount(CO_layout));
+            if (!r.isValid()) break;
+            grouped_ops++;
+        }
+
+        state.ra.safeRelease(reserve);
+
+        for (int y0 = 0; y0 < unrollY; y0 += grouped_ops) {
+            Label lDoneLoading;
+            // Perform loads
+            for (int i = 0; i < grouped_ops; i++) {
+                const int y = y0 + i;
+                if (y >= unrollY) break;
+                auto &CO_regs = allCORegs[i];
+                if (checkRemY) {
+                    simtCF ? goto12(16 | ~state.flagAP, lDoneLoading)
+                           :   jmpi(1  | ~state.flagAP, lDoneLoading);
+                }
+                loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+                if (checkRemY && (y + 1 < unrollY))
+                    cmp(simt | gt | state.flagAP, remY, y + 1);
+                if (coColMajor == globalCM)
+                    incAddr(CO_addrs, ld, int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+                else
+                    incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+            }
+
+            mark(lDoneLoading);
+            if (checkRemY)
+                cmp(simt | gt | state.flagAP, remY, y0);
+
+            // Perform binary op
+            for (int i = 0; i < grouped_ops; i++) {
+                auto &CO_regs = allCORegs[i];
+                const int y = y0 + i;
+                if (y >= unrollY) break;
+                if (checkRemY) {
+                    simtCF ? goto12(16 | ~state.flagAP, lDone)
+                        :   jmpi(1  | ~state.flagAP, lDone);
+                }
+                if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
+                    inv(simd, r, r);
+                });
+                if (checkRemY && (y + 1 < unrollY))
+                    cmp(simt | gt | state.flagAP, remY, y + 1);
+
+                gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout, y, y+1);
+            }
+        }
+
+        for (auto &r: allCORegs) state.ra.safeRelease(r);
 
         mark(lDone);
         if (simtCF) join(16);
     } else {
+        auto CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
         loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
@@ -332,10 +381,10 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             gemmScalarBinaryOpC(op, CO_regs, problem, strategy, state, Tco);
         else
             gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout);
+        state.ra.safeRelease(CO_regs);
     }
 
     safeReleaseMaskAssignments(masks, state);
-    state.ra.safeRelease(CO_regs);
     safeReleaseRanges(CO_addrs, state);
 
     return true;

@@ -117,6 +117,8 @@ private:
 
     // Memory allocations are time consuming on GPU, thus, introducing the
     // upper bound for the number of buffers in cold-cache.
+    // For CPU the enormous number of buffers may lead to what looks like a
+    // hang. In fact, just takes a very long time to complete.
     // Since `no_ref_memory` allocations use `memset` call to initialize the
     // data, the assumption is it makes newly created memory objects with newly
     // allocated buffer underneath get into the GPU cache. Using these memory
@@ -124,6 +126,7 @@ private:
     // Thus, introducing an extra reorder with brand new memory objects which
     // sole purpose is to reset the state of the cache by entirely thrashing it.
     static constexpr size_t gpu_n_buffers_top_limit_ = 100;
+    static constexpr size_t cpu_n_buffers_top_limit_ = 10000;
 
     size_t cc_counter_ = 0;
 

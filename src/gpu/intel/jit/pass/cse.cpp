@@ -390,6 +390,12 @@ private:
             return;
         }
 
+        // Support for mutable expressions is unimplemented
+        if (obj.type.is_mutable()) {
+            ir_visitor_t::_visit(obj);
+            return;
+        }
+
         if (std::is_same<T, shuffle_t>::value) {
             auto &shuffle = reinterpret_cast<const shuffle_t &>(obj);
             if (shuffle.is_broadcast()) {

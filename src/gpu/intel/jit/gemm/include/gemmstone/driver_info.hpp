@@ -20,9 +20,9 @@
 #include <cstdint>
 #include <string>
 
-#include "config.hpp"
+#include "gemmstone/config.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Loop identifiers.
 enum LoopType : uint8_t {
@@ -69,7 +69,11 @@ enum DriverInfoFlags : uint32_t {
     FlagNondeterministic = 0x4000,  // Kernel produces nondeterministic results.
     FlagMaskFillGoal = 0xF0000,     // Fraction of available thread slots to fill, in sixteenths
     FlagShiftFillGoal = 16,         //   (starting bit)
+    FlagScrambleM = 0x100000,       // Scramble WGs in m dimension.
+    FlagScrambleN = 0x200000,       // Scramble WGs in n dimension.
     FlagExtraWG = 0x400000,         // Add an additional workgroup.
+    FlagAGroupSums = 0x1000000,     // Kernel needs A group sums.
+    FlagBGroupSums = 0x2000000,     // Kernel needs B group sums.
 };
 
 // Driver information, shared by all kernel types.
@@ -117,7 +121,11 @@ struct CommonDriverInfo {
     bool betaPtr()            const { return flags & FlagBetaPtr; }
     bool fixedWGK()           const { return flags & FlagFixedWGK; }
     bool nondeterministic()   const { return flags & FlagNondeterministic; }
+    bool scrambleM()          const { return flags & FlagScrambleM; }
+    bool scrambleN()          const { return flags & FlagScrambleN; }
     int extraWGs()            const { return (flags & FlagExtraWG) ? 1 : 0; }
+    bool needsAGroupSums()    const { return flags & FlagAGroupSums; }
+    bool needsBGroupSums()    const { return flags & FlagBGroupSums; }
 
     int wgTile(LoopType l)    const { return unroll[l] * wg[l]; }
     int kPadding()            const { return (kParallel() || kParallelVariable()) ? blockingAlt[LoopK] : 0; }
@@ -146,6 +154,6 @@ enum {
     FlagKSlice2 = 0x10000,
 };
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

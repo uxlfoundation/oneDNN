@@ -17,11 +17,11 @@
 #ifndef GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
 #define GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
 
-#include "config.hpp"
-#include "kernel_selector.hpp"
-#include "kernel_evaluator.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/kernel_selector.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 /* Hardware information for microkernel provider */
 struct HWInformation {
@@ -43,6 +43,6 @@ static inline int alignmentForLD(int ld)
     return 128;
 };
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

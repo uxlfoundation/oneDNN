@@ -19,26 +19,24 @@
 #define GEMMSTONE_GUARD_NGEN_OBJECT_HELPERS_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
-#include "problem.hpp"
+#include "gemmstone/type.hpp"
+#include "gemmstone/problem.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // DataType queries and helpers.
-static inline bool is4(ngen::DataType dt) { return (dt == Type::ngen_f4_e2m1()) || one_of(dt, ngen::DataType::u4, ngen::DataType::s4); }
+static inline bool isInt4(ngen::DataType dt) { return one_of(dt, ngen::DataType::u4, ngen::DataType::s4);}
 static inline bool isB(ngen::DataType dt) { return one_of(dt, ngen::DataType::ub, ngen::DataType::b); }
 static inline bool isW(ngen::DataType dt) { return one_of(dt, ngen::DataType::uw, ngen::DataType::w); }
 static inline bool isD(ngen::DataType dt) { return one_of(dt, ngen::DataType::ud, ngen::DataType::d); }
 static inline bool isQ(ngen::DataType dt) { return one_of(dt, ngen::DataType::uq, ngen::DataType::q); }
-static inline bool isFP8(ngen::DataType dt) { return (dt == Type::ngen_f8_e8m0()) || one_of(dt, ngen::DataType::bf8, ngen::DataType::hf8); }
-static inline bool isFP4(ngen::DataType dt) { return (dt == Type::ngen_f4_e2m1() || dt == Type::ngen_f4_e3m0()); }
-static inline bool isInt4(ngen::DataType dt) { return one_of(dt, ngen::DataType::u4, ngen::DataType::s4);}
-static inline bool is4Bit(ngen::DataType dt) { return isFP4(dt) || isInt4(dt);}
+static inline bool isFP8(ngen::DataType dt) { return one_of(dt, ngen::DataType::bf8, ngen::DataType::hf8, Type::ngen_e8m0()); }
+static inline bool isFP4(ngen::DataType dt) { return one_of(dt, Type::ngen_e2m1(), Type::ngen_e3m0(), Type::ngen_nf4()); }
+static inline bool is4(ngen::DataType dt) { return isInt4(dt) || isFP4(dt); }
 
 static inline bool isFP(ngen::DataType dt) {
-    if (dt == Type::ngen_f4_e2m1() || dt == Type::ngen_f8_e8m0()) return true;
     using namespace ngen;
-    return one_of(dt, DataType::bf8, DataType::hf8, DataType::bf, DataType::hf, DataType::tf32, DataType::f, DataType::df);
+    return one_of(dt, DataType::bf8, DataType::hf8, DataType::bf, DataType::hf, DataType::tf32, DataType::f, DataType::df, Type::ngen_e8m0());
 }
 static inline bool isInt(ngen::DataType dt) { return !isFP(dt); }
 
@@ -108,6 +106,6 @@ constexpr bool operator!=(const ngen::RegData &rd, const ngen::Immediate &i) { r
 /* Modify a cache policy to be L1-uncacheable */
 ngen::CacheSettingsLSC makeL1Uncacheable(ngen::CacheSettingsLSC c);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

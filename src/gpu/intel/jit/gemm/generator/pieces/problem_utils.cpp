@@ -14,14 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-
-#include "problem.hpp"
+#include "gemmstone/problem.hpp"
 
 #include <sstream>
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 // Transpose a GEMM problem.
@@ -30,6 +29,7 @@ void GEMMProblem::transpose()
     std::swap(A, B);
     std::swap(AO, BO);
     std::swap(A_scale, B_scale);
+    std::swap(Ag, Bg);
     std::swap(Ta, Tb);
     std::swap(Ta_ext, Tb_ext);
     std::swap(Tao, Tbo);
@@ -51,6 +51,8 @@ void GEMMProblem::transpose()
     CO.transpose();
     A_scale.transpose();
     B_scale.transpose();
+    Ag.transpose();
+    Bg.transpose();
 }
 
 static inline void append(std::ostringstream &ss, const Scalar &x);
@@ -70,12 +72,14 @@ std::string GEMMProblem::toString() const
         case BatchMode::Variable:   ss << "batchnv "; break;
     }
 
-    auto appendQString = [&](char matrix, int ptrDims, int xqGroupR, int xqGroupC) {
+    auto appendQString = [&](char matrix, Type T, int ptrDims, int xqGroupR, int xqGroupC) {
         ss << matrix;
         if (ptrDims < 0 || ptrDims > 2) return;
         ss << "[" << "pvg"[ptrDims];
         if (ptrDims == 2)
-            ss << xqGroupR << 'x' << xqGroupC;
+            ss << std::max(xqGroupR, 1) << 'x' << std::max(xqGroupC, 1);
+        ss << ',';
+        append(ss, T);
         ss << ']';
     };
 
@@ -84,16 +88,16 @@ std::string GEMMProblem::toString() const
     bool offsetc = (cOffset == COffset::Post);
     if (offseta || offsetb || offsetc) {
         ss << "offset";
-        if (offseta) appendQString('a', aoPtrDims, aqGroupM, aqGroupK);
-        if (offsetb) appendQString('b', boPtrDims, bqGroupK, bqGroupN);
-        if (offsetc) appendQString('c', -1, 0, 0);
+        if (offseta) appendQString('a', Tao, aoPtrDims, aqGroupM, aqGroupK);
+        if (offsetb) appendQString('b', Tbo, boPtrDims, bqGroupK, bqGroupN);
+        if (offsetc) appendQString('c', Tco, -1, 0, 0);
         ss << ' ';
     }
 
     if (aScale2D() || bScale2D()) {
         ss << "scale";
-        if (aScale2D()) appendQString('a', 2, aqGroupM, aqGroupK);
-        if (bScale2D()) appendQString('b', 2, bqGroupK, bqGroupN);
+        if (aScale2D()) appendQString('a', Ta_scale, 2, aqGroupM, aqGroupK);
+        if (bScale2D()) appendQString('b', Tb_scale, 2, bqGroupK, bqGroupN);
         ss << ' ';
     }
 
@@ -171,4 +175,4 @@ static inline void append(std::ostringstream &ss, Type T1, Type T2)
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

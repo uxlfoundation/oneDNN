@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@
 #define GEMMSTONE_GUARD_ALLOC_UTILS_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/type.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 #include "state.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 
 
@@ -97,13 +97,13 @@ GRFMultirange tryChunkAlloc(int nreg, int chunk, ngen::Bundle hint, ngen::Bundle
 
 // Attempt to allocate data registers for a layout, using one contiguous allocation per block.
 // Returns an empty GRFMultirange on failure.
-GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const std::vector<RegisterBlock> &layout, std::array<ngen::Bundle, 2> hints,
+GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, std::array<ngen::Bundle, 2> hints,
                             ngen::BundleGroup mask, CommonState &state, int copies = 1);
 
 // Split allocate if possible, otherwise chunk allocate.
-GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const std::vector<RegisterBlock> &layout, int chunk, std::array<ngen::Bundle, 2> hints,
+GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<ngen::Bundle, 2> hints,
                                 ngen::BundleGroup mask, CommonState &state, bool forceChunk = false);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

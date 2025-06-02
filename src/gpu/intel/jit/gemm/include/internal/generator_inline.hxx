@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ static inline int r0DWords(ngen::HW hw)
 // Call a functor needing the r0 header in a GRF.
 template <ngen::HW hw>
 template <typename F>
-void BLASKernelGenerator<hw>::useR0(CommonState &state, F f)
+void Generator<hw>::useR0(CommonState &state, F f)
 {
     if (state.r0_info.isARF()) {
         auto r0_info = state.ra.alloc();
@@ -39,7 +39,7 @@ void BLASKernelGenerator<hw>::useR0(CommonState &state, F f)
 // Call a functor needing a GRF temporary and the r0 header in a GRF.
 template <ngen::HW hw>
 template <typename F>
-void BLASKernelGenerator<hw>::useTempAndR0(CommonState &state, F f)
+void Generator<hw>::useTempAndR0(CommonState &state, F f)
 {
     auto temp = state.ra.alloc();
     if (state.r0_info.isARF()) {

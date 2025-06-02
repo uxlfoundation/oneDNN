@@ -17,38 +17,40 @@
 #ifndef GEMMSTONE_GUARD_TYPE_HPP
 #define GEMMSTONE_GUARD_TYPE_HPP
 
-#include "config.hpp"
+#include "gemmstone/config.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
+
 
 // Enum-like class for data types.
 class Type {
 public:
     enum _Type : uint32_t {
         invalid = 0,
-        f16  = 0x01000201,
-        f32  = 0x01010402,
-        f64  = 0x01020803,
-        u4   = 0x21120100,
-        s4   = 0x21130100,
-        u8   = 0x01140100,
-        s8   = 0x01150100,
-        u16  = 0x01160201,
-        s16  = 0x01170201,
-        u32  = 0x01180402,
-        s32  = 0x01190402,
-        u64  = 0x011A0803,
-        s64  = 0x011B0803,
-        f4_e2m1 = 0x410B0100,
-        f4_e3m0 = 0x410A0100,
-        f8_e8m0 = 0x1080100,
-        bf8  = 0x010E0100,
-        hf8  = 0x010F0100,
-        bf16 = 0x010C0201,
-        tf32 = 0x010D0402,
+        f16      = 0x01000201,
+        f32      = 0x01010402,
+        f64      = 0x01020803,
+        u4       = 0x21120100,
+        s4       = 0x21130100,
+        u8       = 0x01140100,
+        s8       = 0x01150100,
+        u16      = 0x01160201,
+        s16      = 0x01170201,
+        u32      = 0x01180402,
+        s32      = 0x01190402,
+        u64      = 0x011A0803,
+        s64      = 0x011B0803,
+        f4_e2m1  = 0x21040100,
+        f4_e3m0  = 0x21050100,
+        nf4      = 0x21060100,
+        f8_e8m0  = 0x01080100,
+        bf8      = 0x010E0100,
+        hf8      = 0x010F0100,
+        bf16     = 0x010C0201,
+        tf32     = 0x010D0402,
     };
 
 private:
@@ -65,20 +67,20 @@ public:
     constexpr int components()        const { return 1; }
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
-    constexpr bool isFP4()            const { return uint32_t(val) & 0x40000000; }
-    constexpr bool isInt4()           const { return uint32_t(val) & 0x20000000; }
-    constexpr bool is4Bit()           const { return isInt4() || isFP4(); }
+    constexpr bool is4()              const { return uint32_t(val) & 0x20000000; }
+    constexpr bool isInt4()           const { return is4() && isInteger(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
     constexpr bool isInt16()          const { return (val == Type::u16) || (val == Type::s16); }
-    constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8  || (val == Type::f8_e8m0)); }
-    constexpr bool isF4()             const { return (val == Type::f4_e2m1 || val == Type::f4_e3m0) ;}
+    constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8) || (val == Type::f8_e8m0); }
+    constexpr bool isF4()             const { return is4() && isFP(); }
     constexpr bool isSigned()         const { return (uint32_t(val) & 0x110000) != 0x100000; }
-    constexpr int bits()              const { return is4Bit() ? 4 : (paddedSize() * 8); }
+    constexpr int bits()              const { return (paddedSize() * 8) >> log2PerByte(); }
     constexpr int paddedSize()        const { return (uint32_t(val) >> 8) & 0xFF; }
     int log2Size()                    const { subByteCheck(); return uint32_t(val) & 0xFF; }
     int size()                        const { subByteCheck(); return paddedSize(); }
-    constexpr int perByte()           const { return is4Bit() ? 2 : 1; }
-    void subByteCheck()               const { if (is4Bit()) stub(); }
+    constexpr int log2PerByte()       const { return int(is4()); }
+    constexpr int perByte()           const { return is4() ? 2 : 1; }
+    void subByteCheck()               const { if (is4()) stub(); }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
@@ -92,32 +94,35 @@ public:
     constexpr Type baseType() const { return *this; }
 
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(U a, Type t) {
-        return t.is4Bit() ?(a + 2 * (a >= 0) - 1) / 2 : a * int(1u << t.log2Size());
+        return t.is4() ? (a + 2 * (a >= 0) - 1) / 2 : a * int(1u << t.log2Size());
     }
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(Type t, U a) { return a * t; }
     template <typename U>           friend U operator*=(U &a, Type t) { a = a * t; return a; }
     template <typename U> constexpr friend decltype(std::declval<U>()/1) operator/(U a, Type t) {
-        return t.is4Bit() ? a * 2 : a / int(1u << t.log2Size());
+        return t.is4() ? a * 2 : a / int(1u << t.log2Size());
     }
 
+    // Not valid nGEN DataTypes; for gemmstone internal use only
+    static constexpr ngen::DataType ngen_nf4()  { return static_cast<ngen::DataType>(0x58); }
+    static constexpr ngen::DataType ngen_e8m0() { return static_cast<ngen::DataType>(0x79); }
+
     // Not a valid nGEN DataType; for gemmstone internal use only
-    static  constexpr  ngen::DataType ngen_f4_e2m1() { return  static_cast<ngen::DataType>(0x5A);}
-    static  constexpr  ngen::DataType ngen_f4_e3m0() { return  static_cast<ngen::DataType>(0x5B);}
-    static  constexpr  ngen::DataType ngen_f8_e8m0() { return  static_cast<ngen::DataType>(0x69);}
+    static constexpr ngen::DataType ngen_e2m1() { return static_cast<ngen::DataType>(0x5A);}
+    static constexpr ngen::DataType ngen_e3m0() { return static_cast<ngen::DataType>(0x5B);}
 
 
     ngen::DataType ngen() const
     {
         using DT = ngen::DataType;
         auto none = DT::invalid;
-        static const DT table[32] = {DT::hf,   DT::f,    DT::df,    none,
-                                     none,     none,     none,      none,
-                                     ngen_f8_e8m0(),     none,     ngen_f4_e3m0(),      ngen_f4_e2m1(),
-                                     DT::bf,   DT::tf32, DT::bf8,   DT::hf8,
-                                     none,     none,     DT::u4,    DT::s4,
-                                     DT::ub,   DT::b,    DT::uw,    DT::w,
-                                     DT::ud,   DT::d,    DT::uq,    DT::q,
-                                     none,     none,     none,      none};
+        static const DT table[32] = {DT::hf,      DT::f,       DT::df,      none,
+                                     ngen_e2m1(), ngen_e3m0(), ngen_nf4(),  none,
+                                     ngen_e8m0(), none,        none,        none,
+                                     DT::bf,      DT::tf32,    DT::bf8,     DT::hf8,
+                                     none,        none,        DT::u4,      DT::s4,
+                                     DT::ub,      DT::b,       DT::uw,      DT::w,
+                                     DT::ud,      DT::d,       DT::uq,      DT::q,
+                                     none,        none,        none,        none};
         return table[(uint32_t(val) >> 16) & 0x1F];
     }
 
@@ -143,27 +148,28 @@ static_assert((-9 * Type(Type::s4) == -5) && (9 * Type(Type::s4) == 5), "Round a
 inline char typeToChar(Type T)
 {
     switch (T.baseType()) {
-        case Type::bf8:   return 'Q';
-        case Type::hf8:   return 'q';
-        case Type::f16:   return 'H';
-        case Type::f32:   return 'S';
-        case Type::f64:   return 'D';
-        case Type::u4:    return 'f';
-        case Type::s4:    return 'F';
-        case Type::u8:    return 'o';
-        case Type::s8:    return 'O';
-        case Type::u16:   return 'w';
-        case Type::s16:   return 'W';
-        case Type::u32:   return 'i';
-        case Type::s32:   return 'I';
-        case Type::u64:   return 'l';
-        case Type::s64:   return 'L';
-        case Type::bf16:  return 'B';
-        case Type::tf32:  return 'T';
-        case Type::f4_e2m1:   return 'E';
-        case Type::f4_e3m0:   return 'e';
-        case Type::f8_e8m0:   return 'X';
-        default:          return '?';
+        case Type::bf8:     return 'Q';
+        case Type::hf8:     return 'q';
+        case Type::f16:     return 'H';
+        case Type::f32:     return 'S';
+        case Type::f64:     return 'D';
+        case Type::u4:      return 'f';
+        case Type::s4:      return 'F';
+        case Type::u8:      return 'o';
+        case Type::s8:      return 'O';
+        case Type::u16:     return 'w';
+        case Type::s16:     return 'W';
+        case Type::u32:     return 'i';
+        case Type::s32:     return 'I';
+        case Type::u64:     return 'l';
+        case Type::s64:     return 'L';
+        case Type::bf16:    return 'B';
+        case Type::tf32:    return 'T';
+        case Type::f4_e2m1: return 'E';
+        case Type::f4_e3m0: return 'e';
+        case Type::nf4:     return 'N';
+        case Type::f8_e8m0: return 'X';
+        default:            return '?';
     }
 }
 
@@ -187,6 +193,7 @@ inline Type charToType(char c)
         case 'T': return Type::tf32;
         case 'E': return Type::f4_e2m1;
         case 'e': return Type::f4_e3m0;
+        case 'N': return Type::nf4;
         case 'X': return Type::f8_e8m0;
         default:  return Type::invalid;
     }
@@ -198,6 +205,6 @@ static inline char precisionChar(Type T) { return typeToChar(T); }
 static inline Type charPrecision(char c) { return charToType(c); }
 /****************************/
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

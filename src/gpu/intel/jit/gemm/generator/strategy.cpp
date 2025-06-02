@@ -14,18 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "driver_info.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/driver_info.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 #include "internal/utils.hpp"
 #include "pieces/compute_utils.hpp"
 #include "pieces/hw_utils.hpp"
 #include "pieces/layout_utils.hpp"
 #include "pieces/ngen_object_helpers.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 /* CommonStrategy member functions */
@@ -105,6 +105,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     // Addressing preflight.
 
+    if (hw >= HW::Xe2) for (auto *s: {&A, &B, &C, &AO, &BO, &CO, &A_scale, &B_scale,
+                                      &A_prefetch, &B_prefetch, &C_prefetch, &AB_prefetchL3})
+        s->newDP = true;
+
     if (isBlock2D(A_prefetch.accessType) && !isPacked(problem.A.layout) && !A_prefetch.address2D)
         downgradeAPFAccess(problem, *this);
     if (isBlock2D(B_prefetch.accessType) && !isPacked(problem.B.layout) && !B_prefetch.address2D)
@@ -161,24 +165,29 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     slmA &= (slmBuffers > 0);
     slmB &= (slmBuffers > 0);
 
-    A.preflight(hw);
-    B.preflight(hw);
-    C.preflight(hw);
-    A_prefetch.preflight(hw);
-    B_prefetch.preflight(hw);
-    C_prefetch.preflight(hw);
+    A.preflight(hw); A_prefetch.preflight(hw); AO.preflight(hw);
+    B.preflight(hw); B_prefetch.preflight(hw); BO.preflight(hw);
+    C.preflight(hw); C_prefetch.preflight(hw); CO.preflight(hw);
+    A_scale.preflight(hw); Ag.preflight(hw);
+    B_scale.preflight(hw); Bg.preflight(hw);
+    AB_prefetchL3.preflight(hw);
 
     bool globalCM = isRegisterColMajor(problem.Tc, problem.C, C);
 
+    altCRemainder &= (Tc_ext.bits() >= 8);
+
+    block2DCRemainder &= (hw >= HW::XeHPC);
     block2DCRemainder &= !isPacked(problem.C.layout);
     block2DCRemainder &= !isBlock2D(C.accessType);
     block2DCFull |= (Tc_ext.paddedSize() < 4);
     block2DCFull &= block2DCRemainder;
 
     extendedAtomicFMA &= !problem.needsASums() && !problem.needsBSums();
+    if (systolic)
+        extendedAtomicFMA &= ((unroll[globalCM ? LoopN : LoopM]) % 8 == 0);
 
-    if (tlbWarmup && !linearOrder())
-         cWalkOrder = WalkOrder::SimpleLinear;
+    if ((scramble[LoopM] || scramble[LoopN] || tlbWarmup) && !linearOrder())
+        cWalkOrder = WalkOrder::SimpleLinear;
 
     // Default SIMD setting.
     if (fmaSIMD == 0) {
@@ -215,8 +224,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         ka_load = kb_load = 32 / Ta_real;
         dpasw = true;
     }
-
-    altCRemainder &= (problem.Tc_ext.bits() >= 8);
 
     dpasw &= systolic && fused;
 
@@ -280,7 +287,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         ukAlign = lcm(ukAlign, params.ksys);
         auto tileX = params.osys;
         (globalCM ? C.tileR : C.tileC) = tileX;
-        if (unroll[globalCM ? LoopM : LoopN] > tileX)
+        if (unroll[globalCM ? LoopM : LoopN] > tileX && isBlocklike(C.accessType))
             forceCopyC = true;
         dotVL = 0;
     }
@@ -370,7 +377,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         if (slmB) minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
     }
 
-    ukAlign = align_up(ukAlign, minUnrollKSLM * slmVersions);
+    ukAlign = lcm(ukAlign, minUnrollKSLM * slmVersions);
 
     if (kInterleave) ukAlign = lcm(ukAlign, kInterleaveChunk);
     if (repackC) ukAlign = lcm(ukAlign, repackC);
@@ -571,7 +578,7 @@ bool GEMMStrategy::nondeterministic(const GEMMProblem &problem) const {
 
 void MatrixAddressingStrategy::preflight(HW hw)
 {
-    newDP |= isBlock2D(accessType);
+    newDP |= isBlock2D(accessType) || (hw >= HW::Xe2);
     padded |= (base.getModel() == ModelSLM);
 
     if (prefetch && newDP && cachingR == CacheSettingsLSC::Default)
@@ -618,4 +625,4 @@ void GEMMStrategy::trimKChain(HW hw, int k, const GEMMProblem &problem)
 }
 
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

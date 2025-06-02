@@ -15,16 +15,16 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
 
-#include "internal/namespace_start.hxx"
-
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_)
+void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_)
 {
     GEMMState state(hw, strategy);
 
@@ -161,7 +161,8 @@ void BLASKernelGenerator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy 
 static inline micro::StructuredType::Type microType(Type T);
 
 template <HW hw>
-micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC)
+micro::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_,
+                                                     micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC)
 {
     using namespace micro;
     Package package;
@@ -183,31 +184,31 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
         auto iname = arg.name;
 
         if (transposeC) {
-            if (iname == "a") iname = "b";
-            else if (iname == "b") iname = "a";
-            else if (iname == "lda") iname = "ldb";
-            else if (iname == "ldb") iname = "lda";
-            else if (iname == "m") iname = "n";
-            else if (iname == "n") iname = "m";
-            else if (iname == "i0") iname = "j0";
-            else if (iname == "j0") iname = "i0";
+            if (iname == "a")               iname = "b";
+            else if (iname == "b")          iname = "a";
+            else if (iname == "lda")        iname = "ldb";
+            else if (iname == "ldb")        iname = "lda";
+            else if (iname == "m")          iname = "n";
+            else if (iname == "n")          iname = "m";
+            else if (iname == "i0")         iname = "j0";
+            else if (iname == "j0")         iname = "i0";
             else if (iname == "local_id_m") iname = "local_id_n";
             else if (iname == "local_id_n") iname = "local_id_m";
-            else if (iname == "a_scale") iname = "b_scale";
-            else if (iname == "b_scale") iname = "a_scale";
-            else if (iname == "a_offset") iname = "b_offset";
-            else if (iname == "b_offset") iname = "a_offset";
-            else if (iname == "ldaq") iname = "ldbq";
-            else if (iname == "ldbq") iname = "ldaq";
+            else if (iname == "a_scale")    iname = "b_scale";
+            else if (iname == "b_scale")    iname = "a_scale";
+            else if (iname == "a_offset")   iname = "b_offset";
+            else if (iname == "b_offset")   iname = "a_offset";
+            else if (iname == "ldaq")       iname = "ldbq";
+            else if (iname == "ldbq")       iname = "ldaq";
         }
 
-        if (iname == "a") iname = "A";
-        else if (iname == "b") iname = "B";
-        else if (iname == "slm") iname = "slm_base";
+        if (iname == "a")             iname = "A";
+        else if (iname == "b")        iname = "B";
+        else if (iname == "slm")      iname = "slm_base";
         else if (iname == "a_offset") iname = "ao_ptr";
         else if (iname == "b_offset") iname = "bo_ptr";
-        else if (iname == "a_scale") iname = "a_scale_ptr";
-        else if (iname == "b_scale") iname = "b_scale_ptr";
+        else if (iname == "a_scale")  iname = "a_scale_ptr";
+        else if (iname == "b_scale")  iname = "b_scale_ptr";
 
         /* Locate argument registers */
         if (iname == "c") {
@@ -220,7 +221,7 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
                 if (blockM != block.nr) stub();
                 if (blockN != block.nc) stub();
             }
-            if (!isLayoutColMajor(outputCLayout)) stub(); /* Swap dims and block ordering */
+            if (!outputCLayout.colMajor()) stub(); /* Swap dims and block ordering */
 
             int blockGRF = 8;
             for (auto &r: outputCRange.ranges)
@@ -241,9 +242,7 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
             int idx = 0;
             for (int bj = 0; bj < tileN; bj += blockN) {
                 for (int bi = 0; bi < tileM; bi += blockM) {
-                    const RegisterBlock *block;
-                    int ne;
-                    auto topLeft = findBlockReg(problem.Tc, outputCLayout, bi, bj, outputCRange, ne, block);
+                    auto topLeft = outputCLayout.find(bi, bj, outputCRange);
                     arg.location[idx].boffset = topLeft.getBase() * GRF::bytes(hw) + topLeft.getByteOffset();
                     arg.location[idx].blen    = blockM * blockN * problem.Tc;
                     idx++;
@@ -262,11 +261,11 @@ micro::Package BLASKernelGenerator<hw>::gemmMicrokernelPackage(const GEMMProblem
         }
 
         /* Provide actual argument types */
-        if (iname == "A") arg.actualType = microType(problem.Ta_ext);
-        if (iname == "B") arg.actualType = microType(problem.Tb_ext);
-        if (iname == "c") arg.actualType = microType(problem.Tc);
-        if (iname == "ao_ptr") arg.actualType = microType(problem.Tao);
-        if (iname == "bo_ptr") arg.actualType = microType(problem.Tbo);
+        if (iname == "A")           arg.actualType = microType(problem.Ta_ext);
+        if (iname == "B")           arg.actualType = microType(problem.Tb_ext);
+        if (iname == "c")           arg.actualType = microType(problem.Tc);
+        if (iname == "ao_ptr")      arg.actualType = microType(problem.Tao);
+        if (iname == "bo_ptr")      arg.actualType = microType(problem.Tbo);
         if (iname == "a_scale_ptr") arg.actualType = microType(problem.Ta_scale);
         if (iname == "b_scale_ptr") arg.actualType = microType(problem.Tb_scale);
 
@@ -303,14 +302,14 @@ static inline micro::StructuredType::Type microType(Type T)
         CASE(s32)
         CASE(s16)
         CASE(s8)
+        CASE(s4)
         CASE(u32)
         CASE(u16)
         CASE(u8)
-        CASE(s4)
         CASE(u4)
         default: stub("Unsupported type");
     }
 #undef CASE
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

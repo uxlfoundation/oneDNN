@@ -17,7 +17,7 @@
 
 #include "atomic_fusions.hpp"
 #include "cooperative_split.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
@@ -25,16 +25,16 @@
 #include "ngen_object_helpers.hpp"
 #include "state_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 // Create a GEMM kernel.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
+void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
 {
     GEMMState state(hw, strategy);
     interface = interface_;
@@ -42,7 +42,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, c
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     const bool inFusedGEMM = false;
     bool anyKParallelFixed = strategy.kParallelLocal || strategy.kParallel;
@@ -61,6 +61,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     strategy.A.assignSurface(state.inputs.surfaceA);
     strategy.B.assignSurface(state.inputs.surfaceB);
     strategy.C.assignSurface(state.inputs.surfaceC[0]);
+    state.Cext_strategy.assignSurface(state.inputs.surfaceC[0]);
 
     if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
     if (state.useTempC)
@@ -75,6 +76,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     strategy.BO.assignSurface(state.inputs.surfaceBO);
     strategy.A_scale.assignSurface(state.inputs.surfaceAScale);
     strategy.B_scale.assignSurface(state.inputs.surfaceBScale);
+    strategy.Ag.assignSurface(state.inputs.surfaceAg);
+    strategy.Bg.assignSurface(state.inputs.surfaceBg);
 
     // Prologue.
     if (!inFusedGEMM)
@@ -116,6 +119,21 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         cmp(1 | ge | f1[0], localIDY, wgY * (strategy.splitCopy ? 2 : 1));
         jmpi(1 | f1[0], lPadThread);
     }
+
+    // Surface handling for quantization parameters.
+    auto replace0 = [&](Subregister &s) {
+        if (s.isValid())
+            state.ra.release(s);
+        s = state.ra.alloc_sub<uint32_t>();
+        mov(1, s, 0);
+    };
+
+    if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2)    replace0(state.inputs.aoPtr);
+    if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2)    replace0(state.inputs.boPtr);
+    if (!strategy.A_scale.base.isStateless() && problem.aScale2D())   replace0(state.inputs.aScalePtr);
+    if (!strategy.B_scale.base.isStateless() && problem.bScale2D())   replace0(state.inputs.bScalePtr);
+    if (!strategy.Ag.base.isStateless() && problem.needsAGroupSums()) replace0(state.inputs.agPtr);
+    if (!strategy.Bg.base.isStateless() && problem.needsBGroupSums()) replace0(state.inputs.bgPtr);
 
     // Scale LDs/offsets.
     gemmScaleInputs(problem, strategy, state);
@@ -181,19 +199,6 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
             emul(1, state.groupCountMN, state.inputs.groupCountM, state.inputs.groupCountN, strategy, state);
     }
 
-    // Surface handling for quantization parameters.
-    auto replace0 = [&](Subregister &s) {
-        if (s.isValid())
-            state.ra.release(s);
-        s = state.ra.alloc_sub<uint32_t>();
-        mov(1, s, 0);
-    };
-
-    if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2) replace0(state.inputs.aoPtr);
-    if (!strategy.A_scale.base.isStateless())                      replace0(state.inputs.aScalePtr);
-    if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2) replace0(state.inputs.boPtr);
-    if (!strategy.B_scale.base.isStateless())                      replace0(state.inputs.bScalePtr);
-
     // A/B offset pointer handling.
     bool aOffset = (problem.aOffset != ABOffset::None);
     bool bOffset = (problem.bOffset != ABOffset::None);
@@ -206,8 +211,8 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     state.ra.safeRelease(state.inputs.offsetBO);
 
     // Load scalar ao/bo from memory as needed.
-    bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA();
-    bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB();
+    bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA() && !problem.needsBGroupSums();
+    bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB() && !problem.needsAGroupSums();
     auto Tc = problem.Tc;
 
     if (Tc.isInteger() && (aoScalarLoad || boScalarLoad)) {
@@ -254,6 +259,15 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     state.ra.safeRelease(state.inputs.offsetAScale);
     state.ra.safeRelease(state.inputs.offsetBScale);
 
+    // Group sum address handling.
+    if (problem.needsAGroupSums() && state.inputs.offsetAg.isValid())
+        eadd(1, state.inputs.agPtr, state.inputs.agPtr, state.inputs.offsetAg, strategy, state);
+    if (problem.needsBGroupSums() && state.inputs.offsetBg.isValid())
+        eadd(1, state.inputs.bgPtr, state.inputs.bgPtr, state.inputs.offsetBg, strategy, state);
+
+    state.ra.safeRelease(state.inputs.offsetAg);
+    state.ra.safeRelease(state.inputs.offsetBg);
+
     if (problem.aqGroupK == 0) problem.aqGroupK = strategy.slmA ? strategy.unrollKSLM : strategy.ka_load;
     if (problem.bqGroupK == 0) problem.bqGroupK = strategy.slmB ? strategy.unrollKSLM : strategy.kb_load;
     if (problem.aqGroupM == 0) problem.aqGroupM = 1;
@@ -275,8 +289,10 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
         gemmFoldOffsets(problem, strategy, state);
 
         mark(lReentry);
+
     }
 
+    // Variable k-slicing logic.
     gemmStreamKSetup(lKVPhaseDone, lKernelDone, problem, strategy, state);
 
     if (state.groupCountMN.isValid() && state.inputs.groupCountMN.isInvalid())
@@ -302,10 +318,10 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     // Calculate i0, j0, h0 -- the initial i/j/h indices for this thread.
     bool needH0 = anyKParallelFixed;
 
-    state.i0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
-    state.j0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
+    state.i0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+    state.j0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
     if (needH0 && state.h0.isInvalid())
-        state.h0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
+        state.h0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
 
     bool wgCheck = wgRemCheck(problem, strategy);
     bool gemmtBarriers = problem.gemmt() && strategy.needsBarrier();
@@ -565,7 +581,7 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState state)
+void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState state)
 {
     Label labelSubkernelDone, labelSubkernelEarlyExit;
 
@@ -732,24 +748,24 @@ void BLASKernelGenerator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &
 
 // Handle outer-level m edge cases.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmMEdge(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmMEdge(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     if (strategy.jointSplit && strategy.remHandling[LoopM] == RemainderHandling::Split && strategy.remHandling[LoopN] == RemainderHandling::Split)
-        return mnJointSplitRemainderHandling(problem, strategy, state, &BLASKernelGenerator<hw>::gemmBody);
+        return mnJointSplitRemainderHandling(problem, strategy, state, &Generator<hw>::gemmBody);
     else
-        return mnRemainderHandling(LoopM, problem, strategy, state, &BLASKernelGenerator<hw>::gemmNEdge);
+        return mnRemainderHandling(LoopM, problem, strategy, state, &Generator<hw>::gemmNEdge);
 }
 
 // Handle outer-level n edge cases.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmNEdge(GEMMProblem problem, GEMMStrategy strategy, GEMMState state)
+bool Generator<hw>::gemmNEdge(GEMMProblem problem, GEMMStrategy strategy, GEMMState state)
 {
-    return mnRemainderHandling(LoopN, problem, strategy, state, &BLASKernelGenerator<hw>::gemmBody);
+    return mnRemainderHandling(LoopN, problem, strategy, state, &Generator<hw>::gemmBody);
 }
 
 // Entrypoint for generating the GEMM kernel body, returning true if successful.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strategy, GEMMState state)
+bool Generator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strategy, GEMMState state)
 {
     // Record whether we are in the first row/column for fused sum kernels.
     if (problem.sumA || problem.sumB) {
@@ -814,7 +830,7 @@ bool BLASKernelGenerator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strateg
 
 // Generate the GEMM kernel body, returning true if successful.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc;
 
@@ -905,7 +921,7 @@ bool BLASKernelGenerator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrateg
 
 // Perform the body of the GEMM computation, updating a block of C.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmAccumulateC(GEMMProblem &problem_, GEMMStrategy &strategy_, GEMMState &state)
+bool Generator<hw>::gemmAccumulateC(GEMMProblem &problem_, GEMMStrategy &strategy_, GEMMState &state)
 {
     if (strategy_.fixedSystolic) {
         if (problem_.sumA || problem_.sumB) stub();
@@ -955,7 +971,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateC(GEMMProblem &problem_, GEMMStrateg
 }
 
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmKLoop(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmKLoop(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     return kLoopSingle(KLoop::GEMM, problem, strategy, state);
 }
@@ -967,7 +983,7 @@ bool BLASKernelGenerator<hw>::gemmKLoop(GEMMProblem &problem, GEMMStrategy &stra
 
 // Synthesize a jump conditional on whether this C tile is completely outside the C matrix.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmOOBExit(Label &target, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmOOBExit(Label &target, const GEMMStrategy &strategy, GEMMState &state)
 {
     int simt = strategy.fused ? 16 : 1;
 
@@ -982,7 +998,7 @@ void BLASKernelGenerator<hw>::gemmOOBExit(Label &target, const GEMMStrategy &str
 
 // Check whether all threads in a thread group should stay together in m/n remainder handling.
 template <HW hw>
-bool BLASKernelGenerator<hw>::wgRemCheck(const GEMMProblem &problem, const GEMMStrategy &strategy)
+bool Generator<hw>::wgRemCheck(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     return (strategy.slmA && (effCoopSplitA(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopM] != RemainderHandling::Ignore) && !strategy.A.padded)
         || (strategy.slmB && (effCoopSplitB(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopN] != RemainderHandling::Ignore) && !strategy.B.padded)
@@ -995,8 +1011,8 @@ bool BLASKernelGenerator<hw>::wgRemCheck(const GEMMProblem &problem, const GEMMS
 // Do outer-level m/n remainder handling.
 template <HW hw>
 template <typename Problem>
-bool BLASKernelGenerator<hw>::mnRemainderHandling(LoopType loop, Problem &problem, GEMMStrategy &strategy, GEMMState &state,
-                                                  bool (BLASKernelGenerator<hw>::*func)(Problem, GEMMStrategy, GEMMState))
+bool Generator<hw>::mnRemainderHandling(LoopType loop, Problem &problem, GEMMStrategy &strategy, GEMMState &state,
+                                        bool (Generator<hw>::*func)(Problem, GEMMStrategy, GEMMState))
 {
     auto method = strategy.remHandling[loop];
     auto &unroll = strategy.unroll[loop];
@@ -1164,8 +1180,8 @@ bool BLASKernelGenerator<hw>::mnRemainderHandling(LoopType loop, Problem &proble
 // Synthesize remainder handling in m/n simultaneously.
 template <HW hw>
 template <typename Problem>
-bool BLASKernelGenerator<hw>::mnJointSplitRemainderHandling(Problem &problem, GEMMStrategy &strategy, GEMMState &state,
-                                                            bool (BLASKernelGenerator<hw>::*func)(Problem, GEMMStrategy, GEMMState))
+bool Generator<hw>::mnJointSplitRemainderHandling(Problem &problem, GEMMStrategy &strategy, GEMMState &state,
+                                                  bool (Generator<hw>::*func)(Problem, GEMMStrategy, GEMMState))
 {
     Label label_done, label_remainder;
     bool success = false;
@@ -1234,4 +1250,4 @@ bool BLASKernelGenerator<hw>::mnJointSplitRemainderHandling(Problem &problem, GE
     return success;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

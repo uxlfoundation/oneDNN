@@ -18,16 +18,19 @@
 #define GEMMSTONE_GUARD_STATE_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "type.hpp"
-#include "register_block.hpp"
+
+#include "gemmstone/driver_info.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
+#include "gemmstone/type.hpp"
+
+#include "register_layout.hpp"
 #include "allocators.hpp"
 #include "ngen_emulation.hpp"
-#include "driver_info.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
 #include "grf_multirange.hpp"
 
-#include "internal/namespace_start.hxx"
+
+GEMMSTONE_NAMESPACE_START
 
 // A pair of Subregisters in opposite banks.
 class SubregisterPair {
@@ -107,12 +110,11 @@ struct Address2DParams {
 struct LDIncrements {
     using value_type = std::pair<int, SubregisterPair>;
     LDIncrements(const MatrixAddressingStrategy &s): type(s.base.isA64() ? ngen::DataType::q : ngen::DataType::ud) {}
-
     std::vector<value_type>::iterator begin() { return increments.begin(); }
-    std::vector<value_type>::const_iterator begin() const { return increments.begin(); }
+    std::vector<value_type>::const_iterator begin()const { return increments.begin(); }
     std::vector<value_type>::iterator end() { return increments.end(); }
-    std::vector<value_type>::const_iterator end() const { return increments.end(); }
-    void push_back(const value_type & v) { increments.push_back(v); }
+    std::vector<value_type>::const_iterator end()const { return increments.end(); }
+    void push_back(const value_type &v) { increments.push_back(v); }
     void clear() { increments.clear(); }
 
     ngen::DataType type;
@@ -191,13 +193,16 @@ struct GEMMState : public CommonState {
         ngen::Subregister ao, bo, abo;                      // w/w/ud
         ngen::Subregister aoPtr, boPtr;                     // q
         ngen::Subregister aScalePtr, bScalePtr;             // q
+        ngen::Subregister agPtr, bgPtr;                     // q
         ngen::Subregister offsetA, offsetB, offsetC[2];     // q
         ngen::Subregister offsetAO, offsetBO, offsetCO;     // d
         ngen::Subregister offsetAScale, offsetBScale;       // d
+        ngen::Subregister offsetAg, offsetBg;               // d
         ngen::Subregister offsetAq, offsetBq;               // d
         ngen::Subregister lda, ldb, ldc[2];                 // d
         ngen::Subregister ldao, ldbo, ldco;                 // d
         ngen::Subregister ldaScale, ldbScale;               // d
+        ngen::Subregister ldag, ldbg;                       // d
         ngen::Subregister ldaq, ldbq;                       // d
         ngen::Subregister m, n, k, k0;                      // d
         SubregisterPair alpha_real, alpha_imag;             // T_real
@@ -209,7 +214,8 @@ struct GEMMState : public CommonState {
         ngen::Subregister localSizeM, localSizeN, localSizeK;       // ud
         ngen::Subregister groupCountM, groupCountN, groupCountK;    // ud
         ngen::Subregister groupCountMN;                     // ud
-        ngen::Subregister gcMNRecip;                        // ud
+        ngen::Subregister gcMNRecip, gcMRecip, gcNRecip;    // ud
+        ngen::Subregister wgStride[2];                      // ud
         ngen::Subregister groupStride;                      // ud
         ngen::Subregister kvConfig, kRecip;                 // ud
         ngen::Subregister kSlicedTiles, kSyncSlabs;         // uw
@@ -221,6 +227,7 @@ struct GEMMState : public CommonState {
         ngen::Subregister statusBuffer;                     // q
         uint8_t surfaceA, surfaceAO, surfaceAScale;         // BTS indices
         uint8_t surfaceB, surfaceBO, surfaceBScale;         // BTS indices
+        uint8_t surfaceAg, surfaceBg;                       // BTS
         uint8_t surfaceC[2], surfaceCO, surfaceTempC;       // BTS
         std::vector<ngen::Subregister> strideA;             // ud, used for strided batch.
         std::vector<ngen::Subregister> strideB;             // ud
@@ -270,6 +277,7 @@ struct GEMMState : public CommonState {
     std::vector<ngen::GRFRange> Ap_addrsAlt, Bp_addrsAlt;
     std::vector<ngen::GRFRange> A_offsetAddrs, B_offsetAddrs;
     std::vector<ngen::GRFRange> A_scaleAddrs, B_scaleAddrs;
+    std::vector<ngen::GRFRange> Ag_addrs, Bg_addrs;
     std::vector<GRFMultirange> A_regs, B_regs, C_regs;
     GRFMultirange Ar_regs, Br_regs;                         // Repacked A/B registers.
     GRFMultirange Cr_regs;                                  // C registers to be repacked.
@@ -282,8 +290,10 @@ struct GEMMState : public CommonState {
     GRFMultirange Ap_regs, Bp_regs, Cp_regs;                // A/B/C prefetch registers.
     GRFMultirange A_offsetRegs, B_offsetRegs;               // A/B offsets (grouped).
     GRFMultirange A_scaleRegs, B_scaleRegs;                 // A/B scales (grouped).
+    GRFMultirange Ag_regs, Bg_regs;                         // A/B groupwise reductions.
     GRFMultirange Ar_offsetRegs, Br_offsetRegs;             // Repacked A/B offsets.
     GRFMultirange Ar_scaleRegs, Br_scaleRegs;               // Repacked A/B scales.
+    GRFMultirange Agr_regs, Bgr_regs;                       // Repacked A/B groupwise reductions.
     std::vector<MaskAssignment> AB_masks, AB_masksCoop;
     std::vector<ngen::GRFRange> tempMul_regs;
     ngen::Subregister groupCountMN, groupIDMN;              // ud
@@ -297,10 +307,11 @@ struct GEMMState : public CommonState {
     ngen::Subregister remFusedStorage;                      // d
     ngen::Subregister diagA, diagB, diagC;                  // d
     SubregisterPair lda, ldb;
-    SubregisterPair ldao, ldbo, ldaScale, ldbScale;
+    SubregisterPair ldao, ldbo, ldag, ldbg, ldaScale, ldbScale;
     LDIncrements ldaIncrements, ldbIncrements;              // Cached lda * ka, ldb * kb
     LDIncrements ldaoIncrements, ldboIncrements;
     LDIncrements ldasIncrements, ldbsIncrements;
+    LDIncrements ldagIncrements, ldbgIncrements;
     LDMultiples ldaMultiples, ldbMultiples, ldcMultiples[2];
     ngen::Subregister k, K;                                 // d
     ngen::Subregister kNoBarrierStart, kNoBarrierEnd;       // d
@@ -335,26 +346,28 @@ struct GEMMState : public CommonState {
     bool kSLMCountUp = false;
     int kaq = 0, kbq = 0, kaqStride, kbqStride, kaqLate = 0, kbqLate = 0;
     bool lateScale2DA = false, lateScale2DB = false;
-    std::vector<RegisterBlock> A_layout, B_layout, C_layout;
-    std::vector<RegisterBlock> A_layoutRem, B_layoutRem;
-    std::vector<RegisterBlock> A_layoutAlt, B_layoutAlt;
-    std::vector<RegisterBlock> A_layoutAltRem, B_layoutAltRem;
-    std::vector<RegisterBlock> Ar_layout, Br_layout;
-    std::vector<RegisterBlock> Ai_layout, Bi_layout;
-    std::vector<std::vector<RegisterBlock>> Ai_layoutK, Bi_layoutK;
-    std::vector<RegisterBlock> Ai_layoutRem, Bi_layoutRem;
-    std::vector<RegisterBlock> Ao_layout, Bo_layout;
-    std::vector<RegisterBlock> As_layout, Bs_layout;
-    std::vector<RegisterBlock> Asr_layout, Bsr_layout;
-    std::vector<RegisterBlock> Ap_layout, Bp_layout, Cp_layout;
-    std::vector<RegisterBlock> Ap_layoutAlt, Bp_layoutAlt;
-    std::vector<RegisterBlock> A_offsetLayout, B_offsetLayout;
-    std::vector<RegisterBlock> A_scaleLayout, B_scaleLayout;
-    std::vector<RegisterBlock> Ar_offsetLayout, Br_offsetLayout;
-    std::vector<RegisterBlock> Ar_scaleLayout, Br_scaleLayout;
-    std::vector<RegisterBlock> Cr_layout;
-    std::vector<RegisterBlock> C_layoutReduced;
-    std::vector<RegisterBlock> C_layoutExt, C_layoutExtUnmasked, C_layoutExtNonatomicUnmasked;
+    RegisterLayout A_layout, B_layout, C_layout;
+    RegisterLayout A_layoutRem, B_layoutRem;
+    RegisterLayout A_layoutAlt, B_layoutAlt;
+    RegisterLayout A_layoutAltRem, B_layoutAltRem;
+    RegisterLayout Ar_layout, Br_layout;
+    RegisterLayout Ai_layout, Bi_layout;
+    std::vector<RegisterLayout> Ai_layoutK, Bi_layoutK;
+    RegisterLayout Ai_layoutRem, Bi_layoutRem;
+    RegisterLayout Ao_layout, Bo_layout;
+    RegisterLayout As_layout, Bs_layout;
+    RegisterLayout Asr_layout, Bsr_layout;
+    RegisterLayout Ap_layout, Bp_layout, Cp_layout;
+    RegisterLayout Ap_layoutAlt, Bp_layoutAlt;
+    RegisterLayout A_offsetLayout, B_offsetLayout;
+    RegisterLayout A_scaleLayout, B_scaleLayout;
+    RegisterLayout Ag_layout, Bg_layout;
+    RegisterLayout Ar_offsetLayout, Br_offsetLayout;
+    RegisterLayout Ar_scaleLayout, Br_scaleLayout;
+    RegisterLayout Agr_layout, Bgr_layout;
+    RegisterLayout Cr_layout;
+    RegisterLayout C_layoutReduced;
+    RegisterLayout C_layoutExt, C_layoutExtUnmasked, C_layoutExtNonatomicUnmasked;
     Address2DParams A_params, B_params;
     Address2DParams Ai_params, Bi_params;
     Address2DParams Ap_params, Bp_params;
@@ -362,9 +375,8 @@ struct GEMMState : public CommonState {
     bool aioShare = false, bioShare = false;
     bool aioShareRem = false, bioShareRem = false;
     bool aoReuseA = false, boReuseB = false;
-    Type Tao_int, Ta_scaleInt;
-    Type Tbo_int, Tb_scaleInt;
-    Type Ta_scaleOp, Tb_scaleOp;
+    Type Tao_int, Ta_scaleInt, Tag_int;
+    Type Tbo_int, Tb_scaleInt, Tbg_int;
     MatrixAddressing Ai, Bi, Ao, Bo, tempC;
     MatrixAddressingStrategy Ai_strategy, Bi_strategy;
     MatrixAddressingStrategy Ao_strategy, Bo_strategy;
@@ -404,7 +416,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister nextGroupIDM, nextGroupIDN;
     ngen::Subregister nextFlagL3PFA, nextFlagL3PFB;
     ngen::FlagRegister flagL3PFA, flagL3PFB;
-    std::vector<RegisterBlock> Apl3_layout, Bpl3_layout;
+    RegisterLayout Apl3_layout, Bpl3_layout;
     std::vector<ngen::GRFRange> Apl3_addrs, Bpl3_addrs;
 
     std::vector<ngen::Subregister> effBinary;
@@ -413,18 +425,18 @@ struct GEMMState : public CommonState {
         ngen::InstructionModifier depAddr[4];
     } sysgemm;
 
-    GEMMState(ngen::HW hw, const GEMMStrategy& strategy) : CommonState(hw),
-                                                           ldaIncrements(strategy.A),
-                                                           ldbIncrements(strategy.B),
-                                                           ldaoIncrements(strategy.AO),
-                                                           ldboIncrements(strategy.BO),
-                                                           ldasIncrements(strategy.A_scale),
-                                                           ldbsIncrements(strategy.B_scale) {}
+    GEMMState(ngen::HW hw, const GEMMStrategy &strategy) : CommonState(hw),
+                                                           ldaIncrements(strategy.A),        ldbIncrements(strategy.B),
+                                                           ldaoIncrements(strategy.AO),      ldboIncrements(strategy.BO),
+                                                           ldasIncrements(strategy.A_scale), ldbsIncrements(strategy.B_scale),
+                                                           ldagIncrements(strategy.Ag),      ldbgIncrements(strategy.Bg) {}
 
     int internalSIMD() const { return simd32KMasks ? 32 : 16; }
 
+    void setTacc(Type T);
+
 };
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

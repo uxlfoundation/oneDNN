@@ -15,15 +15,15 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "ngen_object_helpers.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using std::vector;
-
-#include "internal/namespace_start.hxx"
 
 
 enum class AccessClass {Read, Write, Atomic};
@@ -36,14 +36,11 @@ static inline GRFDisp getAddress(GRF r, const RegisterBlock &block, const Matrix
 
 // Output code for prefetching a matrix chunk (XeHPG+).
 template <HW hw>
-void BLASKernelGenerator<hw>::prefetchMatrix(const vector<RegisterBlock> &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                             const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::prefetchMatrix(const RegisterLayout &layout, const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    for (int l = 0; l < nblocks; l++) {
+    for (int l = 0; l < layout.blocks(); l++) {
         prepareSeriesRegisterBlockMasking(layout, state, l);
-        loadMatrixBlock(null, layout[l], atype, astrategy, addrs[l], strategy, state, false, true);
+        loadMatrixBlock(null, layout[l], layout.addressing(), layout.addressingStrategy(), addrs[l], strategy, state, false, true);
     }
 
     finishRegisterBlockMasking(state);
@@ -51,26 +48,24 @@ void BLASKernelGenerator<hw>::prefetchMatrix(const vector<RegisterBlock> &layout
 
 // Output code for loading a matrix chunk into registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadMatrix(const GRFMultirange &dest, const vector<RegisterBlock> &layout,
-                                         const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const vector<GRFRange> &addrs,
-                                         const CommonStrategy &strategy, CommonState &state, bool readCheck)
+void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<GRFRange> &addrs,
+                               const CommonStrategy &strategy, CommonState &state, bool readCheck)
 {
-    auto nblocks = int(layout.size());
-    if (nblocks == 0)
-        return;
+    if (layout.empty()) return;
 
+    auto &astrategy = layout.addressingStrategy();
     if (astrategy.prefetch && astrategy.newDP) {
-        prefetchMatrix(layout, atype, astrategy, addrs, strategy, state);
+        prefetchMatrix(layout, addrs, strategy, state);
         return;
     }
 
-    if (strategy.readSuppressionWA && (hasFlags(layout) || !getDefaultNoMask()))
+    if (strategy.readSuppressionWA && (layout.hasFlags() || !getDefaultNoMask()))
         doReadSuppressionWA(strategy, state);
 
-    for (int l = 0; l < nblocks; l++) {
+    for (int l = 0; l < layout.blocks(); l++) {
         auto offsetReg = contiguityCheck(hw, layout[l], dest);
         prepareSeriesRegisterBlockMasking(layout, state, l);
-        loadMatrixBlock(dest[offsetReg], layout[l], atype, astrategy, addrs[l], strategy, state, readCheck, true);
+        loadMatrixBlock(dest[offsetReg], layout[l], layout.addressing(), astrategy, addrs[l], strategy, state, readCheck, true);
     }
 
     finishRegisterBlockMasking(state);
@@ -78,10 +73,10 @@ void BLASKernelGenerator<hw>::loadMatrix(const GRFMultirange &dest, const vector
 
 // Output code for loading a single matrix block into registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &block, const MatrixAddressing &atype,
-                                              const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
-                                              const CommonStrategy &strategy, CommonState &state,
-                                              bool readCheck, bool series)
+void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &block, const MatrixAddressing &atype,
+                                    const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
+                                    const CommonStrategy &strategy, CommonState &state,
+                                    bool readCheck, bool series)
 {
     InstructionModifier maskMod;
     InstructionModifier mod = block.simdSize;
@@ -104,7 +99,7 @@ void BLASKernelGenerator<hw>::loadMatrixBlock(const Register &dest, const Regist
         }
     }
 
-    if (astrategy.newDP) switch (implAccessType(atype, astrategy, block)) {
+    if (astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Block:
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
@@ -122,7 +117,7 @@ void BLASKernelGenerator<hw>::loadMatrixBlock(const Register &dest, const Regist
         case AccessType::Block2DTranspose:
         case AccessType::Block2DVNNI: {
             int w = 0, h = 0, count = 0;
-            getBlock2DWH(w, h, count, atype, block);
+            block.getBlock2DWH(w, h, count, atype);
             auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingR;
             if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
             if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
@@ -132,7 +127,7 @@ void BLASKernelGenerator<hw>::loadMatrixBlock(const Register &dest, const Regist
         default: stub();
     } else if (block.descAssigned)
         send(mod, static_cast<SharedFunction>(block.sfid), dest, addr, null, block.sfid, a0[0]);
-    else switch (implAccessType(atype, astrategy, block)) {
+    else switch (block.implAccessType(atype, astrategy)) {
         case AccessType::ChannelScattered: {
             static const ChannelMask cmasks[4] = {ChannelMask::r, ChannelMask::rg, ChannelMask::rgb, ChannelMask::rgba};
             if (block.ebytes != 4) stub();
@@ -171,16 +166,13 @@ void BLASKernelGenerator<hw>::loadMatrixBlock(const Register &dest, const Regist
 
 // Output code for storing a matrix chunk from registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::storeMatrix(const GRFMultirange &src, const vector<RegisterBlock> &layout,
-                                          const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                          const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::storeMatrix(const GRFMultirange &src, const RegisterLayout &layout,
+                                const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    for (int l = 0; l < nblocks; l++) {
+    for (int l = 0; l < layout.blocks(); l++) {
         auto offsetReg = contiguityCheck(hw, layout[l], src);
         prepareSeriesRegisterBlockMasking(layout, state, l);
-        storeMatrixBlock(src[offsetReg], layout[l], atype, astrategy, addrs[l], strategy, state, true);
+        storeMatrixBlock(src[offsetReg], layout[l], layout.addressing(), layout.addressingStrategy(), addrs[l], strategy, state, true);
     }
 
     finishRegisterBlockMasking(state);
@@ -188,9 +180,9 @@ void BLASKernelGenerator<hw>::storeMatrix(const GRFMultirange &src, const vector
 
 // Output code for storing a matrix block from registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
-                                               const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                               const GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool series)
+void Generator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
+                                     const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                                     const GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool series)
 {
     InstructionModifier mod = block.simdSize;;
 
@@ -212,7 +204,7 @@ void BLASKernelGenerator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlo
 
     if (block.descAssigned)
         send(mod, static_cast<SharedFunction>(block.sfid), null, addr, src, a0.ud(1), a0.ud(0));
-    else if (astrategy.newDP) switch (implAccessType(atype, astrategy, block)) {
+    else if (astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Block:
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
@@ -224,7 +216,7 @@ void BLASKernelGenerator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlo
         case AccessType::Block2DTranspose:
         case AccessType::Block2DVNNI: {
             int w = 0, h = 0, count = 0;
-            getBlock2DWH(w, h, count, atype, block);
+            block.getBlock2DWH(w, h, count, atype);
             auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingW;
             if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
             if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
@@ -232,7 +224,7 @@ void BLASKernelGenerator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlo
             break;
         }
         default: stub();
-    } else switch (implAccessType(atype, astrategy, block)) {
+    } else switch (block.implAccessType(atype, astrategy)) {
         case AccessType::ChannelScattered: {
             static const ChannelMask cmasks[4] = {ChannelMask::r, ChannelMask::rg, ChannelMask::rgb, ChannelMask::rgba};
             if (block.ebytes != 4) stub();
@@ -269,26 +261,23 @@ void BLASKernelGenerator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlo
 
 // Atomic addition of a matrix in registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::atomicAddMatrix(Type T, const GRFMultirange &src, const vector<RegisterBlock> &layout,
-                                              const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const vector<GRFRange> &addrs,
-                                              const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::atomicAddMatrix(const GRFMultirange &src, const RegisterLayout &layout, const vector<GRFRange> &addrs,
+                                    const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
-    auto nblocks = int(layout.size());
-
-    if (strategy.readSuppressionWA && (hasFlags(layout) || !getDefaultNoMask()))
+    if (strategy.readSuppressionWA && (layout.hasFlags() || !getDefaultNoMask()))
         doReadSuppressionWA(strategy, state);
 
-    for (int l = 0; l < nblocks; l++) {
+    for (int l = 0; l < layout.blocks(); l++) {
         auto offsetReg = contiguityCheck(hw, layout[l], src);
         prepareSeriesRegisterBlockMasking(layout, state, l);
-        atomicAddMatrixBlock(T, src[offsetReg], layout[l], atype, astrategy, addrs[l], problem, strategy, state, true);
+        atomicAddMatrixBlock(layout.type(), src[offsetReg], layout[l], layout.addressing(), layout.addressingStrategy(), addrs[l], problem, strategy, state, true);
     }
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterBlock &block, const MatrixAddressing &atype,
-                                                   const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
-                                                   const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state, bool series)
+void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterBlock &block, const MatrixAddressing &atype,
+                                         const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
+                                         const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state, bool series)
 {
     InstructionModifier maskMod;
 
@@ -310,7 +299,7 @@ void BLASKernelGenerator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const
     auto specLSC = D32;
     if (astrategy.newDP) specLSC = getDataSpecLSC(atype, astrategy, block, AccessClass::Atomic);
 
-    switch (implAccessType(atype, astrategy, block)) {
+    switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Scattered:
         case AccessType::ChannelScattered:
             if (hasNativeAtomicAdd(hw, T.real(), atype, astrategy)) {
@@ -443,8 +432,8 @@ void BLASKernelGenerator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const
 
 // Setup/teardown for descriptor handling code.
 template <HW hw>
-void BLASKernelGenerator<hw>::setupTeardownLoadStoreDesc(bool setup, const vector<RegisterBlock> &layout,
-                                                         const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::setupTeardownLoadStoreDesc(bool setup, const RegisterLayout &layout,
+                                               const CommonStrategy &strategy, CommonState &state)
 {
     if (strategy.emulate.emulateDWxDW) {
         auto nconstants = (hw >= HW::XeHPG) ? 3 : 2;
@@ -464,9 +453,9 @@ void BLASKernelGenerator<hw>::setupTeardownLoadStoreDesc(bool setup, const vecto
 
 // Output code for loading address register(s) with load/store message descriptors for remainders.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadLoadStoreDescriptors(bool load, bool store, RegisterBlock &block, Subregister count,
-                                                       const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                                       const CommonStrategy &strategy, CommonState &state, bool clamp, int offset)
+void Generator<hw>::loadLoadStoreDescriptors(bool load, bool store, RegisterBlock &block, Subregister count,
+                                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                                             const CommonStrategy &strategy, CommonState &state, bool clamp, int offset)
 {
     if (!block.descRemR && !block.descRemC) return;
 
@@ -514,7 +503,7 @@ void BLASKernelGenerator<hw>::loadLoadStoreDescriptors(bool load, bool store, Re
             exdescStore.parts.extMessageLen = 0;
             descLoad.parts.responseLen = 0;
 
-            uint32_t underlyingSIMD = std::max<uint32_t>(block.simdSize, (uint32_t)maxScatteredSIMD(hw, astrategy) >> 1);
+            uint32_t underlyingSIMD = std::max<uint32_t>(block.simdSize, uint32_t(maxScatteredSIMD(hw, astrategy)) >> 1);
             int log2GRFs = ilog2(underlyingSIMD * block.ebytes) - GRF::log2Bytes(hw);
             int log2Components = int(block.splitComplex);
 
@@ -572,7 +561,7 @@ void BLASKernelGenerator<hw>::loadLoadStoreDescriptors(bool load, bool store, Re
 
 // Start a double-masked section.
 template <HW hw>
-void BLASKernelGenerator<hw>::startDoubleMask(VirtualFlag vflag, CommonState &state)
+void Generator<hw>::startDoubleMask(VirtualFlag vflag, CommonState &state)
 {
     finishRegisterBlockMasking(state);
 
@@ -585,9 +574,9 @@ void BLASKernelGenerator<hw>::startDoubleMask(VirtualFlag vflag, CommonState &st
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockDoubleMasking(const vector<RegisterBlock> &layout, CommonState &state, int start)
+void Generator<hw>::prepareSeriesRegisterBlockDoubleMasking(const RegisterLayout &layout, CommonState &state, int start)
 {
-    if (start + 1 >= int(layout.size()))
+    if (start + 1 >= layout.blocks())
         return;
 
     auto &block0 = layout[start];
@@ -610,14 +599,12 @@ void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockDoubleMasking(const vect
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockMasking(const vector<RegisterBlock> &layout, CommonState &state, int start)
+void Generator<hw>::prepareSeriesRegisterBlockMasking(const RegisterLayout &layout, CommonState &state, int start)
 {
     prepareSeriesRegisterBlockDoubleMasking(layout, state, start);
 
     if (state.vflagsEnabled()) {
-        int nblocks = int(layout.size());
-
-        for (int startPreload = start; startPreload < nblocks; startPreload++) {
+        for (int startPreload = start; startPreload < layout.blocks(); startPreload++) {
             auto &block = layout[startPreload];
 
             if (!block.isLoadBlock()) continue;
@@ -637,7 +624,7 @@ void BLASKernelGenerator<hw>::prepareSeriesRegisterBlockMasking(const vector<Reg
 }
 
 template <HW hw>
-InstructionModifier BLASKernelGenerator<hw>::registerBlockMasking(const RegisterBlock &block, CommonState &state, FlagRegister *outFlag)
+InstructionModifier Generator<hw>::registerBlockMasking(const RegisterBlock &block, CommonState &state, FlagRegister *outFlag)
 {
     InstructionModifier mod;
 
@@ -681,7 +668,7 @@ InstructionModifier BLASKernelGenerator<hw>::registerBlockMasking(const Register
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::finishRegisterBlockMasking(CommonState &state)
+void Generator<hw>::finishRegisterBlockMasking(CommonState &state)
 {
     if (state.blockEMask) {
         setDefaultNoMask(true);
@@ -734,7 +721,7 @@ static DataSpecLSC getDataSpecLSC(const MatrixAddressing &atype, const MatrixAdd
     auto caching = (aclass == AccessClass::Read) ? astrategy.cachingR : astrategy.cachingW;
     if (aclass == AccessClass::Atomic)
         caching = makeL1Uncacheable(caching);
-    return getDataSpecLSC(implAccessType(atype, astrategy, block), block) | caching;
+    return getDataSpecLSC(block.implAccessType(atype, astrategy), block) | caching;
 }
 
 static inline GRFDisp getAddress(GRF r, const RegisterBlock &block, const MatrixAddressingStrategy &astrategy)
@@ -745,4 +732,4 @@ static inline GRFDisp getAddress(GRF r, const RegisterBlock &block, const Matrix
         return r + block.offsetAddr;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

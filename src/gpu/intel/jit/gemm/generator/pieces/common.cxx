@@ -16,20 +16,20 @@
 
 
 #include "alloc_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "map.hpp"
 #include "layout_utils.hpp"
 #include "state_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
-
-#include "internal/namespace_start.hxx"
 
 
 // Generate the kernel prologue.
 template <HW hw>
-void BLASKernelGenerator<hw>::prologue(const CommonStrategy &strategy, int internalSIMD)
+void Generator<hw>::prologue(const CommonStrategy &strategy, int internalSIMD)
 {
     uint16_t cr0Enable;
 
@@ -50,14 +50,14 @@ void BLASKernelGenerator<hw>::prologue(const CommonStrategy &strategy, int inter
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::prologue(const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::prologue(const GEMMStrategy &strategy, GEMMState &state)
 {
     prologue(strategy, state.internalSIMD());
 }
 
 // Generate the kernel epilogue.
 template <HW hw>
-void BLASKernelGenerator<hw>::epilogue(const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::epilogue(const CommonStrategy &strategy, CommonState &state)
 {
     auto r0_info = state.r0_info;
 
@@ -76,7 +76,7 @@ void BLASKernelGenerator<hw>::epilogue(const CommonStrategy &strategy, CommonSta
 
 // Pad the end of the kernel to accommodate instruction prefetching.
 template <HW hw>
-void BLASKernelGenerator<hw>::padding()
+void Generator<hw>::padding()
 {
     for (int q = 0; q < 8; q++)
         nop();
@@ -84,7 +84,7 @@ void BLASKernelGenerator<hw>::padding()
 
 // Create a copy of a SubregisterPair in the other bank.
 template <HW hw>
-void BLASKernelGenerator<hw>::duplicateScalar(SubregisterPair &val, CommonState &state)
+void Generator<hw>::duplicateScalar(SubregisterPair &val, CommonState &state)
 {
     auto reg0 = val.getReg(0);
 
@@ -99,7 +99,7 @@ void BLASKernelGenerator<hw>::duplicateScalar(SubregisterPair &val, CommonState 
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::deduplicateScalar(SubregisterPair &val, CommonState &state)
+void Generator<hw>::deduplicateScalar(SubregisterPair &val, CommonState &state)
 {
     auto reg0 = val.getReg(0), reg1 = val.getReg(1);
     if (reg0 != reg1) {
@@ -111,8 +111,8 @@ void BLASKernelGenerator<hw>::deduplicateScalar(SubregisterPair &val, CommonStat
 // Create multiple versions of the input subregister reg, shifted by amounts specified by the shifts bitmask.
 // The input subregister is used for one of the versions.
 template <HW hw>
-MultishiftSubregister BLASKernelGenerator<hw>::multishift(const Subregister &reg, unsigned int shifts,
-                                                          const CommonStrategy &strategy, CommonState &state, Bundle hint)
+MultishiftSubregister Generator<hw>::multishift(const Subregister &reg, unsigned int shifts,
+                                                const CommonStrategy &strategy, CommonState &state, Bundle hint)
 {
     MultishiftSubregister ms;
 
@@ -138,7 +138,7 @@ MultishiftSubregister BLASKernelGenerator<hw>::multishift(const Subregister &reg
 
 
 template <HW hw>
-FlagRegister BLASKernelGenerator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &state)
+FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &state)
 {
     VirtualFlag pflag;
 
@@ -173,7 +173,7 @@ FlagRegister BLASKernelGenerator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonS
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::allocVFlagStorage(const CommonStrategy &strategy, CommonState &state, bool saveCurrent)
+void Generator<hw>::allocVFlagStorage(const CommonStrategy &strategy, CommonState &state, bool saveCurrent)
 {
     if (!state.vflagStorage.empty())
         return;
@@ -186,7 +186,7 @@ void BLASKernelGenerator<hw>::allocVFlagStorage(const CommonStrategy &strategy, 
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::deallocVFlagStorage(CommonState &state, bool saveCurrent)
+void Generator<hw>::deallocVFlagStorage(CommonState &state, bool saveCurrent)
 {
     if (state.vflagStorage.empty())
         return;
@@ -207,7 +207,7 @@ void BLASKernelGenerator<hw>::deallocVFlagStorage(CommonState &state, bool saveC
 // Get ID of fused thread (0/1), multiplied by a scaling factor. Assumes r1 has not been overwritten,
 //  or state.lid0 is set to a subregister containing local ID 0 (divided by the subgroup size).
 template <HW hw>
-void BLASKernelGenerator<hw>::getFusedID(int scale, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::getFusedID(int scale, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     if (strategy.fused) {
         state.fusedID = state.ra.alloc_sub<uint16_t>(getHint(HintType::LongTerm, strategy));
@@ -238,7 +238,7 @@ void BLASKernelGenerator<hw>::getFusedID(int scale, const CommonProblem &problem
 
 // Move r0 information to another register if configured.
 template <HW hw>
-void BLASKernelGenerator<hw>::moveR0(const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::moveR0(const CommonStrategy &strategy, CommonState &state)
 {
     if (state.movedR0)
         return;
@@ -261,7 +261,7 @@ void BLASKernelGenerator<hw>::moveR0(const CommonStrategy &strategy, CommonState
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::moveR0(const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::moveR0(const GEMMStrategy &strategy, GEMMState &state)
 {
     if (state.movedR0)
         return;
@@ -276,7 +276,7 @@ void BLASKernelGenerator<hw>::moveR0(const GEMMStrategy &strategy, GEMMState &st
 
 // Divide out subgroup size from x local size and local ID.
 template <HW hw>
-void BLASKernelGenerator<hw>::removeSG(const CommonProblem &problem, const CommonStrategy &strategy, const CommonState &state)
+void Generator<hw>::removeSG(const CommonProblem &problem, const CommonStrategy &strategy, const CommonState &state)
 {
     uint16_t sss = ilog2(strategy.subgroupSize);
 
@@ -289,7 +289,7 @@ void BLASKernelGenerator<hw>::removeSG(const CommonProblem &problem, const Commo
 
 // Swap bit 0 of local ID x and y if needed so that threads are ordered according to specified EU fusion.
 template <HW hw>
-void BLASKernelGenerator<hw>::reorderFusedEUs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::reorderFusedEUs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (!strategy.fused) return;
 
@@ -303,7 +303,7 @@ void BLASKernelGenerator<hw>::reorderFusedEUs(const GEMMProblem &problem, const 
 }
 
 template <HW hw>
-Subregister BLASKernelGenerator<hw>::copySubregister(const Subregister &reg, CommonState &state, Bundle hint)
+Subregister Generator<hw>::copySubregister(const Subregister &reg, CommonState &state, Bundle hint)
 {
     if (reg.isInvalid()) return reg;
     auto copy = state.ra.alloc_sub(reg.getType(), hint);
@@ -312,7 +312,7 @@ Subregister BLASKernelGenerator<hw>::copySubregister(const Subregister &reg, Com
 }
 
 template <HW hw>
-GRF BLASKernelGenerator<hw>::loadScalars(Type T, const std::vector<Subregister> &src, const CommonStrategy &strategy, CommonState &state)
+GRF Generator<hw>::loadScalars(Type T, const std::vector<Subregister> &src, const CommonStrategy &strategy, CommonState &state)
 {
     auto n = int(src.size());
     int simd = roundup_pow2(n);
@@ -385,11 +385,10 @@ GRF BLASKernelGenerator<hw>::loadScalars(Type T, const std::vector<Subregister> 
 
 // Load a contiguous vector from memory, with optional remainder handling.
 template <HW hw>
-GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
+GRFRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
 {
     MatrixAddressing atype;
     MatrixAddressingStrategy astrategy;
-    vector<RegisterBlock> layout;
     vector<GRFRange> addrs;
     vector<MaskAssignment> masks;
     Subregister rems[3] = {rem};
@@ -415,26 +414,24 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
     astrategy.accessType = AccessType::Block;
     astrategy.newDP = (hw >= HW::XeHPG);
 
-    if (!getRegLayout(Tsrc, layout, n, 1, rem.isValid(), false, false, AvoidFragment, 0, 0, atype, astrategy))
-        stub();
+    RegisterLayout layout(hw, Tsrc, n, 1, atype, astrategy, rem.isValid(), false, false);
 
-    auto regs = state.ra.alloc_range(getRegCount(layout));
+    auto regs = state.ra.alloc_range(layout.regs());
 
-    allocAddrRegs(addrs, layout, atype, astrategy, state);
-    setupAddr(Tsrc, addrs, ptr, layout, Subregister(), atype, astrategy, strategy, state);
+    allocAddrRegs(addrs, layout, state);
+    setupAddr(addrs, ptr, layout, Subregister(), strategy, state);
     if (!assignMasks(layout, LoopM, LoopN, masks, strategy, state, true)) stub();
     loadMasks(masks, rems, strategy, state);
-    loadMatrix(regs, layout, atype, astrategy, addrs, strategy, state);
+    loadMatrix(regs, layout, addrs, strategy, state);
     safeReleaseMaskAssignments(masks, state);
     safeReleaseRanges(addrs, state);
     state.ra.safeRelease(remTemp);
 
-    if (!hasFullCrosspack(layout, 1) || Tsrc.bits() != Tdst.bits()) {
+    if (!layout.hasFullCrosspack(1) || Tsrc.bits() != Tdst.bits()) {
         // Data didn't come in with unit stride. Repack it.
-        vector<RegisterBlock> nlayout;
-        makeUnbackedRegLayout(Tdst, nlayout, n, 1, true);
-        auto nregs = state.ra.alloc_range(getRegCount(nlayout));
-        copyRegisters(Tsrc, Tdst, layout, nlayout, regs, nregs, strategy, state, false);
+        RegisterLayout nlayout(hw, Tdst, n, 1, true);
+        auto nregs = state.ra.alloc_range(nlayout.regs());
+        copyRegisters(layout, nlayout, regs, nregs, strategy, state, false);
 
         state.ra.safeRelease(regs);
         regs = std::move(nregs);
@@ -446,15 +443,17 @@ GRFRange BLASKernelGenerator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister p
 
 // Set a matrix to zero.
 template <HW hw>
-void BLASKernelGenerator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStrategy &strategy)
+void Generator<hw>::zeroMatrix(const GRFMultirange &r, const CommonStrategy &strategy)
 {
+    int i = 0;
     map<uint32_t>(hw, r, r, strategy, [&](int esize, GRF reg, GRF _) {
-        mov(esize, reg, uint16_t(0));
+        (i++ & 1) ? mov(esize, reg.f(), 0.f)
+                  : mov(esize, reg, 0);
     });
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::extendIndexVec(int n, CommonState &state)
+void Generator<hw>::extendIndexVec(int n, CommonState &state)
 {
     auto &indexVec = state.indexVec;
     auto &ivEntries = state.ivEntries;
@@ -486,7 +485,7 @@ void BLASKernelGenerator<hw>::extendIndexVec(int n, CommonState &state)
 }
 
 template <HW hw>
-Subregister BLASKernelGenerator<hw>::accessIndexVec(int n, CommonState &state)
+Subregister Generator<hw>::accessIndexVec(int n, CommonState &state)
 {
     if (n >= state.ivEntries)
         extendIndexVec(n, state);
@@ -496,8 +495,8 @@ Subregister BLASKernelGenerator<hw>::accessIndexVec(int n, CommonState &state)
 }
 
 template <HW hw>
-LDMultiples BLASKernelGenerator<hw>::createLDMultiples(bool a64, int nmultiples, const Subregister &ld,
-                                                       const CommonStrategy &strategy, CommonState &state)
+LDMultiples Generator<hw>::createLDMultiples(bool a64, int nmultiples, const Subregister &ld,
+                                             const CommonStrategy &strategy, CommonState &state)
 {
     int simd = GRF::bytes(hw) >> (a64 ? 3 : 2);
     int nregs = div_up(nmultiples, simd);
@@ -535,6 +534,9 @@ LDMultiples BLASKernelGenerator<hw>::createLDMultiples(bool a64, int nmultiples,
     if (freeTempHi) state.ra.safeRelease(tempHi);
     if (freeTempLo) state.ra.safeRelease(tempLo);
 
+    if (!r.isValid())
+        return LDMultiples{};
+
     LDMultiples result;
     result.range = r;
     result.a64 = a64;
@@ -544,7 +546,7 @@ LDMultiples BLASKernelGenerator<hw>::createLDMultiples(bool a64, int nmultiples,
 }
 
 template <HW hw>
-Subregister BLASKernelGenerator<hw>::findLDMultiple(const LDMultiples &multiples, bool a64, int n, const CommonStrategy &strategy, CommonState &state)
+Subregister Generator<hw>::findLDMultiple(const LDMultiples &multiples, bool a64, int n, const CommonStrategy &strategy, CommonState &state)
 {
     int simd = GRF::bytes(hw) >> (multiples.a64 ? 3 : 2);
     int off = (n / simd), sub = (n % simd);
@@ -563,8 +565,12 @@ Subregister BLASKernelGenerator<hw>::findLDMultiple(const LDMultiples &multiples
 
 // Calculate and cache a specific ld multiple.
 template <HW hw>
-void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, SubregisterPair &base, int scale,  const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::calcIncrement(LDIncrements &increments, SubregisterPair &base, int scale,
+                                  const CommonStrategy &strategy, CommonState &state,
+                                  bool avoidConflicts)
 {
+    avoidConflicts &= strategy.avoidIncConflicts;
+
     // Check for existing increment.
     for (auto &inc: increments)
         if (inc.first == scale)
@@ -580,7 +586,7 @@ void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, Subregiste
 
     // General scaling.
     SubregisterPair scaled;
-    if (strategy.avoidIncConflicts)
+    if (avoidConflicts)
         scaled = SubregisterPair(state.ra.alloc_sub(increments.type, getHint(HintType::LongTerm0, strategy)),
                                  state.ra.alloc_sub(increments.type, getHint(HintType::LongTerm1, strategy)));
     else
@@ -594,7 +600,7 @@ void BLASKernelGenerator<hw>::calcIncrement(LDIncrements &increments, Subregiste
 
 // Get a multiple of lda/ldb for address increments.
 template <HW hw>
-SubregisterPair BLASKernelGenerator<hw>::lookupIncrement(const LDIncrements &increments, const SubregisterPair &base, int scale, const CommonStrategy &strategy, CommonState &state, bool *release)
+SubregisterPair Generator<hw>::lookupIncrement(const LDIncrements &increments, const SubregisterPair &base, int scale, const CommonStrategy &strategy, CommonState &state, bool *release)
 {
     if (release) *release = false;
 
@@ -613,7 +619,7 @@ SubregisterPair BLASKernelGenerator<hw>::lookupIncrement(const LDIncrements &inc
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::broadcastToWG(FlagRegister leaderFlag, GRF value, const CommonStrategy &strategy, CommonState &state, int slmOffset)
+void Generator<hw>::broadcastToWG(FlagRegister leaderFlag, GRF value, const CommonStrategy &strategy, CommonState &state, int slmOffset)
 {
     if (getBytes(value.getType()) != 4) stub();
 
@@ -633,14 +639,14 @@ void BLASKernelGenerator<hw>::broadcastToWG(FlagRegister leaderFlag, GRF value, 
 
 // Common interface initialization code.
 template <HW hw>
-void BLASKernelGenerator<hw>::initInterface(const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::initInterface(const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     interface.requireArbitrationMode(strategy.arbitrationMode);
 }
 
 // Common state initialization code.
 template <HW hw>
-void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::initState(const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     interface.requireLocalID(3);
     interface.requireLocalSize();
@@ -670,4 +676,4 @@ void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const Comm
 }
 
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

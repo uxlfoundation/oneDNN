@@ -16,22 +16,21 @@
 
 
 #include "alloc_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
-#include "problem.hpp"
 #include "state_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 // Perform alpha scaling and update problem to reflect it.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmAlphaScale(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool cxCombine)
+void Generator<hw>::gemmAlphaScale(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool cxCombine)
 {
     auto Tacc = state.Tacc;
     auto  &alpha = problem.alpha;
@@ -57,7 +56,7 @@ void BLASKernelGenerator<hw>::gemmAlphaScale(GEMMProblem &problem, const GEMMStr
 
 // Perform beta scaling, including type conversions.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     Label labelBetaDone;
 
@@ -88,8 +87,7 @@ void BLASKernelGenerator<hw>::gemmBetaScale(const GEMMProblem &problem, const GE
             auto &Xs_regs   = problem.sumA ? state.As_regs   : state.Bs_regs;
             auto &Xs_layout = problem.sumA ? state.As_layout : state.Bs_layout;
 
-            int Xs_nregs = getRegCount(Xs_layout);
-            auto Xs_usedRegs = Xs_regs.subrange(0, Xs_nregs);
+            auto Xs_usedRegs = Xs_regs.subrange(0, Xs_layout.regs());
 
             map(hw, Tc.real(), Xs_usedRegs, Xs_usedRegs, strategy, [&](int esize, GRF acc, GRF _) {
                 beta.fixed() ? mul(esize, acc, acc, cast(Tc.real(), beta))
@@ -107,7 +105,7 @@ void BLASKernelGenerator<hw>::gemmBetaScale(const GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
+void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
     switch (op) {
         case BinaryOp::Add: add(simd, dst, src0, src1); break;
@@ -132,18 +130,15 @@ void BLASKernelGenerator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst
 
 // Apply binary operation to C with a scalar operand.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmScalarBinaryOpC(BinaryOp op, const GRFMultirange &offsets,
-                                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Type Tco)
+void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultirange &offsets,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto subOff = offsets[0].sub(0, Tco.ngen());
     auto Tacc = state.Tacc;
-    auto offsetTc = subOff.reinterpret(0, Tacc.ngen());
-    if (subOff != offsetTc && !one_of(Tco, Type::f8_e8m0, Type::hf8)){
-        emov(1, offsetTc, subOff, strategy, state);
-    } else {
-        vector<RegisterBlock> repackLayout;
-        makeUnbackedRegLayout(Tacc, repackLayout, 1, 1, false);
-        copyRegisters(Tco, Tacc, repackLayout, repackLayout, offsets, offsets, strategy, state);
+    auto offsetTc = offsets[0].sub(0, Tacc.ngen());
+
+    if (Tco != Tacc) {
+        RegisterLayout scalarLayout(hw, Tacc, 1, 1, true);
+        copyRegisters(Tco, Tacc, scalarLayout, scalarLayout, offsets, offsets, strategy, state);
     }
     if (op == BinaryOp::Div && one_of(state.Tacc, Type::f32, Type::f16)) {
         inv(1, offsetTc, offsetTc);
@@ -157,13 +152,13 @@ void BLASKernelGenerator<hw>::gemmScalarBinaryOpC(BinaryOp op, const GRFMultiran
 
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const Subregister &scaleIn,
-                                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
-                                                  Type Tco, vector<RegisterBlock> CO_layout, int y0, int y1)
+void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const Subregister &scaleIn,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
+                                        Type Tco, RegisterLayout CO_layout, int y0, int y1)
 {
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
-    auto globalCM = isLayoutColMajor(state.C_layout);
+    auto globalCM = state.C_layout.colMajor();
     auto unrollX = strategy.unroll[globalCM ? LoopM : LoopN];
     auto unrollY = strategy.unroll[globalCM ? LoopN : LoopM];
     auto crosspack = CO_layout.empty() ? 1 : CO_layout[0].crosspack;
@@ -184,12 +179,11 @@ void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, cons
     GRFMultirange repackOffsets;
     if (needRepack) {
         // Repack data to unit stride as float pipe can't swizzle.
-        vector<RegisterBlock> repackLayout;
         int r =  column ? 1 : strategy.unroll[LoopM];
         int c = !column ? 1 : strategy.unroll[LoopN];
-        makeUnbackedRegLayout(Tacc, repackLayout, r, c, !column);
-        repackOffsets = state.ra.alloc_range(getRegCount(repackLayout));
-        copyRegisters(Tco, Tacc, CO_layout, repackLayout, offsets, repackOffsets, strategy, state);
+        RegisterLayout repackLayout(hw, Tacc, r, c, !column);
+        repackOffsets = state.ra.allocRange(repackLayout.regs());
+        copyRegisters(CO_layout, repackLayout, offsets, repackOffsets, strategy, state);
         crosspack = 1;
         offsetsPtr = &repackOffsets;
 
@@ -210,8 +204,7 @@ void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, cons
             auto i = globalCM ? x : y;
             auto j = globalCM ? y : x;
             int nc;
-            const RegisterBlock *C_block;
-            Subregister C = findBlockReg(Tacc, state.C_layout, i, j, state.C_regs[0], nc, C_block);
+            Subregister C = state.C_layout.find(i, j, state.C_regs[0], &nc);
 
             nc = std::min({nc, strategy.fmaSIMD / crosspack, 2 * ne});
             auto nco = (column ? j : i) * crosspack;
@@ -241,18 +234,17 @@ void BLASKernelGenerator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, cons
 
 // Apply binary operation to C.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
-                                            Type Tco, MatrixAddressing CO, MatrixAddressingStrategy CO_strategy,
-                                            Subregister base, Subregister ld,
-                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
+                                  Type Tco, MatrixAddressing CO, MatrixAddressingStrategy CO_strategy,
+                                  Subregister base, Subregister ld,
+                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     std::vector<GRFRange> CO_addrs;
-    std::vector<RegisterBlock> CO_layout;
     std::vector<MaskAssignment> masks;
-    auto globalCM = isLayoutColMajor(state.C_layout);
+    auto globalCM = state.C_layout.colMajor();
 
     bool recip = false;
-    if (op == BinaryOp::Div && one_of(Tco, Type::f32)) {
+    if (op == BinaryOp::Div && Tco == Type::f32) {
         // Implement div as inv+mul for speed, especially when broadcasting.
         recip = true;
         op = BinaryOp::Mul;
@@ -278,11 +270,12 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     auto remR = row    && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
     auto remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
 
-    if (!getRegLayout(Tco, CO_layout, cor, coc, remR, remC, false, AvoidFragment, 0, 0, CO, CO_strategy))
-        return false;
+    RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 
-    allocAddrRegs(CO_addrs, CO_layout, CO, CO_strategy, state);
-    setupAddr(Tco, CO_addrs, base, CO_layout, ld, CO, CO_strategy, strategy, state);
+    auto CO_regs = state.ra.allocRange(CO_layout.regs());
+
+    allocAddrRegs(CO_addrs, CO_layout, state);
+    setupAddr(CO_addrs, base, CO_layout, ld, strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) return false;
 
@@ -304,9 +297,8 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         int nreserve = op == BinaryOp::Prelu ? 2 : 0; // temp regs used in the operation
         bool needRepack = (state.Tacc != Tco);
         if (needRepack) {
-            vector<RegisterBlock> repackLayout;
-            makeUnbackedRegLayout(state.Tacc, repackLayout, cor, coc, !column);
-            nreserve += getRegCount(repackLayout);
+            auto repackLayout = RegisterLayout(hw, state.Tacc, cor, coc, !column);
+            nreserve += repackLayout.regs();
         }
         ngen::GRFRange reserve;
         reserve = state.ra.alloc_range(nreserve);
@@ -316,7 +308,7 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
         int grouped_ops = 0;
         for (auto &r : allCORegs) {
-            r = state.ra.tryAllocRange(getRegCount(CO_layout));
+            r = state.ra.tryAllocRange(CO_layout.regs());
             if (!r.isValid()) break;
             grouped_ops++;
         }
@@ -334,13 +326,13 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                     simtCF ? goto12(16 | ~state.flagAP, lDoneLoading)
                            :   jmpi(1  | ~state.flagAP, lDoneLoading);
                 }
-                loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+                loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
                 if (checkRemY && (y + 1 < unrollY))
                     cmp(simt | gt | state.flagAP, remY, y + 1);
                 if (coColMajor == globalCM)
-                    incAddr(CO_addrs, ld, int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+                    incAddr(CO_addrs, ld, int(row), int(column), CO_layout, strategy, state);
                 else
-                    incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, CO, CO_strategy, strategy, state);
+                    incAddr(CO_addrs, Tco.size(), int(row), int(column), CO_layout, strategy, state);
             }
 
             mark(lDoneLoading);
@@ -371,20 +363,19 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         mark(lDone);
         if (simtCF) join(16);
     } else {
-        auto CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
-        loadMatrix(CO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+        loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
         });
 
         if (!row && !column)
-            gemmScalarBinaryOpC(op, CO_regs, problem, strategy, state, Tco);
+            gemmScalarBinaryOpC(op, Tco, CO_regs, problem, strategy, state);
         else
             gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout);
-        state.ra.safeRelease(CO_regs);
     }
 
     safeReleaseMaskAssignments(masks, state);
+    state.ra.safeRelease(CO_regs);
     safeReleaseRanges(CO_addrs, state);
 
     return true;
@@ -392,7 +383,7 @@ bool BLASKernelGenerator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
 // Check kernel input for desired C offset and apply it.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;
     bool doMatrix = problem.allowMatrixOffset();
@@ -456,7 +447,7 @@ bool BLASKernelGenerator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &proble
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (hw < HW::XeHP) stub();
 
@@ -503,7 +494,7 @@ void BLASKernelGenerator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, c
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (poMin >= poMax && !problem.postOps.cStochasticRound) return;
 
@@ -607,7 +598,7 @@ void BLASKernelGenerator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const
 
 // Calculate addresses of A/B sums in packed input data. Sums are stored at the end of each panel.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     bool doA = (problem.bOffset == ABOffset::Load);
     bool doB = (problem.aOffset == ABOffset::Load);
@@ -632,7 +623,7 @@ void BLASKernelGenerator<hw>::gemmCalcABOffsetAddrs(const GEMMProblem &problem, 
 
 // Load A/B sums from packed input data.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     bool doA = (problem.bOffset == ABOffset::Load);
     bool doB = (problem.aOffset == ABOffset::Load);
@@ -660,25 +651,25 @@ bool BLASKernelGenerator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const
     state.Bs_layout.clear();
 
     bool ok = true;
-    if (doA) ok = ok && getRegLayout(Tc, state.As_layout, unrollM, 1, false, false, false, AvoidFragment, 0, 0, As, As_strategy);
-    if (doB) ok = ok && getRegLayout(Tc, state.Bs_layout, 1, unrollN, false, false, false, AvoidFragment, 0, 0, Bs, Bs_strategy);
+    if (doA) ok = ok && (state.As_layout = RegisterLayout::tryCreate(hw, Tc, unrollM, 1, As, As_strategy));
+    if (doB) ok = ok && (state.Bs_layout = RegisterLayout::tryCreate(hw, Tc, 1, unrollN, Bs, Bs_strategy));
     if (!ok) return false;
 
-    state.As_regs = state.ra.alloc_range(getRegCount(state.As_layout));
-    state.Bs_regs = state.ra.alloc_range(getRegCount(state.Bs_layout));
+    state.As_regs = state.ra.allocRange(state.As_layout.regs());
+    state.Bs_regs = state.ra.allocRange(state.Bs_layout.regs());
 
     vector<GRFRange> As_addrs, Bs_addrs;
-    allocAddrRegs(As_addrs, state.As_layout, As, As_strategy, state);
-    allocAddrRegs(Bs_addrs, state.Bs_layout, Bs, Bs_strategy, state);
+    allocAddrRegs(As_addrs, state.As_layout, state);
+    allocAddrRegs(Bs_addrs, state.Bs_layout, state);
 
     if (state.effAs.isInvalid() && state.effBs.isInvalid())
         gemmCalcABOffsetAddrs(problem, strategy, state);
 
-    setupAddr(Tc, As_addrs, state.effAs, state.As_layout, Subregister(), As, As_strategy, strategy, state);
-    setupAddr(Tc, Bs_addrs, state.effBs, state.Bs_layout, Subregister(), Bs, Bs_strategy, strategy, state);
+    setupAddr(As_addrs, state.effAs, state.As_layout, Subregister(), strategy, state);
+    setupAddr(Bs_addrs, state.effBs, state.Bs_layout, Subregister(), strategy, state);
 
-    loadMatrix(state.As_regs, state.As_layout, As, As_strategy, As_addrs, strategy, state);
-    loadMatrix(state.Bs_regs, state.Bs_layout, Bs, Bs_strategy, Bs_addrs, strategy, state);
+    loadMatrix(state.As_regs, state.As_layout, As_addrs, strategy, state);
+    loadMatrix(state.Bs_regs, state.Bs_layout, Bs_addrs, strategy, state);
 
     state.ra.safeRelease(state.effAs);
     state.ra.safeRelease(state.effBs);
@@ -690,11 +681,11 @@ bool BLASKernelGenerator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const
 
 // Rank-1 update of matrix C.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange &c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange &c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
-    auto globalCM = isLayoutColMajor(state.C_layout);
+    auto globalCM = state.C_layout.colMajor();
     auto unrollX = strategy.unroll[globalCM ? LoopM : LoopN];
     auto unrollY = strategy.unroll[globalCM ? LoopN : LoopM];
 
@@ -705,8 +696,7 @@ void BLASKernelGenerator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRF
             auto i = globalCM ? x : y;
             auto j = globalCM ? y : x;
             int nc;
-            const RegisterBlock *C_block;
-            Subregister C = findBlockReg(Tacc, state.C_layout, i, j, state.C_regs[0], nc, C_block);
+            Subregister C = state.C_layout.find(i, j, state.C_regs[0], &nc);
 
             nc = std::min({nc, strategy.fmaSIMD, 2 * ne});
 
@@ -724,10 +714,10 @@ void BLASKernelGenerator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRF
 // Apply contributions from A/B offsets to C matrix, using previously loaded/computed
 // A row sums and B column sums.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA();
-    bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB();
+    bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA() && !problem.quantized2DA();
+    bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB() && !problem.quantized2DB();
     if (!aOffset && !bOffset)
         return;
 
@@ -780,8 +770,8 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
             mov(ne, r, -r);
         });
 
-        if (aoVector && !hasFullCrosspack(state.Bs_layout, 1)) stub();
-        if (boVector && !hasFullCrosspack(state.As_layout, 1)) stub();
+        if (aoVector && !state.Bs_layout.hasFullCrosspack(1)) stub();
+        if (boVector && !state.As_layout.hasFullCrosspack(1)) stub();
 
         if (bOffset) {
             boVector ? gemmRank1UpdateC(state.As_regs, boData, problem, strategy, state)
@@ -833,4 +823,4 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
     state.Bs_layout.clear();
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

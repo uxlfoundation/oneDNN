@@ -17,11 +17,11 @@
 #ifndef GEMMSTONE_GUARD_KERNEL_EVALUATOR_HPP
 #define GEMMSTONE_GUARD_KERNEL_EVALUATOR_HPP
 
-#include "config.hpp"
-#include "kernel_catalog.hpp"
-#include "strategy.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/kernel_catalog.hpp"
+#include "gemmstone/strategy.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 struct SizeParams {
     int64_t batch = 0;
@@ -64,6 +64,6 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &p, Evalua
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

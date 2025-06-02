@@ -15,13 +15,13 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "state_utils.hpp"
 #include "ngen_object_helpers.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
@@ -30,7 +30,7 @@ using std::vector;
 
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto lid = state.ra.allocSub<uint32_t>();
     int whose = 0;
@@ -84,10 +84,10 @@ void BLASKernelGenerator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::tlbWarmup(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                        const Subregister &ptr, const Subregister &r, const Subregister &c,
-                                        const Subregister &ld, const Subregister &lid, int whose,
-                                        const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::tlbWarmup(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
+                              const Subregister &ptr, const Subregister &r, const Subregister &c,
+                              const Subregister &ld, const Subregister &lid, int whose,
+                              const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     auto flag = state.raVFlag.alloc();
     const uint32_t byteLimit = 256 * 1024 * 1024;
@@ -106,9 +106,9 @@ void BLASKernelGenerator<hw>::tlbWarmup(const MatrixAddressing &atype, const Mat
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::tlbWarmup(AddressBase base, const Subregister &ptr, const Subregister &bytes,
-                                        const Subregister &lid, int whose,
-                                        const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::tlbWarmup(AddressBase base, const Subregister &ptr, const Subregister &bytes,
+                              const Subregister &lid, int whose,
+                              const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     bool a64 = base.isA64();
     auto Taddr = a64 ? DataType::uq : DataType::ud;
@@ -170,4 +170,4 @@ void BLASKernelGenerator<hw>::tlbWarmup(AddressBase base, const Subregister &ptr
     state.ra.safeRelease(count);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

@@ -21,6 +21,8 @@
 #include <stdexcept>
 #include <vector>
 
+#include "common/impl_registration.hpp"
+
 #include "pieces/address_setup.cxx"
 #include "pieces/asm_helpers.cxx"
 #include "pieces/atomic_fusions.cxx"
@@ -52,10 +54,10 @@
 
 #include "pieces/quantization.cxx"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 template <HW hw>
-constexpr typename BLASKernelGenerator<hw>::status_stream::Endl BLASKernelGenerator<hw>::status_stream::endl;
+constexpr typename Generator<hw>::status_stream::Endl Generator<hw>::status_stream::endl;
 
 #include "pieces/hw_template_instantiations.cxx"
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

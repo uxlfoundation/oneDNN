@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 #include "cooperative_split.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 
 // Split A/B matrix between threads.
@@ -121,4 +121,4 @@ CoopSplit naturalSplitB(MatrixLayout layout)
     return naturalSplitA(transposeLayout(layout));
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

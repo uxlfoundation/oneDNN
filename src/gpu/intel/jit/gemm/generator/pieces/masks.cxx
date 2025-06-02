@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 
 
 #include "alloc_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "state_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
-
-#include "internal/namespace_start.hxx"
 
 
 // Assign mask registers to a register layout.
@@ -31,9 +31,9 @@ using std::vector;
 //     existing assignments will be reused if compatible, and new assignments
 //     created as necessary.
 template <HW hw>
-bool BLASKernelGenerator<hw>::assignMasks(std::vector<RegisterBlock> &layout, LoopType rloop, LoopType cloop, vector<MaskAssignment> &assignments,
-                                          const CommonStrategy &strategy, CommonState &state, bool retryVirtual,
-                                          const vector<MaskAssignment> *existing)
+bool Generator<hw>::assignMasks(RegisterLayout &layout, LoopType rloop, LoopType cloop, vector<MaskAssignment> &assignments,
+                                const CommonStrategy &strategy, CommonState &state, bool retryVirtual,
+                                const vector<MaskAssignment> *existing)
 {
     std::vector<VirtualFlag*> updated;
 
@@ -115,7 +115,7 @@ bool BLASKernelGenerator<hw>::assignMasks(std::vector<RegisterBlock> &layout, Lo
 
 // Output code for loading a mask into a flag register.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadMask(MaskAssignment assignment, Subregister index, const CommonStrategy &strategy, CommonState &state, int offset)
+void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const CommonStrategy &strategy, CommonState &state, int offset)
 {
     auto flagIdx = assignment.flag;
     RegData flag = getMaskFlag(hw, flagIdx, state);
@@ -197,8 +197,8 @@ void BLASKernelGenerator<hw>::loadMask(MaskAssignment assignment, Subregister in
 
 // Output code for loading all masks in a mask assignment list to flag registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadMasks(const vector<MaskAssignment> &assignments, Subregister (&indices)[3],
-                                        const CommonStrategy &strategy, CommonState &state, int start)
+void Generator<hw>::loadMasks(const vector<MaskAssignment> &assignments, Subregister (&indices)[3],
+                              const CommonStrategy &strategy, CommonState &state, int start)
 {
     for (size_t an = start; an < assignments.size(); an++) {
         auto &a = assignments[an];
@@ -209,8 +209,8 @@ void BLASKernelGenerator<hw>::loadMasks(const vector<MaskAssignment> &assignment
 
 // Variant that allows additional constant offsets to be specified.
 template <HW hw>
-void BLASKernelGenerator<hw>::loadMasks(const vector<MaskAssignment> &assignments, Subregister (&indices)[3], int (&offsets)[3],
-                                        const CommonStrategy &strategy, CommonState &state, int start)
+void Generator<hw>::loadMasks(const vector<MaskAssignment> &assignments, Subregister (&indices)[3], int (&offsets)[3],
+                              const CommonStrategy &strategy, CommonState &state, int start)
 {
     for (size_t an = start; an < assignments.size(); an++) {
         auto &a = assignments[an];
@@ -219,4 +219,4 @@ void BLASKernelGenerator<hw>::loadMasks(const vector<MaskAssignment> &assignment
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

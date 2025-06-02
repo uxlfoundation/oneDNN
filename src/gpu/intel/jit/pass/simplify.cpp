@@ -1618,6 +1618,8 @@ public:
     }
 
     object_t _mutate(const let_t &obj) override {
+        if (obj.var.type().is_mutable()) return ir_mutator_t::_mutate(obj);
+
         // Attempt to inline
         expr_t value;
         if (cset_.is_single_value(obj.var, value)) {

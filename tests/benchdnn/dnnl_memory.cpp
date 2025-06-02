@@ -25,6 +25,7 @@
 
 #ifdef DNNL_WITH_SYCL
 #include "oneapi/dnnl/dnnl_sycl.hpp"
+#include "src/gpu/intel/gpu_primitive.hpp"
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -550,11 +551,13 @@ void dnn_mem_t::memset_rng(size_t size, int buffer_index) const {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         auto *ocl_compute_engine = static_cast<
                 dnnl::impl::gpu::intel::compute::compute_engine_t *>(engine_);
-        stream_t stream(engine_);
-
+        dnnl::impl::stream_t *stream_generic;
+        DNN_SAFE_V(ocl_compute_engine->get_service_stream(stream_generic));
+        auto stream = static_cast<
+                dnnl::impl::gpu::intel::compute::compute_stream_t *>(
+                stream_generic);
         static std::vector<const char *> rng_kernel_name
                 = {"ocl_philox_kernel"};
-
         std::vector<dnnl::impl::gpu::intel::compute::kernel_t> kernels(1);
         dnnl::impl::gpu::intel::compute::kernel_ctx_t kernel_ctx;
         DNN_SAFE_V(ocl_compute_engine->create_kernels(
@@ -563,7 +566,6 @@ void dnn_mem_t::memset_rng(size_t size, int buffer_index) const {
         assert(size <= UINT64_MAX);
         const uint64_t mem_size = static_cast<uint64_t>(size);
         static constexpr uint64_t DEFAULT_SEED = -1;
-
         dnnl::impl::gpu::intel::compute::kernel_arg_list_t arg_list;
         arg_list.set(0, *mem->memory_storage());
         arg_list.set(1, mem_size);

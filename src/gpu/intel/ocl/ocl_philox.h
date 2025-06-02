@@ -47,7 +47,7 @@ uint4 ref_philox_4x32(long idx, uint seed) {
 }
 
 uint philox_4x32(long idx, uint seed) {
-    return ref_philox_4x32(idx >> 2, seed)[idx & 3];
+    return ref_philox_4x32(idx, seed)[~idx & 3L];
 }
 
 ushort philox_8x16(long idx, uint seed) {

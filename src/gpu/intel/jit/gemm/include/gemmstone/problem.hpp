@@ -17,15 +17,13 @@
 #ifndef GEMMSTONE_GUARD_PROBLEM_HPP
 #define GEMMSTONE_GUARD_PROBLEM_HPP
 
-#include "config.hpp"
-
-#include <bitset>
+#include "gemmstone/config.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
-#include "type.hpp"
+#include "gemmstone/type.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Matrix layouts in memory.
 enum class MatrixLayout : uint8_t {
@@ -157,12 +155,14 @@ struct GEMMProblem : public CommonProblem {
     Type Ta_ext, Tb_ext, Tc_ext;                    // Types for A/B/C data in memory.
     Type Tao, Tbo, Tco;                             // Types for A/B/C offsets.
     Type Ta_scale, Tb_scale;                        // Types for A/B scales.
+    Type Tag, Tbg;                                  // Types for A/B group sums.
 
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
-    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B/C scales (if 2D).
-    MatrixAddressing sroundSeed;              // Addressing information for A/B/C scales (if 2D).
+    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B scales (if 2D).
+    MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
+
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
@@ -174,8 +174,8 @@ struct GEMMProblem : public CommonProblem {
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
-
-    PostOpsProblem postOps;  // Fused post operations to apply
+    MatrixAddressing sroundSeed;
+    PostOpsProblem postOps;                         // Fused post operations to apply
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.
@@ -222,38 +222,35 @@ struct GEMMProblem : public CommonProblem {
     bool gemmt() const { return false; }
     bool backward() const { return false; }
 
-    bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB()); }
-    bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA()); }
-    bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
-    bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
-
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || (asPtrDims >= 2); }
-    bool quantized2DB() const { return (boPtrDims == 2) || (bsPtrDims >= 2); }
+    bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D(); }
+    bool quantized2DB() const { return (boPtrDims == 2) || bScale2D(); }
 
-    bool downconvertAScales() const { return Ta == Type::f16 && Ta_scale == Type::f32; }
-    bool downconvertBScales() const { return Tb == Type::f16 && Tb_scale == Type::f32; }
+    bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
+    bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }
 
-    bool earlyDequantizeA() const {
-        return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)
-                    && (Ta_ext.bits() < Ta.bits() || Ta.isFP()))
-            || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || downconvertAScales()));
-    }
+    bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
+    bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
 
-    bool earlyDequantizeB() const {
-        return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)
-                    && (Tb_ext.bits() < Tb.bits() || Tb.isFP()))
-            || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
-    }
+    bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
+    bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
+
+    bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
+    bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
     Type Tc_compute() const {
         if (Ta.isInteger() && Tb.isInteger() && Tc == Type::f32)
             return Type::s32;
+        else if (Ta.isFP() && Tb.isFP() && Tc == Type::s32)
+            return Type::f32;
         else
             return Tc;
     }
+
+    bool isLegalAAlignment(int align, int unrollM) const { return (A.layout != MatrixLayout::N) || ((unrollM * Ta) % align == 0); }
+    bool isLegalBAlignment(int align, int unrollN) const { return (B.layout != MatrixLayout::T) || ((unrollN * Tb) % align == 0); }
 
     inline void autoTypeConversions(ngen::HW hw, bool systolicAvailable);
     void transpose();
@@ -274,7 +271,9 @@ struct GEMMProblem : public CommonProblem {
         s.append(Ta_scale, Tb_scale);
         s.append(alpha);
         s.append(beta);
-        s.append(A, B, C, CO);
+        s.append(A, B, C);
+        s.append(AO, BO, CO);
+        s.append(A_scale, B_scale);
         s.append(checkBeta0);
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims);
@@ -284,6 +283,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(batch);
         s.append(batchDims);
         s.append(sumA, sumB);
+        s.append(sroundSeed);
         s.append(postOps);
     }
 };
@@ -297,6 +297,11 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     // Weights decompression
     if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
     if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) Tb = Ta;
+
+    if (Ta.isFP() && Tb.isFP() && Tc.isFP()) {
+        if (Ta.bits() < Tb.bits()) Ta = Tb;
+        if (Tb.bits() < Ta.bits()) Tb = Ta;
+    }
 
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
@@ -322,6 +327,6 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

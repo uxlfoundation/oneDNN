@@ -15,19 +15,19 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 // Scale then add: dst <- src0 + src1 * (numerator / denominator), rounding up.
 // If exact = true, ensure src1 * num / denom is integral if src1 immediate.
 template <HW hw>
-void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, int src0, const RegData &src1,
-                                        int numerator, int denominator, CommonState &state, bool exact)
+void Generator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, int src0, const RegData &src1,
+                              int numerator, int denominator, CommonState &state, bool exact)
 {
     if (!is_zero_or_pow2(numerator)) stub();
     if (!is_zero_or_pow2(denominator)) stub();
@@ -48,8 +48,8 @@ void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const Re
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1,
-                                        int numerator, int denominator, CommonState &state, bool exact)
+void Generator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1,
+                              int numerator, int denominator, CommonState &state, bool exact)
 {
     if (!is_zero_or_pow2(numerator)) stub();
     if (!is_zero_or_pow2(denominator)) stub();
@@ -72,8 +72,8 @@ void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const Re
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, const RegData &src0, int src1,
-                                        int numerator, int denominator, CommonState &state, bool exact)
+void Generator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, const RegData &src0, int src1,
+                              int numerator, int denominator, CommonState &state, bool exact)
 {
     if (!is_zero_or_pow2(numerator)) stub();
     if (!is_zero_or_pow2(denominator)) stub();
@@ -84,8 +84,8 @@ void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const Re
 
 template <HW hw>
 template <typename S0, typename S1>
-void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, S0 src0, S1 src1,
-                                        Type T, CommonState &state, bool exact, int scale)
+void Generator<hw>::addScaled(const InstructionModifier &mod, const RegData &dst, S0 src0, S1 src1,
+                              Type T, CommonState &state, bool exact, int scale)
 {
     addScaled(mod, dst, src0, src1, T.paddedSize() * scale, T.perByte(), state, exact);
 }
@@ -93,7 +93,7 @@ void BLASKernelGenerator<hw>::addScaled(const InstructionModifier &mod, const Re
 // Multiply by a constant, optimizing for power-of-2 constants.
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::mulConstant(const InstructionModifier &mod, const RegData &dst, const RegData &src0, int32_t src1)
+void Generator<hw>::mulConstant(const InstructionModifier &mod, const RegData &dst, const RegData &src0, int32_t src1)
 {
     if (src1 == 0)
         mov<DT>(mod, dst, uint16_t(0));
@@ -116,7 +116,7 @@ void BLASKernelGenerator<hw>::mulConstant(const InstructionModifier &mod, const 
 // Modulo by constant value.
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::mod(const Subregister &dst, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::mod(const Subregister &dst, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
 {
     if (is_zero_or_pow2(modulus))
         and_<DT>(1, dst, src, modulus - 1);
@@ -136,7 +136,7 @@ void BLASKernelGenerator<hw>::mod(const Subregister &dst, const Subregister &src
 // Return both (a % b) and a - (a % b).
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::modExt(const Subregister &dstMod, const Subregister &dstMultiple, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::modExt(const Subregister &dstMod, const Subregister &dstMultiple, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
 {
     if (is_zero_or_pow2(modulus)) {
         and_<DT>(1, dstMultiple, src, ~uint32_t(modulus - 1));
@@ -153,7 +153,7 @@ void BLASKernelGenerator<hw>::modExt(const Subregister &dstMod, const Subregiste
 // Divide an unsigned value by a constant, rounding down.
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state)
 {
     if (is_zero_or_pow2(divisor))
         shr<DT>(1, dst, src, ilog2(divisor));
@@ -179,7 +179,7 @@ void BLASKernelGenerator<hw>::divDown(const ngen::Subregister &dst, const ngen::
 // Align an unsigned value down to a multiple of align.
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::alignDown(const InstructionModifier &mod, const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::alignDown(const InstructionModifier &mod, const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
 {
     if (is_zero_or_pow2(align))
         and_<DT>(mod, dst, src, uint32_t(-align));
@@ -191,7 +191,7 @@ void BLASKernelGenerator<hw>::alignDown(const InstructionModifier &mod, const Su
 
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::alignDown(const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::alignDown(const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
 {
     alignDown(1, dst, src, align, strategy, state);
 }
@@ -199,7 +199,7 @@ void BLASKernelGenerator<hw>::alignDown(const Subregister &dst, const Subregiste
 // Align an unsigned value up to a multiple of align.
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::alignUp(const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::alignUp(const Subregister &dst, const Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state)
 {
     add<DT>(1, dst, src, uint16_t(align - 1));
     alignDown<DT>(dst, dst, align, strategy, state);
@@ -209,7 +209,7 @@ void BLASKernelGenerator<hw>::alignUp(const Subregister &dst, const Subregister 
 // Requires an auxiliary constant: ceiling(2^(32 + s) / denom), where s = floor(log2(denom)).
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::divDown(const Subregister &dst, const Subregister &src0, const Subregister &src1, const Subregister &src1Recip, const FlagRegister &flag, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::divDown(const Subregister &dst, const Subregister &src0, const Subregister &src1, const Subregister &src1Recip, const FlagRegister &flag, const CommonStrategy &strategy, CommonState &state)
 {
     bool emulate = strategy.emulate.emulate64_mul;
     Subregister tmp;
@@ -234,7 +234,7 @@ void BLASKernelGenerator<hw>::divDown(const Subregister &dst, const Subregister 
 
 template <HW hw>
 template <typename DT>
-void BLASKernelGenerator<hw>::divUp(const Subregister &dst, const Subregister &src0, const Subregister &src1, const Subregister &src1Recip, const FlagRegister &flag, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::divUp(const Subregister &dst, const Subregister &src0, const Subregister &src1, const Subregister &src1Recip, const FlagRegister &flag, const CommonStrategy &strategy, CommonState &state)
 {
     auto adj = state.ra.alloc_sub<uint32_t>();
     eadd3(1, adj, src0, src1, -1);
@@ -249,11 +249,11 @@ void BLASKernelGenerator<hw>::divUp(const Subregister &dst, const Subregister &s
 // Expanded range (large = true):
 //    denom <= 2^22, quotient < 2^16
 template <HW hw>
-void BLASKernelGenerator<hw>::divMod(const Subregister &qot, const Subregister &rem,
-                                     const Subregister &num, const Subregister &denom,
-                                     const GEMMStrategy &strategy, CommonState &state, bool large)
+void Generator<hw>::divMod(const Subregister &qot, const Subregister &rem,
+                           const Subregister &num, const Subregister &denom,
+                           const GEMMStrategy &strategy, CommonState &state, bool large)
 {
-    if (qot.getType() != DataType::ud ||   rem.getType() != DataType::ud) stub();
+    if (qot.getType() != DataType::ud || rem.getType() != DataType::ud) stub();
 
     auto numFP = state.ra.alloc_sub<float>();
     auto denomFP = state.ra.alloc_sub<float>();
@@ -290,4 +290,4 @@ void BLASKernelGenerator<hw>::divMod(const Subregister &qot, const Subregister &
     state.ra.safeRelease(denomFP);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

@@ -23,7 +23,9 @@
 #include <utility>
 #include <vector>
 
-#include "internal/namespace_start.hxx"
+#include "gemmstone/config.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 namespace loop_sequencer {
 
@@ -257,6 +259,6 @@ static inline LoopSequencer::Requirements checkOptional()
 
 using loop_sequencer::LoopSequencer;
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* GEMMSTONE_GUARD_LOOP_SEQUENCER_HPP */

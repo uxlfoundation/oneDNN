@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+ * Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,15 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-
 #include "state_utils.hpp"
 #include "hw_utils.hpp"
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
+GEMMSTONE_NAMESPACE_START
 
 // Release fused remainder-related state variables.
 void releaseFusedRemainders(GEMMState &state)
@@ -40,7 +38,7 @@ void releaseCoopRemainders(GEMMState &state)
 }
 
 // Allocate temporary registers for emulating atomic addition.
-void allocEAtomicAddRegs(HW hw, Type T, const vector<RegisterBlock> &layout,
+void allocEAtomicAddRegs(HW hw, Type T, const RegisterLayout &layout,
                          const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, CommonState &state,
                          const FlagRegister &flag)
 {
@@ -99,5 +97,4 @@ RegData getMaskFlag(HW hw, VirtualFlag vflag, CommonState &state)
         stub("Need virtual flag registers");
 }
 
-
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

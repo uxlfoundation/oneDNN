@@ -18,18 +18,18 @@
 #include <numeric>
 
 #include "alloc_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
 #include "ngen_object_helpers.hpp"
 #include "state_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
-
-#include "internal/namespace_start.hxx"
 
 
 // Decide whether to use the legacy post-op injector inside C update.
@@ -41,7 +41,7 @@ static inline bool useEltwiseInjector(const GEMMProblem &problem)
 
 // Main entrypoint for the C matrix update step.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
 
     auto Tc = problem.Tc;
@@ -142,7 +142,7 @@ bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &st
 //   to be the conclusion of the kernel.
 // If op == COperation::Store, only store C.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     Label labelStdCRemainder, labelAltCRemainder, labelBlock2DCRemainder, labelCRemDone, labelSkip;
 
@@ -449,7 +449,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
 
         // Rustle up a new layout.
         // Match existing C layout if possible and deemed worthwhile.
-        vector<RegisterBlock> C_layout2D;
+        RegisterLayout C_layout2D;
         auto modProblem = problem;
         auto modStrategy = strategy;
         auto modState = state;
@@ -464,7 +464,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         auto &C_layoutExt         = modState.C_layoutExt;
         auto &C_layoutExtUnmasked = modState.C_layoutExtUnmasked;
 
-        bool inplace = (Tc == Tc_ext) && upgradeLayoutToBlock2D(Tc, C_layout, C_layout2D, remM_C, remN_C, op != COperation::Load, modProblem.C, modStrategy.C);
+        bool inplace = (Tc == Tc_ext) && (C_layout2D = C_layout.tryUpgradeToBlock2D(modProblem.C, modStrategy.C));
 
         for (auto &block: C_layout2D)
             inplace = inplace && state.C_regs[0].contiguous(block.offsetReg(), block.nregs());
@@ -474,11 +474,10 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
         if (inplace)
             C_layoutExt = std::move(C_layout2D);
         else
-            if (!getRegLayout(Tc_ext, C_layoutExt, strategy.unroll[LoopM], strategy.unroll[LoopN], remM_C, remN_C, true, AllowFragDesc, 0, 0, modProblem.C, modStrategy.C)) stub();
+            C_layoutExt = RegisterLayout(hw, Tc_ext, strategy.unroll[LoopM], strategy.unroll[LoopN], modProblem.C, modStrategy.C, remM_C, remN_C, true, AllowFragDesc);
 
         C_layoutExtUnmasked.clear();
-
-        unlinkFromMemory(C_layout);
+        C_layout.unlinkFromMemory();
 
         // Do the update.
         Address2DParams params;
@@ -520,7 +519,7 @@ bool BLASKernelGenerator<hw>::gemmAccessC(COperation op, const GEMMProblem &prob
 
 // Update C. If configured, choose between regular beta and beta = 0 or beta = 1 updates now.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     auto &beta = problem.beta;
     auto vbetar = state.inputs.beta_real;
@@ -743,8 +742,8 @@ bool BLASKernelGenerator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStra
 // Perform C update operation on C_acc, given original C data in C_load.
 // All inputs and outputs are assumed to be of type problem.Ts.
 template <HW hw>
-void BLASKernelGenerator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_accSwap, const GRFMultirange &C_load,
-                                      const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_accSwap, const GRFMultirange &C_load,
+                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Ts = problem.Ts;
     auto &alpha = problem.alpha;
@@ -849,9 +848,9 @@ static inline void getDefaultCParams(Address2DParams &params, GEMMState &state)
 
 // Update an entire C layout.
 template <HW hw>
-void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutExt, const GRFRange (&C_addr0)[2],
-    const RegisterBlock &C_block0, COperation op,
-    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const GRFRange (&C_addr0)[2],
+                                  const RegisterBlock &C_block0, COperation op,
+                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
 #define FOR_EACH_C for (int q = 0; q < C_count; q++)
     auto Tc = problem.Tc, Tc_ext = problem.Tc_ext, Ts = problem.Ts;
@@ -861,7 +860,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
     bool copyC = state.copyC;
     int C_count = (op == COperation::UpdateStore) ? state.C_count : 1;
 
-    auto nblocks = int(layoutExt.size());
+    int nblocks = layoutExt.blocks();
     bool haveDescs = layoutExt[0].descAssigned;
 
     vector<GRFRange> (&C_addrs)[2] = state.C_addrs;
@@ -874,11 +873,11 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
     FOR_EACH_C C_addrs[q].clear();
 
     // Map layout to blocks in internal C layout as needed.
-    vector<RegisterBlock> layout;
+    RegisterLayout layout;
     vector<int> blockMap;
-    if (copyC) {
-        if (!reblockLayout(Tc, blockMap, layout, layoutExt, state.C_layout, problem.C, strategy.C)) stub();
-    } else {
+    if (copyC)
+        layout = state.C_layout.reblock(blockMap, layoutExt);
+    else {
         layout = layoutExt;
         blockMap.resize(nblocks + 1);
         for (int i = 0; i <= nblocks; i++)
@@ -914,8 +913,8 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             saveRegs += 16;
         auto save = chunkAlloc(saveRegs, 2, state);
 
-        vector<RegisterBlock> sublayoutExt, sublayoutCopy, sublayoutAcc;
-        size_t sublayoutCopySize = 0;
+        vector<RegisterBlock> sublistExt, sublistCopy, sublistAcc;
+        size_t sublistCopySize = 0;
         int bytes = 0, bytesConvert = 0;
         auto initOA = layoutExt[lstart].offsetAddr;
         auto lanchor = lstart;
@@ -932,7 +931,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                 block.compact(state.Tacc);
                 block.offsetBytes = bytesConvert;
                 bytesConvert += block.nregs() * expand * GRF::bytes(hw);
-                sublayoutCopy.push_back(block);
+                sublistCopy.push_back(block);
             }
 
             auto blockExt = layoutExt[lend];
@@ -945,14 +944,14 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                 if (!copyC)
                     layout[lend].subAddrOffset(initOA, is2D);
             }
-            auto naddr = addrGRFCount(problem.C, strategy.C, blockExt);
+            auto naddr = blockExt.addrGRFs(problem.C, strategy.C);
             FOR_EACH_C C_addrs[q].push_back(origin ? C_addr0[q] :
                         (blockExt.offsetAddr == 0) ? tryAlloc(naddr)
                                                    : C_addrs[q][lanchor - lstart]);
             if (needLoad || copyC)
                 C_extRegs.push_back(tryAlloc(blockExt.nregs(), getHint(HintType::CLoad, strategy)));
             if (copyCLoad) for (int li = li0; li < li1; li++)
-                C_copyRegs.push_back(tryAlloc(sublayoutCopy[li - li0 + sublayoutCopySize].nregs() * expand, getHint(HintType::CLoad, strategy)));
+                C_copyRegs.push_back(tryAlloc(sublistCopy[li - li0 + sublistCopySize].nregs() * expand, getHint(HintType::CLoad, strategy)));
             if (lateCConvert) for (int li = li0; li < li1; li++)
                 C_convertRegs.push_back(tryAlloc(layout[li].nregs() * expand));
             if (!allocOK)
@@ -960,34 +959,40 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
 
             blockExt.offsetBytes = bytes;
             bytes += blockExt.nregs() * GRF::bytes(hw);
-            sublayoutExt.push_back(blockExt);
+            sublistExt.push_back(blockExt);
 
-            sublayoutCopySize = sublayoutCopy.size();
+            sublistCopySize = sublistCopy.size();
         }
 
         if (lstart == lend) throw out_of_registers_exception();
 
-        sublayoutCopy.resize(sublayoutCopySize);
+        sublistCopy.resize(sublistCopySize);
 
         int listart = blockMap[lstart];
         int liend   = blockMap[lend];
 
-        sublayoutAcc.reserve(liend - listart);
+        sublistAcc.reserve(liend - listart);
         for (int l = listart; l < liend; l++)
-            sublayoutAcc.push_back(layout[l]);
+            sublistAcc.push_back(layout[l]);
 
         safeReleaseRanges(save, state);
+
+        auto sublistWith0 = sublistExt;
+        sublistWith0.insert(sublistWith0.begin(), C_block0);
+
+        RegisterLayout sublayoutExt(Tc_ext, problem.C, strategy.C, std::move(sublistExt));
+        RegisterLayout sublayoutWith0(Tc_ext, problem.C, strategy.C, std::move(sublistWith0));
+        RegisterLayout sublayoutAcc(state.Tacc, layout.addressing(), layout.addressingStrategy(), std::move(sublistAcc));
+        RegisterLayout sublayoutCopy(state.Tacc, std::move(sublistCopy));
 
         // Set up C addresses relative to prior blocks.
         // TODO: use inline address offsets instead of setupAddrRel for constant offsets.
         FOR_EACH_C {
             Address2DParams C_params;
             auto C_addrsWith0 = C_addrs[q];
-            auto C_sublayoutWith0 = sublayoutExt;
             C_addrsWith0.insert(C_addrsWith0.begin(), C_addr0[q]);
-            C_sublayoutWith0.insert(C_sublayoutWith0.begin(), C_block0);
             getDefaultCParams(C_params, state);
-            setupAddr(Tc_ext, C_addrsWith0, state.effC[q], C_sublayoutWith0, state.inputs.ldc[q], problem.C, strategy.C, strategy, state, C_params, state.ldcMultiples[q], 1);
+            setupAddr(C_addrsWith0, state.effC[q], sublayoutWith0, state.inputs.ldc[q], strategy, state, C_params, state.ldcMultiples[q], 1);
         }
 
         if (strategy.C.atomic) {
@@ -995,7 +1000,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             // Alpha scaling is done earlier; beta scaling isn't supported.
             if (!problem.alpha1() || !problem.beta1()) stub();
             if (copyC)
-                copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
+                copyRegisters(sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
             else if (state.Tacc != Tc_ext) {
                 if (state.Tacc.size() != Tc_ext.size()) stub();
                 for (auto &block: sublayoutAcc) {
@@ -1005,7 +1010,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
             }
             auto &sublayoutSrc = copyC ? sublayoutExt : sublayoutAcc;
             auto &C_srcRange = copyC ? C_extRange : C_accRange;
-            FOR_EACH_C atomicAddMatrix(Tc_ext, C_srcRange, sublayoutSrc, problem.C, strategy.C, C_addrs[q], problem, strategy, state);
+            FOR_EACH_C atomicAddMatrix(C_srcRange, sublayoutSrc, C_addrs[q], problem, strategy, state);
         } else {
             // Data types before and after scaling phase.
             auto Tacc_final = Tc;
@@ -1022,7 +1027,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                 // Load C data.
                 auto &sublayoutLoad = (loadOnly && !copyC) ? sublayoutAcc : sublayoutExt;
                 auto &C_loadRange   = (loadOnly && !copyC) ? C_accRange   : C_extRange;
-                    loadMatrix(C_loadRange, sublayoutLoad, problem.C, strategy.C, C_addrs[0], strategy, state);
+                    loadMatrix(C_loadRange, sublayoutLoad, C_addrs[0], strategy, state);
 
                 // Set up a0.0 descriptor for stores (and save load descriptors) if needed.
                 if (haveDescs && !loadOnly) {
@@ -1047,7 +1052,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                     auto C_acc = subrange(state.C_regs[0], hw, state.Tacc, layout[li]);
                     copyRegisterBlock(state.Tacc, Ts, layout[li], layout[li], C_acc, C_convertRegs[li - listart], 0, 0, strategy, state);
                 }
-                state.Tacc = Ts;
+                state.setTacc(Ts);
             }
 
             // Alpha/beta scaling, optional fp32<->int32 conversion, and masking.
@@ -1100,13 +1105,13 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
                         return (*rangeA)[0].getBase() < (*rangeB)[0].getBase();
                     });
                     GRFMultirange C_accsSorted, C_accSwapsSorted, C_loadsSorted;
-                    std::vector<RegisterBlock> C_accSortedLayout;
+                    vector<RegisterBlock> C_accSortedList;
 
                     for (int i = 0; i < (liend - listart); i++) {
                         if (remaskC_M || remaskC_N) {
                             auto block = layout[listart + order[i]];
                             block.offsetBytes = C_accsSorted.getLen() << GRF::log2Bytes(hw);
-                            C_accSortedLayout.push_back(block);
+                            C_accSortedList.push_back(block);
                         }
 
                         C_accsSorted.append(C_accs[order[i]]);
@@ -1116,24 +1121,27 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
 
                         updateC(C_accsSorted, C_accSwapsSorted, C_loadsSorted, problem, strategy, state);
 
-                    if (remaskC_M) remaskLayout(state.Tacc, 0, false, C_accSortedLayout, C_accsSorted, strategy, state);
-                    if (remaskC_N) remaskLayout(state.Tacc, 1, true,  C_accSortedLayout, C_accsSorted, strategy, state);
+                    if (remaskC_M || remaskC_N) {
+                        RegisterLayout C_accSortedLayout(state.Tacc, state.C_layout.addressing(), state.C_layout.addressingStrategy(), std::move(C_accSortedList));
+                        if (remaskC_M) remaskLayout(0, false, C_accSortedLayout, C_accsSorted, strategy, state);
+                        if (remaskC_N) remaskLayout(1, true,  C_accSortedLayout, C_accsSorted, strategy, state);
+                    }
                 }
             }
 
-            state.Tacc = Tacc_final;
+            state.setTacc(Tacc_final);
 
             // Store updated data.
             if (op == COperation::UpdateStore) {
                 if (copyC)
-                    copyRegisters(state.Tacc, Tc_ext, sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
+                    copyRegisters(sublayoutAcc, sublayoutExt, C_accRange, C_extRange, strategy, state);
 
                 auto &sublayoutSrc = copyC ? sublayoutExt : sublayoutAcc;
                 auto &C_srcRange = copyC ? C_extRange : C_accRange;
-                    FOR_EACH_C storeMatrix(C_srcRange, sublayoutSrc, problem.C, strategy.C, C_addrs[q], strategy, state);
+                    FOR_EACH_C storeMatrix(C_srcRange, sublayoutSrc, C_addrs[q], strategy, state);
             }
 
-            state.Tacc = originalTacc;
+            state.setTacc(originalTacc);
         }
 
         // Free address and data registers, including C accumulators that are no longer used...
@@ -1166,11 +1174,11 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
 
 // Output code for standard C remainder handling.
 template <HW hw>
-bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, vector<RegisterBlock> &layoutExtUnmasked,
-    bool inside, bool columns[2], StdCRemType remTypes[2], bool fragments[2], bool fragPositives[2], int fragSizes[2],
-    const GRFRange (&C_addr0)[2], const GRFRange (&C_addr0Unmasked)[2], COperation op, vector<MaskAssignment> &masks,
-    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState state,
-    RegisterBlock *C_block0, RegisterBlock *C_blockUnmasked0)
+bool Generator<hw>::doStdCRemainder(RegisterLayout &layoutExt, RegisterLayout &layoutExtUnmasked,
+                                    bool inside, bool columns[2], StdCRemType remTypes[2], bool fragments[2], bool fragPositives[2], int fragSizes[2],
+                                    const GRFRange (&C_addr0)[2], const GRFRange (&C_addr0Unmasked)[2], COperation op, vector<MaskAssignment> &masks,
+                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState state,
+                                    RegisterBlock *C_block0, RegisterBlock *C_blockUnmasked0)
 {
     auto Tc_ext = problem.Tc_ext;
     auto column = columns[inside];
@@ -1203,7 +1211,7 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
     if (!inside && strategy.C.atomic) allocEAtomicAddRegs(hw, Tc_ext, layoutExt, problem.C, strategy.C, state);
 
     // Handle a subproblem. Return true if successful.
-    auto descend = [&](vector<RegisterBlock> &sublayoutExt, vector<RegisterBlock> &sublayoutExtUnmasked, bool full = false) -> bool {
+    auto descend = [&](RegisterLayout &sublayoutExt, RegisterLayout &sublayoutExtUnmasked, bool full = false) -> bool {
         bool success = true;
         auto nMasksOriginal = int(masks.size());
 
@@ -1252,10 +1260,10 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
         // Load descriptors based on total remainder in this (rare) case.
         if (remType == StdCRemType::Descriptor) {
             loadLoadStoreDescriptors(!problem.beta0(), true, layoutExt[0], remainder, problem.C, strategy.C, strategy, state);
-            if (!assignAllDescs(layoutExt))
+            if (!layoutExt.assignAllDescs())
                 goto failed;
         }
-        if (remType != StdCRemType::Ignore && inside && !layoutExtUnmasked.empty() && layoutExt.size() == state.C_layoutExt.size()) {
+        if (remType != StdCRemType::Ignore && inside && !layoutExtUnmasked.empty() && layoutExt.blocks() == state.C_layoutExt.blocks()) {
             // If unmasked layout is available, implement full remainder case specially.
             const bool useSIMTFlow = strategy.fused && (strategy.fusedLoop == loop || strategy.fusedLoop == LoopAny);
             Label labelRem, labelDone;
@@ -1316,6 +1324,19 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
             }
         }
 
+        auto doSliceExt = [&](bool column, int q0, int q1,
+                              RegisterLayout &C_subblocksExt, RegisterLayout &C_subblocksExtUnmasked) {
+            C_subblocksExt = layoutExt.trySlice(column, q0, q1, false);
+            if (!C_subblocksExt.valid()) return false;
+
+            if (!layoutExtUnmasked.empty()) {
+                C_subblocksExtUnmasked = layoutExtUnmasked.trySlice(column, q0, q1, false);
+                if (!C_subblocksExtUnmasked.valid()) return false;
+            }
+
+            return true;
+        };
+
         // There are two strategies for fragmenting for remainder handling:
         //    fragSize = 1:  Try to get the largest blocks as possible. These are always fragPositive.
         //    fragSize > 1:  Always use blocks of size fragSize in the q dimension.
@@ -1371,12 +1392,9 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
                     }
 
                     // With chunk size chosen, get rows/columns [q - chunkSize, q) of intersecting blocks.
-                    vector<RegisterBlock> C_subblocksExt, C_subblocksExtUnmasked;
-                    if (!getSubblocks(Tc_ext, C_subblocksExt, layoutExt, column, q - chunkSize, q, false, problem.C, strategy.C))
+                    RegisterLayout C_subblocksExt, C_subblocksExtUnmasked;
+                    if (!doSliceExt(column, q - chunkSize, q, C_subblocksExt, C_subblocksExtUnmasked))
                         goto failed;
-                    if (!layoutExtUnmasked.empty())
-                        if (!getSubblocks(Tc_ext, C_subblocksExtUnmasked, layoutExtUnmasked, column, q - chunkSize, q, false, problem.C, strategy.C))
-                            goto failed;
 
                     // Perform the requested update.
                     if (!descend(C_subblocksExt, C_subblocksExtUnmasked))
@@ -1416,15 +1434,9 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
                         if_(16 | state.flagAP, (qChunk > 1) ? labelElse : labelEndif, labelEndif);
                     }
 
-                    vector<RegisterBlock> C_subblocksExt, C_subblocksExtUnmasked;
-                    if (!getSubblocks(Tc_ext, C_subblocksExt, layoutExt, column, q0, q0 + qChunk, false, problem.C, strategy.C))
-                        return false;
-                    if (!layoutExtUnmasked.empty())
-                        if (!getSubblocks(Tc_ext, C_subblocksExtUnmasked, layoutExtUnmasked, column, q0, q0 + qChunk, false, problem.C, strategy.C))
-                            return false;
-
-                    if (!descend(C_subblocksExt, C_subblocksExtUnmasked))
-                        return false;
+                    RegisterLayout C_subblocksExt, C_subblocksExtUnmasked;
+                    if (!doSliceExt(column, q0, q0 + qChunk, C_subblocksExt, C_subblocksExtUnmasked)) return false;
+                    if (!descend(C_subblocksExt, C_subblocksExtUnmasked))                             return false;
 
                     if (q1 - q0 > 1) {
                         if (qChunk > 1) {
@@ -1467,12 +1479,9 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
         } else {
             auto handleRemainderFP = [&](int q0, int q1) -> bool {
                 // Get rows/columns [q0, q1) of intersecting blocks.
-                vector<RegisterBlock> C_subblocksExt, C_subblocksExtUnmasked;
-                if (!getSubblocks(Tc_ext, C_subblocksExt, layoutExt, column, q0, q1, false, problem.C, strategy.C))
+                RegisterLayout C_subblocksExt, C_subblocksExtUnmasked;
+                if (!doSliceExt(column, q0, q1, C_subblocksExt, C_subblocksExtUnmasked))
                     return false;
-                if (!layoutExtUnmasked.empty())
-                    if (!getSubblocks(Tc_ext, C_subblocksExtUnmasked, layoutExtUnmasked, column, q0, q1, false, problem.C, strategy.C))
-                        return false;
 
                 if (remType == StdCRemType::Descriptor) {
                     // Load address registers for subsequent loads and stores.
@@ -1489,7 +1498,7 @@ bool BLASKernelGenerator<hw>::doStdCRemainder(vector<RegisterBlock> &layoutExt, 
                     }
 
                     loadLoadStoreDescriptors(!problem.beta0(), true, C_subblocksExt[0], mremainder, problem.C, strategy.C, strategy, state);
-                    if (!assignAllDescs(C_subblocksExt) || !assignAllDescs(C_subblocksExtUnmasked))
+                    if (!C_subblocksExt.assignAllDescs() || !C_subblocksExtUnmasked.assignAllDescs())
                         return false;
 
                     state.ra.safeRelease(rcount);
@@ -1594,7 +1603,7 @@ failed:
 // Alternate code path for C remainder handling, based on a simple double loop
 //  and indirect addressing.
 template <HW hw>
-void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc, Tc_ext = problem.Tc_ext;
     int C_count = (op == COperation::UpdateStore) ? state.C_count : 1;
@@ -1653,7 +1662,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
     if (state.C_regs[0].ranges.size() != 1)
         uniform = false;
 
-    for (size_t i = 0; i < state.C_layout.size(); i++) {
+    for (int i = 0; i < state.C_layout.blocks(); i++) {
         auto &block = state.C_layout[i];
         if (block.colMajor != block0.colMajor) stub();
 
@@ -1707,9 +1716,8 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
                     auto x = xx * nec1;
                     auto i = cColMajorReg ? x : y;
                     auto j = cColMajorReg ? y : x;
-                    const RegisterBlock *blockPtr;
                     int ne;
-                    auto sub = findBlockReg(Tc, state.C_layout, i, j, state.C_regs[0], ne, blockPtr, cxComponent);
+                    auto sub = state.C_layout.find(i, j, state.C_regs[0], &ne, nullptr, cxComponent);
                     nonuniformSubs |= (sub.getOffset() != 0);
                     if (ne < std::min(nec1, unrollX - x)) stub();
                     baseIndices[idx] = sub.getBase();
@@ -1915,16 +1923,14 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
 
         convert(Cacc, state.Tacc, Tc_ext, strategy, state);
 
-        std::vector<RegisterBlock> layout{1};
+        RegisterLayout layout(hw, Tc_ext, 1, 1, problem.C, strategy.C);
+
         auto &block = layout[0];
         block.ebytes = qword ? 8 : Tc_ext.real().size();
         block.simdSize = rsimd;
-        block.clearFlag();
         block.bytes = 64;
         block.extra = 1;
         block.count = 1;
-        block.log2GRFBytes = GRF::log2Bytes(hw);
-        block.offsetAddr = 0;
 
         GRFMultirange saveVFlags;
         std::swap(saveVFlags, state.vflagStorage);  /* temporarily disable vflags */
@@ -1957,7 +1963,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
         auto originalTacc = state.Tacc;
         if (problem.needsTsConvert() && state.Tacc != problem.Ts) {
             convert(Cacc, state.Tacc, problem.Ts, strategy, state);
-            state.Tacc = problem.Ts;
+            state.setTacc(problem.Ts);
         }
 
         // Regular update.
@@ -2014,7 +2020,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
             }
         }
 
-        state.Tacc = originalTacc;
+        state.setTacc(originalTacc);
     }
 
 #undef IGNORE_SWSB
@@ -2095,7 +2101,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
 // Convert register range in place to a new type.
 // If types are different sizes, we assume that the smaller type's stride is the width of the larger type.
 template <HW hw>
-void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Type Tnew, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::convert(const GRFMultirange &range, Type Told, Type Tnew, const CommonStrategy &strategy, CommonState &state)
 {
     if (Told == Tnew)
         return;
@@ -2107,6 +2113,15 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
         map(hw, Told, range, range, strategy, [&](int esize, GRF r, GRF _) {
             rnde(esize, r.f(), r.f());
         });
+    }
+
+    // Special path: x32->FP.
+    if (one_of(Told, Type::s32, Type::u32) && Tnew.isFP()) {
+        map(hw, Told, range, range, strategy, [&](int esize, GRF r, GRF _) {
+            mov(esize, r.f(), r);
+        });
+        Told = Type::f32;
+        if (Told == Tnew) return;
     }
 
     // Special path: f32->bf8.
@@ -2197,7 +2212,7 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
 
 // Convert C accumulator registers to a new type. Returns true if successful, or false if old and new type are different sizes.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmConvertC(Type Tnew, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmConvertC(Type Tnew, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Told = state.Tacc;
     int ncomp = (problem.Tc.isComplex() && state.haveCSwap && state.cSwapActive) ? 2 : 1;
@@ -2208,14 +2223,14 @@ bool BLASKernelGenerator<hw>::gemmConvertC(Type Tnew, const GEMMProblem &problem
     for (int comp = 0; comp < ncomp; comp++)
         convert(state.C_regs[comp], Told, Tnew, strategy, state);
 
-    state.Tacc = Tnew;
+    state.setTacc(Tnew);
 
     return true;
 }
 
 // Store A/B sum data into CO.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     bool sumA = problem.sumA, sumB = problem.sumB;
 
@@ -2233,7 +2248,6 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
     auto CO = problem.CO;
     auto CO_strategy = strategy.CO;
     std::vector<GRFRange> CO_addrs;
-    std::vector<RegisterBlock> CO_layout;
     std::vector<MaskAssignment> masks;
     GRFMultirange CO_regs;
     CO_strategy.accessType = AccessType::Block;
@@ -2241,7 +2255,7 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
     auto &Xs_regs   = sumA ? state.As_regs   : state.Bs_regs;
     auto &Xs_layout = sumA ? state.As_layout : state.Bs_layout;
 
-    int Xs_nregs = getRegCount(Xs_layout);
+    int Xs_nregs = Xs_layout.regs();
     auto Xs_usedRegs = Xs_regs.subrange(0, Xs_nregs);
 
     CO.layout = sumA ? MatrixLayout::N : MatrixLayout::T;
@@ -2249,16 +2263,16 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
     auto remR = sumA && !strategy.CO.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
     auto remC = sumB && !strategy.CO.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
 
-    if (!getRegLayout(Tco, CO_layout, cor, coc, remR, remC, true, AvoidFragment, 0, 0, CO, CO_strategy)) stub();
+    RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, true);
 
-    bool share = (Tc == Tco) && matchLayouts(Tc, CO_layout, Xs_layout);
+    bool share = (Tc == Tco) && CO_layout.match(Xs_layout);
 
     Label noAccess;
     and_(16 | ne | state.flagAP, null.ud(), state.inputs.flags, FlagStoreSums);
     if_(16 | state.flagAP, noAccess);
 
-    allocAddrRegs(CO_addrs, CO_layout, CO, CO_strategy, state);
-    setupAddr(Tco, CO_addrs, state.effCO, CO_layout, Subregister(), CO, CO_strategy, strategy, state);
+    allocAddrRegs(CO_addrs, CO_layout, state);
+    setupAddr(CO_addrs, state.effCO, CO_layout, Subregister(), strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) stub();
 
@@ -2270,16 +2284,16 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
         if (loadOnly) {
             CO_regsLoadConv = CO_regsLoad = Xs_usedRegs;
             if (!share)
-                CO_regsLoad = state.ra.alloc_range(getRegCount(CO_layout));
+                CO_regsLoad = state.ra.alloc_range(CO_layout.regs());
         } else {
-            CO_regsLoadConv = CO_regsLoad = state.ra.alloc_range(getRegCount(CO_layout));
+            CO_regsLoadConv = CO_regsLoad = state.ra.alloc_range(CO_layout.regs());
             if (!share)
                 CO_regsLoadConv = state.ra.alloc_range(Xs_nregs);
         }
 
-        loadMatrix(CO_regsLoad, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+        loadMatrix(CO_regsLoad, CO_layout, CO_addrs, strategy, state);
         if (!share)
-            copyRegisters(Tco, Tc, CO_layout, Xs_layout, CO_regsLoad, CO_regsLoadConv, strategy, state);
+            copyRegisters(CO_layout, Xs_layout, CO_regsLoad, CO_regsLoadConv, strategy, state);
 
         auto &beta = problem.beta;
 
@@ -2300,18 +2314,18 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
 
     if (!loadOnly) {
         if (!share) {
-            CO_regs = state.ra.alloc_range(getRegCount(CO_layout));
-            copyRegisters(Tc, Tco, Xs_layout, CO_layout, Xs_regs, CO_regs, strategy, state);
+            CO_regs = state.ra.alloc_range(CO_layout.regs());
+            copyRegisters(Xs_layout, CO_layout, Xs_regs, CO_regs, strategy, state);
             releaseRanges(Xs_regs, state);
         }
 
         auto &effCO_regs = share ? Xs_regs : CO_regs;
         if (atomic) {
             allocEAtomicAddRegs(hw, Tco, CO_layout, CO, CO_strategy, state, state.flagAP);
-            atomicAddMatrix(Tco, effCO_regs, CO_layout, CO, CO_strategy, CO_addrs, problem, strategy, state);
+            atomicAddMatrix(effCO_regs, CO_layout, CO_addrs, problem, strategy, state);
             freeEAtomicAddRegs(state, state.flagAP);
         } else
-            storeMatrix(effCO_regs, CO_layout, CO, CO_strategy, CO_addrs, strategy, state);
+            storeMatrix(effCO_regs, CO_layout, CO_addrs, strategy, state);
     }
 
     mark(noAccess);
@@ -2327,7 +2341,7 @@ void BLASKernelGenerator<hw>::gemmAccessSums(COperation op, const GEMMProblem &p
 
 // Generate code for summing C across k dimension through SLM.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc;
     Label lDone;
@@ -2394,7 +2408,7 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         C_slmStrategy.newDP = true;
 
     vector<GRFRange> C_load;
-    vector<RegisterBlock> C_slmLayout;
+    RegisterLayout C_slmLayout;
     vector<GRFRange> C_slmAddrs;
 
     // Find maximum # registers of C we can transfer to/from SLM at once.
@@ -2425,8 +2439,9 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         C_load[0] = state.ra.try_alloc_range(sliceRegs);
         ok = ok && C_load[0].isValid();
 
-        if (!getRegLayout(Tc, C_slmLayout, elementsPerGRF(hw, Tc), sliceRegs, false, false, true, AvoidFragment, 0, maxContig, C_slm, C_slmStrategy)) stub();
-        ok = ok && tryAllocAddrRegs(C_slmAddrs, C_slmLayout, C_slm, C_slmStrategy, state);
+        C_slmLayout = RegisterLayout(hw, Tc, elementsPerGRF(hw, Tc), sliceRegs, C_slm, C_slmStrategy,
+                                     false, false, true, AvoidFragment, 0, maxContig);
+        ok = ok && tryAllocAddrRegs(C_slmAddrs, C_slmLayout, state);
 
         if (ok) break;
 
@@ -2443,7 +2458,7 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         C_load.push_back(range);
     }
 
-    setupAddr(Tc, C_slmAddrs, addr0, C_slmLayout, Subregister(), C_slm, C_slmStrategy, strategy, state);
+    setupAddr(C_slmAddrs, addr0, C_slmLayout, Subregister(), strategy, state);
 
     MOCK_BARRIERS if (initialBarrier)
         barrierwait();
@@ -2459,17 +2474,15 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
 
         // Trim down SLM layout for final loop.
         if (nreg < sliceRegs) {
-            vector<RegisterBlock> sublayout;
             vector<GRFRange> subaddrs;
-            if (!getSubblocks(Tc, sublayout, subaddrs, C_slmLayout, C_slmAddrs, true, 0, nreg, true, C_slm, C_slmStrategy))
-                stub();
+            auto sublayout = C_slmLayout.slice(subaddrs, C_slmAddrs, true, 0, nreg, true);
             std::swap(sublayout, C_slmLayout);
             std::swap(subaddrs, C_slmAddrs);
         }
 
         // Non-leaders write to SLM.
         jmpi(1 | state.flagAP, lSkipWrite);
-        storeMatrix(C_range, C_slmLayout, C_slm, C_slmStrategy, C_slmAddrs, strategy, state);
+        storeMatrix(C_range, C_slmLayout, C_slmAddrs, strategy, state);
         mark(lSkipWrite);
 
         MOCK_BARRIERS slmBarrier(barrierTemp, r0_info, strategy);
@@ -2478,11 +2491,11 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         jmpi(1 | ~state.flagAP, lSkipReduce);
 
         auto doLoad = [&](int b) {
-            loadMatrix(C_load[b], C_slmLayout, C_slm, C_slmStrategy, C_slmAddrs, strategy, state);
+            loadMatrix(C_load[b], C_slmLayout, C_slmAddrs, strategy, state);
         };
 
         auto doInc = [&] {
-            incAddr(C_slmAddrs, unrollKSLMStride, C_slmLayout, C_slm, C_slmStrategy, strategy, state);
+            incAddr(C_slmAddrs, unrollKSLMStride, C_slmLayout, strategy, state);
         };
 
         auto doReduce = [&](int b) {
@@ -2531,7 +2544,7 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
         mark(lBottom);
 
         if (rr + nreg < regs)
-            incAddr(C_slmAddrs, unrollKSLMReturn, C_slmLayout, C_slm, C_slmStrategy, strategy, state);
+            incAddr(C_slmAddrs, unrollKSLMReturn, C_slmLayout, strategy, state);
 
         mark(lSkipReduce);
     }
@@ -2554,7 +2567,7 @@ void BLASKernelGenerator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMM
 // Final horizontal reduction of C accumulators after dot-product inner loop.
 //    TODO: move to new copy planner once ready.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmDotReduce(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmDotReduce(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc;
     int vl = strategy.dotVL;
@@ -2562,7 +2575,7 @@ void BLASKernelGenerator<hw>::gemmDotReduce(const GEMMProblem &problem, const GE
     auto &C_layout = state.C_layout, &C_layoutReduced = state.C_layoutReduced;
     auto &C_regs = state.C_regs[0];
 
-    bool globalCM = isLayoutColMajor(state.C_layout);
+    bool globalCM = state.C_layout.colMajor();
 
     if (!vl) return;
     if (vl % ne) stub();
@@ -2571,7 +2584,7 @@ void BLASKernelGenerator<hw>::gemmDotReduce(const GEMMProblem &problem, const GE
     int nx = strategy.unroll[globalCM ? LoopM : LoopN];
     int ny = strategy.unroll[globalCM ? LoopN : LoopM];
 
-    auto C_regsReduced = state.ra.alloc_range(getRegCount(C_layoutReduced));
+    auto C_regsReduced = state.ra.alloc_range(C_layoutReduced.regs());
 
     bool needSwizzle = (hw > HW::Gen12LP && Tc.isFP());
     GRFMultirange temps;
@@ -2592,15 +2605,14 @@ void BLASKernelGenerator<hw>::gemmDotReduce(const GEMMProblem &problem, const GE
                 auto j0 = globalCM ? y : x0, j1 = globalCM ? y : x1;
                 auto i  = globalCM ? x : y,   j = globalCM ? y : x;
 
-                const RegisterBlock *C_block;
                 int nc0, nc1;
-                auto C0 = findBlockReg(Tc, C_layout, i0, j0, C_regs, nc0, C_block);
-                auto C1 = findBlockReg(Tc, C_layout, i1, j1, C_regs, nc1, C_block);
+                auto C0 = C_layout.find(i0, j0, C_regs, &nc0);
+                auto C1 = C_layout.find(i1, j1, C_regs, &nc1);
                 if (nc0 < simd || nc1 < simd) stub();
 
                 auto dst = C0;
                 if (cvl == 2)
-                    dst = findBlockReg(Tc, C_layoutReduced, i, j, C_regsReduced, nc0, C_block);
+                    dst = C_layoutReduced.find(i, j, C_regsReduced, &nc0);
 
                 if (canSwizzle)
                     add(simd, dst(1), C0(1), C1(1));
@@ -2635,9 +2647,8 @@ void BLASKernelGenerator<hw>::gemmDotReduce(const GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
-    auto Tc_ext = problem.Tc_ext;
     bool checkBeta0 = problem.checkBeta0 && !problem.beta.fixed();
     bool checkIDK = strategy.kParallelLocal;
 
@@ -2675,16 +2686,16 @@ void BLASKernelGenerator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStra
             cmp(1 | gt | state.flagAP, state.lidK, 0);
     }
 
-    allocAddrRegs(state.Cp_addrs, state.Cp_layout, problem.C, strategy.C_prefetch, state);
-    setupAddr(Tc_ext, state.Cp_addrs, state.effCp, state.Cp_layout, state.inputs.ldc[0], problem.C, strategy.C_prefetch, strategy, state, Cp_params, state.ldcMultiples[0]);
+    allocAddrRegs(state.Cp_addrs, state.Cp_layout, state);
+    setupAddr(state.Cp_addrs, state.effCp, state.Cp_layout, state.inputs.ldc[0], strategy, state, Cp_params, state.ldcMultiples[0]);
 
     Label lSkipPrefetchC;
     if (checkBeta0 || checkIDK)
         jmpi(1 | state.flagAP, lSkipPrefetchC);
 
-    state.Cp_regs = state.ra.alloc_range(getRegCount(state.Cp_layout));
+    state.Cp_regs = state.ra.alloc_range(state.Cp_layout.regs());
 
-    loadMatrix(state.Cp_regs, state.Cp_layout, problem.C, strategy.C_prefetch, state.Cp_addrs, strategy, state);
+    loadMatrix(state.Cp_regs, state.Cp_layout, state.Cp_addrs, strategy, state);
 
     safeReleaseRanges(state.Cp_regs, state);
     safeReleaseRanges(state.Cp_addrs, state);
@@ -2702,9 +2713,9 @@ void BLASKernelGenerator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStra
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::setupCAddr0(GRFRange (&C_addr0)[2], GRFRange (&C_addr0Unmasked)[2],
-                                          const vector<RegisterBlock> &C_layout, const vector<RegisterBlock> &C_layoutUnmasked, int C_count,
-                                          const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, const Address2DParams *params)
+void Generator<hw>::setupCAddr0(GRFRange (&C_addr0)[2], GRFRange (&C_addr0Unmasked)[2],
+                                const RegisterLayout &C_layout, const RegisterLayout &C_layoutUnmasked, int C_count,
+                                const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, const Address2DParams *params)
 {
     Address2DParams defaultParams;
     if (!params) {
@@ -2712,13 +2723,13 @@ void BLASKernelGenerator<hw>::setupCAddr0(GRFRange (&C_addr0)[2], GRFRange (&C_a
         params = &defaultParams;
     }
     for (int q = 0; q < C_count; q++) {
-        C_addr0[q] = state.ra.alloc_range(addrGRFCount(problem.C, strategy.C, C_layout[0]));
+        C_addr0[q] = state.ra.alloc_range(C_layout[0].addrGRFs(problem.C, strategy.C));
         setupAddr(problem.Tc_ext, C_addr0[q], state.effC[q], C_layout[0], state.inputs.ldc[q], problem.C, strategy.C, strategy, state, *params, state.ldcMultiples[q]);
     }
     if (!C_layoutUnmasked.empty()) for (int q = 0; q < C_count; q++) {
-        C_addr0Unmasked[q] = state.ra.alloc_range(addrGRFCount(problem.C, strategy.C, C_layoutUnmasked[0]));
+        C_addr0Unmasked[q] = state.ra.alloc_range(C_layoutUnmasked[0].addrGRFs(problem.C, strategy.C));
         setupAddr(problem.Tc_ext, C_addr0Unmasked[q], state.effC[q], C_layoutUnmasked[0], state.inputs.ldc[q], problem.C, strategy.C, strategy, state, *params, state.ldcMultiples[q]);
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

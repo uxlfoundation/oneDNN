@@ -21,10 +21,10 @@
 #include <tuple>
 
 #include "layout_utils.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 
 // The systolic array performs a series of GEMVs with a single fixed-size matrix.
@@ -38,17 +38,15 @@ struct SystolicParams {
     int osys;           // Output vector length
 };
 
-static inline SystolicParams systolicParams(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
+static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, const GEMMStrategy &strategy)
 {
-    // Check opCount using correct compute types.
-    auto problem_ = problem;
-    problem_.autoTypeConversions(hw, strategy.systolicAvailable);
+    problem.autoTypeConversions(hw, true);
 
     SystolicParams params;
-    params.opsPerChan = std::max(1, std::min(4 / problem_.Ta.real(), 4 / problem_.Tb.real()));
+    params.opsPerChan = std::max(1, std::min(4 / problem.Ta.real(), 4 / problem.Tb.real()));
     params.sdepth = 8;
     params.ksys = params.sdepth * params.opsPerChan;
-    params.osys = ngen::GRF::bytes(hw) / std::max(problem_.Tc_compute().real().size(), 4);
+    params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
 
     return params;
@@ -61,11 +59,10 @@ static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, 
         auto params = systolicParams(hw, problem, strategy);
         return params.ksys;
     }
-    if (strategy.dotVL)
-        return strategy.dotVL;
+    int kfma = std::max(strategy.dotVL, 1);
     if (hw >= ngen::HW::Gen12LP && problem.isIGEMM())
-        return 4;
-    return 1;
+        kfma *= 4;
+    return kfma;
 }
 
 // Return # of outer products performed at once.
@@ -132,6 +129,6 @@ static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const 
     return std::make_tuple(0,0,0,0);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif

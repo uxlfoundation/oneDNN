@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,53 +16,54 @@
 
 
 #include "alloc_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
 #include "state_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 // Prepare layout for row/column sum matrices, and any needed auxiliary registers.
 template <HW hw>
-void BLASKernelGenerator<hw>::makeSumLayout(bool column,
-                                            Type Tsrc, const vector<RegisterBlock> &srcLayout,
-                                            Type Tdst, vector<RegisterBlock> &dstLayout,
-                                            const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::makeSumLayout(bool column, const RegisterLayout &srcLayout,
+                                  Type Tdst, RegisterLayout &dstLayout,
+                                  const CommonStrategy &strategy, CommonState &state,
+                                  bool systolicSum)
 {
-    bool canDP4A = (hw >= HW::Gen12LP) && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
-    bool cm = isLayoutColMajor(srcLayout);
+    auto Tsrc = srcLayout.type();
+    bool canDP4A = (hw >= HW::Gen12LP) && !systolicSum
+            && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
+    bool cm = srcLayout.colMajor();
     bool hReduce = (column == cm);
     bool needAll1s = false;
-    int m, n, cp = 1;
+    int m = srcLayout.rows(), n = srcLayout.cols(), cp = 1;
 
-    getLayoutDims(srcLayout, m, n);
     auto &rdim = column ? m : n;
 
     if (Tsrc.bits() == Tdst.bits())
         cp = srcLayout[0].crosspack;
 
     if (hReduce) {
-        if (canDP4A && hasFullCrosspack(srcLayout, 1)) {
+        if (canDP4A && srcLayout.hasFullCrosspack(1)) {
             rdim /= 4;
             needAll1s = true;
             if (rdim & 1) rdim <<= 1; // Ensure dp4a dest offset is even.
         }
     } else {
-        if (canDP4A && hasFullCrosspack(srcLayout, 4))
+        if (canDP4A && srcLayout.hasFullCrosspack(4))
             needAll1s |= (rdim >= 4);
         rdim = 1;
         cp = 1;
     }
 
     bool partials = canSwizzle(hw, Tdst);
-    makeUnbackedRegLayout(Tdst, dstLayout, m, n, cm, cp, 0, 0, partials);
+    dstLayout = RegisterLayout(hw, Tdst, m, n, cm, cp, 0, 0, partials);
 
     // Prepare all-1s immediate for dp4a.
     if (needAll1s && state.all1s.isInvalid()) {
@@ -73,23 +74,22 @@ void BLASKernelGenerator<hw>::makeSumLayout(bool column,
 
 // Accumulate row/column sums.
 template <HW hw>
-void BLASKernelGenerator<hw>::accumulateSum(bool column,
-                                            Type Tsrc, const GRFMultirange &srcRegs, const vector<RegisterBlock> &srcLayout,
-                                            Type Tdst, const GRFMultirange &dstRegs, const vector<RegisterBlock> &dstLayout,
-                                            const CommonStrategy &strategy, CommonState &state,
-                                            int q0, int q1)
+void Generator<hw>::accumulateSum(bool column,
+                                  const GRFMultirange &srcRegs, const RegisterLayout &srcLayout,
+                                  const GRFMultirange &dstRegs, const RegisterLayout &dstLayout,
+                                  const CommonStrategy &strategy, CommonState &state,
+                                  int q0, int q1)
 {
-    bool canDP4A = (hw >= HW::Gen12LP) && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
+    auto Tsrc = srcLayout.type(), Tdst = dstLayout.type();
+    bool canDP4A = (hw >= HW::Gen12LP) && one_of(Tsrc, Type::s8, Type::u8)
+                                       && one_of(Tdst, Type::s32, Type::u32);
 
-    bool cm = isLayoutColMajor(srcLayout);
-    if (cm != isLayoutColMajor(dstLayout)) stub();
-
-    int m, n;
-    getLayoutDims(srcLayout, m, n);
+    bool cm = srcLayout.colMajor();
+    if (cm != dstLayout.colMajor()) stub();
 
     // x: consecutive dimension in src; y: strided dimension in src
-    auto nx = cm ? m : n;
-    auto ny = cm ? n : m;
+    auto nx = srcLayout.rows(), ny = srcLayout.cols();
+    if (!cm) std::swap(nx, ny);
 
     int x0 = 0, y0 = 0;
     int x1 = nx, y1 = ny;
@@ -124,8 +124,8 @@ void BLASKernelGenerator<hw>::accumulateSum(bool column,
                 jdst = cm ? y : x / reduce;
             }
 
-            Subregister srcBase = findBlockReg(Tsrc, srcLayout, isrc, jsrc, srcRegs, nsrc, blockSrc);
-            Subregister dstBase = findBlockReg(Tdst, dstLayout, idst, jdst, dstRegs, ndst, blockDst);
+            Subregister srcBase = srcLayout.find(isrc, jsrc, srcRegs, &nsrc, &blockSrc);
+            Subregister dstBase = dstLayout.find(idst, jdst, dstRegs, &ndst, &blockDst);
             nsrc = std::min(nsrc, x1 - x);
             int neMax = elementsPerGRF(hw, Tdst) * 2;
             if (Tdst == Type::f32 && Tsrc.paddedSize() < 4)
@@ -200,7 +200,7 @@ void BLASKernelGenerator<hw>::accumulateSum(bool column,
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::setupTeardownAccumulateSumSystolic(bool setup, Type T, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::setupTeardownAccumulateSumSystolic(bool setup, Type T, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto &sysSumAll1s = state.sysSumAll1s;
 
@@ -210,8 +210,12 @@ void BLASKernelGenerator<hw>::setupTeardownAccumulateSumSystolic(bool setup, Typ
             sysSumAll1s.setType(T.ngen());
 
             int ne = elementsPerGRF(hw, T);
-            if (T == Type::s8 || T == Type::u8)
+            if (T.isInt4())
+                mov(ne / 8, sysSumAll1s.ud(), uint32_t(0x11111111));
+            else if (T.isInt8())
                 mov(ne / 4, sysSumAll1s.ud(), uint32_t(0x01010101));
+            else if (T == Type::f16)
+                mov(ne, sysSumAll1s.uw(), uint16_t(0x3C00));
             else if (T == Type::bf16)
                 mov(ne, sysSumAll1s.uw(), uint16_t(0x3F80));
             else
@@ -223,15 +227,15 @@ void BLASKernelGenerator<hw>::setupTeardownAccumulateSumSystolic(bool setup, Typ
 
 // Horizontally add intermediate sums if needed.
 template <HW hw>
-void BLASKernelGenerator<hw>::horizontalAdd(bool column, Type T, const GRFMultirange &regs, vector<RegisterBlock> &layout, CommonState &state)
+void Generator<hw>::horizontalAdd(bool column, const GRFMultirange &regs, RegisterLayout &layout, CommonState &state)
 {
-    bool cm = isLayoutColMajor(layout);
+    auto T = layout.type();
+    bool cm = layout.colMajor();
     if (cm != column)
         return;         // Nothing to do.
 
-    int m, n, cp;
-    getLayoutDims(layout, m, n);
-    cp = layout[0].crosspack;
+    int m = layout.rows(), n = layout.cols();
+    int cp = layout[0].crosspack;
 
     int nx = cm ? m : n;
     int ny = cm ? n : m;
@@ -250,12 +254,11 @@ void BLASKernelGenerator<hw>::horizontalAdd(bool column, Type T, const GRFMultir
                 int i = cm ? x : y;
                 int j = cm ? y : x;
                 int ns, nb;
-                const RegisterBlock *block;
-                Subregister shifted = findBlockReg(T, layout, i, j, regs, ns, block);
+                Subregister shifted = layout.find(i, j, regs, &ns);
 
                 ns = std::min({ns, chunk, nsLimit});
                 (cm ? i : j) -= chunk;
-                Subregister base = findBlockReg(T, layout, i, j, regs, nb, block);
+                Subregister base = layout.find(i, j, regs, &nb);
 
                 auto dest = base;
                 if (chunk == 1)
@@ -289,12 +292,12 @@ void BLASKernelGenerator<hw>::horizontalAdd(bool column, Type T, const GRFMultir
     state.ra.safeRelease(tempGRF);
 
     (cm ? m : n) = 1;
-    makeUnbackedRegLayout(T, layout, m, n, !cm, 1);
+    layout = RegisterLayout(hw, T, m, n, !cm, 1);
 }
 
 // Get final A/B sums. For SLM copy kernels, this requires accumulating each thread's contributions.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     bool doA = problem.needsASums();
     bool doB = problem.needsBSums();
@@ -309,16 +312,13 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
     auto unrollN = strategy.unroll[LoopN];
     bool ok = true;
 
-    int ms = 0, ns = 0;
-    if (doA) getLayoutDims(state.As_layout, ms, ns);
-    bool reduceAs = (ns > 1);
-    if (doB) getLayoutDims(state.Bs_layout, ms, ns);
-    bool reduceBs = (ms > 1);
+    bool reduceAs = doA && (state.As_layout.cols() > 1);
+    bool reduceBs = doB && (state.Bs_layout.rows() > 1);
 
     if (reduceAs && doA && !doASLM)
-        horizontalAdd(false, Tc, state.As_regs, state.As_layout, state);
+        horizontalAdd(false, state.As_regs, state.As_layout, state);
     if (reduceBs && doB && !doBSLM)
-        horizontalAdd(true,  Tc, state.Bs_regs, state.Bs_layout, state);
+        horizontalAdd(true,  state.Bs_regs, state.Bs_layout, state);
 
     if (!doASLM && !doBSLM)
         return true;
@@ -329,9 +329,9 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
 
     GRFMultirange *ABs_regs[2]           = {&state.As_regs,     &state.Bs_regs};
     bool AB_coopSplitMN[2]               = {A_coopSplitM,       B_coopSplitN};
-    vector<RegisterBlock> *ABs_layout[2] = {&state.As_layout,   &state.Bs_layout};
+    RegisterLayout *ABs_layout[2] = {&state.As_layout,   &state.Bs_layout};
 
-    vector<RegisterBlock> ABs_layoutSLM[2];
+    RegisterLayout ABs_layoutSLM[2];
     MatrixAddressing ABs_SLM[2];
     MatrixAddressingStrategy ABs_strategySLM[2];
     MatrixAddressingStrategy ABs_strategySLMAtomic[2];
@@ -362,9 +362,9 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
     MOCK_BARRIERS activeThreadBarrierSignal(temp, r0_info, strategy);
 
     if (doASLM && A_coopSplitM)
-        horizontalAdd(false, Tc, state.As_regs, state.As_layout, state);
+        horizontalAdd(false, state.As_regs, state.As_layout, state);
     if (doBSLM && B_coopSplitN)
-        horizontalAdd(true, Tc, state.Bs_regs, state.Bs_layout, state);
+        horizontalAdd(true, state.Bs_regs, state.Bs_layout, state);
 
     MOCK_BARRIERS barrierwait();
 
@@ -391,10 +391,12 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
         if (hw == HW::Gen12LP && !isB && !A_coopSplitM)
             maxRBlock = 8;      /* Workaround for Gen12LP HW bug with SIMD16 untyped SLM reads */
 
-        ok = ok && getRegLayout(Tc, ABs_layoutSLM[isB], r, c, false, false, true, AvoidFragment,
-                                maxRBlock, 0, ABs_SLM[isB], ABs_strategySLMAtomic[isB])
-                && matchLayouts(Tc, ABs_layoutSLM[isB], *ABs_layout[isB])
+        ABs_layoutSLM[isB] = RegisterLayout::tryCreate(hw, Tc, r, c, ABs_SLM[isB], ABs_strategySLMAtomic[isB],
+                                                       false, false, true, AvoidFragment, maxRBlock, 0);
+        ok = ok && ABs_layoutSLM[isB].match(*ABs_layout[isB])
                 && assignMasks(ABs_layoutSLM[isB], LoopM, LoopN, masks, strategy, state, false);
+
+        ABs_layoutSLM[isB].addressingStrategy().atomic = false;
 
         Subregister remainders[3] = {Subregister{}};
         loadMasks(masks, remainders, strategy, state);
@@ -422,8 +424,8 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
             add(1, adjBase, adjBase, ABs_base[isB]);
         }
         makeSLMBaseRelative(adjBase, state);
-        allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLMAtomic[isB], state);
-        setupAddr(Tc, ABs_addrs[isB], adjBase, ABs_layoutSLM[isB], Subregister(), ABs_SLM[isB], ABs_strategySLMAtomic[isB], strategy, state);
+        allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], state);
+        setupAddr(ABs_addrs[isB], adjBase, ABs_layoutSLM[isB], Subregister(), strategy, state);
         releaseMaskAssignments(masks, state);
 
         if (AB_coopSplitMN[isB]) state.ra.safeRelease(adjBase);
@@ -434,7 +436,7 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
             cmp(16 | eq | leader[isB], !isB ? state.lidN : state.lidM, 0);
             if_(16 | leader[isB], labelNoStore);
         }
-        storeMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLM[isB], ABs_addrs[isB], strategy, state);
+        storeMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], strategy, state);
         if (!AB_coopSplitMN[isB]) {
             mark(labelNoStore);
             endif(16);
@@ -443,16 +445,18 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
 
     bool barrier2 = false;
     auto step2 = [&](bool isB) {
+        ABs_layoutSLM[isB].addressingStrategy().atomic = true;
         allocEAtomicAddRegs(hw, Tc, ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLMAtomic[isB], state, state.flagAP);
 
         Label labelNoAdd;
         if_(16 | ~leader[isB], labelNoAdd);
-        atomicAddMatrix(Tc, *ABs_regs[isB], ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLMAtomic[isB], ABs_addrs[isB], problem, strategy, state);
+        atomicAddMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], problem, strategy, state);
         mark(labelNoAdd);
         endif(16);
         barrier2 = true;
 
         freeEAtomicAddRegs(state, state.flagAP);
+        ABs_layoutSLM[isB].addressingStrategy().atomic = false;
     };
 
     auto step3 = [&](bool isB, int r, int c) {
@@ -461,19 +465,18 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
             ABs_SLM[isB].packSize = r * c;
             ABs_SLM[isB].setAlignment(r * c * Tc);
             ABs_strategySLM[isB].accessType = AccessType::Block;
-            ok = ok && getRegLayout(Tc, ABs_layoutSLM[isB], r, c, false, false, false, AvoidFragment,
-                                    0, 0, ABs_SLM[isB], ABs_strategySLM[isB]);
+            ok = ok && (ABs_layoutSLM[isB] = RegisterLayout::tryCreate(hw, Tc, r, c, ABs_SLM[isB], ABs_strategySLM[isB]));
 
-            auto nregs = getRegCount(ABs_layoutSLM[isB]);
+            auto nregs = ABs_layoutSLM[isB].regs();
             if (nregs > ABs_regs[isB]->getLen()) {
                 safeReleaseRanges(*ABs_regs[isB], state);
                 *ABs_regs[isB] = state.ra.alloc_range(nregs);
             }
 
-            allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLM[isB], state);
-            setupAddr(Tc, ABs_addrs[isB], ABs_base[isB], ABs_layoutSLM[isB], Subregister(), ABs_SLM[isB], ABs_strategySLM[isB], strategy, state);
+            allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], state);
+            setupAddr(ABs_addrs[isB], ABs_base[isB], ABs_layoutSLM[isB], Subregister(), strategy, state);
         }
-        loadMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_SLM[isB], ABs_strategySLM[isB], ABs_addrs[isB], strategy, state);
+        loadMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], strategy, state);
         *ABs_layout[isB] = std::move(ABs_layoutSLM[isB]);
     };
 
@@ -502,4 +505,4 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
     return ok;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

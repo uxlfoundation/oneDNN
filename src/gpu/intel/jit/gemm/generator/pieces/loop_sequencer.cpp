@@ -20,7 +20,7 @@
 #include "loop_sequencer.hpp"
 #include "internal/utils.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 
 namespace loop_sequencer {
@@ -437,4 +437,4 @@ void LoopSequencer::adjustActionTriggers(int shift)
 
 } /* namespace loop_sequencer */
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

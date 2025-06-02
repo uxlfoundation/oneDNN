@@ -17,17 +17,18 @@
 
 #include "alloc_utils.hpp"
 #include "atomic_fusions.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
 
 // Preparatory work for fused beta/post-ops.
 // For fused beta, check whether this thread is responsible for performing beta scaling.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmFusedBetaPOInit(const Subregister &groupID, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmFusedBetaPOInit(const Subregister &groupID, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto &addr = state.statusFlagAddr;
 
@@ -105,7 +106,7 @@ void BLASKernelGenerator<hw>::gemmFusedBetaPOInit(const Subregister &groupID, co
 
 // Zero C matrix in memory.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmStoreZeroC(GEMMProblem problem, GEMMStrategy strategy, GEMMState state, bool initialZeroing)
+void Generator<hw>::gemmStoreZeroC(GEMMProblem problem, GEMMStrategy strategy, GEMMState state, bool initialZeroing)
 {
     int nreg = 0;
 
@@ -119,7 +120,7 @@ void BLASKernelGenerator<hw>::gemmStoreZeroC(GEMMProblem problem, GEMMStrategy s
         }
     }
 
-    auto collapse = [&](vector<RegisterBlock> &layout) {
+    auto collapse = [&](RegisterLayout &layout) {
         for (auto &block: layout) {
             block.offsetBytes = 0;
             nreg = std::max<int>(nreg, block.msgRegs);
@@ -151,7 +152,7 @@ void BLASKernelGenerator<hw>::gemmStoreZeroC(GEMMProblem problem, GEMMStrategy s
 
 // Perform beta scaling if necessary, for atomic kernels with fused beta scaling.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmFusedBetaScale(GEMMProblem problem, GEMMStrategy strategy, GEMMState &state)
+void Generator<hw>::gemmFusedBetaScale(GEMMProblem problem, GEMMStrategy strategy, GEMMState &state)
 {
     Label lNoScale, lScaleDone, lBeta0;
     bool checkIfEnabled = strategy.kParallelVariable;
@@ -257,7 +258,7 @@ void BLASKernelGenerator<hw>::gemmFusedBetaScale(GEMMProblem problem, GEMMStrate
 
 // Notify other threads that beta scaling is complete for this tile.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmFusedBetaNotifyCompletion(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmFusedBetaNotifyCompletion(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     Label lSkipNotify;
 
@@ -306,7 +307,7 @@ void BLASKernelGenerator<hw>::gemmFusedBetaNotifyCompletion(const GEMMProblem &p
 
 // Wait for beta scaling to be complete.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmFusedBetaWaitCompletion(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmFusedBetaWaitCompletion(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     Label lSkipCheck, lCheckAgain, lReady, lFinalDec, lCheckDone;
     bool checkIfEnabled = strategy.kParallelVariable;
@@ -389,7 +390,7 @@ void BLASKernelGenerator<hw>::gemmFusedBetaWaitCompletion(const GEMMProblem &pro
 
 // Swap out C for the temporary buffer.
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     problem.Tc_ext = problem.Tc;
     problem.C = state.tempC;
@@ -417,7 +418,7 @@ void BLASKernelGenerator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStra
 
 // Handle accumulation of C data from multiple WGs prior to post-op calculation.
 template <HW hw>
-bool BLASKernelGenerator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     auto doLateExit = [&](Label &target) {
         if (state.doLateExit) gemmOOBExit(target, strategy, state);
@@ -566,4 +567,4 @@ bool BLASKernelGenerator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEM
     return true;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

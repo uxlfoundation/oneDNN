@@ -17,13 +17,13 @@
 
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
-#include "driver_info.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "hw_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
-
-#include "internal/namespace_start.hxx"
 
 
 size_t gemmSLMSize(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy, bool computeMax)
@@ -103,4 +103,4 @@ bool keepH0(const GEMMProblem &problem, const GEMMStrategy &strategy)
     return strategy.kParallelVariable && strategy.fuseBeta;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

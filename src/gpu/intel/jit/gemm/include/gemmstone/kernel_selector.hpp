@@ -17,13 +17,14 @@
 #ifndef GEMMSTONE_GUARD_KERNEL_SELECTOR_HPP
 #define GEMMSTONE_GUARD_KERNEL_SELECTOR_HPP
 
-#include "config.hpp"
-#include "kernel_catalog.hpp"
-#include "kernel_evaluator.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/kernel_catalog.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
 
 #include <algorithm>
+#include <functional>
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Basic kernel selection API.
 struct StrategyRequirement {
@@ -46,6 +47,7 @@ struct MatchParamsBase
     SizeParams sizes;
     char precisionCExt = 0;
     bool ignoreSizes = false;
+    bool ignoreCase = false;
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
     kcatalog::string tags, lateTags;
@@ -89,8 +91,10 @@ struct MatchParams : public MatchParamsBase
     }
 };
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux);
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux);
+using SelectionObserver = std::function<void (const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux)>*;
+
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer = nullptr);
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer = nullptr);
 
 // Extended API for iterating over all matching kernels.
 bool matches(const kcatalog::Entry &e, const MatchParams &pattern);
@@ -101,8 +105,10 @@ const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcata
 
 class EntryIterator {
 public:
-    EntryIterator(const kcatalog::Catalog &catalog_, const MatchParams &pattern_)
-        : catalog(catalog_), pattern(pattern_), begin(lower_bound(catalog_, pattern_.selector)), end(upper_bound(catalog_, pattern_.selector)), current(begin) {
+    EntryIterator(const kcatalog::Catalog &catalog_, const MatchParams &pattern_): catalog(catalog_), pattern(pattern_) {
+        begin = lower_bound(catalog_, pattern_.selector);
+        end   = upper_bound(catalog_, pattern_.selector);
+        current = begin;
         findNextMatch();
     }
 
@@ -148,6 +154,6 @@ inline EntryIterator match(const kcatalog::Catalog &catalog, const MatchParams &
     return EntryIterator(catalog, pattern);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

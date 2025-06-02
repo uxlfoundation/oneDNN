@@ -32,6 +32,17 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
 
+#if defined(__cpp_attributes) && __cpp_attributes >= 201907L
+#define LIKELY(x) (x) [[likely]]
+#define UNLIKELY(x) (x) [[unlikely]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define LIKELY(x) (__builtin_expect(!!(x), 1))
+#define UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#else
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#endif
+
 // namespace xla::cpu {
 
 // A work queue that partitions `num_tasks` tasks into `num_partitions`
@@ -137,13 +148,13 @@ inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
 
   // Check if partition is already empty.
   if (size_t index = partition.index.load(std::memory_order_relaxed);
-      __builtin_expect(index >= partition.end, 0)) {
+      UNLIKELY(index >= partition.end)) {
     return std::nullopt;
   }
 
   // Try to acquire the next task in the partition.
   size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
-  return __builtin_expect(index >= partition.end, 0) ? std::nullopt
+  return UNLIKELY(index >= partition.end) ? std::nullopt
                                                     : std::make_optional(index);
 }
 
@@ -154,16 +165,16 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
 
 inline std::optional<size_t> Worker::Pop() {
   std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (__builtin_expect(task.has_value(), 1)) return task;
+  if (LIKELY(task.has_value())) return task;
 
   while (!task.has_value() && !queue_->empty()) {
     // Wrap around to the first partition.
-    if (__builtin_expect(++partition_index_ >= queue_->num_partitions(), 0)) {
+    if (UNLIKELY(++partition_index_ >= queue_->num_partitions())) {
       partition_index_ = 0;
     }
 
     // We checked all partitions and got back to the partition we started from.
-    if (__builtin_expect(partition_index_ == worker_index_, 0)) {
+    if (UNLIKELY(partition_index_ == worker_index_)) {
       queue_->empty_.store(true, std::memory_order_relaxed);
       break;
     }
@@ -218,7 +229,7 @@ void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
   while (end_index - start_index > 1) {
     // If work queue is empty, we don't need to keep enqueuing more workers and
     // can simply count down for the remaining workers.
-    if (__builtin_expect(ctx->work_queue.empty(), 0)) {
+    if (UNLIKELY(ctx->work_queue.empty())) {
       count_down(end_index - start_index, std::error_code());
       return;
     }
@@ -235,7 +246,7 @@ void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
   while (std::optional<size_t> task = worker.Pop()) {
     if constexpr (std::is_same_v<R, std::error_code>) {
       std::error_code status = ctx->parallel_task(*task);
-      if (__builtin_expect(status.value(), 0)) {
+      if (UNLIKELY(status.value())) {
         count_down(1, std::move(status));
         return;
       }
@@ -258,7 +269,7 @@ inline std::error_code Worker::ExecuteInline(
   for (size_t i = 0; i < num_tasks; ++i) {
     if constexpr (std::is_same_v<R, std::error_code>) {
       std::error_code status = parallel_task(i);
-      if (__builtin_expect(status.value(), 0)) {
+      if (UNLIKELY(status.value())) {
         return status;
       }
     } else {
@@ -278,14 +289,14 @@ inline void Worker::Parallelize(
   assert(num_workers <= num_tasks && "Number of workers should be less than or equal to number of tasks");
 
   // Short-circuit single-threaded execution.
-  if (__builtin_expect(num_workers == 1, 0)) {
+  if (UNLIKELY(num_workers == 1)) {
     count_down.CountDown(
         ExecuteInline(num_tasks, std::forward<ParallelTask>(parallel_task)));
     return;
   }
 
   assert(num_workers <= std::numeric_limits<uint16_t>::max() && "Number of workers should be less than or equal to the maximum value of uint16_t");
-  if (__builtin_expect(num_workers > std::numeric_limits<uint16_t>::max(), 0)) {
+  if (UNLIKELY(num_workers > std::numeric_limits<uint16_t>::max())) {
     count_down.CountDown(num_workers - std::numeric_limits<uint16_t>::max());
   }
 
@@ -301,17 +312,17 @@ inline AsyncValueRef<Chain> Worker::Parallelize(
     const Eigen::ThreadPoolDevice* device, size_t num_workers, size_t num_tasks,
     ParallelTask&& parallel_task) {
   // Short-circuit single-threaded execution.
-  if (__builtin_expect(num_workers == 1, 0)) {
+  if (UNLIKELY(num_workers == 1)) {
     if (std::error_code status =
             ExecuteInline(num_tasks, std::forward<ParallelTask>(parallel_task));
-        __builtin_expect(status.value(), 0)) {
+        UNLIKELY(status.value())) {
       return status;
     }
     return MakeAvailableAsyncValueRef<Chain>();
   }
 
   assert(num_workers <= std::numeric_limits<uint16_t>::max() && "Number of workers should be less than or equal to the maximum value of uint16_t");
-  if (__builtin_expect(num_workers > std::numeric_limits<uint16_t>::max(), 0)) {
+  if (UNLIKELY(num_workers > std::numeric_limits<uint16_t>::max())) {
     num_workers = std::numeric_limits<uint16_t>::max();
   }
 

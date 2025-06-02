@@ -32,6 +32,17 @@ limitations under the License.
 #include "concurrent_vector.h"
 #include "ref_count.h"
 
+#if defined(__cpp_attributes) && __cpp_attributes >= 201907L
+#define LIKELY(x) (x) [[likely]]
+#define UNLIKELY(x) (x) [[unlikely]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define LIKELY(x) (__builtin_expect(!!(x), 1))
+#define UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#else
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#endif
+
 // namespace tsl {
 
 class NotifierListNode;
@@ -992,7 +1003,7 @@ inline void AsyncValue::Destroy() {
   // Copy `is_refcounted` flag before destroying the async value object.
   bool was_ref_counted = is_refcounted_;
 
-  if (__builtin_expect(kind() == Kind::kIndirect, 0)) {
+  if (UNLIKELY(kind() == Kind::kIndirect)) {
     // Depending on what the benchmarks say, it might make sense to remove this
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.

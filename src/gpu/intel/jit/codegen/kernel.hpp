@@ -180,6 +180,14 @@ class expr_evaluator_t;
 template <typename ngen_generator_t>
 class ir_to_ngen_t;
 
+struct setup_flags_t {
+    bool has_send_atomics;
+    bool has_dpas;
+    bool has_signal_header;
+};
+
+setup_flags_t get_setup_flags(const stmt_t &s);
+
 template <typename ngen_generator_t>
 class ir_kernel_base_t : public ngen_generator_t {
 public:
@@ -239,12 +247,6 @@ public:
         }
         // Enable IEEE f32 -> s32 rounding and f64/f32/f16 denormals.
         or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
-
-        // Allocate and initialize signal header for future use.
-        if (exec_cfg_.require_signal_header()) {
-            signal_header_ = ra_.alloc();
-            ngen_generator_t::barrierheader(signal_header_);
-        }
     }
 
     void bind_external_vars(
@@ -290,6 +292,13 @@ public:
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
         if (!slm_buf.is_empty()) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+
+        auto setup_flags = get_setup_flags(kernel_body);
+        // Allocate and initialize signal header for future use.
+        if (setup_flags.has_signal_header) {
+            signal_header_ = ra_.alloc();
+            ngen_generator_t::barrierheader(signal_header_);
+        }
     }
 
     void bind_kernel_grid_walk_order_blocked(const ngen::Subregister &id,
@@ -432,6 +441,8 @@ public:
         for (int rep = 0; rep < 8; rep++)
             nop();
     }
+
+    const ngen::GRF &signal_header() { return signal_header_; }
 
     void emov(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
             const ngen_operand_t &src0) {
@@ -1187,8 +1198,14 @@ public:
         elf_generator_t::requireGRF(base::exec_cfg().regs());
         elf_generator_t::requireSIMD(base::exec_cfg().simd());
         elf_generator_t::requireBarrier();
-        if (require_dpas_) elf_generator_t::requireDPAS();
-        if (has_send_atomics(kernel_body))
+        auto setup_flags = get_setup_flags(kernel_body);
+
+        // On XeHPG hardware, there is some setup overhead when switching
+        // between dpas and non-dpas kernels. The require_dpas_ parameter is to
+        // enable better kernel chaining on this platform.
+        if (require_dpas_ || setup_flags.has_dpas)
+            elf_generator_t::requireDPAS();
+        if (setup_flags.has_send_atomics)
             elf_generator_t::requireGlobalAtomics();
 
         for (int i = 0; i < base::kernel_iface().nargs(); i++) {

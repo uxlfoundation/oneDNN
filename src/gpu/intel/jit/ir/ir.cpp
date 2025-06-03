@@ -931,22 +931,6 @@ int get_peak_regs(
     return utils::div_up(visitor.peak_regs(), grf_size);
 }
 
-class has_send_atomics_visitor_t : public ir_visitor_t {
-public:
-    void _visit(const func_call_t &obj) override {
-        auto *send = obj.func.as_ptr<send_t>();
-        if (send && send->is_atomic()) found = true;
-    }
-
-    bool found = false;
-};
-
-bool has_send_atomics(const stmt_t &s) {
-    has_send_atomics_visitor_t visitor;
-    visitor.visit(s);
-    return visitor.found;
-}
-
 bool relation_t::implies(const relation_t &other) const {
     gpu_assert(var().is_same(other.var()));
 

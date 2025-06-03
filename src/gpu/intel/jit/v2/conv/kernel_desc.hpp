@@ -347,7 +347,7 @@ public:
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
     exec_config_t exec_cfg(const impl::engine_t *engine) const override {
-        return exec_config_t(hw_t(engine), regs, simd, true);
+        return exec_config_t(hw_t(engine), regs, simd);
     }
 
     compute::range_t local_range() const override;

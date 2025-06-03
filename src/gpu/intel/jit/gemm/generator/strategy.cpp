@@ -38,9 +38,6 @@ CommonStrategy::CommonStrategy(HW hw, int stepping) : raHW(hw), emulate(hw, step
 void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
 {
     subgroupSize = std::max(subgroupSize, GRF::bytes(hw) >> 2);
-    sipR0WA &= (hw == HW::Gen9);
-    if (sipR0WA && (moveR0 == MoveR0::None))
-        moveR0 = MoveR0::GRF;
     readSuppressionWA &= fused;
 
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
@@ -99,8 +96,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc, Tc_ext = problem.Tc_ext;
     auto Ta_real = Ta.real();
-    auto Tb_real = Tb.real();
-    auto Tc_real = Tc.real();
 
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
@@ -188,8 +183,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     // Default SIMD setting.
     if (fmaSIMD == 0) {
         fmaSIMD = std::min(32, 2 * GRF::bytes(hw) / std::max<int>({Ta.paddedSize(), Tb.paddedSize(), Tc.paddedSize()}));
-        if (hw < HW::Gen12LP && problem.isIGEMM())
-            fmaSIMD = 32;
     }
 
     slmFenceWARWA |= (hw >= HW::XeHPG);
@@ -230,8 +223,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
     // Priority: k chaining > extra C registers > r0 header storage.
     //                         64-bit emulation > r0 header storage.
-    if (hw <= HW::Gen9)
-        kChain = 1;
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
     cAccumulators &= (kChain == 1);
@@ -240,13 +231,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (moveR0 == MoveR0::Acc)
         if (cAccumulators || emulateNeedsAcc || xParallel || (kChain > 1) || barrierFreq || fuseBeta)
             moveR0 = MoveR0::None;
-
-    // Mixed mode restrictions:
-    //  - mixed hf/f is max SIMD 8 on Gen9
-    //  - mixed hf/f is not allowed on Gen12
-    //  - mixed bf/f is max SIMD 8 on ATS+
-    if ((hw == HW::Gen9) && (Tc_real == Type::f32) && (Ta_real != Type::f32 || Tb_real != Type::f32))
-        fmaSIMD = std::min(fmaSIMD, GRF::bytes(hw) >> 2);
 
     // SIMT control flow is used by jump tables, (emulated) atomics, and double masking.
     spf &= !noJumpTables;

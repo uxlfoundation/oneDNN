@@ -1001,8 +1001,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::prepare() {
     }
 }
 
-REG_GEN9_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_gen9>>);
-REG_GEN11_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_gen11>>);
 REG_XELP_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_lp>>);
 REG_XEHP_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hp>>);
 REG_XEHPG_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hpg>>);
@@ -1010,8 +1008,6 @@ REG_XEHPC_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe_hpc>>);
 REG_XE2_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe2>>);
 REG_XE3_ISA(template struct eltwise_injector_f32_t<generator_t<gpu_xe3>>);
 
-REG_GEN9_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_gen9>>);
-REG_GEN11_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_gen11>>);
 REG_XELP_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_lp>>);
 REG_XEHP_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_hp>>);
 REG_XEHPG_ISA(template struct eltwise_injector_f32_t<ir_kernel_t<gpu_xe_hpg>>);

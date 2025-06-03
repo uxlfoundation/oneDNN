@@ -260,7 +260,14 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     CHECK(attr_scales_ok());
     CHECK(attr_zero_points_ok({{DNNL_ARG_SRC, {0, 2}}, {DNNL_ARG_DST, {0}}}));
 
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
     const auto &zp = attr()->zero_points_;
+
+    VDISPATCH_CONV(zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_DST),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
 

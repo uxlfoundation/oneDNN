@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_OCL_GEMM_MATMUL_HPP
 #define GPU_INTEL_OCL_GEMM_MATMUL_HPP
 
+#include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
@@ -95,10 +96,19 @@ struct gemm_matmul_t : public gpu_primitive_t {
                           return status::success;
                       };
             if (!attr()->zero_points_.has_default_values()) {
+                const auto &zp = attr()->zero_points_;
+                CHECK((zp.has_default_values(
+                              DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_DST))
+                                ? status::success
+                                : status::unimplemented);
                 CHECK(map_gemm_zp(
                         DNNL_ARG_SRC, DNNL_ARG_B, false, orig_dims - 2));
                 CHECK(map_gemm_zp(
                         DNNL_ARG_WEIGHTS, DNNL_ARG_A, false, orig_dims - 2));
+                CHECK(map_gemm_zp(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC,
+                        DNNL_ARG_B, false, orig_dims - 2));
+                CHECK(map_gemm_zp(DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_WEIGHTS,
+                        DNNL_ARG_A, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_DST, DNNL_ARG_C));
             }
 

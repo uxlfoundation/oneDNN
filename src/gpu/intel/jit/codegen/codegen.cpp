@@ -458,7 +458,7 @@ private:
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
             mod = mod | attr.as<instruction_modifier_attr_t>().mod;
-        host_->barriermsg(mod, host_->signal_header_);
+        host_->barriermsg(mod, host_->signal_header());
     }
 
     void barrier_wait() { host_->barrierwait(); }
@@ -483,7 +483,7 @@ private:
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
-        host_->barriermsg(mod, host_->signal_header_);
+        host_->barriermsg(mod, host_->signal_header());
         host_->barrierwait();
     }
 
@@ -1612,6 +1612,31 @@ private:
 
     object_eq_map_t<expr_t, type_t> int_up_converts_;
 };
+
+class setup_visitor_t : public ir_visitor_t {
+public:
+    void _visit(const func_call_t &obj) override {
+        auto &func = obj.func;
+        auto *dpas = func.as_ptr<dpas_t>();
+        auto *send = func.as_ptr<send_t>();
+        if (dpas)
+            flags.has_dpas = true;
+        else if (send && send->is_atomic())
+            flags.has_send_atomics = true;
+        else if (func.is_same(funcs::signal_func()))
+            flags.has_signal_header = true;
+        else if (func.is_same(funcs::barrier_func()))
+            flags.has_signal_header = true;
+    }
+
+    setup_flags_t flags = {};
+};
+
+setup_flags_t get_setup_flags(const stmt_t &s) {
+    setup_visitor_t visitor;
+    visitor.visit(s);
+    return visitor.flags;
+}
 
 template <typename ngen_generator_t>
 void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,

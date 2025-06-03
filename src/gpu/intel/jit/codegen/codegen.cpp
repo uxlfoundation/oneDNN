@@ -458,7 +458,7 @@ private:
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
             mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
-        host_->barriermsg(mod, host_->signal_header_);
+        host_->barriermsg(mod, host_->signal_header());
     }
 
     void barrier_wait() { host_->barrierwait(); }
@@ -483,7 +483,7 @@ private:
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
-        host_->barriermsg(mod, host_->signal_header_);
+        host_->barriermsg(mod, host_->signal_header());
         host_->barrierwait();
     }
 

@@ -58,7 +58,6 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
         r2_ctime[key].append(float(ctime))
 
     failed_tests = []
-    times = {}
     for prb in r1_exec:
         if prb not in r2_exec:
             warnings.warn(f"{prb} exists in {file1} but not {file2}")
@@ -68,42 +67,38 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
         ctime1 = r1_ctime[prb]
         ctime2 = r2_ctime[prb]
         res = ttest_ind(exec2, exec1, alternative="greater")
+        ctime_test = ttest_ind(ctime2, ctime1, alternative="greater")
         r1_med_exec = statistics.median(exec1)
         r2_med_exec = statistics.median(exec2)
         r1_med_ctime = statistics.median(ctime1)
         r2_med_ctime = statistics.median(ctime2)
 
-        if r1_med_exec == 0 or min(exec1) == 0:
+        if 0 in [r1_med_exec, min(exec1), r1_med_ctime, min(ctime1)]:
             warnings.warn(
-                f"Avoiding division by 0. Median is {r1_med_exec} and min is {min(exec1)} for {prb}"
+                f"Avoiding division by 0 for {prb}. "
+                f"Exec median: {r1_med_exec}, min: {min(exec1)}; "
+                f"Ctime median: {r1_med_ctime}, min: {min(ctime1)}"
             )
             continue
 
-        if r1_med_ctime == 0 or min(ctime1) == 0:
-            warnings.warn(
-                f"Avoiding division by 0. Creation median is {r1_med_ctime} and min is {min(ctime1)} for {prb}"
-            )
-            continue
-
-        # A test fails if either:
-        # - Execution time shows statistically significant regression (t-test p ≤ 0.05 and ≥ 10% slowdown in median and min value)
-        # - Creation time shows ≥ 10% slowdown in median and min value
-        exec_regressed = not (
-            res.pvalue > 0.05
-            or (
-                (r2_med_exec - r1_med_exec) / r1_med_exec < 0.1
-                and (min(exec2) - min(exec1)) / min(exec1) < 0.1
-            )
+        # A test fails if either execution time or creation time:
+        # - shows a statistically significant regression and
+        # - shows ≥ 10% slowdown in both median or min times
+        exec_regressed = res.pvalue <= 0.05 and (
+            (r2_med_exec - r1_med_exec) / r1_med_exec >= 0.1
+            or (min(exec2) - min(exec1)) / min(exec1) >= 0.1
         )
-        ctime_regressed = not (
-            (r2_med_ctime - r1_med_ctime) / r1_med_ctime < 0.1
-            and (min(ctime2) - min(ctime1)) / min(ctime1) < 0.1
+        ctime_regressed = ctime_test.pvalue <= 0.05 and (
+            (r2_med_ctime - r1_med_ctime) / r1_med_ctime >= 0.1
+            or (min(ctime2) - min(ctime1)) / min(ctime1) >= 0.1
         )
 
         if exec_regressed or ctime_regressed:
             failed_tests.append(
-                f"{prb} exec: {r1_med_exec:.4f} → {r2_med_exec:.4f}, "
-                f"ctime: {r1_med_ctime:.5f} → {r2_med_ctime:.5f}"
+                f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
+                f"(p={res.pvalue:.3g}), "
+                f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
+                f"(p={ctime_test.pvalue:.3g})"
             )
 
     if "GITHUB_OUTPUT" in os.environ:

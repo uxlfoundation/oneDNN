@@ -19,7 +19,6 @@ name: "Performance AArch64"
 
 on:
   workflow_dispatch:
-  workflow_call:
     inputs:
       onednn_base_hash:
         required: false
@@ -45,6 +44,8 @@ on:
         required: false
         type: string
         description: 'benchdnn command to run'
+        
+  workflow_call:
       
 
 #* Stop stale workflows

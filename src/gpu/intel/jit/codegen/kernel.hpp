@@ -236,12 +236,6 @@ public:
         }
         // Enable IEEE f32 -> s32 rounding and f64/f32/f16 denormals.
         or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
-
-        // Allocate and initialize signal header for future use.
-        if (exec_cfg_.require_signal_header()) {
-            signal_header_ = ra_.alloc();
-            ngen_generator_t::barrierheader(signal_header_);
-        }
     }
 
     void bind_external_vars(
@@ -428,6 +422,11 @@ public:
     void pad_kernel() {
         for (int rep = 0; rep < 8; rep++)
             nop();
+    }
+
+    const ngen::GRF &signal_header() {
+        if (signal_header_.isInvalid()) { signal_header_ = ra_.alloc(); }
+        return signal_header_;
     }
 
     void emov(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,

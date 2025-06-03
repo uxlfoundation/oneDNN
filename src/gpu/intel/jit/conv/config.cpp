@@ -1199,7 +1199,6 @@ status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
     cfg.set_exec_cfg(exec_config_t(hw));
     cfg.maybe_override_from_env();
 
-    cfg.set_require_signal_header(true);
     CHECK(init_fma_kind(cfg, pd, engine));
     CHECK(init_simd(cfg));
     CHECK(init_vec_size(cfg));

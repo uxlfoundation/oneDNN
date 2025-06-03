@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,6 +13,28 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+/// @example sycl_interop_usm.cpp
+///
+/// @page sycl_interop_usm_cpp SYCL USM example
+///
+/// This C++ API example demonstrates programming for Intel(R) Processor
+/// Graphics with SYCL extensions API in oneDNN.
+/// The workflow includes following steps:
+///   - Create a GPU or CPU engine. It uses DPC++ as the runtime in this sample.
+///   - Create a memory descriptor/object.
+///   - Create a SYCL kernel for data initialization.
+///   - Access a SYCL USM pointer via SYCL interoperability interface.
+///   - Access a SYCL queue via SYCL interoperability interface.
+///   - Execute a SYCL kernel with related SYCL queue and SYCL USM pointer
+///   - Create operation descriptor/operation primitives descriptor/primitive.
+///   - Execute the primitive with the initialized memory.
+///   - Validate the result.
+///
+/// For a detailed walkthrough refer to the @ref sycl_interop_buffer_cpp
+/// example that utilizes SYCL buffers.
+///
+/// @include sycl_interop_usm.cpp
 
 #include "example_utils.hpp"
 #include "oneapi/dnnl/dnnl.hpp"

@@ -277,7 +277,7 @@ void BLASKernelGenerator<hw>::gemmFusedBetaNotifyCompletion(const GEMMProblem &p
     useTempAndR0(state, [&](GRF temp, GRF r0_info) {
         if (strategy.altFusedBeta)
             globalMemFence(temp, r0_info, strategy);
-        else if (hw >= HW::Gen11)
+        else
             slmfence(temp, r0_info);
 
         add(1 | sat, data.ud(0), state.fullK, -state.wgK);

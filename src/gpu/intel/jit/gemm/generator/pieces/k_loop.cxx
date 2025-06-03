@@ -178,18 +178,14 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
 
     GRF slmFenceTemp;
     auto slmFenceIssue = [&]() {
-        if (hw >= HW::Gen11) {
-            slmFenceTemp = getFenceTemp();
-            slmfence(modBarrierFence[0], slmFenceTemp, r0_info);
-            releaseFenceTemp(slmFenceTemp);
-        }
+        slmFenceTemp = getFenceTemp();
+        slmfence(modBarrierFence[0], slmFenceTemp, r0_info);
+        releaseFenceTemp(slmFenceTemp);
     };
 
     if (slmA && slmB && nbM != nbN) stub();
 
     auto kLoopBarrier = [&](bool withSLMFence, KBarrierType type) {
-        withSLMFence &= (hw >= HW::Gen11);  // No SLM fences needed on Gen9.
-
         if (withSLMFence && type == KBarrierType::Wait) {
             auto temp = getFenceTemp();
             slmfence(modBarrierFence[0], temp, r0_info);
@@ -593,9 +589,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
                   | checkOptional();
 
     if (strategy.stallAfterLoad) ls.schedule(reqStall, [&](Iteration h) {
-        if (hw < HW::Gen12LP)
-            mov<uint32_t>(1 | Switch, null, 0);
-        else if (Tc.isInteger()) {
+        if (Tc.isInteger()) {
             mov<float>(1, null, 0.0f);
             sync.nop(SWSB<float>(1));
         } else {
@@ -1383,7 +1377,7 @@ void BLASKernelGenerator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMM
             kLoopBarrier(false, KBarrierType::Signal);
         if (hw == HW::Gen12LP)
             sync.nop(SWSB(1));
-        else if (hw >= HW::Gen12LP)
+        else if (hw > HW::Gen12LP)
             sync.nop(SWSB(Pipe::A, 1));
         jmpi(1 | state.flagAP, strategy.prefetchABL3 ? lNextTilePFL3 : lBottom);
         mark(lTop);

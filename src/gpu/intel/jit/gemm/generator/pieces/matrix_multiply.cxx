@@ -42,8 +42,6 @@ void BLASKernelGenerator<hw>::outerProduct(int h, int ha, int hb, int opCount, b
         innerProductFMA(h, ha, hb, opCount, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
     else if (strategy.systolic)
         outerProductSystolic(h, ha, hb, opCount, rem, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
-    else if (hw < HW::Gen12LP && problem.isIGEMM())
-        outerProductGen9IGEMM(ha, hb, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
     else
         outerProductFMA(h, ha, hb, opCount, A_layout, B_layout, A_regs, B_regs, problem, strategy, state);
 }
@@ -57,7 +55,7 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
 
     bool mixedMode = ((Tc.real() == Type::f32) && (Ta.real() != Type::f32 || Tb.real() != Type::f32));
-    bool useDP4A = (hw >= HW::Gen12LP && problem.isIGEMM());
+    bool useDP4A = problem.isIGEMM();
     bool atomicFMA = strategy.atomicFMA;
     bool noAccSBSet = strategy.extendedAtomicFMA && (hw >= HW::XeHPC);
 
@@ -76,8 +74,6 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
 
     bool csplit = false, mixedRC = false;
     int icompCount = 1, ocompCount = 1, ivcompCount = 1, ovcompCount = 1;
-
-    bool bfloat16WA = (Tc.real() == Type::f32) && ((globalCM ? Tb : Ta).real() == Type::bf16);
 
     // Emit an FMA instruction.
     auto outputFMA = [&](InstructionModifier mod, const Subregister &A, const Subregister &B, const Subregister &C, const RegData &bcastSrc, bool colMajor, int hh, bool ivfirst, bool ivlast) {
@@ -102,9 +98,8 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
             colMajor           ? mac(mod, C(1), A(1), bcastSrc)
                                : mac(mod, C(1), bcastSrc, B(1));
         } else {
-            // On Gen12, always put broadcast in src2 for better bank conflict avoidance.
+            // Always put broadcast in src2 for better bank conflict avoidance.
             colMajor           ? mad(mod, Cdst(1), Csrc(1), A(1), bcastSrc) :
-            (hw < HW::Gen12LP) ? mad(mod, Cdst(1), Csrc(1), bcastSrc, B(1)) :
                                  mad(mod, Cdst(1), Csrc(1), B(1), bcastSrc);
         }
         if (thisNoAccSBSet)
@@ -131,7 +126,7 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
     //   y = non-vectorized dimension
     int nx = globalCM ? strategy.unroll[LoopM] : strategy.unroll[LoopN];
     int ny = globalCM ? strategy.unroll[LoopN] : strategy.unroll[LoopM];
-    int nx1 = (mixedMode || state.broadcast) ? nx : fmaSIMD;
+    int nx1 = (mixedMode) ? nx : fmaSIMD;
 
     // Prepare for chaining FMAs through accumulator registers.
     int necAcc = nec * (csplit ? 2 : 1);
@@ -154,9 +149,6 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
                    && (nx % nx1i == 0);     /* {NoAccSBSet} requires all 8 accumulator registers to be used */
     } else
         noAccSBSet = false;
-
-    GRFRange broadcastRegs = state.broadcast_regs;
-    Subregister lastBcastBase;
 
     // Last A/B blocks found.
     const RegisterBlock *A_blockLast = nullptr, *B_blockLast = nullptr;
@@ -254,34 +246,6 @@ void BLASKernelGenerator<hw>::outerProductFMA(int h, int ha, int hb, int opCount
                     Subregister bcastSrcSub = colMajor ? B : A;
                     RegData bcastSrc = bcastSrcSub;
 
-                    if (state.broadcast) {
-
-                        // Broadcast if necessary: pair of doubles (doubleWA) or single elements.
-                        int nbcast = strategy.doubleWA ? 2 : 1;
-                        int hs = strategy.doubleWA ? 0 : nbcast;
-
-                        auto bcastType = bcastSrc.getType();
-                        Subregister bcastBase = bcastSrcSub;
-                        bcastBase.setOffset(bcastBase.getOffset() & ~(nbcast - 1));
-
-                        if (bcastBase != lastBcastBase) {
-                            auto bcastRegion = bcastBase(0, nbcast, (nbcast > 1) ? 1 : 0);
-                            if (bfloat16WA) {
-                                // Upconvert to f32 during broadcast.
-                                bcastRegion.setType(DataType::uw);
-                                shl(simdSize, broadcastRegs[0].ud(), bcastRegion, 16);
-                            } else {
-                                moveToIntPipe(simdSize, bcastRegion);
-                                mov(simdSize * bcastSrc.getBytes() / bcastRegion.getBytes(),
-                                    broadcastRegs[0].retype(bcastRegion.getType()), bcastRegion);
-                            }
-                        }
-                        if (bfloat16WA) bcastType = DataType::f;
-                        bcastSrc = broadcastRegs[0].sub(bcastSrc.getOffset() & (nbcast - 1), bcastType)(hs);
-                        lastBcastBase = bcastBase;
-
-                    }
-
                     bool ivfirst = mixedRC || (ivcomp == 0);
                     bool ivlast  = mixedRC || (ivcomp == ivcompCount - 1);
 
@@ -351,126 +315,6 @@ void BLASKernelGenerator<hw>::innerProductFMA(int h, int ha, int hb, int opCount
     } /* h0 */
     } /* x0 */
     } /* y0 */
-}
-
-// Gen9 IGEMM outer product implementation.
-template <HW hw>
-void BLASKernelGenerator<hw>::outerProductGen9IGEMM(int ha, int hb, const vector<RegisterBlock> &A_layout, const vector<RegisterBlock> &B_layout,
-                                                    const GRFMultirange &A_regs, const GRFMultirange &B_regs,
-                                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
-{
-    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
-    DataType tempType = (Ta.isSigned() || Tb.isSigned()) ? DataType::w : DataType::uw;
-
-    struct AddItem {
-        int simd;
-        RegData dest, src0, src1;
-    };
-    std::vector<AddItem> adds;
-
-    auto replayAdds = [&]() {
-        for (auto &item : adds)
-            add(item.simd, item.dest, item.src0, item.src1);
-        adds.clear();
-    };
-
-    bool globalCM = isLayoutColMajor(state.C_layout);
-
-    if (!state.Cr_layout.empty()) stub();       /* No repacking support currently */
-
-    // Decide whether to loop in column or row major order.
-    int nx = globalCM ? strategy.unroll[LoopM] : strategy.unroll[LoopN];
-    int ny = globalCM ? strategy.unroll[LoopN] : strategy.unroll[LoopM];
-
-    int tidx = 0;
-    for (int y = 0; y < ny; y++) {
-        for (int x = 0; x < nx;) {
-            auto i = globalCM ? x : y;
-            auto j = globalCM ? y : x;
-
-            int fmaCount;
-
-            // Find the appropriate A and B registers.
-            int na, nb;
-            const RegisterBlock *A_block, *B_block;
-            Subregister A = findBlockReg(Ta, A_layout, i, ha, A_regs, na, A_block);
-            Subregister B = findBlockReg(Tb, B_layout, hb, j, B_regs, nb, B_block);
-
-            // Find the appropriate C register. Todo: remainders.
-            int nc;
-            const RegisterBlock *C_block;
-            Subregister C = findBlockReg(Tc, state.C_layout, i, j, state.C_regs[0], nc, C_block);
-
-            // No C crosspack support.
-            auto cpA = A_block->crosspack, cpB = B_block->crosspack;
-            if (C_block->crosspack > 1) stub();
-
-            // Swap out C register for an accumulator, if necessary.
-            auto C_roff = C.getBase() - state.C_regs[0].ranges[0].getBase();
-            if (C_roff < state.C_accCount)
-                C = AccumulatorRegister(C_roff).sub(C.getOffset(), Tc.ngen());
-
-            // Use requested execution size if possible, but limited to available elements.
-            // Decide the kernel type based on register block layouts.
-            bool canColMajor = (A_block->colMajor && C_block->colMajor);
-            bool canRowMajor = (!B_block->colMajor && !C_block->colMajor);
-            bool colMajor;
-
-            if (!canColMajor && !canRowMajor) {
-                colMajor = true;
-                fmaCount = 1;
-            } else if (canColMajor) {
-                colMajor = true;
-                fmaCount = na;
-            } else {
-                colMajor = false;
-                fmaCount = nb;
-            }
-            fmaCount = rounddown_pow2(std::min({strategy.fmaSIMD, nc, elementsPerGRF<int16_t>(hw)}));
-
-            auto temp = state.tempMul_regs[tidx++];
-
-            if (C.isARF()) {
-                if (colMajor)
-                    mac(fmaCount, C(1), A(cpA), B(0));
-                else
-                    mac(fmaCount, C(1), A(0), B(cpB));
-            } else {
-                if (colMajor)
-                    mul(fmaCount, temp[0].sub(0, tempType)(2), A(cpA), B(0));
-                else
-                    mul(fmaCount, temp[0].sub(0, tempType)(2), A(0), B(cpB));
-
-                adds.push_back({fmaCount, C(1), C(1), temp[0].sub(0, tempType)(2)});
-            }
-
-            if (tidx >= int(state.tempMul_regs.size())) {
-                tidx = 0;
-                replayAdds();
-            }
-
-            x += fmaCount;
-        }
-    }
-
-    replayAdds();
-
-    // A4B4 outer product (4 temporary GRFs per 2 C registers) - 2/3 SP
-    //
-    // mul (32) temp0.0:w<1> A.0:b<32;16,2> B.0:b<32;16,2>   - EM
-    // mul (32) temp2.0:w<1> A.1:b<32;16,2> B.1:b<32;16,2>   - FPU
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp0.0:w<16;8,2>      - EM
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp0.1:w<16;8,2>      - FPU
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp2.0:w<16;8,2>      - EM
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp2.1:w<16;8,2>      - FPU
-
-    // Faster A4B4 outer product a la non-VNNI (4 temporary GRFs per 2 C registers) - 4/5 SP
-    //
-    // mul (32) temp0.0:w<1> A.0:b<32;16,2> B.0:b<32;16,2>   - EM
-    // mul (32) temp2.0:w<1> A.1:b<32;16,2> B.1:b<32;16,2>   - FPU
-    // add (32) (sat) temp0.0:w<1> temp0.0:w<1> temp2.0:w<1> - EM/FPU
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp0.0:w<16;8,2>      - EM
-    // add (16) C.0:d<1> C.0:d<8;8,1> temp0.1:w<16;8,2>      - FPU
 }
 
 // Accumulate multiple outer products using the systolic array.

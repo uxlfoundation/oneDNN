@@ -277,8 +277,6 @@ void reduction_injector_f32_t<ngen_generator_t>::emul(ngen_generator_t &host,
     ra.release(state.temp[1]);
 }
 
-REG_GEN9_ISA(template struct reduction_injector_f32_t<generator_t<gpu_gen9>>);
-REG_GEN11_ISA(template struct reduction_injector_f32_t<generator_t<gpu_gen11>>);
 REG_XELP_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe_lp>>);
 REG_XEHP_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe_hp>>);
 REG_XEHPG_ISA(

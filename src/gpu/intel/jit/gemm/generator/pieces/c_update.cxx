@@ -104,7 +104,7 @@ bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &st
         if (!successfulConvert) stub();
     }
 
-    if (successfulConvert && ((nontrivialAlpha && (!problem.beta1() || strategy.doubleWA)) || forceScale)) {
+    if (successfulConvert && ((nontrivialAlpha && !problem.beta1()) || forceScale)) {
         gemmAlphaScale(problem, strategy, state);
     }
 
@@ -779,12 +779,7 @@ void BLASKernelGenerator<hw>::updateC(const GRFMultirange &C_acc, const GRFMulti
             else if (beta.fixed())
                 stub();                                                                     // beta should be put in a register first.
             else {
-                if (!strategy.doubleWA)
-                    FOR_EACH_C(mad(esize, acc, alpha1 ? acc : -acc, loaded, vbetar.getRegAvoiding(hw, loaded)));
-                else {
-                    FOR_EACH_C(mul(esize, loaded, loaded, vbetar.getRegAvoiding(hw, loaded)));
-                    FOR_EACH_C(add(esize, acc, loaded, alpha1 ? acc : -acc));
-                }
+                FOR_EACH_C(mad(esize, acc, alpha1 ? acc : -acc, loaded, vbetar.getRegAvoiding(hw, loaded)));
             }
         } else {
             bool neg = false;
@@ -799,12 +794,7 @@ void BLASKernelGenerator<hw>::updateC(const GRFMultirange &C_acc, const GRFMulti
             if (alpha.fixed())
                 stub();                                                                     // alpha should be put in a register first.
             else {
-                if (!strategy.doubleWA)
-                    FOR_EACH_C(mad(esize, acc, neg ? -loaded : loaded, acc, valphar.getRegAvoiding(hw, acc)));
-                else {
-                    FOR_EACH_C(mul(esize, acc, acc, valphar.getRegAvoiding(hw, acc)));
-                    FOR_EACH_C(add(esize, acc, neg ? -loaded : loaded, acc));
-                }
+                FOR_EACH_C(mad(esize, acc, neg ? -loaded : loaded, acc, valphar.getRegAvoiding(hw, acc)));
             }
         }
     } else if (alphaM1)
@@ -920,7 +910,7 @@ void BLASKernelGenerator<hw>::updateCLayout(const vector<RegisterBlock> &layoutE
         auto initOA = layoutExt[lstart].offsetAddr;
         auto lanchor = lstart;
         int tokens = 0, maxTokens = 256;
-        if (needLoad && hw >= HW::Gen12LP)
+        if (needLoad)
             maxTokens = tokenCount(hw, strategy.GRFs);
 
         for (lend = lstart; (lend < nblocks) && (tokens < maxTokens); lend++, tokens++) {
@@ -1859,8 +1849,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
         FOR_EACH_C_REV add(1, cYInc[q], -cYInc[q], uint16_t(Tc_ext.size()));
     }
 
-    if (hw >= HW::Gen12LP)
-        wrdepRanges(state.C_regs[0]);
+    wrdepRanges(state.C_regs[0]);
 
     mark(yLoop);
     mov<uint16_t>(16, ix, ix_init);
@@ -1883,8 +1872,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
     }
 
     if (!uniform) {
-        if (hw >= HW::Gen12LP)
-            subdep(Operand::src0, bases);
+        subdep(Operand::src0, bases);
         nonuniformSubs ? mov(xByteInc >> 1, a0[2](1), indirect[a0[1]].uw())
                        : shl(xByteInc,      a0[2](1), indirect[a0[1]].ub(), GRF::log2Bytes(hw));
     }
@@ -2062,7 +2050,7 @@ void BLASKernelGenerator<hw>::doAlternateCRemainder(COperation op, const GEMMPro
                   : jmpi(1 | f0[1], yLoop);
 
     // Wait for indirect moves to C registers.
-    if (op != COperation::UpdateStore && hw >= HW::Gen12LP)
+    if (op != COperation::UpdateStore)
         sync.nop(SWSB<uint32_t>(1));
 
     // Cleanup.
@@ -2102,13 +2090,6 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
     if (Told.isInt4() || Tnew.isInt4()) stub();
     if (Told == Type::hf8 || Tnew == Type::hf8) stub();
 
-    // Gen9: round to nearest before downconvert (not done by mov).
-    if (hw == HW::Gen9 && Told == Type::f32 && !Tnew.isFP()) {
-        map(hw, Told, range, range, strategy, [&](int esize, GRF r, GRF _) {
-            rnde(esize, r.f(), r.f());
-        });
-    }
-
     // Special path: f32->bf8.
     if (hw >= HW::XeHPC && Told == Type::f32 && Tnew == Type::bf8) {
         int ne = elementsPerGRF<uint32_t>(hw);
@@ -2135,7 +2116,6 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
 
     // Special path: s16->f16.
     if (Told == Type::s16 && Tnew == Type::f16) {
-        if (hw < HW::Gen11) stub();
         int ne = elementsPerGRF<uint32_t>(hw);
         for (int i = 0; i < range.getLen(); i++)
             mov(ne, range[i].hf(0)(2), range[i].w(0)(2));
@@ -2151,7 +2131,6 @@ void BLASKernelGenerator<hw>::convert(const GRFMultirange &range, Type Told, Typ
     // Special path: s16->bf16.
     if (Told == Type::s16 && Tnew == Type::bf16) {
         auto temp = state.ra.alloc_range(range.getLen());
-        if (hw < HW::Gen11) stub();
         int ne = elementsPerGRF<uint32_t>(hw);
         for (int i = 0; i < range.getLen(); i++)
             mov(ne, temp[i].f(0)(1), range[i].w(0)(2));

@@ -42,20 +42,13 @@ static bool is_impl_optimal(conv_conf_t &conf, const convolution_desc_t &cd,
     float ow_util = (float)conf.ow / conf.wino_ow;
     dim_t oh_blocks = conf.wino_oh / conf.oh_block;
     float oh_util = (float)conf.oh / conf.wino_oh;
-    dim_t oc_blocks = conf.ocb;
     float oc_util = (float)conf.oc_without_padding / conf.wino_oc;
     float ic_util = (float)conf.ic_without_padding / conf.wino_ic;
 
-    dim_t blocks = ow_blocks * oh_blocks * oc_blocks;
     float utilization = ow_util * oh_util * oc_util * ic_util;
     float score;
 
     switch (arch) {
-        case compute::gpu_arch_t::gen9:
-        case compute::gpu_arch_t::gen11:
-            score = blocks * utilization;
-            if (score >= 128 && utilization >= 0.50) return true;
-            return false;
         case compute::gpu_arch_t::xe_lp:
             // Performance is poor with large oc*ic and small spatial, this is
             // likely due to overflowing cache and no blocking on ic.
@@ -88,17 +81,10 @@ static void fwd_compute_block_sizes(
     conf.wino_r = r;
     conf.tile_size = m + r - 1;
 
-    const bool is_pre_gen12 = utils::one_of(
-            arch, compute::gpu_arch_t::gen9, compute::gpu_arch_t::gen11);
-
-    conf.vect_size = is_pre_gen12
-            ? static_cast<int>(16 / types::data_type_size(conf.src_data_type))
-            : 8;
+    conf.vect_size = 8;
     conf.oc_block = 16;
     conf.ic_block = into<int>(nstl::min<dim_t>(conf.ic, 16));
     if (conf.src_data_type == data_type::f16)
-        conf.wino_ic_block = 32;
-    else if (is_pre_gen12 && conf.ow * conf.oh <= 256)
         conf.wino_ic_block = 32;
     else if (arch >= compute::gpu_arch_t::xe_hpc)
         // XeHPC does not support subgroup size 8;

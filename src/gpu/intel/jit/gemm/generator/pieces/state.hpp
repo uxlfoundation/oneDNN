@@ -285,7 +285,6 @@ struct GEMMState : public CommonState {
     GRFMultirange Ar_offsetRegs, Br_offsetRegs;             // Repacked A/B offsets.
     GRFMultirange Ar_scaleRegs, Br_scaleRegs;               // Repacked A/B scales.
     std::vector<MaskAssignment> AB_masks, AB_masksCoop;
-    ngen::GRFRange broadcast_regs;
     std::vector<ngen::GRFRange> tempMul_regs;
     ngen::Subregister groupCountMN, groupIDMN;              // ud
     ngen::Subregister i0, j0, h0;                           // d
@@ -388,7 +387,6 @@ struct GEMMState : public CommonState {
     bool allowEmptyC = false;
     bool copyC = false;
     bool useTempC = false;
-    bool broadcast;
     bool repackA = false, repackB = false;
     bool repackARem = false, repackBRem = false;
     int ka_repack, ka_repackRem, kb_repackRem;

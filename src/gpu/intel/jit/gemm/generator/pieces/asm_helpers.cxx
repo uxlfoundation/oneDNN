@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,12 +25,7 @@ using namespace ngen;
 template <HW hw>
 void BLASKernelGenerator<hw>::goto12(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl)
 {
-    InstructionModifier mmod = mod;
-    if (hw == HW::Gen9 && !branchCtrl) {
-        if (mmod.getPredCtrl() == PredCtrl::None) stub();
-        mmod.setPredInv(!mmod.isPredInv());
-    }
-    goto_(mmod, jip, uip, branchCtrl);
+    goto_(mod, jip, uip, branchCtrl);
 }
 
 // Compare to zero.
@@ -84,10 +79,8 @@ void BLASKernelGenerator<hw>::activeThreadBarrierSignal(const GRF &temp, const G
 template <HW hw>
 void BLASKernelGenerator<hw>::slmBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
-    if (hw >= HW::Gen11) {
-        slmfence(temp, r0_info);
-        fencewait();
-    }
+    slmfence(temp, r0_info);
+    fencewait();
     activeThreadBarrier(temp, r0_info, strategy);
 }
 
@@ -114,9 +107,7 @@ void BLASKernelGenerator<hw>::globalMemBarrier(const GRF &temp, const GRF &r0_in
 template <HW hw>
 void BLASKernelGenerator<hw>::pause(const CommonStrategy &strategy)
 {
-    if (hw == HW::Gen9) for (int i = 0; i < 8; i++)
-        mov<uint32_t>(8 | Switch, null, acc0);
-    else if (hw >= HW::Gen11 && hw != HW::XeHPC)
+    if (hw != HW::XeHPC)
         mov(1 | Switch, tm0[4], strategy.pauseCycles);
     else for (int i = 0; i < (strategy.pauseCycles / 8); i++)
         mov<uint32_t>(1 | SWSB(1), null, acc0);

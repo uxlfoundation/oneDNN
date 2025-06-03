@@ -99,18 +99,7 @@ int innermost_block(const blocking_desc_t &blk) {
 bool is_alt_faster_than_ref(const memory_desc_wrapper &src_mdw,
         const memory_desc_wrapper &dst_mdw,
         const compute::device_info_t *dev_info) {
-    using namespace format_tag;
-    int ndims = src_mdw.ndims();
-    int last = ndims - 1;
-    if (!src_mdw.matches_one_of_tag(abcd, abc, ab)) { return false; }
-    // on GPUs newer than gen9 reference implementation is usually faster
-    if (dev_info->gpu_arch() != compute::gpu_arch_t::gen9) { return false; }
-    // ensure reasonable work group size
-    if (src_mdw.dims()[last] < 8) { return false; }
-    // abcd->???b reorders are faster with reference implementation
-    if (ndims == 4 && dst_mdw.blocking_desc().strides[1] == 1) { return false; }
-    if (ndims == 3 && dst_mdw.blocking_desc().strides[0] == 1) { return false; }
-    return true;
+    return false; // alt > ref is no more the case after gen9
 }
 
 bool matches_one_NxN_layout(const memory_desc_wrapper &src,
@@ -362,20 +351,9 @@ reorder_kernel_t select_kernel(const reorder_conf_t &conf,
         if (dev_info->gpu_arch() == compute::gpu_arch_t::xe_lp) {
             return reorder_kernel_t::transpose8x8;
         }
-        if (dev_info->gpu_arch() == compute::gpu_arch_t::gen9) {
-            return reorder_kernel_t::local16x16;
-        }
-        // W/A for assumed compiler bug: avoid using intel_sub_group_shuffle
-        // with SIMD16 on Gen11.
-        if (dev_info->gpu_arch() == compute::gpu_arch_t::gen11) {
-            return reorder_kernel_t::transpose8x8;
-        }
         return reorder_kernel_t::transpose16x16;
     }
     if (matches_one_NxN_layout(src_mdw, dst_mdw, 8, mask)) {
-        if (dev_info->gpu_arch() == compute::gpu_arch_t::gen9) {
-            return reorder_kernel_t::local8x8;
-        }
         return reorder_kernel_t::transpose8x8;
     }
     if (src_mdw.matches_one_of_tag(nhwc) && dst_mdw.matches_one_of_tag(nchw)
@@ -740,7 +718,6 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             vect_size = 16;
             break;
         case transpose8x8:
-        case local8x8:
             if (!may_use_sg8) { return status_t::dnnl_unimplemented; }
             conf.sub_group_size = 8;
             blocks[get_Nth_last_dim_or_block(dst_mdw).idx] = 8;
@@ -748,7 +725,6 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             vect_size = 8;
             break;
         case transpose16x16:
-        case local16x16:
             conf.sub_group_size = 16;
             blocks[get_Nth_last_dim_or_block(dst_mdw).idx] = 16;
             vect_dim = get_Nth_last_dim_or_block(src_mdw).idx;
@@ -932,16 +908,6 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
     if (conf.implementation == transpose8x8
             || conf.implementation == transpose16x16) {
         kernel_ctx.define_int("TRANSPOSE_NXN", 1);
-        kernel_ctx.define_int(
-                "DST_BLOCK_DIM", get_Nth_last_dim_or_block(src_mdw).idx);
-    }
-
-    if (conf.implementation == local8x8 || conf.implementation == local16x16) {
-        kernel_ctx.define_int("LOCAL_NXN", 1);
-        compute::nd_range_t nd_range = conf.dispatch.nd_range();
-        const auto &lws = nd_range.local_range();
-        if (!lws) return status::runtime_error;
-        kernel_ctx.define_int("SG_PER_WG", lws.nelems());
         kernel_ctx.define_int(
                 "DST_BLOCK_DIM", get_Nth_last_dim_or_block(src_mdw).idx);
     }

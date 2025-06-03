@@ -251,6 +251,8 @@ struct memory_desc_wrapper : public c_compatible {
             return rnn_packed_desc().size;
         } else if (is_cublaslt_blocked_desc()) {
             return cublaslt_blocked_desc().size;
+        } else if (is_host_side_scalar_desc()) {
+            return 1;
         } else if (is_blocking_desc()) {
             dims_t blocks = {0};
             compute_blocks(blocks);

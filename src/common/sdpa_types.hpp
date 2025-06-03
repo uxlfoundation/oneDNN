@@ -66,9 +66,10 @@ struct sdpa_desc_t : public op_desc_t {
         return utils::make_unique<sdpa_desc_t>(*this);
     }
 
-    memory_desc_t q_desc; /* queries */
-    memory_desc_t k_desc; /* keys */
-    memory_desc_t v_desc; /* values */
+    memory_desc_t q_desc;     /* queries */
+    memory_desc_t k_desc;     /* keys */
+    memory_desc_t v_desc;     /* values */
+    memory_desc_t scale_desc; /* scale */
 
     // primitive_attr_t can't be used because of deleted copy-ctor, but desc_t
     // must be copyable.

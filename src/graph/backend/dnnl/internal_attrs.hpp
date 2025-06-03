@@ -48,6 +48,17 @@ const op_attr_t keep_dst_layout = 0x1000f;
 const op_attr_t with_scale = 0x10010;
 const op_attr_t is_invert_scale = 0x10011;
 const op_attr_t mask_type = 0x10012;
+const op_attr_t with_q_scale = 0x10013;
+const op_attr_t with_q_zp = 0x10014;
+const op_attr_t with_k_scale = 0x10015;
+const op_attr_t with_k_zp = 0x10016;
+const op_attr_t with_v_scale = 0x10017;
+const op_attr_t with_v_zp = 0x10018;
+const op_attr_t with_a_scale = 0x1001a;
+const op_attr_t with_a_zp = 0x1001b;
+const op_attr_t with_o_scale = 0x1001c;
+const op_attr_t with_o_zp = 0x1001d;
+
 
 // int64_t
 const op_attr_t alg_kind = 0x10100;
@@ -57,6 +68,12 @@ const op_attr_t data_type = 0x10105;
 const op_attr_t axis_row = 0x10106;
 const op_attr_t axis_col = 0x10107;
 const op_attr_t fusion_info_keys = 0x10108; // used for sdpa
+const op_attr_t q_mask = 0x10109;
+const op_attr_t k_mask = 0x1010a;
+const op_attr_t v_mask = 0x1010b;
+const op_attr_t a_mask = 0x1010c;
+const op_attr_t o_mask = 0x1010d;
+
 
 // string
 const op_attr_t dw_type = 0x10201;
@@ -69,6 +86,8 @@ const op_attr_t p = 0x10300;
 const op_attr_t dst_zps = 0x10400;
 const op_attr_t src_zps = 0x10401;
 const op_attr_t permutation = 0x10402;
+const op_attr_t k_group_shape = 0x10403;
+const op_attr_t v_group_shape = 0x10404;
 
 static inline std::string internal_attr2str(op_attr_t attr) {
 #define CASE(a) \
@@ -93,6 +112,21 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(with_scale);
         CASE(is_invert_scale);
         CASE(mask_type);
+        CASE(with_q_scale);
+        CASE(with_q_zp);
+        CASE(with_k_scale);
+        CASE(with_k_zp);
+        CASE(with_v_scale);
+        CASE(with_v_zp);
+        CASE(with_a_scale);
+        CASE(with_a_zp);
+        CASE(with_o_scale);
+        CASE(with_o_zp);
+        CASE(q_mask);
+        CASE(k_mask);
+        CASE(v_mask);
+        CASE(a_mask);
+        CASE(o_mask);
         CASE(alg_kind);
         CASE(fusion_info_key);
         CASE(axis_row);
@@ -104,6 +138,8 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(dst_zps);
         CASE(src_zps);
         CASE(permutation);
+        CASE(k_group_shape);
+        CASE(v_group_shape);
         default: return "undefined_attr";
     }
 #undef CASE

@@ -1169,6 +1169,17 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_input(2, "value")
                 .set_input(3, "scale") // optional
                 .set_input(4, "mask") // optional
+                // int8 scales and zps
+                .set_input(5, "q_scale")
+                .set_input(6, "q_zp")
+                .set_input(7, "k_scale")
+                .set_input(8, "k_zp")
+                .set_input(9, "a_scale") // attention scales, de/quant after softmax
+                .set_input(10, "a_zp")
+                .set_input(11, "v_scale")
+                .set_input(12, "v_zp")
+                .set_input(13, "o_scale")
+                .set_input(14, "o_zp")
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
                 // use vector to store fusion info from mm1 and mm2
@@ -1180,6 +1191,37 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 // top-left implicit causal mask or bottm-right implicit causal mask
                 .set_attr(op_attr::mask_type, true, attribute_kind::i)
                 .set_attr(op_attr::mode, true, attribute_kind::s)
+                .set_attr(
+                        op_attr::qtype, false, attribute_kind::s, "per_tensor")
+                .set_attr(op_attr::with_q_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_q_zp, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::q_mask, false, attribute_kind::i, (int64_t)0)
+                .set_attr(op_attr::with_k_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_k_zp, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::k_mask, false, attribute_kind::i, (int64_t)0)
+                .set_attr(op_attr::k_group_shape, false, attribute_kind::is,
+                        std::vector<int64_t>())
+                .set_attr(op_attr::with_v_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_v_zp, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::v_mask, false, attribute_kind::i, (int64_t)0)
+                .set_attr(op_attr::v_group_shape, false, attribute_kind::is,
+                        std::vector<int64_t>())
+                .set_attr(op_attr::with_a_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_a_zp, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::a_mask, false, attribute_kind::i, (int64_t)0)
+                .set_attr(op_attr::with_o_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::with_o_zp, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::o_mask, false, attribute_kind::i, (int64_t)0)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
                 .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)

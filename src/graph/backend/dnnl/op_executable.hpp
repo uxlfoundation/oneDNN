@@ -1512,7 +1512,9 @@ struct bn_folding_t : public op_executable_t {
         bool with_bias_ {false};
 
     public:
-        const memory::desc &scratchpad_desc() const { return scratchpad_desc_; }
+        const memory::desc &scratchpad_desc() const {
+            return scratchpad_desc_;
+        }
     };
 
     static desc_t create_desc(std::shared_ptr<op_t> &op,
@@ -2816,21 +2818,50 @@ struct sdpa_executable_t : public op_executable_t {
         if (op->has_attr(op_attr::is_invert_scale))
             is_invert_scale_ = op->get_attr<bool>(op_attr::is_invert_scale);
         // sdpa should have 2 fusion info key from mm1 and mm2
-        if (op->has_attr(op_attr::fusion_info_keys)
-                && op->get_attr<std::vector<int64_t>>(op_attr::fusion_info_keys)
-                                .size()
-                        == 2) {
-            int64_t key_qk = op->get_attr<std::vector<int64_t>>(
-                    op_attr::fusion_info_keys)[0];
-            if (key_qk != -1) {
-                qk_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_qk));
-            }
-            int64_t key_vs = op->get_attr<std::vector<int64_t>>(
-                    op_attr::fusion_info_keys)[1];
-            if (key_vs != -1) {
-                vs_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_vs));
-            }
+        if (op->has_attr(op_attr::with_k_scale)
+                && op->get_attr<bool>(op_attr::with_k_scale)) {
+            qk_attr.set_scales(DNNL_ARG_WEIGHTS,
+                    op->get_attr<int64_t>(op_attr::k_mask),
+                    op->get_attr<std::vector<int64_t>>(op_attr::k_group_shape),
+                    dnnl::memory::data_type::f16);
         }
+        if (op->has_attr(op_attr::with_k_zp)
+                && op->get_attr<bool>(op_attr::with_k_zp)) {
+            qk_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+                    op->get_attr<int64_t>(op_attr::k_mask),
+                    op->get_attr<std::vector<int64_t>>(op_attr::k_group_shape),
+                    dnnl::memory::data_type::s8);
+        }
+        if (op->has_attr(op_attr::with_v_scale)
+                && op->get_attr<bool>(op_attr::with_v_scale)) {
+            vs_attr.set_scales(DNNL_ARG_WEIGHTS,
+                    op->get_attr<int64_t>(op_attr::v_mask),
+                    op->get_attr<std::vector<int64_t>>(op_attr::k_group_shape),
+                    dnnl::memory::data_type::f16);
+        }
+        if (op->has_attr(op_attr::with_v_zp)
+                && op->get_attr<bool>(op_attr::with_v_zp)) {
+            vs_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+                    op->get_attr<int64_t>(op_attr::v_mask),
+                    op->get_attr<std::vector<int64_t>>(op_attr::v_group_shape),
+                    dnnl::memory::data_type::s8);
+        }
+
+        // if (op->has_attr(op_attr::fusion_info_keys)
+        //         && op->get_attr<std::vector<int64_t>>(op_attr::fusion_info_keys)
+        //                         .size()
+        //                 == 2) {
+        //     int64_t key_qk = op->get_attr<std::vector<int64_t>>(
+        //             op_attr::fusion_info_keys)[0];
+        //     if (key_qk != -1) {
+        //         qk_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_qk));
+        //     }
+        //     int64_t key_vs = op->get_attr<std::vector<int64_t>>(
+        //             op_attr::fusion_info_keys)[1];
+        //     if (key_vs != -1) {
+        //         vs_attr = make_dnnl_primitive_attr(op, mgr.get_info(key_vs));
+        //     }
+        // }
 
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];

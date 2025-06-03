@@ -4426,6 +4426,124 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
+    auto &mgr = sg->fusion_info_mgr_;
+    // First matmul
+    const auto & mm1 = candidates[0];
+    if (mm1->has_attr(op_attr::fusion_info_key)
+                && mm1->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
+        const auto key = mm1->get_attr<int64_t>(op_attr::fusion_info_key);
+        const fusion_info_t &fusion_info = mgr.get_info(key);
+        if(!fusion_info.input_scales_.empty()) {
+            for (const auto &in_scales : fusion_info.input_scales_) {
+                size_t in_scales_indices = in_scales.first;
+                const op_t *in_scales_op = in_scales.second->get_op();
+                int mask = 0;
+                std::vector<int64_t> groups;
+                if (in_scales_op->has_attr(op_attr::qtype)) {
+                    std::string qtype
+                            = in_scales_op->get_attr<std::string>(op_attr::qtype);
+                    sdpa_op->set_attr(op_attr::qtype, qtype);
+                    if (qtype == "per_tensor") {
+                        mask = 0;
+                    } else if (qtype == "per_channel") { // per-channel quantization
+                        int64_t axis = in_scales_op->has_attr(op_attr::axis)
+                                ? in_scales_op->get_attr<int64_t>(op_attr::axis)
+                                : 1;
+                        mask = 1 << axis;
+                    } else {
+                        if (in_scales_indices != 1)
+                            continue;
+                        const auto &group_shape
+                                = in_scales_op->get_attr<std::vector<int64_t>>(
+                                        op_attr::group_shape);
+                        // Currently oneDNN only supports grouped scales and zps on
+                        // last two dimensions.
+                        groups = std::vector<int64_t>(
+                                group_shape.end() - 2, group_shape.end());
+                        mask = (1 << group_shape.size()) - 1;
+                    }
+                }
+                if(in_scales_indices == 0) {
+                    sdpa_op->set_attr(op_attr::with_q_scale, true);
+                    sdpa_op->set_attr(op_attr::q_mask, (int64_t)mask);
+                } else if(in_scales_indices == 1) {
+                    sdpa_op->set_attr(op_attr::with_k_scale, true);
+                    sdpa_op->set_attr(op_attr::k_mask, (int64_t)mask);
+                    sdpa_op->set_attr(op_attr::k_group_shape, groups);
+                }
+            }
+        }
+
+        if (!fusion_info.input_zps_.empty()) {
+            for (const auto &in_zps : fusion_info.input_zps_) {
+                size_t in_zps_indices = in_zps.first;
+                if(in_zps_indices == 0) {
+                    sdpa_op->set_attr(op_attr::with_q_zp, true);
+                } else if(in_zps_indices == 1) {
+                    sdpa_op->set_attr(op_attr::with_k_zp, true);
+                }
+            }
+        }
+    }
+
+    const auto & mm2 = candidates.back();
+    if (mm2->has_attr(op_attr::fusion_info_key)
+                && mm2->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
+        const auto key = mm2->get_attr<int64_t>(op_attr::fusion_info_key);
+        const fusion_info_t &fusion_info = mgr.get_info(key);
+        if(!fusion_info.input_scales_.empty()) {
+            for (const auto &in_scales : fusion_info.input_scales_) {
+                size_t in_scales_indices = in_scales.first;
+                const op_t *in_scales_op = in_scales.second->get_op();
+                int mask = 0;
+                std::vector<int64_t> groups;
+                if (in_scales_op->has_attr(op_attr::qtype)) {
+                    std::string qtype
+                            = in_scales_op->get_attr<std::string>(op_attr::qtype);
+                    sdpa_op->set_attr(op_attr::qtype, qtype);
+                    if (qtype == "per_tensor") {
+                        mask = 0;
+                    } else if (qtype == "per_channel") { // per-channel quantization
+                        int64_t axis = in_scales_op->has_attr(op_attr::axis)
+                                ? in_scales_op->get_attr<int64_t>(op_attr::axis)
+                                : 1;
+                        mask = 1 << axis;
+                    } else {
+                        if (in_scales_indices != 1)
+                            continue;
+                        const auto &group_shape
+                                = in_scales_op->get_attr<std::vector<int64_t>>(
+                                        op_attr::group_shape);
+                        // Currently oneDNN only supports grouped scales and zps on
+                        // last two dimensions.
+                        groups = std::vector<int64_t>(
+                                group_shape.end() - 2, group_shape.end());
+                        mask = (1 << group_shape.size()) - 1;
+                    }
+                }
+                if(in_scales_indices == 0) {
+                    std::cout<<"--------error scale indices--------"<<std::endl;
+                } else if(in_scales_indices == 1) {
+                    sdpa_op->set_attr(op_attr::with_v_scale, true);
+                    sdpa_op->set_attr(op_attr::v_mask, (int64_t)mask);
+                    sdpa_op->set_attr(op_attr::v_group_shape, groups);
+                }
+            }
+        }
+
+        if (!fusion_info.input_zps_.empty()) {
+            for (const auto &in_zps : fusion_info.input_zps_) {
+                size_t in_zps_indices = in_zps.first;
+                if(in_zps_indices == 0) {
+                    std::cout<<"--------error zp indices-----------"<<std::endl;
+                } else if(in_zps_indices == 1) {
+                    sdpa_op->set_attr(op_attr::with_v_zp, true);
+                }
+            }
+        }
+    }
+    
+
     std::vector<int64_t> keys;
     for (const auto &matmul : {candidates[0], candidates.back()}) {
         int64_t key = -1;

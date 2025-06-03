@@ -259,7 +259,6 @@ public:
         }
     }
 
-private:
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_zps_;
     std::shared_ptr<meta_op_t> output_zps_;
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_scales_;

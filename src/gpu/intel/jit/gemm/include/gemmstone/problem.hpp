@@ -306,7 +306,7 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
         if (Ta.isF4()) Ta = Type::f16;
         if (Tb.isF4()) Tb = Type::f16;
 
-    if (hw > HW::Gen9 && !systolicAvailable && Tc == Type::f32) {
+    if (!systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;
         if (Tb == Type::f16) Tb = Type::f32;
     }
@@ -314,11 +314,6 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     if (hw < HW::XeHP || (hw > HW::XeHP && !systolicAvailable)) {
         if (Ta == Type::bf16) Ta = Type::f32;
         if (Tb == Type::bf16) Tb = Type::f32;
-    }
-
-    if (hw == HW::Gen11) {
-        if (one_of(Ta, Type::s8, Type::u8)) Ta = Type::s16;
-        if (one_of(Tb, Type::s8, Type::u8)) Tb = Type::s16;
     }
 }
 

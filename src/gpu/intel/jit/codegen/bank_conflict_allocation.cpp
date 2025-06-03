@@ -58,7 +58,7 @@ struct hw_context_t {
                 // Ensure bank/bundle pattern is repeated.
                 int j = (i % 64);
                 gpu_assert((bank_masks[bank] & (1ull << j)) != 0);
-                //XeLP and Gen9 only have two bundles
+                // XeLP only has two bundles
                 if (hw > ngen::HW::XeLP)
                     gpu_assert((bundle_masks[bundle] & (1ull << j)) != 0);
             }
@@ -77,9 +77,6 @@ struct hw_context_t {
 
     int hw_simd() const {
         switch (hw) {
-            case ngen::HW::Gen9:
-            case ngen::HW::Gen10:
-            case ngen::HW::Gen11:
             case ngen::HW::XeLP:
             case ngen::HW::XeHP:
             case ngen::HW::XeHPG: return 8;

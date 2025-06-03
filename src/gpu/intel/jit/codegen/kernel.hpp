@@ -67,8 +67,6 @@ struct ir_generator_t : public generator_base_t {
             auto *device_info = engine->device_info();
             auto hw = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
             switch (hw) {
-                REG_GEN9_ISA(CASE(Gen9));
-                REG_GEN11_ISA(CASE(Gen11));
                 REG_XELP_ISA(CASE(XeLP));
                 REG_XEHP_ISA(CASE(XeHP));
                 REG_XEHPG_ISA(CASE(XeHPG));
@@ -586,10 +584,6 @@ public:
             align_src_dst_offset(this, scope, mod, dst, src2);
             mad(mod, dst.reg_data(), fixup_ternary_rgn(src0.reg_data()),
                     fixup_ternary_rgn(src1.reg_data()), src2.reg_data());
-        } else if (getHardware() < ngen::HW::XeLP) {
-            align_src_dst_offset(this, scope, mod, dst, src0);
-            mul(mod, dst.reg_data(), src1.reg_data(), src2.immediate());
-            add(mod, dst.reg_data(), dst.reg_data(), src0.reg_data());
         } else if (src0.is_immediate()
                 && (ngen_is_dw(src0.type())
                         || src0.type() == ngen::DataType::uw)) {

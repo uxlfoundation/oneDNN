@@ -63,7 +63,7 @@ static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, 
     }
     if (strategy.dotVL)
         return strategy.dotVL;
-    if (hw >= ngen::HW::Gen12LP && problem.isIGEMM())
+    if (problem.isIGEMM())
         return 4;
     return 1;
 }

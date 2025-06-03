@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,29 +34,9 @@ Bundle BLASKernelGenerator<hw>::getHint(HintType type)
     switch (type) {
         case HintType::Bank0: return Bundle(0, Bundle::any);
         case HintType::Bank1: return Bundle(1, Bundle::any);
+        case HintType::LongTerm0: return Bundle(0, Bundle::any);
+        case HintType::LongTerm1: return Bundle(1, Bundle::any);
         default:              break;
-    }
-
-    switch (hw) {
-        case HW::Gen9:
-        case HW::Gen10:
-        case HW::Gen11:
-            switch (type) {
-                case HintType::TempComp0: return Bundle(0, 1);
-                case HintType::TempComp1: return Bundle(1, 1);
-                case HintType::LongTerm:  return Bundle(Bundle::any, 0);
-                case HintType::LongTerm0: return Bundle(0, 0);
-                case HintType::LongTerm1: return Bundle(1, 0);
-                default:                  break;
-            }
-            break;
-        default:
-            switch (type) {
-                case HintType::LongTerm0: return Bundle(0, Bundle::any);
-                case HintType::LongTerm1: return Bundle(1, Bundle::any);
-                default:                  break;
-            }
-            break;
     }
 
     return Bundle();
@@ -72,149 +52,93 @@ Bundle BLASKernelGenerator<hw>::getHint(HintType type, const CommonStrategy &str
 template <HW hw>
 Bundle BLASKernelGenerator<hw>::getHint(HintType type, const GEMMStrategy &strategy)
 {
-    switch (hw) {
-        case HW::Gen9:
-        case HW::Gen10:
-        case HW::Gen11:
-            switch (strategy.registerScheme) {
-                case GEMMStrategy::CSeparate:
-                    switch (type) {
-                        case HintType::A0Broadcast:
-                        case HintType::A0:          return Bundle(1, 0);
-                        case HintType::A1Broadcast:
-                        case HintType::A1:          return Bundle(0, 0);
-                        case HintType::B0Broadcast:
-                        case HintType::B0:          return Bundle(0, 0);
-                        case HintType::B1Broadcast:
-                        case HintType::B1:          return Bundle(1, 0);
-                        case HintType::C:           return Bundle(0, 1);
-                        case HintType::CLoad:       return Bundle(1, 0);
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::ACB:
-                    switch (type) {
-                        case HintType::A0Broadcast:
-                        case HintType::A0:          return Bundle(1, 0);
-                        case HintType::A1Broadcast:
-                        case HintType::A1:          return Bundle(0, 0);
-                        case HintType::B0Broadcast:
-                        case HintType::B0:          return Bundle(0, 1);
-                        case HintType::B1Broadcast:
-                        case HintType::B1:          return Bundle(1, 1);
-                        case HintType::C:           return Bundle(0, 0);
-                        case HintType::CLoad:       return Bundle();
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::BCA:
-                    switch (type) {
-                        case HintType::A0Broadcast:
-                        case HintType::A0:          return Bundle(0, 1);
-                        case HintType::A1Broadcast:
-                        case HintType::A1:          return Bundle(1, 1);
-                        case HintType::B0Broadcast:
-                        case HintType::B0:          return Bundle(1, 0);
-                        case HintType::B1Broadcast:
-                        case HintType::B1:          return Bundle(0, 0);
-                        case HintType::C:           return Bundle(0, 0);
-                        case HintType::CLoad:       return Bundle();
-                        default:                    break;
-                    }
-                    break;
-                default: break;
+    switch (strategy.registerScheme) {
+        case GEMMStrategy::CSeparate:
+            switch (type) {
+                case HintType::A0Broadcast:
+                case HintType::A0:          return Bundle(1, Bundle::any);
+                case HintType::A1Broadcast:
+                case HintType::A1:          return Bundle(0, Bundle::any);
+                case HintType::B0Broadcast:
+                case HintType::B0:          return Bundle(0, Bundle::any);
+                case HintType::B1Broadcast:
+                case HintType::B1:          return Bundle(1, Bundle::any);
+                case HintType::C:           return Bundle(0, 0);
+                case HintType::CLoad:       return Bundle(1, Bundle::any);
+                default:                    break;
             }
             break;
-        default:
-            switch (strategy.registerScheme) {
-                case GEMMStrategy::CSeparate:
-                    switch (type) {
-                        case HintType::A0Broadcast:
-                        case HintType::A0:          return Bundle(1, Bundle::any);
-                        case HintType::A1Broadcast:
-                        case HintType::A1:          return Bundle(0, Bundle::any);
-                        case HintType::B0Broadcast:
-                        case HintType::B0:          return Bundle(0, Bundle::any);
-                        case HintType::B1Broadcast:
-                        case HintType::B1:          return Bundle(1, Bundle::any);
-                        case HintType::C:           return Bundle(0, 0);
-                        case HintType::CLoad:       return Bundle(1, Bundle::any);
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::ACB:
-                case GEMMStrategy::BCA:
-                    if (strategy.systolic) switch (type) {
-                        case HintType::A0:
-                        case HintType::B0:          return Bundle(0, Bundle::any);
-                        case HintType::A1:
-                        case HintType::B1:          return Bundle(1, Bundle::any);
-                        case HintType::A0Broadcast:
-                        case HintType::B0Broadcast: return Bundle(1, Bundle::any);
-                        case HintType::A1Broadcast:
-                        case HintType::B1Broadcast: return Bundle(0, Bundle::any);
-                        case HintType::C:           return Bundle(0, Bundle::any);
-                        default:                    break;
-                    }
-                    /* else fall through */
-                case GEMMStrategy::VNC:
-                    switch (type) {
-                        case HintType::A0:
-                        case HintType::B0:          return Bundle(1, Bundle::any);
-                        case HintType::A1:
-                        case HintType::B1:          return Bundle(0, Bundle::any);
-                        case HintType::A0Broadcast:
-                        case HintType::B0Broadcast: return Bundle(0, Bundle::any);
-                        case HintType::A1Broadcast:
-                        case HintType::B1Broadcast: return Bundle(1, Bundle::any);
-                        case HintType::C:           return Bundle(0, Bundle::any);
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::ABInterleave:
-                    switch (type) {
-                        case HintType::A0:
-                        case HintType::A1:
-                        case HintType::A0Broadcast:
-                        case HintType::A1Broadcast: return Bundle(1, 0);
-                        case HintType::B0:
-                        case HintType::B1:
-                        case HintType::B0Broadcast:
-                        case HintType::B1Broadcast: return Bundle(1, 4);
-                        case HintType::C:           return Bundle(0, Bundle::any);
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::NSeparate:
-                    switch (type) {
-                        case HintType::A0:
-                        case HintType::B0:          return Bundle(1, Bundle::any);
-                        case HintType::A1:
-                        case HintType::B1:          return Bundle(0, Bundle::any);
-                        case HintType::A0Broadcast:
-                        case HintType::B0Broadcast:
-                        case HintType::A1Broadcast:
-                        case HintType::B1Broadcast: return Bundle();
-                        case HintType::C:           return Bundle(0, Bundle::any);
-                        case HintType::C1:          return Bundle(1, Bundle::any);
-                        default:                    break;
-                    }
-                    break;
-                case GEMMStrategy::VAvoid:
-                    switch (type) {
-                        case HintType::A0:
-                        case HintType::B0:          return Bundle(0, Bundle::any);
-                        case HintType::A1:
-                        case HintType::B1:          return Bundle(1, Bundle::any);
-                        case HintType::A0Broadcast:
-                        case HintType::B0Broadcast:
-                        case HintType::A1Broadcast:
-                        case HintType::B1Broadcast: return Bundle(1, Bundle::any);
-                        case HintType::C:           return Bundle(0, Bundle::any);
-                        case HintType::C1:          return Bundle(1, Bundle::any);
-                        default:                    break;
-                    }
-                    break;
+        case GEMMStrategy::ACB:
+        case GEMMStrategy::BCA:
+            if (strategy.systolic) switch (type) {
+                case HintType::A0:
+                case HintType::B0:          return Bundle(0, Bundle::any);
+                case HintType::A1:
+                case HintType::B1:          return Bundle(1, Bundle::any);
+                case HintType::A0Broadcast:
+                case HintType::B0Broadcast: return Bundle(1, Bundle::any);
+                case HintType::A1Broadcast:
+                case HintType::B1Broadcast: return Bundle(0, Bundle::any);
+                case HintType::C:           return Bundle(0, Bundle::any);
+                default:                    break;
+            }
+            /* else fall through */
+        case GEMMStrategy::VNC:
+            switch (type) {
+                case HintType::A0:
+                case HintType::B0:          return Bundle(1, Bundle::any);
+                case HintType::A1:
+                case HintType::B1:          return Bundle(0, Bundle::any);
+                case HintType::A0Broadcast:
+                case HintType::B0Broadcast: return Bundle(0, Bundle::any);
+                case HintType::A1Broadcast:
+                case HintType::B1Broadcast: return Bundle(1, Bundle::any);
+                case HintType::C:           return Bundle(0, Bundle::any);
+                default:                    break;
+            }
+            break;
+        case GEMMStrategy::ABInterleave:
+            switch (type) {
+                case HintType::A0:
+                case HintType::A1:
+                case HintType::A0Broadcast:
+                case HintType::A1Broadcast: return Bundle(1, 0);
+                case HintType::B0:
+                case HintType::B1:
+                case HintType::B0Broadcast:
+                case HintType::B1Broadcast: return Bundle(1, 4);
+                case HintType::C:           return Bundle(0, Bundle::any);
+                default:                    break;
+            }
+            break;
+        case GEMMStrategy::NSeparate:
+            switch (type) {
+                case HintType::A0:
+                case HintType::B0:          return Bundle(1, Bundle::any);
+                case HintType::A1:
+                case HintType::B1:          return Bundle(0, Bundle::any);
+                case HintType::A0Broadcast:
+                case HintType::B0Broadcast:
+                case HintType::A1Broadcast:
+                case HintType::B1Broadcast: return Bundle();
+                case HintType::C:           return Bundle(0, Bundle::any);
+                case HintType::C1:          return Bundle(1, Bundle::any);
+                default:                    break;
+            }
+            break;
+        case GEMMStrategy::VAvoid:
+            switch (type) {
+                case HintType::A0:
+                case HintType::B0:          return Bundle(0, Bundle::any);
+                case HintType::A1:
+                case HintType::B1:          return Bundle(1, Bundle::any);
+                case HintType::A0Broadcast:
+                case HintType::B0Broadcast:
+                case HintType::A1Broadcast:
+                case HintType::B1Broadcast: return Bundle(1, Bundle::any);
+                case HintType::C:           return Bundle(0, Bundle::any);
+                case HintType::C1:          return Bundle(1, Bundle::any);
+                default:                    break;
             }
             break;
     }
@@ -315,8 +239,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                 if (getHint(hintA0, strategy).bank_id == bank) {
                     for (int copy = 0; copy < A_copies; copy++)
                         state.A_regs[copy] = state.ra.alloc_range(A_regCount, getHint(hintA0, strategy));
-                    if (state.broadcast && !globalCM)
-                        state.broadcast_regs = state.ra.alloc_range(2, getHint(hintA0, strategy));
                     if (Ar_regCount > 0)
                         state.Ar_regs = state.ra.alloc_range(Ar_regCount, getHint(hintA0, strategy));
                 }
@@ -324,8 +246,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                 if (getHint(hintB0, strategy).bank_id == bank) {
                     for (int copy = 0; copy < B_copies; copy++)
                         state.B_regs[copy] = state.ra.alloc_range(B_regCount, getHint(hintB0, strategy));
-                    if (state.broadcast && globalCM)
-                        state.broadcast_regs = state.ra.alloc_range(2, getHint(hintB0, strategy));
                     if (Br_regCount > 0)
                         state.Br_regs = state.ra.alloc_range(Br_regCount, getHint(hintB0, strategy));
                 }
@@ -335,9 +255,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
             break;
         }
         case GEMMStrategy::ACB:
-            if (state.broadcast && !globalCM)
-                state.broadcast_regs = state.ra.alloc_range(2, getHint(hintA0, strategy));
-
             for (int copy = 0; copy < A_copies; copy++)
                 state.A_regs[copy] = state.ra.alloc_range(A_regCount, getHint(hintA0, strategy));
             if (Ar_regCount > 0)
@@ -349,14 +266,8 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                 state.B_regs[copy] = state.ra.alloc_range(B_regCount, getHint(hintB0, strategy));
             if (Br_regCount > 0)
                 state.Br_regs = state.ra.alloc_range(Br_regCount, getHint(hintB0, strategy));
-
-            if (state.broadcast && globalCM)
-                state.broadcast_regs = state.ra.alloc_range(2, getHint(hintB0, strategy));
             break;
         case GEMMStrategy::BCA:
-            if (state.broadcast && !globalCM)
-                state.broadcast_regs = state.ra.alloc_range(2, getHint(hintA0, strategy));
-
             for (int copy = 0; copy < B_copies; copy++)
                 state.B_regs[copy] = state.ra.alloc_range(B_regCount, getHint(hintB0, strategy));
             if (Br_regCount > 0)
@@ -368,14 +279,9 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
                 state.A_regs[copy] = state.ra.alloc_range(A_regCount, getHint(hintA0, strategy));
             if (Ar_regCount > 0)
                 state.Ar_regs = state.ra.alloc_range(Ar_regCount, getHint(hintA0, strategy));
-
-            if (state.broadcast && globalCM)
-                state.broadcast_regs = state.ra.alloc_range(2, getHint(hintB0, strategy));
             break;
         case GEMMStrategy::VNC: {
-            if (raHW < HW::Gen12LP) stub();
-
-            // Gen12+. Assign non-broadcast input matrix (V), then broadcast input matrix (N), then C.
+            // Assign non-broadcast input matrix (V), then broadcast input matrix (N), then C.
             auto unrollVBytes = strategy.unroll[globalCM ? LoopM : LoopN] * Tv;
             auto unrollNBytes = strategy.unroll[globalCM ? LoopN : LoopM] * Tn;
             auto regUnrollV = div_up(unrollVBytes, GRF::bytes(hw));
@@ -418,8 +324,7 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
             break;
         }
         case GEMMStrategy::ABInterleave: {
-            // Gen12+. Interleave A and B, place C afterward.
-            if (raHW < HW::Gen12LP) stub();
+            // Interleave A and B, place C afterward.
             auto chunk = Bundle(0, 0).stride(raHW) >> 1;
 
             // Test allocation. Put A earlier if it has more registers.
@@ -449,7 +354,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
         case GEMMStrategy::NSeparate: {
             // Broadcast matrix (N) has dedicated bundle(s) (both banks)
             // V and C start in opposite banks in other bundles.
-            if (raHW < HW::Gen12LP) stub();
             if (state.C_accCount > 0) stub();
 
             bool repackV = (Vr_regCount > 0);
@@ -631,21 +535,6 @@ void BLASKernelGenerator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &
     state.B_scaleRegs = state.ra.alloc_range(getRegCount(state.B_scaleLayout));
     state.Ar_scaleRegs = state.ra.alloc_range(getRegCount(state.Ar_scaleLayout));
     state.Br_scaleRegs = state.ra.alloc_range(getRegCount(state.Br_scaleLayout));
-
-    // Allocate multiplication temporaries for Gen9 IGEMM, in pairs.
-    if (hw < HW::Gen12LP && problem.isIGEMM()) {
-        auto &temps = state.tempMul_regs;
-        for (int ntemp = 0; ntemp < 2; ntemp++) {
-            auto range = state.ra.try_alloc_range(2);
-            if (range.isValid())
-                temps.push_back(range);
-            else if (temps.empty())
-                throw out_of_registers_exception();
-            else
-                break;
-        }
-    }
-
 }
 
 template <HW hw>

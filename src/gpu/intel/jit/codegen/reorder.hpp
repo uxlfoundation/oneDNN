@@ -207,8 +207,6 @@ bool try_emit_batched_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             auto t = tmp.subregister(
                     dst_off + (ii - i_beg), esize, 4, small_type)(4);
             ngen::InstructionModifier mod = esize;
-            if (src_type == ngen::DataType::f && hw == ngen::HW::Gen9)
-                host->rnde(esize, s(1), s(1));
             if (dst_type == small_type) mod |= host->sat;
             plan(mov, mod, t, s(1));
             ii += esize;
@@ -1079,14 +1077,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             auto t2 = tmp2.subregister(t2_offset, dst_type);
 
             if (esize == 1) {
-                if (hw == ngen::HW::Gen9) {
-                    auto t1_f = tmp1.subregister(ngen::DataType::f);
-                    plan(mov, 1, t1_f, s);
-                    host->rnde(1, t1_f, t1_f);
-                    auto t2_h = tmp2.subregister(t1_offset, ngen::DataType::hf);
-                    plan(mov, 1, t2_h, t1_f);
-                    s = t2_h;
-                }
                 plan(mov, 2 | host->sat, t1(tmp_stride), s);
                 plan(mov, 1, d, t1);
                 continue;
@@ -1094,27 +1084,11 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
 
             // Operands are already dword aligned as required by F-pipe
             if (dst_stride >= tmp_stride) {
-                if (hw != ngen::HW::Gen9) {
-                    plan(mov, esize | host->sat, d(dst_stride), s(src_stride));
-                } else {
-                    gpu_assert(dst_stride % tmp_stride == 0);
-                    auto d_f = dst.format(i, esize, dst_stride / tmp_stride,
-                            ngen::DataType::f);
-                    plan(mov, esize, d_f, s(src_stride));
-                    host->rnde(esize, d_f, d_f);
-                    plan(mov, esize | host->sat, d(dst_stride), d_f);
-                }
+                plan(mov, esize | host->sat, d(dst_stride), s(src_stride));
                 continue;
             }
 
-            if (hw != ngen::HW::Gen9) {
-                plan(mov, esize | host->sat, t1(tmp_stride), s(src_stride));
-            } else {
-                auto t1_f = tmp1.format(t1_offset, esize, 1, ngen::DataType::f);
-                plan(mov, esize, t1_f, s(src_stride));
-                host->rnde(esize, t1_f, t1_f);
-                plan(mov, esize | host->sat, t1(tmp_stride), t1_f);
-            }
+            plan(mov, esize | host->sat, t1(tmp_stride), s(src_stride));
             if (t1_offset != t2_offset)
                 plan(mov, esize, t2(tmp_stride), t1(tmp_stride));
             else
@@ -1265,8 +1239,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             auto d = dst.subregister(i, esize, dst_stride);
             if (src_d || src_f) {
                 // d -> b.
-                if (src_f && hw == ngen::HW::Gen9)
-                    host->rnde(esize, s(src_stride), s(src_stride));
                 if (esize == 1) {
                     // relaxed F-pipe alignment requirements for f32 broadcast
                     auto t = tmp1.subregister(dst_type);
@@ -1336,18 +1308,13 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     // allowed then fix regioning by switching to integer pipe which has
     // less limitations.
     if (src_xf || dst_xf) {
-        // forcing floats if on Gen9, for RNDE only works with floats there
-        auto real_type_bits = (src_xf && !src_f && hw == ngen::HW::Gen9)
-                ? ngen::getBits(ngen::DataType::f)
-                : dst_type_bits;
-
         bool local_src_f = src_f;
         bool local_src_hf = src_hf;
         bool local_src_bf = src_bf;
         auto local_src_type = src_type;
 
         int step = get_step();
-        auto tmp_regs = utils::div_up(step * real_type_bits, grf_bits);
+        auto tmp_regs = utils::div_up(step * dst_type_bits, grf_bits);
         auto tmp = lex_scope.alloc_reg_buf_data(tmp_regs);
         for (int i = 0; i < width; i += step) {
             step = std::min(step, width - i);
@@ -1358,21 +1325,6 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             auto d = dst.format(i * dst_stride, esize, dst_stride);
             auto d_old = d;
 
-            if (hw == ngen::HW::Gen9) {
-                auto t = tmp.format(0, esize, 1, ngen::DataType::f);
-                if (src_f)
-                    host->rnde(esize, t, s);
-                else if (src_xf) {
-                    plan(mov, esize, t, s);
-                    host->rnde(esize, t, t);
-                }
-                if (src_xf) {
-                    s = std::move(t);
-                    local_src_f = true;
-                    local_src_hf = local_src_bf = false;
-                    local_src_type = ngen::DataType::f;
-                }
-            }
             bool do_d0_align = false;
             if (esize > 1 && dst_bf) {
                 bool d_0_aligned = (d.byte_offset() == 0);

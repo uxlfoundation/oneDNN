@@ -67,7 +67,7 @@ void BLASKernelGenerator<hw>::ecsel(const InstructionModifier &mod, const Instru
                                     const RegData &dst,  const S0 &src0,
                                     const RegData &src1, const RegData &src2, ngen::SourceLocation loc)
 {
-    if (hw == HW::Gen9 || dst.getByteOffset() & 7) {
+    if (dst.getByteOffset() & 7) {
         cmp(mod | cmod | flag, src2, 0, loc);
         sel(mod | ~flag, dst, src1, src0, loc);
     } else
@@ -152,7 +152,7 @@ template <typename S0, typename S2>
 void BLASKernelGenerator<hw>::emad(const InstructionModifier &mod, const RegData &dst, const S0 &src0, const RegData &src1, const S2 &src2, const CommonStrategy &strategy, CommonState &state, bool sub, ngen::SourceLocation loc)
 {
     auto dstType = dst.getType();
-    if ((hw >= HW::Gen10 && !sub && !(dst.getByteOffset() & 7) && !one_of(dstType, DataType::q, DataType::uq) && !one_of(src2.getType(), DataType::d, DataType::ud))
+    if ((!sub && !(dst.getByteOffset() & 7) && !one_of(dstType, DataType::q, DataType::uq) && !one_of(src2.getType(), DataType::d, DataType::ud))
             || one_of(dstType, DataType::hf, DataType::f, DataType::df)) {
         mad(mod, dst, src0, src1, src2, loc);
     } else {
@@ -191,7 +191,7 @@ void BLASKernelGenerator<hw>::emad(const InstructionModifier &mod, const RegData
         emov(mod, dst, src0, strategy, state, loc);
     else if (src2 == 1)
         eadd(mod, dst, src1, src0, strategy, state, loc);
-    else if (hw >= HW::Gen10 && !(dst.getByteOffset() & 7) && (src2 >= -0x8000 && src2 < 0x10000) && !one_of(dstType, DataType::q, DataType::uq)) {
+    else if (!(dst.getByteOffset() & 7) && (src2 >= -0x8000 && src2 < 0x10000) && !one_of(dstType, DataType::q, DataType::uq)) {
         mad(mod, dst, src0, src1, src2, loc);
     } else {
         auto ttype = isSigned(src1.getType()) ? DataType::d : DataType::ud;

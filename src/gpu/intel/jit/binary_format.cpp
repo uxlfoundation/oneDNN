@@ -170,14 +170,6 @@ public:
             *skip_check = binary_format_kernel.binaryIsZebin();
         } else {
             switch (engine->device_info()->gpu_arch()) {
-                case compute::gpu_arch_t::gen9:
-                    kernel = binary_format_kernel_t<HW::Gen9>::make_kernel(
-                            engine, skip_check);
-                    break;
-                case compute::gpu_arch_t::gen11:
-                    kernel = binary_format_kernel_t<HW::Gen11>::make_kernel(
-                            engine, skip_check);
-                    break;
                 case compute::gpu_arch_t::xe_lp:
                     kernel = binary_format_kernel_t<HW::XeLP>::make_kernel(
                             engine, skip_check);

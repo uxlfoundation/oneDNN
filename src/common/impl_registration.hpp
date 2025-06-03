@@ -203,18 +203,6 @@
 
 // Primitive CPU ISA section is in src/cpu/platform.hpp
 
-#if BUILD_PRIMITIVE_GPU_ISA_ALL
-#define REG_GEN9_ISA(...) __VA_ARGS__
-#else
-#define REG_GEN9_ISA(...)
-#endif
-
-#if BUILD_PRIMITIVE_GPU_ISA_ALL
-#define REG_GEN11_ISA(...) __VA_ARGS__
-#else
-#define REG_GEN11_ISA(...)
-#endif
-
 #if BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XELP
 #define REG_XELP_ISA(...) __VA_ARGS__
 #else

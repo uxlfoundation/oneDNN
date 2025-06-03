@@ -35,7 +35,7 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
     auto product = npack::decodeHWIPVersion(package.gmdidCompat);
     auto hw = getCore(product.family);
 
-    if (hw == HW::Unknown || hw < HW::Gen12LP) return Status::UnsupportedHW;
+    if (hw == HW::Unknown) return Status::UnsupportedHW;
 
     Decoder decoder(hw, package.binary);
     DependencyRegion dstRegion;

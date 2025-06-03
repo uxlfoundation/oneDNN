@@ -732,7 +732,6 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
         return;
 
     auto Tao = problem.Tao, Tbo = problem.Tbo, Tc = problem.Tc;
-    bool noFMA = (hw == HW::Gen9);
 
     bool aoVector = aOffset && (problem.aoPtrDims == 1);
     bool boVector = bOffset && (problem.boPtrDims == 1);
@@ -757,7 +756,6 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
 
     if (aoVector || boVector) {
         // Vector offset path.
-        if (noFMA) stub();
 
         Subregister aoBase, boBase;
         if (aoVector) {
@@ -808,17 +806,7 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
     } else {
         // Scalar offset path.
         // TODO: combine C adds into add3 on XeHP+.
-        if (noFMA) {
-            if (aOffset && bOffset) map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {
-                add(ne, r, r, temp);
-            });
-            if (bOffset) map(hw, Tc, state.As_regs, state.As_layout, strategy, [&](int ne, RegData r) {
-                mul(ne, r, r, state.inputs.bo);
-            });
-            if (aOffset) map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {
-                mul(ne, r, r, state.inputs.ao);
-            });
-        } else if (aOffset && bOffset) {
+        if (aOffset && bOffset) {
             mul(1, temp, temp, state.inputs.ao);
             map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {
                 mad(ne, r, temp, r, state.inputs.ao);
@@ -826,8 +814,8 @@ void BLASKernelGenerator<hw>::gemmApplyABOffset(const GEMMProblem &problem, cons
         }
         state.ra.safeRelease(temp);
 
-        auto As_scale = noFMA              ? Subregister() : state.inputs.bo;
-        auto Bs_scale = (noFMA || bOffset) ? Subregister() : state.inputs.ao;
+        auto As_scale = state.inputs.bo;
+        auto Bs_scale = (bOffset) ? Subregister() : state.inputs.ao;
 
         if (bOffset) gemmVectorBinaryOpC(BinaryOp::Add, false, state.As_regs, As_scale, problem, strategy, state, problem.Tc, state.As_layout);
         if (aOffset) gemmVectorBinaryOpC(BinaryOp::Add, true,  state.Bs_regs, Bs_scale, problem, strategy, state, problem.Tc, state.Bs_layout);

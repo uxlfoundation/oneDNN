@@ -223,8 +223,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     }
 
     switch (hw) {
-        REG_GEN9_ISA(ARCH_DISPATCH(Gen9))
-        REG_GEN11_ISA(ARCH_DISPATCH(Gen11))
         REG_XELP_ISA(ARCH_DISPATCH(XeLP))
         REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))

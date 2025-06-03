@@ -577,19 +577,7 @@ private:
             gpu_assert(dst.byte_offset() == src0.getByteOffset())
                     << "dst/src0 must be aligned to the same GRF offset.";
             align_src_dst_offset(host_, scope, mod, dst, src1, src2);
-            if (hw() < ngen::HW::XeLP
-                    && (ngen_is_dw(to_ngen(mad_func.dst_type))
-                            || mad_func.dst_type == type_t::f64()
-                            || (src1_width == 1 && src2_width == 1))) {
-                // On Gen9 int is not supported; f64 supports broadcast only with exec size 2.
-                // Use mul/add sequence instead.
-                auto tmp = scope.alloc_range(
-                        (mad_func.exec_size * mad_func.dst_type.size())
-                        / ngen::GRF::bytes(hw()));
-                auto reg = tmp[0].setType(to_ngen(mad_func.dst_type));
-                host_->mul(mod, reg, src1, src2);
-                host_->add(mod, dst, reg, src0);
-            } else if (mad_func.dst_type == type_t::f64()
+            if (mad_func.dst_type == type_t::f64()
                     && src1.reg_data().getHS() == 0
                     && src1.reg_data().getVS() == 0) {
                 // Workaround for sporadic f64 mad errors with broadcast src1 on XeHPC.
@@ -1683,12 +1671,6 @@ void convert_ir_to_ngen(const stmt_t &body, ngen_generator_t *host,
     convert_ir_to_ngen_impl(body, host, kernel_grid_walk_order);
 }
 
-REG_GEN9_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen9> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_GEN11_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen11> *host,
-        const walk_order_t *kernel_grid_walk_order));
 REG_XELP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::XeLP> *host,
         const walk_order_t *kernel_grid_walk_order));

@@ -22,7 +22,6 @@
 #include "gpu/generic/ref_sum.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/jit/gen9_simple_sum.hpp"
 #include "gpu/intel/ocl/gen9_sum.hpp"
 #include "gpu/intel/ocl/many_inputs_sum.hpp"
 #include "gpu/intel/ocl/multi_po_reorder_sum.hpp"
@@ -43,9 +42,6 @@ namespace impl {
 namespace gpu {
 
 namespace {
-// TODO: Re-enable nGEN-based implementation after architecture
-// dispatching is implemented.
-// INSTANCE(jit::gen9_simple_sum_t)
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_SUM_P({

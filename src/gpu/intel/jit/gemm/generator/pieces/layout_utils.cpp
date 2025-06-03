@@ -119,7 +119,7 @@ bool needsPseudoblock(HW hw, Type T, int r, int c,
                || (hw >= HW::XeHPC && !astrategy.padded && !astrategy.newDP && ((r * c * T) & 0xF))
                || astrategy.atomic
                || (isColMajor(atype.layout) ? c : r) % atype.crosspack
-               || ((astrategy.base.getModel() == ModelSLM) && (hw < HW::Gen11 || !(owAligned || astrategy.newDP)));
+               || ((astrategy.base.getModel() == ModelSLM) && !(owAligned || astrategy.newDP));
 
     return pseudo;
 }

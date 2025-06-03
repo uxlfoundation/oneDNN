@@ -30,12 +30,6 @@ template <typename ngen_generator_t>
 void convert_ir_to_ngen(const stmt_t &body, ngen_generator_t *host,
         const walk_order_t *kernel_grid_walk_order = nullptr);
 
-REG_GEN9_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen9> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_GEN11_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen11> *host,
-        const walk_order_t *kernel_grid_walk_order));
 REG_XELP_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
         ir_kernel_t<ngen::HW::XeLP> *host,
         const walk_order_t *kernel_grid_walk_order));

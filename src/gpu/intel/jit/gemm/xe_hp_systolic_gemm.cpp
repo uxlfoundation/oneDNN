@@ -47,7 +47,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");
-    VDISPATCH_GEMM(compute_engine->mayiuse_large_grf_mode(),
+    VDISPATCH_GEMM(compute_engine->device_info()->mayiuse_large_grf_mode(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "large grf mode");
 
     dev_info_ = compute_engine->device_info();

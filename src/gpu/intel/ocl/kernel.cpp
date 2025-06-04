@@ -29,6 +29,8 @@
 #include "xpu/ocl/memory_storage.hpp"
 #include "xpu/ocl/usm_utils.hpp"
 
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/stream.hpp"
 #include "gpu/intel/ocl/utils.hpp"

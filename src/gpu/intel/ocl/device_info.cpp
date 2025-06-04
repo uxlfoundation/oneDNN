@@ -118,7 +118,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     cl_int err = CL_SUCCESS;
     auto device = utils::downcast<const engine_t *>(engine)->device();
 
-    CHECK(get_ocl_device_eu_count(device, gpu_arch_, &eu_count_));
+    CHECK(get_ocl_device_eu_count(device, &eu_count_));
 
     size_t max_wg_size = 0;
     err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,

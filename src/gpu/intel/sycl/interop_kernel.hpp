@@ -19,6 +19,7 @@
 
 #include <string>
 
+#include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/sycl/utils.hpp"
 
 namespace dnnl {

@@ -146,6 +146,10 @@ dnnl::accumulation_mode str2accumulation_mode(
 size_t generate_constant_md_hash(
         size_t part_id, const std::vector<dnnl::memory::desc> &const_mds);
 
+status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
+        const stream &astream,
+        const std::unordered_map<int, memory> &exec_args);
+
 #define BACKEND_DNNL_CHECK(statement) \
     do { \
         status_t ret = (statement); \

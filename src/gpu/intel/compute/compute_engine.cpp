@@ -17,6 +17,8 @@
 #include <unordered_map>
 
 #include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/kernel.hpp"
 
 #include "common/utils.hpp"
 
@@ -137,6 +139,43 @@ bool mayiuse_microkernels(const compute_engine_t *engine) {
     auto it = engine_microkernel_map.find(engine->engine_id());
     if (it != std::end(engine_microkernel_map)) return it->second;
     return engine_microkernel_map[engine->engine_id()] = mayiuse_mk(engine);
+}
+
+status_t compute_engine_t::create_kernel_from_cache_blob(
+        const cache_blob_t &cache_blob, compute::kernel_t &kernel,
+        const char *kernel_name) const {
+    std::vector<compute::kernel_t> kernels;
+    CHECK(create_kernels_from_cache_blob(cache_blob, kernels, {kernel_name}));
+    if (kernels.size() != 1) return status::runtime_error;
+    kernel = std::move(kernels[0]);
+    return status::success;
+};
+
+status_t compute_engine_t::create_kernel_bundle(kernel_bundle_t &bundle,
+        const std::vector<const char *> &kernel_names,
+        const compute::kernel_ctx_t &kernel_ctx) const {
+    std::vector<kernel_t> kernels;
+    CHECK(create_kernels(&kernels, kernel_names, kernel_ctx));
+    bundle = kernel_bundle_t(std::move(kernels), kernel_names);
+    return status::success;
+}
+
+bool compute_engine_t::mayiuse(device_ext_t ext) const {
+    return device_info_->has(ext);
+}
+
+bool compute_engine_t::mayiuse_ngen_kernels() const {
+    return device_info_->mayiuse_ngen_kernels();
+}
+
+bool compute_engine_t::mayiuse_sub_group(int size) const {
+    return device_info_->mayiuse_sub_group(size);
+}
+
+bool compute_engine_t::mayiuse_block_reads_writes_with_sub_group(
+        int size) const {
+    return size <= 16 ? true
+                      : device_info_->gpu_arch() >= compute::gpu_arch_t::xe_hpc;
 }
 
 } // namespace compute

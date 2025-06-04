@@ -23,7 +23,7 @@
 #include "xpu/ocl/engine_impl.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
 #endif
 
 namespace dnnl {
@@ -57,12 +57,12 @@ inline void print_verbose_header() {
         auto *compute_engine
                 = utils::downcast<gpu::intel::compute::compute_engine_t *>(
                         eng_ptr);
-        auto *dev_info = compute_engine->device_info();
         verbose_printf(
                 "info,gpu,engine,%d,name:%s,driver_version:%s,binary_kernels:%"
                 "s\n",
                 (int)i, s_name.c_str(), s_ver.c_str(),
-                dev_info->mayiuse_ngen_kernels() ? "enabled" : "disabled");
+                compute_engine->mayiuse_ngen_kernels() ? "enabled"
+                                                       : "disabled");
 #else
         verbose_printf("info,gpu,engine,%d,name:%s,driver_version:%s\n", (int)i,
                 s_name.c_str(), s_ver.c_str());

@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/xe_global_pooling.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
@@ -25,9 +26,10 @@ namespace ocl {
 
 dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    const int hw_threads = compute_engine->device_info()->hw_threads();
-    const bool is_xe_hp_plus = compute_engine->is_xe_hp()
-            || compute_engine->is_xe_hpg() || compute_engine->is_xe_hpc();
+    auto &device_info = *compute_engine->device_info();
+    const int hw_threads = device_info.hw_threads();
+    const bool is_xe_hp_plus
+            = device_info.gpu_arch() >= compute::gpu_arch_t::xe_hp;
 
     const dim_t spatial_dim = conf.id * conf.ih * conf.iw;
     dim_t chunk_size = spatial_dim;

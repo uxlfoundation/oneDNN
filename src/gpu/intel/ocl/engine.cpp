@@ -25,6 +25,7 @@
 
 #include "xpu/ocl/memory_storage.hpp"
 
+#include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/engine.hpp"
@@ -400,6 +401,13 @@ status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
     sstream.append(device_info()->runtime_version().build);
 
     return status::success;
+}
+status_t engine_t::get_cache_blob_size(size_t *size) const {
+    return device_info_->get_cache_blob_size(size);
+}
+
+status_t engine_t::get_cache_blob(size_t size, uint8_t *cache_blob) const {
+    return device_info_->get_cache_blob(size, cache_blob);
 }
 
 } // namespace ocl

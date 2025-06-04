@@ -18,6 +18,7 @@
 #include "common/c_types_map.hpp"
 
 #include "common/primitive_exec_types.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 

@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "common/c_types_map.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/custom_reorder.hpp"
 

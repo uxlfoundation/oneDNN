@@ -16,6 +16,7 @@
 #include "gpu/intel/ocl/bnorm/model.hpp"
 #include <cmath>
 #include "common/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/utils.hpp"

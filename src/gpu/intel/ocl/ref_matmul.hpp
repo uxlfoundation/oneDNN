@@ -26,6 +26,7 @@
 #include "common/utils.hpp"
 #include "gpu/gpu_matmul_pd.hpp"
 #include "gpu/gpu_resource.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"

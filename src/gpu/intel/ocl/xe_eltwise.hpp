@@ -21,6 +21,7 @@
 #include "common/primitive.hpp"
 #include "common/serialization.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 
 namespace dnnl {

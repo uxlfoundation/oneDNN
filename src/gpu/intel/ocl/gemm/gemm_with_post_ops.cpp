@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/gemm/gemm_with_post_ops.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
@@ -96,11 +97,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_SKIP_PRIMITIVE_IMPL);
     auto gemm_desc = *desc();
     auto dst_type = gemm_desc.c_desc.data_type;
-    gemm_desc.c_desc.data_type = engine->mayiuse_f16_accumulator_with_f16()
-                    && utils::one_of(data_type::f16, gemm_desc.a_desc.data_type,
-                            gemm_desc.b_desc.data_type)
-            ? data_type::f32
-            : gemm_desc.acc_type;
+    gemm_desc.c_desc.data_type = gemm_desc.acc_type;
     use_reorder = dst_md(0)->data_type != gemm_desc.c_desc.data_type;
     gemm_desc.bias_desc = glob_zero_md;
     // Setup empty attributes but keep zero points for gemm.

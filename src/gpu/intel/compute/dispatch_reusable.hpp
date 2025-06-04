@@ -28,6 +28,7 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/block_manipulation.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"

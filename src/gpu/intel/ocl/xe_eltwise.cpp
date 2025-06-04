@@ -16,6 +16,7 @@
 
 #include <algorithm>
 
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/ocl/xe_eltwise.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 

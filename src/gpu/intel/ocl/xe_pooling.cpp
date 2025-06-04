@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/xe_pooling.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 
 namespace dnnl {
 namespace impl {

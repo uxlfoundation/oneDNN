@@ -18,6 +18,7 @@
 #include <limits>
 #include <numeric>
 
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/ocl/concat_utils.hpp"
 #include "gpu/intel/ocl/reusable_simple_concat.hpp"

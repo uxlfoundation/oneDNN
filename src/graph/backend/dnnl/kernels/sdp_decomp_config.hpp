@@ -60,7 +60,8 @@ public:
             void *handle = args.at(DNNL_ARG_SRC).get_data_handle();
             args.at(DNNL_ARG_DST).set_data_handle(handle);
         } else
-            reorder_prim_.execute(astream, args);
+            dnnl_primitive_execute_without_tp_hook(
+                    reorder_prim_, astream, args);
         return status::success;
     }
 

@@ -102,6 +102,12 @@ struct stream_t : public compute::compute_stream_t {
         return impl()->get_output_event();
     }
 
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    status_t register_async_tracker(cl_event event);
+    status_t check_async_exec_times(
+            double *start_ms, double *end_ms, double *duration_ms) override;
+#endif
+
 private:
     xpu::ocl::stream_impl_t *impl() const {
         return (xpu::ocl::stream_impl_t *)impl::stream_t::impl_.get();
@@ -116,7 +122,17 @@ private:
             cl_context ctx, cl_device_id dev, cl_int *err) const;
 
     std::unique_ptr<mdapi_helper_t> mdapi_helper_;
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+    cl_event async_tracked_event_ = nullptr;
+    async_timing_data_t *async_timing_data_ = nullptr;
+#endif
 };
+
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+void CL_CALLBACK async_tracker_callback(
+        cl_event event, cl_int event_command_status, void *user_data);
+#endif
 
 } // namespace ocl
 } // namespace intel

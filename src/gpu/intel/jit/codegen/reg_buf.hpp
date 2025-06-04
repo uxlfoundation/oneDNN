@@ -173,7 +173,7 @@ public:
     }
 
     bool check_bounds(int off, int elems, ngen::DataType type,
-            bool is_dense = false) const {
+            bool verify_access = true, bool check_dense = false) const {
         gpu_assert(off >= 0 && elems >= 0);
         if (elems == 0) return true;
 
@@ -184,23 +184,26 @@ public:
         int beg_off = first_bit / grf_bits;
         int end_off = last_bit / grf_bits;
 
-        if (get_grf_buf_index() + end_off >= reg_buf_->regs()) return false;
-        if (!is_dense) return true;
+        if (get_grf_buf_index() + end_off >= reg_buf_->regs()) {
+            if (verify_access) {
+                gpu_error_not_expected() << "Invalid access";
+                throw std::runtime_error("Internal error");
+            }
+            return false;
+        }
 
-        int base0 = get_grf_base(beg_off);
-        for (int i = beg_off + 1; i <= end_off; ++i) {
-            if (get_grf_base(i) != base0 + i) return false;
+        if (check_dense) {
+            int base0 = get_grf_base(beg_off);
+            for (int i = beg_off + 1; i <= end_off; ++i) {
+                if (get_grf_base(i) != base0 + i) return false;
+            }
         }
         return true;
     }
 
-    bool check_bounds(int off, int elems, bool is_dense = false) const {
-        return check_bounds(off, elems, ngen::DataType::ub, is_dense);
-    }
-
     bool is_dense(int bytes) const {
-        gpu_assert(check_bounds(0, bytes)) << "Invalid access.";
-        return check_bounds(0, bytes, /*is_dense=*/true);
+        return check_bounds(0, bytes, ngen::DataType::ub,
+                /*verify_access=*/false, /*check_dense=*/true);
     }
 
     bool operator==(const reg_buf_data_t &other) const {
@@ -254,7 +257,7 @@ public:
         int vstride = width * hstride;
 
         int region = (width - 1) * hstride + 1;
-        gpu_assert(check_bounds(offset, region, type)) << "Invalid access.";
+        check_bounds(offset, region, type);
 
         auto ret = *this;
         auto grf = get_grf(new_base).retype(type);

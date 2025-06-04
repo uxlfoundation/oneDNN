@@ -49,6 +49,15 @@ struct conv_pd_data_t {
     std::shared_ptr<primitive_desc_t> zp_pd;
 };
 
+#define CONV_CHECK(_st) \
+    do { \
+        status_t st = (_st); \
+        if (st == status::runtime_error) \
+            VERROR(primitive, gpu, "%s,%s", pd->info(engine), \
+                    "internal error"); \
+        CHECK(st); \
+    } while (false)
+
 class gen_convolution_t {
 public:
     static const int max_kernels = 16;
@@ -66,7 +75,7 @@ public:
                     VERBOSE_BAD_ALGORITHM);
 
             conv_problem_t prb;
-            CHECK(prb.init(engine, pd));
+            CONV_CHECK(prb.init(engine, pd));
 
             // The IR generator hard-codes s32 as the type for problem parameters.
             VDISPATCH_CONV_IC(
@@ -77,7 +86,7 @@ public:
                     VERBOSE_SHAPE_RESTRICTION);
 
             pd->data = std::make_shared<conv_pd_data_t>();
-            CHECK(init_pd_time_cfg(
+            CONV_CHECK(init_pd_time_cfg(
                     prb, pd->data->pd_cfg, engine, pd, &pd->attr_));
 
             if (pd->data->pd_cfg.zp_cfg().needs_src_reorder_precalc
@@ -91,7 +100,7 @@ public:
                 }
                 dim_t I[3], O[3], P[3], D[3];
                 prepare_zp_precompute_conv(prb, I, O, P, D);
-                CHECK(create_zp_precompute_conv_pd(pd->data->zp_pd, engine,
+                CONV_CHECK(create_zp_precompute_conv_pd(pd->data->zp_pd, engine,
                         attr, pd->weights_md(), I, O, P, D, data_type::f32,
                         pd->get_prop_kind(),
                         !pd->data->pd_cfg.zp_cfg().needs_src_conv_precalc));
@@ -105,14 +114,11 @@ public:
             pd->data->tensor_cfg = get_tensor_config(
                     pd->data->pd_cfg, zp_conv_md_in(*pd->data));
             pd->data->kernel_infos.reserve(max_kernels);
-            CHECK(init_kernel_infos(pd));
+            CONV_CHECK(init_kernel_infos(pd));
 
             return status::success;
         } catch (std::runtime_error &err) {
-            // If verbose is enabled, print the primitive case and rethrow the
-            // exception.
-            VERROR(primitive, gpu, "%s,%s", pd->info(engine), err.what());
-            return status::runtime_error;
+            return report_runtime_error(pd, engine, err.what());
         }
     }
 
@@ -120,13 +126,14 @@ public:
 
     template <typename T>
     status_t init(T *primitive, impl::engine_t *engine) {
-        auto &data = *primitive->pd()->data;
+        auto *pd = primitive->pd();
+        auto &data = *pd->data;
         auto &tensor_cfg = data.tensor_cfg;
         auto tiler = std::make_shared<conv_tiler_t>(data.pd_cfg);
 
         if (primitive->cache_blob()) {
             int32_t version;
-            CHECK(primitive->cache_blob().get_value(
+            CONV_CHECK(primitive->cache_blob().get_value(
                     (uint8_t *)&version, sizeof(version)));
             primitive->set_version(version);
         }
@@ -146,10 +153,9 @@ public:
                 tiler->move_next(cfg);
             try {
                 cfg = data.pd_cfg;
-                cfg.set_pd(
-                        static_cast<const convolution_pd_t *>(primitive->pd()));
+                cfg.set_pd(pd);
                 cfg.set_tiler(tiler);
-                CHECK(init_cfg(cfg, primitive));
+                CONV_CHECK(init_cfg(cfg, primitive));
 
                 if (!tiler->is_grf_limit_ok(cfg)) continue;
 
@@ -164,7 +170,7 @@ public:
                 for (int i = 0; i < int(kernel_infos.size()); i++)
                     if (kernel_infos[i].id() == kernel_id_t::zp_precalc) {
                         gpu_assert(data.zp_pd);
-                        CHECK(primitive->create_nested_primitive(
+                        CONV_CHECK(primitive->create_nested_primitive(
                                 zp_prim_, data.zp_pd, engine));
                     }
 
@@ -221,28 +227,27 @@ public:
 
                         default: gpu_error_not_expected();
                     }
-                    if (!tmp_kernels[i]) return status::runtime_error;
+                    if (!tmp_kernels[i])
+                        return report_runtime_error(pd, engine);
                 }
                 ok = true;
                 primitive->set_version(tiler->cur_version());
                 kernels_ = std::move(tmp_kernels);
                 break;
             } catch (ngen::out_of_registers_exception &err) {
-                if (handle_exception(
-                            err, primitive, engine, try_iter, max_tries))
-                    return status::runtime_error;
+                if (handle_exception(try_iter, max_tries))
+                    return report_runtime_error(pd, engine, err.what());
                 tiler->notify_out_of_registers(cfg);
                 continue;
             } catch (std::runtime_error &err) {
-                if (handle_exception(
-                            err, primitive, engine, try_iter, max_tries))
-                    return status::runtime_error;
+                if (handle_exception(try_iter, max_tries))
+                    return report_runtime_error(pd, engine, err.what());
                 continue;
             }
         }
-        if (!ok) return status::runtime_error;
+        if (!ok) return report_runtime_error(pd, engine);
         gpu_assert(kernels_.size() == data.kernel_infos.size());
-        CHECK(primitive->register_kernels(kernels_));
+        CONV_CHECK(primitive->register_kernels(kernels_));
 
         conv_tiler_t::after_create_hook(cfg, primitive);
         return status::success;
@@ -250,7 +255,9 @@ public:
 
     template <typename T>
     status_t execute(const T *primitive, const exec_ctx_t &ctx) const {
-        auto &data = *primitive->pd()->data;
+        auto *pd = primitive->pd();
+        auto *engine = ctx.stream()->engine();
+        auto &data = *pd->data;
         auto &kernel_infos = data.kernel_infos;
 
         conv_tiler_t::before_exec_hook(primitive, ctx.stream());
@@ -270,7 +277,7 @@ public:
                     compute::kernel_arg_list_t arg_list;
                     info.set_args(arg_list, storage_list);
 
-                    CHECK(primitive->parallel_for(
+                    CONV_CHECK(primitive->parallel_for(
                             ctx, nd_ranges_[i], kernels_[i], arg_list));
                 } else if (info.id() == kernel_id_t::zp_precalc) {
                     auto scratchpad_arg = [&](std::unique_ptr<memory_t,
@@ -279,15 +286,15 @@ public:
                                                   const memory_desc_t *md) {
                         auto s = ctx.get_scratchpad_grantor()
                                          .get_memory_storage(info.key(name));
-                        return safe_ptr_assign(retn,
-                                new memory_t(ctx.stream()->engine(), md,
-                                        std::move(s)));
+                        return safe_ptr_assign(
+                                retn, new memory_t(engine, md, std::move(s)));
                     };
                     gpu_assert(zp_prim_);
                     std::unique_ptr<memory_t, memory_deleter_t> zp_src, zp_dst;
-                    CHECK(scratchpad_arg(
+                    CONV_CHECK(scratchpad_arg(
                             zp_src, "src_zero_points", zp_conv_md_in(data)));
-                    CHECK(scratchpad_arg(zp_dst, "dst", zp_conv_md_out(data)));
+                    CONV_CHECK(scratchpad_arg(
+                            zp_dst, "dst", zp_conv_md_out(data)));
 
                     exec_args_t e_args;
                     auto src_zp_idx = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC;
@@ -299,7 +306,7 @@ public:
                     const auto nm = memory_tracking::names::key_nested_multiple;
                     nested_scratchpad_t ns(ctx, nm, zp_prim_);
                     e_ctx.set_scratchpad_grantor(ns.grantor());
-                    CHECK(zp_prim_->execute(e_ctx));
+                    CONV_CHECK(zp_prim_->execute(e_ctx));
                 }
                 nsubmitted++;
                 if (nsubmitted == nkernels) break;
@@ -487,13 +494,14 @@ private:
         return false;
     }
 
-    template <typename ExceptionT, typename T>
-    static bool handle_exception(const ExceptionT &err, T *primitive,
-            impl::engine_t *engine, int iter, int max_iters) {
-        if (iter + 1 < max_iters) return false;
-        VERROR(primitive, gpu, "%s,%s", primitive->pd()->info(engine),
-                err.what());
-        return true;
+    static bool handle_exception(int iter, int max_iters) {
+        return iter + 1 >= max_iters;
+    }
+
+    static status_t report_runtime_error(const convolution_pd_t *pd,
+            impl::engine_t *engine, const char *msg = "internal error") {
+        VERROR(primitive, gpu, "%s,%s", pd->info(engine), msg);
+        return status::runtime_error;
     }
 
     std::vector<compute::kernel_t> kernels_;

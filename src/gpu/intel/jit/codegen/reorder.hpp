@@ -305,9 +305,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             if (f_to_xf) step = 8;
 
         //dpasw as well as potential bank conflict allocation permutes registers; -> so use register granularity
-        if (hw < ngen::HW::XeHPC
-                && (!src.check_bounds(0, 64, /*is_dense=*/true)
-                        || !dst.check_bounds(0, 64, /*is_dense=*/true)))
+        if (hw < ngen::HW::XeHPC && (!src.is_dense(64) || !dst.is_dense(64)))
             step = 8;
 
         if (src_df || dst_df) step = 8;

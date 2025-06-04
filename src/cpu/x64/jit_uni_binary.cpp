@@ -47,7 +47,10 @@ static bool compare_layouts(const memory_desc_wrapper &src0_md,
     if (is_bcast) return true;
 
     bool same_layouts = true;
-    for (int d = 0; d < ndims; ++d)
+    // For batch size == 1, the first dimension is ignored for stride checks,
+    // as non-contiguous strides in this dimension do not affect correctness.
+    int start_dim = (dims0[0] == 1 && dims1[0] == 1) ? 1 : 0;
+    for (int d = start_dim; d < ndims; ++d)
         same_layouts = same_layouts && strides0[d] == strides1[d];
     return same_layouts;
 }

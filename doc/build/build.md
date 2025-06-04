@@ -1,8 +1,8 @@
 Build from Source {#dev_guide_build}
 ====================================
-You can install the oneDNN library using the source distribution.
+You can build and install the oneDNN library using the source distribution.
 
-## Download the Source Code
+## Step 1. Download the Source Code
 
 Download [oneDNN source code](https://github.com/uxlfoundation/oneDNN/archive/main.zip)
 or clone [the repository](https://github.com/uxlfoundation/oneDNN.git).
@@ -12,15 +12,20 @@ git clone https://github.com/uxlfoundation/oneDNN.git
 cd oneDNN
 ~~~
 
-## Build the Library
+## Step 2. Build the Library
 
-You can quickly get started with building the library. The various stages involved in building the library are as follows:
+You can quickly get started with building the library.
+
+Ensure that all [software dependencies](https://github.com/uxlfoundation/oneDNN#requirements-for-building-from-source)
+are in place and have at least the minimal supported version.
+
+The general steps involved in building the library are as follows:
 
 1. Set up the environment for the compiler
 
-   Ensure that all [software dependencies](https://github.com/uxlfoundation/oneDNN#requirements-for-building-from-source)
-   are in place and have at least the minimal supported version.
-
+   Configure your operating system's 
+   environment variables to point to the compiler's location.
+   
 2. Generate the build system
 
    The oneDNN build system is based on [CMake](https://cmake.org/cmake/help/latest/manual/cmake.1.html). 
@@ -30,23 +35,23 @@ You can quickly get started with building the library. The various stages involv
    ~~~
    In most cases, both `-B` and `-S` options are skipped with the assumption that
   `<path-to-build>` is the current folder and `<path-to-source>` is the one
-   higher in the tree:
+   higher in the directory tree:
    ~~~sh
-   cd <path-to-onednn-source>
+   cd <path-to-source>
    mkdir -p build ; cd build
    cmake .. [<options>]
    ~~~
    The following are a few useful options defined by CMake:
 
-   - `G` to specify build system generator (e.g. `"Visual Studio 17 2022"`,
+   - `-G <generator-name>` to specify build system generator (e.g. `"Visual Studio 17 2022"`,
     `Ninja`, `"Unix Makefiles"`).
 
-   - `CMAKE_INSTALL_PREFIX` to control the library installation location.
+   - `-DCMAKE_INSTALL_PREFIX=<path>` to control the library installation location.
 
-   - `CMAKE_BUILD_TYPE` to select between build type (`Release`, `Debug`,
+   - `-DCMAKE_BUILD_TYPE=<build-type>` to select between build type (`Release`, `Debug`,
     `RelWithDebInfo`).
 
-   - `CMAKE_PREFIX_PATH` to specify directories to be searched for the
+   - `-DCMAKE_PREFIX_PATH=<path>` to specify directories to be searched for the
     dependencies located at non-standard locations.
 
    See @ref dev_guide_build_options for detailed description of build-time
@@ -89,10 +94,16 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    ~~~
 
 3. Build the library
+
+   Multi-threaded compilation is recommended for a faster build process.
+   Use the `--parallel` option to specify the number of parallel jobs.
    ~~~sh
-   # Some generators, like Unix Makefiles, might default to single-threaded
-   # compilation. Parallelization can be controlled with:
    cmake --build . --parallel $(nproc)
+   ~~~
+
+   **For macOS:**
+   ~~~sh
+   cmake --build . --parallel $(sysctl -n hw.ncpu)
    ~~~
 
 #### Use Intel oneAPI DPC++/C++ Compiler with SYCL runtime
@@ -100,7 +111,7 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
 1. Set up the environment for the compiler
 
    Intel oneAPI DPC++/C++ Compiler uses the `setvars.sh` script to set all the
-   required variables. The command below assumes you installed to the default
+   required variables. The command below assumes you installed the compiler to the default
    folder. If you customized the installation folder, `setvars.sh` (Linux/macOS)
    is in your custom folder.
    ~~~sh
@@ -114,8 +125,8 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
 2. Generate the build system
    ~~~sh
    mkdir -p build ; cd build
-   cmake .. -DDNNL_CPU_RUNTIME=SYCL \
-         -DDNNL_GPU_RUNTIME=SYCL
+   cmake .. -DONEDNN_CPU_RUNTIME=SYCL \
+         -DONEDNN_GPU_RUNTIME=SYCL
    ~~~
 
    @note Open-source version of oneAPI DPC++ Compiler does not have the icx driver,
@@ -125,6 +136,9 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    it is installed in a custom location.
 
 3. Build the library
+
+   Multi-threaded compilation is recommended for a faster build process.
+   Use the `--parallel` option to specify the number of parallel jobs.
    ~~~sh
    cmake --build . --parallel $(nproc)
    ~~~
@@ -146,6 +160,9 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    ~~~
 
 3. Build the library
+   
+   Multi-threaded compilation is recommended for a faster build process.
+   Use the `--parallel` option to specify the number of parallel jobs.
    ~~~sh
    cmake --build . --parallel $(nproc)
    ~~~
@@ -166,10 +183,13 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
 2. Generate the build system
    ~~~sh
    mkdir -p build ; cd build
-   cmake .. -DDNNL_AARCH64_USE_ACL=ON
+   cmake .. -DONEDNN_AARCH64_USE_ACL=ON
    ~~~
 
 3. Build the library
+
+   Multi-threaded compilation is recommended for a faster build process.
+   Use the `--parallel` option to specify the number of parallel jobs.
    ~~~sh
    cmake --build . --parallel $(nproc)
    ~~~
@@ -207,11 +227,11 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    the build type changes to apply the new build configuration. You can choose
    a specific build type with the `--config` option (the solution file supports
    both `Debug` and `Release` builds), but it must refer to the same build type
-   (`Release`, `Debug`, etc.) as selected with the `CMAKE_BUILD_TYPE` option.
+   (`Release`, `Debug`, etc.) as selected with the `CMAKE_BUILD_TYPE` option. 
 
-   @note You can also open `oneDNN.sln` to build the project from the
+   @note Alternatively, you can open `oneDNN.sln` to build the project from the
    Microsoft Visual Studio IDE.
-
+   
 #### Use Intel oneAPI DPC++/C++ Compiler with SYCL Runtime
 
 1. Set up the environment for the compiler
@@ -222,7 +242,6 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    custom folder.
    ~~~bat
    "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-
    :: Set Intel oneAPI DPC++/C++ Compiler as default C and C++ compilers
    set CC=icx
    set CXX=icx
@@ -235,8 +254,8 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    cd build
 
    cmake .. -G Ninja ^
-         -DDNNL_CPU_RUNTIME=SYCL ^
-         -DDNNL_GPU_RUNTIME=SYCL
+         -DONEDNN_CPU_RUNTIME=SYCL ^
+         -DONEDNN_GPU_RUNTIME=SYCL
    ~~~
 
    @warning Intel oneAPI DPC++/C++ Compiler on Windows requires CMake v3.23 or later.
@@ -255,15 +274,15 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    cmake --build .
    ~~~
 
-## Validate the Build
+## Step 3. Validate the Build
 
-After building the library, you can run a predefined test set using:
+After building the library, you can run a predefined test set using: 
 
 ~~~sh
 ctest
 ~~~
 The [`ONEDNN_TEST_SET`](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-test-set)
-build option set during the build configuration determines determines the scope
+build option set during the build configuration determines the scope
 and depth of the test set. Useful values are `SMOKE` (smallest set), `CI`
 (default), and `NIGHTLY` (most comprehensive). The test set can be reconfigured
 after the entire project has been built, and only the missing tests will be
@@ -287,7 +306,7 @@ When using the `/opt/intel/oneapi/setvars.sh` script from the Intel oneAPI toolk
 Make sure the correct oneDNN library is present in
 `LD_LIBRARY_PATH` by setting it explicitly if needed.
 
-## (Optional) Build Documentation
+## Step 4. (Optional) Build Documentation
 
 1. Install the requirements
    ~~~sh
@@ -300,7 +319,7 @@ Make sure the correct oneDNN library is present in
    cmake --build . --target doc
    ~~~
 
-## Install the Library
+## Step 5. Install the Library
 
 Install the library, headers, and documentation.
 

@@ -1793,7 +1793,7 @@ TEST(test_pass, FuseBinaryEltwise) {
         ASSERT_EQ(agraph.add_op(&eltwise), status::success);
         agraph.finalize();
 
-        auto apass = get_pass("binary_post_ops_fusion");
+        auto apass = get_pass("fp_binary_post_ops");
         apass->run(agraph);
 
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -1842,7 +1842,7 @@ TEST(test_pass, FuseEltwiseBinary3PostOps) {
     ASSERT_EQ(agraph.add_op(&div), status::success);
     agraph.finalize();
 
-    pass::pass_base_ptr pass = get_pass("eltwise_binary_fusion");
+    pass::pass_base_ptr pass = get_pass("fp_eltwise_binary");
     pass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -1883,7 +1883,7 @@ TEST(test_pass, FuseEltwiseBinaryFail) {
     ASSERT_EQ(agraph.add_op(&div), status::success);
     agraph.finalize();
 
-    pass::pass_base_ptr pass = get_pass("eltwise_binary_fusion");
+    pass::pass_base_ptr pass = get_pass("fp_eltwise_binary");
     pass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 0U);
@@ -2009,7 +2009,7 @@ TEST(test_pass, FuseBnRelu) {
     ASSERT_EQ(agraph.add_op(&relu), status::success);
     agraph.finalize();
 
-    pass::pass_base_ptr apass = get_pass("bn_relu_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_bnorm_relu");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -2104,7 +2104,7 @@ TEST(test_pass, FuseBnBwdReluBwd) {
     ASSERT_EQ(agraph.add_op(&op2), status::success);
     agraph.finalize();
 
-    pass::pass_base_ptr apass = get_pass("bn_bwd_relu_bwd_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_bnorm_bwd_relu_bwd");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -2153,7 +2153,7 @@ TEST(test_pass_system, TestBnBwdReluBwd) {
     ASSERT_EQ(agraph.add_op(&op2), status::success);
     agraph.finalize();
 
-    pass::pass_base_ptr apass = get_pass("bn_bwd_relu_bwd_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_bnorm_bwd_relu_bwd");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -12252,7 +12252,7 @@ TEST(test_pass, FuseBnReLUWithSharedInputs) {
 
     agraph.finalize();
 
-    pass::pass_base_ptr apass = get_pass("bn_relu_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_bnorm_relu");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
     ASSERT_EQ((agraph.get_partitions()[0])->get_kind(),
@@ -12304,7 +12304,7 @@ TEST(test_pass, FuseReorderAdd) {
 
         ASSERT_EQ(agraph.finalize(), status::success);
 
-        pass::pass_base_ptr apass = get_pass("reorder_sum_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_reorder_sum");
         apass->run(agraph);
 
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -12352,7 +12352,7 @@ TEST(test_pass, FailToFuseReorderAdd) {
 
     ASSERT_EQ(agraph.finalize(), status::success);
 
-    pass::pass_base_ptr apass = get_pass("reorder_sum_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_reorder_sum");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 0U);
@@ -12400,7 +12400,7 @@ TEST(test_pass, FuseInt8Reorder) {
 
     ASSERT_EQ(agraph.finalize(), status::success);
 
-    pass::pass_base_ptr apass = get_pass("int8_reorder_fusion");
+    pass::pass_base_ptr apass = get_pass("x8_reorder");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -12524,10 +12524,9 @@ TEST(test_pass, FuseInt8ReorderAdd) {
 
     ASSERT_EQ(agraph.finalize(), status::success);
 
-    graph::pass::pass_base_ptr apass
-            = get_pass(engine_kind == graph::engine_kind::cpu
-                            ? "int8_reorder_sum_fusion_cpu"
-                            : "int8_reorder_sum_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass(
+            engine_kind == graph::engine_kind::cpu ? "x8_reorder_sum_cpu"
+                                                   : "x8_reorder_sum_gpu");
     ASSERT_NE(apass, nullptr);
     apass->run(agraph);
 
@@ -12665,7 +12664,7 @@ TEST(test_pass, FuseInterpolateRelu) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 2U);
 
-    pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
     ASSERT_EQ((agraph.get_partitions()[0])->get_kind(),
@@ -12715,7 +12714,7 @@ TEST(test_pass, FuseInterpolateSwish) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 4U);
 
-    pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
     ASSERT_EQ(agraph.get_partitions()[0]->get_ops().size(), 4U);
@@ -12818,7 +12817,7 @@ TEST(test_pass, FuseInterpolate3PostOps) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 4U);
 
-    pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
     ASSERT_EQ((agraph.get_partitions()[0])->get_kind(),
@@ -12859,7 +12858,7 @@ TEST(test_pass, FuseInterpolateSum) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 2U);
 
-    pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -12898,7 +12897,7 @@ TEST(test_pass, FuseInterpolateMul) {
     agraph.finalize();
     ASSERT_EQ(agraph.num_ops(), 2U);
 
-    pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -12969,7 +12968,7 @@ TEST(test_pass, FuseReduceAdd) {
         ASSERT_EQ(agraph.add_op(&add), status::success);
         agraph.finalize();
 
-        pass::pass_base_ptr apass = get_pass("reduction_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -13009,7 +13008,7 @@ TEST(test_pass, FuseReduceRelu) {
         ASSERT_EQ(agraph.add_op(&relu), status::success);
         agraph.finalize();
 
-        pass::pass_base_ptr apass = get_pass("reduction_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_reduction_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -14108,7 +14107,7 @@ TEST(test_pass, BinaryPostops) {
 
         agraph.finalize();
 
-        pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -14241,7 +14240,7 @@ TEST(test_pass, Binary3Postops) {
 
         agraph.finalize();
 
-        pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         apass->run(agraph);
         ASSERT_EQ(agraph.get_num_partitions(), 1U);
 
@@ -15027,7 +15026,7 @@ TEST(test_pass, BatchNormReluU8Unfuse) {
         EXPECT_EQ(g.add_op(&relu_op), graph::status::success);
         EXPECT_EQ(g.add_op(&quant), graph::status::success);
         g.finalize();
-        graph::pass::pass_base_ptr apass = get_pass("int8_bn_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("s8f32s8_bnorm");
         apass->run(g);
         EXPECT_NE(g.get_num_partitions(), 1U);
     }

@@ -22,6 +22,10 @@
 #include <utility>
 #include <vector>
 
+#include "common/primitive_desc_iface.hpp"
+#include "common/primitive_iface.hpp"
+#include "common/stream.hpp"
+
 #include "graph/interface/allocator.hpp"
 #include "graph/interface/backend.hpp"
 #include "graph/interface/shape_infer.hpp"
@@ -655,6 +659,49 @@ size_t generate_constant_md_hash(
         key = hash_combine(key, md_hash);
     }
     return key;
+}
+
+status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
+        const stream &astream,
+        const std::unordered_map<int, memory> &exec_args) {
+    std::vector<dnnl_exec_arg_t> vec_args;
+    vec_args.reserve(exec_args.size());
+    for (const auto &a : exec_args)
+        vec_args.push_back({a.first, a.second.get(true)});
+
+    const primitive_iface_t *primitive_iface = prim.get();
+    stream_t *stream = astream.get();
+    int nargs = (int)vec_args.size();
+    const dnnl_exec_arg_t *c_args = vec_args.data();
+
+    bool ok = true && !dnnl::impl::utils::any_null(primitive_iface, stream)
+            && primitive_iface->engine() == stream->engine()
+            && IMPLICATION(nargs > 0, c_args != nullptr);
+    if (!ok) return status::invalid_arguments;
+
+    exec_args_t args;
+    status_t status = cvt_primitive_args(
+            primitive_iface->pd()->impl().get(), nargs, c_args, args);
+    if (status != status::success) return status;
+
+    // ctx is allocated on heap behind a shared_ptr
+    // This allows to copy it to all parallel lamdba closure
+    // and tie its lifetime to parallel tasks
+    auto ctx = std::make_shared<exec_ctx_t>(stream, std::move(args));
+#ifdef DNNL_ENABLE_STACK_CHECKER
+    stack_checker::stack_checker_t sc("dnnl_primitive_execute");
+    const auto *pd_iface = primitive_iface->pd();
+    bool is_wino
+            = std::string(pd_iface->info()).find("wino") != std::string::npos;
+    if (!is_wino) {
+        status = sc.check(
+                dnnl::impl::primitive_execute, primitive_iface, std::ref(ctx));
+    }
+#else
+    status = dnnl::impl::primitive_execute(primitive_iface, ctx);
+#endif
+
+    return status;
 }
 
 } // namespace dnnl_impl

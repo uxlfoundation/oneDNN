@@ -425,7 +425,7 @@ struct stream_staller_t {
             return;
 
         // Each thread from the threadpool should get the task to be stalled.
-        const int num_tasks = tp->get_num_threads();
+        const int num_tasks = 2;
 
         // The main thread must be let through, otherwise it deadlocks as
         // task submission won't happen.

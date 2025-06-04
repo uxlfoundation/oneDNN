@@ -533,7 +533,7 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
-    // const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
+    const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
     const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
 
     const auto &key_scales
@@ -559,9 +559,20 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    arg_list.append((float16_t)11.313708f);
-    // arg_list.append(*(float16_t *)scale_data);
-    // arg_list.append(scale);
+
+    if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) {
+      void *handle = scale.data_handle();
+      if (pd()->scale_md()->data_type == data_type::f16) {
+        arg_list.append(*(float16_t *)handle);
+      }
+      else if (pd()->scale_md()->data_type == data_type::bf16) {
+        arg_list.append(*(bfloat16_t *)handle);
+      }
+    }
+    else {
+      arg_list.append(scale);
+    }
+
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

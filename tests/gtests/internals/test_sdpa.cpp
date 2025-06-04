@@ -73,6 +73,7 @@ struct sdpa_tensors_t {
             m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr, sdpa_attr_quantized, sdpa_kq_attr_quantized,
             sdpa_vs_attr_quantized;
+    memory::desc scale_md;
 
     int kq_mask, vs_mask;
     memory::dims kq_groups, vs_groups;
@@ -360,7 +361,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     auto output_quantized_md = memory::desc(q_sz,          p.qdt,   abcd);
     // clang-format on
 
-    auto scale_md = memory::desc([&] {
+    out.scale_md = memory::desc([&] {
         dnnl_memory_desc_t tmp_scale_md;
         dnnl_memory_desc_create_host_side_scalar(
                 &tmp_scale_md, (dnnl_data_type_t)p.qdt);
@@ -374,7 +375,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     out.m_key_t = double_and_resize(key_t_md, eng);
 
     static dnnl::engine cpu_engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
-    out.m_scale = memory(memory::desc({1, 1, 1, 1, 1}, p.qdt, abcde), cpu_engine);
+    out.m_scale
+            = memory(memory::desc({1, 1, 1, 1, 1}, p.qdt, abcde), cpu_engine);
 
     out.m_key_quantized = double_and_resize(key_quantized_md, eng);
     out.m_key_t_quantized = double_and_resize(key_t_quantized_md, eng);
@@ -664,7 +666,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     }
 
     write_to_dnnl_memory(mask_data.data(), out.m_mask);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale);
+
+    void *scale_cpu_memory = out.m_scale.get_data_handle();
+    ((float16_t *)scale_cpu_memory)[0] = scale_data.data()[0];
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key);
@@ -1404,9 +1408,9 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query_test.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
-                t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
-                invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
+                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, t.scale_md,
+                t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
+                to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
                 t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
                 t.sdpa_vs_attr_quantized);

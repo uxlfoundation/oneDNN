@@ -63,7 +63,9 @@ public:
     inline cl_kernel getKernel(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     bool binaryIsZebin() { return isZebin; }
 
+    static inline HW detectHW(cl_device_id device);
     static inline HW detectHW(cl_context context, cl_device_id device);
+    static inline Product detectHWInfo(cl_device_id device, cl_context *context = nullptr);
     static inline Product detectHWInfo(cl_context context, cl_device_id device);
 
 private:
@@ -258,15 +260,21 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 }
 
 template <HW hw>
+HW OpenCLCodeGenerator<hw>::detectHW(cl_device_id device)
+{
+    return getCore(detectHWInfo(device).family);
+}
+
+template <HW hw>
 HW OpenCLCodeGenerator<hw>::detectHW(cl_context context, cl_device_id device)
 {
     return getCore(detectHWInfo(context, device).family);
 }
 
 template <HW hw>
-Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
+Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device, cl_context *context_ptr)
 {
-    Product product;
+    Product product = {};
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
@@ -276,7 +284,12 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
         // If it fails, compile a test program and extract the HW information from it.
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
+        cl_context context = [&] {
+            if(context_ptr) return *context_ptr;
+            return clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+        }();
         auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+        if(!context_ptr) clReleaseContext(context);
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
@@ -285,6 +298,12 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
         product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
 
     return product;
+}
+
+template <HW hw>
+Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
+{
+    detectHWInfo(device, &context);
 }
 
 } /* namespace NGEN_NAMESPACE */

@@ -171,8 +171,10 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
-    hw_info.systolicAvailable = compute_engine->mayiuse(
+
+    use_systolic_ukernel_ = compute_engine->mayiuse(
             compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
+    hw_info.systolicAvailable = use_systolic_ukernel_;
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
@@ -243,9 +245,11 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
             gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
     problem_kq.A.setAlignment(alignmentForLD(ldk));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
-    problem_kq.B.crosspack = 2;
-    problem_kq.B.tileR = into<uint16_t>(d_max());
-    problem_kq.B.tileC = into<uint16_t>(sg_size_);
+    if (use_sysolic_ukernel()) {
+        problem_kq.B.crosspack = 2;
+        problem_kq.B.tileR = into<uint16_t>(d_max());
+        problem_kq.B.tileC = into<uint16_t>(sg_size_);
+    }
 
     /* Set up problem size information */
     SizeParams sizes;
@@ -316,7 +320,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
             gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
     problem_vs.A.setAlignment(alignmentForLD(ldv));
     problem_vs.B.setAlignment(64); // S is packed in SLM
-    problem_vs.B.crosspack = 16;
+    if (use_sysolic_ukernel()) { problem_vs.B.crosspack = 16; }
     sizes.m = d->values();
     sizes.n = gemm_kq_.getSetting("wg_tile_n");
     sizes.k = gemm_kq_.getSetting("wg_tile_m");
@@ -335,7 +339,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
             strategy.dpasw |= strategy.fused;
         };
         gemm_vs_ = selectGEMMMicrokernel(
-                opts_vs, hw_info, sizes, problem_vs, reqs_vs, adjust_vs);
+                opts_vs, hw_info, sizes, problem_vs, reqs_vs);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_vs microkernel generation failure with message: %s",
@@ -503,6 +507,7 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
             d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
 
+    kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", pd()->use_sysolic_ukernel());
     /* Generate microkernel shims */
     ShimOptions shimOptions;
     shimOptions.subgroupSize = pd()->sg_size();

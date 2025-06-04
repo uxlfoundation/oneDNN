@@ -28,7 +28,7 @@
 #define QUANTIZE_COMMON 3
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define DIV_UP(x, y) (((x) + (y)-1) / (y))
+#define DIV_UP(x, y) (((x) + (y) - 1) / (y))
 
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
@@ -73,14 +73,29 @@ typedef ugemm_vs_c_type a_tile_type;
 #define KEY_SCALES_TO_FLOAT convert_float
 #endif
 
+#if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE(q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+#else
+DECLARE_2D_TILE(q_tile_type, half, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+#endif
 
 #ifdef BLOCK_Q
+
+#if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE_BLOCK_OPS(
         q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+#else
+DECLARE_2D_TILE_BLOCK_OPS(
+        q_tile_type, half, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+#endif
+
 #elif Q_ALIGN < 4
+
+#if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
         SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+#endif
+
 #endif
 
 #ifdef BLOCK_A
@@ -94,6 +109,11 @@ DECLARE_2D_TILE(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE, ugemm_vs_sg_tile_m,
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1 / 2, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
+DECLARE_2D_TILE(s_tile_type_reblock, half, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
+        ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n, ugemm_kq_sg_tile_m)
+DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, half, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
+        ugemm_kq_sg_tile_m)
 
 DECLARE_2D_TILE(
         s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
@@ -151,6 +171,12 @@ DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
         ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8, CONVERT_DATA_T)
 #endif
+
+DECLARE_2D_TILE_COPY_REBLOCK(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, s_tile_type_reblock, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
+        ugemm_kq_sg_tile_m, CONVERT_DATA_T)
 
 DECLARE_2D_TILE_VREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
@@ -333,6 +359,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Load Q tile, destined for SLM */
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
+
+#if USE_SYSTOLIC_UKERNEL
+
 #ifdef BLOCK_Q
         tile_load_block_rem_q(
                 &Q_tile, (global uint *)Q, q, ldq >> 1, 0, wg_j0 + q0_copy);
@@ -347,14 +376,27 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store_t_sys_src1(
                 Q_tile, (local uint *)&Q_slm[0], D_MAX / 2, q0_copy, 0);
 
+#else // FMA
+
+#ifdef BLOCK_Q
+        tile_load_block_rem_q(&Q_tile, Q, q, ldq, 0, wg_j0 + q0_copy);
+#else
+        tile_load(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy);
+#endif
+
+        /* Store Q tile to SLM */
+        tile_store_t_packed_src1(
+                Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
+#endif
+
 #if Q_ARRIVE_AWAIT_BARRIER
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 #endif
     }
 
     /* Load scale */
-    float scale = 1.0f;
-    float iscale = 1.0f;
+    float scale = 1.f;
+    float iscale = 1.f;
     if (k0end > 0) {
 #if WITH_ATTN_SCALE
 #if INVERT_SCALE
@@ -504,13 +546,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 );
 
 #if KEY_SCALES == QUANTIZE_COMMON
-#define k_scale_op(x) ((x)*k_scale)
+#define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
 #endif
 
         /* Apply attention mask */
 #if WITH_ATTN_MASK
-#define unscale(x) ((x)*iscale)
+#define unscale(x) ((x) * iscale)
         mask_tile_type_float mask_tile_float;
         tile_copy_reblock(mask_tile, &mask_tile_float);
 #if WITH_ATTN_SCALE
@@ -627,6 +669,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
 
+#if USE_SYSTOLIC_UKERNEL
         /* Convert to half or bf16, VNNI format */
         s_tile_type_packed S_tile_packed;
         tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
@@ -635,6 +678,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
                 ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
                 sg_j0_kq);
+#else
+        /* Reblock and store to SLM */
+        s_tile_type_reblock S_tile_reblock;
+        tile_copy_reblock(S_tile, &S_tile_reblock);
+        tile_store_block_packed(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
+                ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
+#endif
+
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
         /* Rescale existing accumulator and sums to match new maxima */
@@ -807,7 +858,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 
 #if VAL_SCALES == QUANTIZE_COMMON
-#define v_scale_op(x) ((x)*v_scale)
+#define v_scale_op(x) ((x) * v_scale)
         tile_elementwise(A_tile, v_scale_op);
 #endif
 

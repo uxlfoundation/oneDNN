@@ -124,8 +124,8 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
         }
     }
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(
-            conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
+    conf.dispatch = dispatch_t(
+            compute_engine, conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
 
     auto arch = compute_engine->device_info()->gpu_arch();
     bool is_pre_xe_hpc = arch < compute::gpu_arch_t::xe_hpc;

@@ -146,6 +146,11 @@ protected:
 };
 
 } // namespace compute
+
+namespace ocl {
+using dispatch_t = compute::dispatch_t;
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

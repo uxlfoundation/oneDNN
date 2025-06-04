@@ -144,7 +144,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)
                     != -1;
     auto ndims = gemm_pd_->dst_md()->ndims;
-    dispatch_ = compute_engine->create_dispatch(gemm_pd_->dst_md());
+    dispatch_ = dispatch_t(compute_engine, gemm_pd_->dst_md());
     dispatch_.define_dim("D0", 0, gemm_pd_->dst_md()->padded_dims[0]);
     dispatch_.define_dim("D1", 1, gemm_pd_->dst_md()->padded_dims[1]);
     dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,

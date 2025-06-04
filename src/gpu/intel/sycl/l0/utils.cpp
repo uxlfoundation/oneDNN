@@ -394,16 +394,15 @@ status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
-        int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+        compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product_,
+        uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels) {
     using namespace ngen;
-    Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
+    ngen::Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
             context, device);
 
     gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
-    gpu_product_family = static_cast<int>(product.family);
-    stepping_id = product.stepping;
+    std::memcpy(&product_, &product, sizeof(ngen::Product));
 
     mayiuse_systolic = false;
     if (get_l0_device_enabled_systolic_intel(device, mayiuse_systolic)

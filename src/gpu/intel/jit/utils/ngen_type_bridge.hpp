@@ -27,6 +27,12 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+inline ngen::Product get_ngen_product(const compute::device_info_t &info) {
+    ngen::Product ret;
+    std::memcpy(&ret, &info.gpu_product(), sizeof(ngen::Product));
+    return ret;
+}
+
 inline ngen::DataType convert_dnnl_type_to_ngen(data_type_t dt) {
     using namespace ngen;
 

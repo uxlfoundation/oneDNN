@@ -24,6 +24,10 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/sycl/compat.hpp"
 
+namespace ngen {
+struct Product;
+}
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -47,8 +51,8 @@ status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
-        int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+        compute::gpu_arch_t &gpu_arch, ngen::Product &product,
+        uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
 
 } // namespace sycl

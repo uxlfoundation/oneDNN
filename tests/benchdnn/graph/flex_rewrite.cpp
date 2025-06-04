@@ -916,13 +916,15 @@ void flex_rewrite_t::infer_output_shape(
 /// must pass compatibility check.
 /// @param in_shape String input from CML.
 /// @param shape Parsed updated shape.
+/// @param mtag Parsed updated memory tag.
 /// @param stride Parsed updated strides.
 /// @param msg Error message info when function returns `false` value.
 /// @return `true` if an inport info is valid and `false` otherwise. A message `msg`
 /// describes an error occurred.
 bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
-        std::string &shape, std::string &stride, std::string &msg) {
-    assert(shape.empty() && stride.empty());
+        std::string &shape, std::string &mtag, std::string &stride,
+        std::string &msg) {
+    assert(shape.empty() && stride.empty() && mtag.empty());
     if (in_shape == "0" || in_shape == "-") {
         shape = in_shape;
         return true;
@@ -957,16 +959,28 @@ bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
             return false;
         }
         shape = in_shape.substr(0, star_pos);
-        stride = in_shape.substr(star_pos + 1, in_length);
+        std::string stride_or_mtag = in_shape.substr(star_pos + 1, in_length);
 
-        if (all_letters(stride) && all_digit_cross(shape)) {
+        // handle different cases of input shape and strides rewriting. For example, the original tensor is 1x32x4*abc with id=0:
+        if (all_letters(stride_or_mtag) && all_digit_cross(shape)) {
+            // supports both new shape and memeory tag are provided, such as
+            // 0:1x32x8:acb
+            mtag = stride_or_mtag;
+            return true;
+        } else if (all_digit_cross(stride_or_mtag)
+                && (all_digit_cross(shape) || shape.empty())) {
+            // supports the following two cases:
+            // 1. both new shape and new strides are provided, such as:
+            // 0:1x32x8:512x256x1.
+            // 2. Only new strides are provided, such as: 0:*128x1x32
+            stride = stride_or_mtag;
             return true;
         } else {
             msg = err_msg;
             return false;
         }
-    } else if (all_letters(in_shape)) { // user only provide a new stride
-        stride = in_shape;
+    } else if (all_letters(in_shape)) { // user only provide a new memory tag
+        mtag = in_shape;
         return true;
     } else if (all_digit_cross(in_shape)) { // user only provide a new shape
         shape = in_shape;
@@ -1029,9 +1043,9 @@ void flex_rewrite_t::inports_shape_rewrite(
         if (in_shapes_.find(lt.id_) != in_shapes_.end()
                 && in_shapes_[lt.id_] != "default") {
 
-            std::string new_shape, new_stride, message;
-            bool result = get_inport_shape_stride(
-                    in_shapes_[lt.id_], new_shape, new_stride, message);
+            std::string new_shape, new_mtag, new_stride, message;
+            bool result = get_inport_shape_stride(in_shapes_[lt.id_], new_shape,
+                    new_mtag, new_stride, message);
             if (!result) {
                 BENCHDNN_PRINT(0,
                         "Error: `--in-shapes` is not valid. Reason: %s\n",
@@ -1044,6 +1058,8 @@ void flex_rewrite_t::inports_shape_rewrite(
             // shape, stride: ["1x32x4", ""] including ["0", ""]
             // shape, stride: ["1x32x4", "abc"]
             // shape, stride: ["", "abc"]
+            // shape,  stride:   ["1x32x4", "256x128x1"]
+            // shape,  stride:   ["", "256x128x1"]
             // and checks has been done accordingliy
             size_t ndims = lt.shape_.size(); // the original rank from JSON
             dims_t new_shape_dims;

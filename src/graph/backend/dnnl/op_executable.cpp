@@ -26,6 +26,7 @@
 #include <graph/utils/utils.hpp>
 
 #include "common/dnnl_thread.hpp"
+#include "common/stream.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
@@ -1840,6 +1841,8 @@ void genindex_executable_t ::execute(const stream &stream,
 
     auto &output = it_dst->second;
     auto output_ptr = static_cast<int32_t *>(output.get_data_handle());
+
+    stream.get()->before_exec_hook();
     dnnl::impl::parallel_nd(nelems_, [=](dim_t i) {
         dims_t input_dims; // decomposition for physical offsets
         dnnl::impl::utils::l_dims_by_l_offset(
@@ -1848,6 +1851,8 @@ void genindex_executable_t ::execute(const stream &stream,
                 = utils::offset_compute(output_strides_, input_dims, ndims_);
         output_ptr[offset] = input_dims[axis_];
     });
+
+    stream.get()->after_exec_hook();
 }
 
 static void get_arg_indices_for_post_ops(const op_t *op, fusion_info_mgr_t &mgr,

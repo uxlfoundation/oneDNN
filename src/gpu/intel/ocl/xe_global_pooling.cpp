@@ -91,7 +91,7 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
 
     const dim_t spatial_dim_padded = utils::rnd_up(
             conf.id * conf.ih * conf.iw, conf.global_pool_spatial_chunk);
-    conf.dispatch = compute_engine->create_dispatch(src_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, src_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
     conf.dispatch.define_dim("C", 1, conf.c_padded);
     if (conf.is_backward) {

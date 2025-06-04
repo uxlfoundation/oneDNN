@@ -49,8 +49,8 @@ static status_t init_conf_common(ref_eltwise_conf_t &conf,
 
     int max_ndims = 6;
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(
-            is_forward ? src_d.md_ : diff_data_d.md_);
+    conf.dispatch = dispatch_t(
+            compute_engine, is_forward ? src_d.md_ : diff_data_d.md_);
     for (int i = 0; i < max_ndims; ++i) {
         if (i < ndims)
             conf.dispatch.define_dim(utils::format("D%d", i), i, dims[i]);

@@ -542,7 +542,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     int vect_size = 1;
     dim_idx_t vect_dim = 0;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, dst_mdw.md_);
     int temp_block = 1;
 
     const bool may_use_sg8 = compute_engine->mayiuse_sub_group(8);

@@ -233,12 +233,12 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     if (!(src_mdw.is_dense() && c_is_last_physical && ndims < 4))
         return status::unimplemented;
 
-    conf.dispatch_scaleshift = compute_engine->create_dispatch();
-    conf.dispatch_scaleshift_finalize = compute_engine->create_dispatch();
-    conf.dispatch = compute_engine->create_dispatch(
-            conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
-    conf.dispatch_fused = compute_engine->create_dispatch(
-            conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
+    conf.dispatch_scaleshift = dispatch_t(compute_engine);
+    conf.dispatch_scaleshift_finalize = dispatch_t(compute_engine);
+    conf.dispatch = dispatch_t(
+            compute_engine, conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
+    conf.dispatch_fused = dispatch_t(
+            compute_engine, conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
     const auto &dims = conf.is_fwd ? src_mdw.padded_dims() : dst_mdw.dims();
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(

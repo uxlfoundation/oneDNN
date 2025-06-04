@@ -54,7 +54,7 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     if (conf.nelems == 0) return status::success;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, dst_mdw.md_);
     conf.subbyte_pack
             = utils::one_of(dst_mdw.data_type(), u4, s4, f4_e2m1, f4_e3m0);
 

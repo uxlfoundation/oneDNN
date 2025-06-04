@@ -58,9 +58,9 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     }
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch_scaleshift = compute_engine->create_dispatch();
-    conf.dispatch = compute_engine->create_dispatch(
-            pd->is_fwd() ? dst_mdw.md_ : src_mdw.md_);
+    conf.dispatch_scaleshift = dispatch_t(compute_engine);
+    conf.dispatch = dispatch_t(
+            compute_engine, pd->is_fwd() ? dst_mdw.md_ : src_mdw.md_);
 
     const auto &dims = pd->is_fwd() ? src_mdw.padded_dims() : dst_mdw.dims();
 

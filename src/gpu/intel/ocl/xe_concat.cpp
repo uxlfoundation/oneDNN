@@ -121,7 +121,7 @@ status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = dst_mdw.ndims();
     const auto *compute_engine
             = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, dst_mdw.md_);
     conf.n = pd->n_inputs();
     conf.concat_axis = pd->concat_dim();
 

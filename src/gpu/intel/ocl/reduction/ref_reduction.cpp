@@ -47,7 +47,7 @@ status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = ndims;
     conf.power = pd->desc()->p;
     conf.eps = pd->desc()->eps;
-    conf.dispatch = compute_engine->create_dispatch(src_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, src_mdw.md_);
     conf.div = 1;
 
     for (int d = 0; d < ndims; d++) {

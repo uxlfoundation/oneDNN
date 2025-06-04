@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 status_t ref_resampling_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(dst_md());
+    conf.dispatch = dispatch_t(compute_engine, dst_md());
 
     conf.dispatch.define_dim("MB", 0, dst_md()->padded_dims[0]);
     conf.dispatch.define_dim("C", 1, dst_md()->padded_dims[1]);
@@ -133,7 +133,7 @@ status_t ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 status_t ref_resampling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(diff_src_md());
+    conf.dispatch = dispatch_t(compute_engine, diff_src_md());
 
     conf.dispatch.define_dim("MB", 0, diff_src_md()->padded_dims[0]);
     conf.dispatch.define_dim("C", 1, diff_src_md()->padded_dims[1]);

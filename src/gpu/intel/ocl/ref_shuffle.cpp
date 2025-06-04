@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ status_t ref_shuffle_t::pd_t::init_conf(impl::engine_t *engine) {
     set_offsets(input_mdw, off.src_off);
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(input_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, input_mdw.md_);
     for (int i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);
         if (i < input_mdw.ndims()) {

@@ -42,7 +42,7 @@ status_t rnn_weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     // only for LDIGO
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, dst_mdw.md_);
     conf.dispatch.define_dim("D0", 0, dims[0]);
     conf.dispatch.define_dim("D1", 1, dims[1]);
     conf.dispatch.define_dim("D3", 3, dims[3]);

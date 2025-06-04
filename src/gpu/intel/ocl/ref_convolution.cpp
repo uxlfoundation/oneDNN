@@ -40,7 +40,7 @@ static status_t init_conf_common(
     switch (cd.prop_kind) {
         case prop_kind::forward_training:
         case prop_kind::forward_inference: {
-            conf.dispatch = compute_engine->create_dispatch(&dst_md);
+            conf.dispatch = dispatch_t(compute_engine, &dst_md);
             conf.dispatch.define_dim("MB", 0, conf.mb);
             conf.dispatch.define_dim("G", 1, conf.ngroups);
             conf.dispatch.define_dim("OC", 1, conf.oc);
@@ -54,7 +54,7 @@ static status_t init_conf_common(
             break;
         }
         case prop_kind::backward_data: {
-            conf.dispatch = compute_engine->create_dispatch(&src_md);
+            conf.dispatch = dispatch_t(compute_engine, &src_md);
             conf.dispatch.define_dim_with_nesting_level(
                     "IC", conf.ndims, conf.ic);
             conf.dispatch.define_dim("MB", conf.mb);
@@ -69,7 +69,7 @@ static status_t init_conf_common(
             break;
         }
         case prop_kind::backward_weights: {
-            conf.dispatch = compute_engine->create_dispatch(&weights_md);
+            conf.dispatch = dispatch_t(compute_engine, &weights_md);
             conf.dispatch.define_dim("G", 0, conf.ngroups);
             conf.dispatch.define_dim("OC", oc_idx, conf.oc);
             conf.dispatch.define_dim("IC", oc_idx + 1, conf.ic);

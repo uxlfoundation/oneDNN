@@ -835,7 +835,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.sub_group_size = vect_size;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = dispatch_t(compute_engine, dst_mdw.md_);
 
     for (dim_idx_t i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);

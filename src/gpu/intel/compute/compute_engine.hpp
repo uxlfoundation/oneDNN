@@ -35,7 +35,6 @@
 #include "gpu/gpu_engine.hpp"
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
@@ -159,10 +158,6 @@ public:
     }
     bool mayiuse_large_grf_mode() const {
         return device_info()->mayiuse_systolic();
-    }
-
-    dispatch_t create_dispatch(const memory_desc_t *md = nullptr) const {
-        return dispatch_t(this, md);
     }
 
     virtual gpu_utils::device_id_t device_id() const = 0;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,8 +36,8 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
     set_offsets(dst_mdw, off.dst_off);
 
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(
-            conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
+    conf.dispatch = dispatch_t(
+            compute_engine, conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
     conf.dispatch.define_dim("OC", 1, conf.c_padded);
     int ndims = conf.ndims;

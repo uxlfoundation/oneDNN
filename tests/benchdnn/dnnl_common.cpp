@@ -16,6 +16,7 @@
 
 #include <algorithm> // for std::reverse and std::copy
 #include <functional> // for std::bind and std::placeholders
+#include <future> // for std::promise and std::future
 #include <list>
 #include <numeric>
 #include <string> // for std::string
@@ -408,6 +409,42 @@ void args_t::replace(int arg, const dnn_mem_t *mem) {
     }
 }
 
+#if DNNL_CPU_THREADING_RUNTIME == THREADPOOL
+struct stream_staller_t {
+    stream_staller_t(stream_t &stream) {
+        // enqueue task to stall execution submission
+        void *tp_ptr;
+        dnnl_threadpool_interop_stream_get_threadpool(stream, &tp_ptr);
+        auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(
+                tp_ptr);
+
+        // to avoid deadlock, we stall only if TP is asynchronous
+        if (tp->get_flags() != dnnl::threadpool_iface::ASYNCHRONOUS) return;
+
+        // We need at least 2 tasks, otherwise main thread will just
+        // run the single task.
+        constexpr int num_tasks = 2;
+        // main thread should not participate, otherwise deadlock
+        std::thread::id main_thr_id = std::this_thread::get_id();
+        tp->parallel_for(num_tasks, [&prom, &main_thr_id](int ithr, int nthr) {
+            std::shared_future<void> fut(prom_.get_future());
+            std::thread::id id_thr = std::this_thread::get_id();
+            if (id_thr != main_thr_id) fut.wait();
+        });
+    }
+
+    void release() { prom_.set_value(); }
+
+private:
+    std::promise<void> prom_;
+};
+#else
+struct stream_staller_t {
+    stream_staller_t(stream_t &stream) {}
+    void release() {}
+};
+#endif
+
 // Unmap before passing the memory to execute
 void execute_unmap_args(
         const args_t &args, std::vector<dnnl_exec_arg_t> &dnnl_args) {
@@ -466,7 +503,10 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     }
 #endif
     if (run_regular_exec) {
+        stream_staller_t staller(stream);
         TIME_EXECUTE(status = exec_func(stream, dnnl_args));
+        staller.release();
+
         TIME_EXECUTE(DNN_SAFE(dnnl_stream_wait(stream), CRIT));
     }
     if (res) res->state = EXECUTED;

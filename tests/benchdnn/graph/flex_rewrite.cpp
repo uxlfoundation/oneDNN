@@ -147,11 +147,24 @@ void flex_rewrite_t::rewrite_linked_shape_and_attr(
 
                 auto &scale_lt = aop.in_lts_[1];
                 scale_lt.shape_ = new_group_quant_scale_zps_dims;
+                if (dgraph.lt_2_mtag_[scale_lt.id_] == "not_available") {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "Error: scale input does not support "
+                            "non-contiguous memory.");
+                    SAFE_V(FAIL);
+                }
                 scale_lt.stride_ = memory_tag2strides(
                         scale_lt.shape_, dgraph.lt_2_mtag_[scale_lt.id_]);
+
                 if (aop.in_lts_.size() > 2) {
                     auto &zp_lt = aop.in_lts_[2];
                     zp_lt.shape_ = new_group_quant_scale_zps_dims;
+                    if (dgraph.lt_2_mtag_[zp_lt.id_] == "not_available") {
+                        BENCHDNN_PRINT(0, "%s\n",
+                                "Error: zero point input does not support "
+                                "non-contiguous memory.");
+                        SAFE_V(FAIL);
+                    }
                     zp_lt.stride_ = memory_tag2strides(
                             zp_lt.shape_, dgraph.lt_2_mtag_[zp_lt.id_]);
                 }
@@ -900,14 +913,28 @@ void flex_rewrite_t::infer_output_shape(
             case dnnl::graph::op::kind::LastSymbol: break;
         }
 
+        // update the shape and strides for input tensors.
+        const auto &input_ports = dgraph.get_input_ports();
         for (auto &lt : aop.in_lts_) {
-            lt.shape_ = gi[lt.id_];
-            if (dgraph.lt_2_mtag_[lt.id_] != "non_dense_memory") {
+            if (std::find(input_ports.begin(), input_ports.end(), lt.id_)
+                    == input_ports.end()) {
+                // for graph input ports, no action is needed, as they have
+                // been handled during the input shape rewrite stage. And for
+                // other intermediate tensors, set the input shape and strides
+                // based on the inference of parents ops.
+                if (dgraph.lt_2_mtag_[lt.id_] == "not_available") {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "Error: intermediate tensors do not support "
+                            "non-contiguous format");
+                    SAFE_V(FAIL);
+                }
+                lt.shape_ = gi[lt.id_];
                 lt.stride_ = memory_tag2strides(
-                        gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+                        lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
             }
         }
-        // update outputs for the current op
+
+        // update the shape and strides for output tensors.
         update_output_info(aop, dgraph, change_stride);
     }
 }
@@ -921,8 +948,9 @@ void flex_rewrite_t::infer_output_shape(
 /// @return `true` if an inport info is valid and `false` otherwise. A message `msg`
 /// describes an error occurred.
 bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
-        std::string &shape, std::string &stride, std::string &msg) {
-    assert(shape.empty() && stride.empty());
+        std::string &shape, std::string &stride, std::string &mtag,
+        std::string &msg) {
+    assert(shape.empty() && stride.empty() && mtag.empty());
     if (in_shape == "0" || in_shape == "-") {
         shape = in_shape;
         return true;
@@ -943,38 +971,49 @@ bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
     };
 
     size_t in_length = in_shape.size();
-    size_t star_pos = in_shape.find('*');
+    size_t delimiter_pos = in_shape.find('*');
     const static std::string err_msg
             = "A shape is expected in the form of `NUMxNUMxNUM...`. A tag must "
               "be composed of letters only.";
-    // shape and stride are provided
-    if (star_pos != std::string::npos) {
-        // invalid CML info, e.g. "1x2x3*", "*abc"
-        if (star_pos == 0 || star_pos == in_length - 1) {
-            msg = "A shape must be provided before the `*`, a tag - after the "
-                  "`*`. Alternatively, remove the `*` to apply the default "
-                  "shape or stride.";
+    if (delimiter_pos != std::string::npos) {
+        // strides rewrite is provided
+        if (delimiter_pos == in_length - 1) {
+            // invalid CML info, e.g. "1x2x3*"
+            msg = "A memory tag or strides should be provided after the '*'.";
             return false;
         }
-        shape = in_shape.substr(0, star_pos);
-        stride = in_shape.substr(star_pos + 1, in_length);
+        shape = in_shape.substr(0, delimiter_pos);
+        std::string mtag_or_stride
+                = in_shape.substr(delimiter_pos + 1, in_length);
 
-        if (all_letters(stride) && all_digit_cross(shape)) {
-            return true;
-        } else {
-            msg = err_msg;
+        // if new shape does not contain numbers and `x` only
+        if (delimiter_pos != 0 && !all_digit_cross(shape)) return false;
+
+        if (all_letters(mtag_or_stride))
+            // if only memory tag is provied, such as --in-shapes=0:*abdc.
+            mtag = mtag_or_stride;
+        else if (all_digit_cross(mtag_or_stride))
+            // if only strides are provied, such as --in-shapse=0:*1x16x4
+            stride = mtag_or_stride;
+        else
             return false;
-        }
-    } else if (all_letters(in_shape)) { // user only provide a new stride
-        stride = in_shape;
         return true;
-    } else if (all_digit_cross(in_shape)) { // user only provide a new shape
+    } else if (all_letters(in_shape)) {
+        // if a new memory tag is provided without a delimiter
+        msg = "A memory tag or strides should be provided after the '*'.";
+        return false;
+    } else if (all_digit_cross(in_shape)) {
+        // if only a new shape is provided, such as --in-shapes=0:1x8x4
         shape = in_shape;
         return true;
-    } else { // a valid input info is rather strict, return false if the input info is none of the above
+    } else {
+        // a valid input info is rather strict, return false if the input info
+        // is none of the above
         msg = err_msg;
         return false;
     }
+
+    return true;
 }
 
 void flex_rewrite_t::inports_shape_rewrite(
@@ -996,7 +1035,7 @@ void flex_rewrite_t::inports_shape_rewrite(
     // check stride provided from cml, return false, if one is not a valid tag
     // for example: when stride is "dcba", return true;
     // when stride size is 4, "zcba" & "aabc" are all invalid stride
-    const auto is_valid_stride = [](const std::string &stride) -> bool {
+    const auto is_valid_tag = [](const std::string &stride) -> bool {
         assert(!stride.empty());
         for (size_t i = 0; i < stride.size(); ++i) {
             if (stride.find(char('a' + i)) == std::string::npos) {
@@ -1006,10 +1045,12 @@ void flex_rewrite_t::inports_shape_rewrite(
         return true;
     };
 
+    const auto &input_ports = dgraph.get_input_ports();
     for_(auto &aop : dgraph.ops_)
     for (auto &lt : aop.in_lts_) {
         // if 'lt' is not a inport, set default logical tensor info
-        if (dgraph.graph_tensors_.find(lt.id_) == dgraph.graph_tensors_.end()) {
+        if (std::find(input_ports.begin(), input_ports.end(), lt.id_)
+                == input_ports.end()) {
             // At the same time check if in_shapes contain non-inport tensors.
             if (in_shapes_.find(lt.id_) != in_shapes_.end()) {
                 BENCHDNN_PRINT(0,
@@ -1029,9 +1070,9 @@ void flex_rewrite_t::inports_shape_rewrite(
         if (in_shapes_.find(lt.id_) != in_shapes_.end()
                 && in_shapes_[lt.id_] != "default") {
 
-            std::string new_shape, new_stride, message;
-            bool result = get_inport_shape_stride(
-                    in_shapes_[lt.id_], new_shape, new_stride, message);
+            std::string new_shape, new_mtag, new_stride, message;
+            bool result = get_inport_shape_stride(in_shapes_[lt.id_], new_shape,
+                    new_stride, new_mtag, message);
             if (!result) {
                 BENCHDNN_PRINT(0,
                         "Error: `--in-shapes` is not valid. Reason: %s\n",
@@ -1044,9 +1085,10 @@ void flex_rewrite_t::inports_shape_rewrite(
             // shape, stride: ["1x32x4", ""] including ["0", ""]
             // shape, stride: ["1x32x4", "abc"]
             // shape, stride: ["", "abc"]
+            // shape,  stride:   ["1x32x4", "256x128x1"]
+            // shape,  stride:   ["", "256x128x1"]
             // and checks has been done accordingliy
             size_t ndims = lt.shape_.size(); // the original rank from JSON
-            dims_t new_shape_dims;
             // shape "-" means this logical tensor is 0 rank with shape: []
             const bool zero_rank = new_shape == "-";
             // if the current logical tensor is rewritten to rank-0
@@ -1058,65 +1100,72 @@ void flex_rewrite_t::inports_shape_rewrite(
                 continue;
             }
             if (!new_shape.empty()) {
-                new_shape_dims = string_to_shape(new_shape);
-                if (!new_stride.empty()) {
-                    if (new_shape_dims.size() != new_stride.size()) {
-                        BENCHDNN_PRINT(0,
-                                "Error: the shape size (`%zu`) must coinside "
-                                "with the stride size (`%zu`).\n",
-                                new_shape_dims.size(), new_stride.size());
-                        SAFE_V(FAIL);
-                    }
-                    if (!is_valid_stride(new_stride)) {
-                        BENCHDNN_PRINT(0,
-                                "Error: the tag provided is not valid: `%s`: "
-                                "unexpected letters encountered.\n",
-                                new_stride.c_str());
-                        SAFE_V(FAIL);
-                    }
-                }
+                auto new_shape_dims = string_to_shape(new_shape);
                 if (has_mb_rewrite) { new_shape_dims[0] = mb_; }
-            }
 
-            // if rank change and no stride provided
-            if (new_shape_dims.size() != ndims && new_stride.empty()) {
-                change_stride = true;
-                // use default stride
-                dgraph.lt_2_mtag_[lt.id_]
-                        = get_default_tag(new_shape_dims.size());
-            }
+                // if only rewrite the shape, use dense format
+                if (new_mtag.empty() && new_stride.empty()) {
+                    change_stride = true;
+                    // use default stride
+                    dgraph.lt_2_mtag_[lt.id_]
+                            = get_default_tag(new_shape_dims.size());
+                }
 
-            // update new value to dgraph
-            if (!new_shape.empty()) {
+                // update new value to dgraph
                 lt.shape_ = new_shape_dims;
+                ndims = new_shape_dims.size();
                 dgraph.graph_tensors_[lt.id_] = new_shape_dims;
             }
-            if (!new_stride.empty()) {
-                // original 4d, no new shape and stride.size() != 4,
-                // this is not valid stride
-                if (new_shape.empty() && new_stride.size() != ndims) {
+
+            if (!new_mtag.empty()) {
+                if (new_mtag.size() != ndims) {
                     BENCHDNN_PRINT(0,
-                            "Error: the tag provided is not valid: `%s`: the "
+                            "Error: the tag provided is not valid: `%s`, the "
                             "tag size must be `%d`.\n",
-                            new_stride.c_str(), static_cast<int>(ndims));
+                            new_mtag.c_str(), static_cast<int>(ndims));
                     SAFE_V(FAIL);
                 }
-                if (!is_valid_stride(new_stride)) {
+                if (!is_valid_tag(new_mtag)) {
                     BENCHDNN_PRINT(0,
                             "Error: the tag provided is not valid: `%s`: "
                             "unexpected letters encountered.\n",
-                            new_stride.c_str());
+                            new_mtag.c_str());
                     SAFE_V(FAIL);
                 }
-                if (dgraph.lt_2_mtag_[lt.id_] != new_stride) {
+                if (dgraph.lt_2_mtag_[lt.id_] != new_mtag) {
                     change_stride = true;
-                    dgraph.lt_2_mtag_[lt.id_] = new_stride;
+                    dgraph.lt_2_mtag_[lt.id_] = new_mtag;
                 }
+                lt.stride_ = memory_tag2strides(
+                        lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+
+            } else if (!new_stride.empty()) {
+                auto new_stride_dims = string_to_shape(new_stride);
+                if (new_stride_dims.size() != ndims) {
+                    BENCHDNN_PRINT(0,
+                            "Error: the strides provided is not valid: `%s`, "
+                            "the "
+                            "strides size must be `%d`.\n",
+                            new_stride.c_str(), static_cast<int>(ndims));
+                    SAFE_V(FAIL);
+                }
+
+                change_stride = true;
+                std::string tmp_mtag = strides2memory_tag(
+                        lt.shape_.size(), new_stride_dims, false);
+                if (!is_contiguous_memory(
+                            new_stride_dims, lt.shape_, tmp_mtag)) {
+                    dgraph.lt_2_mtag_[lt.id_] = "not_available";
+                }
+                lt.stride_ = new_stride_dims;
+            } else {
+                lt.stride_ = memory_tag2strides(
+                        lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
             }
-            lt.stride_
-                    = memory_tag2strides(lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
 
         } else if (has_mb_rewrite) {
+            // if no shape and strides rewriting is provided, respect the
+            // information from the JSON file.
             lt.shape_[0] = mb_;
             dgraph.graph_tensors_[lt.id_] = lt.shape_;
         }
@@ -1458,17 +1507,22 @@ void flex_rewrite_t::update_output_info(deserialized_op_t &aop,
     // if a input stride is not changed, the output stride should not be changed as well
     if (!change_stride) {
         for (auto &lt : aop.out_lts_) {
-            lt.shape_ = gi[lt.id_];
-            if (dgraph.lt_2_mtag_[lt.id_] != "non_dense_memory") {
-                lt.stride_ = memory_tag2strides(
-                        gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
+            if (dgraph.lt_2_mtag_[lt.id_] == "not_available") {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "Error: output and intermediate tensors do not support "
+                        "non-contiguous format");
+                SAFE_V(FAIL);
             }
+            lt.shape_ = gi[lt.id_];
+            lt.stride_
+                    = memory_tag2strides(gi[lt.id_], dgraph.lt_2_mtag_[lt.id_]);
         }
         return;
     }
     // step1: get dominate stride info
     // get the src stride, normally index 0 input tensor
-    std::string dominate_stride = dgraph.lt_2_mtag_[aop.in_lts_.front().id_];
+    const auto &dominate_tag = dgraph.lt_2_mtag_[aop.in_lts_.front().id_];
+    const bool is_mtag_available = (dominate_tag != "not_available");
     // step2: determine out stride info
     switch (kind) {
         // category 1: all output lts have the same dim size
@@ -1552,8 +1606,14 @@ void flex_rewrite_t::update_output_info(deserialized_op_t &aop,
                 // shape has been determined in 'gi' by infer_out_shape()
                 // so update shape in lt here
                 lt.shape_ = gi[lt.id_];
-                dgraph.lt_2_mtag_[lt.id_] = dominate_stride;
-                lt.stride_ = memory_tag2strides(gi[lt.id_], dominate_stride);
+                if (is_mtag_available) {
+                    dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                } else {
+                    dgraph.lt_2_mtag_[lt.id_]
+                            = get_default_tag(lt.shape_.size());
+                }
+                lt.stride_ = memory_tag2strides(
+                        lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
             }
             break;
         }
@@ -1564,9 +1624,14 @@ void flex_rewrite_t::update_output_info(deserialized_op_t &aop,
             for (auto &lt : aop.out_lts_) {
                 lt.shape_ = gi[lt.id_];
                 if (lt.shape_.size() != 1) {
-                    dgraph.lt_2_mtag_[lt.id_] = dominate_stride;
-                    lt.stride_
-                            = memory_tag2strides(gi[lt.id_], dominate_stride);
+                    if (is_mtag_available) {
+                        dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                    } else {
+                        dgraph.lt_2_mtag_[lt.id_]
+                                = get_default_tag(lt.shape_.size());
+                    }
+                    lt.stride_ = memory_tag2strides(
+                            lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
                 } else {
                     dgraph.lt_2_mtag_[lt.id_] = "a";
                     lt.stride_ = memory_tag2strides(gi[lt.id_], "a");

@@ -22,6 +22,7 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
+#include "ngen.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/engine.hpp"
@@ -63,9 +64,14 @@ uint64_t get_future_extensions(
     return extensions;
 }
 
+int device_info_t::stepping_id() const {
+    ngen::Product p = jit::get_ngen_product(*this);
+    return p.stepping;
+}
+
 bool device_info_t::is_integrated() const {
-    auto family = static_cast<ngen::ProductFamily>(gpu_product_family_);
-    return ngen::getPlatformType(family) == ngen::PlatformType::Integrated;
+    ngen::Product p = jit::get_ngen_product(*this);
+    return p.type == ngen::PlatformType::Integrated;
 }
 
 std::string device_info_t::get_cl_ext_options() const {
@@ -296,8 +302,7 @@ status_t device_info_t::init_serialized_device_info(
     }
 
     serialized_device_info_.append(gpu_arch_);
-    serialized_device_info_.append(gpu_product_family_);
-    serialized_device_info_.append(stepping_id_);
+    serialized_device_info_.append(gpu_product_);
     serialized_device_info_.append(ip_version_);
     serialized_device_info_.append(runtime_version_.major);
     serialized_device_info_.append(runtime_version_.minor);
@@ -336,8 +341,7 @@ status_t device_info_t::init_from_cache_blob(
     pos += sizeof(expected_type);
 
     DESERIALIZE(gpu_arch_, compute::gpu_arch_t);
-    DESERIALIZE(gpu_product_family_, int);
-    DESERIALIZE(stepping_id_, int);
+    DESERIALIZE(gpu_product_, compute::gpu_product_t);
     DESERIALIZE(ip_version_, uint32_t);
     DESERIALIZE(runtime_version_.major, int);
     DESERIALIZE(runtime_version_.minor, int);
@@ -378,6 +382,11 @@ void device_info_t::fixup_l3_cache_size() {
         l3_cache_size_ = (1 << 23);
     }
 }
+
+static_assert(std::is_trivially_copyable<ngen::Product>(),
+        "ngen::Product cannot safely be copied into gpu_product_t");
+static_assert(sizeof(ngen::Product) == sizeof(compute::gpu_product_t),
+        "ngen::Product cannot safely be copied into gpu_product_t");
 
 } // namespace compute
 } // namespace intel

@@ -70,7 +70,8 @@ private:
     void inports_shape_rewrite(
             deserialized_graph_t &dgraph, bool &change_stride);
     bool get_inport_shape_stride(const std::string &in_shape,
-            std::string &shape, std::string &stride, std::string &msg);
+            std::string &shape, std::string &stride, std::string &mtag,
+            std::string &msg);
     void op_attrs_rewrite(deserialized_graph_t &dgraph);
     void quantized_graph_rewrite(deserialized_graph_t &dgraph);
     void update_output_info(deserialized_op_t &aop,

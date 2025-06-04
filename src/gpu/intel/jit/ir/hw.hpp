@@ -19,6 +19,7 @@
 
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/gpu_primitive_attr.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -48,18 +49,10 @@ public:
         max_wg_size_ = static_cast<int>(
                 device_info->max_wg_size(/*large_grf_mode=*/false));
         l3_cache_size_ = device_info->l3_cache_size();
-        large_grf_support_ = compute_engine->mayiuse_large_grf_mode();
+        large_grf_support_ = device_info->mayiuse_large_grf_mode();
         systolic_support_ = device_info->mayiuse_systolic();
         with_atomic_fp64_
                 = device_info->mayiuse_float_atomic_add(data_type::f64);
-
-#ifdef DNNL_DEV_MODE
-        gpu_arch_t old_arch = gpu_arch;
-        gpu_arch = gpu_utils::dev_getenv(
-                "gpu_arch", gpu_arch, &eu_count_, &max_wg_size_);
-        if (old_arch != gpu_arch)
-            large_grf_support_ = gpu_arch >= compute::gpu_arch_t::xe_hp;
-#endif
 
         hw_ = convert_dnnl_arch_to_ngen(gpu_arch);
     }

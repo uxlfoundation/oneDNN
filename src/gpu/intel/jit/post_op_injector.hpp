@@ -48,7 +48,7 @@ inline bool post_op_injector_is_supported(
 template <typename ngen_generator_t>
 struct post_op_injector_t {
     post_op_injector_t(ngen_generator_t *host, ngen::DataType accumulator_type,
-            const post_ops_t &post_ops, int eu_count,
+            const post_ops_t &post_ops,
             const ngen::GRFRange &scratch = ngen::GRFRange(),
             bool is_fwd = true)
         : is_fwd_(is_fwd), scratch_(scratch) {
@@ -58,13 +58,12 @@ struct post_op_injector_t {
             const auto &po = post_ops.entry_[idx];
             if (po.is_eltwise())
                 workers_.emplace_back(host, po.eltwise.alg, po.eltwise.alpha,
-                        po.eltwise.beta, po.eltwise.scale, eu_count, scratch,
-                        is_fwd);
+                        po.eltwise.beta, po.eltwise.scale, scratch, is_fwd);
         }
     }
 
     post_op_injector_t(ngen_generator_t *host, ngen::DataType accumulator_type,
-            const gpu_post_ops_t &post_ops, int eu_count,
+            const gpu_post_ops_t &post_ops,
             const ngen::GRFRange &scratch = ngen::GRFRange(),
             bool is_fwd = true)
         : is_fwd_(is_fwd), scratch_(scratch) {
@@ -73,8 +72,8 @@ struct post_op_injector_t {
         for (auto &po : post_ops) {
             if (po.is_eltwise()) {
                 auto &e = po.as_eltwise();
-                workers_.emplace_back(host, e.alg, e.alpha, e.beta, e.scale,
-                        eu_count, scratch, is_fwd);
+                workers_.emplace_back(
+                        host, e.alg, e.alpha, e.beta, e.scale, scratch, is_fwd);
             }
         }
     }

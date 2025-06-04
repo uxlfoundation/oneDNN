@@ -58,7 +58,6 @@ public:
         : host_(host)
         , expr_binding_(expr_binding)
         , simd_size_(host->getSIMD())
-        , eu_count_(host->exec_cfg().hw().eu_count())
         , with_atomic_fp64_(host->exec_cfg().hw().has_fp64_atomic_support()) {}
 
     ~ir_to_ngen_t() override
@@ -798,8 +797,8 @@ private:
         auto &data_op = eltwise_t::arg_data(args);
         const auto &data_rd = data_op.reg_buf_data();
 
-        eltwise_injector_f32_t<ngen_generator_t> inj(host_, func.alg_kind,
-                func.alpha, func.beta, func.scale, eu_count_);
+        eltwise_injector_f32_t<ngen_generator_t> inj(
+                host_, func.alg_kind, func.alpha, func.beta, func.scale);
         auto scratch = scope.alloc_range(inj.preferred_scratch_regs());
         inj.set_scratch(scratch);
         inj.prepare();
@@ -863,7 +862,6 @@ private:
     ngen_generator_t *host_;
     expr_binding_t expr_binding_;
     int simd_size_;
-    int eu_count_;
     bool with_atomic_fp64_;
 
 #ifdef DNNL_DEV_MODE

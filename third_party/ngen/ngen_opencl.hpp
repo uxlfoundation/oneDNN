@@ -63,7 +63,9 @@ public:
     inline cl_kernel getKernel(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     bool binaryIsZebin() { return isZebin; }
 
+    static inline HW detectHW(cl_device_id device);
     static inline HW detectHW(cl_context context, cl_device_id device);
+    static inline Product detectHWInfo(cl_device_id device);
     static inline Product detectHWInfo(cl_context context, cl_device_id device);
 
 private:
@@ -258,15 +260,27 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 }
 
 template <HW hw>
+HW OpenCLCodeGenerator<hw>::detectHW(cl_device_id device)
+{
+    return getCore(detectHWInfo(nullptr, device).family);
+}
+
+template <HW hw>
 HW OpenCLCodeGenerator<hw>::detectHW(cl_context context, cl_device_id device)
 {
     return getCore(detectHWInfo(context, device).family);
 }
 
 template <HW hw>
+Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device)
+{
+    return detectHWInfo(nullptr, device);
+}
+
+template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product product;
+    Product product = {};
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
@@ -276,7 +290,9 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
         // If it fails, compile a test program and extract the HW information from it.
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
-        auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+        cl_context query_context = context ? context : clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+        auto binary = detail::getOpenCLCProgramBinary(query_context, device, dummyCL, dummyOptions);
+        if(!context) clReleaseContext(query_context);
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 

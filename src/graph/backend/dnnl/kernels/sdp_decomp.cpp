@@ -224,6 +224,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     const auto loop = [=](int tid, int nthr, dim_t bo, dim_t bi) {
         UNUSED(scratchpad);
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        auto tp = threadpool_utils::get_active_threadpool();
+        threadpool_utils::deactivate_threadpool();
+#endif
         // prepare execution args and allocate real memory
         prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
 
@@ -343,15 +347,22 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         // in parallel region - these primitives should use single thread.
         sdp_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
         sdp_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
-        sdp_cfg_.sub_mm1_prim.execute(strm, res->sub_mm1_args[tid]);
+        dnnl_primitive_execute_without_tp_hook(
+                sdp_cfg_.sub_mm1_prim, strm, res->sub_mm1_args[tid]);
         if (sdp_cfg_.has_select)
-            sdp_cfg_.sub_select_prim.execute(strm, res->sub_select_args[tid]);
-        sdp_cfg_.sub_softmax_prim.execute(strm, res->sub_softmax_args[tid]);
+            dnnl_primitive_execute_without_tp_hook(
+                    sdp_cfg_.sub_select_prim, strm, res->sub_select_args[tid]);
+        dnnl_primitive_execute_without_tp_hook(
+                sdp_cfg_.sub_softmax_prim, strm, res->sub_softmax_args[tid]);
 
         sdp_cfg_.sub_reorder2.execute(strm, res->sub_reorder2_args[tid]);
 
-        sdp_cfg_.sub_mm2_prim.execute(strm, res->sub_mm2_args[tid]);
+        dnnl_primitive_execute_without_tp_hook(
+                sdp_cfg_.sub_mm2_prim, strm, res->sub_mm2_args[tid]);
         sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        threadpool_utils::activate_threadpool(tp);
+#endif
     };
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 

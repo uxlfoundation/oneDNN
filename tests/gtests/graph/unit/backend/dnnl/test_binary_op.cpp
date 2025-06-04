@@ -125,7 +125,7 @@ TEST(test_binary_op_execute, MulEltwise) {
         g.add_op(&eltwise_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         ASSERT_NE(apass, nullptr);
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
@@ -188,7 +188,7 @@ TEST(test_binary_op_execute, BinaryOpAddFusion) {
         g.add_op(&add_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -299,7 +299,7 @@ TEST(test_binary_op_execute, MinEltwise) {
         g.add_op(&eltwise_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         ASSERT_NE(apass, nullptr);
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
@@ -354,7 +354,7 @@ TEST(test_binary_op_execute, BinarySqrt) {
     g.add_op(&sqrt_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     ASSERT_NE(apass, nullptr);
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
@@ -412,7 +412,7 @@ TEST(test_binary_op_execute, MaxEltwise) {
         g.add_op(&eltwise_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         ASSERT_NE(apass, nullptr);
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
@@ -505,7 +505,7 @@ TEST(test_binary_op_execute_subgraph_fp32, BinarySwish) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -583,7 +583,7 @@ TEST(test_binary_op_execute, Eltwise3BinaryPostops) {
     g.add_op(&sub);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("eltwise_binary_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_eltwise_binary");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -714,7 +714,7 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
                 graph::status::success);
 
         // -------------------------case 2----------------------------------
-        graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -1553,7 +1553,7 @@ TEST(test_binary_op_execute, AddMul) {
     g.add_op(&mul_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1623,7 +1623,7 @@ TEST(test_binary_op_execute, AddMulPostSrcAsNxc) {
     g.add_op(&mul_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1686,7 +1686,7 @@ TEST(test_binary_op_execute, AddRelu) {
     g.add_op(&relu_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1751,7 +1751,7 @@ TEST(test_binary_op_execute, AddSigmoid) {
     g.add_op(&sigmoid_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1828,7 +1828,7 @@ TEST(test_binary_op_execute, AddAdd) {
     g.add_op(&add1_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -2024,7 +2024,7 @@ TEST(test_binary_op_execute, MulAddPerTensorBroadcast) {
     g.add_op(&add_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -2090,7 +2090,7 @@ TEST(test_binary_op_execute, MulAddPerHwBroadcast) {
     g.add_op(&add_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -2156,7 +2156,7 @@ TEST(test_binary_op_execute, MulAddPerChannelBroadcast) {
     g.add_op(&add_op);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("binary_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_binary_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];

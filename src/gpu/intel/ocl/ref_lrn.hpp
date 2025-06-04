@@ -67,7 +67,7 @@ struct ref_lrn_fwd_t : public gpu_primitive_t {
                     ws_md_.data_type = data_type::f32;
             }
 
-            dispatch = compute_engine->create_dispatch(src_md());
+            dispatch = dispatch_t(compute_engine, src_md());
             dispatch.define_dim("MB", 0, MB());
             dispatch.define_dim("IC", 1, C());
             dispatch.define_dim("ID", nstl::max(1, src_md()->ndims - 3), D());
@@ -192,7 +192,7 @@ struct ref_lrn_bwd_t : public gpu_primitive_t {
 
             VDISPATCH_LRN(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
-            dispatch = compute_engine->create_dispatch(diff_src_md());
+            dispatch = dispatch_t(compute_engine, diff_src_md());
             dispatch.define_dim("MB", 0, MB());
             dispatch.define_dim("IC", 1, C());
             dispatch.define_dim("ID", nstl::max(1, src_md()->ndims - 3), D());

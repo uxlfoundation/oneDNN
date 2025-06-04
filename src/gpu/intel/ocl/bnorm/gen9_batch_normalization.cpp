@@ -267,7 +267,7 @@ static status_t init_conf_common(bn_lookup_table::params_t &conf,
 
     conf.vect_size = 8;
 
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = dispatch_t(compute_engine);
     dispatch_calc_stat.define_dim("STAT_MB", 0, conf.nn);
     dispatch_calc_stat.define_dim("STAT_SP", 1, conf.stat_sp_nblocks);
     dispatch_calc_stat.define_dim_with_nesting_level(
@@ -288,7 +288,7 @@ static status_t init_conf_common(bn_lookup_table::params_t &conf,
         }
     }
 
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = dispatch_t(compute_engine);
     int reduce_sub_group_count = 1;
     while (conf.reduce_stat_nblocks % (2 * reduce_sub_group_count) == 0
             && 2 * reduce_sub_group_count * conf.sub_group_size <= 256) {
@@ -306,14 +306,14 @@ static status_t init_conf_common(bn_lookup_table::params_t &conf,
     const dim_t sp_pad = rnd_up(conf.sp, conf.vect_size);
     conf.sp_tail = rnd_dn(conf.sp, conf.vect_size);
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = dispatch_t(compute_engine, data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.nn);
     dispatch.define_dim("SP", 1, sp_pad / conf.vect_size);
     dispatch.define_dim_with_nesting_level("IC", 1024, conf.calc_stat_ic);
     CHECK(dispatch.vectorize_dim("IC", conf.sub_group_size));
     dispatch.generate();
 
-    dispatch_reduce_aux = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_reduce_aux = dispatch_t(compute_engine, data_mdw.md_);
     dispatch_reduce_aux.define_dim("IC_AUX", 0, conf.ic);
     dispatch_reduce_aux.set_kernel_attr_suffix("AUX");
     dispatch_reduce_aux.generate();

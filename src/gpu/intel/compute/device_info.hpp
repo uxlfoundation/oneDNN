@@ -38,6 +38,12 @@ namespace compute {
 
 enum class gpu_arch_t { unknown, xe_lp, xe_hp, xe_hpg, xe_hpc, xe2, xe3 };
 
+// Memory for storing ngen::Product to avoid directly including nGEN because of
+// header dependencies outside of src/gpu/intel.
+struct alignas(int) gpu_product_t {
+    unsigned char data[12];
+};
+
 static inline std::string to_string(gpu_arch_t arch) {
 #define CASE(_case) \
     if (arch == gpu_arch_t::_case) return STRINGIFY(_case)
@@ -183,8 +189,8 @@ public:
     bool has(device_ext_t ext) const { return extensions_ & (uint64_t)ext; }
     bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
-    int gpu_product_family() const { return gpu_product_family_; }
-    int stepping_id() const { return stepping_id_; }
+    const gpu_product_t &gpu_product() const {return gpu_product_;}
+    int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
     bool is_integrated() const;
     uint32_t ip_version() const { return ip_version_; }
@@ -262,9 +268,8 @@ protected:
     virtual status_t init_extensions(impl::engine_t *engine) = 0;
     virtual status_t init_attributes(impl::engine_t *engine) = 0;
 
-    compute::gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
-    int gpu_product_family_ = 0;
-    int stepping_id_ = 0;
+    gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
+    gpu_product_t gpu_product_ = {};
     uint32_t ip_version_ = 0;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;

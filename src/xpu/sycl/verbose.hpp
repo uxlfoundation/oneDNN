@@ -63,16 +63,14 @@ inline void print_verbose_header(engine_kind_t kind) {
                     : "unknown";
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
             if (kind == engine_kind::gpu) {
-                auto *dev_info = eng
+                bool mayiuse_ngen_kernels = eng
                         ? utils::downcast<
                                 gpu::intel::compute::compute_engine_t *>(
                                 eng.get())
-                                  ->device_info()
-                        : nullptr;
+                                  ->mayiuse_ngen_kernels()
+                        : false;
                 auto s_binary_kernels
-                        = dev_info && dev_info->mayiuse_ngen_kernels()
-                        ? "enabled"
-                        : "disabled";
+                        = mayiuse_ngen_kernels ? "enabled" : "disabled";
 
                 verbose_printf(
                         "info,%s,engine,%zu,backend:%s,name:%s,driver_version:%"

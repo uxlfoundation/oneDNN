@@ -32,3 +32,6 @@
 # test dst strides
 --reset
 --strides=16x1::16x1 3x1:1x1_n"non_unit_dims_with_strides"
+
+--reset 
+--dt=f32 --attr-post-ops=add:f32:12 2x16x49x32:2x16x32x49_n"per_hw_binary_po"

@@ -595,12 +595,6 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
     scratchpad.template book<void *>(
             key_rnn_ptrs_bia, ptr_wei_sz * bias_dt_size);
 
-    scratchpad.template book<scratch_t>(key_rnn_gates, rnn_.scratch_gates_size);
-    scratchpad.template book<ht_t>(key_rnn_ht, rnn_.scratch_ht_size);
-    scratchpad.template book<gemm_acc_t>(
-            key_rnn_diff_ht, rnn_.scratch_diff_ht_size);
-    scratchpad.template book<scratch_t>(key_rnn_cell, rnn_.scratch_cell_size);
-
 #if DNNL_X64
     if (rnn_.is_brgemm)
         ref_rnn_brgemm_t::init_scratchpad(
@@ -2042,9 +2036,6 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     auto ptr_wei_projection
             = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_projection);
     auto ptr_bias = scratchpad.template get<void *>(key_rnn_ptrs_bia);
-    // Here we use scratch_gates for the output of GEMMs on FWD and on input of GEMMs for BWD.
-    // None of the values are kept for bwd
-    auto scratch_gates = scratchpad.template get<scratch_t>(key_rnn_gates);
 #if DNNL_X64
     const auto scratch_gates_blocked
             = scratchpad.template get<scratch_t>(key_rnn_gates_blocked);
@@ -2053,10 +2044,6 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     const auto scratch_src_iter
             = scratchpad.template get<scratch_t>(key_rnn_src_iter_trans);
 #endif
-
-    auto scratch_ht = scratchpad.template get<ht_t>(key_rnn_ht);
-    auto scratch_diff_ht = scratchpad.template get<gemm_acc_t>(key_rnn_diff_ht);
-    auto scratch_cell = scratchpad.template get<scratch_t>(key_rnn_cell);
 
     gemm_acc_t *amx_scratchpad = nullptr;
 #if DNNL_X64
@@ -2116,6 +2103,21 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     /* Pack(if using packed gemm API) or copy(if input arrays have bad leading
      * dimension */
     (this->*bias_preparation_func)(rnn, ptr_bias, bias, ws_bias);
+
+    // Here we use scratch_gates for the output of GEMMs on FWD and on input of GEMMs for BWD.
+    // None of the values are kept for bwd
+    auto scratch_gates = rnn.scratch_gates_size
+            ? (scratch_t *)(scratch_ptr + scratch_gates_offset_)
+            : nullptr;
+    auto scratch_ht = rnn.scratch_ht_size
+            ? (ht_t *)(scratch_ptr + scratch_ht_offset_)
+            : nullptr;
+    auto scratch_diff_ht = rnn.scratch_diff_ht_size
+            ? (gemm_acc_t *)(scratch_ptr + scratch_diff_ht_offset_)
+            : nullptr;
+    auto scratch_cell = rnn.scratch_cell_size
+            ? (scratch_t *)(scratch_ptr + scratch_cell_offset_)
+            : nullptr;
 
     const memory_desc_t *weights_layer_md = pd()->weights_md(0);
     const memory_desc_t *weights_iter_md = pd()->weights_md(1);

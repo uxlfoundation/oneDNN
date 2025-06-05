@@ -62,7 +62,19 @@ void jit_avx2_convolution_fwd_t::execute_forward(
     const size_t work_amount
             = jcp.mb * jcp.ngroups * ocb_work * jcp.od * jcp.oh;
 
-    auto ker = [&](const int ithr, const int nthr) {
+    // With lambda changed to capture by copy, the following piece of code must
+    // stay afront the `ker`, otherwise, `bias` will be captured unmodified
+    // and lead to a crash inside the kernel.
+    if (pd()->wants_padded_bias()) {
+        auto padded_bias = ctx->get_scratchpad_grantor().get<data_t>(
+                key_conv_padded_bias);
+        utils::array_copy(padded_bias, bias, jcp.oc_without_padding);
+        utils::array_set(padded_bias + jcp.oc_without_padding, 0.f,
+                jcp.oc - jcp.oc_without_padding);
+        bias = padded_bias;
+    }
+
+    auto ker = [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -174,15 +186,6 @@ void jit_avx2_convolution_fwd_t::execute_forward(
             icbb += icb_step;
         }
     };
-
-    if (pd()->wants_padded_bias()) {
-        auto padded_bias = ctx->get_scratchpad_grantor().get<data_t>(
-                key_conv_padded_bias);
-        utils::array_copy(padded_bias, bias, jcp.oc_without_padding);
-        utils::array_set(padded_bias + jcp.oc_without_padding, 0.f,
-                jcp.oc - jcp.oc_without_padding);
-        bias = padded_bias;
-    }
 
     parallel(jcp.nthr, ker);
 

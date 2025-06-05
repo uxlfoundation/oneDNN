@@ -70,9 +70,11 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
-                dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
+                dst, ctx->get_scratchpad_grantor(),
+                post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
 

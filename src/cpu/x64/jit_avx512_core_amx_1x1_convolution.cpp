@@ -114,7 +114,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             ? ctx->get_scratchpad_grantor().template get<int32_t>(
                     key_conv_amx_tile_buffer)
             : nullptr;
-    auto tcfg = ctx->get_scratchpad_grantor().template get<char>(
+    auto global_tcfg = ctx->get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
 
     const size_t wei_oc_shift = static_cast<size_t>(
@@ -129,13 +129,14 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
 
     const size_t work_amount
             = (size_t)jcp.mb * jcp.ngroups * os_chunks * oc_chunks;
-    kernel_->tile_configure(tcfg);
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_call_s();
+        char *const __restrict tcfg = global_tcfg + 2 * ithr * AMX_PALETTE_SIZE;
+        kernel_->tile_configure(tcfg);
         p.tile_cfg = tcfg;
         p.tile_cfg_tail = tcfg + 64;
 

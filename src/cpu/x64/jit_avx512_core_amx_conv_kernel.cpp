@@ -4007,7 +4007,9 @@ void jit_avx512_core_amx_bwd_data_kernel_t::init_scratchpad(
         assert(jcp.ngroups == 1);
         scratchpad.book(key_conv_padded_bias, jcp.ic, jcp.typesize_bia);
     }
-    scratchpad.book(key_conv_amx_tilecfg, 1, 64); // 1 whole cacheline
+    // One cache-line for each thread for a palette.
+    scratchpad.book(key_conv_amx_tilecfg, jcp.nthr * AMX_PALETTE_SIZE,
+            sizeof(char), 0, PAGE_4K);
 
     book_precomputed_scales(
             scratchpad, attr.scales_, jcp.ngroups * jcp.ic_without_padding);

@@ -2080,6 +2080,7 @@ public:
 
     constexpr14 DataType getType()           const { return type; }
     explicit constexpr14 operator uint64_t() const { return payload; }
+    explicit constexpr14 operator int64_t()  const { return payload; }
     constexpr14 int getMods()                const { return 0; }
     constexpr14 bool isARF()                 const { return false; }
 
@@ -2233,6 +2234,65 @@ public:
         else if (result.type == DataType::w)
             result.set(int32_t(int16_t(payload)));
         return result;
+    }
+
+    Immediate cast(DataType newType) const {
+        auto clone = *this;
+        if (newType == type)
+            return clone;
+
+        auto isQ = [](DataType dt) { return (dt == DataType::uq) || (dt == DataType::q); };
+        if (isQ(type) && isQ(newType)) {
+            clone.type = newType;
+            return clone;
+        }
+
+        double val = 0.;
+        switch (type) {
+            case DataType::uw: val = uint16_t(payload); break;
+            case DataType::w:  val =  int16_t(payload); break;
+            case DataType::ud: val = uint32_t(payload); break;
+            case DataType::d:  val =  int32_t(payload); break;
+            case DataType::uq: val = uint64_t(payload); break;
+            case DataType::q:  val =  int64_t(payload); break;
+            case DataType::f:  val = utils::bitcast<uint32_t,float>(uint32_t(payload)); break;
+            case DataType::df: val = utils::bitcast<uint64_t,double>(payload); break;
+#ifdef NGEN_HALF_TYPE
+            case DataType::hf: val = float(half(utils::bitcast<uint16_t,half>(uint16_t(payload)))); break;
+#endif
+#ifdef NGEN_BFLOAT16_TYPE
+            case DataType::bf: val = float(bfloat16(utils::bitcast<uint16_t,bfloat16>(uint16_t(payload)))); break;
+#endif
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_type_exception();
+#endif
+                break;
+        }
+
+        switch (newType) {
+            case DataType::uw: return Immediate::uw(uint16_t(val));
+            case DataType::w:  return Immediate::w(int16_t(val));
+            case DataType::ud: return Immediate::ud(uint32_t(val));
+            case DataType::d:  return Immediate::d(int32_t(val));
+            case DataType::uq: return Immediate::uq(uint64_t(val));
+            case DataType::q:  return Immediate::q(int64_t(val));
+            case DataType::f:  return Immediate::f(float(val));
+            case DataType::df: return Immediate::df(val);
+#ifdef NGEN_HALF_TYPE
+            case DataType::hf: return Immediate::hf(utils::bitcast<half,uint16_t>(half(val)));
+#endif
+#ifdef NGEN_BFLOAT16_TYPE
+            case DataType::bf: return Immediate::bf(utils::bitcast<bfloat16,uint16_t>(bfloat16(val)));
+#endif
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_type_exception();
+#endif
+                break;
+        }
+
+        return clone;
     }
 
 #ifdef NGEN_ASM

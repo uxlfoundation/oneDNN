@@ -121,6 +121,8 @@ static bool parse_vector_option(T &vec, const T &def, F process_func,
         const std::string &help_message = "") {
     parser_utils::add_option_to_help(option_name, help_message);
     const std::string pattern = parser_utils::get_pattern(option_name);
+    // If the pattern doesn't fit `str`, it can't match.
+    if (strlen(str) < pattern.size()) return false;
     if (pattern.find(str, 0, pattern.size()) == eol) return false;
     return parse_vector_str(vec, def, process_func, str + pattern.size());
 }
@@ -143,6 +145,8 @@ static bool parse_single_value_option(T &val, const T &def_val, F process_func,
         const std::string &help_message = "") {
     parser_utils::add_option_to_help(option_name, help_message);
     const std::string pattern = parser_utils::get_pattern(option_name);
+    // If the pattern doesn't fit `str`, it can't match.
+    if (strlen(str) < pattern.size()) return false;
     if (pattern.find(str, 0, pattern.size()) == eol) return false;
     str = str + pattern.size();
     if (*str == '\0') return val = def_val, true;

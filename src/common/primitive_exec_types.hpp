@@ -124,16 +124,17 @@ struct exec_ctx_t : public std::enable_shared_from_this<exec_ctx_t> {
             const memory_desc_t *md_from_primitive_desc = nullptr) const;
 
     void set_scratchpad_grantor(
-            const memory_tracking::grantor_t *scratchpad_grantor) {
+            const std::shared_ptr<memory_tracking::grantor_t> &scratchpad_grantor) {
         scratchpad_grantor_ = scratchpad_grantor;
     }
 
+    // Note: this method should return a shared_ptr instead to make callers
+    // increase ref_count of the grantor, but in the considered use cases a
+    // grantor can't outlive `ctx` and keeping a `shared_ptr` on it inside
+    // should suffice for such cases.
+    // TODO: change along with grantor_ becoming a normal member.
     const memory_tracking::grantor_t &get_scratchpad_grantor() const {
         return *scratchpad_grantor_;
-    }
-
-    const memory_tracking::grantor_t *grantor_handle() const {
-        return scratchpad_grantor_;
     }
 
     const resource_mapper_t *get_resource_mapper() const;
@@ -145,7 +146,11 @@ private:
 
     std::unordered_map<void *, void *> memory_mapping_;
     const resource_mapper_t *resource_mapper_ = nullptr;
-    const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
+    // Note: ideally, grantor_ must become a normal member, however, it
+    // requires a `const registry_t &` which affects all `exec_ctx_t` ctors
+    // since there's no default ctor for `grantor_t`, which is a big change.
+    // Keep as a `shared_ptr` so far and refactor later.
+    std::shared_ptr<memory_tracking::grantor_t> scratchpad_grantor_;
 };
 
 } // namespace impl

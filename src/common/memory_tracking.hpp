@@ -507,7 +507,7 @@ struct grantor_t {
         : registry_(registry)
         , prefix_(0)
         , base_mem_storage_(base_mem_storage)
-        , exec_ctx_(exec_ctx) {}
+        , exec_ctx_(exec_ctx.get()) {}
     grantor_t(const grantor_t &parent, const key_t &prefix)
         : registry_(parent.registry_)
         , prefix_(make_prefix(parent.prefix_, prefix))
@@ -572,7 +572,7 @@ protected:
     const registry_t &registry_;
     const key_t prefix_;
     const memory_storage_t *base_mem_storage_;
-    const std::shared_ptr<exec_ctx_t> exec_ctx_;
+    const exec_ctx_t *exec_ctx_;
 
 private:
     char *get_host_storage_ptr(const memory_storage_t *storage) const;

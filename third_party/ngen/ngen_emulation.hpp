@@ -670,6 +670,21 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emul(Generator &g, const InstructionModifier &mod, const RegData &dst, const RegData &src0, Immediate src1, const EmulationStrategy &strategy, const EmulationState &state, SourceLocation loc = {})
     {
+        DataType t = src1.getType();
+        if(t == DataType::ud || t == DataType::d || t == DataType::uw || t == DataType::w) {
+            int64_t value = static_cast<int64_t>(uint64_t(src1.cast(DataType::q)));
+            if (value == 0) {
+                emov<DT>(g, mod, dst, uint16_t(0), strategy, loc);
+                return;
+            } else if (value == 1) {
+                if (dst != src0) emov<DT>(g, mod, dst, src0, strategy, loc);
+                return;
+            } else if (utils::is_zero_or_pow2(value)) {
+                eshl<DT>(g, mod, dst, src0, uint16_t(utils::log2(value)), strategy, state, loc);
+                return;
+            }
+        }
+
         emulInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
@@ -775,13 +790,7 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emulConstant(Generator &g, const InstructionModifier &mod, const RegData &dst, const RegData &src0, int32_t src1, const EmulationStrategy &strategy, const EmulationState &state, SourceLocation loc = {})
     {
-        if (src1 == 0)
-            emov<DT>(g, mod, dst, uint16_t(0), strategy, loc);
-        else if (src1 == 1) {
-            if (dst != src0) emov<DT>(g, mod, dst, src0, strategy, loc);
-        } else if (utils::is_zero_or_pow2(src1))
-            eshl<DT>(g, mod, dst, src0, uint16_t(utils::log2(src1)), strategy, state, loc);
-        else if (src1 > 0)
+        if (src1 > 0)
             emul<DT>(g, mod, dst, src0, uint32_t(src1), strategy, state, loc);
         else
             emul<DT>(g, mod, dst, src0, int32_t(src1), strategy, state, loc);

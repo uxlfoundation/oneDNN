@@ -711,18 +711,18 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
             wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
             jcp.scale_adjust_factor);
 
-    brgemm_bwd_exec_ctx_t brgemm_ctx(ctx, _pd);
+    auto brgemm_ctx = std::make_shared<brgemm_bwd_exec_ctx_t>(ctx, _pd);
 
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md(0));
 
-    const char *const __restrict diff_dst = brgemm_ctx.diff_dst;
-    const char *const __restrict wei = brgemm_ctx.weights;
-    char *const __restrict diff_src = brgemm_ctx.diff_src;
+    const char *const __restrict diff_dst = (*brgemm_ctx).diff_dst;
+    const char *const __restrict wei = (*brgemm_ctx).weights;
+    char *const __restrict diff_src = (*brgemm_ctx).diff_src;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
 
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
-    auto w = const_cast<char *>(brgemm_ctx.weights);
+    auto w = const_cast<char *>((*brgemm_ctx).weights);
     const auto s8s8_comp_offset = jcp.req_cal_comp_pad
             ? jcp.ngroups * jcp.nb_ic * jcp.kd * jcp.kh * jcp.kw * jcp.ic_block
             : jcp.ngroups * jcp.nb_ic * jcp.ic_block;
@@ -776,7 +776,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     const dim_t work_amount = static_cast<dim_t>(jcp.mb) * jcp.ngroups
             * jcp.nb_ic * jcp.nb_id * jcp.nb_ih * jcp.nb_iw;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -825,7 +825,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
             assert(!"Unknown loop order");
 
         brgemm_bwd_thread_ctx_t btc(
-                brgemm_ctx, ithr, brg_batch, c_buffer, out_buffer, wsp_tile);
+                *brgemm_ctx, ithr, brg_batch, c_buffer, out_buffer, wsp_tile);
 
         int last_n = -1;
         int last_g = -1;
@@ -939,7 +939,7 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

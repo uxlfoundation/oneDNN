@@ -1472,7 +1472,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // last elements position may vary depending on position of od_s,
         // oh_block, padding and kh
         parallel_nd(jcp.tr_src_buf_count, jcp.ih_block * jcp.id,
-                [&](size_t isb, size_t is) {
+                [=](size_t isb, size_t is) {
                     const auto tr_src_idx = isb * jcp.tr_src_buf_size
                             + (is + 1) * jcp.tr_iw * jcp.ic_block;
                     char *ts = &tr_src[tr_src_idx * jcp.src_dsz];
@@ -1486,7 +1486,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // Zero out guard elements that cross a buffer boundary to prevent a
         // race condition due to buffer overflows from memory optimization where
         // buffers sharing padding
-        parallel_nd(jcp.tr_src_buf_count, [&](size_t isb) {
+        parallel_nd(jcp.tr_src_buf_count, [=](size_t isb) {
             char *ts = &tr_src[(isb + 1) * jcp.tr_src_buf_size * jcp.src_dsz];
             std::memset(ts, 0, bytes_to_zero);
         });
@@ -1525,7 +1525,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(jcp.nthr == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -1548,7 +1548,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
@@ -1556,7 +1556,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             store_in_vnni_format(&thread_info);

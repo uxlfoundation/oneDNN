@@ -570,7 +570,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
-        const brgemm_exec_ctx_t &brgemm_ctx,
+        const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
         const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
         int32_t *dst_zp_vals, int32_t *s8s8_compensation,
@@ -583,7 +583,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
     const int os_chunks = div_up(jcp.nb_os, jcp.nb_os_blocking);
     const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_oc * os_chunks;
 
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
         brgemm_batch_element_t *const brg_batch
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size;
@@ -629,10 +629,10 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                         = jcp.is_rtus ? inp_buffer + rtus_offset : nullptr;
                 for (int icc = 0; icc < pd()->ic_chunks_; icc++) {
                     if (jcp.is_rtus)
-                        maybe_rtus(ithr, brgemm_ctx.src, inp_buffer_sp,
+                        maybe_rtus(ithr, (*brgemm_ctx).src, inp_buffer_sp,
                                 inp_buffer_mask, g, n, icc, od, oh, ow);
                     const bool is_last_os = (osb_start + osb) == jcp.nb_os - 1;
-                    exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer,
+                    exec_ker(*brgemm_ctx, ithr, brg_batch, c_buffer,
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
                             &last_brg_idx, oscales, src_zp_vals, src_zp_comp,
                             dst_zp_vals, s8s8_compensation, dst_scales,
@@ -656,7 +656,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
 
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
-        const brgemm_exec_ctx_t &brgemm_ctx,
+        const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
         const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
         int32_t *dst_zp_vals, int32_t *s8s8_compensation,
@@ -666,7 +666,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
     const int work_amount
             = jcp.mb * jcp.ngroups * jcp.nb_oc * OD * OH * jcp.nb_ow;
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
         brgemm_batch_element_t *const brg_batch
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size;
@@ -690,7 +690,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         for (auto work = start; work < end; work++) {
             for (int icc = 0; icc < pd()->ic_chunks_; icc++) {
                 const int ow = owb * jcp.ow_block;
-                exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
+                exec_ker(*brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
                         ocb, od, oh, ow, icc, &last_brg_idx, oscales,
                         src_zp_vals, src_zp_comp, dst_zp_vals,
                         s8s8_compensation, dst_scales);
@@ -712,7 +712,7 @@ template <cpu_isa_t isa>
 status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
         const std::shared_ptr<exec_ctx_t> &ctx) const {
 
-    brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
+    auto brgemm_ctx = std::make_shared<brgemm_exec_ctx_t>(ctx, pd());
 
     const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 
@@ -734,7 +734,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
 
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
-    auto w = const_cast<char *>(brgemm_ctx.weights);
+    auto w = const_cast<char *>((*brgemm_ctx).weights);
     int32_t *s8s8_compensation = (jcp.s8s8_compensation_required)
             ? reinterpret_cast<int32_t *>(w + extra_data_offset)
             : nullptr;

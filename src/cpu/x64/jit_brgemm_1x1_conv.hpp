@@ -126,7 +126,8 @@ private:
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const void *src_scales, const void *wei_scales,
             const void *dst_scales_inv, const bool is_last_os = false) const;
-    void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
+    void execute_os_blocking(
+            const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
             const void *dst_scales, void *dst_scales_inv,
@@ -134,7 +135,8 @@ private:
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             char *const c_buffer_global, char *inp_buffer_base,
             uint8_t *inp_buffer_mask_base) const;
-    void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
+    void execute_full_spatial(
+            const std::shared_ptr<brgemm_exec_ctx_t> &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
             const void *dst_scales, void *dst_scales_inv,

@@ -23,6 +23,7 @@
 
 #include "cpu/platform.hpp"
 #include "cpu/scale_utils.hpp"
+#include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_amx_1x1_conv_kernel.hpp"
 
@@ -1290,7 +1291,10 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::init_scratchpad(
         assert(jcp.ngroups == 1);
         scratchpad.book(key_conv_padded_bias, jcp.oc, jcp.typesize_bia);
     }
-    scratchpad.book(key_conv_amx_tilecfg, 2, 64); // 2 whole cachelines
+    // Two cache-lines for each thread for a palette - one for main body,
+    // another for the tail.
+    scratchpad.book(key_conv_amx_tilecfg, 2 * jcp.nthr * AMX_PALETTE_SIZE,
+            sizeof(char), 0, PAGE_4K);
     if (jcp.with_dst_scales) {
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_conv_dst_scales,

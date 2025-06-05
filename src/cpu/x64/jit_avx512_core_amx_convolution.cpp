@@ -110,7 +110,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
             key_conv_amx_wei_buffer); // fix the template
     auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto global_tcfg = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
     auto zero_point_pbuff = ctx.get_scratchpad_grantor().template get<int32_t>(
             key_conv_zero_point_pad);
@@ -147,10 +147,6 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
             = jcp.kh * jcp.kw * jcp.ic_block_int_np * jcp.oc_block;
     const size_t wei_oc_shift = (size_t)jcp.nb_oc_blocking * jcp.nb_ic_int
             * rnd_up(oc_subblock_step, jcp.ic_block_int * jcp.oc_block);
-
-    // Initialize the tile configuration in memory, so that each thread can
-    // load this configuration from memory via `amx_tile_configure(tcfg)`.
-    kernel_->tile_configure(tcfg);
 
     // init zero_point padding buffer
     const bool req_zero_point_buffer = jcp.req_zero_point_buffer;
@@ -217,6 +213,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         }
 
         auto p = jit_conv_args_t();
+        char *const __restrict tcfg = global_tcfg + ithr * AMX_PALETTE_SIZE;
+        kernel_->tile_configure(tcfg);
         amx_tile_configure(tcfg);
 
         float *dst_scales_inv_ptr = nullptr;
@@ -486,7 +484,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
             key_conv_amx_inp_buffer); // fix the template
     auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto global_tcfg = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
     auto zero_point_pbuff = ctx.get_scratchpad_grantor().template get<int32_t>(
             key_conv_zero_point_pad);
@@ -517,10 +515,6 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const size_t work_amount = (size_t)jcp.mb * jcp.ngroups * jcp.od * oh_chunks
             * jcp.nb_ow * oc_chunks;
     const int zp_pbuff_size = jcp.zp_pbuff_size;
-
-    // Initialize the tile configuration in memory, so that each thread can
-    // load this configuration from memory via `amx_tile_configure(tcfg)`.
-    kernel_->tile_configure(tcfg);
 
     // init zero_point padding buffer
     const bool req_zero_point_buffer = jcp.req_zero_point_buffer;
@@ -603,6 +597,9 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         }
 
         auto p = jit_conv_args_t();
+
+        char *const __restrict tcfg = global_tcfg + ithr * AMX_PALETTE_SIZE;
+        kernel_->tile_configure(tcfg);
         amx_tile_configure(tcfg);
 
         float *dst_scales_inv_ptr = nullptr;

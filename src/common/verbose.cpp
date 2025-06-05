@@ -1579,7 +1579,8 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     ss << md2fmt_str("dst", pd->dst_md(), pd->invariant_dst_user_format_kind())
        << ",";
 
-    std::string delimiter;
+    ss << pd->attr();
+    std::string delimiter = " ";
     if (pd->with_key_scales() || pd->with_value_scales()) {
         ss << delimiter << "attr-scales:";
         delimiter = "";

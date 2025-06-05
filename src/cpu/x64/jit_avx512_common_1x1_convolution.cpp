@@ -484,7 +484,7 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_call_s();
         auto rp = rtus_driver_t<avx512_core>::call_params_t();
 

@@ -6,8 +6,13 @@ SoftMax {#dev_guide_op_softmax}
 SoftMax operation applies the following formula on every element of \src tensor
 (the variable names follow the standard @ref dev_guide_conventions):
 
-\f[ dst_i = \frac{exp(src_i)}{\sum_{j=1}^{C} exp(src_j)} \f]
-where \f$ C \f$ is a size of tensor along axis dimension.
+\f[ dst_i = \frac{exp(src_i - max)}{\sum_{j=1}^{C} exp(src_j - max)} \f]
+where \f$ C \f$ is a size of tensor along axis dimension. Subtracting the
+maximum value along the axis improves numerical stability.
+
+If the optional `stats` output is requested, it is defined as:
+
+\f[ \stats = max + \log{\sum_{j=1}^{C} exp(src_j - max)} \f]
 
 ## Operation attributes
 
@@ -38,13 +43,14 @@ constructing an operation.
 | Index | Argument Name | Required or Optional |
 |:------|:--------------|:---------------------|
 | 0     | `dst`         | Required             |
+| 1     | `stats`       | Optional             |
 
 ## Supported data types
 
 SoftMax operation supports the following data type combinations.
 
-| Src  | Dst             |
-|:-----|:----------------|
-| f32  | f32, bf16, f16  |
-| bf16 | bf16            |
-| f16  | f16             |
+| Src  | Dst             | Stats |
+|:-----|:----------------|:------|
+| f32  | f32, bf16, f16  | f32   |
+| bf16 | bf16            | f32   |
+| f16  | f16             | f32   |

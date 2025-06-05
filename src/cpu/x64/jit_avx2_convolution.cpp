@@ -238,7 +238,7 @@ void jit_avx2_convolution_bwd_data_t::execute_backward_data(
             jcp.dst_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
     const int oc_step = is_ddst_layout_nxc ? jcp.nb_oc_blocking : 1;
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -389,7 +389,7 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
     int g_oc_offset = is_oc_physically_blocked ? jcp.nb_oc : jcp.oc;
     int ocb_oc_scale = is_oc_physically_blocked ? 1 : jcp.oc_block;
 
-    auto ker = [&](int ithr, int nthr) {
+    auto ker = [=](int ithr, int nthr) {
         assert(nthr == rw->balancer().nthr_);
 
         const int w_job_start = rw->balancer().ithr_job_off(ithr);
@@ -463,7 +463,7 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
             rw->reduce(ithr, diff_weights, reducer_wei_scratchpad);
     };
 
-    auto ker_bias = [&](int ithr, int nthr) {
+    auto ker_bias = [=](int ithr, int nthr) {
         assert(nthr == rb->balancer().nthr_);
 
         const int b_job_start = rb->balancer().ithr_job_off(ithr);
@@ -517,14 +517,14 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
     if (dnnl_thr_syncable()) {
         assert(IMPLICATION(pd()->with_bias(),
                 rw->balancer().nthr_ == rb->balancer().nthr_));
-        parallel(rw->balancer().nthr_, [&](const int ithr, const int nthr) {
+        parallel(rw->balancer().nthr_, [=](const int ithr, const int nthr) {
             ker(ithr, nthr);
             if (pd()->with_bias()) ker_bias(ithr, nthr);
         });
     } else {
         parallel(rw->balancer().nthr_,
-                [&](int ithr, int nthr) { ker(ithr, nthr); });
-        parallel(rw->balancer().nthr_, [&](int ithr, int nthr) {
+                [=](int ithr, int nthr) { ker(ithr, nthr); });
+        parallel(rw->balancer().nthr_, [=](int ithr, int nthr) {
             assert(nthr == rw->balancer().nthr_);
             MAYBE_UNUSED(nthr);
             if (rw->balancer().ithr_njobs(ithr) == 0) return;
@@ -532,8 +532,8 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
         });
         if (pd()->with_bias()) {
             parallel(rb->balancer().nthr_,
-                    [&](int ithr, int nthr) { ker_bias(ithr, nthr); });
-            parallel(rb->balancer().nthr_, [&](int ithr, int nthr) {
+                    [=](int ithr, int nthr) { ker_bias(ithr, nthr); });
+            parallel(rb->balancer().nthr_, [=](int ithr, int nthr) {
                 assert(nthr == rb->balancer().nthr_);
                 MAYBE_UNUSED(nthr);
                 if (rb->balancer().ithr_njobs(ithr) == 0) return;

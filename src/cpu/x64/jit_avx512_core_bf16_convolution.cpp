@@ -429,7 +429,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning
@@ -597,7 +597,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         // TODO: experiment with g_blocking for perf fine tuning

@@ -862,7 +862,7 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
     const bool is_1d = jcp.ndims == 3;
     const bool is_3d = jcp.ndims == 5;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -2147,7 +2147,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
     kernel_->tile_configure(tcfg);
 
     const auto &jcp = pd()->jcp_;
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -2178,7 +2178,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(nthr_, [&](const int ithr, const int nthr) {
+        parallel(nthr_, [=](const int ithr, const int nthr) {
             assert(nthr_ == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
@@ -2186,7 +2186,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(nthr_, [&](const int ithr, const int nthr) {
+        parallel(nthr_, [=](const int ithr, const int nthr) {
             assert(nthr_ == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             store_in_vnni_format(&thread_info);

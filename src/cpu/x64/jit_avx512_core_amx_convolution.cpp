@@ -875,7 +875,7 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
             key_conv_amx_inp_buffer);
     auto wsp = ctx.get_scratchpad_grantor().template get<int32_t>(
             key_conv_amx_wsp_buffer);
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto global_tcfg = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
 
     const int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
@@ -883,9 +883,6 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
     const int work_amount
             = jcp.mb * jcp.ngroups * jcp.id * ih_chunks * jcp.nb_iw * ic_chunks;
 
-    // Initialize the tile configuration in memory, so that each thread can
-    // load this configuration from memory via `amx_tile_configure(tcfg)`.
-    if (tcfg) kernel_->tile_configure(tcfg);
     const bool is_1d = jcp.ndims == 3;
     const bool is_3d = jcp.ndims == 5;
 
@@ -894,7 +891,11 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_args_t();
+
+        char *const __restrict tcfg = global_tcfg + ithr * AMX_PALETTE_SIZE;
+        kernel_->tile_configure(tcfg);
         amx_tile_configure(tcfg);
+
         amx_utils::spatial_features_3d_t sfd(jcp);
 
         int mb {0}, g {0}, id_s {0}, ihc {0}, iwb {0}, icc {0};
@@ -2165,15 +2166,16 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
     prepare_scratchpad_data(ctx);
 
-    auto tcfg = ctx.get_scratchpad_grantor().template get<char>(
+    auto global_tcfg = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);
-    kernel_->tile_configure(tcfg);
 
     const auto &jcp = pd()->jcp_;
     parallel(nthr_, [&](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
+        char *const __restrict tcfg = global_tcfg + ithr * AMX_PALETTE_SIZE;
+        kernel_->tile_configure(tcfg);
         amx_tile_configure(tcfg);
 
         thread_info_t thread_info(this, ctx, ithr);

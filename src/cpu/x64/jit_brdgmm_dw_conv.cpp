@@ -664,7 +664,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(
     const int n_rpad_blks
             = 1 + nstl::max(0, div_up(jcp.r_pad - (rpad_1 - w_shift), w_shift));
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int n {0}, chb {0}, od {0}, oh {0}, owb {0};

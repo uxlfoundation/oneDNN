@@ -333,14 +333,12 @@ status_t dnnl_primitive::execute(std::shared_ptr<exec_ctx_t> &ctx) const {
         mem_storage = scratchpad_->get_memory_storage();
     }
 
-    auto scratchpad_grantor
-            = primitive_->pd()->scratchpad_registry().grantor(mem_storage, ctx);
-    ctx->set_scratchpad_grantor(&scratchpad_grantor);
+    auto scratchpad_grantor = std::make_shared<memory_tracking::grantor_t>(
+            primitive_->pd()->scratchpad_registry().grantor(mem_storage, ctx));
+    ctx->set_scratchpad_grantor(scratchpad_grantor);
     ctx->set_resource_mapper(&resource_mapper_);
 
-    auto status = primitive_->execute(ctx);
-    ctx->set_scratchpad_grantor(nullptr);
-    return status;
+    return primitive_->execute(ctx);
 }
 
 status_t dnnl_primitive::get_cache_blob_size(size_t *size) const {

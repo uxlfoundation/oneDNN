@@ -105,7 +105,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
         }
         dw_oscales = dw_local_scales;
     }
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, local_scales, dst_scales, dw_oscales, dw_dst_scales,
                 src_zero_point, dst_zero_point, scratchpad,

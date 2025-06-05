@@ -24,6 +24,7 @@
 
 #include "cpu/platform.hpp"
 #include "cpu/scale_utils.hpp"
+#include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
@@ -2766,7 +2767,10 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_scratchpad(
         assert(jcp.ngroups == 1);
         scratchpad.book(key_conv_padded_bias, jcp.oc, jcp.typesize_bia);
     }
-    scratchpad.book(key_conv_amx_tilecfg, 1, 64); // 1 whole cacheline
+    // One cache-line for each thread for a palette.
+    scratchpad.book(key_conv_amx_tilecfg, jcp.nthr * AMX_PALETTE_SIZE,
+            sizeof(char), 0, PAGE_4K);
+
     if (jcp.req_zero_point_buffer) {
         const int nthr = jcp.zp_pbuff_outer_compute ? 1 : jcp.nthr;
         scratchpad.book(key_conv_zero_point_pad,

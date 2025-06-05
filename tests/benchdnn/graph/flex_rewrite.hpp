@@ -54,27 +54,14 @@ private:
             dt_map_; // Updates specific LT with selected dt values.
     std::map<size_t, std::string> op_kind_map_;
 
-    void split_ncx(const std::string &data_format, dims_t &in, int64_t &n,
-            int64_t &c, dims_t &x) const;
-    void merge_ncx(const std::string &data_format, dims_t &out, int64_t n,
-            int64_t c, const dims_t &x) const;
-    void split_oix(const std::string &data_format, dims_t &in, dims_t &oi,
-            dims_t &x) const;
-    void broadcast(const dims_t &x, const dims_t &y, dims_t &z,
-            const std::string &x_str = "", const std::string &y_str = "") const;
-    // Returns `pad_begin` and `pad_end` for each dimension.
-    void cal_pads(dims_t &pads_begin, dims_t &pads_end,
-            const deserialized_op_t &aop, const dims_t &spatial_dims,
-            const dims_t &strides, const dims_t &kernel, bool deconv) const;
-    void infer_output_shape(deserialized_graph_t &dgraph, bool change_stride);
-    void inports_shape_rewrite(
-            deserialized_graph_t &dgraph, bool &change_stride);
+    void infer_output_shape(deserialized_graph_t &dgraph);
+    void inports_shape_rewrite(deserialized_graph_t &dgraph);
     bool get_inport_shape_stride(const std::string &in_shape,
             std::string &shape, std::string &stride, std::string &msg);
     void op_attrs_rewrite(deserialized_graph_t &dgraph);
     void quantized_graph_rewrite(deserialized_graph_t &dgraph);
-    void update_output_info(deserialized_op_t &aop,
-            deserialized_graph_t &dgraph, bool change_stride);
+    void update_output_info(
+            deserialized_op_t &aop, deserialized_graph_t &dgraph);
     void graph_attrs_rewrite(deserialized_graph_t &dgraph);
     void dt_rewrite(deserialized_graph_t &dgraph);
     void dt_map_rewrite(deserialized_graph_t &dgraph);
@@ -82,7 +69,7 @@ private:
     // Rewrite some linked attribute and shapes, such as group-shape and
     // scale/zp shape of dynamic dequantization for per-group quantization, to
     // simplify the cml input of rewriting.
-    void rewrite_linked_shape_and_attr(deserialized_graph_t &dgraph);
+    void linked_shape_and_attr_rewrite(deserialized_graph_t &dgraph);
 };
 
 } // namespace graph

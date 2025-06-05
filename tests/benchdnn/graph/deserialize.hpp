@@ -118,11 +118,10 @@ struct deserialized_graph_t {
     std::vector<deserialized_op_t> ops_;
     // record all tensors id and its dims
     std::map<size_t, logical_tensor::dims> graph_tensors_;
-    // reorder logical tensor id to memory tag.
-    // memory tag can be abx, axb, or other special tag
-    // need to maintain for further use
-    std::map<size_t, std::string> lt_2_mtag_;
     std::vector<size_t> graph_inputs_with_mb_;
+
+    std::unordered_set<size_t> shape_rewrite_lts_;
+    std::unordered_set<size_t> stride_rewrite_lts_;
 
     // Returns an op based on its ID.
     const deserialized_op_t &get_op(size_t id) const;

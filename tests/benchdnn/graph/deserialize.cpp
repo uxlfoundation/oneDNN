@@ -299,9 +299,6 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         }
         for (const auto &lt : aop.out_lts_) {
             out_lt_2_op_[lt.id_] = aop;
-            // collect graph internal and output tensors memory layout
-            lt_2_mtag_[lt.id_]
-                    = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
         }
     }
 
@@ -346,10 +343,6 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
             if (lt.id_ != in_lt.first) continue;
 
             graph_tensors_.emplace(in_lt.first, lt.shape_);
-            // collect graph input tensors memory layout
-            std::string mtag
-                    = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
-            lt_2_mtag_[lt.id_] = mtag;
         }
     }
 

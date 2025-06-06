@@ -481,16 +481,25 @@ struct sycl_rnn_copy_conf_t {
     bool sum;
 };
 
-struct sycl_rnn_bias_conf_t {
-    xpu::sycl::md_t dst_md;
-    data_type_t bias_type;
-    data_type_t src_type;
+struct sycl_rnn_bias_common_conf_t {
     dim_t batch;
     dim_t dhc;
     dim_t gates_ws_ld;
     dim_t states_ws_ld;
     dnnl_alg_kind_t activation_kind;
+    data_type_t gates_type;
     float alpha;
+};
+
+struct sycl_rnn_bias_fwd_conf_t : sycl_rnn_bias_common_conf_t {
+    data_type_t bias_type;
+    data_type_t states_data_type;
+};
+
+struct sycl_rnn_bias_bwd_conf_t : sycl_rnn_bias_common_conf_t {
+    data_type_t diff_states_type;
+    data_type_t diff_gates_type;
+    dim_t scratch_diff_states_ld;
 };
 
 struct sycl_group_norm_conf_t {
@@ -538,7 +547,8 @@ CHECK_SYCL_KERNEL_ARG_TYPE(sycl_convolution_bwd_weights_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_simple_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_copy_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_fwd_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_bwd_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_group_norm_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_gnorm_bwd_conf_t);
 

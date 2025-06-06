@@ -27,7 +27,7 @@ namespace sycl {
 using namespace dnnl::impl::utils;
 using namespace rnn_utils;
 
-status_t _ref_rnn_common_t::cell_execution(const cell_ctx_t &cell_struct) {
+status_t ref_rnn_fwd_t::cell_execution(const cell_ctx_t &cell_struct) {
 
     auto cell_layer = cell_struct.workspace.states_range(cell_struct.lay,
             cell_struct.lay, cell_struct.dir, cell_struct.dir, cell_struct.iter,
@@ -48,11 +48,11 @@ status_t _ref_rnn_common_t::cell_execution(const cell_ctx_t &cell_struct) {
     auto wei_iter
             = cell_struct.user_data.wei_iter(cell_struct.lay, cell_struct.dir);
 
-    CHECK(gemm_primitive(cell_struct.engine, cell_struct.ctx, wei_layer,
-            cell_layer, scratch_gates, gemm_layer_fwd));
+    CHECK(matmul_primitive(cell_struct.engine, cell_struct.ctx, wei_layer,
+            cell_layer, scratch_gates, matmul_layer_fwd));
 
-    CHECK(gemm_primitive(cell_struct.engine, cell_struct.ctx, wei_iter,
-            cell_iter, scratch_gates, gemm_iter_fwd));
+    CHECK(matmul_primitive(cell_struct.engine, cell_struct.ctx, wei_iter,
+            cell_iter, scratch_gates, matmul_iter_fwd));
 
     CHECK(rnn_bias(cell_struct.ctx, cell_struct.rnn.mb, cell_struct.rnn.dhc,
             cell_struct.iter, cell_struct.lay, cell_struct.dir,

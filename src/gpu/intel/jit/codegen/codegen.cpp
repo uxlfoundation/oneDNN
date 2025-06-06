@@ -385,7 +385,7 @@ private:
     }
 
     ngen_register_scope_t register_scope() {
-        return ngen_register_scope_t(host_->ra_);
+        return ngen_register_scope_t(host_->ra());
     }
 
 #ifdef DNNL_DEV_MODE
@@ -439,7 +439,7 @@ private:
             it->second.retain();
             return it->second.get_reg_buf(alloc.buf);
         }
-        auto bca = bank_conflict_allocation_t::create(host_->ra_, bc_attr);
+        auto bca = bank_conflict_allocation_t::create(host_->ra(), bc_attr);
         if (bca.is_empty()) return {};
 
         auto ret = bc_allocations_.emplace(bc_attr, std::move(bca));
@@ -991,7 +991,7 @@ public:
             default: {
                 // Some cases require pre-allocated register regions with
                 // special strides for a/b.
-                auto scope = ngen_register_scope_t(host_->ra_);
+                auto scope = ngen_register_scope_t(host_->ra());
                 auto a_out_op = maybe_alloc_strided_op(obj.type, obj.a, scope);
                 auto b_out_op = maybe_alloc_strided_op(obj.type, obj.b, scope);
                 bool is_mul = obj.op_kind == op_kind_t::_mul;

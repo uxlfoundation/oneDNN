@@ -213,6 +213,9 @@ public:
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
 
+    reg_allocator_t &ra() { return ra_; };
+    const reg_allocator_t &ra() const { return ra_; };
+
     void generate_prologue() {
         ngen_generator_t::setDefaultNoMask();
         ngen_generator_t::setDefaultAutoSWSB(true);
@@ -1247,7 +1250,7 @@ private:
     using ir_kernel_t<hw>::generate_prologue; \
     using ir_kernel_t<hw>::generate_epilogue; \
     using ir_kernel_t<hw>::emu_strategy; \
-    using ir_kernel_t<hw>::ra_;
+    using ir_kernel_t<hw>::ra;
 
 #ifdef NGEN_ASM
 class ir_asm_generator_t : public ngen::AsmCodeGenerator {

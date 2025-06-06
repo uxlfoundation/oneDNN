@@ -80,7 +80,7 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
     setup_interface(body);
 #ifdef DNNL_DEV_MODE
     profile.stop();
-    verify_grf_usage(cfg, body, ra_.get_alloced_regs());
+    verify_grf_usage(cfg, body, ra().get_alloced_regs());
     profile.start();
 #endif
 
@@ -92,12 +92,12 @@ conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
 #ifdef DNNL_DEV_MODE
     gpu_perf_no_trace() << profile;
 
-    gpu_trace() << "Actual register usage:           " << ra_.get_peak_regs();
+    gpu_trace() << "Actual register usage:           " << ra().get_peak_regs();
     int estimated_peak_regs = estimate_register_count(cfg_);
-    if (ra_.get_peak_regs() > estimated_peak_regs) {
+    if (ra().get_peak_regs() > estimated_peak_regs) {
         gpu_warning()
                 << "conv_kernel_t register usage underestimated: estimate = "
-                << estimated_peak_regs << ", actual = " << ra_.get_peak_regs();
+                << estimated_peak_regs << ", actual = " << ra().get_peak_regs();
     }
 #endif
 }

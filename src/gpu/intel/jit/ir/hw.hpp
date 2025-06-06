@@ -41,9 +41,7 @@ public:
 
         auto *device_info = compute_engine->device_info();
         gpu_arch_t gpu_arch = device_info->gpu_arch();
-        product_family_ = static_cast<ngen::ProductFamily>(
-                device_info->gpu_product_family());
-        stepping_id_ = device_info->stepping_id();
+        product_ = get_ngen_product(*device_info);
         eu_count_ = device_info->eu_count();
         max_wg_size_ = static_cast<int>(
                 device_info->max_wg_size(/*large_grf_mode=*/false));
@@ -64,12 +62,15 @@ public:
         hw_ = convert_dnnl_arch_to_ngen(gpu_arch);
     }
 
+    ngen::HW ngen_hw() const { return hw_; }
+    const ngen::Product &product() const { return product_; }
+
     bool is_undef() const { return hw_ == ngen::HW::Unknown; }
     bool has_fp64_atomic_support() const { return with_atomic_fp64_; }
     ngen::HW to_ngen() const { return hw_; }
     operator ngen::HW() const { return hw_; }
-    ngen::ProductFamily product_family() const { return product_family_; }
-    int stepping_id() const { return stepping_id_; }
+    ngen::ProductFamily product_family() const { return product_.family; }
+    int stepping_id() const { return product_.stepping; }
     int eu_count() const { return eu_count_; }
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
@@ -143,8 +144,7 @@ private:
     }
 
     ngen::HW hw_ = ngen::HW::Unknown;
-    ngen::ProductFamily product_family_ = ngen::ProductFamily::Unknown;
-    int stepping_id_ = -1;
+    ngen::Product product_ = {};
     int eu_count_ = 0;
     int max_wg_size_ = 0;
     size_t l3_cache_size_ = 0;

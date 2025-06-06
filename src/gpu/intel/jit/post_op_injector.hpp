@@ -86,7 +86,9 @@ struct post_op_injector_t {
     void compute(const ngen::GRFRange &regs);
 
 private:
-    std::vector<eltwise_injector_f32_t<ngen_generator_t>> workers_;
+    std::vector<eltwise_injector_f32_t<
+            typename ngen_generator_t::RootCodeGenerator>>
+            workers_;
     bool is_fwd_;
     ngen::GRFRange scratch_;
 };

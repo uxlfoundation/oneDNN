@@ -78,9 +78,8 @@ struct PostOpsProblem {
     static const int maxPostOps = dnnl::impl::post_ops_t::post_ops_limit;
 
     template <ngen::HW hw>
-    using Injector
-            = dnnl::impl::gpu::intel::jit::post_op_injector_t<GENERATOR_BASE(
-                    hw)>;
+    using Injector = dnnl::impl::gpu::intel::jit::post_op_injector_t<
+            typename GENERATOR_BASE(hw)::RootCodeGenerator>;
     static BinaryOp toBinaryOp(const PostOps::entry_t &e);
 
     bool empty() const { return ops.empty(); }
@@ -119,8 +118,8 @@ struct PostOpsProblem {
         namespace jit = dnnl::impl::gpu::intel::jit;
         switch (entry.kind()) {
             case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
-                using Injector
-                        = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+                using Injector = jit::eltwise_injector_f32_t<
+                        typename jit::generator_t<hw>::RootCodeGenerator>;
                 auto &ee = entry.as_eltwise();
                 Injector injector {g, ee.alg, ee.alpha, ee.beta, ee.scale,
                         ngen::GRFRange(), fwd};
@@ -144,7 +143,8 @@ struct PostOpsProblem {
             ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
             int C_ngrf, const ngen::Subregister &seed, ngen::DataType t) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
-        using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
+        using Injector = jit::eltwise_injector_f32_t<
+                typename jit::generator_t<hw>::RootCodeGenerator>;
         Injector injector {g, dnnl::impl::alg_kind::eltwise_stochastic_round,
                 0.0, 0.0, 1.0, ngen::GRFRange(), fwd};
         auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());

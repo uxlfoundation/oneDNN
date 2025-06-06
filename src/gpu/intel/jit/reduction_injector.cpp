@@ -277,14 +277,18 @@ void reduction_injector_f32_t<ngen_generator_t>::emul(ngen_generator_t &host,
     ra.release(state.temp[1]);
 }
 
-REG_XELP_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe_lp>>);
-REG_XEHP_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe_hp>>);
-REG_XEHPG_ISA(
-        template struct reduction_injector_f32_t<generator_t<gpu_xe_hpg>>);
-REG_XEHPC_ISA(
-        template struct reduction_injector_f32_t<generator_t<gpu_xe_hpc>>);
-REG_XE2_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe2>>);
-REG_XE3_ISA(template struct reduction_injector_f32_t<generator_t<gpu_xe3>>);
+template <ngen::HW hw>
+using code_gen = ngen::BinaryCodeGenerator<hw>;
+REG_XELP_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe_lp>>);
+REG_XEHP_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe_hp>>);
+REG_XEHPG_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe_hpg>>);
+REG_XEHPC_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe_hpc>>);
+REG_XE2_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe2>>);
+REG_XE3_ISA(template struct reduction_injector_f32_t<code_gen<gpu_xe3>>);
+
+#ifdef NGEN_ASM
+template struct reduction_injector_f32_t<ngen::AsmCodeGenerator>;
+#endif
 
 } // namespace jit
 } // namespace intel

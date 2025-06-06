@@ -784,8 +784,8 @@ private:
         auto &data_op = eltwise_t::arg_data(args);
         const auto &data_rd = data_op.reg_buf_data();
 
-        eltwise_injector_f32_t<ngen_generator_t> inj(
-                host_, func.alg_kind, func.alpha, func.beta, func.scale);
+        eltwise_injector_f32_t<typename ngen_generator_t::RootCodeGenerator>
+                inj(host_, func.alg_kind, func.alpha, func.beta, func.scale);
         auto scratch = scope.alloc_range(inj.preferred_scratch_regs());
         inj.set_scratch(scratch);
         inj.prepare();

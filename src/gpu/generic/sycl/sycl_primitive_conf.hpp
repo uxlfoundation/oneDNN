@@ -483,12 +483,14 @@ struct sycl_rnn_copy_conf_t {
 
 struct sycl_rnn_bias_conf_t {
     xpu::sycl::md_t dst_md;
+    xpu::sycl::md_t diff_bias_md;
     data_type_t bias_type;
     data_type_t src_type;
     dim_t batch;
     dim_t dhc;
     dim_t gates_ws_ld;
     dim_t states_ws_ld;
+    dim_t scratch_diff_states_ld;
     dnnl_alg_kind_t activation_kind;
     float alpha;
 };

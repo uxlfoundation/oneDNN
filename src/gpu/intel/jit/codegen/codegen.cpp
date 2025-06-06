@@ -1012,8 +1012,6 @@ public:
                 auto src0_op = eval(obj.a, a_out_op);
                 auto src1_op = eval(obj.b, b_out_op);
 
-                // XXX: (q x d) case is not supported. Try to downgrade it to
-                // (d x d) based on the previous assignments.
                 if (obj.op_kind == op_kind_t::_mul && obj.a.type().is_x64()) {
                     type_t orig_type;
                     if (is_int_up_convert(obj.a, orig_type)) {
@@ -1025,8 +1023,6 @@ public:
                         if (hw() > ngen::HW::XeLP)
                             host_->sync(ngen::SyncFunction::nop,
                                     ngen::SWSB<uint64_t>(1));
-                    } else {
-                        gpu_error_not_expected();
                     }
                 }
                 ebinary(obj, mod, dst_op, src0_op, src1_op);

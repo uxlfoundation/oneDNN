@@ -61,10 +61,9 @@ public:
         if (uses_f8) kernel_ctx.add_option("-DMATH_UTILS_DECLARE_BF8");
     }
 
-    status_t register_type(const std::string &name, data_type_t type) {
+    void register_type(const std::string &name, data_type_t type) {
         assert(types.find(name) == types.end());
         types[name] = type;
-        return status::success;
     }
 
 protected:

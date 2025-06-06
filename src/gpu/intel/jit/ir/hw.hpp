@@ -156,17 +156,14 @@ public:
     const hw_t &hw() const { return hw_; }
     int regs() const { return regs_; }
     int simd() const { return simd_; }
-    int vec_size() const { return vec_size_; }
     int grf_size() const { return hw_.grf_size(); }
     void set_regs(int regs) { regs_ = regs; }
     void set_simd(int simd) { simd_ = simd; }
-    void set_vec_size(int vec_size) { vec_size_ = vec_size; }
 
     std::string str() const {
         std::ostringstream oss;
         oss << hw_.str();
         oss << ", SIMD: " << simd();
-        if (vec_size() != simd()) oss << " (" << vec_size() << ")";
         oss << ", regs: " << regs();
         return oss.str();
     }
@@ -175,7 +172,6 @@ private:
     hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
-    int vec_size_ = 0;
 };
 
 } // namespace jit

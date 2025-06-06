@@ -91,8 +91,8 @@ public:
 
         auto size = getArgument(kernel_iface().arg_name(0));
         auto ptr = getArgument(kernel_iface().arg_name(1));
-        auto global_id = ra_.template alloc_sub<uint32_t>();
-        auto off0 = ra_.template alloc_sub<uint32_t>();
+        auto global_id = ra().template alloc_sub<uint32_t>();
+        auto off0 = ra().template alloc_sub<uint32_t>();
         const int bytes_per_thr
                 = into<int>(zero_out_kernel_desc_t::bytes_per_thr);
 
@@ -106,18 +106,18 @@ public:
         int ud_size = sizeof(uint32_t);
         int uq_size = sizeof(uint64_t);
 
-        auto zero = ra_.alloc_range(bytes_per_store * ud_size / grf_size);
-        auto off_vec = ra_.alloc_range(bytes_per_thr * ud_size / grf_size);
+        auto zero = ra().alloc_range(bytes_per_store * ud_size / grf_size);
+        auto off_vec = ra().alloc_range(bytes_per_thr * ud_size / grf_size);
         auto off_vec_q_strided
-                = ra_.alloc_range(bytes_per_thr * uq_size / grf_size);
-        auto ptr_vec = ra_.alloc_range(bytes_per_thr * uq_size / grf_size);
+                = ra().alloc_range(bytes_per_thr * uq_size / grf_size);
+        auto ptr_vec = ra().alloc_range(bytes_per_thr * uq_size / grf_size);
 
         for (int i = 0; i < bytes_per_store * ud_size; i += 64) {
             auto z = get_subregister(hw, ngen::DataType::ud, zero, i);
             mov(16, z, 0);
         }
 
-        auto idx_vec = ra_.alloc().uw(0);
+        auto idx_vec = ra().alloc().uw(0);
         mov(8, idx_vec(1), ngen::Immediate::uv(0, 1, 2, 3, 4, 5, 6, 7));
         mov(8, idx_vec(2), idx_vec(1));
         for (int i = 16; i < grf_size / uw_size; i += 16) {

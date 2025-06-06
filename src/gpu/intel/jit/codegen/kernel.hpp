@@ -214,6 +214,7 @@ public:
 
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const hw_t &hw() const { return exec_cfg_.hw(); }
 
     void generate_prologue() {
         ngen_generator_t::setDefaultNoMask();

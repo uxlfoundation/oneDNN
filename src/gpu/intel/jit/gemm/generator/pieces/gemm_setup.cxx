@@ -548,11 +548,18 @@ void BLASKernelGenerator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, con
     // Strided batch support.
     if (problem.batch == BatchMode::Strided) {
         Subregister bOffsetA[4], bOffsetB[4], bOffsetC[4];
+        Subregister bOffsetAs[4], bOffsetBs[4];
 
         for (int b = 0; b < problem.batchDims; b++) {
             bOffsetA[b] = state.inputs.strideA[b];
             bOffsetB[b] = state.inputs.strideB[b];
             bOffsetC[b] = state.inputs.strideC[b];
+	    if(problem.asPtrDims > 2 && b <= problem.asPtrDims - 2){
+		    bOffsetAs[b] = state.inputs.strideScaleA[b];
+	    }
+	    if(problem.bsPtrDims > 2 && b <= problem.bsPtrDims - 2){
+		    bOffsetBs[b] = state.inputs.strideScaleB[b];
+	    }
             if (strategy.A.base.isStateless()) bOffsetA[b] = state.ra.alloc_sub<uint64_t>();
             if (strategy.B.base.isStateless()) bOffsetB[b] = state.ra.alloc_sub<uint64_t>();
             if (strategy.C.base.isStateless()) bOffsetC[b] = state.ra.alloc_sub<uint64_t>();
@@ -562,7 +569,22 @@ void BLASKernelGenerator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, con
             emul(1, bOffsetA[b], state.inputs.strideA[b], state.batchID[b], strategy, state);
             emul(1, bOffsetB[b], state.inputs.strideB[b], state.batchID[b], strategy, state);
             emul(1, bOffsetC[b], state.inputs.strideC[b], state.batchID[b], strategy, state);
+	    if(problem.asPtrDims > 2 && b <= problem.asPtrDims - 2){
+                emul(1, bOffsetAs[b], state.inputs.strideScaleA[b], state.batchID[b], strategy, state);
+	    }
+	    if(problem.bsPtrDims > 2 && b <= problem.bsPtrDims - 2){
+                emul(1, bOffsetBs[b], state.inputs.strideScaleB[b], state.batchID[b], strategy, state);
+	    }
         }
+
+	if(problem.asPtrDims > 2 && state.offsetAs.isInvalid()){
+	    state.offsetAs = state.ra.alloc_sub(state.offsetA.getType());
+	    mov(1, state.offsetAs, 0);
+	}
+	if(problem.bsPtrDims > 2 && state.offsetBs.isInvalid()){
+	    state.offsetBs = state.ra.alloc_sub(state.offsetB.getType());
+	    mov(1, state.offsetBs, 0);
+	}
 
         for (int b = 0; b < problem.batchDims; b++) {
             eadd(1, state.offsetA, state.offsetA, bOffsetA[b], strategy, state);
@@ -571,6 +593,12 @@ void BLASKernelGenerator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, con
                 auto offsetC = state.offsetC[q];
                 eadd(1, offsetC, offsetC, bOffsetC[b], strategy, state);
             }
+	    if(problem.asPtrDims > 2 && b <= problem.asPtrDims - 2) {
+                eadd(1, state.offsetAs, state.offsetAs, bOffsetAs[b], strategy, state);
+	    }
+	    if(problem.bsPtrDims > 2 && b <= problem.bsPtrDims - 2) {
+                eadd(1, state.offsetBs, state.offsetBs, bOffsetBs[b], strategy, state);
+	    }
             if (!strategy.persistentLoop()) {
                 state.ra.safeRelease(state.inputs.strideA[b]);
                 state.ra.safeRelease(state.inputs.strideB[b]);
@@ -801,10 +829,22 @@ void BLASKernelGenerator<hw>::gemmScaleInputs(const GEMMProblem &problem, const 
             scale(Tco, inputs.offsetCO);
     }
 
-    if (problem.batch == BatchMode::Strided) for (int b = 0; b < problem.batchDims; b++) {
-        scale(Ta_ext, inputs.strideA[b]);
-        scale(Tb_ext, inputs.strideB[b]);
-        scale(Tc_ext, inputs.strideC[b]);
+    if (problem.batch == BatchMode::Strided){
+	if(problem.asPtrDims > 2){
+            for (int b = 0; b < problem.batchDims; b++) {
+		scale(problem.Ta_scale, state.inputs.strideScaleA[b]);
+	    }
+	}
+	if(problem.bsPtrDims > 2){
+            for (int b = 0; b < problem.batchDims; b++) {
+		scale(problem.Tb_scale, state.inputs.strideScaleB[b]);
+	    }
+	}
+        for (int b = 0; b < problem.batchDims; b++) {
+            scale(Ta_ext, inputs.strideA[b]);
+            scale(Tb_ext, inputs.strideB[b]);
+            scale(Tc_ext, inputs.strideC[b]);
+        }
     }
 
     auto ldaq = inputs.ldaq, ldbq = inputs.ldbq;
@@ -1779,15 +1819,16 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
 
     auto setupQAddr = [&](Type T, vector<GRFRange> &addrs, const vector<RegisterBlock> &layout,
                           Subregister ptr, Subregister r0, Subregister c0, Subregister ld,
-                          const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy)
+                          const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, Subregister base = Subregister())
     {
-        auto base = state.ra.alloc_sub(ptr.getType());
+        auto tmpBase = state.ra.alloc_sub(ptr.getType());
         if (!isColMajor(atype.layout)) std::swap(r0, c0);
-        if (r0.isValid()) eaddScaled(1, base, ptr, r0, T, strategy, state);
-        if (c0.isValid()) emad(1, base, r0.isValid() ? base : ptr, c0, ld, strategy, state);
-        if (r0.isInvalid() && c0.isInvalid()) emov(1, base, ptr, strategy, state);
-        setupAddr(T, addrs, base, layout, ld, atype, astrategy, strategy, state);
-        state.ra.safeRelease(base);
+        if (r0.isValid()) eaddScaled(1, tmpBase, ptr, r0, T, strategy, state);
+        if (c0.isValid()) emad(1, tmpBase, r0.isValid() ? tmpBase : ptr, c0, ld, strategy, state);
+        if (r0.isInvalid() && c0.isInvalid()) emov(1, tmpBase, ptr, strategy, state);
+	if (base.isValid()) eadd(1, tmpBase, tmpBase, base, strategy, state);
+        setupAddr(T, addrs, tmpBase, layout, ld, atype, astrategy, strategy, state);
+        state.ra.safeRelease(tmpBase);
     };
 
     if (ao2D) {
@@ -1798,7 +1839,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         if (!state.lateScale2DA)
             i0s = i0q, A_h0s = A_h0q;
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
-                   i0s, A_h0s, state.inputs.ldaScale, problem.A_scale, strategy.A_scale);
+               i0s, A_h0s, state.inputs.ldaScale, problem.A_scale, strategy.A_scale, state.offsetAs);
     }
     if (bo2D) {
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
@@ -1808,7 +1849,7 @@ bool BLASKernelGenerator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStr
         if (!state.lateScale2DB)
             j0s = j0q, B_h0s = B_h0q;
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
-                   B_h0s, j0s, state.inputs.ldbScale, problem.B_scale, strategy.B_scale);
+               B_h0s, j0s, state.inputs.ldbScale, problem.B_scale, strategy.B_scale, state.offsetBs);
     }
 
     if (i0s != state.i0) state.ra.safeRelease(i0s);
@@ -2456,6 +2497,12 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
             state.inputs.strideA.push_back(interface.getArgument("stride_A" + istr));
             state.inputs.strideB.push_back(interface.getArgument("stride_B" + istr));
             state.inputs.strideC.push_back(interface.getArgument("stride_C" + istr));
+	    if(problem.asPtrDims > 2){
+                state.inputs.strideScaleA.push_back(interface.getArgument("scale_stride_A" + istr));
+	    }
+	    if(problem.bsPtrDims > 2){
+                state.inputs.strideScaleB.push_back(interface.getArgument("scale_stride_B" + istr));
+	    }
             if (i < problem.batchDims - 1) {
                 state.inputs.batchSize.push_back(interface.getArgument("batch_size" + istr));
                 state.inputs.recipBatchSize.push_back(interface.getArgument("recip_batch_size" + istr));
@@ -2719,6 +2766,12 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
             state.ra.claim(state.inputs.strideA[i]);
             state.ra.claim(state.inputs.strideB[i]);
             state.ra.claim(state.inputs.strideC[i]);
+	    if(problem.asPtrDims > 2){
+                state.ra.claim(state.inputs.strideScaleA[i]);
+	    }
+	    if(problem.bsPtrDims > 2){
+                state.ra.claim(state.inputs.strideScaleB[i]);
+	    }
         }
         for (int i = 0; i < problem.batchDims - 1; i++) {
             state.ra.claim(state.inputs.batchSize[i]);

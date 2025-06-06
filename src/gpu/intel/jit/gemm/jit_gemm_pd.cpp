@@ -178,11 +178,18 @@ int jit_gemm_pd_t::quant_entry_ndims(
     for (int i = md.ndims - 1; i >= 0; --i) {
         if ((mask & (1 << i))
                 && ((i < batch_dims() && md.dims[i] > 1)
-                        || (md.dims[i] / entry.get_group(i - batch_dims())
-                                        > 1)))
+                        || (md.dims[i] / entry.get_group(i - batch_dims()) > 1)))
             ++count;
     }
     return count;
+}
+
+int jit_gemm_pd_t::quant_entry_group_prod(const quant_entry_t &attr) const {
+    int ret = 1;
+    if (attr.has_default_groups()) return ret;
+    for (int i = 0; i < 2; ++i)
+        ret *= attr.get_group(i);
+    return ret;
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {
@@ -330,9 +337,10 @@ bool jit_gemm_pd_t::scales_ok() {
     }
 
     if (src_scales_2d()) {
+        int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
         if (!dy_quant_enabled_
                 || (!utils::one_of(eff_a_type(), s4, u4)
-                        && attr()->scales_.get_mask(DNNL_ARG_B) != 0xfff))
+                        && (cmask_b_sc_ != 0xfff || bsc_dims_ > 2)))
             return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0

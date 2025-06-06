@@ -280,6 +280,7 @@ private:
         , exec_size(exec_size)
         , src1_stride(src1_stride)
         , src2_stride(src2_stride) {
+        if (hw.is_undef()) return;
         int max_exec_size_bytes = get_max_exec_size_bytes(hw);
         gpu_assert(math::is_pow2(exec_size));
 

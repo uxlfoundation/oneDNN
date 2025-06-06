@@ -291,7 +291,7 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     bool src_f4_e3m0 = (src_type == ngen_f4_e3m0());
     bool src_f4 = src_f4_e2m1 || src_f4_e3m0;
     bool f_to_xf = (src_f && (dst_bf || dst_hf));
-    bool native_bf16 = host->exec_cfg().hw().systolic_support();
+    bool native_bf16 = host->hw().systolic_support();
     op_plan_t plan = grf_size;
     ngen_register_scope_t lex_scope {scope.register_allocator()};
 

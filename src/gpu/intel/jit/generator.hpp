@@ -93,6 +93,11 @@ public:
         : ngen_code_generator_t<hw>(0,
                 {debug_config.name, debug_config.line, enable_debug_lines}) {};
 
+    generator_t(
+            const ngen::Product &product, const debug_config_t &debug_config)
+        : ngen_code_generator_t<hw>(product,
+                {debug_config.name, debug_config.line, enable_debug_lines}) {};
+
     const char *kernel_name() const override {
         return ngen_code_generator_t<hw>::getExternalName().c_str();
     }

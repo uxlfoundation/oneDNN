@@ -74,8 +74,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool sum_at_begin_ = false;
 
     bool bias_via_binary_ = false;
-    bool wei_scales_2d_ = false;
-    bool src_scales_2d_ = false;
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
@@ -86,6 +84,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     data_type_t src_scales_type_ = data_type::undef;
 
     int ao_dims_ = -1, bo_dims_ = -1;
+    int asc_dims_ = -1, bsc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
 
@@ -147,6 +146,11 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
             case sum_ab::sum_b_col: return 2;
         }
     }
+    bool with_a_scales() const { return (asc_dims_ >= 0); }
+    bool with_b_scales() const { return (bsc_dims_ >= 0); }
+    bool with_c_scales() const {
+        return !attr()->scales_.has_default_values(DNNL_ARG_DST);
+    }
 
     bool with_a_zero_points() const { return (ao_dims_ >= 0); }
     bool with_b_zero_points() const { return (bo_dims_ >= 0); }
@@ -155,13 +159,13 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     }
     bool with_sround() const { return with_sround_; }
 
-    bool wei_scales_2d() const { return wei_scales_2d_; }
-    bool src_scales_2d() const { return src_scales_2d_; }
+    bool wei_scales_2d() const { return asc_dims_ > 1; }
+    bool src_scales_2d() const { return bsc_dims_ > 1; }
 
     bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
     int quant_attr_ndims(
             const quant_entry_t &attr, const memory_desc_t &d) const;
-
+    int quant_attr_group(const quant_entry_t &attr) const;
     int quant_attr_cmask(const quant_entry_t &attr) const;
     bool dy_quant_enabled();
     bool wei_decomp();

@@ -246,9 +246,9 @@ void BLASKernelGenerator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy,
     }
 
     // 2D scale address handling.
-    if (problem.aScale2D && state.inputs.offsetAScale.isValid())
+    if (problem.aScale2D() && state.inputs.offsetAScale.isValid())
         eadd(1, state.inputs.aScalePtr, state.inputs.aScalePtr, state.inputs.offsetAScale, strategy, state);
-    if (problem.bScale2D && state.inputs.offsetBScale.isValid())
+    if (problem.bScale2D() && state.inputs.offsetBScale.isValid())
         eadd(1, state.inputs.bScalePtr, state.inputs.bScalePtr, state.inputs.offsetBScale, strategy, state);
 
     state.ra.safeRelease(state.inputs.offsetAScale);

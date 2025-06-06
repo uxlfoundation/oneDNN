@@ -121,12 +121,20 @@ status_t jit_gemm_pd_t::init_post_ops() {
                 // TODO: is it inverted?
                 int n_group = src_scales->get_group(0);
                 int k_group = src_scales->get_group(1);
-                dim_t dims[]
-                        = {(mask & (d->batch() > 1 ? 2 : 1)) ? d->n() / n_group
-                                                             : 1,
-                                d->k() / k_group};
-                CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                        src_scales->get_data_type(), format_tag::ab));
+                int ndims = d->c_desc.ndims;
+                std::vector<dim_t> dims;
+                for (int i = ndims - 3; i >= 0; --i) {
+                    if (mask & (i + 1)) dims.push_back(d->c_desc.dims[i]);
+                }
+                dims.push_back((mask & (d->batch() > 1 ? 2 : 1))
+                                ? d->n() / n_group
+                                : 1);
+                dims.push_back(d->k() / k_group);
+                auto tag = utils::pick(dims.size() - 1, format_tag::a,
+                        format_tag::ab, format_tag::abc, format_tag::abcd,
+                        format_tag::abcde);
+                CHECK(memory_desc_init_by_tag(src_scales_md, dims.size(),
+                        dims.data(), src_scales->get_data_type(), tag));
             } else {
                 dim_t dims[] = {d->n(), 1};
                 CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
@@ -160,15 +168,6 @@ status_t jit_gemm_pd_t::init_post_ops() {
     return status::success;
 }
 
-bool jit_gemm_pd_t::quant_attr_2d(int arg, const quant_entries_t &attr) const {
-    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    int k_idx = (arg == DNNL_ARG_A ? 0 : 1);
-    if (!attr.has_default_values(arg) && !attr.has_default_groups(arg)
-            && attr.get_group(arg, k_idx) < desc()->k())
-        return true;
-    return false;
-}
-
 int jit_gemm_pd_t::quant_attr_ndims(
         const quant_entry_t &attr, const memory_desc_t &d) const {
     if (attr.has_default_values()) return -1;
@@ -176,7 +175,7 @@ int jit_gemm_pd_t::quant_attr_ndims(
     if (mask == 0) return 0;
     if (attr.has_default_groups()) return mask > 0;
     int count = 0;
-    for (int i = 0; i < d.ndims; ++i) {
+    for (int i = d.ndims - 1; i >= 0; --i) {
         if ((mask & (1 << i))
                 && ((i < batch_dims() && d.dims[i] > 1)
                         || (d.dims[i] / attr.get_group(i - batch_dims()) > 1)))
@@ -188,6 +187,14 @@ int jit_gemm_pd_t::quant_attr_ndims(
 int jit_gemm_pd_t::quant_attr_cmask(const quant_entry_t &attr) const {
     if (!attr.has_default_values()) { return attr.get_mask(); }
     return -1;
+}
+
+int jit_gemm_pd_t::quant_attr_group(const quant_entry_t &attr) const {
+    int ret = 1;
+    if (attr.has_default_groups()) return ret;
+    for (int i = 0; i < 2; ++i)
+        ret *= attr.get_group(i);
+    return ret;
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {
@@ -226,31 +233,31 @@ void jit_gemm_pd_t::init_attrs() {
     const auto d = desc();
 
     auto &attr_zps = attr()->zero_points_;
-
-    // Swap descriptors to follow column major format.
-    ao_dims_ = quant_attr_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
-    bo_dims_ = quant_attr_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
     cmask_a_ = quant_attr_cmask(attr_zps.get(DNNL_ARG_A));
     cmask_b_ = quant_attr_cmask(attr_zps.get(DNNL_ARG_B));
     cmask_c_ = quant_attr_cmask(attr_zps.get(DNNL_ARG_C));
 
-    if (ao_dims_ >= 2) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (bo_dims_ >= 2) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
+    // Swap descriptors to follow column major format.
+    ao_dims_ = quant_attr_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
+    bo_dims_ = quant_attr_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
+    if (wei_zp_2d()) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
+    if (src_zp_2d()) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    const auto &scales = attr()->scales_;
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
-    wei_scales_2d_ = quant_attr_2d(DNNL_ARG_A, attr()->scales_);
-    src_scales_2d_ = quant_attr_2d(DNNL_ARG_B, attr()->scales_);
+    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    asc_dims_ = quant_attr_ndims(scales.get(DNNL_ARG_A), d->b_desc);
+    bsc_dims_ = quant_attr_ndims(scales.get(DNNL_ARG_B), d->a_desc);
     wei_scales_group_k_ = wei_scales->get_group(0);
     src_scales_group_k_ = src_scales->get_group(1);
 
     wei_scales_type_ = wei_scales->get_data_type();
-    if (wei_scales_2d_) {
-        if (ao_dims_ < 2) wei_q2d_group_k_ = wei_scales->get_group(0);
+    if (wei_scales_2d()) {
+        if (!wei_zp_2d()) wei_q2d_group_k_ = wei_scales->get_group(0);
     }
 
     src_scales_type_ = src_scales->get_data_type();
-    if (src_scales_2d_) { src_q2d_group_k_ = src_scales->get_group(1); }
+    if (src_scales_2d()) { src_q2d_group_k_ = src_scales->get_group(1); }
 }
 
 bool jit_gemm_pd_t::zp_ok() {
@@ -277,7 +284,7 @@ bool jit_gemm_pd_t::zp_ok() {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_scales_2d_)
+                    && wei_scales_2d())
                 return false;
         }
     }
@@ -328,14 +335,17 @@ bool jit_gemm_pd_t::scales_ok() {
             return false;
     }
 
-    if (wei_scales_2d_) {
+    if (wei_scales_2d()) {
         if (wei_q2d_group_k_ != wei_scales_group_k_) return false;
         // Non-trivial N group unsupported.
         if (wei_scales->get_group(1) != 1) return false;
     }
 
-    if (src_scales_2d_) {
-        if (!dy_quant_enabled_ || !utils::one_of(eff_a_type(), s4, u4))
+    if (src_scales_2d()) {
+        int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
+        if (!dy_quant_enabled_
+                || (!utils::one_of(eff_a_type(), s4, u4)
+                        && (cmask_b_sc_ != 0xfff || bsc_dims_ > 2)))
             return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
@@ -347,8 +357,9 @@ bool jit_gemm_pd_t::scales_ok() {
 }
 
 bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
-    return utils::one_of(
-            mask, (1 << (ndims - 1)), (1 << (ndims - 1)) + (1 << (ndims - 2)));
+    const int per_tensor_mask = 0xfff;
+    return utils::one_of(mask, (1 << (ndims - 1)),
+            (1 << (ndims - 1)) + (1 << (ndims - 2)), per_tensor_mask);
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {
@@ -370,6 +381,7 @@ dim_t jit_gemm_pd_t::ld_binary(int idx) const {
 dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
     switch (binary_srcs_[idx].type) {
         case binary_src_t::binary:
+        case binary_src_t::scales:
         case binary_src_t::bias: {
             const auto &entry = post_ops_.entry_[idx];
             assert(entry.kind == primitive_kind::binary);

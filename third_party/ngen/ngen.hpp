@@ -86,6 +86,8 @@ class BinaryCodeGenerator
     friend class ELFCodeGenerator<hw>;
 
 public:
+    using RootCodeGenerator = BinaryCodeGenerator;
+
     static constexpr HW hardware = hw;
     static constexpr HW getHardware() { return hardware; }
 
@@ -314,7 +316,6 @@ public:
     void setProductFamily(ProductFamily family_) { product.family = family_; }
     void setStepping(int stepping_) { product.stepping = stepping_; }
 
-protected:
     // Configuration.
     void setDefaultNoMask(bool def = true)          { defaultModifier.setWrEn(def); }
     void setDefaultAutoSWSB(bool def = true)        { defaultModifier.setAutoSWSB(def); }

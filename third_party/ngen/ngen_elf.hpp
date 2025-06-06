@@ -37,7 +37,6 @@ public:
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
-protected:
     NEOInterfaceHandler interface_{hw};
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }

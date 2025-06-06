@@ -543,9 +543,9 @@ status_t brgemm_matmul_t<isa>::execute_body(
         if (is_amx) { amx_tile_release(); }
     });
 
-    parallel(1, [&, brgmm_ctx](const int ithr, const int nthr) {
-        maybe_reduce_and_convert_partial_results_A(*brgmm_ctx);
-        maybe_reduce_partial_results_and_apply_postops(*brgmm_ctx);
+    parallel(1, [=](const int ithr, const int nthr) {
+        maybe_reduce_and_convert_partial_results_A(brgmm_ctx);
+        maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
     });
     return status::success;
 }
@@ -773,7 +773,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_A(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
     // Partial results appear when parallel reduction is used.
     //
     // There are two cases that require slightly different handling.
@@ -817,7 +817,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
     //         +<--| reduce_buf_1 (f32) |
     //             +--------------------+
 
-    if (!pd()->with_reduce() || !brgmm_ctx.parallel_reduction_is_used()) return;
+    if (!pd()->with_reduce() || !brgmm_ctx_ptr->parallel_reduction_is_used()) return;
+    const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
@@ -876,8 +877,9 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
-    if (!brgmm_ctx.parallel_reduction_is_used()) return;
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
+    if (!brgmm_ctx_ptr->parallel_reduction_is_used()) return;
+    const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();

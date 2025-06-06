@@ -92,7 +92,7 @@ public:
             bool s_is_hf = src_type.is_f16();
             bool s_is_fp8 = src_type.is_fp8();
             bool d_is_f = dst_type.is_f32();
-            bool native_bf = host->exec_cfg().hw().systolic_support();
+            bool native_bf = host->hw_info().systolic_support();
             bool sd_aligned = (tile_elems == 1
                     || (dst_stride * ngen::getBytes(d.type())
                             == src_stride * ngen::getBytes(s.type())));

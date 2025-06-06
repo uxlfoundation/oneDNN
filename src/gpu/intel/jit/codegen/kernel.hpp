@@ -220,6 +220,7 @@ public:
 
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const hw_t &hw_info() const { return exec_cfg_.hw(); }
 
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };

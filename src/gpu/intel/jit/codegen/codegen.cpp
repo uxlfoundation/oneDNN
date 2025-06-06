@@ -58,7 +58,7 @@ public:
         : host_(host)
         , expr_binding_(expr_binding)
         , simd_size_(host->getSIMD())
-        , with_atomic_fp64_(host->exec_cfg().hw().has_fp64_atomic_support()) {}
+        , with_atomic_fp64_(host->hw_info().has_fp64_atomic_support()) {}
 
     ~ir_to_ngen_t() override
 #ifdef DNNL_DEV_MODE

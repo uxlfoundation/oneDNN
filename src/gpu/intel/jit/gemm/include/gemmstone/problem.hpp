@@ -230,8 +230,8 @@ struct GEMMProblem : public CommonProblem {
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || (asPtrDims == 2); }
-    bool quantized2DB() const { return (boPtrDims == 2) || (bsPtrDims == 2); }
+    bool quantized2DA() const { return (aoPtrDims == 2) || (asPtrDims >= 2); }
+    bool quantized2DB() const { return (boPtrDims == 2) || (bsPtrDims >= 2); }
 
     bool downconvertAScales() const { return Ta == Type::f16 && Ta_scale == Type::f32; }
     bool downconvertBScales() const { return Tb == Type::f16 && Tb_scale == Type::f32; }

@@ -866,6 +866,14 @@ void gen_gemm_kernel_t::init_interface() {
             interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
+            if (problem.asPtrDims > 2) {
+                interface_.newArgument(
+                        "scale_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.bsPtrDims > 2) {
+                interface_.newArgument(
+                        "scale_stride_B" + std::to_string(i), DataType::d);
+            }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
             if (problem.postOps[i].is_binary()

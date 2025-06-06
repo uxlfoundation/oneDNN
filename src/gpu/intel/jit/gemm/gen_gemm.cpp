@@ -142,6 +142,18 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
+            if (problem->asPtrDims > 2) {
+                auto scale_stride_a = int32_t(stride_a
+                        / pd()->quant_entry_group_prod(
+                                pd()->attr()->scales_.get(DNNL_ARG_A)));
+                arg_list.set(argn++, scale_stride_a);
+            }
+            if (problem->bsPtrDims > 2) {
+                auto scale_stride_b = int32_t(stride_b
+                        / pd()->quant_entry_group_prod(
+                                pd()->attr()->scales_.get(DNNL_ARG_B)));
+                arg_list.set(argn++, scale_stride_b);
+            }
         }
         for (int i = 0; i < po_count; i++) {
             if (problem->postOps.binaryBatch[i]) {

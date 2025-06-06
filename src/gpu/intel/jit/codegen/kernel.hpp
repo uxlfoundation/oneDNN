@@ -270,6 +270,12 @@ public:
                 expr_binding.bind(
                         local_id, ngen_generator_t::getLocalID(i).uw(0));
             }
+            auto local_size
+                    = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
+            if (!local_size.is_empty()) {
+                expr_binding.bind(
+                        local_size, ngen_generator_t::getLocalSize(i).uw(0));
+            }
         }
 
         // Bind arguments.
@@ -1292,6 +1298,9 @@ public:
         return interface_.getArgument(name);
     }
     ngen::GRF getLocalID(int dim) const { return interface_.getLocalID(dim); }
+    ngen::Subregister getLocalSize(int dim) const {
+        return interface_.getLocalSize(dim);
+    }
     std::string str() {
         std::ostringstream oss;
         getCode(oss);

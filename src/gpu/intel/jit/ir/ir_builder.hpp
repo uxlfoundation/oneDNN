@@ -37,6 +37,7 @@ public:
     GENNAME(tg_idx)
     GENNAME(thr_idx)
     GENNAME(local_id)
+    GENNAME(local_size)
 #undef GENNAME
 
 protected:

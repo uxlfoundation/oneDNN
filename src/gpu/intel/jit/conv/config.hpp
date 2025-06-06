@@ -551,7 +551,7 @@ public:
 
     int simd() const { return exec_cfg().simd(); }
 
-    int vec_size() const { return exec_cfg().vec_size(); }
+    int vec_size() const { return vec_size_; }
 
     bool is_dp_fma() const { return jit::is_dp_fma(fma_kind()); }
 
@@ -593,11 +593,7 @@ public:
         set_exec_cfg(tmp);
     }
 
-    void set_vec_size(int vec_size) {
-        auto tmp = exec_cfg();
-        tmp.set_vec_size(vec_size);
-        set_exec_cfg(tmp);
-    }
+    void set_vec_size(int vec_size) { vec_size_ = vec_size; }
 
     void set_tiler(const std::shared_ptr<conv_tiler_t> &tiler);
     const conv_tiler_t &tiler() const;
@@ -609,7 +605,25 @@ public:
     bool can_skip_wei_zero_out() const;
     bool can_skip_bia_zero_out() const;
 
+    blocking_params_t params(
+            int bufs_hint = blocking_params_t::bufs_hint_undef) const {
+        blocking_t blocking;
+        for (auto &d : index_dims()) {
+            dim_t loop = loop_dim(d);
+            dim_t tg = thread_group_dim(d);
+            dim_t iter = iter_dim(d);
+            if (loop != 1) blocking.set_loop(d, loop);
+            if (tg != 1) blocking.set_thread_group(d, tg);
+            if (iter != 1) blocking.set_iter(d, iter);
+        }
+        blocking.set_simd(vec_size());
+        blocking_params_t ret(blocking, bufs_hint);
+        ret.set_id(params_id_);
+        return ret;
+    }
+
 private:
+    int vec_size_;
     std::shared_ptr<conv_plan_t> plan_;
     std::shared_ptr<conv_tiler_t> tiler_;
 

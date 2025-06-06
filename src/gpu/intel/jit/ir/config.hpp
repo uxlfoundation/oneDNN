@@ -124,13 +124,12 @@ public:
     bool is_default(const std::string &key) const override {
         if (key == "regs") return false;
         if (key == "simd") return false;
-        if (key == "vec") return value_.vec_size() == value_.simd();
         gpu_error_not_expected() << key;
         return false;
     }
 
     std::vector<std::string> accepted_keys() const override {
-        return {"regs", "simd", "vec"};
+        return {"regs", "simd"};
     }
 
     void set_from_str(
@@ -139,8 +138,6 @@ public:
             value_.set_regs(std::stoi(value));
         } else if (key == "simd") {
             value_.set_simd(std::stoi(value));
-        } else if (key == "vec") {
-            value_.set_vec_size(std::stoi(value));
         } else {
             gpu_error_not_expected() << key;
         }
@@ -152,8 +149,6 @@ public:
             oss << "regs=" << value_.regs();
         } else if (key == "simd") {
             oss << "simd=" << value_.simd();
-        } else if (key == "vec") {
-            if (!is_default("vec")) oss << "vec=" << value_.vec_size();
         }
         return oss.str();
     }
@@ -323,23 +318,6 @@ public:
 
         set_params_id(params.id());
         set_bufs_hint(params.bufs_hint());
-    }
-
-    blocking_params_t params(
-            int bufs_hint = blocking_params_t::bufs_hint_undef) const {
-        blocking_t blocking;
-        for (auto &d : index_dims()) {
-            dim_t loop = loop_dim(d);
-            dim_t tg = thread_group_dim(d);
-            dim_t iter = iter_dim(d);
-            if (loop != 1) blocking.set_loop(d, loop);
-            if (tg != 1) blocking.set_thread_group(d, tg);
-            if (iter != 1) blocking.set_iter(d, iter);
-        }
-        blocking.set_simd(exec_cfg().vec_size());
-        blocking_params_t ret(blocking, bufs_hint);
-        ret.set_id(params_id_);
-        return ret;
     }
 
     static int get_max_threadgroups_per_wave(

@@ -85,9 +85,9 @@ public:
                 primitive_attr_t attr;
                 if (pd->data->pd_cfg.zp_cfg().needs_src_conv_precalc) {
                     int mask = pd->attr_.zero_points_.get_mask(DNNL_ARG_SRC);
-                    attr.zero_points_.set(DNNL_ARG_SRC, mask);
-                    attr.post_ops_.append_eltwise(
-                            1.f, alg_kind::eltwise_linear, -1.f, 0.f);
+                    CHECK(attr.zero_points_.set(DNNL_ARG_SRC, mask));
+                    CHECK(attr.post_ops_.append_eltwise(
+                            1.f, alg_kind::eltwise_linear, -1.f, 0.f));
                 }
                 dim_t I[3], O[3], P[3], D[3];
                 prepare_zp_precompute_conv(prb, I, O, P, D);

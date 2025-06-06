@@ -298,7 +298,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
 
-    ctx.zero_pad_output(DNNL_ARG_DST);
+    CHECK(ctx.zero_pad_output(DNNL_ARG_DST));
 
     if (!subbyte_pack) return status_t::dnnl_success;
     compute::kernel_arg_list_t repack_arg_list;

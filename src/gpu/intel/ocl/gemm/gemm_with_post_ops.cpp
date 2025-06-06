@@ -105,19 +105,19 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     gemm_desc.bias_desc = glob_zero_md;
     // Setup empty attributes but keep zero points for gemm.
     primitive_attr_t attributes_without_po = *attr();
-    attributes_without_po.set_post_ops(post_ops_t());
+    CHECK(attributes_without_po.set_post_ops(post_ops_t()));
     attributes_without_po.scales_ = scales_t();
     attributes_without_po.zero_points_ = zero_points_t();
     const auto &zp = attributes_with_po->zero_points_;
     int src_mask = zp.get_mask(DNNL_ARG_SRC);
     int wei_mask = zp.get_mask(DNNL_ARG_WEIGHTS);
     if (!zp.has_default_values(DNNL_ARG_SRC)) {
-        attributes_without_po.zero_points_.set(DNNL_ARG_SRC, src_mask);
+        CHECK(attributes_without_po.zero_points_.set(DNNL_ARG_SRC, src_mask));
     }
     if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
         const auto dt = attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS);
-        attributes_without_po.zero_points_.set(
-                DNNL_ARG_WEIGHTS, wei_mask, dt, 0, {});
+        CHECK(attributes_without_po.zero_points_.set(
+                DNNL_ARG_WEIGHTS, wei_mask, dt, 0, {}));
     }
 
     primitive_desc_iterator_t it_gemm_without_po(engine,
@@ -254,7 +254,7 @@ status_t gemm_with_post_ops_t::execute(const gemm_exec_ctx_t &ctx) const {
 
     auto arch = compute_engine->device_info()->gpu_arch();
     // Workaround correctness issue on Gen9
-    if (arch == compute::gpu_arch_t::gen9) ctx.stream()->wait();
+    if (arch == compute::gpu_arch_t::gen9) CHECK(ctx.stream()->wait());
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);
     compute::kernel_arg_list_t arg_list;

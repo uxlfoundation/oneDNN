@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(binary_fusion)
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reciprocal_multiply_fusion)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_reciprocal_multiply)
         .set_priority(8.2f)
         .set_kind(partition_kind_t::binary_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",
@@ -49,7 +49,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reciprocal_multiply_fusion)
 
 // TODO(zitian): wait for the implementation of comparison ops:
 //      Gt, Ge, Le, Lt, Eq, Ne
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, binary_post_ops_fusion)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_binary_post_ops)
         .set_priority(8.3f)
         .set_kind(partition_kind_t::binary_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",

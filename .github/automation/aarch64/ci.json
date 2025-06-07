@@ -1,6 +1,6 @@
 {
     "dependencies": {
-        "acl": "v52.0.1",
+        "acl": "v52.1.0",
         "gcc": "13",
         "clang": "17",
         "onednn-base": "v3.7"

@@ -16,6 +16,6 @@
 
 #include "gemmstone/config.hpp"
 
+#   include "ngen_asm.hpp"
 #   include "ngen_opencl.hpp"
 #   include "ngen_register_allocator.hpp"
-#   include "ngen_asm.hpp"

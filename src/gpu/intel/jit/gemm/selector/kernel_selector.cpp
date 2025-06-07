@@ -14,35 +14,33 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "kernel_selector.hpp"
-#include "kernel_evaluator.hpp"
+#include "gemmstone/kernel_selector.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
+#include "common/verbose.hpp"
 
 #include <cassert>
 #include <cctype>
 #include <cstring>
 #include <vector>
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 inline bool layoutMatch(const char *lref, const char *lpattern)
 {
     return (lref[0] == lpattern[0]);        // This is a sufficient check for now.
 }
 
-inline bool precisionMatch(char pref, char ppattern)
+inline bool precisionMatch(const char *pref, const char *ppattern, bool ignoreCase)
 {
-    // Fast case-insensitive compare
-    return (pref & ~0x20) == (ppattern & ~0x20);
-}
+    char mask = ignoreCase ? ~0x20 : ~0;
+    auto match = [mask](char c1, char c2) { return (c1 & mask) == (c2 & mask); };
 
-inline bool precisionMatch(const char *pref, const char *ppattern)
-{
     bool ok = false;
     ok = ok || (ppattern[0] == '?');
-    ok = ok || precisionMatch(pref[0], ppattern[0]);
-    ok = ok || (ppattern[0] == '[' && precisionMatch(pref[0], ppattern[1]));
+    ok = ok || match(pref[0], ppattern[0]);
+    ok = ok || (ppattern[0] == '[' && match(pref[0], ppattern[1]));
     if (ok && pref[0] == '[') {
-        ok = ok && precisionMatch(pref[1], ppattern[1]) && precisionMatch(pref[2], ppattern[2]);
+        ok = ok && match(pref[1], ppattern[1]) && match(pref[2], ppattern[2]);
         for (int i = 3; pref[i] != '\0'; i++) {
             if (pref[i] != ppattern[i]) { ok = false; break; }
         }
@@ -56,7 +54,7 @@ inline bool precisionMinimumMatch(const char *pref, char pmin)
 //         A  B  C  D  E  F  G  H  I  J  K  L  M  N  O
         0, 0, 2, 8, 8, 0, 0, 0, 2, 4, 4, 4, 0, 0, 0, 1,
 //      P  Q  R  S  T  U  V  W  X  Y  Z
-        0, 0, 0, 4, 4, 8, 0, 2, 0, 0, 16, 0, 0, 0, 0, 0
+        0, 1, 0, 4, 4, 8, 0, 2, 0, 0, 16, 0, 0, 0, 0, 0
     };
 
     return (sizeTable[pref[0] & 0x1F] >= sizeTable[pmin & 0x1F]);
@@ -106,26 +104,26 @@ inline bool strategyMatch(const CommonDriverInfo &info, const StrategyRequiremen
     }
 }
 
-bool matches(const kcatalog::Entry &e, const MatchParams &pattern)
+bool matches(const kcatalog::Entry &e, const MatchParams &p)
 {
     bool ok = true;
 
     if (e.restrictions.steppingMin >= 0)
-        ok = ok && (pattern.stepping >= e.restrictions.steppingMin);
+        ok = ok && (p.stepping >= e.restrictions.steppingMin);
     if (e.restrictions.steppingMax >= 0)
-        ok = ok && (pattern.stepping < e.restrictions.steppingMax);
-    ok = ok && layoutMatch(e.selector.layouts[0], pattern.selector.layouts[0]);
-    ok = ok && layoutMatch(e.selector.layouts[1], pattern.selector.layouts[1]);
-    ok = ok && layoutMatch(e.selector.layouts[2], pattern.selector.layouts[2]);
-    ok = ok && precisionMatch(e.selector.precisions[2], pattern.selector.precisions[2]);
-    if (pattern.precisionCExt)
-        ok = ok && precisionMinimumMatch(e.selector.precisions[2], pattern.precisionCExt);
+        ok = ok && (p.stepping < e.restrictions.steppingMax);
+    ok = ok && layoutMatch(e.selector.layouts[0], p.selector.layouts[0]);
+    ok = ok && layoutMatch(e.selector.layouts[1], p.selector.layouts[1]);
+    ok = ok && layoutMatch(e.selector.layouts[2], p.selector.layouts[2]);
+    ok = ok && precisionMatch(e.selector.precisions[2], p.selector.precisions[2], p.ignoreCase);
+    if (p.precisionCExt)
+        ok = ok && precisionMinimumMatch(e.selector.precisions[2], p.precisionCExt);
     for (int i = 0; i < 3; i++)
-        ok = ok && alignmentMatch(e.restrictions.alignment[i], pattern.alignment[i]);
-    ok = ok && tagMatch(e.restrictions.tags, pattern.tags);
+        ok = ok && alignmentMatch(e.restrictions.alignment[i], p.alignment[i]);
+    ok = ok && tagMatch(e.restrictions.tags, p.tags);
 
-    if (!pattern.ignoreSizes) {
-        int64_t mnk[3] = {pattern.sizes.m, pattern.sizes.n, pattern.sizes.k};
+    if (!p.ignoreSizes) {
+        int64_t mnk[3] = {p.sizes.m, p.sizes.n, p.sizes.k};
         for (int i = 0; i < 3; i++) {
             if (e.restrictions.allowedSizesMin[i] >= 0)
                 ok = ok && (mnk[i] >= e.restrictions.allowedSizesMin[i]);
@@ -134,13 +132,13 @@ bool matches(const kcatalog::Entry &e, const MatchParams &pattern)
         }
     }
 
-    for (int i = 0; i < pattern.nExtraReqs; i++)
-        ok = ok && strategyMatch(e.driverInfo, pattern.extraReqs[i]);
+    for (int i = 0; i < p.nExtraReqs; i++)
+        ok = ok && strategyMatch(e.driverInfo, p.extraReqs[i]);
 
     // Should already be matched.
-    ok = ok && (e.selector.hw == pattern.selector.hw);
-    ok = ok && precisionMatch(e.selector.precisions[0], pattern.selector.precisions[0]);
-    ok = ok && precisionMatch(e.selector.precisions[1], pattern.selector.precisions[1]);
+    ok = ok && (e.selector.hw == p.selector.hw);
+    ok = ok && precisionMatch(e.selector.precisions[0], p.selector.precisions[0], p.ignoreCase);
+    ok = ok && precisionMatch(e.selector.precisions[1], p.selector.precisions[1], p.ignoreCase);
 
     return ok;
 }
@@ -156,20 +154,15 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
     return (alignA1 <= alignA2) && (alignB1 <= alignB2) && (alignA1 + alignB1 < alignB1 + alignB2);
 }
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux)
-{
-    return select(catalog, 1, &pattern, eparams, aux);
-}
-
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux)
+// Inner kernel selection logic.
+// Choose the best entry, if any, matching one of the given patterns.
+const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
 {
     double bestScore = std::numeric_limits<double>::infinity();
     const kcatalog::Entry *bestEntry = nullptr;
     int bestIPattern = -1;
     bool bestIsFallback = false;
     int bestAlignA = 0, bestAlignB = 0;
-
-    bool verbose = getVerbose(GEMMVerbose::DebugInfo) >= 5;
 
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
@@ -197,29 +190,9 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
                 bestIsFallback = fallback;
                 aux = thisAux;
             }
-            if (verbose) {
-                const auto &info = it->driverInfo;
-                verbosePrintf("info,gpu,gemm,consider:%dx%d,%dx%dx%d,score:%f\n",
-                        info.unroll[LoopM], info.unroll[LoopN], info.wg[LoopM],
-                        info.wg[LoopN], info.wg[LoopK], score);
-            }
-        }
-    }
 
-    /* Temporarily reuse XeHPC/Xe2 strategies for Xe2/Xe3 until more strategies are
-       in the catalog*/
-    if (!bestEntry
-            && (patterns[0].selector.hw == kcatalog::HWTagXe2
-                    || patterns[0].selector.hw == kcatalog::HWTagXe3
-                    )) {
-        std::vector<MatchParams> override_patterns;
-        const bool isXe3 = patterns[0].selector.hw == kcatalog::HWTagXe3;
-        override_patterns.reserve(npatterns);
-        for (int i = 0; i < npatterns; i++) {
-            override_patterns.emplace_back(patterns[i]);
-            override_patterns.back().selector.hw = isXe3 ? kcatalog::HWTagXe2 : kcatalog::HWTagXeHPC;
+            if (observer) (*observer)(&*it, score, aux);
         }
-        return select(catalog, npatterns, override_patterns.data(), eparams, aux);
     }
 
     // Late tag checking. If late tags do not match, we abandon the kernel and
@@ -228,6 +201,96 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         return nullptr;
 
     return bestEntry;
+}
+
+// User-facing kernel selection logic.
+// Includes architecture and data type fallbacks.
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
+{
+    return select(catalog, 1, &pattern, eparams, aux, observer);
+}
+
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
+{
+    using namespace kcatalog;
+
+    if (npatterns == 0 || !patterns)
+        return nullptr;
+
+    auto result = select1(catalog, npatterns, patterns, eparams, aux, observer);
+    if (result) return result;
+
+    // Architecture fallback loop.
+    bool first = true;
+    auto hw = patterns[0].selector.hw;
+    do {
+        std::vector<MatchParams> modPatterns;
+        modPatterns.reserve(npatterns);
+        for (int i = 0; i < npatterns; i++) {
+            modPatterns.emplace_back(patterns[i]);
+            modPatterns.back().selector.hw = hw;
+        }
+
+        // Type fallback loop.
+        while (true) {
+            if (!first) {
+                result = select1(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                if (result) return result;
+            }
+            first = false;
+
+            /* Try capital types */
+            auto hasLowercase = [](kcatalog::string &str) {
+                bool lc = false;
+                for (auto c = str; *c; c++)
+                    lc |= (*c >= 'a' && *c <= 'z');
+                return lc;
+            };
+
+            bool changed = false;
+            for (auto &p: modPatterns) {
+                if (p.ignoreCase) continue;
+                p.ignoreCase = true;
+                for (int d = 0; d < 3; d++)
+                    changed |= hasLowercase(p.selector.precisions[d]);
+            }
+            if (changed) continue;
+
+            /* Specific pattern modifications */
+            auto iequal = [](kcatalog::string &str, char c) {
+                return str[0] && ((str[0] & ~0x20) == (c & ~0x20)) && (str[1] == '\0');
+            };
+
+            for (auto &p: modPatterns) {
+                auto match = [&](const char *precisions) {
+                    for (int i = 0; i < 3; i++)
+                        if (precisions[i] && !iequal(p.selector.precisions[i], precisions[i]))
+                            return false;
+                    return true;
+                };
+
+                if (match("FO"))
+                    p.selector.precisions[0] = "[FO]";
+                else if (match("BB"))
+                    p.selector.precisions[0] = p.selector.precisions[1] = "H";
+                else continue;
+
+                changed = true;
+            }
+            if (changed) continue;
+
+            break;
+        }
+
+        // Architecture fallbacks, e.g. Xe2 inherits XeHPC strategies.
+        switch (hw) {
+            case HWTagXe2:  hw = HWTagXeHPC; break;
+            case HWTagXe3:  hw = HWTagXe2; break;
+            default:        hw = 0; break;
+        }
+    } while (hw);
+
+    return result;
 }
 
 template <bool upper>
@@ -270,7 +333,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPG:   selector.hw = kcatalog::HWTagXeHPG;   break;
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
-        case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;     break;
+        case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXeHPC;   break;
     }
 
     auto &C = problem.C;
@@ -340,7 +403,6 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None)
         *tagPtr++ = ReqABOffset;
-
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0)
         *tagPtr++ = ReqOffsetMultiDim;
 
@@ -348,8 +410,10 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
-    if (hw == ngen::HW::Xe2) *tagPtr++ = ReqXe2Block2D;
-    if (hw == ngen::HW::Xe3) *tagPtr++ = ReqXe2Block2D;
+    if (hw == ngen::HW::Xe2)
+        *tagPtr++ = ReqXe2Block2D;
+    if (hw == ngen::HW::Xe3)
+        *tagPtr++ = ReqXe2Block2D;
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }
@@ -367,4 +431,4 @@ void StrategyRequirement::transpose()
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

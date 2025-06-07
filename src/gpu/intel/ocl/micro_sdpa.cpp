@@ -114,11 +114,18 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
     bool is_integrated = compute_engine->device_info()->is_integrated();
+    use_systolic_ukernel_ = compute_engine->mayiuse(
+            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
 
     switch (arch_) {
         case arch_t::xe_hpg:
-            config = choose_config_xehpg(
-                    d->head_size(), d->keys(), thin_q, quantized);
+            if(!use_systolic_ukernel_) {
+                config = choose_config_xehpg_fma(
+                        d->head_size(), d->keys(), thin_q, quantized);
+            } else {
+                config = choose_config_xehpg(
+                        d->head_size(), d->keys(), thin_q, quantized);
+            }
             break;
         case arch_t::xe_hpc:
             config = choose_config_xehpc(d->head_size(), d->keys(), thin_q,
@@ -171,9 +178,6 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
-
-    use_systolic_ukernel_ = compute_engine->mayiuse(
-            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
     hw_info.systolicAvailable = use_systolic_ukernel_;
 
     if (hw_info.gmdid == 0) return status::unimplemented;

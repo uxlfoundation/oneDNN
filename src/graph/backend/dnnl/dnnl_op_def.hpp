@@ -1171,6 +1171,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_input(4, "mask") // optional
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
+                // use vector to store fusion info from mm1 and mm2
+                .set_attr(op_attr::fusion_info_keys, false, attribute_kind::is)
                 .set_attr(op_attr::with_scale, true, attribute_kind::b)
                 .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
                         false)

@@ -27,6 +27,25 @@ namespace ocl {
 //  h<N> -- maximum head size = N
 //  s<M> -- target sequence length = M
 //   2nd -- second token (thin Q)
+sdpa_config_t xehpg_fma_h32 = {16, 16, 8, 16, 8, 4, 8, 4};
+sdpa_config_t xehpg_fma_h32_2nd = {32, 16, 8, 8, 16, 2, 8, 4};
+
+sdpa_config_t xehpg_fma_h64 = {16, 16, 16, 16, 8, 2, 8, 2};
+sdpa_config_t xehpg_fma_h64_2nd = {16, 16, 32, 8, 32, 1, 16, 2};
+
+sdpa_config_t xehpg_fma_h80_s634 = {8, 16,16, 16, 8, 4, 8, 4};
+sdpa_config_t xehpg_fma_h80_s890 = {8, 32, 16, 32, 16, 1, 16, 1};
+sdpa_config_t xehpg_fma_h80_s1024 = {16, 16, 16, 8, 16, 2, 8, 4};
+sdpa_config_t xehpg_fma_h80_s1146 = {32, 8, 16, 8, 8, 4, 8, 4};
+
+sdpa_config_t xehpg_fma_h128_s1024 = {32, 16, 64, 8, 8, 2, 4, 4};
+sdpa_config_t xehpg_fma_h128_s2048 = {8, 16, 16, 16, 8, 4, 8, 4};
+sdpa_config_t xehpg_fma_h128_s4096 = {32, 16, 32, 16, 4, 2, 4, 2};
+sdpa_config_t xehpg_fma_h128_2nd = {32, 16, 32, 8, 16, 2, 8, 4};
+
+sdpa_config_t xehpg_fma_h256 = {8, 32, 64, 8, 16, 1, 4, 4};
+sdpa_config_t xehpg_fma_h256_2nd = {16, 8, 16, 8, 32, 1, 32, 1};
+
 sdpa_config_t xehpg_h32 = {32, 16, 16, 16, 2, 16, 2, 16};
 sdpa_config_t xehpg_h32_s256 = {16, 16, 16, 16, 2, 8, 2, 8};
 sdpa_config_t xehpg_h32_s64 = {16, 16, 16, 8, 4, 4, 2, 8};
@@ -206,6 +225,36 @@ sdpa_config_t xe2_q_h512_s256_2nd_integrated = {16, 32, 64, 32, 16, 2, 8, 2};
 sdpa_config_t xe2_q_h512_s512_2nd_integrated = {16, 16, 64, 16, 4, 4, 8, 4};
 sdpa_config_t xe2_q_h512_s1024_2nd_integrated = {16, 16, 64, 16, 16, 1, 16, 1};
 sdpa_config_t xe2_q_h512_2nd_integrated = {32, 16, 64, 16, 8, 1, 16, 1};
+
+sdpa_config_t *choose_config_xehpg_fma(
+        dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
+    if(quantized) { return nullptr; }
+    if (head_size <= 32) {
+        if (thin_q) return &xehpg_fma_h32_2nd;
+        return &xehpg_fma_h32;
+    } else if (head_size <= 64) {
+        if (thin_q) return &xehpg_fma_h64_2nd;
+        return &xehpg_fma_h64;
+    } else if (head_size <= 80) {
+        if (seq <= 634) return &xehpg_fma_h80_s634;
+        if (seq <= 890) return &xehpg_fma_h80_s890;
+        if (seq <= 1024) return &xehpg_fma_h80_s1024;
+        return &xehpg_fma_h80_s1146;
+    } else if (head_size <= 128) {
+        if (thin_q) {
+            return &xehpg_fma_h128_2nd;
+        }
+        if (seq <= 1024) return &xehpg_fma_h128_s1024;
+        if (seq <= 2048) return &xehpg_fma_h128_s2048;
+        return &xehpg_fma_h128_s4096;
+    } else if (head_size <= 256) {
+        if (thin_q) {
+            return &xehpg_fma_h256_2nd;
+        }
+        return &xehpg_fma_h256;
+    } // no supported tile configurations for 512+
+    return nullptr;
+}
 
 sdpa_config_t *choose_config_xehpg(
         dim_t head_size, dim_t seq, bool thin_q, bool quantized) {

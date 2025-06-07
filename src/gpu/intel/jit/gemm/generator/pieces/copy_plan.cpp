@@ -2741,7 +2741,7 @@ void CopyInstruction::dump(const CopyPlan &plan) const
         std::cout << ")\t";
     }
 
-    std::cout << getMnemonic(op, HW::Gen9);
+    std::cout << getMnemonic(op, HW::Gen12LP);
     if (op == Opcode::bfn)
         std::cout << '.' << std::hex << int(ctrl) << std::dec;
     std::cout << " (" << simd << ")\t";

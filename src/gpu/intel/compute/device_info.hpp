@@ -38,8 +38,6 @@ namespace compute {
 
 enum class gpu_arch_t {
     unknown,
-    gen9,
-    gen11,
     xe_lp,
     xe_hp,
     xe_hpg,
@@ -51,8 +49,6 @@ enum class gpu_arch_t {
 static inline std::string to_string(gpu_arch_t arch) {
 #define CASE(_case) \
     if (arch == gpu_arch_t::_case) return STRINGIFY(_case)
-    CASE(gen9);
-    CASE(gen11);
     CASE(xe_lp);
     CASE(xe_hp);
     CASE(xe_hpg);
@@ -66,9 +62,6 @@ static inline std::string to_string(gpu_arch_t arch) {
 static inline gpu_arch_t str2gpu_arch(const char *str) {
 #define CASE(_case) \
     if (!strcmp(STRINGIFY(_case), str)) return gpu_arch_t::_case
-
-    CASE(gen9);
-    CASE(gen11);
     CASE(xe_lp);
     CASE(xe_hp);
     CASE(xe_hpg);
@@ -92,13 +85,12 @@ enum class device_ext_t : uint64_t {
     khr_local_int32_base_atomics      = 1ull << 6,
     khr_local_int32_extended_atomics  = 1ull << 7,
     ext_float_atomics                 = 1ull << 8,
-    // Intel specific Gen9+
-    intel_subgroups              = 1ull << 16,
-    intel_required_subgroup_size = 1ull << 17,
-    intel_subgroups_char         = 1ull << 18,
-    intel_subgroups_short        = 1ull << 19,
-    intel_subgroups_long         = 1ull << 20,
     // Intel specific Xe_LP+
+    intel_subgroups               = 1ull << 16,
+    intel_required_subgroup_size  = 1ull << 17,
+    intel_subgroups_char          = 1ull << 18,
+    intel_subgroups_short         = 1ull << 19,
+    intel_subgroups_long          = 1ull << 20,
     intel_subgroup_local_block_io = 1ull << 21,
     intel_dot_accumulate          = 1ull << 22,
     // Intel specific Xe_HP+

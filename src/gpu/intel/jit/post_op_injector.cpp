@@ -61,8 +61,6 @@ void post_op_injector_t<ngen_generator_t>::compute(const ngen::GRFRange &regs) {
     }
 }
 
-REG_GEN9_ISA(template struct post_op_injector_t<generator_t<gpu_gen9>>);
-REG_GEN11_ISA(template struct post_op_injector_t<generator_t<gpu_gen11>>);
 REG_XELP_ISA(template struct post_op_injector_t<generator_t<gpu_xe_lp>>);
 REG_XEHP_ISA(template struct post_op_injector_t<generator_t<gpu_xe_hp>>);
 REG_XEHPG_ISA(template struct post_op_injector_t<generator_t<gpu_xe_hpg>>);

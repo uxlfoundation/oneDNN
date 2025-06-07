@@ -94,15 +94,13 @@ bool BLASKernelGenerator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMS
         state.modBarrierFence[q] = InstructionModifier{};
     }
 
-    if (hw >= HW::Gen12LP) {
-        if (strategy.needsKLoopBarrier() || strategy.xParallel)
-            state.tokenBarrierFence[0] = state.tokenAllocator.tryAlloc();
-        if (nbM && nbN)
-            state.tokenBarrierFence[1] = state.tokenAllocator.tryAlloc();
-        for (int q = 0; q < 2; q++)
-            if (state.tokenBarrierFence[q] >= 0)
-                state.modBarrierFence[q] = SBID(state.tokenBarrierFence[q]);
-    }
+    if (strategy.needsKLoopBarrier() || strategy.xParallel)
+        state.tokenBarrierFence[0] = state.tokenAllocator.tryAlloc();
+    if (nbM && nbN)
+        state.tokenBarrierFence[1] = state.tokenAllocator.tryAlloc();
+    for (int q = 0; q < 2; q++)
+        if (state.tokenBarrierFence[q] >= 0)
+            state.modBarrierFence[q] = SBID(state.tokenBarrierFence[q]);
 
     // Update L3 prefetch enable flags.
     if (strategy.l3PrefetchA)

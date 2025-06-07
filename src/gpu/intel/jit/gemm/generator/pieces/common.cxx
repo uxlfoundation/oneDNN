@@ -42,8 +42,6 @@ void BLASKernelGenerator<hw>::prologue(const CommonStrategy &strategy, int inter
     or_(1, cr0, cr0, cr0Enable);
 
     InstructionModifier imod = 1;
-    if (hw < HW::Gen12LP)
-        imod |= Switch;
 
     if (internalSIMD == 16 && interface.getSIMD() < 16)
         mov(imod, sr0[2], uint16_t(0xFFFF));
@@ -257,8 +255,7 @@ void BLASKernelGenerator<hw>::moveR0(const CommonStrategy &strategy, CommonState
 
     mov<uint32_t>(r0DWords(hw), state.r0_info, r0);
 
-    if (!strategy.sipR0WA)
-        state.ra.release(r0);
+    state.ra.release(r0);
 
     state.movedR0 = true;
 }
@@ -655,8 +652,7 @@ void BLASKernelGenerator<hw>::initState(const CommonProblem &problem, const Comm
 
     interface.requireSIMD(strategy.subgroupSize);
 
-    if (!strategy.sipR0WA)
-        interface.requireNoPreemption();
+    interface.requireNoPreemption();
 
     if (strategy.raHW != hw)
         state.ra = RegisterAllocator(strategy.raHW);

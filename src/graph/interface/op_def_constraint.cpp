@@ -86,20 +86,53 @@ bool check_bn_data_type(const op_t *n) {
     return true;
 }
 
-// For MatMul, it's required that src and wei have the same data type. When
-// src/wei is xf16, dst can be f32 or xf16 (the same type as src/wei). We can
-// disable this check to allow f32f32xf16 when there is a request.
+// For MatMul, it's required that src and wei have the same data type or one of
+// them is f32. dst can be the same type as src or wei.
 bool check_matmul_dtype(const op_t *mm) {
     const auto &inputs = mm->get_input_values();
     const auto &outputs = mm->get_output_values();
 
     const logical_tensor_t &src = inputs[0]->get_logical_tensor();
+    const logical_tensor_t &wei = inputs[1]->get_logical_tensor();
     const logical_tensor_t &dst = outputs[0]->get_logical_tensor();
-    if (src.data_type != dst.data_type) {
-        if (dst.data_type != data_type::f32) {
-            VCHECK_SHAPE_INFER(false, "%s, %s src + %s dst is not supported",
+    if (src.data_type == wei.data_type) {
+        if (src.data_type != dst.data_type && dst.data_type != data_type::f32) {
+            VCHECK_SHAPE_INFER(false,
+                    "%s, %s src + %s wei + %s dst is not "
+                    "supported",
                     op_t::kind2str(mm->get_kind()).c_str(),
-                    dnnl_dt2str(src.data_type), dnnl_dt2str(dst.data_type));
+                    dnnl_dt2str(src.data_type), dnnl_dt2str(wei.data_type),
+                    dnnl_dt2str(dst.data_type));
+        }
+    } else {
+        data_type_t target_dst_dtype;
+        if (src.data_type == data_type::f32) {
+            target_dst_dtype = wei.data_type;
+        } else if (wei.data_type == data_type::f32) {
+            target_dst_dtype = src.data_type;
+        } else {
+            VCHECK_SHAPE_INFER(false, "%s, %s src + %s wei is not supported",
+                    op_t::kind2str(mm->get_kind()).c_str(),
+                    dnnl_dt2str(src.data_type), dnnl_dt2str(wei.data_type));
+            return false;
+        }
+
+        VCHECK_SHAPE_INFER(dst.data_type == target_dst_dtype,
+                "%s, %s src + %s wei + %s dst is not "
+                "supported",
+                op_t::kind2str(mm->get_kind()).c_str(),
+                dnnl_dt2str(src.data_type), dnnl_dt2str(wei.data_type),
+                dnnl_dt2str(dst.data_type));
+
+        if (inputs.size() == 3) {
+            // check bias data type
+            const logical_tensor_t &bias = inputs[2]->get_logical_tensor();
+            VCHECK_SHAPE_INFER(bias.data_type == target_dst_dtype,
+                    "%s, %s src + %s wei + %s bias is not "
+                    "supported",
+                    op_t::kind2str(mm->get_kind()).c_str(),
+                    dnnl_dt2str(src.data_type), dnnl_dt2str(wei.data_type),
+                    dnnl_dt2str(bias.data_type));
         }
     }
 
@@ -120,6 +153,26 @@ bool check_softmax_dtype(const op_t *n) {
                     op_t::kind2str(n->get_kind()).c_str(),
                     dnnl_dt2str(src.data_type), dnnl_dt2str(dst.data_type));
         }
+    }
+
+    return true;
+}
+
+// For SoftMaxBackward, diff_src should be f32,  or the same data type as dst
+// and diff_dst.
+bool check_softmax_bwd_output_dtype(const op_t *n) {
+    const auto &inputs = n->get_input_values();
+    const auto &outputs = n->get_output_values();
+
+    const logical_tensor_t &diff_dst = inputs[0]->get_logical_tensor();
+    const logical_tensor_t &diff_src = outputs[0]->get_logical_tensor();
+    if (diff_src.data_type != diff_dst.data_type
+            && diff_src.data_type != data_type::f32) {
+        VCHECK_SHAPE_INFER(false,
+                "%s, %s diff_dst + %s diff_src is not supported",
+                op_t::kind2str(n->get_kind()).c_str(),
+                dnnl_dt2str(diff_dst.data_type),
+                dnnl_dt2str(diff_src.data_type));
     }
 
     return true;

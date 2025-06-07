@@ -692,14 +692,18 @@ DNNL_GRAPH_OP_SCHEMA(MatMul, 1,
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({2, 3}))
                 .set_num_outputs(1)
-                .set_input(0, "src", "T")
-                .set_input(1, "weights", "T")
-                .set_input(2, "bias", "T")
-                .set_output(0, "dst", "T1")
-                .set_type_constraints(
-                        "T", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_input(0, "src", "T1")
+                .set_input(1, "weights", "T2")
+                .set_input(2, "bias", "T3")
+                .set_output(0, "dst", "T4")
                 .set_type_constraints(
                         "T1", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T3", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T4", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_shape_inference_function(infer_matmul_output_shape)
                 .set_op_def_constraint_function(check_matmul_dtype)
                 .SET_MATMUL_COMMON_ATTRS)
@@ -1039,10 +1043,12 @@ DNNL_GRAPH_OP_SCHEMA(SigmoidBackward, 1,
 
 DNNL_GRAPH_OP_SCHEMA(SoftMax, 1,
         op_schema_t()
+                .set_outputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(1)
-                .set_num_outputs(1)
+                .set_num_outputs(std::set<size_t>({1, 2}))
                 .set_input(0, "src", "T1")
                 .set_output(0, "dst", "T2")
+                .set_output(1, "stats", "T2")
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
                 .set_attr(op_attr::mode, false, attribute_kind::s, "none",
                         {"none", "inf_as_zero"})
@@ -1050,20 +1056,23 @@ DNNL_GRAPH_OP_SCHEMA(SoftMax, 1,
                         "T1", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_type_constraints(
                         "T2", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_shape_inference_function(infer_identity_output_shape)
+                .set_shape_inference_function(infer_softmax_output_shape)
                 .set_op_def_constraint_function(check_softmax_dtype))
 
 DNNL_GRAPH_OP_SCHEMA(SoftMaxBackward, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(1)
-                .set_input(0, "diff_dst", "T")
-                .set_input(1, "dst", "T")
-                .set_output(0, "diff_src", "T")
+                .set_input(0, "diff_dst", "T1")
+                .set_input(1, "dst", "T1")
+                .set_output(0, "diff_src", "T2")
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
                 .set_type_constraints(
-                        "T", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_shape_inference_function(infer_identity_output_shape))
+                        "T1", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_shape_inference_function(infer_identity_output_shape)
+                .set_op_def_constraint_function(check_softmax_bwd_output_dtype))
 
 DNNL_GRAPH_OP_SCHEMA(SoftPlus, 1,
         op_schema_t()

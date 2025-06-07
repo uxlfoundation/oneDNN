@@ -65,4 +65,8 @@ MatMul operation supports the following data type combinations.
 |:-----|:--------|:-----|:----------|
 | f32  | f32     | f32  | f32       |
 | bf16 | bf16    | bf16 | f32, bf16 |
+| bf16 | f32     | bf16 | bf16      |
+| f32  | bf16    | bf16 | bf16      |
 | f16  | f16     | f16  | f32, f16  |
+| f16  | f32     | f16  | f16       |
+| f32  | f16     | f16  | f16       |

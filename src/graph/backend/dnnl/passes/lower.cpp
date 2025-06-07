@@ -698,6 +698,112 @@ static status_t select_handler(
     return status::success;
 }
 
+static status_t matmul_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    /// Currently matmul primitive doesn't support data type combination
+    /// f32+xf16->xf16:
+    /// 0:UNIMPLEMENTED (0 ms) __REPRO: --matmul --engine=gpu
+    /// --allow-enum-tags-only=false --dt=f32:bf16:bf16 --stag=abcd --wtag=abcd
+    /// --dtag=abcd --attr-scratchpad=user 32x16x384x384:32x16x384x64
+    /// Handle it by inserting reorder for the f32 input.
+    const auto &src = op->get_input_value(0)->get_logical_tensor();
+    const auto &wei = op->get_input_value(1)->get_logical_tensor();
+
+    auto new_matmul_op = std::make_shared<op_t>(op_kind::dnnl_matmul);
+    new_matmul_op->merge_attributes(op->get_attributes());
+    rewriter.replace_op(op, new_matmul_op);
+    insert_empty_scratchpad(new_matmul_op);
+
+    if (src.data_type == wei.data_type) { return status::success; }
+
+    size_t insert_reorder_idx;
+    data_type_t target_dtype;
+    if (src.data_type == graph::data_type::f32) {
+        insert_reorder_idx = 0; // insert typecast before src
+        target_dtype = wei.data_type;
+    } else {
+        insert_reorder_idx = 1; // insert typecast before wei
+        target_dtype = src.data_type;
+    }
+    auto reorder_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+    reorder_op->set_attr<bool>(op_attr::change_layout, false);
+    rewriter.insert_op_before(reorder_op, new_matmul_op, insert_reorder_idx);
+    reorder_op->get_output_value(0)->set_data_type(target_dtype);
+    return status::success;
+}
+
+static status_t softmax_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    const auto &src = op->get_input_value(0);
+    const auto &dst = op->get_output_value(0);
+    bool no_stats = op->num_outputs() == 1;
+
+    auto new_softmax_op = std::make_shared<op_t>(op_kind::dnnl_softmax);
+    new_softmax_op->merge_attributes(op->get_attributes());
+
+    src->remove_consumer(*op, 0);
+    src->add_consumer(*new_softmax_op, 0);
+    new_softmax_op->add_input(src);
+    new_softmax_op->add_output(dst);
+    insert_empty_scratchpad(new_softmax_op);
+
+    rewriter.to_insert(new_softmax_op);
+    rewriter.to_remove(op);
+
+    if (no_stats) { return status::success; }
+
+    const auto &stats = op->get_output_value(1);
+
+    // support stats computation: stats = reduce(src - log(dst))
+    // create log op
+    auto log_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+    log_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::eltwise_log));
+    log_op->add_input(dst);
+    dst->add_consumer(*log_op, 0);
+    // add output for log_op
+    logical_tensor_t log_op_out_lt = empty_logical_tensor_with_default_id();
+    auto log_op_out_val
+            = std::make_shared<value_t>(*log_op, 0, log_op_out_lt, true);
+    log_op_out_val->set_data_type(dst->get_logical_tensor().data_type);
+    log_op->add_output(log_op_out_val);
+    insert_empty_scratchpad(log_op);
+
+    // create subtract op
+    auto sub_op = std::make_shared<op_t>(op_kind::dnnl_binary);
+    sub_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::binary_sub));
+    sub_op->add_input(src);
+    src->add_consumer(*sub_op, 0);
+    sub_op->add_input(log_op_out_val);
+    log_op_out_val->add_consumer(*sub_op, 1);
+    // add output for sub_op
+    logical_tensor_t sub_op_out_lt = empty_logical_tensor_with_default_id();
+    auto sub_op_out_val
+            = std::make_shared<value_t>(*sub_op, 0, sub_op_out_lt, true);
+    sub_op_out_val->set_data_type(dst->get_logical_tensor().data_type);
+    sub_op->add_output(sub_op_out_val);
+    insert_empty_scratchpad(sub_op);
+
+    // create reduce op
+    auto reduce_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+    reduce_op->set_attr<std::vector<int64_t>>(
+            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+    reduce_op->set_attr<bool>(op_attr::keep_dims, true);
+    reduce_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::reduction_max));
+    reduce_op->add_input(sub_op_out_val);
+    sub_op_out_val->add_consumer(*reduce_op, 0);
+    reduce_op->add_output(stats);
+    insert_empty_scratchpad(reduce_op);
+
+    rewriter.to_insert(log_op);
+    rewriter.to_insert(sub_op);
+    rewriter.to_insert(reduce_op);
+
+    return status::success;
+}
+
 static status_t gen_index_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_gen_index);
@@ -720,7 +826,7 @@ static status_t gen_index_handler(
 
 static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         // matmul
-        ITEM(MatMul, common_handler<op_kind::kDnnl_matmul>),
+        ITEM(MatMul, matmul_handler),
         // conv
         ITEM(Convolution, common_handler<op_kind::kDnnl_convolution>),
         ITEM(ConvolutionBackwardData,
@@ -739,7 +845,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(AvgPoolBackward, avgpool_bwd_handler),
         ITEM(MaxPoolBackward, maxpool_bwd_handler),
         // softmax
-        ITEM(SoftMax, common_handler<op_kind::kDnnl_softmax>),
+        ITEM(SoftMax, softmax_handler),
         ITEM(LogSoftmax, common_handler<op_kind::kDnnl_logsoftmax>),
         ITEM(SoftMaxBackward, common_handler<op_kind::kDnnl_softmax_bwd>),
         ITEM(LogSoftmaxBackward, common_handler<op_kind::kDnnl_logsoftmax_bwd>),

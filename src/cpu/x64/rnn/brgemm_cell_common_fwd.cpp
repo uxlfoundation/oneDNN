@@ -207,7 +207,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             for (dim_t i = 0; i < rnn_.m_block; ++i) {
                 auto *C_o = C_cell_i + i * cell_stride;
                 PRAGMA_OMP_SIMD()
-                for (dim_t j = 0; j < rnn_.n_block; ++j)
+                for (dim_t j = 0; j < nstl::min(rnn_.n_block, cell_stride); ++j)
                     C_o[j] = 0;
             }
         }

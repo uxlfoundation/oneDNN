@@ -61,6 +61,7 @@ public:
 
     static size_t L1_threshold();
     static size_t L2_threshold();
+    static size_t L2_ways_threshold();
 
 protected:
     virtual float calculate_blocking_scores() const = 0;

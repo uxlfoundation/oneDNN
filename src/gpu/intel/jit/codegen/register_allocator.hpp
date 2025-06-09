@@ -115,6 +115,10 @@ public:
         ra.claim(reg);
         update_peak_grf_usage();
     }
+    template <typename RD>
+    bool is_free(RD reg) {
+        return ra.isFree(reg);
+    }
 
     void setRegisterCount(int rcount) { ra.setRegisterCount(rcount); }
     int getRegisterCount() { return ra.getRegisterCount(); }

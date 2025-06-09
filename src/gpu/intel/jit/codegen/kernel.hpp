@@ -233,19 +233,9 @@ public:
 
         ngen_generator_t::prologue();
 
-        // Claim registers.
+        // Required for epilogue generation
         ra_.claim(ngen_generator_t::r0);
-        for (int i = 0; i < 3; i++)
-            ra_.claim(ngen_generator_t::getLocalID(i));
 
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            ra_.claim(ngen_generator_t::getArgument(kernel_iface_.arg_name(i)));
-        }
-
-        if (emu_strategy.emulate64) {
-            emu_state.temp[0] = ra_.alloc();
-            emu_state.temp[1] = ra_.alloc();
-        }
         // Enable IEEE f32 -> s32 rounding and f64/f32/f16 denormals.
         or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
     }
@@ -259,9 +249,10 @@ public:
         for (int i = 0; i < 3; i++) {
             auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
             if (!tg_idx.is_empty()) {
-                auto tmp = ra_.template alloc_sub<int32_t>();
-                mov(1, tmp, ngen_generator_t::r0.ud(r0_sub_idxs[i]));
-                expr_binding.bind(tg_idx, tmp);
+                auto tg_reg = ngen_generator_t::r0.ud(r0_sub_idxs[i]);
+                // Already allocated for epilogue generation
+                gpu_assert(ra_.is_free(tg_reg) == false);
+                expr_binding.bind(tg_idx, tg_reg);
             }
         }
 
@@ -269,14 +260,18 @@ public:
         for (int i = 0; i < 3; i++) {
             auto local_id = alloc_mgr.find_let(ir_builder_t::local_id(i), true);
             if (!local_id.is_empty()) {
-                expr_binding.bind(
-                        local_id, ngen_generator_t::getLocalID(i).uw(0));
+                auto local_id_reg = ngen_generator_t::getLocalID(i).uw(0);
+                gpu_assert(ra_.is_free(local_id_reg));
+                ra_.claim(local_id_reg);
+                expr_binding.bind(local_id, local_id_reg);
             }
             auto local_size
                     = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
             if (!local_size.is_empty()) {
-                expr_binding.bind(
-                        local_size, ngen_generator_t::getLocalSize(i).uw(0));
+                auto local_size_reg = ngen_generator_t::getLocalSize(i).uw(0);
+                gpu_assert(ra_.is_free(local_size_reg));
+                ra_.claim(local_size_reg);
+                expr_binding.bind(local_size, local_size_reg);
             }
         }
 
@@ -293,12 +288,20 @@ public:
                 }
                 gpu_assert(alloc_buf.is_same(arg_var));
             }
-            expr_binding.bind(arg_var, ngen_generator_t::getArgument(name));
+            auto arg_reg = ngen_generator_t::getArgument(name);
+            gpu_assert(ra_.is_free(arg_reg));
+            ra_.claim(arg_reg);
+            expr_binding.bind(arg_var, arg_reg);
         }
 
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
         if (!slm_buf.is_empty()) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+
+        if (emu_strategy.emulate64) {
+            emu_state.temp[0] = ra_.alloc();
+            emu_state.temp[1] = ra_.alloc();
+        }
 
         auto setup_flags = get_setup_flags(kernel_body);
         // Allocate and initialize signal header for future use.

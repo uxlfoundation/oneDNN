@@ -384,7 +384,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
+    std::vector<float> scale_data(product(scale_sz), 2.5f);
+    // std::sqrt(p.head_size));
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));

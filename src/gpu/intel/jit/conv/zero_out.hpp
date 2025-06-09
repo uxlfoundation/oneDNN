@@ -86,15 +86,25 @@ public:
         setup_interface();
         generate_prologue();
 
+        ra().claim(getLocalSize(0));
+        ra().claim(getLocalID(0));
+
         int simd_size = getSIMD();
         bool use_lsc = (hw >= ngen::HW::XeHPG);
 
         auto size = getArgument(kernel_iface().arg_name(0));
+        ra().claim(size);
         auto ptr = getArgument(kernel_iface().arg_name(1));
+        ra().claim(ptr);
         auto global_id = ra().template alloc_sub<uint32_t>();
         auto off0 = ra().template alloc_sub<uint32_t>();
         const int bytes_per_thr
                 = into<int>(zero_out_kernel_desc_t::bytes_per_thr);
+
+        if (emu_strategy.emulate64) {
+            ir_kernel_t<hw>::base::emu_state.temp[0] = ra().alloc();
+            ir_kernel_t<hw>::base::emu_state.temp[1] = ra().alloc();
+        }
 
         mul(1, global_id, r0.ud(1), getLocalSize(0).uw());
         add(1, global_id, global_id, getLocalID(0));

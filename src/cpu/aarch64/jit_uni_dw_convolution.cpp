@@ -1,7 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -162,7 +161,6 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
 
 template struct jit_uni_dw_convolution_fwd_t<sve_512, data_type::f32>;
 template struct jit_uni_dw_convolution_fwd_t<sve_256, data_type::f32>;
-template struct jit_uni_dw_convolution_fwd_t<sve_256, data_type::bf16>;
 
 template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
 void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,

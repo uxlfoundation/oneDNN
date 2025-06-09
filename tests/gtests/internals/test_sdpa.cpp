@@ -28,7 +28,7 @@
 #include <memory>
 #include <random>
 
-// #define HOST_SIDE_SCALAR
+#define HOST_SIDE_SCALAR
 
 using mdt = memory::data_type;
 
@@ -404,8 +404,7 @@ sdpa_tensors_t get_descriptors(
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
-    std::vector<float> scale_data(product(scale_sz), 2.5f);
-    // std::sqrt(p.head_size));
+    std::vector<float> scale_data(product(scale_sz),std::sqrt(p.head_size));
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
@@ -676,16 +675,7 @@ sdpa_tensors_t get_descriptors(
     }
 
     write_to_dnnl_memory(mask_data.data(), out.m_mask);
-
-#ifdef HOST_SIDE_SCALAR
-    // MARK1
-    void *scale_cpu_memory = out.m_scale.get_data_handle();
-    ((float16_t *)scale_cpu_memory)[0] = scale_data.data()[0];
-    printf("!! MARK1 scale_cpu_memory is %f\n",
-            (float)(*(float16_t *)scale_cpu_memory));
-#else
     write_to_dnnl_memory(scale_data.data(), out.m_scale);
-#endif
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key);
@@ -1098,12 +1088,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr bmm1_attr;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     post_ops bmm1_po;
-    // auto scale_f32 = as(cpu_strm, scale, mdt::f32, cpu_eng, gpu_eng, gpu_strm);
-
-    // convert the datatype, then pull to gpu (as rest of code expects)
-    // auto converted = as(cpu_strm, scale, mdt::f32);
-    // auto scale_f32 = cpu_to_gpu(converted, gpu_eng, gpu_strm);
     auto scale_f32 = as(cpu_strm, scale, mdt::f32);
+
 #ifdef HOST_SIDE_SCALAR
     scale_f32 = cpu_to_gpu(scale_f32, gpu_eng, gpu_strm);
 #endif
@@ -1112,13 +1098,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     auto mask_sz = mask.get_desc().get_dims();
 
 #ifdef HOST_SIDE_SCALAR
-    // MARK2
     {
         float *poo = scale_f32.map_data<float>();
         cpu_strm.wait();
         float value = poo[0];
         scale_f32.unmap_data(poo);
-        printf("!! scale_f32: %f\n", value);
+        printf("!! MARK2 scale_f32 (copy to gpu): %f\n", value);
     }
 #endif
 
@@ -1555,7 +1540,7 @@ public:
 
     byte_t(memory::data_type dt)
         : value(dnnl_data_type_size((dnnl_data_type_t)dt)
-                / ((dt == mdt::s4 || dt == mdt::u4) ? 2 : 1)) {}
+                  / ((dt == mdt::s4 || dt == mdt::u4) ? 2 : 1)) {}
 
     template <typename OR>
     byte_t(byte_t<OR> o) : value(magnitude_cast<Unit>(o).value) {}
@@ -1588,14 +1573,14 @@ template <typename BYTES, typename TIME>
 float bandwidth(BYTES bytes, TIME duration) {
     return (bytes.value
             / std::chrono::duration_cast<std::chrono::duration<float>>(duration)
-                      .count());
+                    .count());
 }
 
 template <typename OPS, typename TIME>
 float compute(OPS ops, TIME duration) {
     return (ops.value
             / std::chrono::duration_cast<std::chrono::duration<float>>(duration)
-                      .count());
+                    .count());
 }
 
 static std::once_flag header_flag;

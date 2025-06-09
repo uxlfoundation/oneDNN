@@ -29,7 +29,7 @@
 #include <iostream>
 #include <vector>
 
-// #define HOST_SIDE_SCALAR
+#define HOST_SIDE_SCALAR
 
 namespace dnnl {
 namespace impl {
@@ -467,7 +467,7 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("WITH_CAUSAL_MASK", pd()->with_causal_mask());
 
 #ifdef HOST_SIDE_SCALAR
-  kernel_ctx.define_int("HOST_SIDE_SCALAR", true);
+    kernel_ctx.define_int("HOST_SIDE_SCALAR", true);
 #endif
 
     kernel_ctx.define_int("SUBGROUP_SIZE", pd()->sg_size());
@@ -566,22 +566,19 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(val);
     arg_list.append(dst);
 
-    /* // MARK3 */
-    /* if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) { */
-    /*   void *handle = scale.data_handle(); */
-    /*   if (pd()->scale_md()->data_type == data_type::f16) { */
-    /*     arg_list.append(*(float16_t *)handle); */
-    /*   } */
-    /*   else if (pd()->scale_md()->data_type == data_type::bf16) { */
-    /*     arg_list.append(*(ushort *)handle); */
-    /*   } */
-    /* } */
-    /* else { */
-    /*   arg_list.append(scale); */
-    /* } */
-
 #ifdef HOST_SIDE_SCALAR
-    arg_list.append((float16_t)2.5f);
+    // MARK3
+    const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
+    if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) {
+        void *handle = scale.data_handle();
+        if (pd()->scale_md()->data_type == data_type::f16) {
+            arg_list.append(*(float16_t *)handle);
+        } else if (pd()->scale_md()->data_type == data_type::bf16) {
+            arg_list.append(*(ushort *)handle);
+        }
+    } else {
+        arg_list.append(scale);
+    }
 #else
     const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
     arg_list.append(scale);

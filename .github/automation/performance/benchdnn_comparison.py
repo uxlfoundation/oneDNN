@@ -23,6 +23,7 @@ from collections import defaultdict
 from scipy.stats import ttest_ind
 import warnings
 import statistics
+import argparse
 
 
 def print_to_github_out(message):
@@ -103,6 +104,25 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
             (r2_med_ctime - r1_med_ctime) / r1_med_ctime >= 0.1
             or (min(ctime2) - min(ctime1)) / min(ctime1) >= 0.1
         )
+        
+        if check:
+            
+            if exec_regressed or ctime_regressed:
+                failed_tests.append(
+                    f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
+                    f"(p={res.pvalue:.3g}), "
+                    f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
+                    f"(p={ctime_test.pvalue:.3g})"
+                )
+        else:
+            comparison_rows.append(
+                f"{prb},{r1_med_exec:.5f},{r2_med_exec:.5f},"
+                f"{r1_med_ctime:.5f},{r2_med_ctime:.5f},"
+                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.3%},"
+                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.3%}"
+                
+                
+    if check:           
 
         if exec_regressed:
             exec_failures.append(
@@ -138,7 +158,18 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
         print_to_github_out(f"message={message}")
         print(message)
         raise Exception("Some regression tests failed")
+    
+    else:
+        print("primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff")
+        print("\n".join(comparison_rows))
 
 
 if __name__ == "__main__":
-    compare_two_benchdnn(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser(description="Compare two benchdnn result files.")
+    parser.add_argument("file1", help="Path to baseline result file")
+    parser.add_argument("file2", help="Path to new result file")
+    parser.add_argument("--check", action="store_true", help="Enable regression checks")
+    args = parser.parse_args()
+    
+    compare_two_benchdnn(args.file1, args.file2, check=args.check)
+    

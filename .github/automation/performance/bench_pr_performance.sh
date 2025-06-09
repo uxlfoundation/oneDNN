@@ -19,36 +19,17 @@
 
 # Usage: bash bench_pr_performance.sh {baseline_benchdnn_executable} {benchdnn_executable} {baseline_results_file} {new_results_file}
 
-IFS=$'\n' # Prevents shuffling from using spaces as delimiters
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-PERF_TEMPLATE="--perf-template=%prb%,%-time%,%-ctime%"
 INPUTS_DIR="${SCRIPT_DIR}/inputs"
 
 TESTS=(
-        "$1 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul' >> $3"
-        "$2 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul' >> $4"
-        "$1 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv' >> $3"
-        "$2 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv' >> $4"
-        "$1 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise' >> $3"
-        "$2 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise' >> $4"
-        "$1 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder' >> $3"
-        "$2 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder' >> $4"
-    )
+    "--matmul --batch=$INPUTS_DIR/matmul"
+    "--conv --batch=$INPUTS_DIR/conv"
+    "--eltwise --batch=$INPUTS_DIR/eltwise"
+    "--reorder --batch=$INPUTS_DIR/reorder"
+)
 
-N=5
-
-for i in $( seq $N )
+for test in "${TESTS[@]}"
 do
-    echo "Testing loop ${i} / ${N}..."
-
-    TESTS=( $(shuf -e "${TESTS[@]}") )
-
-    for test in "${TESTS[@]}"
-    do
-        echo "Starting ${test}"
-        SECONDS=0
-        eval $test
-        duration=$SECONDS
-        echo "Completed in $((duration / 60)):$((duration % 60))"
-    done
+    $SCRIPT_DIR/run_benchdnn_compare.sh "$1" "$2" "$3" "$4" $test
 done

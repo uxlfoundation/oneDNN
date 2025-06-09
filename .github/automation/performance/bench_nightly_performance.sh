@@ -19,37 +19,17 @@
 
 # Usage: bash bench_nightly_performance.sh {baseline_benchdnn_executable} {benchdnn_executable} {baseline_results_file} {new_results_file}
 
-IFS=$'\n' # Prevents shuffling from using spaces as delimiters
-
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-PERF_TEMPLATE="--perf-template=%prb%,%-time%,%-ctime%"
 INPUTS_DIR="${SCRIPT_DIR}/inputs"
 
 TESTS=(
-        "$1 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul_nightly' >> $3"
-        "$2 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul_nightly' >> $4"
-        "$1 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv_nightly' >> $3"
-        "$2 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv_nightly' >> $4"
-        "$1 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise_nightly' >> $3"
-        "$2 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise_nightly' >> $4"
-        "$1 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder_nightly' >> $3"
-        "$2 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder_nightly' >> $4"
-    )
+    "--matmul --batch=$INPUTS_DIR/matmul_nightly"
+    "--conv --batch=$INPUTS_DIR/conv_nightly"
+    "--eltwise --batch=$INPUTS_DIR/eltwise_nightly"
+    "--reorder --batch=$INPUTS_DIR/reorder_nightly"
+)
 
-N=5
-
-for i in $( seq $N )
+for test in "${TESTS[@]}"
 do
-    echo "Testing loop ${i} / ${N}..."
-
-    TESTS=( $(shuf -e "${TESTS[@]}") )
-
-    for test in "${TESTS[@]}"
-    do
-        echo "Starting ${test}"
-        SECONDS=0
-        eval $test
-        duration=$SECONDS
-        echo "Completed in $((duration / 60)):$((duration % 60))"
-    done
+    $SCRIPT_DIR/run_benchdnn_compare.sh "$1" "$2" "$3" "$4" $test
 done

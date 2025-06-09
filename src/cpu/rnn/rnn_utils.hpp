@@ -1175,15 +1175,12 @@ void set_workspace_sizes(rnn_conf_t &rnn, const rnn_desc_t &rd) {
 
     /* set other sizes */
     /// scratchpad buffer for each cell to hold intermediate data in gru/lbr_gru
-    rnn.scratch_cell_size = rnn.is_lbr
-            ? (size_t)rnn.scratch_gates_nld * rnn.scratch_gates_ld
-                    * sizeof(typename T::gemm_acc_t)
-            : (utils::one_of(rd.cell_kind, alg_kind::vanilla_gru,
-                       alg_kind::vanilla_augru)
-                            ? (size_t)rnn.ws_states_layer_nld
-                                    * rnn.ws_states_layer_ld
-                                    * sizeof(typename T::gemm_acc_t)
-                            : 0);
+    rnn.scratch_cell_size = (utils::one_of(rd.cell_kind, alg_kind::vanilla_gru,
+                                     alg_kind::vanilla_augru, alg_kind::lbr_gru,
+                                     alg_kind::lbr_augru)
+                    ? sizeof(typename T::scratch_t) * rnn.scratch_gates_nld
+                            * rnn.scratch_gates_ld
+                    : 0);
     /// workspace needed for lbr GRU
     rnn.ws_per_cell = (size_t)rnn.is_lbr * rnn.mb * rnn.dhc
             * sizeof(typename T::gemm_acc_t);

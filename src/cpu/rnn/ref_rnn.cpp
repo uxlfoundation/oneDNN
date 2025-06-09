@@ -257,8 +257,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             const dim_t LDA2 = rnn_.ws_states_iter_ld;
             const dim_t LDA3 = rnn_.dst_layer_ld_;
             const dim_t LDB = rnn_.weights_iter_ld;
-            const dim_t LDC
-                    = rnn_.is_lbr ? rnn_.ws_gates_ld : rnn_.scratch_gates_ld;
+            const dim_t LDC = rnn_.scratch_gates_ld;
             const bool do_sum = !rnn_.is_lbr;
             if (LDA1 >= K)
                 CHECK(init_matmul_pd(

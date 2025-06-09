@@ -57,7 +57,7 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     } else {
         CHECK((this->*gemm_iter_func)('N', 'N', rnn.n_gates * rnn.dhc, rnn.mb,
                 rnn.sic, 1.0, w_iter_[0], rnn.weights_iter_ld, src_iter_,
-                src_iter_ld, 0.0, scratch_cell_, rnn.ws_gates_ld));
+                src_iter_ld, 0.0, scratch_cell_, rnn.scratch_gates_ld));
     }
     this->rnn_postgemm_->execute(rnn, cell_position, ws_gates_, scratch_gates_,
             augru_attention_, dst_layer_, dst_iter_c_, src_iter_, src_iter_c_,
@@ -102,7 +102,8 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
 
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates_r(rnn, scratch_cell_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates_r(
+            rnn, scratch_cell_);
 
     rnn_postgemm->execute(rnn, cell_position, ws_gates_, scratch_gates_,
             augru_attention_, dst_layer_, nullptr, src_iter_, nullptr, nullptr,

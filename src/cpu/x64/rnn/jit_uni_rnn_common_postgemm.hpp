@@ -169,12 +169,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
         const auto src_iter_c = rnn_utils::make_raw_aoc(src_iter_c_,
                 types::data_type_size(rnn.src_iter_c_dt),
                 rnn.ws_states_iter_c_nld, src_iter_c_ld);
-        const rnn_utils::ws_gates_aoc_t<scratch_t> scratch_cell(
-                rnn, scratch_cell_);
-        // TODO: There is some inconsistency with the strides used in brgemm vs
-        // ref implementation. Fix this to have a consistent post-gemm else
-        // document the differences.
-        const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_cell_brgemm(
+        const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_cell(
                 rnn, scratch_cell_);
         const utils::array_offset_calculator<gates_t, 2> ws_Wh_b(
                 ws_grid_, rnn.mb, rnn.dhc);
@@ -202,10 +197,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
                 break;
             case alg_kind::lbr_gru:
                 param6_ = SAFE_PTR(src_iter, m, 0);
-                param7_ = rnn.is_brgemm
-                        ? (scratch_cell_ ? &(scratch_cell_brgemm(m, 0, 0))
-                                         : nullptr)
-                        : SAFE_PTR(scratch_cell, m, 0, 0);
+                param7_ = SAFE_PTR(scratch_cell, m, 0, 0);
                 param8_ = ws_grid_ ? &ws_Wh_b(m, 0) : nullptr;
                 break;
             case alg_kind::vanilla_gru:
@@ -215,10 +207,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
                 break;
             case alg_kind::lbr_augru:
                 param6_ = SAFE_PTR(src_iter, m, 0);
-                param7_ = rnn.is_brgemm
-                        ? (scratch_cell_ ? &(scratch_cell_brgemm(m, 0, 0))
-                                         : nullptr)
-                        : SAFE_PTR(scratch_cell, m, 0, 0);
+                param7_ = SAFE_PTR(scratch_cell, m, 0, 0);
                 param8_ = ws_grid_ ? &ws_Wh_b(m, 0) : nullptr;
                 param11_ = SAFE_PTR(augru_attention, m);
                 break;
@@ -251,7 +240,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
         const rnn_utils::weights_peephole_aoc_t<const float> weights_peephole(
                 rnn, weights_peephole_);
         const rnn_utils::ws_gates_aoc_t<gates_t> ws_gates(rnn, ws_gates_);
-        const rnn_utils::ws_gates_aoc_t<scratch_t> scratch_gates(
+        const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_gates(
                 rnn, scratch_gates_);
         const rnn_utils::ws_diff_states_layer_aoc_t<gemm_acc_t> diff_src_layer(
                 rnn, diff_src_layer_);
@@ -277,7 +266,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
                 augru_attention(rnn, augru_attention_);
         const ws_states_iter_aoc_t<const src_iter_t> src_iter(
                 rnn, src_iter_, src_iter_ld);
-        const ws_gates_aoc_t<scratch_t> scratch_cell(rnn, scratch_cell_);
+        const scratch_gates_aoc_t<scratch_t> scratch_cell(rnn, scratch_cell_);
         const utils::array_offset_calculator<scratch_t, 2> hG1(
                 scratch_cell_, rnn.ws_states_layer_nld, rnn.ws_states_layer_ld);
         const utils::array_offset_calculator<gates_t, 2> ws_grid(

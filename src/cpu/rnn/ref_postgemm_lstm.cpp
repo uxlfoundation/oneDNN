@@ -272,7 +272,8 @@ void lstm_bwd_postgemm_template(T1 func1, T2 to_src_dt, const float *cscale,
         acc_data_t *diff_dst_iter_, acc_data_t *diff_dst_iter_c_,
         const float *weights_peephole_, const void *bias_) {
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const weights_peephole_aoc_t<const float> weights_peephole(
             rnn, weights_peephole_);
     const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);

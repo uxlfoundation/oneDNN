@@ -2,6 +2,7 @@
 * Copyright 2017-2023 Intel Corporation
 * Copyright 2018 YANDEX LLC
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -384,7 +385,8 @@ bool jit_uni_pool_kernel<isa>::post_ops_ok(jit_pool_conf_t &jpp,
         for (const auto &entry : entries) {
             if (entry.is_eltwise()) {
                 const auto alg = entry.eltwise.alg;
-                jpp.with_eltwise = eltwise_injector::is_supported(isa, alg);
+                jpp.with_eltwise
+                        = eltwise_injector::is_supported(to_vla_sve(isa), alg);
             } else if (entry.is_binary()) {
                 if (entry.binary.src1_desc.data_type == data_type::bf16
                         && entry.binary.src1_desc.data_type == data_type::f16)

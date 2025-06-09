@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2023 Arm Ltd. and affiliates 
+* Copyright 2023, 2025 Arm Ltd. and affiliates 
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -101,6 +101,11 @@ cpu_isa_t get_max_cpu_isa();
 cpu_isa_t DNNL_API get_max_cpu_isa_mask(bool soft = false);
 status_t set_max_cpu_isa(dnnl_cpu_isa_t isa);
 dnnl_cpu_isa_t get_effective_cpu_isa();
+
+// If isa is a superset of sve_128, return sve_128, else return isa
+constexpr cpu_isa_t to_vla_sve(const cpu_isa_t isa) {
+    return (cpu_isa_t)(isa & sve_128);
+}
 
 static inline bool compare_isa(
         cpu_isa_t isa_1, cpu_isa_cmp_t cmp, cpu_isa_t isa_2) {

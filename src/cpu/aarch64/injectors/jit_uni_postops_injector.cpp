@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,8 +33,8 @@ bool is_supported(const post_ops_ok_args_t &post_ops_ok_args) {
 
     for (const auto &post_op : post_ops.entry_) {
         if (post_op.is_eltwise()) {
-            const auto res
-                    = eltwise_injector::is_supported(isa, post_op.eltwise.alg);
+            const auto res = eltwise_injector::is_supported(
+                    to_vla_sve(isa), post_op.eltwise.alg);
             if (!res) return false;
         } else if (post_op.is_binary()) {
             const auto &src1_desc = post_op.binary.src1_desc;
@@ -65,9 +66,9 @@ jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
         if (post_op.is_eltwise()) {
             is_eltwise = true;
             alg_to_eltwise_injector_.emplace(i,
-                    jit_uni_eltwise_injector_f32<isa>(host_, post_op.eltwise,
-                            esp.save_state, esp.x_table, esp.p_mask, esp.p_tmp0,
-                            esp.is_fwd, esp.use_dst));
+                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>(host_,
+                            post_op.eltwise, esp.save_state, esp.x_table,
+                            esp.p_mask, esp.p_tmp0, esp.is_fwd, esp.use_dst));
         } else if (post_op.is_binary()) {
             is_binary = true;
         }
@@ -236,7 +237,8 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                 case eltwise:
                     if (entry.is_eltwise()) {
                         const auto alg = entry.eltwise.alg;
-                        return eltwise_injector::is_supported(isa, alg);
+                        return eltwise_injector::is_supported(
+                                to_vla_sve(isa), alg);
                     }
                     break;
                 case binary:

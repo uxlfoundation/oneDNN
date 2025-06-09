@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,8 +62,10 @@ struct jit_softmax_base_t : public jit_generator {
     const memory_desc_wrapper src_d_, dst_d_, diff_dst_d_;
 
     virtual void operator()(const call_params_t *p) = 0;
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> log_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+            exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+            log_injector_;
 
     XReg reg_param = abi_param1;
 
@@ -586,13 +589,15 @@ struct jit_softmax_base_t : public jit_generator {
     // initialization.
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_f32<sve_128>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
                     reg_exp_injector_table, injector_mask, injector_tmp));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
-                    alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
-                    reg_log_injector_table, injector_mask, injector_tmp));
+            log_injector_.reset(
+                    new jit_uni_eltwise_injector_f32<to_vla_sve(isa)>(this,
+                            alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
+                            reg_log_injector_table, injector_mask,
+                            injector_tmp));
         }
 
         compute_predefined_variables();

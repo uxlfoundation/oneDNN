@@ -166,7 +166,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
             st1w(vmm_src.s, pg_s / T_z, ptr(reg_dst));
         }
 
-        const auto shift = cpu_isa_traits<isa>::vlen;
+        const auto shift = vlen();
         add_imm(reg_src, reg_src, shift, X_TMP_0);
         add_imm(reg_dst, reg_dst, shift, X_TMP_0);
         if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, shift, X_TMP_0);
@@ -202,8 +202,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 private:
     using TReg = typename cpu_isa_traits<isa>::TReg;
     using TRegS = typename cpu_isa_traits<isa>::TRegS;
-
-    int vlen() { return cpu_isa_traits<isa>::vlen; }
+    int vlen() {
+        // TODO: If we do decide to add a different enum for
+        // VLA SVE, we should handle this in cpu_isa_traits
+        return isa == asimd ? cpu_isa_traits<isa>::vlen : get_sve_length();
+    }
     int simd_w() { return vlen() / dtype_size(); }
 
     XReg reg_src = x11;
@@ -365,16 +368,12 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template struct jit_uni_eltwise_fwd_t<sve_512, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<sve_256, data_type::f16>;
+// Jit uni eltwise is fully vector length agnostic, so we use sve_128
+// as alias for VLA SVE.
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_512, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_256, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
 template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;
+template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
 
 } // namespace aarch64
 } // namespace cpu

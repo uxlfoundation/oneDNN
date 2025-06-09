@@ -267,7 +267,8 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     return memory(desc, eng, handle);
 }
 
-sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
+sdpa_tensors_t get_descriptors(
+        dnnl::engine &eng, const sdpa_dims_t &p, const dnnl::engine &cpu_eng) {
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -366,7 +367,12 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     out.m_query_test = double_and_resize(query_test_md, eng);
     out.m_key = double_and_resize(key_md, eng);
     out.m_key_t = double_and_resize(key_t_md, eng);
-    out.m_scale = double_and_resize(scale_md, eng);
+
+    out.m_scale = memory(
+            memory::desc({1, 1, 1, 1, 1}, p.qdt, memory::format_tag::abcde),
+                         cpu_eng);
+    // out.m_scale = double_and_resize(scale_md, eng);
+
     out.m_key_quantized = double_and_resize(key_quantized_md, eng);
     out.m_key_t_quantized = double_and_resize(key_t_quantized_md, eng);
     out.m_key_scales = double_and_resize(key_scales_md, eng);
@@ -710,14 +716,18 @@ public:
         eng = dnnl::engine(engine::kind::gpu, 0);
 #endif
         strm = dnnl::stream(eng);
+        cpu_eng = dnnl::engine(engine::kind::cpu, 0);
+        cpu_strm = dnnl::stream(cpu_eng);
         p = GetParam();
-        t = get_descriptors(eng, p);
+        t = get_descriptors(eng, p, cpu_eng);
     }
 
 protected:
     sdpa_dims_t p;
     dnnl::engine eng;
     dnnl::stream strm;
+    dnnl::engine cpu_eng;
+    dnnl::stream cpu_strm;
     sdpa_tensors_t t;
 };
 
@@ -1041,17 +1051,28 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
     return std::make_pair(dnnl::reorder(dequantize_pd), dequantized_mem);
 }
 
+memory cpu_to_gpu(memory cpu_mem, dnnl::engine gpu_eng, dnnl::stream gpu_strm) {
+    auto gpu_md = memory::desc(cpu_mem.get_desc().get_dims(),
+            cpu_mem.get_desc().get_data_type(),
+            cpu_mem.get_desc().get_strides());
+    auto gpu_mem = memory(gpu_md, gpu_eng);
+    dnnl::reorder(cpu_mem, gpu_mem).execute(gpu_strm, cpu_mem, gpu_mem);
+    gpu_strm.wait();
+    return gpu_mem;
+}
+
 void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
-        dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
-        dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
-        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
-        dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
-        dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale) {
+        dnnl::engine &eng, dnnl::stream &strm, dnnl::stream &cpu_strm,
+        dnnl::memory &query, dnnl::memory &key, dnnl::memory &key_scales,
+        dnnl::memory &key_zp, dnnl::memory::data_type scale_dt,
+        dnnl::memory &scale, dnnl::memory &mask, dnnl::memory &value,
+        dnnl::memory &value_scales, dnnl::memory &value_zp,
+        dnnl::memory &output, bool invert_scale) {
     using namespace dnnl;
     primitive_attr bmm1_attr;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     post_ops bmm1_po;
-    auto scale_f32 = as(strm, scale, mdt::f32);
+    auto scale_f32 = cpu_to_gpu(as(cpu_strm, scale, mdt::f32), eng, strm);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
 
@@ -1428,7 +1449,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
     loop_quantized();
 
-    prim_sdpa_quant(p, t, eng, strm, t.m_query,
+    prim_sdpa_quant(p, t, eng, strm, cpu_strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
             t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
             t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,

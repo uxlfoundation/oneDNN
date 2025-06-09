@@ -1171,11 +1171,18 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return (op_kind == other.op_kind) && a.is_equal(other.a)
-                && b.is_equal(other.b);
+        return (op_kind == other.op_kind)
+                && ((a.is_equal(other.a) && b.is_equal(other.b))
+                        || (is_commutative() && b.is_equal(other.a)
+                                && a.is_equal(other.b)));
     }
 
     size_t get_hash() const override {
+        if (is_commutative()) {
+            size_t a_hash = ir_utils::get_hash(a);
+            size_t b_hash = ir_utils::get_hash(b);
+            return ir_utils::get_hash(op_kind, a_hash ^ b_hash);
+        }
         return ir_utils::get_hash(op_kind, a, b);
     }
 
@@ -1186,6 +1193,10 @@ public:
     expr_t b;
 
 private:
+    bool is_commutative() const {
+        return utils::one_of(op_kind, op_kind_t::_add, op_kind_t::_mul,
+                op_kind_t::_or, op_kind_t::_and);
+    }
     binary_op_t(op_kind_t op_kind, const expr_t &a, const expr_t &b)
         : expr_impl_t(_type_info(), binary_op_type(op_kind, a, b))
         , op_kind(op_kind)

@@ -568,8 +568,8 @@ status_t brdgmm_dw_convolution_fwd_t::init(engine_t *engine) {
     // JIT to precompute scales
     const bool is_jit_supported = mayiuse(avx512_core);
     const auto attr = pd()->attr();
-    if (is_jit_supported && pd()->OC() > 1 && req_copy_scales(attr)) {
-        const auto &attr_scales = attr->scales_;
+    const auto &attr_scales = attr->scales_;
+    if (is_jit_supported && pd()->OC() > 1 && req_copy_scales(attr_scales)) {
         int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
         if (wei_scale_mask > 0) {
             CHECK(safe_ptr_assign(jit_scale_precompute_,

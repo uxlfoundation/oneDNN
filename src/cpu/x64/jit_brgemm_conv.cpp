@@ -350,6 +350,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
+    const bool is_fp8 = one_of(src_type, f8_e4m3, f8_e5m2);
 
     // The following check will detect if this implementation is being
     // executed through a BWD_D Convolution call and prevent the primitive from
@@ -364,7 +365,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
             | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;
-    if (is_int8) skip_mask |= skip_mask_t::scales;
+    if (is_int8 || is_fp8) skip_mask |= skip_mask_t::scales;
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(IMPLICATION(is_int8,

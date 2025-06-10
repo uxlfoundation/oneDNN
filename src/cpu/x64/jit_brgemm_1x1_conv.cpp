@@ -51,6 +51,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
+    const bool is_fp8 = one_of(src_type, f8_e4m3, f8_e5m2);
 
     VDISPATCH_CONV(
             impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
@@ -59,7 +60,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
             | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;
-    if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales;
+    if (is_int8 || is_fp8) skip_mask |= skip_mask_t::scales;
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(expect_data_types(src_type, wei_type, data_type::undef,

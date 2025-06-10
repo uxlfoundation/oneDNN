@@ -209,7 +209,8 @@ public:
             case 0x10: return type_t::s32(len); break;
             case 0x11:
                 return ((read_type.is_signed()) ? type_t::s : type_t::u)(
-                        8 * std::max(2, read_type.size()), len, false);
+                        8 * std::max(2, read_type.size()), len,
+                        type_attr_t::undef);
         }
     }
 

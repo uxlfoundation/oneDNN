@@ -257,115 +257,137 @@ static auto type_kind_names = nstl::to_array({
 });
 GPU_DEFINE_PARSE_ENUM(type_kind_t, type_kind_names)
 
+enum class type_attr_t : uint32_t { undef = 0, ptr = 1, mut = 2 };
+inline type_attr_t operator|(type_attr_t a, type_attr_t b) {
+    return type_attr_t(uint32_t(a) | uint32_t(b));
+}
+inline type_attr_t operator&(type_attr_t a, type_attr_t b) {
+    return type_attr_t(uint32_t(a) & uint32_t(b));
+}
+inline type_attr_t &operator|=(type_attr_t &a, type_attr_t b) {
+    return a = a | b;
+}
+inline type_attr_t &operator&=(type_attr_t &a, type_attr_t b) {
+    return a = a & b;
+}
+inline type_attr_t operator~(type_attr_t a) {
+    return type_attr_t(~uint32_t(a));
+}
+
 class type_t {
 public:
     static type_t undef() { return type_t(type_kind_t::undef); }
-    static type_t _bool(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::_bool, elems, is_mutable);
+    static type_t _bool(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::_bool, elems, attr);
     }
 
-    static type_t u4(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::u4, elems, is_mutable);
+    static type_t u4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u4, elems, attr);
     }
-    static type_t s4(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::s4, elems, is_mutable);
+    static type_t s4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s4, elems, attr);
     }
-    static type_t u8(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::u8, elems, is_mutable);
+    static type_t u8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u8, elems, attr);
     }
-    static type_t s8(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::s8, elems, is_mutable);
+    static type_t s8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s8, elems, attr);
     }
-    static type_t u16(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::u16, elems, is_mutable);
+    static type_t u16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u16, elems, attr);
     }
-    static type_t s16(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::s16, elems, is_mutable);
+    static type_t s16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s16, elems, attr);
     }
-    static type_t u32(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::u32, elems, is_mutable);
+    static type_t u32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u32, elems, attr);
     }
-    static type_t s32(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::s32, elems, is_mutable);
+    static type_t s32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s32, elems, attr);
     }
-    static type_t u64(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::u64, elems, is_mutable);
+    static type_t u64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u64, elems, attr);
     }
-    static type_t s64(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::s64, elems, is_mutable);
+    static type_t s64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s64, elems, attr);
     }
 
     // Returns unsigned integer type.
-    static type_t u(int bits, int elems = 1, bool is_mutable = false) {
+    static type_t u(
+            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
         switch (bits) {
-            case 4: return u4(elems, is_mutable);
-            case 8: return u8(elems, is_mutable);
-            case 16: return u16(elems, is_mutable);
-            case 32: return u32(elems, is_mutable);
-            case 64: return u64(elems, is_mutable);
+            case 4: return u4(elems, attr);
+            case 8: return u8(elems, attr);
+            case 16: return u16(elems, attr);
+            case 32: return u32(elems, attr);
+            case 64: return u64(elems, attr);
             default: gpu_error_not_expected();
         }
         return type_t::undef();
     }
 
     // Returns signed integer type.
-    static type_t s(int bits, int elems = 1, bool is_mutable = false) {
+    static type_t s(
+            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
         switch (bits) {
-            case 4: return s4(elems, is_mutable);
-            case 8: return s8(elems, is_mutable);
-            case 16: return s16(elems, is_mutable);
-            case 32: return s32(elems, is_mutable);
-            case 64: return s64(elems, is_mutable);
+            case 4: return s4(elems, attr);
+            case 8: return s8(elems, attr);
+            case 16: return s16(elems, attr);
+            case 32: return s32(elems, attr);
+            case 64: return s64(elems, attr);
             default: gpu_error_not_expected();
         }
         return type_t::undef();
     }
 
-    static type_t f4_e3m0(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::f4_e3m0, elems, is_mutable);
+    static type_t f4_e3m0(
+            int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f4_e3m0, elems, attr);
     }
-    static type_t f4_e2m1(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::f4_e2m1, elems, is_mutable);
+    static type_t f4_e2m1(
+            int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f4_e2m1, elems, attr);
     }
-    static type_t bf8(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::bf8, elems, is_mutable);
+    static type_t bf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::bf8, elems, attr);
     }
-    static type_t hf8(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::hf8, elems, is_mutable);
+    static type_t hf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::hf8, elems, attr);
     }
-    static type_t bf16(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::bf16, elems, is_mutable);
+    static type_t bf16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::bf16, elems, attr);
     }
-    static type_t f16(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::f16, elems, is_mutable);
+    static type_t f16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f16, elems, attr);
     }
-    static type_t tf32(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::tf32, elems, is_mutable);
+    static type_t tf32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::tf32, elems, attr);
     }
-    static type_t f32(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::f32, elems, is_mutable);
+    static type_t f32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f32, elems, attr);
     }
-    static type_t f64(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::f64, elems, is_mutable);
+    static type_t f64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f64, elems, attr);
     }
 
-    static type_t byte(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::byte, elems, is_mutable);
+    static type_t byte(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::byte, elems, attr);
     }
-    static type_t byte_ptr(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::byte, elems).with_ptr();
+    static type_t byte_ptr(int elems = 1, bool is_slm = false,
+            type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::byte, elems, attr).with_ptr(is_slm);
     }
-    static type_t dword(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::dword, elems, is_mutable);
+    static type_t dword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::dword, elems, attr);
     }
-    static type_t qword(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::qword, elems, is_mutable);
+    static type_t qword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::qword, elems, attr);
     }
-    static type_t oword(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::oword, elems, is_mutable);
+    static type_t oword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::oword, elems, attr);
     }
-    static type_t hword(int elems = 1, bool is_mutable = false) {
-        return type_t(type_kind_t::hword, elems, is_mutable);
+    static type_t hword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::hword, elems, attr);
     }
 
     template <typename T>
@@ -438,8 +460,9 @@ public:
 
     type_t() : type_t(type_t::undef()) {}
 
-    type_t(type_kind_t kind, uint32_t elems = 1, bool is_mutable = false)
-        : kind_(kind), elems_(elems), is_mutable_(is_mutable) {}
+    type_t(type_kind_t kind, uint32_t elems = 1,
+            type_attr_t attr = type_attr_t::undef)
+        : kind_(kind), elems_(elems), attr_(attr) {}
 
     type_t(const std::string &s) : elems_(1) {
 #define CASE(x) \
@@ -502,7 +525,11 @@ public:
 
     int elems() const { return elems_; }
 
-    bool is_ptr() const { return is_ptr_; }
+    type_attr_t attr() const { return attr_; }
+
+    bool is_ptr() const { return uint32_t(attr() & type_attr_t::ptr); }
+
+    bool is_slm() const { return is_slm_; }
 
     bool operator==(const type_t &other) const {
         return (kind() == other.kind()) && (elems() == other.elems())
@@ -593,7 +620,7 @@ public:
     }
 
     bool is_scalar() const { return elems() == 1; }
-    bool is_mutable() const { return is_mutable_; }
+    bool is_mutable() const { return uint32_t(attr() & type_attr_t::mut); }
 
     template <typename T>
     bool is_cpp() const {
@@ -614,7 +641,7 @@ public:
 
     type_t remove_ptr() const {
         type_t copy = *this;
-        copy.is_ptr_ = false;
+        copy.attr_ &= ~type_attr_t::ptr;
         return copy;
     }
 
@@ -624,9 +651,16 @@ public:
         return copy;
     }
 
-    type_t with_ptr() const {
+    type_t with_ptr(bool is_slm = false) const {
         type_t copy = *this;
-        copy.is_ptr_ = true;
+        copy.attr_ |= type_attr_t::ptr;
+        copy.is_slm_ = is_slm;
+        return copy;
+    }
+
+    type_t with_attr(type_attr_t attr) const {
+        type_t copy = *this;
+        copy.attr_ = attr;
         return copy;
     }
 
@@ -657,6 +691,7 @@ public:
         if (elems() > 1) oss << "x" << elems();
         if (is_ptr()) oss << "*";
         if (is_mutable()) oss << ".mut";
+        if (is_slm()) oss << ".slm";
         return oss.str();
     }
 
@@ -665,8 +700,8 @@ public:
 private:
     type_kind_t kind_ = type_kind_t::undef;
     int elems_ = 0;
-    bool is_ptr_ = false;
-    bool is_mutable_ = true;
+    type_attr_t attr_;
+    bool is_slm_ = false;
 };
 
 // type_t to dnnl_data_type_t convertor.
@@ -1843,9 +1878,8 @@ class var_t : public expr_impl_t {
 public:
     IR_DECL_EXPR_TYPE_ID(var_t)
 
-    static expr_t make(const type_t &type, const std::string &name,
-            bool is_mutable = false) {
-        return expr_t(new var_t(type, name, is_mutable));
+    static expr_t make(const type_t &type, const std::string &name) {
+        return expr_t(new var_t(type, name));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1858,11 +1892,10 @@ public:
     IR_DECLARE_TRAVERSERS()
 
     std::string name;
-    bool is_mutable = false;
 
 private:
-    var_t(const type_t &type, const std::string &name, bool is_mutable)
-        : expr_impl_t(_type_info(), type), name(name), is_mutable(is_mutable) {}
+    var_t(const type_t &type, const std::string &name)
+        : expr_impl_t(_type_info(), type), name(name) {}
 };
 
 // Convertor from C++ type to IR expression.

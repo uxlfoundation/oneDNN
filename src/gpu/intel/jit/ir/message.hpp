@@ -91,14 +91,14 @@ static auto send_cache_hint_names = nstl::to_array({
 GPU_DEFINE_PARSE_ENUM(send_cache_hint_t, send_cache_hint_names)
 
 struct block_2d_info_t {
-    bool is_empty() const { return surface_width == 0; }
+    bool is_empty() const { return surface_width.is_empty(); }
 
     bool operator==(const block_2d_info_t &other) const {
         if (is_empty() != other.is_empty()) return false;
         if (is_empty()) return true;
-        return (surface_width == other.surface_width)
-                && (surface_height == other.surface_height)
-                && (surface_pitch == other.surface_pitch)
+        return (surface_width.is_equal(other.surface_width))
+                && (surface_height.is_equal(other.surface_height))
+                && (surface_pitch.is_equal(other.surface_pitch))
                 && (width == other.width) && (height == other.height)
                 && (count == other.count) && (vnni == other.vnni)
                 && (transpose == other.transpose);
@@ -118,9 +118,9 @@ struct block_2d_info_t {
     }
 
     // Encoded in header.
-    int surface_width = 0;
-    int surface_height = 0;
-    int surface_pitch = 0;
+    expr_t surface_width;
+    expr_t surface_height;
+    expr_t surface_pitch;
     int width = 0;
     int height = 0;
     int count = 0;
@@ -164,13 +164,14 @@ public:
     }
 
     static func_t make_2d(const hw_t &hw, send_op_t op, const type_t &type,
-            int surface_width, int surface_height, int surface_pitch, int width,
-            int height, int count, bool vnni, bool transpose, bool zero_out,
+            expr_t surface_width, expr_t surface_height, expr_t surface_pitch,
+            int width, int height, int count, bool vnni, bool transpose,
+            bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         block_2d_info_t info;
-        info.surface_width = surface_width;
-        info.surface_height = surface_height;
-        info.surface_pitch = surface_pitch;
+        info.surface_width = std::move(surface_width);
+        info.surface_height = std::move(surface_height);
+        info.surface_pitch = std::move(surface_pitch);
         info.width = width;
         info.height = height;
         info.count = count;
@@ -183,8 +184,9 @@ public:
             int width, int height, int count, bool vnni, bool transpose,
             bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
-        return make_2d(hw, op, type, /*surface_width=*/0, /*surface_height=*/0,
-                /*surface_pitch=*/0, width, height, count, vnni, transpose,
+        return make_2d(hw, op, type, /*surface_width=*/ {},
+                /*surface_height=*/ {},
+                /*surface_pitch=*/ {}, width, height, count, vnni, transpose,
                 zero_out, cache_hint);
     }
 

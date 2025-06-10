@@ -27,10 +27,10 @@ namespace cpu {
 
 void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
         const scales_t &attr_scales, size_t wei_scales_count,
-        bool force_scales_book = false);
+        float scale_adjust_factor = 1.0f);
 
 bool req_copy_scales(
-        const primitive_attr_t *attr, const float scale_adjust_factor = 1.0f);
+        const scales_t &attr_scales, float scale_adjust_factor = 1.0f);
 
 // By default returns the original wei_scales buffer as a dequantization scale.
 // If both src_scales and wei_scales are set, returns a scratchpad memory that

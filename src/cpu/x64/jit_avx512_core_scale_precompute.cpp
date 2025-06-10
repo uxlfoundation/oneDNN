@@ -64,7 +64,7 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
         jit_call_t jrp(src_scales, wei_scales, loc_scales, count,
                 wei_scale_group_stride);
 
-        assert(req_copy_scales(attr, scale_adjust_factor));
+        assert(req_copy_scales(attr_scales, scale_adjust_factor));
         assert(mayiuse(avx512_core));
         assert(wei_scale_mask > 0);
         if (wei_scale_has_groups) {

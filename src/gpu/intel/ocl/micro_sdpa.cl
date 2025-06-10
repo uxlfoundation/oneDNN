@@ -49,8 +49,10 @@ typedef ugemm_vs_c_type a_tile_type;
 
 #ifdef QRY_DT_F16
 #define VEC_TYPE2 half2
+#define FMA_TYPE half
 #elif defined(QRY_DT_BF16)
 #define VEC_TYPE2 ushort2
+#define FMA_TYPE ushort
 #else
 #error "Data type not supported for VEC_TYPE2"
 #endif
@@ -76,7 +78,7 @@ typedef ugemm_vs_c_type a_tile_type;
 #if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE(q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
 #else
-DECLARE_2D_TILE(q_tile_type, half, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 #endif
 
 #ifdef BLOCK_Q
@@ -86,7 +88,7 @@ DECLARE_2D_TILE_BLOCK_OPS(
         q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
 #else
 DECLARE_2D_TILE_BLOCK_OPS(
-        q_tile_type, half, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+        q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 #endif
 
 #elif Q_ALIGN < 4
@@ -109,9 +111,9 @@ DECLARE_2D_TILE(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE, ugemm_vs_sg_tile_m,
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1 / 2, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
-DECLARE_2D_TILE(s_tile_type_reblock, half, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
+DECLARE_2D_TILE(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
         ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n, ugemm_kq_sg_tile_m)
-DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, half, SUBGROUP_SIZE,
+DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
         ugemm_kq_sg_tile_m)
 

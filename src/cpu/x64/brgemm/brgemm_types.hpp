@@ -240,6 +240,7 @@ struct DNNL_API brgemm_attr_t {
     const brgemm_batch_element_t *static_offsets;
     // hint whether to use on the fly copy of A due to unaligned accesses
     bool hint_fused_copy_a = false;
+    bool use_amx10 {false};
 };
 
 struct brgemm_desc_t {
@@ -333,10 +334,11 @@ struct brgemm_desc_t {
     bool is_ymm = false;
     bool is_zmm = false;
     bool is_tmm = false;
-    bool is_int8 = false, is_int8_tmm = false;
-    bool is_bf16 = false, is_bf16_tmm = false, is_bf16_emu = false;
-    bool is_fp8 = false, is_fp8_tmm = false;
-    bool is_f16 = false, is_f16_tmm = false;
+    bool is_int8 = false, is_int8_tmm = false, is_int8_amx10 = false;
+    bool is_bf16 = false, is_bf16_tmm = false, is_bf16_emu = false,
+         is_bf16_amx10 = false;
+    bool is_fp8 = false, is_fp8_tmm = false, is_fp8_amx10 = false;
+    bool is_f16 = false, is_f16_tmm = false, is_f16_amx10 = false;
     bool is_f32 = false;
     bool is_bf32 = false;
     bool is_tf32 = false;
@@ -391,12 +393,16 @@ struct brgemm_desc_t {
 
     // Tile register decomposition
     int get_bd_block2() const noexcept {
-        auto res = (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0));
+        auto res = (bdb <= bd_block2)
+                ? bdb
+                : (bd_block2 + ((bdb_tail && !is_amx10()) ? 1 : 0));
         return res;
     }
 
     int get_ld_block2() const noexcept {
-        auto res = (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0));
+        auto res = (ldb <= ld_block2)
+                ? ldb
+                : (ld_block2 + ((ldb_tail && !is_amx10()) ? 1 : 0));
         return res;
     }
 
@@ -411,6 +417,7 @@ struct brgemm_desc_t {
     }
 
     int get_num_A_tiles() const noexcept {
+        if (is_amx10()) return 0;
         const auto req_tiles = (bdb_tail && bdb > 1) ? 2 : 1;
         const auto max_tiles = AMX_TILES_NUM - get_num_C_tiles() - 1;
         const auto n_tiles = nstl::min(get_bd_block2(), max_tiles);
@@ -426,6 +433,7 @@ struct brgemm_desc_t {
     }
 
     int get_num_B_tiles() const noexcept {
+        if (is_amx10()) return 0;
         const auto req_tiles = (ldb_tail && ldb > 1) ? 2 : 1;
         const auto max_tiles
                 = AMX_TILES_NUM - get_num_C_tiles() - get_num_A_tiles();
@@ -533,6 +541,12 @@ struct brgemm_desc_t {
                 && brgattr.use_uker
                 && everyone_is(false, is_runtime_lda, is_runtime_ldb,
                         is_runtime_ldc, is_runtime_ldd);
+    }
+
+    bool is_amx10() const {
+        return brgattr.use_amx10
+                && is_superset(isa_impl, cpu_isa_t::avx10_512_amx10)
+                && can_dispatch_uker();
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }

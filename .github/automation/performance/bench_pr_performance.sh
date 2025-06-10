@@ -25,14 +25,14 @@ PERF_TEMPLATE="--perf-template=%prb%,%-time%,%-ctime%"
 INPUTS_DIR="${SCRIPT_DIR}/inputs"
 
 TESTS=(
-        "$1 --matmul --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/matmul >> $3"
-        "$2 --matmul --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/matmul >> $4"
-        "$1 --conv --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/conv >> $3"
-        "$2 --conv --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/conv >> $4"
-        "$1 --eltwise --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/eltwise >> $3"
-        "$2 --eltwise --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/eltwise >> $4"
-        "$1 --reorder --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/reorder >> $3"
-        "$2 --reorder --mode=P $PERF_TEMPLATE --batch=$INPUTS_DIR/reorder >> $4"
+        "$1 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul' >> $3"
+        "$2 --matmul --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/matmul' >> $4"
+        "$1 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv' >> $3"
+        "$2 --conv --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/conv' >> $4"
+        "$1 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise' >> $3"
+        "$2 --eltwise --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/eltwise' >> $4"
+        "$1 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder' >> $3"
+        "$2 --reorder --mode=P $PERF_TEMPLATE --batch='$INPUTS_DIR/reorder' >> $4"
     )
 
 N=5

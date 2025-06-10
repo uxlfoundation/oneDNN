@@ -211,6 +211,30 @@ inline type_attr_t &operator&=(type_attr_t &a, type_attr_t b) {
     return a = a & b;
 }
 
+inline type_kind_t get_kind(ngen::DataType t) {
+    switch (t) {
+        case ngen::DataType::uq: return type_kind_t::u64;
+        case ngen::DataType::q: return type_kind_t::s64;
+        case ngen::DataType::ud: return type_kind_t::u32;
+        case ngen::DataType::d: return type_kind_t::s32;
+        case ngen::DataType::uw: return type_kind_t::u16;
+        case ngen::DataType::w: return type_kind_t::s16;
+        case ngen::DataType::ub: return type_kind_t::u8;
+        case ngen::DataType::b: return type_kind_t::s8;
+        case ngen::DataType::u4: return type_kind_t::u4;
+        case ngen::DataType::s4: return type_kind_t::s4;
+
+        case ngen::DataType::df: return type_kind_t::f64;
+        case ngen::DataType::f: return type_kind_t::f32;
+        case ngen::DataType::tf32: return type_kind_t::tf32;
+        case ngen::DataType::hf: return type_kind_t::f16;
+        case ngen::DataType::bf: return type_kind_t::bf16;
+        case ngen::DataType::bf8: return type_kind_t::bf8;
+        case ngen::DataType::hf8: return type_kind_t::hf8;
+        default: return type_kind_t::undef;
+    }
+}
+
 class type_t {
 public:
     static type_t undef() { return type_t(type_kind_t::undef); }
@@ -402,6 +426,10 @@ public:
     type_t(type_kind_t kind, uint32_t elems = 1,
             type_attr_t attr = type_attr_t::undef)
         : kind_(kind), elems_(elems), attr_(attr) {}
+
+    type_t(ngen::DataType type, uint32_t elems = 1,
+            type_attr_t attr = type_attr_t::undef)
+        : type_t(get_kind(type), elems, attr) {}
 
     type_t(const std::string &s) : elems_(1) {
 #define CASE(x) \

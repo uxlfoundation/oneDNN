@@ -74,6 +74,8 @@ struct sdpa_tensors_t {
     dnnl::primitive_attr sdpa_attr, sdpa_attr_quantized, sdpa_kq_attr_quantized,
             sdpa_vs_attr_quantized;
 
+    memory::desc scale_md;
+
     int kq_mask, vs_mask;
     memory::dims kq_groups, vs_groups;
 };
@@ -341,7 +343,6 @@ sdpa_tensors_t get_descriptors(
     auto key_md              = memory::desc(k_sz,          p.dt,    abcd);
     auto value_t_md          = memory::desc(v_sz,          p.dt,    abdc);
     auto value_md            = memory::desc(v_sz,          p.dt,    abcd);
-    auto scale_md            = memory::desc(scale_sz,      p.qdt,    abcd);
 
     auto query_test_md       = memory::desc(q_sz,          p.qdt,   abcd);
 
@@ -361,6 +362,13 @@ sdpa_tensors_t get_descriptors(
     auto output_md           = memory::desc(q_sz,          p.qdt,   abcd);
     auto output_quantized_md = memory::desc(q_sz,          p.qdt,   abcd);
     // clang-format on
+
+    out.scale_md = memory::desc([&] {
+        dnnl_memory_desc_t tmp_scale_md;
+        dnnl_memory_desc_create_host_side_scalar(
+                &tmp_scale_md, (dnnl_data_type_t)p.qdt);
+        return tmp_scale_md;
+    }());
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng);
@@ -1065,8 +1073,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::stream &cpu_strm,
         dnnl::memory &query, dnnl::memory &key, dnnl::memory &key_scales,
         dnnl::memory &key_zp, dnnl::memory::data_type scale_dt,
-        dnnl::memory &scale, dnnl::memory &mask, dnnl::memory &value,
-        dnnl::memory &value_scales, dnnl::memory &value_zp,
+        dnnl::memory::desc &scale_md, dnnl::memory &scale, dnnl::memory &mask,
+        dnnl::memory &value, dnnl::memory &value_scales, dnnl::memory &value_zp,
         dnnl::memory &output, bool invert_scale) {
     using namespace dnnl;
     primitive_attr bmm1_attr;
@@ -1399,7 +1407,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query_test.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, t.scale_md,
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
@@ -1451,9 +1459,9 @@ GPU_TEST_P(sdpa_test_t, compare) {
 
     prim_sdpa_quant(p, t, eng, strm, cpu_strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
-            t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
-            t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
-            invert_scale);
+            t.m_key_scales, t.m_key_zp, scale_dt, t.scale_md, t.m_scale,
+            t.m_mask, t.m_value_quantized, t.m_value_scales, t.m_value_zp,
+            t.m_output, invert_scale);
 
 #if 0
     if (::getenv("SKIP_CHECK")) return;
@@ -1575,7 +1583,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, t.scale_md,
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr_quantized,
@@ -1590,9 +1598,10 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
             p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
-            t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
-            alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
+            t.m_value.get_desc(), mask_ptr, scale_dt, t.scale_md,
+            t.m_output.get_desc(), invert_scale, p.kv_head_num,
+            to_attn_mask_type(p.mask), alg_kind::softmax_accurate_inf_as_zero,
+            t.sdpa_attr);
     auto sdpaf16_p = sdpa(sdpaf16_pd);
 
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},

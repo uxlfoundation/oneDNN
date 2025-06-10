@@ -503,6 +503,10 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
             d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
 
+    if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) {
+        kernel_ctx.define_int("HOST_SIDE_SCALE", 1);
+    }
+
     /* Generate microkernel shims */
     ShimOptions shimOptions;
     shimOptions.subgroupSize = pd()->sg_size();

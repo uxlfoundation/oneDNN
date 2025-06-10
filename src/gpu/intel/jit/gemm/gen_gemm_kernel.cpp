@@ -549,14 +549,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         can_2d_b &= (align_b % 16 == 0);
         can_2d_c &= (align_c % 16 == 0);
     }
-#if XE3P
-    // Disable block 2D for small matrices (width < 1 cache line) to avoid simulator errors.
-    if (arch == compute::gpu_arch_t::xe3p) {
-        can_2d_a &= ((trans_a ? k : m) * types::data_type_size(a_type)) >= 64;
-        can_2d_b &= ((trans_b ? n : k) * types::data_type_size(b_type)) >= 64;
-        can_2d_c &= (m * types::data_type_size(c_type)) >= 64;
-    }
-#endif
 
     auto tags = const_cast<char *>(base.tags);
     while (*tags)

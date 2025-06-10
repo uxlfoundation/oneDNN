@@ -149,7 +149,6 @@ public:
 
     static constexpr int noSurface = 0x80;        // Returned by getArgumentSurfaceIfExists in case of no surface assignment
 
-protected:
     struct Assignment {
         std::string name;
         DataType type;
@@ -163,6 +162,10 @@ protected:
         bool globalStatelessAccess() const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Stateless)); }
     };
 
+    const Assignment &getAssignment(int idx) const   { return assignments[idx]; }
+    size_t numAssignments() const   { return assignments.size(); }
+
+protected:
     HW hw;
 
     std::vector<Assignment> assignments;

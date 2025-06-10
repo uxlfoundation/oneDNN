@@ -82,7 +82,7 @@ public:
                 auto store = store_t::make(header_buf, off, e);
                 off_store = off_store.append(store);
             };
-            auto emit_store_s32 = [&](int value, int off) {
+            auto emit_store_s32 = [&](const expr_t &value, int off) {
                 emit_store(cast(value, type_t::s32()), off);
             };
             auto &info = send->block_2d_info;

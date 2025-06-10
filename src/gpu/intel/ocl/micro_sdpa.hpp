@@ -192,7 +192,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
         const micro::Package &gemm_vs() const { return gemm_vs_; }
 
         int sg_size() const { return sg_size_; }
-        bool use_sysolic_ukernel() const { return use_systolic_ukernel_; }
+        bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
         // Block size for head_size, which must be hard-coded into the kernel.
         int d_max() const {

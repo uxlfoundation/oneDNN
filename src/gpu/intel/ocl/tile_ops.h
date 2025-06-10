@@ -56,8 +56,7 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
         intel_sub_group_block_write##suffix##n( \
                 (global itype *)p, as_##itype##n(v)); \
     } \
-    __attribute__((overloadable)) void block_store( \
-            local type *p, type##n v) { \
+    __attribute__((overloadable)) void block_store(local type *p, type##n v) { \
         intel_sub_group_block_write##suffix##n( \
                 (local itype *)p, as_##itype##n(v)); \
     }
@@ -76,8 +75,7 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
         intel_sub_group_block_write##suffix( \
                 (global itype *)p, as_##itype(v[0])); \
     } \
-    __attribute__((overloadable)) void block_store( \
-            local type *p, type##1 v) { \
+    __attribute__((overloadable)) void block_store(local type *p, type##1 v) { \
         int id = get_sub_group_local_id(); \
         ((local itype *)p)[id] = as_##itype(v[0]); \
     }
@@ -431,21 +429,20 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
             int offset_c) { \
         tile_store(t, ptr, m, n, m, offset_r, offset_c); \
     } \
-    __attribute__((overloadable))                                                               \
-    void tile_store_t_packed_src1(tile_type t, local element_type *ptr, int panel, int ld,      \
-                                  int offset_r, int offset_c) {                                 \
-        /* Assumption: block fits in a single panel */                                          \
-        offset_c += get_sub_group_local_id();                                                   \
-        int offset_r0 = offset_r % panel;                                                       \
-        int offset_r1 = offset_r - offset_r0;                                                   \
-        ptr += offset_r0 + panel*offset_c + ld*offset_r1;                                       \
-        _Pragma("unroll")                                                                       \
-        for (int j0 = 0; j0 < br*nbr; j0 += sg, ptr += sg * panel) {                            \
-            _Pragma("unroll")                                                                   \
-            for (int i = 0; i < bc*nbc; i++)                                                    \
-                ptr[i] = tile_access(t, j0, i, sg, br, bc, nbr);                                \
-        }                                                                                       \
-    }                                                                                           \
+    __attribute__((overloadable)) void tile_store_t_packed_src1(tile_type t, \
+            local element_type *ptr, int panel, int ld, int offset_r, \
+            int offset_c) { \
+        /* Assumption: block fits in a single panel */ \
+        offset_c += get_sub_group_local_id(); \
+        int offset_r0 = offset_r % panel; \
+        int offset_r1 = offset_r - offset_r0; \
+        ptr += offset_r0 + panel * offset_c + ld * offset_r1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, ptr += sg * panel) { \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) ptr[i] \
+                    = tile_access(t, j0, i, sg, br, bc, nbr); \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_t_sys_src1(tile_type t, \
             local element_type *ptr, int ld, int offset_r, int offset_c) { \
         offset_c += get_sub_group_local_id(); \
@@ -662,18 +659,17 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
                     block_store(ptr + ii * br, (t).x[ii + nbr * jj]); \
         } \
     } \
-    __attribute__((overloadable)) \
-    void tile_store_block_packed(tile_type t, local element_type *ptr, int panel, int ld, \
-                                 int offset_r, int offset_c) { \
+    __attribute__((overloadable)) void tile_store_block_packed(tile_type t, \
+            local element_type *ptr, int panel, int ld, int offset_r, \
+            int offset_c) { \
         /* Assumes each block fits in a single panel */ \
         ptr += offset_c * panel; \
-        _Pragma("unroll") \
-        for (int jj = 0; jj < nbc; jj++, ptr += panel) { \
-            _Pragma("unroll") \
-            for (int ii = 0; ii < nbr; ii++) { \
-                int offset_r0 = (offset_r + ii*br) % panel; \
-                int offset_r1 = (offset_r + ii*br) - offset_r0; \
-                block_store(ptr + offset_r0 + offset_r1*ld, (t).x[ii + nbr*jj]); \
+        _Pragma("unroll") for (int jj = 0; jj < nbc; jj++, ptr += panel) { \
+            _Pragma("unroll") for (int ii = 0; ii < nbr; ii++) { \
+                int offset_r0 = (offset_r + ii * br) % panel; \
+                int offset_r1 = (offset_r + ii * br) - offset_r0; \
+                block_store(ptr + offset_r0 + offset_r1 * ld, \
+                        (t).x[ii + nbr * jj]); \
             } \
         } \
     } \

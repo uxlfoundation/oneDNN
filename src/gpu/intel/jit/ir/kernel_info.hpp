@@ -27,6 +27,7 @@
 #include "common/serialization.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
+#include "ngen_interface.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -74,6 +75,22 @@ private:
 
 class kernel_iface_t {
 public:
+    kernel_iface_t() = default;
+    kernel_iface_t(const ngen::InterfaceHandler &iface) {
+        for (size_t i = 0; i < iface.numAssignments(); i++) {
+            auto &a = iface.getAssignment(i);
+            if (a.exttype == ngen::ExternalArgumentType::Scalar) {
+                register_arg(a.name, type_t(a.type));
+            } else if (a.exttype == ngen::ExternalArgumentType::GlobalPtr) {
+                register_arg(a.name, type_t::byte_ptr(1, false));
+            } else if (a.exttype == ngen::ExternalArgumentType::LocalPtr) {
+                register_arg(a.name, type_t::byte_ptr(1, true));
+            } else {
+                gpu_assert(false) << "Unimplemented";
+            }
+        }
+    }
+
     int nargs() const { return int(args_.size()); }
     const expr_t &arg_var(int idx) const {
         gpu_assert(idx >= 0 && idx < nargs());

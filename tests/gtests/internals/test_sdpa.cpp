@@ -1407,7 +1407,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query_test.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, t.scale_md,
+                t.m_value_quantized.get_desc(), mask_ptr, t.scale_md, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
@@ -1583,7 +1583,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, t.scale_md,
+                t.m_value_quantized.get_desc(), mask_ptr, t.scale_md, scale_dt,
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr_quantized,
@@ -1598,7 +1598,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
             p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
-            t.m_value.get_desc(), mask_ptr, scale_dt, t.scale_md,
+            t.m_value.get_desc(), mask_ptr, t.scale_md, scale_dt,
             t.m_output.get_desc(), invert_scale, p.kv_head_num,
             to_attn_mask_type(p.mask), alg_kind::softmax_accurate_inf_as_zero,
             t.sdpa_attr);

@@ -151,8 +151,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
     if (jcp_.with_scales)
-        book_precomputed_scales(scratchpad, attr()->scales_, OC(),
-                jcp_.scale_adjust_factor != 1.0f);
+        book_precomputed_scales(
+                scratchpad, attr()->scales_, OC(), jcp_.scale_adjust_factor);
 
     return status::success;
 }
@@ -283,9 +283,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
     // JIT to precompute scales
     const bool is_jit_supported = mayiuse(avx512_core);
     const auto attr = pd()->attr();
+    const auto &attr_scales = attr->scales_;
     if (is_jit_supported && pd()->OC() > 1
-            && req_copy_scales(attr, jcp.scale_adjust_factor)) {
-        const auto &attr_scales = attr->scales_;
+            && req_copy_scales(attr_scales, jcp.scale_adjust_factor)) {
         int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
         if (wei_scale_mask > 0) {
             CHECK(safe_ptr_assign(jit_scale_precompute_,

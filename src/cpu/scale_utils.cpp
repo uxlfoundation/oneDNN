@@ -33,33 +33,23 @@ constexpr size_t scales_simd_w = 16;
 
 void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
         const scales_t &attr_scales, size_t wei_scale_count,
-        bool force_scales_book) {
-    using namespace dnnl::impl::memory_tracking::names;
-
-    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
-    const bool with_wei_scales
-            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-
-    if ((with_src_scales && with_wei_scales) || force_scales_book
-            || !attr_scales.has_default_data_type(DNNL_ARG_WEIGHTS)
-            || !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+        float scale_adjust_factor) {
+    if (req_copy_scales(attr_scales, scale_adjust_factor)) {
         const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-        const size_t precomputed_scales_size = wei_mask == 0
-                ? scales_simd_w
-                : nstl::max(
-                        static_cast<size_t>(wei_scale_count), scales_simd_w);
+        const size_t precomputed_scales_size = wei_mask > 0
+                ? nstl::max(static_cast<size_t>(wei_scale_count), scales_simd_w)
+                : scales_simd_w;
         scratchpad.template book<float>(
                 memory_tracking::names::key_precomputed_scales,
                 precomputed_scales_size);
     }
 }
 
-bool req_copy_scales(
-        const primitive_attr_t *attr, const float scale_adjust_factor) {
-    const auto &attr_scales = attr->scales_;
+bool req_copy_scales(const scales_t &attr_scales, float scale_adjust_factor) {
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+
     return (with_src_scales && with_wei_scales) || scale_adjust_factor != 1.0f
             || !attr_scales.has_default_data_type(DNNL_ARG_WEIGHTS)
             || !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups();
@@ -90,7 +80,7 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
             = (wei_scale_per_ic ? IC : 1) * (wei_scale_per_oc ? OC : 1);
 
     const float *scales = nullptr;
-    if (req_copy_scales(attr, scale_adjust_factor)) {
+    if (req_copy_scales(attr_scales, scale_adjust_factor)) {
         size_t size = 0;
         auto loc_scales
                 = scratchpad.template get<float>(key_precomputed_scales, &size);

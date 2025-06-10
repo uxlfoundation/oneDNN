@@ -573,12 +573,6 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         }
     }
 
-    const auto &wei_scales = attr_.scales_.get(DNNL_ARG_WEIGHTS);
-    // per_oc: conv: 1 << 0, (1 << 1) + (1 << 0) (with groups)
-    // per_oc: ip: 1 << 0
-    is_oc_scale_
-            = utils::one_of(wei_scales.get_mask(), 1 << 0, (1 << 1) + (1 << 0));
-
     inp_dt_ = brg_.dt_c;
     out_dt_ = brg_.dt_d;
     bia_dt_ = brg_.dt_bias;
@@ -839,11 +833,11 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 
     if (req_comp) maybe_apply_comp(m_block, n_block, tail);
 
-    if (brg_.beta != 0) {
+    if (brg_.beta != 0 && brg_.with_scales) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             const auto addr = ptr[aux_reg_scales
-                    + is_oc_scale_ * sizeof(float) * (n * brg_.ld_block)];
+                    + brg_.is_oc_scale * sizeof(float) * (n * brg_.ld_block)];
             auto vmm = vector(m, n);
             if (IMPLICATION(tail > 0, isa_has_masks(brg_.isa_impl))) {
                 vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
@@ -1008,7 +1002,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             mov(aux_reg_s8s8_comp, ptr[rsp + reg_s8s8_comp_offs_]);
             mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
         }
-        mov(aux_reg_scales, reg_scales);
+        if (brg_.with_scales) mov(aux_reg_scales, reg_scales);
     }
     mov(aux_reg_out, reg_out);
 
@@ -1036,8 +1030,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-
-            add(aux_reg_scales, is_oc_scale_ * sizeof(float) * oc_l_offset);
+            if (brg_.with_scales)
+                add(aux_reg_scales,
+                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
         }
     }
     if (nb2_tail > 0) {
@@ -1063,8 +1058,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-
-            add(aux_reg_scales, is_oc_scale_ * sizeof(float) * oc_l_offset);
+            if (brg_.with_scales)
+                add(aux_reg_scales,
+                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
         }
     }
     if (nb_tail > 0) {
@@ -1088,7 +1084,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * nb_tail);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-            add(aux_reg_scales, is_oc_scale_ * bia_typesize_ * (nb_tail));
+            if (brg_.with_scales)
+                add(aux_reg_scales,
+                        brg_.is_oc_scale * bia_typesize_ * (nb_tail));
         }
         add(aux_reg_out, out_typesize_ * (nb_tail));
     }
@@ -1130,7 +1128,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     if (brg_.alpha != 0) { mov(reg_in, ptr[param1 + GET_OFF(ptr_in)]); }
     if (brg_.beta != 0) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+        if (brg_.with_scales) {
+            mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+        }
         mov(reg_apply_comp, ptr[param1 + GET_OFF(apply_comp)]);
         mov(ptr[rsp + reg_apply_comp_offs_], reg_apply_comp);
 

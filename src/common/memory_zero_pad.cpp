@@ -287,6 +287,8 @@ static status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
         case f8_e4m3: return typed_zero_pad<f8_e4m3>(memory, ctx);
         case f32: return typed_zero_pad<f32>(memory, ctx);
         case s32: return typed_zero_pad<s32>(memory, ctx);
+        case s16: return typed_zero_pad<s16>(memory, ctx);
+        case u16: return typed_zero_pad<u16>(memory, ctx);
         case s8: return typed_zero_pad<s8>(memory, ctx);
         case u8: return typed_zero_pad<u8>(memory, ctx);
         case s4: return typed_zero_pad<s8>(memory, ctx);

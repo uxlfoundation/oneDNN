@@ -396,7 +396,7 @@ public:
     int inner_stride() const;
     expr_t stride(const pvar_t &dim, int dim_block_idx = 0) const;
     expr_t shift_in_bytes(const std::vector<int> &block_off) const;
-    dim_t offset_in_bytes(pvar_coord_t<dim_t> coord) const;
+    dim_t offset_in_bytes(const pvar_coord_t &_coord) const;
     bool is_blocked_by(const pvar_t &dim, int block) const;
     bool is_blocked_by(const layout_t &other) const;
     void add_block(const pvar_t &dim, const expr_t &size,
@@ -409,13 +409,11 @@ public:
     layout_t split_block(
             const block_t *block_ptr, dim_t inner, dim_t outer) const;
 
-    template <typename T>
-    layout_t map(const dim_mapper_t &dim_mapper, const pvar_coord_t<T> &coord,
+    layout_t map(const dim_mapper_t &dim_mapper, const pvar_coord_t &coord,
             const pvar_tile_t &tile,
             const var_range_info_t &var_range_info = {}) const;
 
-    template <typename T>
-    layout_t map(const pvar_coord_t<T> &coord, const pvar_tile_t &tile) const {
+    layout_t map(const pvar_coord_t &coord, const pvar_tile_t &tile) const {
         return map(dim_mapper_t(), coord, tile);
     }
 
@@ -423,14 +421,14 @@ public:
     layout_t map(const pvar_tile_t &tile) const {
         dim_mapper_t mapper;
         mapper.set_layout_desc(desc_);
-        return map(mapper, pvar_coord_t<T>(), tile);
+        return map(mapper, pvar_coord_t(), tile);
     }
 
     layout_t make_dense() const;
     layout_t retype(const type_t &new_type, bool dense = false) const;
-    pvar_coord_t<dim_t> to_coord(const std::vector<int> &block_idx) const;
+    pvar_coord_t to_coord(const std::vector<int> &block_idx) const;
     int to_linear_index(
-            const pvar_tile_t &tile, const pvar_coord_t<dim_t> &coord) const;
+            const pvar_tile_t &tile, const pvar_coord_t &coord) const;
     std::string blocks_str() const;
     std::string str() const;
     std::string str_with_size(const hw_t &hw) const;
@@ -449,10 +447,10 @@ private:
 };
 
 void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
-        const std::function<void(const pvar_coord_t<dim_t> &)> &func);
+        const std::function<void(const pvar_coord_t &)> &func);
 void for_each(const pvar_tile_t &base_tile, const pvar_tile_t &tile,
         const std::vector<pvar_t> &idx_order,
-        const std::function<void(const pvar_coord_t<dim_t> &)> &func);
+        const std::function<void(const pvar_coord_t &)> &func);
 
 class block_iterator_t {
 public:
@@ -535,7 +533,7 @@ public:
     bool has_next(int elems) const { return offset_ + elems < total_elems_; }
     void next(int elems);
     int offset(const pvar_t &dim) const;
-    pvar_coord_t<dim_t> coord() const;
+    pvar_coord_t coord() const;
     std::string str() const;
     IR_DEFINE_DUMP()
 
@@ -556,10 +554,9 @@ public:
             int block, bool has_underflow);
     bool is_identity() const { return is_zero(c) && is_one(a) && y.is_empty(); }
 
-    template <typename T>
-    expr_t to_expr(const pvar_coord_t<T> &coord, bool with_const = true) const;
+    expr_t to_expr(const pvar_coord_t &coord, bool with_const = true) const;
 
-    dim_mask_desc_t map(const pvar_coord_t<expr_t> &coord) const;
+    dim_mask_desc_t map(const pvar_coord_t &coord) const;
     bool has(const pvar_t &dim) const;
     expr_t dim_stride(const pvar_t &dim) const;
     std::string str() const;
@@ -586,7 +583,7 @@ public:
     int nmasks() const { return static_cast<int>(dim_masks_.size()); }
     const dim_mask_desc_t &operator[](int idx) const;
     dim_mask_desc_t &operator[](int idx);
-    mask_desc_t map(const pvar_coord_t<expr_t> &coord) const;
+    mask_desc_t map(const pvar_coord_t &coord) const;
     bool is_uniform(const block_iterator_t &it,
             const prover_t &prover = prover_t::instance()) const;
     std::string str() const;
@@ -669,12 +666,12 @@ class view_t {
 public:
     view_t() = default;
     view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
+            const pvar_coord_t &coord, const pvar_tile_t &tile,
             const var_range_info_t &var_range_info = {});
     bool is_empty() const { return base_layout_.is_empty(); }
     const dim_mapper_t &dim_mapper() const { return dim_mapper_; }
     const layout_t &base_layout() const { return base_layout_; }
-    const pvar_coord_t<expr_t> &coord() const { return coord_; }
+    const pvar_coord_t &coord() const { return coord_; }
     const pvar_tile_t &tile() const { return tile_; }
     const layout_t &layout() const { return layout_; }
     const mask_desc_t &mask_desc() const { return mask_desc_; }
@@ -688,13 +685,13 @@ public:
     IR_DEFINE_DUMP()
 
     static view_t split(const dim_mapper_t &dim_mapper,
-            const layout_t &base_layout, const pvar_coord_t<expr_t> &coord,
+            const layout_t &base_layout, const pvar_coord_t &coord,
             const pvar_tile_t &tile, grid_splitter_t &grid_splitter);
 
 private:
     dim_mapper_t dim_mapper_;
     layout_t base_layout_;
-    pvar_coord_t<expr_t> coord_;
+    pvar_coord_t coord_;
     pvar_tile_t tile_;
     layout_t layout_;
     mask_desc_t mask_desc_;

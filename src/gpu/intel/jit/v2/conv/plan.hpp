@@ -97,8 +97,8 @@ public:
         return entries_.at(dim).loop_idx;
     }
 
-    pvar_coord_t<expr_t> iter_coord() const;
-    pvar_coord_t<expr_t> tg_iter_coord() const;
+    pvar_coord_t iter_coord() const;
+    pvar_coord_t tg_iter_coord() const;
     pvar_tile_t tg_iter_tile() const;
 
     std::string str() const {
@@ -334,7 +334,7 @@ struct slm_reduce_plan_t : public base_plan_t {
     // C layout and tile coordinate after reduction and redistribution in
     // threadgroup.
     layout_t c_layout;
-    pvar_coord_t<expr_t> c_coord;
+    pvar_coord_t c_coord;
 
     using base_plan_t::base_plan_t;
 
@@ -390,7 +390,7 @@ struct epilogue_store_plan_t : public base_plan_t {
 struct epilogue_plan_t : public base_plan_t {
     slm_reduce_plan_t slm_reduce;
     layout_t c_reg_layout;
-    pvar_coord_t<expr_t> c_coord;
+    pvar_coord_t c_coord;
     layout_t bias_layout;
     expr_t bias_reduce_cond;
 

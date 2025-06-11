@@ -109,7 +109,7 @@ type_t to_send_type(const send_1d_desc_t &desc) {
     return type_t::oword(desc.type_size / 16);
 }
 
-int get_reg_off(const send_1d_plan_t &plan, const pvar_coord_t<dim_t> &coord) {
+int get_reg_off(const send_1d_plan_t &plan, const pvar_coord_t &coord) {
     return into<int>(plan.reg_layout.offset_in_bytes(coord));
 }
 
@@ -422,7 +422,7 @@ private:
         }
         stmt_t call_stmt;
         for_each(sizes, fma.inst_tile, dim_order,
-                [&](const pvar_coord_t<dim_t> &coord) {
+                [&](const pvar_coord_t &coord) {
                     dim_t a_off = a_layout.offset_in_bytes(coord);
                     dim_t b_off = b_layout.offset_in_bytes(coord);
                     dim_t c_off = c_layout.offset_in_bytes(coord);
@@ -467,7 +467,7 @@ private:
 class post_op_builder_t : public ir_builder_t {
 public:
     post_op_builder_t(ir_builder_t &parent, const kernel_desc_t &desc,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
+            const pvar_coord_t &coord, const pvar_tile_t &tile,
             alg_kind_t binary_alg, const gpu_post_ops_t::entry_t *post_op_entry,
             const layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
             const expr_t &rhs_mem_buf, const type_t &_rhs_type,
@@ -493,7 +493,7 @@ public:
     }
 
 private:
-    view_t rhs_mem_view(const pvar_coord_t<expr_t> &_coord,
+    view_t rhs_mem_view(const pvar_coord_t &_coord,
             const pvar_tile_t &_tile, const type_t &type, uint16_t mask) {
         dim_mapper_manager_t mger(desc_.prop, desc_.spec.reqs());
         auto &c_mapper = mger.mapper(tensor_kind_t::c);
@@ -559,7 +559,7 @@ private:
         pvar_tile_t tile;
         tile[lhs0.dim] = elems;
         for_each(lhs.int_dim_sizes(), tile,
-                [&](const pvar_coord_t<dim_t> &coord) {
+                [&](const pvar_coord_t &coord) {
                     auto lhs_off = lhs.offset_in_bytes(coord);
                     auto rhs_off = rhs.offset_in_bytes(coord);
                     auto e_l = load_t::make(
@@ -585,8 +585,8 @@ public:
     epilogue_tile_builder_t(ir_builder_t &parent, const buffer_info_t &buf_info,
             const kernel_desc_t &desc, const layout_t &c_layout,
             const expr_t &c_mem_buf, const expr_t &c_reg_buf,
-            const pvar_coord_t<expr_t> &c_coord,
-            const pvar_coord_t<dim_t> &coord,
+            const pvar_coord_t &c_coord,
+            const pvar_coord_t &coord,
             const epilogue_store_plan_t &store_plan)
         : ir_builder_t(parent, loop_nest_t())
         , buf_info_(buf_info)
@@ -612,7 +612,7 @@ private:
         return ret;
     }
 
-    void build_post_op(const pvar_coord_t<expr_t> &coord,
+    void build_post_op(const pvar_coord_t &coord,
             const pvar_tile_t &tile, alg_kind_t binary_alg,
             const gpu_post_ops_t::entry_t *post_op_entry,
             const layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
@@ -627,7 +627,7 @@ private:
     }
 
     expr_t build_post_ops(const layout_t &layout,
-            const pvar_coord_t<expr_t> &coord, const expr_t &_buf,
+            const pvar_coord_t &coord, const expr_t &_buf,
             layout_t &out_layout) {
         if (desc_.post_ops.len() == 0 && desc_.scales.has_default_values()
                 && !desc_.with_bias_fwd()) {
@@ -744,7 +744,7 @@ private:
         const auto &c_mem_buf = buf_info_.mem_buf("c");
         const auto &c_reg_buf = buf_info_.reg_buf("c");
         for_each(c_layout.int_dim_sizes(), store_plan.tile,
-                [&](const pvar_coord_t<dim_t> &coord) {
+                [&](const pvar_coord_t &coord) {
                     epilogue_tile_builder_t builder(*this, buf_info_, desc_,
                             c_layout, c_mem_buf, c_reg_buf, plan_.c_coord,
                             coord, store_plan);

@@ -56,7 +56,7 @@ bool process_coef_y_stride(
 }
 
 bool adjust_for_non_unit_y_stride(plane_t &plane,
-        const pvar_coord_t<expr_t> &coord, const prover_t &prover) {
+        const pvar_coord_t &coord, const prover_t &prover) {
     if (is_one(plane.y_stride)) return true;
     auto y_stride_dim = pvar_t::from_var(plane.y_stride);
     if (y_stride_dim.is_undef()) return false;

@@ -153,7 +153,7 @@ type_t to_send_type(const send_1d_desc_t &desc) {
 
 stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
         const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const pvar_coord_t &coord, const pvar_tile_t &tile) {
     for (auto &d : plan.entry_tile) {
         gpu_assert(tile.at(d) % plan.entry_tile.at(d) == 0);
     }
@@ -165,7 +165,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
             plan.hw, op, address, type, slots, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const pvar_coord_t<dim_t> &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const pvar_coord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
@@ -187,7 +187,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
 
 stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
         const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const pvar_coord_t &coord, const pvar_tile_t &tile) {
     auto op = to_ir(plan.desc.op, /*is_2d=*/true);
     auto &type = plan.desc.type;
     auto &desc = plan.desc;
@@ -195,7 +195,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
             desc.c, desc.vnni, desc.transpose, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const pvar_coord_t<dim_t> &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const pvar_coord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
@@ -216,7 +216,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
 
 stmt_t create_stmt(const send_plan_t &plan, const expr_t &mem_buf,
         const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const pvar_coord_t &coord, const pvar_tile_t &tile) {
     if (plan.is_1d())
         return create_stmt(plan._1d, mem_buf, reg_buf, off_ctx, coord, tile);
     if (plan.is_2d())

@@ -197,7 +197,9 @@ public:
         auto it1 = map_.begin();
         auto it2 = other.map_.begin();
         for (int i = 0; i < size(); i++) {
-            if (*it1 != *it2) return false;
+            if (it1->first != it2->first) return false;
+            if (!ir_utils::is_equal_helper_t<ValueT, ValueT>::call(it1->second, it2->second))
+                return false;
             it1++;
             it2++;
         }
@@ -211,7 +213,9 @@ public:
     pvar_map_t drop_defaults() const {
         pvar_map_t ret;
         for (auto &d : *this) {
-            if (at(d) == ValueT()) continue;
+            if (ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
+                        at(d), ValueT()))
+                continue;
             ret[d] = at(d);
         }
         return ret;
@@ -295,51 +299,47 @@ public:
     bool operator==(const pvar_tile_t &other) const = default;
 #endif
 
-    std::string str() const override { return str_impl(/*multiline=*/false); }
+    std::string str() const override {
+        return str_impl(/*multiline=*/false);
+    }
 };
 
-template <typename ValueT>
-class pvar_coord_t : public pvar_map_t<ValueT> {
+class pvar_coord_t;
+
+class pvar_icoord_t : public pvar_map_t<dim_t> {
 public:
-    using pvar_map_t<ValueT>::pvar_map_t;
+    using pvar_map_t<dim_t>::pvar_map_t;
+
+    pvar_coord_t to_expr() const;
 };
 
-template <typename T1, typename T2>
-struct coord_add_type_t {
-    using type = expr_t;
+class pvar_coord_t : public pvar_map_t<expr_t> {
+public:
+    using pvar_map_t<expr_t>::pvar_map_t;
+
+    inline pvar_icoord_t to_int() const {
+        pvar_icoord_t ret;
+        for (auto &d : *this)
+            ret[d] = to_cpp<dim_t>(at(d));
+        return ret;
+    }
 };
 
-template <>
-struct coord_add_type_t<int, int> {
-    using type = int;
-};
+inline pvar_coord_t pvar_icoord_t::to_expr() const {
+    pvar_coord_t ret;
+    for (auto &d : *this)
+        ret[d] = at(d);
+    return ret;
+}
 
-template <>
-struct coord_add_type_t<dim_t, dim_t> {
-    using type = dim_t;
-};
-
-template <>
-struct coord_add_type_t<dim_t, int> {
-    using type = dim_t;
-};
-
-template <>
-struct coord_add_type_t<int, dim_t> {
-    using type = dim_t;
-};
-
-template <typename T1, typename T2,
-        typename T = typename coord_add_type_t<T1, T2>::type>
-inline pvar_coord_t<T> operator+(
-        const pvar_coord_t<T1> &a, const pvar_coord_t<T2> &b) {
-    pvar_coord_t<T> ret;
+inline pvar_coord_t operator+(const pvar_coord_t &a, const pvar_coord_t &b) {
+    pvar_coord_t ret;
     for (auto &d : a) {
-        ret[d] = a.get(d, T1(0)) + b.get(d, T2(0));
+        ret[d] = a.get(d, expr_t(0)) + b.get(d, expr_t(0));
     }
     for (auto &d : b) {
         if (ret.has(d)) continue;
-        ret[d] = a.get(d, T1(0)) + b.get(d, T2(0));
+        ret[d] = a.get(d, expr_t(0)) + b.get(d, expr_t(0));
     }
     return ret;
 }

@@ -29,8 +29,8 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-pvar_coord_t<expr_t> coord_info_t::iter_coord() const {
-    pvar_coord_t<expr_t> ret;
+pvar_coord_t coord_info_t::iter_coord() const {
+    pvar_coord_t ret;
     for (auto &d : entries_) {
         auto &e = entries_.at(d);
         ret[d] = simplify_rewrite(e.iter_size * e.iter_idx);
@@ -38,8 +38,8 @@ pvar_coord_t<expr_t> coord_info_t::iter_coord() const {
     return ret;
 }
 
-pvar_coord_t<expr_t> coord_info_t::tg_iter_coord() const {
-    pvar_coord_t<expr_t> ret;
+pvar_coord_t coord_info_t::tg_iter_coord() const {
+    pvar_coord_t ret;
     for (auto &d : entries_) {
         auto &e = entries_.at(d);
         auto idx = e.iter_size * e.iter_idx;
@@ -498,7 +498,7 @@ private:
     }
 
     bool init_x_prefetch_plan(tensor_kind_t abc,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
+            const pvar_coord_t &coord, const pvar_tile_t &tile,
             const x2r_fma_plan_t &x2r_fma, virt_grid_t &virt_grid,
             send_plan_t &prefetch) const {
         auto &mapper = dim_mapper_manager_.mapper(abc);
@@ -735,7 +735,7 @@ private:
         slm_layout.add_block(k_dim, k_tg);
         auto c_tile = c_layout.desc().filter_dim_map(desc_.iter_tile);
 
-        pvar_coord_t<expr_t> store_coord;
+        pvar_coord_t store_coord;
         store_coord[k_dim] = thr_grid_.index_var(k_dim);
         pvar_tile_t store_tile = c_tile;
         store_tile.unset(k_dim);
@@ -752,7 +752,7 @@ private:
         grid_splitter_t grid_splitter;
         grid_splitter.add(thr_grid_.index_var(k_dim), k_tg);
         auto split_view = view_t::split(mapper, c_layout,
-                pvar_coord_t<expr_t>(), c_tile, grid_splitter);
+                pvar_coord_t(), c_tile, grid_splitter);
         for (auto &kv : grid_splitter.virt_grid_idxs()) {
             virt_grid.add(kv.first, kv.second);
         }

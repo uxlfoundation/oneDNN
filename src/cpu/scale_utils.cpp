@@ -50,9 +50,13 @@ bool req_copy_scales(const scales_t &attr_scales, float scale_adjust_factor) {
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
 
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    return with_src_scales || with_wei_scales || scale_adjust_factor != 1.0f;
+#else
     return (with_src_scales && with_wei_scales) || scale_adjust_factor != 1.0f
             || !attr_scales.has_default_data_type(DNNL_ARG_WEIGHTS)
             || !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups();
+#endif
 }
 
 const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,

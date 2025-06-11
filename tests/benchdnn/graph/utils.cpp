@@ -437,7 +437,8 @@ public:
     }
 };
 
-dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
+dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind,
+        bool check_num_outputs, size_t num_outputs) {
     const static std::unordered_map<dnnl::graph::op::kind, dnnl_driver_t,
             op_kind_hash_t>
             op_map = {
@@ -547,7 +548,6 @@ dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
                     {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::SigmoidBackward,
                             dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SoftMax, dnnl_driver_t::softmax},
                     {dnnl::graph::op::kind::SoftMaxBackward,
                             dnnl_driver_t::softmax},
                     {dnnl::graph::op::kind::SoftPlus, dnnl_driver_t::eltwise},
@@ -573,6 +573,12 @@ dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
     const auto it = op_map.find(kind);
     if (it != op_map.end()) {
         return it->second;
+    } else if (kind == dnnl::graph::op::kind::SoftMax) {
+        if (check_num_outputs && num_outputs > 1)
+            // for softmax, if it has stats output, using the custom driver, as
+            // primitive doesn't support it.
+            return dnnl_driver_t::custom;
+        return dnnl_driver_t::softmax;
     } else {
         fprintf(stderr, "graph: ERROR: Unsupported opkind: `%d`, exiting...\n",
                 static_cast<int>(kind));
@@ -854,6 +860,18 @@ int get_prim_arg_name_from_graph_op_output_offset(
                 return -1;
             }
 
+        } break;
+        case dnnl::graph::op::kind::SoftMax: {
+            if (output_offset == 0)
+                return DNNL_ARG_DST;
+            else if (output_offset == 1)
+                return DNNL_ARG_DST_1;
+            else {
+                BENCHDNN_PRINT(0, "Error: no matching ARG for offset %d",
+                        static_cast<int>(output_offset));
+                assert(false);
+                return -1;
+            }
         } break;
         default: {
             return DNNL_ARG_DST;

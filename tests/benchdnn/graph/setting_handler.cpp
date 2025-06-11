@@ -167,7 +167,7 @@ namespace custom {
     switch (opkind) {
         case ::graph::op::kind::GenIndex:
             op_setting.alg = ::custom::alg_t::GENINDEX;
-            base_op_ref.get_attr_s64(op_setting.axis, "axis");
+            get_driver_axis(base_op_ref, op_setting.axis);
             break;
         case ::graph::op::kind::StaticTranspose:
             op_setting.alg = ::custom::alg_t::TRANSPOSE;
@@ -176,6 +176,19 @@ namespace custom {
         case ::graph::op::kind::StaticReshape:
             op_setting.alg = ::custom::alg_t::RESHAPE;
             break;
+        case ::graph::op::kind::SoftMax: {
+            ::softmax::settings_t softmax_setting
+                    = softmax::get_setting(base_op_ref, res);
+            op_setting.alg = ::custom::alg_t::SOFTMAX;
+            op_setting.prb_dims = softmax_setting.prb_dims;
+            op_setting.dir.front() = softmax_setting.dir.front();
+            op_setting.sdt.front() = softmax_setting.sdt.front();
+            op_setting.ddt.front() = softmax_setting.ddt.front();
+            op_setting.stag.front() = softmax_setting.stag.front();
+            op_setting.dtag.front() = softmax_setting.dtag.front();
+            op_setting.axis = softmax_setting.axis.front();
+            break;
+        }
         default:
             op_setting.alg = ::custom::alg_t::ALG_UNKNOWN;
             assert(!"unknown alg");

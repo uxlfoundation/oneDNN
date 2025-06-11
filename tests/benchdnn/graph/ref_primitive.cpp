@@ -20,7 +20,11 @@
 namespace graph {
 
 ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
-    : op_(op), kind_(opstr2kind(op_.kind_)), driver_(opkind2driver(kind_)) {
+    : op_(op)
+    , kind_(opstr2kind(op_.kind_))
+    , driver_(opkind2driver(kind_, /*check_num_outputs*/ true,
+              /*num_outputs*/ op_.out_lts_.size()))
+    , is_special_backward_op_(false) {
 
     static const ::std::unordered_set<::std::string> special_backward_op = {
             // bnorm backward
@@ -214,6 +218,7 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_BIAS, BIA},
                     {DNNL_ARG_DIFF_BIAS, BIA},
                     {DNNL_ARG_DST, DST},
+                    {DNNL_ARG_DST_1, DST_1},
                     {DNNL_ARG_DIFF_SRC_0, DST},
                     {DNNL_ARG_SRC_1, SRC_1},
                     {DNNL_ARG_MEAN, MEAN},

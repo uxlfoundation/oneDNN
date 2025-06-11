@@ -300,6 +300,8 @@ void ref_partition_t::exec_ops(res_t *res) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
                 // There's no need to reorder data for undefined or f32 tensors.
                 if (dt == dnnl_data_type_undef || dt == dnnl_f32) continue;
+                // For SoftMax stats, it's f32, no need to reorder.
+                if (op.kind_ == "SoftMax" && i == 1) continue;
 
                 int arg = get_prim_arg_name_from_graph_op_output_offset(
                         ref_prim->get_kind(), i);

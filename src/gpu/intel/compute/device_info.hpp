@@ -200,7 +200,7 @@ public:
     int gpu_product_family() const { return gpu_product_family_; }
     int stepping_id() const { return stepping_id_; }
     uint64_t native_extensions() const { return native_extensions_; }
-    bool is_integrated() const;
+    bool is_integrated() const { return is_integrated_; }
     uint32_t ip_version() const { return ip_version_; }
     int max_eus_per_wg() const { return max_eus_per_wg_; }
     static int max_eus_per_wg(gpu_arch_t gpu_arch);
@@ -280,6 +280,7 @@ protected:
     int gpu_product_family_ = 0;
     int stepping_id_ = 0;
     uint32_t ip_version_ = 0;
+    bool is_integrated_ = false;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
     bool mayiuse_system_memory_allocators_ = false;

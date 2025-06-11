@@ -437,6 +437,14 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=double -D%s_DT_F64", str, str));
             break;
+        case data_type::s16:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=short -D%s_DT_S16", str, str));
+            break;
+        case data_type::u16:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=ushort -D%s_DT_U16", str, str));
+            break;
         case data_type::s8:
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=char -D%s_DT_S8", str, str));

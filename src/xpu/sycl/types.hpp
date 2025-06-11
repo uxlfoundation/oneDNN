@@ -318,6 +318,14 @@ struct prec_traits_t<data_type::s32> {
     using type = int32_t;
 };
 template <>
+struct prec_traits_t<data_type::s16> {
+    using type = int16_t;
+};
+template <>
+struct prec_traits_t<data_type::u16> {
+    using type = uint16_t;
+};
+template <>
 struct prec_traits_t<data_type::s8> {
     using type = int8_t;
 };

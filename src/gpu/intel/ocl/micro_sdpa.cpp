@@ -448,7 +448,7 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     if (pd()->with_value_scales() || pd()->with_value_zp())
         kernel_ctx.define_int("VAL_GROUP_SIZE", pd()->value_group_size());
 
-    def_data_type(kernel_ctx, d->scale_dt, "SCALE");
+    def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", d->invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_type::undef);

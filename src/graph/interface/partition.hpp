@@ -124,14 +124,14 @@ public:
     graph::status_t compile(graph::compiled_partition_t *compiled_partition,
             std::vector<const graph::logical_tensor_t *> &inputs,
             std::vector<const graph::logical_tensor_t *> &outputs,
-            const graph::engine_t *e = nullptr) const;
+            graph::engine_t *e = nullptr) const;
 
     graph::status_t compile(
             std::pair<graph::compiled_partition_t *, dnnl::impl::cache_state_t>
                     &compiled_partition,
             std::vector<const graph::logical_tensor_t *> &inputs,
             std::vector<const graph::logical_tensor_t *> &outputs,
-            const graph::engine_t *aengine) const;
+            graph::engine_t *aengine) const;
 
     graph::status_t infer_shape(
             std::vector<const graph::logical_tensor_t *> &inputs,
@@ -227,6 +227,8 @@ public:
         if (!info_.is_initialized()) info_.init(eng, this);
         return info_.c_str();
     }
+
+    graph::status_t reset_engine(graph::engine_t *e);
 
 private:
     std::shared_ptr<graph::compiled_partition_impl_t> pimpl_;

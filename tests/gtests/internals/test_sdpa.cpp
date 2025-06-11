@@ -242,7 +242,14 @@ memory::dims double_mb(const memory::dims &dims) {
     return ret;
 }
 
-memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
+/// This function creates a large tensor double the size requested by /p desc and
+/// fills it with NaN values. It then creates a new memory object backed by
+/// the first memory handle but with the size of the original memory descriptor.
+///
+/// This function allows us to identify situations where the SDPA kernel is
+/// accessing data out-of-bounds
+memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
+        std::vector<dnnl_memory_t> &doubled_memory) {
     dnnl::stream s(eng);
     memory::dims dims2 = double_mb(desc.get_dims());
     auto desc2 = memory::desc(dims2, desc.get_data_type(), desc.get_strides());
@@ -250,6 +257,7 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     dnnl_memory_t mem2;
     CHECK(dnnl_memory_create(
             &mem2, desc2.get(), eng.get(), DNNL_MEMORY_ALLOCATE));
+    doubled_memory.push_back(mem2);
 
     void *handle;
     CHECK(dnnl_memory_get_data_handle(mem2, &handle));
@@ -264,10 +272,12 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
 #endif
 
-    return memory(desc, eng, handle);
+    auto out = memory(desc, eng, handle);
+    return out;
 }
 
-sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
+sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
+        std::vector<dnnl_memory_t> &doubled_memory) {
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -362,25 +372,31 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {
     // clang-format on
 
     // Create memory objects
-    out.m_query = double_and_resize(query_md, eng);
-    out.m_query_test = double_and_resize(query_test_md, eng);
-    out.m_key = double_and_resize(key_md, eng);
-    out.m_key_t = double_and_resize(key_t_md, eng);
-    out.m_scale = double_and_resize(scale_md, eng);
-    out.m_key_quantized = double_and_resize(key_quantized_md, eng);
-    out.m_key_t_quantized = double_and_resize(key_t_quantized_md, eng);
-    out.m_key_scales = double_and_resize(key_scales_md, eng);
-    out.m_key_scales_t = double_and_resize(key_scales_t_md, eng);
-    out.m_key_zp = double_and_resize(key_zp_md, eng);
-    out.m_value_quantized = double_and_resize(val_quantized_md, eng);
-    out.m_value_t_quantized = double_and_resize(val_t_quantized_md, eng);
-    out.m_value_scales = double_and_resize(val_scales_md, eng);
-    out.m_value_zp = double_and_resize(val_zp_md, eng);
-    out.m_mask = double_and_resize(mask_md, eng);
-    out.m_value = double_and_resize(value_md, eng);
-    out.m_value_t = double_and_resize(value_t_md, eng);
-    out.m_output = double_and_resize(output_md, eng);
-    out.m_output_quantized = double_and_resize(output_quantized_md, eng);
+    out.m_query = double_and_resize(query_md, eng, doubled_memory);
+    out.m_query_test = double_and_resize(query_test_md, eng, doubled_memory);
+    out.m_key = double_and_resize(key_md, eng, doubled_memory);
+    out.m_key_t = double_and_resize(key_t_md, eng, doubled_memory);
+    out.m_scale = double_and_resize(scale_md, eng, doubled_memory);
+    out.m_key_quantized
+            = double_and_resize(key_quantized_md, eng, doubled_memory);
+    out.m_key_t_quantized
+            = double_and_resize(key_t_quantized_md, eng, doubled_memory);
+    out.m_key_scales = double_and_resize(key_scales_md, eng, doubled_memory);
+    out.m_key_scales_t
+            = double_and_resize(key_scales_t_md, eng, doubled_memory);
+    out.m_key_zp = double_and_resize(key_zp_md, eng, doubled_memory);
+    out.m_value_quantized
+            = double_and_resize(val_quantized_md, eng, doubled_memory);
+    out.m_value_t_quantized
+            = double_and_resize(val_t_quantized_md, eng, doubled_memory);
+    out.m_value_scales = double_and_resize(val_scales_md, eng, doubled_memory);
+    out.m_value_zp = double_and_resize(val_zp_md, eng, doubled_memory);
+    out.m_mask = double_and_resize(mask_md, eng, doubled_memory);
+    out.m_value = double_and_resize(value_md, eng, doubled_memory);
+    out.m_value_t = double_and_resize(value_t_md, eng, doubled_memory);
+    out.m_output = double_and_resize(output_md, eng, doubled_memory);
+    out.m_output_quantized
+            = double_and_resize(output_quantized_md, eng, doubled_memory);
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
@@ -710,7 +726,14 @@ public:
 #endif
         strm = dnnl::stream(eng);
         p = GetParam();
-        t = get_descriptors(eng, p);
+        doubled_memory.reserve(30);
+        t = get_descriptors(eng, p, doubled_memory);
+    }
+
+    void TearDown() override {
+        for (dnnl_memory_t &mem : doubled_memory) {
+            CHECK(dnnl_memory_destroy(mem));
+        }
     }
 
 protected:
@@ -718,6 +741,7 @@ protected:
     dnnl::engine eng;
     dnnl::stream strm;
     sdpa_tensors_t t;
+    std::vector<dnnl_memory_t> doubled_memory;
 };
 
 bool with_key_transposed = true;
@@ -1045,7 +1069,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
         dnnl::memory::data_type scale_dt, dnnl::memory &scale,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
-        dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale) {
+        dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
+        std::vector<dnnl_memory_t> &doubled_memory) {
     using namespace dnnl;
     primitive_attr bmm1_attr;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
@@ -1181,7 +1206,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr bmm2_attr;
 
     bmm2_attr.set_scratchpad_mode(scratchpad_mode::library);
-    auto grouped_output = double_and_resize(grouped_query_md, eng);
+    auto grouped_output
+            = double_and_resize(grouped_query_md, eng, doubled_memory);
     auto bmm2_pd = matmul::primitive_desc(
             eng, score_md, grouped_value_md, grouped_query_md, bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
@@ -1431,7 +1457,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
             t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
             t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
-            invert_scale);
+            invert_scale, doubled_memory);
 
 #if 0
     if (::getenv("SKIP_CHECK")) return;

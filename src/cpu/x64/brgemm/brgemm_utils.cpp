@@ -149,6 +149,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
                     avx2_vnni_2, is_isa_ok(avx2), avx2);
         } else {
             brg->isa_impl = utils::map(true, isa_undef,
+                    is_isa_ok(avx10_512_amx10), avx10_512_amx10,
                     is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
                     is_isa_ok(avx512_core_amx), avx512_core_amx,
                     is_isa_ok(avx10_2_512), avx10_2_512,
@@ -158,6 +159,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
     } else if (brg->is_f16) {
         if (everyone_is(data_type::f16, brg->dt_a, brg->dt_b)) {
             brg->isa_impl = utils::map(true, isa_undef,
+                    is_isa_ok(avx10_512_amx10), avx10_512_amx10,
                     is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
                     is_isa_ok(avx512_core_amx_fp16), avx512_core_amx_fp16,
                     is_isa_ok(avx10_2_512), avx10_2_512,
@@ -174,19 +176,20 @@ void set_isa_impl(brgemm_desc_t *brg) {
                     is_isa_ok(avx512_core_fp16), avx512_core_fp16);
         }
     } else if (brg->is_int8) {
-        brg->isa_impl
-                = utils::map(true, isa_undef, is_isa_ok(avx10_2_512_amx_2),
-                        avx10_2_512_amx_2, is_isa_ok(avx512_core_amx_fp16),
-                        avx512_core_amx_fp16, is_isa_ok(avx512_core_amx),
-                        avx512_core_amx, is_isa_ok(avx10_2_512), avx10_2_512,
-                        is_isa_ok(avx512_core_fp16), avx512_core_fp16,
-                        is_isa_ok(avx512_core_vnni), avx512_core_vnni,
-                        is_isa_ok(avx512_core), avx512_core,
-                        is_isa_ok(avx2_vnni_2), avx2_vnni_2,
-                        is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2), avx2);
+        brg->isa_impl = utils::map(true, isa_undef,
+                is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
+                is_isa_ok(avx512_core_amx_fp16), avx512_core_amx_fp16,
+                is_isa_ok(avx512_core_amx), avx512_core_amx,
+                is_isa_ok(avx10_2_512), avx10_2_512, is_isa_ok(avx10_512_amx10),
+                avx10_512_amx10, is_isa_ok(avx512_core_fp16), avx512_core_fp16,
+                is_isa_ok(avx512_core_vnni), avx512_core_vnni,
+                is_isa_ok(avx512_core), avx512_core, is_isa_ok(avx2_vnni_2),
+                avx2_vnni_2, is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2),
+                avx2);
     } else if (brg->is_fp8) {
         brg->isa_impl = utils::map(true, isa_undef,
                 is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
+                is_isa_ok(avx10_512_amx10), avx10_512_amx10,
                 is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
                 is_isa_ok(avx10_2_512), avx10_2_512);
     }
@@ -296,6 +299,78 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     return max_bcast_block;
 }
 
+// Helper function to find bdb and bdb_tail given bd_block and taking into
+// account bd_mask
+static void find_bdb_bd_mask(
+        const brgemm_desc_t *brg, int bd_block, int &bdb, int &bdb_tail) {
+    const auto BD = brg->bcast_dim;
+
+    if (brg->brgattr.bd_mask_level != 2 || BD == 0) {
+        bdb = div_up(BD, bd_block);
+        bdb_tail = BD % bd_block;
+        return;
+    }
+
+    bdb = 0;
+    bdb_tail = 0;
+    for (int i = 0; i < BD;) {
+        if (brg->brgattr.bd_mask_level == 2 && brg->brgattr.bd_mask[i] == 0) {
+            i++;
+        } else {
+            i += bd_block;
+            if (i > BD) {
+                bdb_tail = BD - i + bd_block;
+                if (brg->brgattr.use_uker) bdb++;
+            } else
+                bdb++;
+        }
+    }
+}
+
+// Helper function to find bdb2 and ldb2 by given blocking
+static void recalc_blocking(brgemm_desc_t *brg, int new_bd_block,
+        int new_ld_block, int new_bd_block2, int new_ld_block2) {
+    const auto LD = brg->load_dim;
+
+    if (new_bd_block != 0) {
+        brg->bd_block = new_bd_block;
+        find_bdb_bd_mask(brg, brg->bd_block, brg->bdb, brg->bdb_tail);
+        brg->is_M_tail = (brg->bdb_tail != 0);
+    }
+
+    if (new_ld_block != 0) {
+        brg->ld_block = new_ld_block;
+        brg->ldb = div_up(LD, brg->ld_block);
+        brg->ldb_tail = LD % brg->ld_block;
+    }
+
+    if (new_bd_block2 != 0) {
+        brg->bd_block2 = new_bd_block2;
+        if (brg->can_dispatch_uker()) {
+            brg->bdb2 = div_up(brg->bdb, brg->bd_block2);
+            brg->bdb2_tail = 0;
+        } else {
+            if (brg->bdb_tail && brg->bd_block2 > 1) brg->bd_block2--;
+            auto full_bd_blocks = brg->bdb - (brg->bdb_tail != 0 ? 1 : 0);
+            brg->bdb2 = full_bd_blocks / brg->bd_block2;
+            brg->bdb2_tail = full_bd_blocks % brg->bd_block2;
+        }
+    }
+
+    if (new_ld_block2 != 0) {
+        brg->ld_block2 = new_ld_block2;
+        if (brg->can_dispatch_uker()) {
+            brg->ldb2 = div_up(brg->ldb, brg->ld_block2);
+            brg->ldb2_tail = 0;
+        } else {
+            if (brg->ldb_tail && brg->ld_block2 > 1) brg->ld_block2--;
+            auto full_ld_blocks = brg->ldb - (brg->ldb_tail != 0 ? 1 : 0);
+            brg->ldb2 = full_ld_blocks / brg->ld_block2;
+            brg->ldb2_tail = full_ld_blocks % brg->ld_block2;
+        }
+    }
+}
+
 status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto L1 = platform::get_per_core_cache_size(1);
 
@@ -310,30 +385,6 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     brg->ldb = LD / brg->ld_block;
     brg->ldb_tail = LD % brg->ld_block;
 
-    auto find_bdb_bd_mask = [&](int bd_block, int &bdb, int &bdb_tail) {
-        if (brg->brgattr.bd_mask_level != 2 || BD == 0) {
-            bdb = div_up(BD, bd_block);
-            bdb_tail = BD % bd_block;
-            return;
-        }
-
-        bdb = 0;
-        bdb_tail = 0;
-        for (int i = 0; i < BD;) {
-            if (brg->brgattr.bd_mask_level == 2
-                    && brg->brgattr.bd_mask[i] == 0) {
-                i++;
-            } else {
-                i += bd_block;
-                if (i > BD) {
-                    bdb_tail = BD - i + bd_block;
-                    if (brg->brgattr.use_uker) bdb++;
-                } else
-                    bdb++;
-            }
-        }
-    };
-
     auto find_bd_block_for_bd_mask = [&]() {
         if (brg->brgattr.bd_mask_level != 2 || BD == 0) return false;
 
@@ -343,7 +394,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         for (auto bd_block = start_bd_block; bd_block > 0; bd_block--) {
             int bdb = 0;
             int bdb_tail = 0;
-            find_bdb_bd_mask(bd_block, bdb, bdb_tail);
+            find_bdb_bd_mask(brg, bd_block, bdb, bdb_tail);
             // bcast_dim should be divided by bd_block
             if (bdb < min_bdb && bdb_tail == 0) {
                 min_bdb = bdb;
@@ -439,53 +490,12 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 || brg->bd_block < 8);
     };
 
-    auto recalc_blocking = [&](int new_bd_block, int new_ld_block,
-                                   int new_bd_block2, int new_ld_block2) {
-        if (new_bd_block != 0) {
-            brg->bd_block = new_bd_block;
-            find_bdb_bd_mask(brg->bd_block, brg->bdb, brg->bdb_tail);
-            brg->is_M_tail = (brg->bdb_tail != 0);
-        }
-
-        if (new_ld_block != 0) {
-            brg->ld_block = new_ld_block;
-            brg->ldb = div_up(LD, brg->ld_block);
-            brg->ldb_tail = LD % brg->ld_block;
-        }
-
-        if (new_bd_block2 != 0) {
-            brg->bd_block2 = new_bd_block2;
-            if (brg->can_dispatch_uker()) {
-                brg->bdb2 = div_up(brg->bdb, brg->bd_block2);
-                brg->bdb2_tail = 0;
-            } else {
-                if (brg->bdb_tail && brg->bd_block2 > 1) brg->bd_block2--;
-                auto full_bd_blocks = brg->bdb - (brg->bdb_tail != 0 ? 1 : 0);
-                brg->bdb2 = full_bd_blocks / brg->bd_block2;
-                brg->bdb2_tail = full_bd_blocks % brg->bd_block2;
-            }
-        }
-
-        if (new_ld_block2 != 0) {
-            brg->ld_block2 = new_ld_block2;
-            if (brg->can_dispatch_uker()) {
-                brg->ldb2 = div_up(brg->ldb, brg->ld_block2);
-                brg->ldb2_tail = 0;
-            } else {
-                if (brg->ldb_tail && brg->ld_block2 > 1) brg->ld_block2--;
-                auto full_ld_blocks = brg->ldb - (brg->ldb_tail != 0 ? 1 : 0);
-                brg->ldb2 = full_ld_blocks / brg->ld_block2;
-                brg->ldb2_tail = full_ld_blocks % brg->ld_block2;
-            }
-        }
-    };
-
     auto recalc_blocking_ext
             = [&](int new_bd_block, int new_ld_block, int new_bd_block2,
                       int new_ld_block2, bool load_nt_A, bool load_nt_B,
                       brgemm_kernel_innermost_loop_t innermost_loop) {
-                  recalc_blocking(new_bd_block, new_ld_block, new_bd_block2,
-                          new_ld_block2);
+                  recalc_blocking(brg, new_bd_block, new_ld_block,
+                          new_bd_block2, new_ld_block2);
                   brg->load_nt_A = load_nt_A;
                   brg->load_nt_B = load_nt_B;
                   brg->innermost_loop = innermost_loop;
@@ -525,7 +535,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     brg->load_nt_B = try_load_nt_B && try_load_nt;
 
     recalc_blocking(
-            brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
+            brg, brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
 
     if (brg->can_dispatch_uker()) {
         // Blocking heuristics for some shapes
@@ -577,38 +587,38 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         const bool ldb_tail_only = ldb_tail_16 && !bdb_block_tail;
         const bool bdb_tail_only = bdb_block_tail && !ldb_tail_16;
         if (ldb_tail_only && LD > 64 && brg->ld_block < 8) {
-            recalc_blocking(0, 16, 2, 1);
+            recalc_blocking(brg, 0, 16, 2, 1);
         } else if (ldb_tail_only && weak_ldb && LD_R16 == 64) {
-            recalc_blocking(0, 16, 1, 4);
+            recalc_blocking(brg, 0, 16, 1, 4);
         } else if (ldb_tail_only && weak_ldb && LD_R16 == 48) {
-            recalc_blocking(0, 16, 1, 3);
+            recalc_blocking(brg, 0, 16, 1, 3);
         } else if (ldb_tail_only && weak_ldb && LD_R16 == 32) {
-            recalc_blocking(0, 16, 2, 2);
+            recalc_blocking(brg, 0, 16, 2, 2);
         } else if (BD <= 16) {
             // Have to call recalc_blocking twice to calculate ldb
-            recalc_blocking(BD, 16, 0, 0);
+            recalc_blocking(brg, BD, 16, 0, 0);
             const auto ld_block2 = nstl::min(
                     ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5, div_up(LD, 16));
-            recalc_blocking(0, 0, 1, ld_block2);
+            recalc_blocking(brg, 0, 0, 1, ld_block2);
         } else if (bdb_tail_only && weak_bdb && BD > 64) {
-            recalc_blocking(16, 16, 1, 2);
+            recalc_blocking(brg, 16, 16, 1, 2);
         } else if (bdb_tail_only && weak_bdb && BD_R16 == 64) {
-            recalc_blocking(16, 16, 4, 1);
+            recalc_blocking(brg, 16, 16, 4, 1);
         } else if (bdb_tail_only && weak_bdb && BD_R16 == 48) {
-            recalc_blocking(16, 16, 3, 1);
+            recalc_blocking(brg, 16, 16, 3, 1);
         } else if (bdb_tail_only && weak_bdb && BD_R16 == 32
                 && (LD % 32 == 0)) {
-            recalc_blocking(16, 16, 2, 2);
+            recalc_blocking(brg, 16, 16, 2, 2);
         } else if (LD <= 16) {
             // Have to call recalc_blocking twice to calculate bdb
             // we can't use ld_block other than 16
-            recalc_blocking(16, 16, 0, 0);
+            recalc_blocking(brg, 16, 16, 0, 0);
             const auto bd_block2 = nstl::min(
                     brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5, div_up(BD, 16));
-            recalc_blocking(0, 0, bd_block2, 1);
+            recalc_blocking(brg, 0, 0, bd_block2, 1);
         } else if (bdb_block_tail && ldb_tail_16 && BD_R16 == 32 && LD_R16 == 32
                 && (weak_ldb || weak_bdb)) {
-            recalc_blocking(16, 16, 2, 2);
+            recalc_blocking(brg, 16, 16, 2, 2);
         }
 
         // The code below is a draft for the future optimization of interleave
@@ -635,7 +645,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     }
 
     // check hints for blocking parameters
-    recalc_blocking(brg->brgattr.hint_bd_block, brg->brgattr.hint_ld_block,
+    recalc_blocking(brg, brg->brgattr.hint_bd_block, brg->brgattr.hint_ld_block,
             brg->brgattr.hint_bd_block2 ? brg->brgattr.hint_bd_block2
                                         : brg->bd_block2,
             brg->brgattr.hint_ld_block2 ? brg->brgattr.hint_ld_block2
@@ -754,6 +764,63 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     return status::success;
 }
 
+status_t brgemm_blocking_amx10(brgemm_desc_t *brg) {
+    // Blocking configuration for AMX
+    const auto LD = brg->load_dim;
+
+    brg->ld_block = 16;
+    brg->ldb = LD / brg->ld_block;
+    brg->ldb_tail = LD % brg->ld_block;
+
+    brg->bd_block = 16;
+    find_bdb_bd_mask(brg, brg->bd_block, brg->bdb, brg->bdb_tail);
+
+    const auto ntiles = brgemm_desc_t::AMX_TILES_NUM;
+
+    dim_t best_loads_number = LLONG_MAX;
+    auto best_bd_block2 = 1;
+    auto best_ld_block2 = 1;
+    for (auto bd_block2 = 1; bd_block2 <= nstl::min(ntiles, brg->bdb);
+            bd_block2++) {
+        const auto ld_block2
+                = nstl::min(nstl::max(1, brg->ldb), ntiles / bd_block2);
+
+        // Calculate the number of loads for one iteration by reduce_dim
+        const auto loads_number
+                = static_cast<dim_t>(brg->ldb) * div_up(brg->bdb, bd_block2)
+                + brg->bdb * div_up(brg->ldb, ld_block2);
+        if (loads_number < best_loads_number) {
+            best_loads_number = loads_number;
+            best_bd_block2 = bd_block2;
+            best_ld_block2 = ld_block2;
+        }
+    }
+    brg->bd_block2 = best_bd_block2;
+    brg->ld_block2 = best_ld_block2;
+
+    recalc_blocking(
+            brg, brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
+
+    // check hints for blocking parameters
+    recalc_blocking(brg, brg->brgattr.hint_bd_block, brg->brgattr.hint_ld_block,
+            brg->brgattr.hint_bd_block2 ? brg->brgattr.hint_bd_block2
+                                        : brg->bd_block2,
+            brg->brgattr.hint_ld_block2 ? brg->brgattr.hint_ld_block2
+                                        : brg->ld_block2);
+
+    // TODO: maybe calculate rd_block more precisely
+    brg->rd_block = brg->rd_step * 4;
+    brg->rdb = brg->reduce_dim / brg->rd_block;
+    brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+
+    // To use less registers in the amx10 microkernel:
+    // load several blocks of A and keep them in registers if bd_block2 < ld_block2
+    // otherwise load several blocks of B and keep them in registers
+    brg->n_bcast_1_load = brg->bd_block2 < brg->ld_block2;
+
+    return status::success;
+}
+
 status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     if (brg->is_gemv) return brgemm_blocking_vmm_gemv(brg);
     const auto L1 = platform::get_per_core_cache_size(1);
@@ -844,7 +911,9 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
     if (!(brg->is_tmm || brg->is_zmm || brg->is_ymm))
         return status::unimplemented;
 
-    if (brg->is_tmm)
+    if (brg->is_amx10())
+        CHECK(brgemm_blocking_amx10(brg));
+    else if (brg->is_tmm)
         CHECK(brgemm_blocking_tmm(brg));
     else
         CHECK(brgemm_blocking_vmm(brg));
@@ -993,6 +1062,11 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
             = brg->is_f16 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
     brg->is_fp8_tmm
             = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
+
+    brg->is_int8_amx10 = brg->is_int8 && brg->is_amx10();
+    brg->is_bf16_amx10 = brg->is_bf16 && brg->is_amx10();
+    brg->is_f16_amx10 = brg->is_f16 && brg->is_amx10();
+    brg->is_fp8_amx10 = brg->is_fp8 && brg->is_amx10();
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 

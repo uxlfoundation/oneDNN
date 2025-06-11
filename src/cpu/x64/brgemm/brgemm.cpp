@@ -353,7 +353,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     if (!IMPLICATION(one_of(data_type::f8_e5m2, dt_bias, dt_d)
                         || one_of(data_type::f8_e4m3, dt_bias, dt_d),
                 utils::one_of(true, mayiuse(avx512_core_amx_fp16),
-                        mayiuse(avx10_2_512))))
+                        mayiuse(avx10_2_512), mayiuse(avx10_512_amx10))))
         return status::unimplemented;
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
@@ -549,7 +549,7 @@ status_t brgemm_desc_set_attr(
 
     // virtual padding is not supported for "amx"
     if ((brgattr.max_top_vpad > 0 || brgattr.max_bottom_vpad > 0)
-            && (brg->is_tmm))
+            && (brg->is_tmm || brg->is_amx10()))
         return status::unimplemented;
 
     // Sprinkled prefetch is supported for brgemm_batch_size is 1
@@ -590,8 +590,30 @@ status_t brgemm_desc_set_attr(
     if (brg->is_fp8
             && !utils::one_of(true,
                     is_superset(brg->isa_impl, avx512_core_amx_fp16),
-                    is_superset(brg->isa_impl, avx10_2_512)))
+                    is_superset(brg->isa_impl, avx10_2_512), brgattr.use_amx10))
         return status::unimplemented;
+
+    if (!IMPLICATION(brgattr.use_amx10, brg->is_amx10()))
+        return status::unimplemented;
+
+    brg->is_int8_amx10 = brg->is_int8 && brg->is_amx10();
+    brg->is_bf16_amx10 = brg->is_bf16 && brg->is_amx10();
+    brg->is_f16_amx10 = brg->is_f16 && brg->is_amx10();
+    brg->is_fp8_amx10 = brg->is_fp8 && brg->is_amx10();
+
+    if (brgattr.use_amx10) {
+        brg->is_int8_amx10 = brg->is_int8 && brg->is_amx10();
+        brg->is_bf16_amx10 = brg->is_bf16 && brg->is_amx10();
+        brg->is_f16_amx10 = brg->is_f16 && brg->is_amx10();
+        brg->is_fp8_amx10 = brg->is_fp8 && brg->is_amx10();
+
+        brg->is_fp8_tmm = brg->is_fp8_amx10;
+    } else {
+        brg->is_int8_amx10 = false;
+        brg->is_bf16_amx10 = false;
+        brg->is_f16_amx10 = false;
+        brg->is_fp8_amx10 = false;
+    }
 
     return status::success;
 }
@@ -703,7 +725,8 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
 
     // Due to interleaving tileload/tmul we don't support blocking 1x6 and 6x1
     //TODO: update gemm_microkernel_amx to support such blocking
-    if (brg.get_bd_block2() >= 6 || brg.get_num_C_tiles() >= 6)
+    if (!brg.is_amx10()
+            && (brg.get_bd_block2() >= 6 || brg.get_num_C_tiles() >= 6))
         return status::unimplemented;
 
     for (int m = 0; m < brg.get_num_A_tiles(); m++) {
@@ -724,12 +747,12 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     }
 
     for (int m = 0; m < brg.get_bd_block2(); m++) {
-        const bool is_bd_tail
-                = (brg.bdb_tail && m == (brg.get_bd_block2() - 1));
+        const bool is_bd_tail = !brg.is_amx10()
+                && (brg.bdb_tail && m == (brg.get_bd_block2() - 1));
         const auto Cr = is_bd_tail ? brg.bdb_tail : brg.bd_block;
         for (int n = 0; n < brg.get_ld_block2(); n++) {
-            const bool is_ld_tail
-                    = (brg.ldb_tail && n == (brg.get_ld_block2() - 1));
+            const bool is_ld_tail = !brg.is_amx10()
+                    && (brg.ldb_tail && n == (brg.get_ld_block2() - 1));
             const auto Cc = (is_ld_tail ? brg.ldb_tail : brg.ld_block)
                     * brg.typesize_C;
             const auto C_tensor
@@ -847,6 +870,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_A);
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_B);
     CMP_BRGEMM_FIELD(brgattr.K_koef);
+    CMP_BRGEMM_FIELD(brgattr.use_amx10);
 
     if (lhs.brgattr.bd_mask_level > 0)
         for (int i = 0; i < lhs.bcast_dim; i++) {

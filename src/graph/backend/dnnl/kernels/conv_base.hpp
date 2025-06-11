@@ -87,6 +87,7 @@ public:
 #endif
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(conv_base_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

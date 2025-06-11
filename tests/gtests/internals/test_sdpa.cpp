@@ -242,6 +242,12 @@ memory::dims double_mb(const memory::dims &dims) {
     return ret;
 }
 
+/// This function creates a large tensor double the size requested by /p desc and
+/// fills it with NaN values. It then creates a new memory object backed by
+/// the first memory handle but with the size of the original memory descriptor.
+///
+/// This function allows us to identify situations where the SDPA kernel is
+/// accessing data out-of-bounds
 memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     dnnl::stream s(eng);
     memory::dims dims2 = double_mb(desc.get_dims());
@@ -264,7 +270,9 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng) {
     CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
 #endif
 
-    return memory(desc, eng, handle);
+    auto out = memory(desc, eng, handle);
+    CHECK(dnnl_memory_destroy(mem2));
+    return out;
 }
 
 sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p) {

@@ -96,6 +96,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(softmax_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(softmax_fwd_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 #if BUILD_TRAINING
@@ -156,6 +157,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(softmax_bwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(softmax_bwd_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 #endif
 

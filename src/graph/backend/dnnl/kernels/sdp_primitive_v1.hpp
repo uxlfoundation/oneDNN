@@ -93,6 +93,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_v1_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_v1_kernel_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

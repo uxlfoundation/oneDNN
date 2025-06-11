@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -96,6 +96,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(resampling_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_fwd_t)
+    KERNEL_RESET_ENGINE
 };
 
 #if BUILD_TRAINING
@@ -151,6 +152,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(resampling_bwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_bwd_t)
+    KERNEL_RESET_ENGINE
 };
 #endif
 

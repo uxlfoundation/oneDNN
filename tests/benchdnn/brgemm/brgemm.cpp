@@ -149,6 +149,11 @@ dnnl_status_t brgemm_attr_init(
         PROCESS_KEY_VAL(hint_bd_block2);
         PROCESS_KEY_VAL(hint_ld_block);
         PROCESS_KEY_VAL(hint_ld_block2);
+        PROCESS_KEY_VAL(hint_ununroll_bd_loop);
+        PROCESS_KEY_VAL(hint_ununroll_ld_loop);
+        PROCESS_KEY_VAL(hint_ununroll_bs_loop);
+        PROCESS_KEY_VAL(hint_ununroll_rd_loop);
+        PROCESS_KEY_VAL(use_amx10);
 
         PROCESS_SETTING_KEY_VAL(hint_prfA.dist1, hint_prfA_dist1);
         PROCESS_SETTING_KEY_VAL(hint_prfA.dist2, hint_prfA_dist2);

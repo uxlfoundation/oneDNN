@@ -60,7 +60,7 @@ struct sdpa : public dnnl::primitive {
         primitive_desc(const engine &aengine, const memory::desc &query_desc,
                 const memory::desc &key_desc, const memory::desc &value_desc,
                 const memory::desc *attn_mask_desc,
-                const memory::desc scale_desc, memory::data_type scale_dt,
+                const memory::desc &scale_desc, memory::data_type scale_dt,
                 const memory::desc &output_desc, bool invert_scale,
                 memory::dim kv_head_number, int attn_mask_type, int softmax_alg,
                 const primitive_attr &attr = default_attr(),

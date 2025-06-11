@@ -1002,8 +1002,7 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
 ///     otherwise.
 /// @sa @ref dev_guide_sparsity
 dnnl_status_t DNNL_API dnnl_memory_desc_create_host_side_scalar(
-        dnnl_memory_desc_t *memory_desc,
-        dnnl_data_type_t data_type);
+        dnnl_memory_desc_t *memory_desc, dnnl_data_type_t data_type);
 
 /// Creates a memory descriptor for a region inside an area
 /// described by an existing memory descriptor.

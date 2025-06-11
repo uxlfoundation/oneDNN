@@ -216,8 +216,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         const global SCALE_DATA_T *scale_ptr,
 #endif
-        int d, int k, int q,
-        const global KEY_ATTR_SCALES_DATA_T *K_scales,
+        int d, int k, int q, const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
         const global VAL_ATTR_ZP_DATA_T *V_zp, const int attn_mask_type

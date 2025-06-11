@@ -1100,7 +1100,8 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
     return std::make_pair(dnnl::reorder(dequantize_pd), dequantized_mem);
 }
 
-memory cpu_to_gpu(memory cpu_mem, dnnl::engine &gpu_eng, dnnl::stream gpu_strm) {
+memory cpu_to_gpu(
+        memory cpu_mem, dnnl::engine &gpu_eng, dnnl::stream gpu_strm) {
     auto gpu_md = memory::desc(cpu_mem.get_desc().get_dims(),
             cpu_mem.get_desc().get_data_type(),
             cpu_mem.get_desc().get_strides());

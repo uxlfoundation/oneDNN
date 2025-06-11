@@ -19,7 +19,9 @@
 #include "deserialize.hpp"
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
+#include "eltwise/eltwise.hpp"
 #include "oneapi/dnnl/dnnl.h"
+#include "softmax/softmax.hpp"
 #include "utils/parallel.hpp"
 #include "utils/perf_report.hpp"
 #include "utils/settings.hpp"
@@ -198,6 +200,102 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
 }
 } // namespace reshape
 
+namespace softmax {
+// SOFTMAX OP
+// DNNL_ARG_SRC: src
+// DNNL_ARG_DST: dst
+// DNNL_ARG_DST_1: stats
+
+std::vector<int> exec_args = {
+        DNNL_ARG_SRC,
+        DNNL_ARG_DST,
+        DNNL_ARG_DST_1,
+};
+
+int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
+        const prb_t *prb, res_t *res) {
+
+    const auto &ref_engine = get_cpu_engine();
+    ::softmax::settings_t op_setting;
+    op_setting.alg.front() = ::softmax::alg_t::SOFTMAX;
+    op_setting.prb_dims = prb->prb_dims;
+    op_setting.dir = prb->dir;
+    op_setting.sdt = prb->sdt;
+    op_setting.ddt = prb->ddt;
+    op_setting.stag = prb->stag;
+    op_setting.dtag = prb->dtag;
+    op_setting.axis.front() = prb->axis;
+    op_setting.finalize();
+    ::softmax::prb_t op_prb(op_setting);
+
+    for (auto &entry : mem_map) {
+        const int exec_arg = entry.first;
+        auto &mem = entry.second;
+
+        ref_mem_map.emplace(exec_arg,
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                        /* prefill = */ false));
+        auto &ref_mem = ref_mem_map[exec_arg];
+
+        switch (exec_arg) {
+            case DNNL_ARG_SRC:
+                SAFE(::softmax::fill_data_fwd(&op_prb, mem, ref_mem), WARN);
+                break;
+            default: break;
+        }
+    }
+    return OK;
+}
+
+int execute(const prb_t *prb, const args_t &args, res_t *res) {
+    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
+    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
+    const dnn_mem_t &stats = args.find(DNNL_ARG_DST_1);
+
+    float *dst_ptr = (float *)dst;
+    float *stats_ptr = (float *)stats;
+
+    int64_t outer_size {1}, inner_size {1}, axis_size {1};
+    for (int i = 0; i < prb->axis; i++)
+        outer_size *= prb->prb_dims.dims[i];
+    for (int i = prb->axis + 1; i < prb->prb_dims.ndims; i++)
+        inner_size *= prb->prb_dims.dims[i];
+    axis_size = prb->prb_dims.dims[prb->axis];
+
+    benchdnn_parallel_nd(outer_size, inner_size, [&](int64_t ou, int64_t in) {
+        float space_denom = 0.;
+        float space_max = -FLT_MAX;
+        int64_t ou_in_offset = ou * axis_size * inner_size + in;
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            space_max = MAX2(space_max, src.get_f32_elem(idx));
+        }
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            float s = src.get_f32_elem(idx);
+            float D = dst_ptr[idx] = expf(s - space_max);
+            space_denom += D;
+        }
+
+        space_denom = space_denom ? 1.f / space_denom : 1.f;
+        float dst_space_max = -FLT_MAX;
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            dst_ptr[idx] *= space_denom;
+            dst_space_max = MAX2(dst_space_max, dst_ptr[idx]);
+        }
+
+        // computes stats
+        int64_t stats_idx = ou * inner_size + in;
+        stats_ptr[stats_idx]
+                = dst_space_max ? space_max - logf(space_denom) : 0;
+    });
+    return OK;
+}
+} // namespace softmax
+
 dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     return dnnl_success;
 }
@@ -208,6 +306,7 @@ std::vector<int> supported_exec_args(const prb_t *prb) {
         case GENINDEX: return ::custom::genindex::exec_args;
         case TRANSPOSE: return ::custom::transpose::exec_args;
         case RESHAPE: return ::custom::reshape::exec_args;
+        case SOFTMAX: return ::custom::softmax::exec_args;
         default: assert(!"unknown alg"); break;
     }
     return exec_args;
@@ -219,6 +318,25 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         case GENINDEX:
         case TRANSPOSE:
         case RESHAPE: cmp.set_zero_trust_percent(100.f); break;
+        case SOFTMAX: {
+            ::softmax::settings_t op_setting;
+            op_setting.alg.front() = ::softmax::alg_t::SOFTMAX;
+            op_setting.prb_dims = prb->prb_dims;
+            op_setting.dir = prb->dir;
+            op_setting.sdt = prb->sdt;
+            op_setting.ddt = prb->ddt;
+            op_setting.stag = prb->stag;
+            op_setting.dtag = prb->dtag;
+            op_setting.axis.front() = prb->axis;
+            op_setting.finalize();
+            ::softmax::prb_t op_prb(op_setting);
+            ::softmax::setup_cmp(cmp, &op_prb, kind, ref_args);
+            // as the computation of softmax stats uses eltwise-log,
+            // so we relax the threshold with eltwise-log's threashold
+            cmp.set_threshold(::eltwise::get_eltwise_threshold(
+                    dnnl_f32, ::eltwise::alg_t::LOG));
+            break;
+        }
         default: assert(!"unknown alg"); break;
     }
 }
@@ -297,6 +415,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                          ref_mem_map, mem_map, prb, res),
                     WARN);
             break;
+        case SOFTMAX:
+            SAFE(::custom::softmax::init_ref_memory_args(
+                         ref_mem_map, mem_map, prb, res),
+                    WARN);
+            break;
         default: assert(!"unknown alg"); break;
     }
     // Don't keep reference memory if it is not used further.
@@ -314,6 +437,7 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
             ret = ::custom::transpose::execute(prb, args, res);
             break;
         case RESHAPE: ret = ::custom::reshape::execute(prb, args, res); break;
+        case SOFTMAX: ret = ::custom::softmax::execute(prb, args, res); break;
         default: assert(!"unknown alg"); break;
     }
     return ret;

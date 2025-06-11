@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -125,7 +125,7 @@ public:
     status_t compile(compiled_partition_t *compiled_partition,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
-            const engine_t *g_engine) const override {
+            engine_t *g_engine) const override {
         UNUSED(compiled_partition);
         UNUSED(inputs);
         UNUSED(outputs);

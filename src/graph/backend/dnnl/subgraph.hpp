@@ -71,6 +71,7 @@ public:
 
     subgraph_t(const std::vector<op_ptr> &ops, bool reset_layout = true);
 
+    status_t reset_engine(const dnnl::engine &eng);
     // The inputs and outputs logical tensors given by users at compilation
     // stage
     std::vector<logical_tensor_t> ins_;

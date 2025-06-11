@@ -27,6 +27,7 @@
 #include "oneapi/dnnl/dnnl.hpp"
 
 #include "common/dnnl_thread.hpp"
+#include "common/primitive_desc_iface.hpp"
 
 #include "graph/interface/c_types_map.hpp"
 
@@ -61,6 +62,13 @@ public:
             args.at(DNNL_ARG_DST).set_data_handle(handle);
         } else
             reorder_prim_.execute(astream, args);
+        return status::success;
+    }
+    status_t reset_engine(const dnnl::engine &p_engine) {
+        auto desc_t = reorder_prim_.get_primitive_desc()->impl();
+        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get());
+        dnnl::reorder::primitive_desc new_pd(&new_pd_t);
+        reorder_prim_ = dnnl::reorder(new_pd);
         return status::success;
     }
 
@@ -165,6 +173,7 @@ public:
     impl::status_t construct_params(std::shared_ptr<subgraph_t> &sg,
             registry_t &sdp_registry, const dnnl::engine &p_engine,
             const std::vector<logical_tensor_t> &inputs);
+    impl::status_t reset_engine(const dnnl::engine &p_engine);
 
 private:
     op_ptr get_post_op(const op_ptr &op) const;

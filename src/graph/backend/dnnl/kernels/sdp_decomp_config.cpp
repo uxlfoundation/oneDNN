@@ -856,6 +856,32 @@ dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
     return attr;
 }
 
+#define DECLARE_RESET_ENGINE(primitive_name, primitive_type) \
+    { \
+        const auto desc_t = (primitive_name).get_primitive_desc()->impl(); \
+        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
+        primitive_type::primitive_desc new_pd(&new_pd_t); \
+        (primitive_name) = primitive_type(new_pd); \
+    }
+
+impl::status_t sdp_decomp_config_t::reset_engine(const dnnl::engine &p_engine) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(1);
+#endif
+    DECLARE_RESET_ENGINE(sub_mm1_prim, matmul);
+    DECLARE_RESET_ENGINE(sub_softmax_prim, softmax_forward);
+    DECLARE_RESET_ENGINE(sub_mm2_prim, matmul);
+    if (has_select) DECLARE_RESET_ENGINE(sub_select_prim, binary);
+    sub_reorder0.reset_engine(p_engine);
+    sub_reorder1.reset_engine(p_engine);
+    sub_reorder2.reset_engine(p_engine);
+    sub_reorder3.reset_engine(p_engine);
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(nthr);
+#endif
+    return dnnl_success;
+}
+
 template status_t
 sdp_decomp_config_t::construct_params<false, dnnl::memory::data_type::f32>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,

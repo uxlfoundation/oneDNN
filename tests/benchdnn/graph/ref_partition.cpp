@@ -206,6 +206,10 @@ void ref_partition_t::exec_ops(res_t *res) {
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
         auto ref_prim = ref_prims_.at(op.id_);
+        // check if the condition input of Select op is from the parent op.
+        bool select_op_cond_has_parent
+                = ref_prim->get_kind() == dnnl::graph::op::kind::Select
+                && get_parent_op(op.in_lts_[0].id_);
 
         // link args && replace the memory before execution
         bool use_dst = ::graph::eltwise::get_flag_use_dst_for_bwd_compute(
@@ -214,6 +218,16 @@ void ref_partition_t::exec_ops(res_t *res) {
             const auto &lt = op.in_lts_[i];
             int arg = get_prim_arg_name_from_graph_op_input_offset(
                     ref_prim->get_kind(), i, use_dst);
+            if (select_op_cond_has_parent && i == 0) {
+                // Since select primitive implementation only support s8 data
+                // type for the condition input, need to transfer the f32
+                // results from the previous op to s8.
+                dnn_mem_t &dst_i
+                        = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
+                const auto &src_i = lt_id_2_mems_.at(lt.id_);
+                SAFE_V(dst_i.reorder(src_i));
+                continue;
+            }
             ref_prim->replace_arg(arg, lt_id_2_mems_.at(lt.id_));
         }
         for (size_t i = 0; i < op.out_lts_.size(); i++) {

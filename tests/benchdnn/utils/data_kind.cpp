@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ static data_kind_entry_t data_kind_table[] = {
         // is the one that corresponts to the argument expected in comparison.
         {SRC, {DNNL_ARG_DIFF_SRC, DNNL_ARG_SRC}},
         {SRC_1, {DNNL_ARG_DIFF_SRC_1, DNNL_ARG_SRC_1}},
+        {SRC_2, {DNNL_ARG_DIFF_SRC_2, DNNL_ARG_SRC_2}},
         {SRC_ITER, {DNNL_ARG_DIFF_SRC_ITER, DNNL_ARG_SRC_ITER}},
         {SRC_ITER_C, {DNNL_ARG_DIFF_SRC_ITER_C, DNNL_ARG_SRC_ITER_C}},
         {WEI, {DNNL_ARG_DIFF_WEIGHTS, DNNL_ARG_WEIGHTS}},
@@ -97,6 +98,7 @@ const char *data_kind2str(data_kind_t kind) {
     switch (kind) {
         case SRC: return "SRC";
         case SRC_1: return "SRC_ADD";
+        case SRC_2: return "SRC_2";
         case WEI: return "WEI";
         case BIA: return "BIA";
         case DST: return "DST";

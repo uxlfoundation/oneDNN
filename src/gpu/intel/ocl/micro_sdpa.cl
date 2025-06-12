@@ -48,7 +48,9 @@ typedef ugemm_vs_c_type a_tile_type;
 // example: Prints the entire S_tile in the (0, 1, 0) work group
 // print_tile(S_tile, "%7.2f", 0, 1, 0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
 
-#ifdef QRY_DT_F16
+#ifdef QRY_DT_F32
+#define FMA_TYPE float
+#elif QRY_DT_F16
 #define VEC_TYPE2 half2
 #define FMA_TYPE half
 #elif defined(QRY_DT_BF16)

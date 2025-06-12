@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "micro_sdpa_configs.hpp"
+#include <sstream>
 #include "common/c_types_map.hpp"
 
 namespace dnnl {
@@ -44,7 +45,7 @@ inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
 
 std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len << " thinq,qnt,int,fma?:"
+      << " seq:" << q.seq_len << " thinq,qnt,int,fma?: "
       << (int)(q.property & sdpa_property::second_token) << " "
       << (int)(q.property & sdpa_property::quantized) << " "
       << (int)(q.property & sdpa_property::integrated) << " "
@@ -53,7 +54,7 @@ std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
 }
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len << " thinq,qnt,int,fma?:"
+      << " seq:" << c.seq_len << " thinq,qnt,int,fma?: "
       << (int)(c.property & sdpa_property::second_token) << " "
       << (int)(c.property & sdpa_property::quantized) << " "
       << (int)(c.property & sdpa_property::integrated) << " "
@@ -283,6 +284,9 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe_hpc, 256, 64},           {16, 32, 32, 32, 8, 1, 8, 1}},
         {{compute::gpu_arch_t::xe_hpc, 256, second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
 
+        {{compute::gpu_arch_t::xe_hpc, 256, fma}, { }},
+        {{compute::gpu_arch_t::xe_hpc, 256, fma | second_token}, {16, 16, 32, 16, 32, 1, 32, 1}},
+
         {{compute::gpu_arch_t::xe_hpc, 512},      {32, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpc, 512, 128}, {16, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpc, 512, 32},  {16, 16, 64, 16, 8, 2, 8, 2}},
@@ -299,6 +303,28 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe_hpc, 512, 128, quantized}, {16, 16, 64, 16, 8, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe_hpc, 512, second_token | quantized}, {16, 16, 32, 16, 16, 2, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 32, fma | second_token}, {16, 16, 16, 16, 32, 1, 32, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc,  32, 1024, fma }, {32, 32, 16, 16,  8, 2,  4, 4}},
+        {{compute::gpu_arch_t::xe_hpc,  32,       fma }, {32, 32, 16, 16,  8, 2,  4, 4}},
+
+        {{compute::gpu_arch_t::xe_hpc,  64,  384, fma }, {16, 16, 16, 16,  8, 4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc,  64, 1024, fma }, {16, 32, 16, 16, 16, 2,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc,  64,       fma }, {16, 32, 16, 16, 16, 2,  8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpc, 128, 384,  fma }, {32, 32, 16, 16, 16, 1, 8, 2 }},
+        {{compute::gpu_arch_t::xe_hpc, 128, 1024, fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128,       fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
+
+
+
+        {{compute::gpu_arch_t::xe_hpc, 256,  384, fma }, {16, 32, 16, 16, 32, 1, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 1024, fma }, {16, 16, 32, 16,  8, 4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256,       fma }, {16, 16, 32, 16,  8, 4,  8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpc, 512, 1024, fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 512,       fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
 
         // xe2
         {{compute::gpu_arch_t::xe2, 32},               {16, 64, 32, 16, 4, 2, 1, 8}},
@@ -434,13 +460,94 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe2, 512, 128,  integrated | second_token | quantized}, {16, 16, 64, 16, 8, 1, 32, 1}},
         {{compute::gpu_arch_t::xe2, 512, 64,   integrated | second_token | quantized}, {16, 32, 64, 32, 16, 2, 8, 2}},
 
-        {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}}
+        {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}},
+
+
+        {{compute::gpu_arch_t::xe2,  32, 384, fma }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, 384, fma }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 384, fma }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, 384, fma }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2, 512, 384, fma }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, fma }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, fma }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2, 512, fma }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, 385, fma | second_token }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, 385, fma | second_token }, { 32, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
+        {{compute::gpu_arch_t::xe2, 256, 385, fma | second_token }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | second_token }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | second_token }, { 32, 32, 16, 32, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma | second_token }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
+
+
+        {{compute::gpu_arch_t::xe2,  32, 384, fma | quantized }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, 384, fma | quantized }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 384, fma | quantized }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, 384, fma | quantized }, { 32, 16, 16, 16,32, 1,32, 1 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | quantized }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | quantized }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma | quantized }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | quantized }, { 32, 16, 16, 16,32, 1,32, 1 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | second_token | quantized }, { 16, 16, 32, 16,  1, 4,  1, 4}},
+        {{compute::gpu_arch_t::xe2,  64, fma | second_token | quantized }, { 16, 32, 16, 16, 16, 2,  8, 4}},
+        {{compute::gpu_arch_t::xe2, 128, fma | second_token | quantized }, { 16, 32, 32, 16, 16, 1,  8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token | quantized }, { 16, 16, 16, 16, 32, 1, 32, 1}},
+
+
+        {{compute::gpu_arch_t::xe2,  32, 384, fma | integrated }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, 384, fma | integrated }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 384, fma | integrated }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, 384, fma | integrated }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2, 512, 384, fma | integrated }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | integrated }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | integrated }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma | integrated }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | integrated }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2, 512, fma | integrated }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, 385, fma | second_token | integrated }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, 385, fma | second_token | integrated }, { 32, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token | integrated }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
+        {{compute::gpu_arch_t::xe2, 256, 385, fma | second_token | integrated }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | second_token | integrated }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | second_token | integrated }, { 32, 32, 16, 32, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma | second_token | integrated }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token | integrated }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
+
+
+        {{compute::gpu_arch_t::xe2,  32, 384, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, 384, fma | quantized | integrated }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, 384, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, 384, fma | quantized | integrated }, { 32, 16, 16, 16,32, 1,32, 1 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | quantized | integrated }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | quantized | integrated }, { 32, 16, 16, 16,32, 1,32, 1 }},
+
+        {{compute::gpu_arch_t::xe2,  32, fma | second_token | quantized | integrated }, { 16, 16, 32, 16,  1, 4,  1, 4}},
+        {{compute::gpu_arch_t::xe2,  64, fma | second_token | quantized | integrated }, { 16, 32, 16, 16, 16, 2,  8, 4}},
+        {{compute::gpu_arch_t::xe2, 128, fma | second_token | quantized | integrated }, { 16, 32, 32, 16, 16, 1,  8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token | quantized | integrated }, { 16, 16, 16, 16, 32, 1, 32, 1}}
+
         // clang-format on
 };
 
 sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
-    if (fma && quantized) return nullptr;
+    if (arch == compute::gpu_arch_t::xe_hpg && fma && quantized) return nullptr;
+    if (arch == compute::gpu_arch_t::xe2 && fma && quantized && head_size > 256)
+        return nullptr;
 
     // ensures configs appear in order of most to least defined/desirable
     std::sort(std::begin(configs), std::end(configs));
@@ -457,7 +564,13 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
     auto it = find(begin(configs), end(configs), query);
-    if (it != end(configs)) { return &it->config; }
+    if (it != end(configs)) {
+        std::stringstream ss;
+        ss << " {query " << query << "} -> {config " << it->criteria << ":"
+           << it->config << " }";
+        VDEBUGINFO(4, primitive, sdpa, "config search: %s,", ss.str().c_str());
+        return &it->config;
+    }
     return nullptr;
 }
 

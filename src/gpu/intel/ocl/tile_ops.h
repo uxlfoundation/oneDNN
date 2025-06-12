@@ -183,6 +183,14 @@ DEF_BLOCK_LOAD_STORE16(uint, uint, )
 typedef uint uint32 __attribute__((ext_vector_type(32)));
 DEF_BLOCK_LOAD_STORE32(uint, uint, )
 
+DEF_BLOCK_LOAD_STORE1(float, uint, )
+DEF_BLOCK_LOAD_STORE(float, uint, , 2)
+DEF_BLOCK_LOAD_STORE(float, uint, , 4)
+DEF_BLOCK_LOAD_STORE(float, uint, , 8)
+DEF_BLOCK_LOAD_STORE16(float, uint, )
+typedef float float32 __attribute__((ext_vector_type(32)));
+DEF_BLOCK_LOAD_STORE32(float, uint, )
+
 #define DEF_BLOCK2D_LOAD_STORE(type, itype, vl, SG, suffix, BR, BC) \
     itype##vl __builtin_IB_subgroup_block_read_flat_##suffix( \
             long, int, int, int, int2); \

@@ -135,13 +135,15 @@ struct micro_sdpa_t : public gpu_primitive_t {
                     (utils::everyone_is(data_type::f16, qry_md()->data_type,
                              dst_md()->data_type)
                             || utils::everyone_is(data_type::bf16,
+                                    qry_md()->data_type, dst_md()->data_type)
+                            || utils::everyone_is(data_type::f32,
                                     qry_md()->data_type, dst_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(utils::one_of(key_md()->data_type, bf16, f16, u8,
-                                     s8, u4, s4),
+            VCHECK_SDPA_COND(utils::one_of(key_md()->data_type, f32, bf16, f16,
+                                     u8, s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(utils::one_of(val_md()->data_type, bf16, f16, u8,
-                                     s8, u4, s4),
+            VCHECK_SDPA_COND(utils::one_of(val_md()->data_type, f32, bf16, f16,
+                                     u8, s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
             VCHECK_SDPA_COND(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);

@@ -576,29 +576,22 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         problem.A.layout = static_cast<gemmstone::MatrixLayout>(
                 serialized_problem.A_layout);
 
-        if (serialized_problem.with_scales
-                && !serialized_problem.with_common_scales) {
-            problem.Ta_scale = {static_cast<gemmstone::Type::_Type>(
-                    serialized_problem.Ta_scale)};
-            problem.A_scale.setAlignment(serialized_problem.A_scale_alignment);
-            problem.A_scale.layout = static_cast<gemmstone::MatrixLayout>(
-                    serialized_problem.A_scale_layout);
-            problem.asPtrDims = serialized_problem.asPtrDims;
-        }
-        if (serialized_problem.with_zp) {
-            problem.Tao = {static_cast<gemmstone::Type::_Type>(
-                    serialized_problem.Tao)};
-            problem.AO.setAlignment(serialized_problem.AO_alignment);
-            problem.AO.layout = static_cast<gemmstone::MatrixLayout>(
-                    serialized_problem.AO_layout);
-            problem.aoPtrDims = serialized_problem.aoPtrDims;
-            problem.aOffset = static_cast<gemmstone::ABOffset>(
-                    serialized_problem.aOffset);
-        }
-        if (serialized_problem.with_scales || serialized_problem.with_zp) {
-            problem.aqGroupM = serialized_problem.aqGroupM;
-            problem.aqGroupK = serialized_problem.aqGroupK;
-        }
+        problem.Ta_scale = {static_cast<gemmstone::Type::_Type>(
+                serialized_problem.Ta_scale)};
+        problem.A_scale.setAlignment(serialized_problem.A_scale_alignment);
+        problem.A_scale.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.A_scale_layout);
+        problem.asPtrDims = serialized_problem.asPtrDims;
+        problem.Tao
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tao)};
+        problem.AO.setAlignment(serialized_problem.AO_alignment);
+        problem.AO.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.AO_layout);
+        problem.aoPtrDims = serialized_problem.aoPtrDims;
+        problem.aOffset
+                = static_cast<gemmstone::ABOffset>(serialized_problem.aOffset);
+        problem.aqGroupM = serialized_problem.aqGroupM;
+        problem.aqGroupK = serialized_problem.aqGroupK;
 
         problem.B.layout = static_cast<gemmstone::MatrixLayout>(
                 serialized_problem.B_layout);
@@ -607,10 +600,8 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         problem.A.setAlignment(serialized_problem.A_alignment);
         problem.B.setAlignment(serialized_problem.B_alignment);
         problem.B.crosspack = serialized_problem.B_crosspack;
-        if (serialized_problem.B_tileR > 0 && serialized_problem.B_tileC > 0) {
-            problem.B.tileR = serialized_problem.B_tileR;
-            problem.B.tileC = serialized_problem.B_tileC;
-        }
+        problem.B.tileR = serialized_problem.B_tileR;
+        problem.B.tileC = serialized_problem.B_tileC;
     };
     deserialize_problem(problem_kq, ukernel_config.problem_kq);
     deserialize_problem(problem_vs, ukernel_config.problem_vs);

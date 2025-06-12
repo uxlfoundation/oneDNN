@@ -52,6 +52,13 @@ dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 // are used for ukernel generation
 struct ukernel_serialized_opts_t
     : trivially_serializable_t<ukernel_serialized_opts_t> {
+
+    ukernel_serialized_opts_t() = default;
+    ukernel_serialized_opts_t(micro::GEMMProtocol::Options opts)
+        : localB(opts.localB)
+        , slmPtr(opts.slmPtr)
+        , scaleA(opts.scaleA)
+        , offsetA(opts.offsetA) {}
     bool localB, slmPtr, scaleA, offsetA;
     uint8_t padding[4] = {0};
 };
@@ -59,6 +66,13 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_opts_t);
 
 struct ukernel_serialized_hwinfo_t
     : trivially_serializable_t<ukernel_serialized_hwinfo_t> {
+
+    ukernel_serialized_hwinfo_t() = default;
+    ukernel_serialized_hwinfo_t(gemmstone::HWInformation &hwInfo)
+        : gmdid(static_cast<uint32_t>(hwInfo.gmdid))
+        , euCount(static_cast<uint32_t>(hwInfo.euCount))
+        , systolicAvailable(hwInfo.systolicAvailable) {}
+
     uint32_t gmdid;
     uint32_t euCount;
     bool systolicAvailable;
@@ -68,6 +82,10 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_hwinfo_t);
 
 struct ukernel_serialized_sizes_t
     : trivially_serializable_t<ukernel_serialized_sizes_t> {
+
+    ukernel_serialized_sizes_t() = default;
+    ukernel_serialized_sizes_t(gemmstone::SizeParams &sizes)
+        : batch(sizes.batch), m(sizes.m), n(sizes.n), k(sizes.k) {}
     int64_t batch = 0;
     int64_t m = 0, n = 0, k = 0;
 };
@@ -75,21 +93,40 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_sizes_t);
 
 struct ukernel_serialized_problem_t
     : trivially_serializable_t<ukernel_serialized_problem_t> {
+
+    ukernel_serialized_problem_t() = default;
+    ukernel_serialized_problem_t(gemmstone::GEMMProblem &problem)
+        : Ta_ext(static_cast<uint32_t>(problem.Ta_ext))
+        , Tb_ext(static_cast<uint32_t>(problem.Tb_ext))
+        , Tc_ext(static_cast<uint32_t>(problem.Tc_ext))
+        , Ta(static_cast<uint32_t>(problem.Ta))
+        , Tb(static_cast<uint32_t>(problem.Tb))
+        , Tc(static_cast<uint32_t>(problem.Tc))
+        , Ts(static_cast<uint32_t>(problem.Ts))
+        , A_layout(static_cast<int>(problem.A.layout))
+        , B_layout(static_cast<int>(problem.B.layout))
+        , C_layout(static_cast<int>(problem.C.layout))
+        , B_tileR(problem.B.tileR)
+        , B_tileC(problem.B.tileC)
+        , B_crosspack(problem.B.crosspack)
+        , A_alignment(problem.A.alignment)
+        , A_scale_alignment(problem.A_scale.alignment)
+        , AO_alignment(problem.AO.alignment)
+        , B_alignment(problem.B.alignment)
+        , asPtrDims(problem.asPtrDims)
+        , aOffset(static_cast<int>(problem.aOffset))
+        , Ta_scale(static_cast<uint32_t>(problem.Ta_scale))
+        , A_scale_layout(static_cast<int>(problem.A_scale.layout))
+        , Tao(static_cast<uint32_t>(problem.Tao))
+        , AO_layout(static_cast<int>(problem.AO.layout))
+        , aoPtrDims(problem.aoPtrDims)
+        , aqGroupM(problem.aqGroupM)
+        , aqGroupK(problem.aqGroupK) {}
+
     uint32_t Ta_ext, Tb_ext, Tc_ext;
     uint32_t Ta, Tb, Tc, Ts;
 
     int A_layout;
-    // default values set for optional quantization variables
-    // to avoid missing hash due to uninitialized values
-    uint32_t Ta_scale = static_cast<uint32_t>(gemmstone::Type::invalid);
-    uint32_t Tao = static_cast<uint32_t>(gemmstone::Type::invalid);
-    int A_scale_layout = static_cast<int>(gemmstone::MatrixLayout::N);
-
-    int AO_layout = static_cast<int>(gemmstone::MatrixLayout::N);
-    int aoPtrDims = 0;
-    int aqGroupM = 1;
-    int aqGroupK = 1;
-
     int B_layout;
     int C_layout;
 
@@ -98,14 +135,25 @@ struct ukernel_serialized_problem_t
     uint8_t B_crosspack;
 
     uint8_t A_alignment;
-    uint8_t A_scale_alignment = 0;
-    uint8_t AO_alignment = 0;
+    uint8_t A_scale_alignment;
+    uint8_t AO_alignment;
     uint8_t B_alignment;
+    uint8_t padding0[7] = {0};
+
+    int asPtrDims;
+    int aOffset;
+
+    uint32_t Ta_scale;
+    int A_scale_layout;
+    uint32_t Tao;
+
+    int AO_layout;
+    int aoPtrDims;
+    int aqGroupM;
+    int aqGroupK;
 
     bool with_scales, with_zp, with_common_scales;
-    uint8_t padding[4] = {0};
-    int asPtrDims = -1;
-    int aOffset;
+    uint8_t padding1[1] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
 

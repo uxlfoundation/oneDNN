@@ -189,13 +189,14 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.wg_n_vs = config->wg_n_vs;
 
     /* Get device information */
-    ukernel_serialized_hwinfo_t hwInfo;
-    hwInfo.euCount = static_cast<uint32_t>(dev_info->eu_count());
-    hwInfo.gmdid = static_cast<uint32_t>(dev_info->ip_version());
-    hwInfo.systolicAvailable = static_cast<uint32_t>(use_systolic_ukernel_);
+    HWInformation hw_info;
+    hw_info.euCount = dev_info->eu_count();
+    hw_info.gmdid = dev_info->ip_version();
+    hw_info.systolicAvailable = use_systolic_ukernel_;
 
-    if (hwInfo.gmdid == 0) return status::unimplemented;
-    ukernel_params.hwinfo = hwInfo;
+    if (hw_info.gmdid == 0) return status::unimplemented;
+
+    ukernel_params.hwinfo = {hw_info};
 
     sg_size_ = dev_info->min_subgroup_size();
 
@@ -208,86 +209,79 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool kq_common_zp = with_quantize_common(d->kq_zero_points);
 
     /* Set up GEMMProblem structure for first GEMM: K^T * Q */
-    ukernel_serialized_problem_t problem;
-
-    problem.Ta_ext = static_cast<uint32_t>(
-            jit::convert_dnnl_to_kernel_type(key_md()->data_type));
-    problem.Tb_ext = static_cast<uint32_t>(
-            jit::convert_dnnl_to_kernel_type(qry_md()->data_type));
+    GEMMProblem problem;
+    problem.Ta_ext = jit::convert_dnnl_to_kernel_type(key_md()->data_type);
+    problem.Tb_ext = jit::convert_dnnl_to_kernel_type(qry_md()->data_type);
     if (qry_md()->data_type == data_type::f16) {
-        problem.Ta = problem.Tb = static_cast<uint32_t>(Type::f16);
+        problem.Ta = problem.Tb = Type::f16;
     } else if (qry_md()->data_type == data_type::bf16) {
-        problem.Ta = problem.Tb = static_cast<uint32_t>(Type::bf16);
+        problem.Ta = problem.Tb = Type::bf16;
     } else {
         VCHECK_SDPA_COND(utils::one_of(qry_md()->data_type, data_type::f16,
                                  data_type::bf16),
                 "Q tensor's data type must be bf16 or f16");
     }
-    problem.Tc = problem.Tc_ext = static_cast<uint32_t>(Type::f32);
+    problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;
 
-    problem.A_layout
-            = static_cast<int>(convert_dnnl_to_kernel_layout(key_md()));
+    auto problem_kq = problem;
+    problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
 
-    problem.with_scales = with_key_scales();
-    problem.with_zp = with_key_zp();
-    problem.with_common_scales = kq_common_scales;
     if (with_key_scales() && !kq_common_scales) {
         auto scale_dt = key_scales_dt();
-        problem.Ta_scale = static_cast<uint32_t>(
-                jit::convert_dnnl_to_kernel_type(scale_dt));
-        problem.A_scale_alignment
-                = int8_t(d->keys() * types::data_type_size(scale_dt));
-        problem.A_scale_layout = static_cast<int>(MatrixLayout::N);
+        problem_kq.Ta_scale = jit::convert_dnnl_to_kernel_type(scale_dt);
+        problem_kq.A_scale.setAlignment(
+                int8_t(d->keys() * types::data_type_size(scale_dt)));
+        problem_kq.A_scale.layout = MatrixLayout::N;
         const int matrix_scale = 2;
-        problem.asPtrDims = matrix_scale;
+        problem_kq.asPtrDims = matrix_scale;
     }
-
     if (with_key_zp()) {
         auto zp_dt = key_zp_dt();
-        problem.Tao = static_cast<uint32_t>(
-                jit::convert_dnnl_to_kernel_type(zp_dt));
-        problem.AO_alignment = int8_t(d->keys() * types::data_type_size(zp_dt));
-        problem.AO_layout = static_cast<int>(MatrixLayout::N);
-        problem.aoPtrDims = kq_common_zp ? 0 : 2;
-        problem.aOffset = static_cast<int>(ABOffset::Calc);
+        problem_kq.Tao = jit::convert_dnnl_to_kernel_type(zp_dt);
+        problem_kq.AO.setAlignment(
+                int8_t(d->keys() * types::data_type_size(zp_dt)));
+        problem_kq.AO.layout = MatrixLayout::N;
+        problem_kq.aoPtrDims = kq_common_zp ? 0 : 2;
+        problem_kq.aOffset = ABOffset::Calc;
     }
 
     if (with_key_scales() || with_key_zp()) {
-        problem.aqGroupM = 1;
-        problem.aqGroupK
+        problem_kq.aqGroupM = 1;
+        problem_kq.aqGroupK
                 = (kq_common_scales || kq_common_zp) ? 1 : key_group_size();
     }
-    problem.B_layout = static_cast<int>(MatrixLayout::Pr);
-    problem.C_layout = static_cast<int>(MatrixLayout::T);
+
+    problem_kq.B.layout = MatrixLayout::Pr;
+    problem_kq.C.layout = MatrixLayout::T;
     const memory_desc_wrapper key_mdw(key_md());
     auto ldk = static_cast<int>(
             gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
-    problem.A_alignment = static_cast<uint8_t>(alignmentForLD(ldk));
-    problem.B_alignment = 64; // Q is packed in VNNI format in SLM
+    problem_kq.A.setAlignment(alignmentForLD(ldk));
+    problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
-        problem.B_crosspack = 2;
-        problem.B_tileR = into<uint16_t>(d_max());
-        problem.B_tileC = into<uint16_t>(sg_size_);
+        problem_kq.B.crosspack = 2;
+        problem_kq.B.tileR = into<uint16_t>(d_max());
+        problem_kq.B.tileC = into<uint16_t>(sg_size_);
     }
 
-    ukernel_params.problem_kq = problem;
+    ukernel_params.problem_kq = {problem_kq};
 
     /* Set up microkernel options */
-    ukernel_serialized_opts_t opts_kq;
+    micro::GEMMProtocol::Options opts_kq;
     opts_kq.localB = true;
     opts_kq.slmPtr = true;
-
     opts_kq.scaleA = with_key_scales() && !kq_common_scales;
     opts_kq.offsetA = with_key_zp();
 
-    ukernel_params.opts_kq = opts_kq;
+    ukernel_params.opts_kq = {opts_kq};
 
     /* Set up problem size information */
-    ukernel_serialized_sizes_t heuristic_sizes;
+    SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m = round_up_seq_interval(d->keys(), arch_);
+    heuristic_sizes.m = nearest_conf_seq_interval(
+            arch_, d->head_size(), d->keys(), thin_q, quantized, is_integrated);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (d->queries() <= thin_q_threshold)
             ? thin_q_threshold
@@ -296,41 +290,33 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             = d->head_size(); // baked into kernel regardless, no quantization
     heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
 
-    ukernel_params.sizes_kq = heuristic_sizes;
+    ukernel_params.sizes_kq = {heuristic_sizes};
 
     /* Set up GEMMProblem structure for second GEMM: V * S  */
-    ukernel_serialized_problem_t problem_vs = problem;
+    auto problem_vs = std::move(problem);
 
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);
 
-    problem_vs.Ta_ext = static_cast<uint32_t>(
-            jit::convert_dnnl_to_kernel_type(val_md()->data_type));
-    problem_vs.A_layout
-            = static_cast<int>(convert_dnnl_to_kernel_layout(val_md()));
-
-    problem_vs.with_scales = with_value_scales();
-    problem_vs.with_zp = with_value_zp();
-    problem_vs.with_common_scales = vs_common_scales;
+    problem_vs.Ta_ext = jit::convert_dnnl_to_kernel_type(val_md()->data_type);
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md());
     if (with_value_scales() && !vs_common_scales) {
         auto scale_dt = value_scales_dt();
-        problem_vs.Ta_scale = static_cast<uint32_t>(
-                jit::convert_dnnl_to_kernel_type(scale_dt));
-        problem_vs.A_scale_alignment = uint8_t(d->head_size()
-                / value_group_size() * types::data_type_size(scale_dt));
-        problem_vs.A_scale_layout = static_cast<int>(MatrixLayout::N);
+        problem_vs.Ta_scale = jit::convert_dnnl_to_kernel_type(scale_dt);
+        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
+                / value_group_size() * types::data_type_size(scale_dt)));
+        problem_vs.A_scale.layout = MatrixLayout::N;
         const int matrix_scale = 2;
         problem_vs.asPtrDims = matrix_scale;
     }
-
     if (with_value_zp()) {
         auto zp_dt = value_zp_dt();
-        problem_vs.Tao = static_cast<uint32_t>(
-                jit::convert_dnnl_to_kernel_type(zp_dt));
-        problem_vs.AO_alignment = uint8_t(d->head_size() / value_group_size()
-                * types::data_type_size(zp_dt));
-        problem_vs.AO_layout = static_cast<int>(MatrixLayout::N);
+        problem_vs.Tao = jit::convert_dnnl_to_kernel_type(zp_dt);
+        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
+                * types::data_type_size(zp_dt)));
+        problem_vs.AO.layout = MatrixLayout::N;
         problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;
+        problem_vs.aOffset = ABOffset::Calc;
     }
     if (with_value_scales() || with_value_zp()) {
         problem_vs.aqGroupM = (vs_common_scales || vs_common_zp)
@@ -339,17 +325,16 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
         problem_vs.aqGroupK = 1;
     }
 
-    problem_vs.B_layout = static_cast<int>(MatrixLayout::Pr);
-    problem_vs.C_layout = static_cast<int>(MatrixLayout::N);
+    problem_vs.B.layout = MatrixLayout::Pr;
+    problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper val_mdw(val_md());
     auto ldv = static_cast<int>(
             gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
-    problem_vs.A_alignment = static_cast<uint8_t>(alignmentForLD(ldv));
-    problem_vs.B_alignment = 64; // S is packed in SLM
-    if (use_systolic_ukernel()) { problem_vs.B_crosspack = 16; }
-    problem_vs.B_tileR = problem_vs.B_tileC = 0;
+    problem_vs.A.setAlignment(alignmentForLD(ldv));
+    problem_vs.B.setAlignment(64); // S is packed in SLM
+    if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
-    ukernel_params.problem_vs = problem_vs;
+    ukernel_params.problem_vs = {problem_vs};
 
     // directly tied to config, will recompile w/head size and config updates
     // no need for interval quantization
@@ -359,17 +344,16 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     heuristic_sizes.n = wg_tile_n;
     heuristic_sizes.k = wg_tile_m;
 
-    ukernel_params.sizes_vs = heuristic_sizes;
+    ukernel_params.sizes_vs = {heuristic_sizes};
 
     /* Set up microkernel options */
-    ukernel_serialized_opts_t opts_vs;
+    micro::GEMMProtocol::Options opts_vs;
     opts_vs.localB = true;
     opts_vs.slmPtr = true;
-
     opts_vs.scaleA = with_value_scales() && !vs_common_scales;
     opts_vs.offsetA = with_value_zp();
 
-    ukernel_params.opts_vs = opts_vs;
+    ukernel_params.opts_vs = {opts_vs};
 
     conf.ukernel_config = ukernel_params;
 

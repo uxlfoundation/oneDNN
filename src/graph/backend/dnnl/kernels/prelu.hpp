@@ -92,6 +92,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(prelu_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(prelu_fwd_t)
+    KERNEL_RESET_ENGINE
 };
 
 using float_prelu_fwd = prelu_fwd_t</* quantized */ false>;
@@ -149,6 +150,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(prelu_bwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(prelu_bwd_t)
+    KERNEL_RESET_ENGINE
 };
 #endif
 

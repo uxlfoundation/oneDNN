@@ -561,7 +561,7 @@ bool dnnl_graph_partition::is_supported() const {
 status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
         std::vector<const logical_tensor_t *> &inputs,
         std::vector<const logical_tensor_t *> &outputs,
-        const engine_t *aengine) const {
+        engine_t *aengine) const {
     status_t ret;
 
     if (!aengine || aengine->kind() != pimpl_->get_engine_kind())
@@ -647,7 +647,7 @@ status_t dnnl_graph_partition::compile(
         std::pair<compiled_partition_t *, cache_state_t> &compiled_partition,
         std::vector<const logical_tensor_t *> &inputs,
         std::vector<const logical_tensor_t *> &outputs,
-        const engine_t *aengine) const {
+        engine_t *aengine) const {
     namespace partition_hashing = partition_hashing;
     auto &global_compiled_partition_cache = compiled_partition_cache();
     partition_hashing::key_t key(this, aengine, inputs, outputs);
@@ -656,7 +656,7 @@ status_t dnnl_graph_partition::compile(
         const partition_t *partition;
         std::vector<const logical_tensor_t *> &inputs;
         std::vector<const logical_tensor_t *> &outputs;
-        const engine_t *engine;
+        engine_t *engine;
         cache_state_t cache_status;
     };
     create_context_t context {this, inputs, outputs, aengine,
@@ -679,10 +679,17 @@ status_t dnnl_graph_partition::compile(
 
     compiled_partition.first->init(result.value->pimpl_);
     compiled_partition.second = context.cache_status;
+    if (context.cache_status == cache_state_t::compiled_partition_hit
+            && aengine != compiled_partition.first->get_engine()) {
+        compiled_partition_t *cp = compiled_partition.first;
+        cp->reset_engine(aengine);
+    }
 
     return result.status;
 }
-
+status_t dnnl_graph_compiled_partition::reset_engine(engine_t *e) {
+    return pimpl_->reset_engine(e);
+}
 status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) const {

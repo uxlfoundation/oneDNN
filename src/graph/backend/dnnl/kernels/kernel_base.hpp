@@ -37,6 +37,11 @@ namespace graph {
 namespace dnnl_impl {
 
 class dnnl_partition_impl_t;
+#define KERNEL_RESET_ENGINE \
+    status_t reset_engine(const engine_t *g_engine) override { \
+        dnnl::engine p_engine = make_dnnl_engine(*g_engine); \
+        return subgraph_->reset_engine(p_engine); \
+    }
 
 struct kernel_base_t {
     virtual ~kernel_base_t() = default;
@@ -51,6 +56,7 @@ struct kernel_base_t {
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs)
             = 0;
+    virtual status_t reset_engine(const engine_t *aengine) = 0;
 
     status_t execute(const stream_t *astream,
             const std::vector<tensor_t> &inputs,

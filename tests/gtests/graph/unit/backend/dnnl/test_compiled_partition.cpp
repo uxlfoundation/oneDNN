@@ -307,7 +307,7 @@ TEST(test_compiled_partition, GetAndInfoMethod) {
             = std::make_shared<graph::dnnl_impl::float_pooling_fwd>();
     auto cp_impl = std::make_shared<
             graph::dnnl_impl::dnnl_compiled_partition_impl_t>(
-            engine, inputs, outputs, kernel);
+            &engine, inputs, outputs, kernel);
     graph::partition_t par;
     const graph::fpmath_t fpm {graph::fpmath_mode::strict, false};
     auto par_impl = std::make_shared<graph::dnnl_impl::dnnl_partition_impl_t>(
@@ -348,7 +348,7 @@ TEST(test_compiled_partition, GetInputsAndOutputs) {
             = std::make_shared<graph::dnnl_impl::float_pooling_fwd>();
     auto cp = std::make_shared<
             graph::dnnl_impl::dnnl_compiled_partition_impl_t>(
-            engine, inputs, outputs, kernel);
+            &engine, inputs, outputs, kernel);
 
     ASSERT_EQ(cp->get_inputs().size(), inputs.size());
     for (size_t i = 0; i < cp->get_inputs().size(); ++i) {

@@ -97,6 +97,10 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_kernel_t)
+    status_t reset_engine(const engine_t *g_engine) override {
+        UNUSED(g_engine);
+        return dnnl_success;
+    }
 };
 
 } // namespace dnnl_impl

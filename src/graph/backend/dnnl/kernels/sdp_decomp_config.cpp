@@ -27,7 +27,8 @@ namespace graph {
 namespace dnnl_impl {
 
 bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &inputs) {
+        const std::vector<logical_tensor_t> &inputs,
+        const std::vector<logical_tensor_t> &outputs) {
     // The order of input logical tensors in inputs is not certain, we need
     // to record the input offset in a certain order of ops.
     CHECK_BOOL(record_input_offset(sg, inputs));
@@ -35,6 +36,8 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     ndims = src1_user_dims.size();
     VCHECK_SDP_DECOMP(ndims == 4 || ndims == 5, false,
             "Input dims should be 4 or 5, but got %zu", src1_user_dims.size());
+    VCHECK_SDP_DECOMP(
+            outputs.size() == 1, false, "does not support multiple outputs");
 
     // Initialize SDP input dimension according to the src of mm1
     int index = 0;

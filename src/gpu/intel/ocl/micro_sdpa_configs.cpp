@@ -23,511 +23,361 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-// Kernel configurations:
-//  h<N> -- maximum head size = N
-//  s<M> -- target sequence length = M
-//   2nd -- second token (thin Q)
-sdpa_config_t xehpg_fma_h32 = {16, 16, 8, 16, 8, 4, 8, 4};
-sdpa_config_t xehpg_fma_h32_2nd = {32, 16, 8, 8, 16, 2, 8, 4};
-
-sdpa_config_t xehpg_fma_h64 = {16, 16, 16, 16, 8, 2, 8, 2};
-sdpa_config_t xehpg_fma_h64_2nd = {16, 16, 32, 8, 32, 1, 16, 2};
-
-sdpa_config_t xehpg_fma_h80_s634 = {8, 16, 16, 16, 8, 4, 8, 4};
-
-sdpa_config_t xehpg_fma_h128_s2048 = {8, 16, 16, 16, 8, 4, 8, 4};
-sdpa_config_t xehpg_fma_h128_2nd = {32, 16, 32, 8, 16, 2, 8, 4};
-
-sdpa_config_t xehpg_fma_h256 = {8, 32, 64, 8, 16, 1, 4, 4};
-sdpa_config_t xehpg_fma_h256_2nd = {16, 8, 16, 8, 32, 1, 32, 1};
-
-sdpa_config_t xehpg_h32 = {32, 16, 16, 16, 2, 16, 2, 16};
-sdpa_config_t xehpg_h32_s256 = {16, 16, 16, 16, 2, 8, 2, 8};
-sdpa_config_t xehpg_h32_s64 = {16, 16, 16, 8, 4, 4, 2, 8};
-sdpa_config_t xehpg_h32_s32 = {8, 8, 8, 8, 4, 4, 4, 4};
-sdpa_config_t xehpg_h32_2nd = {8, 32, 16, 8, 8, 1, 2, 4};
-
-sdpa_config_t xehpg_q_h32 = {32, 16, 16, 16, 2, 8, 2, 8};
-sdpa_config_t xehpg_q_h32_2nd = {32, 16, 8, 8, 8, 1, 4, 2};
-
-sdpa_config_t xehpg_h64 = {32, 16, 16, 16, 4, 8, 4, 8};
-sdpa_config_t xehpg_h64_s128 = {16, 16, 16, 16, 4, 8, 4, 8};
-sdpa_config_t xehpg_h64_s64 = {32, 16, 16, 8, 8, 4, 4, 8};
-sdpa_config_t xehpg_h64_2nd = {8, 16, 16, 8, 8, 1, 4, 2};
-
-sdpa_config_t xehpg_q_h64 = {32, 16, 16, 16, 4, 8, 4, 8};
-sdpa_config_t xehpg_q_h64_s128 = {16, 16, 16, 8, 8, 4, 4, 8};
-sdpa_config_t xehpg_q_h64_s64 = {32, 8, 32, 8, 2, 8, 2, 8};
-sdpa_config_t xehpg_q_h64_s32 = {8, 8, 16, 8, 4, 8, 4, 8};
-
-sdpa_config_t xehpg_q_h64_s64_2nd = {8, 8, 8, 8, 8, 2, 8, 2};
-sdpa_config_t xehpg_q_h64_s128_2nd = {16, 8, 8, 8, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h64_2nd = {16, 16, 8, 8, 16, 2, 8, 4};
-
-sdpa_config_t xehpg_h128 = {16, 16, 32, 8, 8, 4, 4, 8};
-sdpa_config_t xehpg_h128_s32 = {16, 16, 16, 8, 16, 2, 8, 4};
-sdpa_config_t xehpg_h128_2nd = {8, 16, 16, 8, 16, 1, 8, 2};
-sdpa_config_t xehpg_h128_s256_2nd = {8, 16, 32, 8, 8, 1, 4, 2};
-
-sdpa_config_t xehpg_q_h128 = {8, 32, 16, 32, 8, 2, 8, 2};
-sdpa_config_t xehpg_q_h128_s64 = {8, 8, 16, 8, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h128_s512 = {16, 16, 16, 16, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h128_2nd = {16, 16, 16, 8, 16, 2, 8, 4};
-sdpa_config_t xehpg_q_h128_s96_2nd = {8, 8, 8, 8, 16, 2, 16, 2};
-
-sdpa_config_t xehpg_h256 = {16, 16, 32, 8, 16, 2, 8, 4};
-sdpa_config_t xehpg_h256_s128 = {8, 16, 32, 16, 8, 4, 8, 4};
-sdpa_config_t xehpg_h256_s32 = {8, 16, 32, 8, 16, 2, 8, 4};
-
-sdpa_config_t xehpg_q_h256 = {16, 16, 64, 8, 8, 4, 4, 8};
-sdpa_config_t xehpg_q_h256_s512 = {16, 16, 32, 16, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h256_s64 = {8, 8, 32, 8, 8, 4, 8, 4};
-
-sdpa_config_t xehpg_h256_2nd = {8, 8, 16, 8, 16, 1, 16, 1};
-sdpa_config_t xehpg_h256_s64_2nd = {16, 8, 16, 8, 16, 1, 16, 1};
-sdpa_config_t xehpg_h256_s32_2nd = {16, 16, 32, 8, 16, 1, 8, 2};
-
-sdpa_config_t xehpg_q_h256_2nd = {32, 8, 32, 8, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h256_s96_2nd = {8, 8, 16, 8, 16, 2, 16, 2};
-
-sdpa_config_t xehpg_q_h512_s64 = {8, 8, 64, 8, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h512_s128 = {8, 16, 32, 16, 16, 2, 16, 2};
-sdpa_config_t xehpg_q_h512_s256 = {16, 8, 64, 8, 8, 4, 8, 4};
-sdpa_config_t xehpg_q_h512 = {8, 16, 64, 8, 16, 2, 8, 4};
-
-sdpa_config_t xehpg_q_h512_s64_2nd = {8, 16, 32, 8, 32, 1, 16, 2};
-sdpa_config_t xehpg_q_h512_s256_2nd = {16, 8, 32, 8, 16, 2, 16, 2};
-sdpa_config_t xehpg_q_h512_2nd = {16, 8, 16, 8, 32, 1, 32, 1};
-
-sdpa_config_t xehpg_h512 = {8, 16, 32, 16, 16, 2, 16, 2};
-sdpa_config_t xehpg_h512_2nd = {8, 8, 32, 8, 16, 1, 16, 1};
-
-sdpa_config_t xehpc_h32 = {16, 64, 32, 16, 4, 2, 1, 8};
-sdpa_config_t xehpc_h32_s32 = {16, 16, 16, 16, 2, 4, 2, 4};
-sdpa_config_t xehpc_h32_2nd = {16, 64, 16, 16, 8, 1, 2, 4};
-
-sdpa_config_t xehpc_h64 = {16, 64, 32, 16, 8, 2, 2, 8};
-sdpa_config_t xehpc_h64_s64 = {32, 32, 32, 16, 4, 2, 2, 4};
-sdpa_config_t xehpc_h64_s32 = {16, 16, 16, 16, 4, 2, 4, 2};
-sdpa_config_t xehpc_h64_2nd = {32, 32, 32, 16, 4, 1, 2, 2};
-sdpa_config_t xehpc_h64_s64_2nd = {16, 16, 16, 16, 4, 1, 4, 1};
-
-sdpa_config_t xehpc_q_h64_s64 = {16, 16, 16, 16, 4, 4, 4, 4};
-sdpa_config_t xehpc_q_h64_s384 = {16, 64, 16, 32, 8, 2, 4, 4};
-sdpa_config_t xehpc_q_h64_s1024 = {16, 64, 16, 16, 16, 1, 4, 4};
-sdpa_config_t xehpc_q_h64 = {16, 64, 16, 32, 8, 1, 4, 2};
-
-sdpa_config_t xehpc_q_h64_s96_2nd = {16, 16, 16, 16, 8, 1, 4, 1};
-sdpa_config_t xehpc_q_h64_s256_2nd = {16, 16, 16, 16, 16, 1, 16, 1};
-sdpa_config_t xehpc_q_h64_s1152_2nd = {16, 16, 16, 16, 16, 1, 16, 1};
-sdpa_config_t xehpc_q_h64_2nd = {64, 16, 16, 16, 16, 2, 16, 2};
-
-sdpa_config_t xehpc_h128 = {16, 64, 32, 16, 16, 2, 4, 8};
-sdpa_config_t xehpc_h128_s64 = {16, 32, 32, 32, 4, 2, 4, 2};
-sdpa_config_t xehpc_h128_s32 = {16, 16, 16, 16, 8, 2, 8, 2};
-sdpa_config_t xehpc_h128_2nd = {32, 32, 32, 16, 8, 1, 4, 2};
-
-sdpa_config_t xehpc_q_h128 = {16, 64, 16, 32, 16, 1, 8, 2};
-sdpa_config_t xehpc_q_h128_s32 = {16, 16, 16, 16, 8, 2, 8, 2};
-sdpa_config_t xehpc_q_h128_s128 = {16, 16, 16, 16, 8, 4, 8, 4};
-sdpa_config_t xehpc_q_h128_s128_integrated = {16, 16, 16, 16, 8, 2, 8, 2};
-
-sdpa_config_t xehpc_q_h128_2nd = {16, 16, 16, 16, 16, 1, 16, 1};
-sdpa_config_t xehpc_q_h128_2nd_integrated = {16, 16, 16, 16, 8, 1, 8, 1};
-sdpa_config_t xehpc_q_h128_s96_2nd = {16, 16, 16, 16, 8, 1, 8, 1};
-sdpa_config_t xehpc_q_h128_s512_2nd = {16, 16, 16, 16, 16, 2, 8, 2};
-
-sdpa_config_t xehpc_h256 = {16, 32, 32, 32, 8, 4, 8, 4};
-sdpa_config_t xehpc_h256_s64 = {16, 32, 32, 32, 8, 1, 8, 1};
-sdpa_config_t xehpc_h256_2nd = {16, 16, 16, 16, 16, 1, 16, 1};
-
-sdpa_config_t xehpc_h512_s32 = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xehpc_h512_s128 = {16, 16, 64, 16, 8, 4, 8, 4};
-sdpa_config_t xehpc_h512 = {32, 16, 64, 16, 8, 4, 8, 4};
-
-sdpa_config_t xehpc_h512_s128_2nd = {16, 16, 64, 16, 8, 1, 8, 1};
-sdpa_config_t xehpc_h512_s512_2nd = {32, 16, 32, 16, 16, 1, 16, 1};
-sdpa_config_t xehpc_h512_s1024_2nd = {64, 16, 32, 16, 16, 1, 16, 1};
-sdpa_config_t xehpc_h512_2nd = {32, 16, 32, 16, 16, 1, 16, 1};
-
-sdpa_config_t xehpc_h576 = {16, 32, 32, 32, 32, 1, 32, 1};
-sdpa_config_t xehpc_h576_2nd = {32, 16, 32, 16, 32, 1, 31, 1};
-
-sdpa_config_t xehpc_q_h512_s128 = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xehpc_q_h512 = {16, 32, 64, 16, 16, 2, 8, 4};
-
-sdpa_config_t xehpc_q_h512_2nd = {16, 16, 32, 16, 16, 2, 16, 2};
-
-sdpa_config_t xe2_q_h64 = {16, 64, 16, 32, 16, 1, 8, 2};
-sdpa_config_t xe2_q_h64_s1024_integrated = {16, 64, 16, 32, 8, 4, 4, 8};
-sdpa_config_t xe2_q_h64_s512 = {16, 64, 16, 32, 8, 4, 4, 8};
-sdpa_config_t xe2_q_h64_s384 = {16, 64, 16, 16, 16, 1, 4, 4};
-sdpa_config_t xe2_q_h64_s128 = {16, 64, 16, 32, 8, 1, 4, 2};
-sdpa_config_t xe2_q_h64_s128_integrated = {16, 16, 16, 16, 4, 4, 4, 4};
-sdpa_config_t xe2_q_h64_s32 = {16, 16, 16, 16, 4, 4, 4, 4};
-
-sdpa_config_t xe2_q_h64_2nd = {16, 16, 16, 16, 16, 1, 8, 1};
-sdpa_config_t xe2_q_h64_2nd_integrated = {16, 16, 16, 16, 8, 1, 8, 1};
-sdpa_config_t xe2_q_h64_s96_2nd_integrated = {16, 16, 16, 16, 8, 1, 4, 1};
-sdpa_config_t xe2_q_h64_s384_2nd_integrated = {64, 16, 16, 16, 4, 1, 4, 1};
-sdpa_config_t xe2_q_h64_s64_2nd = {16, 16, 16, 16, 4, 2, 4, 2};
-sdpa_config_t xe2_q_h64_s128_2nd = {16, 16, 16, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_q_h64_s384_2nd = {16, 16, 16, 16, 16, 1, 4, 1};
-sdpa_config_t xe2_q_h64_s512_2nd = {64, 16, 16, 16, 8, 1, 8, 1};
-sdpa_config_t xe2_q_h64_s768_2nd = {64, 16, 16, 16, 16, 1, 8, 1};
-
-sdpa_config_t xe2_q_h256 = {16, 64, 16, 32, 32, 1, 16, 2};
-sdpa_config_t xe2_q_h256_s384 = {16, 32, 32, 32, 8, 2, 8, 2};
-sdpa_config_t xe2_q_h256_s128 = {16, 32, 32, 32, 8, 1, 8, 1};
-sdpa_config_t xe2_q_h256_s128_integrated = {16, 32, 32, 32, 8, 2, 8, 2};
-sdpa_config_t xe2_q_h256_s64_integrated = {16, 16, 16, 16, 16, 1, 16, 1};
-sdpa_config_t xe2_q_h256_s64 = {16, 32, 64, 16, 8, 2, 4, 4};
-
-sdpa_config_t xe2_q_h256_2nd_integrated = {32, 16, 64, 16, 4, 1, 4, 1};
-sdpa_config_t xe2_q_h256_s1152_2nd_integrated = {16, 16, 64, 16, 4, 1, 4, 1};
-sdpa_config_t xe2_q_h256_s768_2nd_integrated = {64, 16, 16, 16, 16, 1, 16, 1};
-sdpa_config_t xe2_q_h256_s512_2nd_integrated = {32, 32, 32, 16, 16, 1, 8, 2};
-sdpa_config_t xe2_q_h256_s384_2nd_integrated = {16, 16, 16, 16, 16, 1, 16, 1};
-
-sdpa_config_t xe2_h512_s64 = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_h512 = {32, 16, 64, 16, 8, 4, 8, 4};
-
-sdpa_config_t xe2_h512_s128_2nd = {16, 16, 64, 16, 8, 1, 8, 1};
-sdpa_config_t xe2_h512_s512_2nd = {32, 16, 64, 16, 16, 1, 16, 1};
-sdpa_config_t xe2_h512_s1024_2nd = {64, 16, 32, 16, 16, 2, 16, 2};
-sdpa_config_t xe2_h512_2nd = {32, 16, 64, 16, 16, 1, 16, 1};
-
-sdpa_config_t xe2_q_h512_s128 = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_q_h512 = {16, 32, 64, 16, 16, 2, 8, 4};
-
-sdpa_config_t xe2_q_h512_s64_2nd = {16, 16, 64, 16, 8, 1, 8, 1};
-sdpa_config_t xe2_q_h512_2nd = {16, 16, 64, 16, 16, 1, 16, 1};
-
-sdpa_config_t xe2_h512_s128_integrated = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_h512_integrated = {16, 16, 16, 16, 32, 1, 32, 1};
-
-sdpa_config_t xe2_h512_s256_2nd_integrated = {16, 16, 64, 16, 8, 1, 8, 1};
-sdpa_config_t xe2_h512_s1024_2nd_integrated = {16, 16, 64, 16, 8, 2, 8, 2};
-sdpa_config_t xe2_h512_2nd_integrated = {16, 16, 64, 16, 16, 2, 16, 2};
-
-sdpa_config_t xe2_h576 = {16, 32, 32, 32, 32, 1, 32, 1};
-
-sdpa_config_t xe2_q_h512_integrated = {16, 32, 32, 32, 16, 1, 16, 1};
-
-sdpa_config_t xe2_q_h512_s64_2nd_integrated = {16, 32, 64, 32, 16, 2, 8, 2};
-sdpa_config_t xe2_q_h512_s128_2nd_integrated = {16, 16, 64, 16, 8, 1, 32, 1};
-sdpa_config_t xe2_q_h512_s256_2nd_integrated = {16, 32, 64, 32, 16, 2, 8, 2};
-sdpa_config_t xe2_q_h512_s512_2nd_integrated = {16, 16, 64, 16, 4, 4, 8, 4};
-sdpa_config_t xe2_q_h512_s1024_2nd_integrated = {16, 16, 64, 16, 16, 1, 16, 1};
-sdpa_config_t xe2_q_h512_2nd_integrated = {32, 16, 64, 16, 8, 1, 16, 1};
-
-sdpa_config_t *choose_config_xehpg_fma(
-        dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
-    if (quantized) { return nullptr; }
-    if (head_size <= 32) {
-        if (thin_q) return &xehpg_fma_h32_2nd;
-        return &xehpg_fma_h32;
-    } else if (head_size <= 64) {
-        if (thin_q) return &xehpg_fma_h64_2nd;
-        return &xehpg_fma_h64;
-    } else if (head_size <= 80) {
-        return &xehpg_fma_h80_s634;
-    } else if (head_size <= 128) {
-        if (thin_q) { return &xehpg_fma_h128_2nd; }
-        return &xehpg_fma_h128_s2048;
-    } else if (head_size <= 256) {
-        if (thin_q) { return &xehpg_fma_h256_2nd; }
-        return &xehpg_fma_h256;
-    } // no supported tile configurations for 512+
-    return nullptr;
+inline sdpa_property operator|(sdpa_property a, sdpa_property b) {
+    return (sdpa_property)((int)a | (int)b);
+}
+inline sdpa_property operator&(sdpa_property a, sdpa_property b) {
+    return (sdpa_property)((int)a & (int)b);
+}
+inline sdpa_property operator^(sdpa_property a, sdpa_property b) {
+    return (sdpa_property)((int)a ^ (int)b);
+}
+inline sdpa_property &operator|=(sdpa_property &a, sdpa_property b) {
+    return (sdpa_property &)((int &)a |= (int)b);
+}
+inline sdpa_property &operator&=(sdpa_property &a, sdpa_property b) {
+    return (sdpa_property &)((int &)a &= (int)b);
+}
+inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
+    return (sdpa_property &)((int &)a ^= (int)b);
 }
 
-sdpa_config_t *choose_config_xehpg(
-        dim_t head_size, dim_t seq, bool thin_q, bool quantized) {
-    if (head_size <= 32) {
-        if (quantized && seq >= 128) {
-            if (thin_q) return &xehpg_q_h32_2nd;
-            return &xehpg_q_h32;
-        }
-        if (thin_q) return &xehpg_h32_2nd;
-        if (seq <= 32) return &xehpg_h32_s32;
-        if (seq <= 64) return &xehpg_h32_s64;
-        if (seq <= 256) return &xehpg_h32_s256;
-        return &xehpg_h32;
-    } else if (head_size <= 64) {
-        if (quantized) {
-            if (thin_q) {
-                if (seq <= 64) return &xehpg_q_h64_s64_2nd;
-                if (seq <= 128) return &xehpg_q_h64_s128_2nd;
-                return &xehpg_q_h64_2nd;
-            } else {
-                if (seq <= 32) return &xehpg_q_h64_s32;
-                if (seq <= 64) return &xehpg_q_h64_s64;
-                if (seq <= 128) return &xehpg_q_h64_s128;
-                return &xehpg_q_h64;
-            }
-        }
-        if (thin_q) return &xehpg_h64_2nd;
-        if (seq <= 64) return &xehpg_h64_s64;
-        if (seq <= 128) return &xehpg_h64_s128;
-        return &xehpg_h64;
-    } else if (head_size <= 128) {
-        if (quantized) {
-            if (thin_q) {
-                if (seq <= 96) return &xehpg_q_h128_s96_2nd;
-                return &xehpg_q_h128_2nd;
-            }
-            if (seq <= 64) return &xehpg_q_h128_s64;
-            if (seq <= 512) return &xehpg_q_h128_s512;
-            return &xehpg_q_h128;
-        }
-        if (thin_q) {
-            if (seq <= 256) return &xehpg_h128_s256_2nd;
-            return &xehpg_h128_2nd;
-        }
-        if (seq <= 32) return &xehpg_h128_s32;
-        return &xehpg_h128;
-    } else if (head_size <= 256) {
-        if (thin_q) {
-            if (quantized) {
-                if (seq <= 96) return &xehpg_q_h256_s96_2nd;
-                return &xehpg_q_h256_2nd;
-            }
-            if (seq <= 32) return &xehpg_h256_s32_2nd;
-            if (seq <= 64) return &xehpg_h256_s64_2nd;
-            return &xehpg_h256_2nd;
-        }
-        if (quantized) {
-            if (seq <= 64) return &xehpg_q_h256_s64;
-            if (seq <= 512) return &xehpg_q_h256_s512;
-            return &xehpg_q_h256;
-        }
-        if (seq <= 32) return &xehpg_h256_s32;
-        if (seq <= 128) return &xehpg_h256_s128;
-        return &xehpg_h256;
-    } else if (head_size <= 512) {
-        if (quantized) {
-            if (thin_q) {
-                if (seq <= 64) return &xehpg_q_h512_s64_2nd;
-                if (seq <= 256) return &xehpg_q_h512_s256_2nd;
-                return &xehpg_q_h512_2nd;
-            }
-            if (seq <= 64) return &xehpg_q_h512_s64;
-            if (seq <= 128) return &xehpg_q_h512_s128;
-            if (seq <= 256) return &xehpg_q_h512_s256;
-            return &xehpg_q_h512;
-        }
-        if (thin_q) { return &xehpg_h512_2nd; }
-        return &xehpg_h512;
-    }
-    return nullptr;
+std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
+    s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
+      << " seq:" << q.seq_len
+      << " props:" << (int)(q.property & sdpa_property::second_token) << " "
+      << (int)(q.property & sdpa_property::quantized) << " "
+      << (int)(q.property & sdpa_property::integrated) << " "
+      << (int)(q.property & sdpa_property::fma);
+    return s;
 }
-static std::vector<dim_t> seq_intervals_xehpg = {32, 64, 96, 128, 256, 512};
+std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
+    s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
+      << " seq:" << c.seq_len
+      << " props:" << (int)(c.property & sdpa_property::second_token) << " "
+      << (int)(c.property & sdpa_property::quantized) << " "
+      << (int)(c.property & sdpa_property::integrated) << " "
+      << (int)(c.property & sdpa_property::fma);
+    return s;
+}
+std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
+    s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
+      << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
+      << c.wg_m_vs << "," << c.wg_n_vs;
+    return s;
+}
 
-sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q,
-        bool quantized, bool is_integrated) {
-    if (head_size <= 32) {
-        if (thin_q) return &xehpc_h32_2nd;
-        if (seq <= 32) return &xehpc_h32_s32;
-        return &xehpc_h32;
-    } else if (head_size <= 64) {
-        if (thin_q) {
-            if (quantized) {
-                if (seq <= 96) return &xehpc_q_h64_s96_2nd;
-                if (seq <= 256) return &xehpc_q_h64_s256_2nd;
-                if (seq <= 1152) return &xehpc_q_h64_s1152_2nd;
-                return &xehpc_q_h64_2nd;
-            }
+bool operator==(const config_record_t &key, const config_query_t &query) {
+    bool result
+            = ((query.arch == key.criteria.arch)
+                      && (query.head_size <= key.criteria.head_size)
+                      && ((query.seq_len == -1 && key.criteria.seq_len == -1)
+                              || (query.seq_len != -1
+                                      && query.seq_len <= key.criteria.seq_len))
+                      && ((query.property & sdpa_property::second_token)
+                              == (key.criteria.property
+                                      & sdpa_property::second_token)))
+            && ((query.property & sdpa_property::quantized)
+                    == (key.criteria.property & sdpa_property::quantized))
+            && ((query.property & sdpa_property::fma)
+                    == (key.criteria.property & sdpa_property::fma))
+            && (((query.property & sdpa_property::integrated)
+                        == sdpa_property::none)
+                    || ((query.property & sdpa_property::integrated)
+                            == (key.criteria.property
+                                    & sdpa_property::integrated)));
+    return result;
+}
 
-            if (seq <= 64) return &xehpc_h64_s64_2nd;
-            return &xehpc_h64_2nd;
+bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
+    auto num_set_fields = [](const config_criteria_t &crit) {
+        int set_fields = 0;
+        if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
+        if (crit.head_size != -1) { set_fields++; }
+        if (crit.seq_len != -1) { set_fields++; }
+        if ((int)(crit.property & sdpa_property::second_token)) {
+            set_fields++;
         }
-        if (quantized) {
-            if (seq <= 64) return &xehpc_q_h64_s64;
-            if (seq <= 384) return &xehpc_q_h64_s384;
-            if (seq <= 1024) return &xehpc_q_h64_s1024;
-            return &xehpc_q_h64;
-        }
-        if (seq <= 32) return &xehpc_h64_s32;
-        if (seq <= 64) return &xehpc_h64_s64;
-        return &xehpc_h64;
-    } else if (head_size <= 128) {
-        if (quantized) {
-            if (thin_q) {
-                if (is_integrated) { return &xehpc_q_h128_2nd_integrated; }
-                if (seq <= 96) return &xehpc_q_h128_s96_2nd;
-                if (seq <= 512) return &xehpc_q_h128_s512_2nd;
-                return &xehpc_q_h128_2nd;
-            }
-            if (is_integrated) {
-                if (seq <= 128) { return &xehpc_q_h128_s128_integrated; }
-            }
-            if (seq <= 32) return &xehpc_q_h128_s32;
-            if (seq <= 128) return &xehpc_q_h128_s128;
-            return &xehpc_q_h128;
-        }
-        if (thin_q) return &xehpc_h128_2nd;
-        if (seq <= 32) return &xehpc_h128_s32;
-        if (seq <= 64) return &xehpc_h128_s64;
-        return &xehpc_h128;
-    } else if (head_size <= 256) {
-        if (thin_q) return &xehpc_h256_2nd;
-        if (seq <= 64) return &xehpc_h256_s64;
-        return &xehpc_h256;
-    } else if (head_size <= 512) {
-        if (thin_q) {
-            if (quantized) return &xehpc_q_h512_2nd;
+        if ((int)(crit.property & sdpa_property::quantized)) { set_fields++; }
+        if ((int)(crit.property & sdpa_property::integrated)) { set_fields++; }
+        if ((int)(crit.property & sdpa_property::fma)) { set_fields++; }
+        return set_fields;
+    };
 
-            if (seq <= 128) return &xehpc_h512_s128_2nd;
-            if (seq <= 512) return &xehpc_h512_s512_2nd;
-            if (seq <= 1024) return &xehpc_h512_s1024_2nd;
-            return &xehpc_h512_2nd;
-        }
+    int l_set_fields = num_set_fields(lhs);
+    int r_set_fields = num_set_fields(rhs);
 
-        if (quantized) {
-            if (seq <= 128) return &xehpc_q_h512_s128;
-            return &xehpc_q_h512;
-        }
-        if (seq <= 32) return &xehpc_h512_s32;
-        if (seq <= 128) return &xehpc_h512_s128;
-        return &xehpc_h512;
-    } else if (head_size <= 576) {
-        if (!quantized) {
-            if (thin_q) return &xehpc_h576_2nd;
-            return &xehpc_h576;
-        }
+    // SWO, first sort by arch
+    if (lhs.arch != rhs.arch) return lhs.arch < rhs.arch;
+    // then by head size
+    else if (lhs.head_size != rhs.head_size)
+        return lhs.head_size < rhs.head_size;
+    // then by sequence length (if both defined)
+    else if (lhs.seq_len != rhs.seq_len && lhs.seq_len != -1
+            && rhs.seq_len != -1)
+        return lhs.seq_len < rhs.seq_len;
+    // then if single seq_len == -1 prefer defined seq_len
+    else if (lhs.seq_len != rhs.seq_len)
+        return lhs.seq_len != -1;
+    // then by most->least set properties
+    else if (l_set_fields != r_set_fields)
+        return (l_set_fields > r_set_fields);
+    return false;
+}
+
+bool operator<(const config_record_t &lhs, const config_record_t &rhs) {
+    return lhs.criteria < rhs.criteria;
+}
+
+static auto constexpr second_token = sdpa_property::second_token;
+static auto constexpr quantized = sdpa_property::quantized;
+static auto constexpr integrated = sdpa_property::integrated;
+static auto constexpr fma = sdpa_property::fma;
+
+// Kernel configurations: [ arch, head_size, {sequence length}, {properties} ] -> config
+static std::vector<config_record_t> configs = {
+        // clang-format off
+        // xe_hpg
+        {{compute::gpu_arch_t::xe_hpg, 32},               {32, 16, 16, 16, 2, 16, 2, 16}},
+        {{compute::gpu_arch_t::xe_hpg, 32, 256},          {16, 16, 16, 16, 2, 8, 2, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 32, 64},           {16, 16, 16, 8, 4, 4, 2, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 32, 32},           {8, 8, 8, 8, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 32, second_token}, {8, 32, 16, 8, 8, 1, 2, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 32, quantized},                {32, 16, 16, 16, 2, 8, 2, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 32, quantized | second_token}, {32, 16, 8, 8, 16, 2, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 32, fma},                {16, 16, 8, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 32, fma | second_token}, {8, 32, 16, 8, 8, 1, 2, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 64},               {32, 16, 16, 16, 4, 8, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 128},          {16, 16, 16, 16, 4, 8, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 64},           {32, 16, 16, 8, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, second_token}, {8, 16, 16, 8, 8, 1, 4, 2}},
+
+        {{compute::gpu_arch_t::xe_hpg, 64, fma},                {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 64, fma | second_token}, {16, 16, 32, 8, 32, 1, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpg, 64,      quantized}, {32, 16, 16, 16, 4, 8, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 128, quantized}, {16, 16, 16, 8, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 64,  quantized}, {32, 8, 32, 8, 2, 8, 2, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 32,  quantized}, {8, 8, 16, 8, 4, 8, 4, 8}},
+
+        {{compute::gpu_arch_t::xe_hpg, 64,      quantized | second_token}, {16, 16, 8, 8, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 128, quantized | second_token}, {16, 8, 8, 8, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 64,  quantized | second_token}, {8, 8, 8, 8, 8, 2, 8, 2}},
+
+
+        {{compute::gpu_arch_t::xe_hpg, 80, fma}, {8, 16, 16, 16, 8, 4, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 128},                    {16, 16, 32, 8, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 32},                {16, 16, 16, 8, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 256, second_token}, {8, 16, 32, 8, 8, 1, 4, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128, second_token},      {8, 16, 16, 8, 16, 1, 8, 2}},
+
+        {{compute::gpu_arch_t::xe_hpg, 128,      quantized}, {8, 32, 16, 32, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 64,  quantized}, {8, 8, 16, 8, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 512, quantized}, {16, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 96,  quantized | second_token}, {8, 8, 8, 8, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128,      quantized | second_token}, {16, 16, 16, 8, 16, 2, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 128, fma},                {8, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 128, fma | second_token}, {32, 16, 32, 8, 16, 2, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 256},      {16, 16, 32, 8, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 128}, {8, 16, 32, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 32},  {8, 16, 32, 8, 16, 2, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 256,      quantized}, {16, 16, 64, 8, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 512, quantized}, {16, 16, 32, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 64,  quantized}, {8, 8, 32, 8, 8, 4, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 256,     second_token}, {8, 8, 16, 8, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 64, second_token}, {16, 8, 16, 8, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 32, second_token}, {16, 16, 32, 8, 16, 1, 8, 2}},
+
+        {{compute::gpu_arch_t::xe_hpg, 256,     second_token | quantized}, {32, 8, 32, 8, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 256, 96, second_token | quantized}, {8, 8, 16, 8, 16, 2, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpg, 256, fma},                {8, 32, 64, 8, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 256, fma | second_token}, {16, 8, 16, 8, 32, 1, 32, 1}},
+
+        {{compute::gpu_arch_t::xe_hpg, 512, 64,  quantized}, {8, 8, 64, 8, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 512, 128, quantized}, {8, 16, 32, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 512, 256, quantized}, {16, 8, 64, 8, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 512,      quantized}, {8, 16, 64, 8, 16, 2, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 512, 64,  second_token | quantized}, {8, 16, 32, 8, 32, 1, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 512, 256, second_token | quantized}, {16, 8, 32, 8, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 512,      second_token | quantized}, {16, 8, 16, 8, 32, 1, 32, 1}},
+
+        {{compute::gpu_arch_t::xe_hpg, 512},               {8, 16, 32, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 512, second_token}, {8, 8, 32, 8, 16, 1, 16, 1}},
+
+        // xe_hpc
+        {{compute::gpu_arch_t::xe_hpc, 32},               {16, 64, 32, 16, 4, 2, 1, 8}},
+        {{compute::gpu_arch_t::xe_hpc, 32, 32},           {16, 16, 16, 16, 2, 4, 2, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
+
+        {{compute::gpu_arch_t::xe_hpc, 64},                   {16, 64, 32, 16, 8, 2, 2, 8}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 64},               {32, 32, 32, 16, 4, 2, 2, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 32},               {16, 16, 16, 16, 4, 2, 4, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 64,     second_token}, {32, 32, 32, 16, 4, 1, 2, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 64, second_token}, {16, 16, 16, 16, 4, 1, 4, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 64, 1024, quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 384,  quantized}, {16, 64, 16, 32, 8, 2, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 64,   quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64,       quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 64, 1152, second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 256,  second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 96,   second_token | quantized}, {16, 16, 16, 16, 8, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 64,       second_token | quantized}, {64, 16, 16, 16, 16, 2, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 128},               {16, 64, 32, 16, 16, 2, 4, 8}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 64},           {16, 32, 32, 32, 4, 2, 4, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 32},           {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, second_token}, {32, 32, 32, 16, 8, 1, 4, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 128,      quantized},              {16, 64, 16, 32, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 128, quantized},              {16, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 32,  quantized},              {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 128, integrated | quantized}, {16, 16, 16, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 128,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 512, second_token | quantized}, {16, 16, 16, 16, 16, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 256},               {16, 32, 32, 32, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 64},           {16, 32, 32, 32, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256, second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 512},      {32, 16, 64, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 128}, {16, 16, 64, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 32},  {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 512,       second_token}, {32, 16, 32, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 1024, second_token}, {64, 16, 32, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 512,  second_token}, {32, 16, 32, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 128,  second_token}, {16, 16, 64, 16, 8, 1, 8, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 576},               {16, 32, 32, 32, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 576, second_token}, {32, 16, 32, 16, 32, 1, 31, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 512,      quantized}, {16, 32, 64, 16, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 512, 128, quantized}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 512, second_token | quantized}, {16, 16, 32, 16, 16, 2, 16, 2}},
+
+        // xe2
+        {{compute::gpu_arch_t::xe2, 64,      quantized}, {16, 64, 16, 32, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 512, quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 64, 384, quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 128, quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 32,  quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 1024, integrated | quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 64, 128,  integrated | quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+
+        {{compute::gpu_arch_t::xe2, 64,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 768, second_token | quantized}, {64, 16, 16, 16, 16, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 512, second_token | quantized}, {64, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 384, second_token | quantized}, {16, 16, 16, 16, 16, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 128, second_token | quantized}, {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 64,  second_token | quantized}, {16, 16, 16, 16, 4, 2, 4, 2}},
+
+        {{compute::gpu_arch_t::xe2, 64,      integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 384, integrated | second_token | quantized}, {64, 16, 16, 16, 4, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 64, 96,  integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 4, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256,      quantized}, {16, 64, 16, 32, 32, 1, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 384, quantized}, {16, 32, 32, 32, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 128, quantized}, {16, 32, 32, 32, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 64,  quantized}, {16, 32, 64, 16, 8, 2, 4, 4}},
+
+        {{compute::gpu_arch_t::xe2, 256, 128, integrated | quantized}, {16, 32, 32, 32, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 64,  integrated | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256,       integrated | second_token | quantized}, {32, 16, 64, 16, 4, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 1152, integrated | second_token | quantized}, {16, 16, 64, 16, 4, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 768,  integrated | second_token | quantized}, {64, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 512,  integrated | second_token | quantized}, {32, 32, 32, 16, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 384,  integrated | second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 512},     {32, 16, 64, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 512, 64}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 512, 1024, second_token}, {64, 16, 32, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 512, 512,  second_token}, {32, 16, 64, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 128,  second_token}, {16, 16, 64, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 512,       second_token}, {32, 16, 64, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 512,      quantized}, {16, 32, 64, 16, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 512, 128, quantized}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 512,     second_token | quantized}, {16, 16, 64, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 64, second_token | quantized}, {16, 16, 64, 16, 8, 1, 8, 1}},
+
+        {{compute::gpu_arch_t::xe2, 512,      integrated}, {16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 128, integrated}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 512,       integrated | second_token}, {16, 16, 64, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 512, 256,  integrated | second_token}, {16, 16, 64, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 1024, integrated | second_token}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 512, integrated | quantized}, {16, 32, 32, 32, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 512,       integrated | second_token | quantized}, {32, 16, 64, 16, 8, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 1024, integrated | second_token | quantized}, {16, 16, 64, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 512,  integrated | second_token | quantized}, {16, 16, 64, 16, 4, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 512, 256,  integrated | second_token | quantized}, {16, 32, 64, 32, 16, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 512, 128,  integrated | second_token | quantized}, {16, 16, 64, 16, 8, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe2, 512, 64,   integrated | second_token | quantized}, {16, 32, 64, 32, 16, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}}
+        // clang-format on
+};
+
+sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
+    std::sort(std::begin(configs), std::end(configs));
+
+    sdpa_property query_properties = sdpa_property::none;
+    if (thin_q) { query_properties |= sdpa_property::second_token; }
+    if (quantized) { query_properties |= sdpa_property::quantized; }
+    if (integrated) { query_properties |= sdpa_property::integrated; }
+    if (fma) { query_properties |= sdpa_property::fma; }
+
+    config_query_t query(arch, static_cast<int>(head_size),
+            static_cast<int>(seq), query_properties);
+    auto it = find(begin(configs), end(configs), query);
+    if (it != end(configs)) {
+        return &it->config;
+    } else {
+        query.seq_len = -1;
+        it = find(begin(configs), end(configs), query);
+        if (it != end(configs)) { return &it->config; }
     }
     return nullptr;
 }
-static std::vector<dim_t> seq_intervals_xehpc
-        = {32, 64, 96, 128, 256, 384, 512, 768, 1024, 1152};
-
-sdpa_config_t *choose_config_xe2(dim_t head_size, dim_t seq, bool thin_q,
-        bool quantized, bool is_integrated) {
-    if (head_size <= 64) {
-        if (quantized) {
-            if (thin_q) {
-                if (is_integrated) {
-                    if (seq <= 96) return &xe2_q_h64_s96_2nd_integrated;
-                    if (seq <= 384) return &xe2_q_h64_s384_2nd_integrated;
-                    return &xe2_q_h64_2nd_integrated;
-                }
-                if (seq <= 64) return &xe2_q_h64_s64_2nd;
-                if (seq <= 128) return &xe2_q_h64_s128_2nd;
-                if (seq <= 384) return &xe2_q_h64_s384_2nd;
-                if (seq <= 512) return &xe2_q_h64_s512_2nd;
-                if (seq <= 768) return &xe2_q_h64_s768_2nd;
-                return &xe2_q_h64_2nd;
-            }
-            if (seq <= 32) return &xe2_q_h64_s32;
-            if (is_integrated) {
-                if (seq <= 128) return &xe2_q_h64_s128_integrated;
-            }
-            if (seq <= 128) return &xe2_q_h64_s128;
-            if (seq <= 384) return &xe2_q_h64_s384;
-            if (seq <= 512) return &xe2_q_h64_s512;
-            if (is_integrated) {
-                if (seq <= 1024) return &xe2_q_h64_s1024_integrated;
-            }
-            return &xe2_q_h64;
-        }
-    }
-
-    if (head_size <= 128) {
-        return choose_config_xehpc(
-                head_size, seq, thin_q, quantized, is_integrated);
-    }
-
-    if (head_size <= 256) {
-        if (quantized) {
-            if (is_integrated) {
-                if (thin_q) {
-                    if (seq < 384) return &xe2_q_h256_s384_2nd_integrated;
-                    if (seq < 512) return &xe2_q_h256_s512_2nd_integrated;
-                    if (seq < 768) return &xe2_q_h256_s768_2nd_integrated;
-                    if (seq < 1152) return &xe2_q_h256_s1152_2nd_integrated;
-                    return &xe2_q_h256_2nd_integrated;
-                }
-                if (seq <= 64) return &xe2_q_h256_s64_integrated;
-                if (seq <= 128) return &xe2_q_h256_s128_integrated;
-            }
-            if (!thin_q) {
-                if (seq <= 64) return &xe2_q_h256_s64;
-                if (seq <= 128) return &xe2_q_h256_s128;
-                if (seq <= 384) return &xe2_q_h256_s384;
-                return &xe2_q_h256;
-            }
-        }
-    }
-
-    if (head_size <= 512) {
-        if (thin_q) {
-            if (quantized) {
-                if (is_integrated) {
-                    if (seq <= 64) return &xe2_q_h512_s64_2nd_integrated;
-                    if (seq <= 128) return &xe2_q_h512_s128_2nd_integrated;
-                    if (seq <= 256) return &xe2_q_h512_s256_2nd_integrated;
-                    if (seq <= 512) return &xe2_q_h512_s512_2nd_integrated;
-                    if (seq <= 1024) return &xe2_q_h512_s1024_2nd_integrated;
-                    return &xe2_q_h512_2nd_integrated;
-                }
-                if (seq <= 64) return &xe2_q_h512_s64_2nd;
-                return &xe2_q_h512_2nd;
-            }
-
-            if (is_integrated) {
-                if (seq <= 256) return &xe2_h512_s256_2nd_integrated;
-                if (seq <= 1024) return &xe2_h512_s1024_2nd_integrated;
-                return &xe2_h512_2nd_integrated;
-            }
-            if (seq <= 128) return &xe2_h512_s128_2nd;
-            if (seq <= 512) return &xe2_h512_s512_2nd;
-            if (seq <= 1024) return &xe2_h512_s1024_2nd;
-            return &xe2_h512_2nd;
-        }
-
-        if (quantized) {
-            if (is_integrated) return &xe2_q_h512_integrated;
-            if (seq <= 128) return &xe2_q_h512_s128;
-            return &xe2_q_h512;
-        }
-        if (is_integrated) {
-            if (seq <= 128) return &xe2_h512_s128_integrated;
-            return &xe2_h512_integrated;
-        }
-        if (seq <= 64) return &xe2_h512_s64;
-        return &xe2_h512;
-    }
-    if (head_size <= 576) {
-        if (!quantized) { return &xe2_h576; }
-    }
-    return choose_config_xehpc(
-            head_size, seq, thin_q, quantized, is_integrated);
-}
-static std::vector<dim_t> seq_intervals_xe2
-        = {64, 96, 128, 256, 384, 512, 768, 1024, 1152};
 
 // adjust heuristic intervals to match the tuned intervals according
 // to the sequence length and gpu architecture
 // this way recompilation both matches the tuned intervals and avoids
 // excessive recompilation with smaller power of 2 sizes
-dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch) {
-    const std::vector<dim_t> *seq_intervals;
-    switch (arch) {
-        case compute::gpu_arch_t::xe_hpg:
-            seq_intervals = &seq_intervals_xehpg;
-            break;
-        case compute::gpu_arch_t::xe_hpc:
-            seq_intervals = &seq_intervals_xehpc;
-            break;
-        case compute::gpu_arch_t::xe2:
-        case compute::gpu_arch_t::xe3: seq_intervals = &seq_intervals_xe2;
-        default: return utils::rnd_up_pow2(seq);
-    }
+dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
+    sdpa_property query_properties = sdpa_property::none;
+    if (thin_q) { query_properties |= sdpa_property::second_token; }
+    if (quantized) { query_properties |= sdpa_property::quantized; }
+    if (integrated) { query_properties |= sdpa_property::integrated; }
+    if (fma) { query_properties |= sdpa_property::fma; }
 
-    for (auto seq_boundary : *seq_intervals) {
-        if (seq <= seq_boundary) { return seq_boundary; }
-    }
+    config_query_t query(arch, static_cast<int>(head_size),
+            static_cast<int>(seq), query_properties);
+    auto it = find(begin(configs), end(configs), query);
+    if (it != end(configs)) { return it->criteria.seq_len; }
     return utils::rnd_up_pow2(seq);
 }
 

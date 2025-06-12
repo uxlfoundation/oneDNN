@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_OCL_MICRO_SDPA_CONFIGS_HPP
 #define GPU_INTEL_OCL_MICRO_SDPA_CONFIGS_HPP
 
+#include <string>
 #include "common/c_types_map.hpp"
 #include "gemmstone/microkernel_provider.hpp"
 
@@ -33,19 +34,71 @@ struct sdpa_config_t {
     int wg_m_vs, wg_n_vs; // Workgroup configuration for V*S GEMM
 };
 
-sdpa_config_t *choose_config_xehpg_fma(
-        dim_t head_size, dim_t seq, bool thin_q, bool quantized);
+enum class sdpa_property : int {
+    none = 0x0,
+    second_token = 0x1,
+    quantized = 0x2,
+    integrated = 0x4,
+    fma = 0x8
+};
 
-sdpa_config_t *choose_config_xehpg(
-        dim_t head_size, dim_t seq, bool thin_q, bool quantized);
+inline sdpa_property operator|(sdpa_property a, sdpa_property b);
+inline sdpa_property operator&(sdpa_property a, sdpa_property b);
+inline sdpa_property operator^(sdpa_property a, sdpa_property b);
+inline sdpa_property &operator|=(sdpa_property &a, sdpa_property b);
+inline sdpa_property &operator&=(sdpa_property &a, sdpa_property b);
+inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b);
 
-sdpa_config_t *choose_config_xehpc(dim_t head_size, dim_t seq, bool thin_q,
-        bool quantized, bool is_integrated);
+struct config_query_t {
+    static constexpr int any = -1;
+    compute::gpu_arch_t arch;
+    int head_size;
+    int seq_len = any;
+    sdpa_property property = sdpa_property::none;
 
-sdpa_config_t *choose_config_xe2(dim_t head_size, dim_t seq, bool thin_q,
-        bool quantized, bool is_integrated);
+    config_query_t(compute::gpu_arch_t arch_, int head_size_,
+            int seq_len_ = any, sdpa_property property_ = sdpa_property::none)
+        : arch(arch_)
+        , head_size(head_size_)
+        , seq_len(seq_len_)
+        , property(property_) {}
+};
 
+struct config_criteria_t {
+    static constexpr int any = -1;
+    compute::gpu_arch_t arch;
+    int head_size;
+    int seq_len = any;
+    sdpa_property property = sdpa_property::none;
+    config_criteria_t(compute::gpu_arch_t a, int hs)
+        : arch(a), head_size(hs), seq_len(any), property(sdpa_property::none) {}
+    config_criteria_t(compute::gpu_arch_t a, int hs, int sq)
+        : arch(a), head_size(hs), seq_len(sq), property(sdpa_property::none) {}
+    config_criteria_t(compute::gpu_arch_t a, int hs, sdpa_property prop)
+        : arch(a), head_size(hs), seq_len(any), property(prop) {}
+    config_criteria_t(compute::gpu_arch_t a, int hs, int sq, sdpa_property prop)
+        : arch(a), head_size(hs), seq_len(sq), property(prop) {}
+};
+
+struct config_record_t {
+    config_criteria_t criteria;
+    sdpa_config_t config;
+};
+
+std::ostream &operator<<(std::ostream &s, const config_query_t &q);
+std::ostream &operator<<(std::ostream &s, const config_criteria_t &c);
+std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c);
+
+bool operator==(const config_record_t &key, const config_query_t &query);
+bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs);
+bool operator<(const config_record_t &lhs, const config_record_t &rhs);
+
+sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
+
+dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma);
 
 // serializable options for microkernel configuration
 // follows reduced subset of structs from gemmstone that

@@ -98,7 +98,6 @@ status_t update_config_from_devenv_values(
 
 status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
-    using arch_t = compute::gpu_arch_t;
 
     assert(engine->kind() == engine_kind::gpu);
     auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
@@ -119,26 +118,9 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     use_systolic_ukernel_ = compute_engine->mayiuse(
             compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
 
-    switch (arch_) {
-        case arch_t::xe_hpg:
-            if (!use_systolic_ukernel_) {
-                config = choose_config_xehpg_fma(
-                        d->head_size(), d->keys(), thin_q, quantized);
-            } else {
-                config = choose_config_xehpg(
-                        d->head_size(), d->keys(), thin_q, quantized);
-            }
-            break;
-        case arch_t::xe_hpc:
-            config = choose_config_xehpc(d->head_size(), d->keys(), thin_q,
-                    quantized, is_integrated);
-            break;
-        case arch_t::xe2:
-        case arch_t::xe3:
-            config = choose_config_xe2(d->head_size(), d->keys(), thin_q,
-                    quantized, is_integrated);
-        default: break;
-    }
+    bool use_fma_config = !use_systolic_ukernel_;
+    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
+            is_integrated, use_fma_config);
 
     if (!config) return status::unimplemented;
 
@@ -280,8 +262,8 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m = nearest_conf_seq_interval(
-            arch_, d->head_size(), d->keys(), thin_q, quantized, is_integrated);
+    heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
+            d->keys(), thin_q, quantized, is_integrated, use_fma_config);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (d->queries() <= thin_q_threshold)
             ? thin_q_threshold

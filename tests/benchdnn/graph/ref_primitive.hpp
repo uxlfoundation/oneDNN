@@ -18,7 +18,6 @@
 #define BENCHDNN_GRAPH_REF_PRIMITIVE_HPP
 
 #include "deserialize.hpp"
-#include "setting_handler.hpp"
 
 namespace graph {
 

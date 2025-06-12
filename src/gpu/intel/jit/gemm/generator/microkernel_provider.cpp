@@ -240,7 +240,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 {
     if (hw < HW::XeHPG) return false;
     if (problem.C.layout == MatrixLayout::T) return false;
-    if (problem.Ta.size() != 2 || problem.Tb.size() != 2) return false;
 
     bool systolic = hwInfo.systolicAvailable;
     bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % 16) == 0;

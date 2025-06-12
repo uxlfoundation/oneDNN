@@ -547,9 +547,28 @@ expr_t simplify_rewrite_with_ternary(const expr_t &e, bool recursive) {
 
 class cmp_simplifier_t : public ir_mutator_t {
 public:
+    cmp_simplifier_t(const constraint_set_t &cset) : cset(cset) {}
+
     object_t _mutate(const binary_op_t &obj) override {
         auto e = ir_mutator_t::_mutate(obj);
         if (!is_binary_cmp_op(e)) return e;
+
+        auto op_kind = e.as<binary_op_t>().op_kind;
+        auto &a = e.as<binary_op_t>().a;
+        auto &b = e.as<binary_op_t>().b;
+
+        if (a.type().is_unsigned() && b.type().is_signed()) {
+            bool b_lt_0 = cset.can_prove(b < 0);
+            bool b_le_0 = cset.can_prove(b <= 0);
+
+            if (op_kind == op_kind_t::_ne && b_lt_0) return expr_t(true);
+            if (op_kind == op_kind_t::_ge && b_le_0) return expr_t(true);
+            if (op_kind == op_kind_t::_gt && b_lt_0) return expr_t(true);
+
+            if (op_kind == op_kind_t::_eq && b_lt_0) return expr_t(false);
+            if (op_kind == op_kind_t::_le && b_lt_0) return expr_t(false);
+            if (op_kind == op_kind_t::_lt && b_le_0) return expr_t(false);
+        }
 
         e = simplify_mod_comparison(e);
 
@@ -649,10 +668,12 @@ public:
         // Can't prove, return the original expression.
         return e;
     }
+
+    const constraint_set_t &cset;
 };
 
-expr_t simplify_comparison(const expr_t &e) {
-    return cmp_simplifier_t().mutate(e);
+expr_t simplify_comparison(const expr_t &e, const constraint_set_t &cset) {
+    return cmp_simplifier_t(cset).mutate(e);
 }
 
 class range_simplifier_t : public ir_mutator_t {
@@ -1688,6 +1709,15 @@ public:
         return stmt_t();
     }
 
+    object_t _mutate(const while_t &obj) override {
+        auto cond = simplify(obj.cond);
+        if (is_const(cond) && !to_cpp<bool>(cond)) return stmt_t();
+        auto body = mutate(obj.body);
+        if (body.is_empty()) return stmt_t();
+        if (obj.cond.is_same(cond) && obj.body.is_same(body)) return obj;
+        return while_t::make(cond, body);
+    }
+
 private:
     static op_kind_t flip_cmp_op(op_kind_t op_kind) {
         switch (op_kind) {
@@ -1735,7 +1765,7 @@ expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset) {
     e = simplify_rewrite(e);
 
     e = simplify_with_nary(e, cset);
-    e = simplify_comparison(e);
+    e = simplify_comparison(e, cset);
     e = range_simplifier_t(cset).mutate(e);
 
     e = const_fold(e);

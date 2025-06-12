@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "ref_primitive.hpp"
+#include "setting_handler.hpp"
 
 namespace graph {
 

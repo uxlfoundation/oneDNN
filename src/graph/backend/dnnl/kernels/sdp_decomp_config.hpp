@@ -156,7 +156,8 @@ public:
     // If the check passes, initialize few members according to inputs
     // If no, return unimplemented status directly and fallback to large kernel
     bool initial_check(const std::shared_ptr<subgraph_t> &sg,
-            const std::vector<logical_tensor_t> &inputs);
+            const std::vector<logical_tensor_t> &inputs,
+            const std::vector<logical_tensor_t> &outputs);
 
     // Used to construct all params that SDP need
     template <bool quantized = false,

@@ -51,7 +51,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     // Check if it's supported by decomposition kernel
-    if (!sdp_cfg_.initial_check(subgraph_, inputs))
+    if (!sdp_cfg_.initial_check(subgraph_, inputs, outputs))
         return status::unimplemented;
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {

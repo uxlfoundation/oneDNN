@@ -114,12 +114,14 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
     bool is_integrated = compute_engine->device_info()->is_integrated();
-    use_systolic_ukernel_ = compute_engine->mayiuse(
-            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
+    use_systolic_ukernel_
+            = compute_engine->mayiuse(compute::device_ext_t::
+                              intel_subgroup_matrix_multiply_accumulate)
+            && (qry_md()->data_type != data_type::f32); // f32 non-systolic only
 
     switch (arch_) {
         case arch_t::xe_hpg:
-            if(!use_systolic_ukernel_) {
+            if (!use_systolic_ukernel_) {
                 config = choose_config_xehpg_fma(
                         d->head_size(), d->keys(), thin_q, quantized);
             } else {
@@ -200,6 +202,8 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem.Ta = problem.Tb = Type::f16;
     } else if (qry_md()->data_type == data_type::bf16) {
         problem.Ta = problem.Tb = Type::bf16;
+    } else if (qry_md()->data_type == data_type::f32) {
+        problem.Ta = problem.Tb = Type::f32;
     } else {
         VCHECK_SDPA_COND(utils::one_of(qry_md()->data_type, data_type::f16,
                                  data_type::bf16),

@@ -1579,16 +1579,17 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     ss << md2fmt_str("dst", pd->dst_md(), pd->invariant_dst_user_format_kind())
        << ",";
 
-    std::string delimiter;
+    ss << pd->attr();
+    std::string delimiter = " ";
     if (pd->with_key_scales() || pd->with_value_scales()) {
         ss << delimiter << "attr-scales:";
         delimiter = "";
         if (pd->with_key_scales()) {
-            ss << delimiter << "kq:" << desc->kq_scales;
+            ss << delimiter << "key:" << desc->kq_scales;
             delimiter = "+";
         }
         if (pd->with_value_scales()) {
-            ss << delimiter << "vs:" << desc->vs_scales;
+            ss << delimiter << "val:" << desc->vs_scales;
             delimiter = "+";
         }
         delimiter = " ";
@@ -1597,25 +1598,35 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << delimiter << "attr-zero-points:";
         delimiter = "";
         if (pd->with_key_zp()) {
-            ss << delimiter << "kq:" << desc->kq_zero_points;
+            ss << delimiter << "key:" << desc->kq_zero_points;
             delimiter = "+";
         }
         if (pd->with_value_zp()) {
-            ss << delimiter << "vs:" << desc->vs_zero_points;
+            ss << delimiter << "val:" << desc->vs_zero_points;
             delimiter = "+";
         }
     }
     ss << ",";
 
+    ss << "alg:" << desc->softmax_alg;
     if (pd->with_attn_mask()) {
         auto *md = pd->attn_mask_md();
-        ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
+        ss << " msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
         if (desc->mask_type == attn_mask_type::top_left)
-            ss << "msk:causal:top_left";
+            ss << " msk:causal:top_left";
         else
-            ss << "msk:causal:bottom_right";
+            ss << " msk:causal:bottom_right";
     }
+    if (pd->with_attn_scale()) {
+        ss << " scl:";
+        if (desc->invert_scale)
+            ss << "div:";
+        else
+            ss << "mul:";
+        ss << dnnl_dt2str(desc->scale_dt);
+    }
+
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
        << ":" << md2dim_str(pd->val_md());
 

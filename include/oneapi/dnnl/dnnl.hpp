@@ -4587,7 +4587,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns The requested memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     parameter of the specified kind or index.
-    memory::desc query_md(query what, int idx = 0) const {
+    const memory::desc query_md(query what, int idx = 0) const {
         std::vector<query> valid_q {query::src_md, query::diff_src_md,
                 query::weights_md, query::diff_weights_md, query::dst_md,
                 query::diff_dst_md, query::workspace_md, query::scratchpad_md,
@@ -4599,13 +4599,10 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
 
         const_dnnl_memory_desc_t cdesc = dnnl_primitive_desc_query_md(
                 get(), dnnl::convert_to_c(what), idx);
-        if (!cdesc) return memory::desc();
 
-        dnnl_memory_desc_t cloned_md = nullptr;
-        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
-                "could not clone a memory descriptor");
+        auto nc_cdesc = const_cast<dnnl_memory_desc_t>(cdesc);
 
-        return memory::desc(cloned_md);
+        return nc_cdesc ? memory::desc(nc_cdesc) : memory::desc();
     }
 
     /// Returns a source memory descriptor.
@@ -4613,7 +4610,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Source memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     source parameter with index @p idx.
-    memory::desc src_desc(int idx) const {
+    const memory::desc src_desc(int idx) const {
         return query_md(query::src_md, idx);
     }
 
@@ -4622,7 +4619,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Destination memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     destination parameter with index @p idx.
-    memory::desc dst_desc(int idx) const {
+    const memory::desc dst_desc(int idx) const {
         return query_md(query::dst_md, idx);
     }
 
@@ -4631,7 +4628,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Weights memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     weights parameter with index @p idx.
-    memory::desc weights_desc(int idx) const {
+    const memory::desc weights_desc(int idx) const {
         return query_md(query::weights_md, idx);
     }
 
@@ -4640,7 +4637,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Diff source memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff source parameter with index @p idx.
-    memory::desc diff_src_desc(int idx) const {
+    const memory::desc diff_src_desc(int idx) const {
         return query_md(query::diff_src_md, idx);
     }
 
@@ -4649,7 +4646,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Diff destination memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff destination parameter with index @p idx.
-    memory::desc diff_dst_desc(int idx) const {
+    const memory::desc diff_dst_desc(int idx) const {
         return query_md(query::diff_dst_md, idx);
     }
 
@@ -4658,7 +4655,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Diff weights memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff weights parameter with index @p idx.
-    memory::desc diff_weights_desc(int idx) const {
+    const memory::desc diff_weights_desc(int idx) const {
         return query_md(query::diff_weights_md, idx);
     }
 
@@ -4669,43 +4666,45 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns Source memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     source parameter.
-    memory::desc src_desc() const { return src_desc(0); }
+    const memory::desc src_desc() const { return src_desc(0); }
 
     /// Returns a destination memory descriptor.
     /// @returns Destination memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     destination parameter.
-    memory::desc dst_desc() const { return dst_desc(0); }
+    const memory::desc dst_desc() const { return dst_desc(0); }
 
     /// Returns a weights memory descriptor.
     /// @returns Weights memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     weights parameter.
-    memory::desc weights_desc() const { return weights_desc(0); }
+    const memory::desc weights_desc() const { return weights_desc(0); }
 
     /// Returns a diff source memory descriptor.
     /// @returns Diff source memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff source memory with.
-    memory::desc diff_src_desc() const { return diff_src_desc(0); }
+    const memory::desc diff_src_desc() const { return diff_src_desc(0); }
 
     /// Returns a diff destination memory descriptor.
     /// @returns Diff destination memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff destination parameter.
-    memory::desc diff_dst_desc() const { return diff_dst_desc(0); }
+    const memory::desc diff_dst_desc() const { return diff_dst_desc(0); }
 
     /// Returns a diff weights memory descriptor.
     /// @returns Diff weights memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///     diff weights parameter.
-    memory::desc diff_weights_desc() const { return diff_weights_desc(0); }
+    const memory::desc diff_weights_desc() const {
+        return diff_weights_desc(0);
+    }
 
     /// Returns the workspace memory descriptor.
     /// @returns Workspace memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not require
     ///     workspace parameter.
-    memory::desc workspace_desc() const {
+    const memory::desc workspace_desc() const {
         return query_md(query::workspace_md, 0);
     }
 
@@ -4714,7 +4713,7 @@ struct primitive_desc_base : public handle<dnnl_primitive_desc_t> {
     /// @returns A zero memory descriptor if the primitive does not require
     ///     scratchpad parameter.
     /// @sa @ref dev_guide_attributes_scratchpad
-    memory::desc scratchpad_desc() const {
+    const memory::desc scratchpad_desc() const {
         return query_md(query::scratchpad_md, 0);
     }
 
@@ -5066,10 +5065,10 @@ struct reorder : public primitive {
         }
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
     };
 
     /// Default constructor. Produces an empty object.
@@ -5217,10 +5216,12 @@ struct concat : public primitive {
             : primitive_desc_base(pd, dnnl::primitive::kind::concat) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc(int)const
-        memory::desc src_desc(int idx = 0) const { return base::src_desc(idx); }
+        const memory::desc src_desc(int idx = 0) const {
+            return base::src_desc(idx);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
     };
 
     /// Default constructor. Produces an empty object.
@@ -5338,10 +5339,12 @@ struct sum : public primitive {
             : primitive_desc_base(pd, dnnl::primitive::kind::sum) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc(int)const
-        memory::desc src_desc(int idx = 0) const { return base::src_desc(idx); }
+        const memory::desc src_desc(int idx = 0) const {
+            return base::src_desc(idx);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
     };
 
     /// Default constructor. Produces an empty object.
@@ -5608,19 +5611,21 @@ struct convolution_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// Returns the bias memory descriptor.
         /// @returns The bias memory descriptor.
         /// @returns A zero memory descriptor of the primitive does not have a
         ///     bias parameter.
-        memory::desc bias_desc() const { return base::weights_desc(1); }
+        const memory::desc bias_desc() const { return base::weights_desc(1); }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -5807,13 +5812,19 @@ struct convolution_backward_data : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -6104,21 +6115,23 @@ struct convolution_backward_weights : public primitive {
                     dnnl::prop_kind::backward_weights) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// Returns the diff bias memory descriptor.
         /// @returns The diff bias memory descriptor.
         /// @returns A zero memory descriptor of the primitive does not have a
         ///          diff bias parameter.
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return base::diff_weights_desc(1);
         }
 
@@ -6411,16 +6424,18 @@ struct deconvolution_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::convolution_forward::primitive_desc::bias_desc()const
-        memory::desc bias_desc() const { return base::weights_desc(1); }
+        const memory::desc bias_desc() const { return base::weights_desc(1); }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -6605,13 +6620,19 @@ struct deconvolution_backward_data : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -6898,18 +6919,20 @@ struct deconvolution_backward_weights : public primitive {
                     dnnl::prop_kind::backward_weights) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::convolution_backward_weights::primitive_desc::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return base::diff_weights_desc(1);
         }
 
@@ -7059,13 +7082,15 @@ struct lrn_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7167,13 +7192,19 @@ struct lrn_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7331,10 +7362,10 @@ struct eltwise_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         dnnl::algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7505,13 +7536,17 @@ struct eltwise_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         dnnl::algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7637,10 +7672,10 @@ struct softmax_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         dnnl::algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7729,13 +7764,17 @@ struct softmax_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         dnnl::algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -7852,24 +7891,28 @@ struct batch_normalization_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// Returns memory descriptor for mean.
         /// @returns Memory descriptor for mean.
-        memory::desc mean_desc() const { return stat_desc(mean); }
+        const memory::desc mean_desc() const { return stat_desc(mean); }
 
         /// Returns memory descriptor for variance.
         /// @returns Memory descriptor for variance.
-        memory::desc variance_desc() const { return stat_desc(var); }
+        const memory::desc variance_desc() const { return stat_desc(var); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -7888,7 +7931,7 @@ struct batch_normalization_forward : public primitive {
             mean = 1,
             var = 2,
         };
-        memory::desc stat_desc(int kind) const {
+        const memory::desc stat_desc(int kind) const {
             const bool use_global_stats
                     = (get_flags() & normalization_flags::use_global_stats)
                     != normalization_flags::none;
@@ -7983,35 +8026,45 @@ struct batch_normalization_backward : public primitive {
         }
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::mean_desc()const
-        memory::desc mean_desc() const { return query_md(query::src_md, 1); }
+        const memory::desc mean_desc() const {
+            return query_md(query::src_md, 1);
+        }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::variance_desc()const
-        memory::desc variance_desc() const {
+        const memory::desc variance_desc() const {
             return query_md(query::src_md, 2);
         }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -8131,24 +8184,28 @@ struct group_normalization_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// Returns memory descriptor for mean.
         /// @returns Memory descriptor for mean.
-        memory::desc mean_desc() const { return stat_desc(mean); }
+        const memory::desc mean_desc() const { return stat_desc(mean); }
 
         /// Returns memory descriptor for variance.
         /// @returns Memory descriptor for variance.
-        memory::desc variance_desc() const { return stat_desc(var); }
+        const memory::desc variance_desc() const { return stat_desc(var); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -8170,7 +8227,7 @@ struct group_normalization_forward : public primitive {
             mean = 1,
             var = 2,
         };
-        memory::desc stat_desc(int kind) const {
+        const memory::desc stat_desc(int kind) const {
             const bool use_global_stats
                     = (get_flags() & normalization_flags::use_global_stats)
                     != normalization_flags::none;
@@ -8266,35 +8323,45 @@ struct group_normalization_backward : public primitive {
         }
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::group_normalization_forward::primitive_desc::mean_desc()const
-        memory::desc mean_desc() const { return query_md(query::src_md, 1); }
+        const memory::desc mean_desc() const {
+            return query_md(query::src_md, 1);
+        }
 
         /// @copydoc dnnl::group_normalization_forward::primitive_desc::variance_desc()const
-        memory::desc variance_desc() const {
+        const memory::desc variance_desc() const {
             return query_md(query::src_md, 2);
         }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -8494,22 +8561,26 @@ struct layer_normalization_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::mean_desc()const
-        memory::desc mean_desc() const { return stat_desc(mean); }
+        const memory::desc mean_desc() const { return stat_desc(mean); }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::variance_desc()const
-        memory::desc variance_desc() const { return stat_desc(var); }
+        const memory::desc variance_desc() const { return stat_desc(var); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -8528,7 +8599,7 @@ struct layer_normalization_forward : public primitive {
             mean = 1,
             var = 2,
         };
-        memory::desc stat_desc(int kind) const {
+        const memory::desc stat_desc(int kind) const {
             const bool use_global_stats
                     = (get_flags() & normalization_flags::use_global_stats)
                     != normalization_flags::none;
@@ -8760,35 +8831,45 @@ struct layer_normalization_backward : public primitive {
         }
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::mean_desc()const
-        memory::desc mean_desc() const { return query_md(query::src_md, 1); }
+        const memory::desc mean_desc() const {
+            return query_md(query::src_md, 1);
+        }
 
         /// @copydoc dnnl::batch_normalization_forward::primitive_desc::variance_desc()const
-        memory::desc variance_desc() const {
+        const memory::desc variance_desc() const {
             return query_md(query::src_md, 2);
         }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         dnnl::prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -8939,16 +9020,18 @@ struct inner_product_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::convolution_forward::primitive_desc::bias_desc()const
-        memory::desc bias_desc() const { return base::weights_desc(1); }
+        const memory::desc bias_desc() const { return base::weights_desc(1); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -9056,13 +9139,19 @@ struct inner_product_backward_data : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const { return base::weights_desc(0); }
+        const memory::desc weights_desc() const {
+            return base::weights_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -9165,18 +9254,20 @@ struct inner_product_backward_weights : public primitive {
                     dnnl::prop_kind::backward_weights) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_weights_desc()const
-        memory::desc diff_weights_desc() const {
+        const memory::desc diff_weights_desc() const {
             return base::diff_weights_desc(0);
         }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::convolution_backward_weights::primitive_desc::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return base::diff_weights_desc(1);
         }
 
@@ -9257,13 +9348,13 @@ struct rnn_primitive_desc_base : public primitive_desc {
 
     /// Returns source layer memory descriptor.
     /// @returns Source layer memory descriptor.
-    memory::desc src_layer_desc() const {
+    const memory::desc src_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_SRC_LAYER);
     }
 
     /// Returns AUGRU attention memory descriptor.
     /// @returns AUGRU attention memory descriptor.
-    memory::desc augru_attention_desc() const {
+    const memory::desc augru_attention_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_AUGRU_ATTENTION);
     }
 
@@ -9271,37 +9362,37 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Source iteration memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          source iteration parameter.
-    memory::desc src_iter_desc() const {
+    const memory::desc src_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_SRC_ITER);
     }
 
     /// Returns source recurrent cell state memory descriptor.
     /// @returns Source recurrent cell state memory descriptor.
-    memory::desc src_iter_c_desc() const {
+    const memory::desc src_iter_c_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_SRC_ITER_C);
     }
 
     /// Returns weights layer memory descriptor.
     /// @returns Weights layer memory descriptor.
-    memory::desc weights_layer_desc() const {
+    const memory::desc weights_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_LAYER);
     }
 
     /// Returns weights iteration memory descriptor.
     /// @returns Weights iteration memory descriptor.
-    memory::desc weights_iter_desc() const {
+    const memory::desc weights_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_ITER);
     }
 
     /// Returns weights peephole memory descriptor.
     /// @returns Weights peephole memory descriptor.
-    memory::desc weights_peephole_desc() const {
+    const memory::desc weights_peephole_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_PEEPHOLE);
     }
 
     /// Returns weights projection memory descriptor.
     /// @returns Weights projection memory descriptor.
-    memory::desc weights_projection_desc() const {
+    const memory::desc weights_projection_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_WEIGHTS_PROJECTION);
     }
 
@@ -9309,13 +9400,13 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Bias memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          bias parameter.
-    memory::desc bias_desc() const {
+    const memory::desc bias_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_BIAS);
     }
 
     /// Returns destination layer memory descriptor.
     /// @returns Destination layer memory descriptor.
-    memory::desc dst_layer_desc() const {
+    const memory::desc dst_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DST_LAYER);
     }
 
@@ -9323,25 +9414,25 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Destination iteration memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          destination iteration parameter.
-    memory::desc dst_iter_desc() const {
+    const memory::desc dst_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DST_ITER);
     }
 
     /// Returns destination recurrent cell state memory descriptor.
     /// @returns Destination recurrent cell state memory descriptor.
-    memory::desc dst_iter_c_desc() const {
+    const memory::desc dst_iter_c_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DST_ITER_C);
     }
 
     /// Returns diff source layer memory descriptor.
     /// @returns Diff source layer memory descriptor.
-    memory::desc diff_src_layer_desc() const {
+    const memory::desc diff_src_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_SRC_LAYER);
     }
 
     /// Returns diff AUGRU attention memory descriptor.
     /// @returns Diff AUGRU attention memory descriptor.
-    memory::desc diff_augru_attention_desc() const {
+    const memory::desc diff_augru_attention_desc() const {
         return base::query_md(
                 query::exec_arg_md, DNNL_ARG_DIFF_AUGRU_ATTENTION);
     }
@@ -9350,38 +9441,38 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Diff source iteration memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          diff source iteration parameter.
-    memory::desc diff_src_iter_desc() const {
+    const memory::desc diff_src_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_SRC_ITER);
     }
 
     /// Returns diff source recurrent cell state memory descriptor.
     /// @returns Diff source recurrent cell state memory descriptor.
-    memory::desc diff_src_iter_c_desc() const {
+    const memory::desc diff_src_iter_c_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_SRC_ITER_C);
     }
 
     /// Returns diff weights layer memory descriptor.
     /// @returns Diff weights layer memory descriptor.
-    memory::desc diff_weights_layer_desc() const {
+    const memory::desc diff_weights_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_WEIGHTS_LAYER);
     }
 
     /// Returns diff weights iteration memory descriptor.
     /// @returns Diff weights iteration memory descriptor.
-    memory::desc diff_weights_iter_desc() const {
+    const memory::desc diff_weights_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_WEIGHTS_ITER);
     }
 
     /// Returns diff weights peephole memory descriptor.
     /// @returns Diff weights peephole memory descriptor.
-    memory::desc diff_weights_peephole_desc() const {
+    const memory::desc diff_weights_peephole_desc() const {
         return base::query_md(
                 query::exec_arg_md, DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE);
     }
 
     /// Returns diff weights projection memory descriptor.
     /// @returns Diff weights projection memory descriptor.
-    memory::desc diff_weights_projection_desc() const {
+    const memory::desc diff_weights_projection_desc() const {
         return base::query_md(
                 query::exec_arg_md, DNNL_ARG_DIFF_WEIGHTS_PROJECTION);
     }
@@ -9390,13 +9481,13 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Diff bias memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          diff bias parameter.
-    memory::desc diff_bias_desc() const {
+    const memory::desc diff_bias_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_BIAS);
     }
 
     /// Returns diff destination layer memory descriptor.
     /// @returns Diff destination layer memory descriptor.
-    memory::desc diff_dst_layer_desc() const {
+    const memory::desc diff_dst_layer_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_DST_LAYER);
     }
 
@@ -9404,13 +9495,13 @@ struct rnn_primitive_desc_base : public primitive_desc {
     /// @returns Diff destination iteration memory descriptor.
     /// @returns A zero memory descriptor if the primitive does not have a
     ///          diff destination iteration parameter.
-    memory::desc diff_dst_iter_desc() const {
+    const memory::desc diff_dst_iter_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_DST_ITER);
     }
 
     /// Returns diff destination recurrent cell state memory descriptor.
     /// @returns Diff destination recurrent cell state memory descriptor.
-    memory::desc diff_dst_iter_c_desc() const {
+    const memory::desc diff_dst_iter_c_desc() const {
         return base::query_md(query::exec_arg_md, DNNL_ARG_DIFF_DST_ITER_C);
     }
 
@@ -9886,36 +9977,40 @@ struct vanilla_rnn_forward : public primitive {
                     dnnl::algorithm::vanilla_rnn) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -10154,71 +10249,75 @@ struct vanilla_rnn_backward : public primitive {
                     dnnl::algorithm::vanilla_rnn) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
@@ -10487,56 +10586,60 @@ struct lstm_forward : public primitive {
                     dnnl::algorithm::vanilla_lstm) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_c_desc() const {
+        const memory::desc src_iter_c_desc() const {
             return rnn_base::src_iter_c_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_peephole_desc()const
-        memory::desc weights_peephole_desc() const {
+        const memory::desc weights_peephole_desc() const {
             return rnn_base::weights_peephole_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_projection_desc()const
-        memory::desc weights_projection_desc() const {
+        const memory::desc weights_projection_desc() const {
             return rnn_base::weights_projection_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc dst_iter_c_desc() const {
+        const memory::desc dst_iter_c_desc() const {
             return rnn_base::dst_iter_c_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -10917,111 +11020,115 @@ struct lstm_backward : public primitive {
                     dnnl::algorithm::vanilla_lstm) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_c_desc() const {
+        const memory::desc src_iter_c_desc() const {
             return rnn_base::src_iter_c_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_peephole_desc()const
-        memory::desc weights_peephole_desc() const {
+        const memory::desc weights_peephole_desc() const {
             return rnn_base::weights_peephole_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_projection_desc()const
-        memory::desc weights_projection_desc() const {
+        const memory::desc weights_projection_desc() const {
             return rnn_base::weights_projection_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc dst_iter_c_desc() const {
+        const memory::desc dst_iter_c_desc() const {
             return rnn_base::dst_iter_c_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_c_desc()const
-        memory::desc diff_src_iter_c_desc() const {
+        const memory::desc diff_src_iter_c_desc() const {
             return rnn_base::diff_src_iter_c_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_peephole_desc()const
-        memory::desc diff_weights_peephole_desc() const {
+        const memory::desc diff_weights_peephole_desc() const {
             return rnn_base::diff_weights_peephole_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_projection_desc()const
-        memory::desc diff_weights_projection_desc() const {
+        const memory::desc diff_weights_projection_desc() const {
             return rnn_base::diff_weights_projection_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_c_desc()const
-        memory::desc diff_dst_iter_c_desc() const {
+        const memory::desc diff_dst_iter_c_desc() const {
             return rnn_base::diff_dst_iter_c_desc();
         }
 
@@ -11127,36 +11234,40 @@ struct gru_forward : public primitive {
                     dnnl::algorithm::vanilla_gru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -11288,71 +11399,75 @@ struct gru_backward : public primitive {
                     dnnl::algorithm::vanilla_gru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
@@ -11458,36 +11573,40 @@ struct lbr_gru_forward : public primitive {
                     dnnl::algorithm::lbr_gru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -11618,71 +11737,75 @@ struct lbr_gru_backward : public primitive {
                     pd, dnnl::prop_kind::backward, dnnl::algorithm::lbr_gru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
@@ -11791,41 +11914,45 @@ struct augru_forward : public primitive {
                     dnnl::algorithm::vanilla_augru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::augru_attention_desc()const
-        memory::desc attention_desc() const {
+        const memory::desc attention_desc() const {
             return rnn_base::augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -11963,81 +12090,85 @@ struct augru_backward : public primitive {
                     dnnl::algorithm::vanilla_augru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::augru_attention_desc()const
-        memory::desc attention_desc() const {
+        const memory::desc attention_desc() const {
             return rnn_base::augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_augru_attention_desc()const
-        memory::desc diff_attention_desc() const {
+        const memory::desc diff_attention_desc() const {
             return rnn_base::diff_augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
@@ -12148,41 +12279,45 @@ struct lbr_augru_forward : public primitive {
                     dnnl::algorithm::lbr_augru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::augru_attention_desc()const
-        memory::desc attention_desc() const {
+        const memory::desc attention_desc() const {
             return rnn_base::augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
@@ -12319,81 +12454,85 @@ struct lbr_augru_backward : public primitive {
                     dnnl::algorithm::lbr_augru) {}
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_layer_desc()const
-        memory::desc src_layer_desc() const {
+        const memory::desc src_layer_desc() const {
             return rnn_base::src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::src_iter_desc()const
-        memory::desc src_iter_desc() const { return rnn_base::src_iter_desc(); }
+        const memory::desc src_iter_desc() const {
+            return rnn_base::src_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::augru_attention_desc()const
-        memory::desc attention_desc() const {
+        const memory::desc attention_desc() const {
             return rnn_base::augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_layer_desc()const
-        memory::desc weights_layer_desc() const {
+        const memory::desc weights_layer_desc() const {
             return rnn_base::weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::weights_iter_desc()const
-        memory::desc weights_iter_desc() const {
+        const memory::desc weights_iter_desc() const {
             return rnn_base::weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::bias_desc()const
-        memory::desc bias_desc() const { return rnn_base::bias_desc(); }
+        const memory::desc bias_desc() const { return rnn_base::bias_desc(); }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_layer_desc()const
-        memory::desc dst_layer_desc() const {
+        const memory::desc dst_layer_desc() const {
             return rnn_base::dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::dst_iter_desc()const
-        memory::desc dst_iter_desc() const { return rnn_base::dst_iter_desc(); }
+        const memory::desc dst_iter_desc() const {
+            return rnn_base::dst_iter_desc();
+        }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const {
+        const memory::desc workspace_desc() const {
             return rnn_base::workspace_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_layer_desc()const
-        memory::desc diff_src_layer_desc() const {
+        const memory::desc diff_src_layer_desc() const {
             return rnn_base::diff_src_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_src_iter_desc()const
-        memory::desc diff_src_iter_desc() const {
+        const memory::desc diff_src_iter_desc() const {
             return rnn_base::diff_src_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_augru_attention_desc()const
-        memory::desc diff_attention_desc() const {
+        const memory::desc diff_attention_desc() const {
             return rnn_base::diff_augru_attention_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_layer_desc()const
-        memory::desc diff_weights_layer_desc() const {
+        const memory::desc diff_weights_layer_desc() const {
             return rnn_base::diff_weights_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_weights_iter_desc()const
-        memory::desc diff_weights_iter_desc() const {
+        const memory::desc diff_weights_iter_desc() const {
             return rnn_base::diff_weights_iter_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_bias_desc()const
-        memory::desc diff_bias_desc() const {
+        const memory::desc diff_bias_desc() const {
             return rnn_base::diff_bias_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_layer_desc()const
-        memory::desc diff_dst_layer_desc() const {
+        const memory::desc diff_dst_layer_desc() const {
             return rnn_base::diff_dst_layer_desc();
         }
 
         /// @copydoc dnnl::rnn_primitive_desc_base::diff_dst_iter_desc()const
-        memory::desc diff_dst_iter_desc() const {
+        const memory::desc diff_dst_iter_desc() const {
             return rnn_base::diff_dst_iter_desc();
         }
 
@@ -12491,10 +12630,10 @@ struct shuffle_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -12579,10 +12718,14 @@ struct shuffle_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -12706,19 +12849,21 @@ struct binary : public primitive {
             : dnnl::primitive_desc(pd, dnnl::primitive::kind::binary) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc(int)const
-        memory::desc src_desc(int idx = 0) const { return base::src_desc(idx); }
+        const memory::desc src_desc(int idx = 0) const {
+            return base::src_desc(idx);
+        }
 
         /// Returns the memory descriptor for source #0.
-        memory::desc src0_desc() const { return base::src_desc(0); }
+        const memory::desc src0_desc() const { return base::src_desc(0); }
 
         /// Returns the memory descriptor for source #1.
-        memory::desc src1_desc() const { return base::src_desc(1); }
+        const memory::desc src1_desc() const { return base::src_desc(1); }
 
         /// Returns the memory descriptor for source #2.
-        memory::desc src2_desc() const { return base::src_desc(2); }
+        const memory::desc src2_desc() const { return base::src_desc(2); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -12808,20 +12953,24 @@ struct matmul : public primitive {
             : dnnl::primitive_desc(pd, dnnl::primitive::kind::matmul) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return query_md(query::src_md, 0); }
+        const memory::desc src_desc() const {
+            return query_md(query::src_md, 0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::weights_desc()const
-        memory::desc weights_desc() const {
+        const memory::desc weights_desc() const {
             return query_md(query::weights_md, 0);
         }
 
         /// @copydoc dnnl::convolution_forward::primitive_desc::bias_desc()const
-        memory::desc bias_desc() const {
+        const memory::desc bias_desc() const {
             return query_md(query::weights_md, 1);
         }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return query_md(query::dst_md, 0); }
+        const memory::desc dst_desc() const {
+            return query_md(query::dst_md, 0);
+        }
 
     private:
         primitive_desc(const engine &aengine, const memory::desc &src_desc,
@@ -12978,10 +13127,10 @@ struct resampling_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
     private:
         primitive_desc(const engine &aengine, prop_kind aprop_kind,
@@ -13102,10 +13251,14 @@ struct resampling_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
     private:
         primitive_desc(const engine &aengine, algorithm aalgorithm,
@@ -13242,13 +13395,15 @@ struct pooling_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -13369,13 +13524,19 @@ struct pooling_backward : public primitive {
                     dnnl::prop_kind::backward_data) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::workspace_desc()const
-        memory::desc workspace_desc() const { return base::workspace_desc(); }
+        const memory::desc workspace_desc() const {
+            return base::workspace_desc();
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_algorithm()const
         algorithm get_algorithm() const { return base::get_algorithm(); }
@@ -13485,10 +13646,10 @@ struct prelu_forward : public primitive {
                     dnnl::prop_kind::forward_inference) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -13571,13 +13732,17 @@ struct prelu_backward : public primitive {
                     dnnl::prop_kind::backward) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::diff_src_desc()const
-        memory::desc diff_src_desc() const { return base::diff_src_desc(0); }
+        const memory::desc diff_src_desc() const {
+            return base::diff_src_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::diff_dst_desc()const
-        memory::desc diff_dst_desc() const { return base::diff_dst_desc(0); }
+        const memory::desc diff_dst_desc() const {
+            return base::diff_dst_desc(0);
+        }
 
         /// @copydoc dnnl::primitive_desc_base::get_prop_kind()const
         prop_kind get_prop_kind() const { return base::get_prop_kind(); }
@@ -13670,10 +13835,10 @@ struct reduction : public primitive {
             : dnnl::primitive_desc(pd, dnnl::primitive::kind::reduction) {}
 
         /// @copydoc dnnl::primitive_desc_base::src_desc()const
-        memory::desc src_desc() const { return base::src_desc(0); }
+        const memory::desc src_desc() const { return base::src_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::dst_desc()const
-        memory::desc dst_desc() const { return base::dst_desc(0); }
+        const memory::desc dst_desc() const { return base::dst_desc(0); }
 
         /// @copydoc dnnl::primitive_desc_base::get_p()const
         float get_p() const { return base::get_p(); }

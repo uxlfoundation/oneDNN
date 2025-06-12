@@ -117,21 +117,8 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             || with_value_zp();
     bool is_integrated = compute_engine->device_info()->is_integrated();
 
-    switch (arch_) {
-        case arch_t::xe_hpg:
-            config = choose_config_xehpg(
-                    d->head_size(), d->keys(), thin_q, quantized);
-            break;
-        case arch_t::xe_hpc:
-            config = choose_config_xehpc(d->head_size(), d->keys(), thin_q,
-                    quantized, is_integrated);
-            break;
-        case arch_t::xe2:
-        case arch_t::xe3:
-            config = choose_config_xe2(d->head_size(), d->keys(), thin_q,
-                    quantized, is_integrated);
-        default: break;
-    }
+    config = choose_config(
+            arch_, d->head_size(), d->keys(), thin_q, quantized, is_integrated);
 
     if (!config) return status::unimplemented;
 

@@ -296,12 +296,19 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         deg[aop.id_] = 0;
         for (const auto &lt : aop.in_lts_) {
             in_lt_2_ops_[lt.id_].push_back(aop);
+
+            if (!lt_2_shape_.count(lt.id_))
+                lt_2_shape_.emplace(lt.id_, lt.shape_);
+            if (!lt_2_strides_.count(lt.id_))
+                lt_2_strides_.emplace(lt.id_, lt.stride_);
         }
         for (const auto &lt : aop.out_lts_) {
             out_lt_2_op_[lt.id_] = aop;
-            // collect graph internal and output tensors memory layout
-            lt_2_mtag_[lt.id_]
-                    = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
+
+            if (!lt_2_shape_.count(lt.id_))
+                lt_2_shape_.emplace(lt.id_, lt.shape_);
+            if (!lt_2_strides_.count(lt.id_))
+                lt_2_strides_.emplace(lt.id_, lt.stride_);
         }
     }
 
@@ -326,9 +333,13 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         // for each output id of the op, find the ops with the same input id
         // check the input
         for (const auto &out : op.out_lts_) {
-            for (const auto &aop : in_lt_2_ops_[out.id_]) {
-                deg[aop.id_]--;
-                if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+            // if the out tensor is not the output port of the graph, reduce
+            // the in-degree of its consumer.
+            if (in_lt_2_ops_.count(out.id_)) {
+                for (const auto &aop : in_lt_2_ops_[out.id_]) {
+                    deg[aop.id_]--;
+                    if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+                }
             }
         }
     }
@@ -338,34 +349,32 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         SAFE_V(FAIL);
     }
 
+    // Update the input ports and output ports of the graph.
+    input_ports_.clear();
     for (const auto &in_lt : in_lt_2_ops_) {
         if (out_lt_2_op_.find(in_lt.first) != out_lt_2_op_.end()) continue;
 
-        const auto &aop = in_lt_2_ops_[in_lt.first][0];
-        for (const auto &lt : aop.in_lts_) {
-            if (lt.id_ != in_lt.first) continue;
+        input_ports_.emplace_back(in_lt.first);
+    }
 
-            graph_tensors_.emplace(in_lt.first, lt.shape_);
-            // collect graph input tensors memory layout
-            std::string mtag
-                    = strides2memory_tag(lt.shape_.size(), lt.stride_, false);
-            lt_2_mtag_[lt.id_] = mtag;
+    output_ports_.clear();
+    for (const auto &out_lt : out_lt_2_op_) {
+        if (in_lt_2_ops_.find(out_lt.first) != in_lt_2_ops_.end()) continue;
+        output_ports_.emplace_back(out_lt.first);
+
+        const auto &output_lt_shape = lt_2_shape_[out_lt.first];
+        for (const auto &dim : output_lt_shape) {
+            if (dim < 0) has_unknown_output_dims = true;
         }
     }
 
     // Keep the object out of the call due to recursion inside the call.
     // Accumulates the state of mb rewrite of nested ops.
     std::unordered_map<size_t, bool> mb_rewrite_ret;
-    for (const auto &graph_in : graph_tensors_) {
+    for (const auto &graph_in : lt_2_shape_) {
         if (check_tensor_with_mb(graph_in.first, mb_rewrite_ret)) {
             graph_inputs_with_mb_.push_back(graph_in.first);
         }
-    }
-
-    // at this very stage, put all graph_tensors_ id to input_ports_ if
-    // even if input_ports_ is not empty
-    for (const auto &item : graph_tensors_) {
-        input_ports_.emplace_back(item.first);
     }
 }
 

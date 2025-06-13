@@ -40,13 +40,20 @@ struct flex_rewrite_t {
         , dt_map_(dt_map)
         , op_kind_map_(op_kind_map) {}
 
-    void rewrite(deserialized_graph_t &dgraph);
+    int rewrite(deserialized_graph_t &dgraph);
+    void reset() {
+        has_shape_rewrite_ = false;
+        has_strides_rewrite_ = false;
+
+        comply_user_format.clear();
+    }
 
 private:
     // input shape info from CML
     std::map<size_t, std::string> in_shapes_;
     // input attributes from CML
     std::map<size_t, std::string> op_attrs_;
+
     graph_fpmath_mode_t fpmath_mode_;
     int64_t mb_;
     dnnl_data_type_t dt_; // Updates whole graph with a single dt value.
@@ -54,35 +61,32 @@ private:
             dt_map_; // Updates specific LT with selected dt values.
     std::map<size_t, std::string> op_kind_map_;
 
-    void split_ncx(const std::string &data_format, dims_t &in, int64_t &n,
-            int64_t &c, dims_t &x) const;
-    void merge_ncx(const std::string &data_format, dims_t &out, int64_t n,
-            int64_t c, const dims_t &x) const;
-    void split_oix(const std::string &data_format, dims_t &in, dims_t &oi,
-            dims_t &x) const;
-    void broadcast(const dims_t &x, const dims_t &y, dims_t &z,
-            const std::string &x_str = "", const std::string &y_str = "") const;
-    // Returns `pad_begin` and `pad_end` for each dimension.
-    void cal_pads(dims_t &pads_begin, dims_t &pads_end,
-            const deserialized_op_t &aop, const dims_t &spatial_dims,
-            const dims_t &strides, const dims_t &kernel, bool deconv) const;
-    void infer_output_shape(deserialized_graph_t &dgraph, bool change_stride);
-    void inports_shape_rewrite(
-            deserialized_graph_t &dgraph, bool &change_stride);
-    bool get_inport_shape_stride(const std::string &in_shape,
-            std::string &shape, std::string &stride, std::string &msg);
-    void op_attrs_rewrite(deserialized_graph_t &dgraph);
-    void quantized_graph_rewrite(deserialized_graph_t &dgraph);
-    void update_output_info(deserialized_op_t &aop,
-            deserialized_graph_t &dgraph, bool change_stride);
-    void graph_attrs_rewrite(deserialized_graph_t &dgraph);
-    void dt_rewrite(deserialized_graph_t &dgraph);
-    void dt_map_rewrite(deserialized_graph_t &dgraph);
-    void op_kind_rewrite(deserialized_graph_t &dgraph);
+    bool has_shape_rewrite_ = false;
+    bool has_strides_rewrite_ = false;
+    bool has_attr_rewrite() const {
+        return !(op_attrs_.size() == 1 && op_attrs_.count(0)
+                && op_attrs_.at(0) == "default");
+    }
+    std::unordered_set<size_t> comply_user_format;
+
+    int infer_output_shape(deserialized_graph_t &dgraph);
+    int inports_shape_rewrite(deserialized_graph_t &dgraph);
+    int adopt_shape_rewrite(
+            deserialized_graph_t &dgraph, deserialized_lt_t &lt);
+    int layout_propagation(deserialized_graph_t &dgraph);
+    bool get_io_shape_mtag(const std::string &in_shape, std::string &shape,
+            std::string &stride, std::string &msg);
+
+    int op_attrs_rewrite(deserialized_graph_t &dgraph);
+    int quantized_graph_rewrite(deserialized_graph_t &dgraph);
+    int graph_attrs_rewrite(deserialized_graph_t &dgraph);
+    int dt_rewrite(deserialized_graph_t &dgraph);
+    int dt_map_rewrite(deserialized_graph_t &dgraph);
+    int op_kind_rewrite(deserialized_graph_t &dgraph);
     // Rewrite some linked attribute and shapes, such as group-shape and
     // scale/zp shape of dynamic dequantization for per-group quantization, to
     // simplify the cml input of rewriting.
-    void rewrite_linked_shape_and_attr(deserialized_graph_t &dgraph);
+    int linked_shape_and_attr_rewrite(deserialized_graph_t &dgraph);
 };
 
 } // namespace graph

@@ -113,15 +113,24 @@ struct deserialized_graph_t {
     void load(const std::string &pass_config_json);
 
     dnnl::graph::graph to_graph(const graph_fpmath_mode_t &fpmath_mode) const;
+
     const std::vector<size_t> &get_input_ports() const { return input_ports_; };
+    const std::vector<size_t> &get_output_ports() const {
+        return output_ports_;
+    };
+    bool is_input_port(size_t idx) const {
+        return std::find(input_ports_.begin(), input_ports_.end(), idx)
+                != input_ports_.end();
+    }
+    bool is_output_port(size_t idx) const {
+        return std::find(output_ports_.begin(), output_ports_.end(), idx)
+                != output_ports_.end();
+    }
 
     std::vector<deserialized_op_t> ops_;
     // record all tensors id and its dims
-    std::map<size_t, logical_tensor::dims> graph_tensors_;
-    // reorder logical tensor id to memory tag.
-    // memory tag can be abx, axb, or other special tag
-    // need to maintain for further use
-    std::map<size_t, std::string> lt_2_mtag_;
+    std::map<size_t, logical_tensor::dims> lt_2_shape_;
+    std::map<size_t, logical_tensor::dims> lt_2_strides_;
     std::vector<size_t> graph_inputs_with_mb_;
 
     // Returns an op based on its ID.
@@ -143,6 +152,8 @@ struct deserialized_graph_t {
         fpmath_mode_ = fpmath_mode.mode_;
         fpmath_mode_apply_to_int_ = bool2str(fpmath_mode.apply_to_int_);
     }
+
+    bool has_unknown_output_dims = false;
 
 private:
     std::string engine_kind_;

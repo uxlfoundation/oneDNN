@@ -126,8 +126,6 @@ void rnn_utils::set_offsets(const rnn_conf_t &rnn, size_t &ws_gates_offset,
     register_space(ws_gates);
     register_space(ws_ht);
     register_space(ws_states_layer);
-    register_space(ws_states_iter);
-    register_space(ws_states_iter);
 
     // For all currently supported cells, ws_iter should not be used
     // at all since dst_iter == dst_layer

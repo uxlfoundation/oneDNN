@@ -208,6 +208,16 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 
 #define binary_add(x, y) ((x) + (y))
 
+void warmup_tlb(const global void *ptr, size_t bytes, int cache) {
+    const global void *end_ptr = ptr + bytes - 65534;
+    int id = get_sub_group_id();
+    int nsg = get_num_sub_groups() * 65535;
+    ptr += (id * 65535);
+    _Pragma("unroll") for (; ptr < end_ptr; ptr += nsg) {
+        __builtin_IB_lsc_prefetch_global_uchar(ptr, 0, cache);
+    }
+}
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
@@ -221,6 +231,40 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global MSK_DATA_T *msk
 #endif
 ) {
+#if WARMUP_TLB
+    if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0) {
+#if PREFETCH_K
+        warmup_tlb(K, KEY_S0 * sizeof(KEY_DATA_T) / KEY_ELEMENTS_PER_BYTE,
+                LSC_LDCC_L1C_L3C);
+#if KEY_SCALES == QUANTIZE_2D
+        warmup_tlb(K_scales,
+                KEY_S0 * sizeof(KEY_ATTR_SCALES_DATA_T) / KEY_GROUP_SIZE,
+                LSC_LDCC_L1C_L3C);
+#endif
+#if KEY_ZERO_POINTS
+        warmup_tlb(K_zp, KEY_S0 * sizeof(KEY_ATTR_ZP_DATA_T) / KEY_GROUP_SIZE,
+                LSC_LDCC_L1C_L3C);
+#endif
+#endif
+        warmup_tlb(Q, QRY_S0 * sizeof(QRY_DATA_T), LSC_LDCC_L1C_L3C);
+#if WITH_ATTN_MASK
+        warmup_tlb(msk, MSK_S0 * sizeof(MSK_DATA_T), LSC_LDCC_L1UC_L3C);
+#endif
+#if PREFETCH_V
+        warmup_tlb(V, VAL_S0 * sizeof(VAL_DATA_T) / VAL_ELEMENTS_PER_BYTE,
+                LSC_LDCC_L1C_L3C);
+#if VAL_SCALES == QUANTIZE_2D
+        warmup_tlb(V_scales,
+                VAL_S0 * sizeof(VAL_ATTR_SCALES_DATA_T) / VAL_GROUP_SIZE,
+                LSC_LDCC_L1C_L3C);
+#endif
+#if VAL_ZERO_POINTS
+        warmup_tlb(V_zp, VAL_S0 * sizeof(VAL_ATTR_ZP_DATA_T) / VAL_GROUP_SIZE,
+                LSC_LDCC_L1C_L3C);
+#endif
+#endif
+    }
+#endif
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);

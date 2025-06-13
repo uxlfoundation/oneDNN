@@ -212,8 +212,8 @@ bool jit_gemm_pd_t::wei_decomp() {
     const auto d = desc();
     using namespace data_type;
     return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
-                   && utils::one_of(
-                           d->a_type(), u8, s8, s4, u4, f8_e4m3, f8_e5m2)
+                   && utils::one_of(d->a_type(), u8, s8, s4, u4, f8_e4m3,
+                           f8_e5m2, f4_e2m1, f4_e3m0)
                    && utils::one_of(
                            d->b_type(), f16, f32, bf16, f8_e5m2, f8_e4m3))
             && types::data_type_bits(d->a_type())

@@ -175,13 +175,10 @@ void flush_temp_memory() {
             cp_capacity); // reset the cache capacity.
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    if (!has_bench_mode_bit(mode_bit_t::corr) && is_gpu()) {
+    if (!has_bench_mode_bit(mode_bit_t::corr)) {
         auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
         graph_mem_mgr.clear_memory_pool();
     }
-#endif
 }
 
 } // namespace graph

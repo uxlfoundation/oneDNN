@@ -1183,8 +1183,16 @@ void constraint_set_t::add_constraint(const expr_t &e) {
         return;
     }
 
-    // Propagate constraints from y for (x == y) equalities.
     auto *binary_op = e.as_ptr<binary_op_t>();
+
+    // Propagate constraints from chained ands like a & b & c
+    if (binary_op && binary_op->op_kind == op_kind_t::_and) {
+        add_constraint(binary_op->a);
+        add_constraint(binary_op->b);
+        return;
+    }
+
+    // Propagate constraints from y for (x == y) equalities.
     if (binary_op && binary_op->op_kind == op_kind_t::_eq) {
         auto &a = binary_op->a;
         auto &b = binary_op->b;

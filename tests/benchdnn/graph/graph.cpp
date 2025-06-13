@@ -382,7 +382,7 @@ std::string case_to_str(const std::string &json_file,
 
     if (!(in_shapes.size() == 1 && in_shapes.count(0)
                 && in_shapes.at(0) == "default")) {
-        s << "--in-shapes=";
+        s << "--io-shapes=";
         std::string tmp;
         for (const auto &in_shape : in_shapes) {
             tmp += (std::to_string(in_shape.first) + ":" + in_shape.second

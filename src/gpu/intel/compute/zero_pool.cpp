@@ -179,7 +179,7 @@ status_t zero_pool_t::claim_unpooled(compute::compute_stream_t *stream,
             nullptr);
 
     if (status == status::success) {
-        stream->fill(*new_mem, 0, len, stream->ctx().get_deps(),
+        status = stream->fill(*new_mem, 0, len, stream->ctx().get_deps(),
                 stream->ctx().get_deps());
         out_mem.reset(new_mem);
     }
@@ -201,10 +201,10 @@ status_t zero_pool_t::claim(compute::compute_stream_t *stream, size_t len,
         // One-time zero initialization before first use.
         // Use immediate mode to ensure zero initialization
         //   occurs now and is not recorded.
-        stream->enter_immediate_mode();
-        stream->fill(*mem_, 0, chunk_count_ * chunk_size_,
-                stream->ctx().get_deps(), stream->ctx().get_deps());
-        stream->exit_immediate_mode();
+        CHECK(stream->enter_immediate_mode());
+        CHECK(stream->fill(*mem_, 0, chunk_count_ * chunk_size_,
+                stream->ctx().get_deps(), stream->ctx().get_deps()));
+        CHECK(stream->exit_immediate_mode());
         inited_ = true;
     }
 

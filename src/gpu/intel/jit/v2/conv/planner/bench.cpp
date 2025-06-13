@@ -61,8 +61,9 @@ static void fill_mem(stream &strm, const memory &mem) {
     auto md = mem.get_desc();
     size_t size = md.get_size();
     uint8_t pattern = 0;
-    impl::gpu::intel::ocl::usm::fill(strm.get(), ptr, &pattern, sizeof(pattern),
-            size, 0, nullptr, nullptr);
+    status_t status = impl::gpu::intel::ocl::usm::fill(strm.get(), ptr,
+            &pattern, sizeof(pattern), size, 0, nullptr, nullptr);
+    if (status != status::success) throw std::runtime_error("Fill failed");
 }
 
 class memory_pool_t {
@@ -625,11 +626,16 @@ bench_data_t bench(const bench_manager_t &bench_mger,
     }
 
     bench_data_t bd(0, _kernel_desc);
-    dnnl_reset_profiling(strm.get());
+    status_t status = dnnl_reset_profiling(strm.get());
+    if (status != status::success)
+        throw std::runtime_error("Reset profiling failed.");
     for (int i = 0; i < ntasks; i++) {
-        tasks[i].bench_async(strm, mem_pool);
+        status = tasks[i].bench_async(strm, mem_pool);
+        if (status != status::success)
+            throw std::runtime_error("Benchmark failed.");
     }
-    bench_task_base_t::sync(strm, tasks);
+    status = bench_task_base_t::sync(strm, tasks);
+    if (status != status::success) throw std::runtime_error("Sync failed.");
     for (int i = 0; i < ntasks; i++) {
         bd.add(tasks[i].prb(), tasks[i].time());
     }

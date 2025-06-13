@@ -70,8 +70,8 @@ status_t convolution_inner_product_fwd_t::pd_t::init_conf(
         return status::success;
     };
 
-    init_md(conv_src_md, src_md);
-    init_md(conv_wei_md, wei_md);
+    CHECK(init_md(conv_src_md, src_md));
+    CHECK(init_md(conv_wei_md, wei_md));
 
     dim_t strides[] = {1, 1, 1};
     dim_t padding[] = {0, 0, 0};

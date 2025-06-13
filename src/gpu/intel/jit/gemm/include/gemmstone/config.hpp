@@ -20,6 +20,18 @@
 #if (defined(__has_include) && __has_include("gemmstone_config.hpp")) || defined(GEMMSTONE_CONFIG)
 #include "gemmstone_config.hpp"
 #else
+
+#include "entrance_agent.hpp"
+#include "package.hpp"
+
+#endif
+
+#ifndef GEMMSTONE_NAMESPACE_START
+#define GEMMSTONE_NAMESPACE_START namespace gemmstone {
+#endif
+
+#ifndef GEMMSTONE_NAMESPACE_END
+#define GEMMSTONE_NAMESPACE_END }
 #endif
 
 #endif /* header guard */

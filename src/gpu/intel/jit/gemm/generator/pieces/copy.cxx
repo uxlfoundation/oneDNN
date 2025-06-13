@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,47 +15,67 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
 #include "quantization.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 // Register-to-register copy of a single block, ignoring register offsets in the block.
 template <HW hw>
-void BLASKernelGenerator<hw>::copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst,
-                                                const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC,
-                                                const CommonStrategy &strategy, CommonState &state, bool preserveSrc)
+void Generator<hw>::copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst,
+                                      const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC,
+                                      const CommonStrategy &strategy, CommonState &state, bool preserveSrc)
 {
-    std::vector<RegisterBlock> modSrc{1, blockSrc}, modDst{1, blockDst};
+    RegisterLayout modSrc{Ts, {blockSrc}}, modDst{Td, {blockDst}};
     modSrc[0].offsetBytes %= GRF::bytes(hw);
     modDst[0].offsetBytes %= GRF::bytes(hw);
     copyRegisters(Ts, Td, modSrc, modDst, src, dst, dOffR, dOffC, false, strategy, state, preserveSrc);
 }
 
+// Register-to-register copy, with no type-punning or scaling.
+template <HW hw>
+void Generator<hw>::copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                  const GRFMultirange &src, const GRFMultirange &dst,
+                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+{
+    copyRegisters(layoutSrc.type(), layoutDst.type(), layoutSrc, layoutDst, src, dst, 0, 0, false, strategy, state, preserveSrc, s4Shift);
+}
+
+// Register-to-register copy, with no type-punning or scaling.
+template <HW hw>
+void Generator<hw>::copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                  const GRFMultirange &src, const GRFMultirange &dst,
+                                  int dOffR, int dOffC, bool conjugate,
+                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+{
+    copyRegisters(layoutSrc.type(), layoutDst.type(), layoutSrc, layoutDst, src, dst, dOffR, dOffC, Scalar{1},
+                  SubregisterPair(), SubregisterPair(), conjugate, strategy, state, preserveSrc, s4Shift);
+}
+
 // Register-to-register copy, with no scaling.
 template <HW hw>
-void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<RegisterBlock> &layoutSrc, const vector<RegisterBlock> &layoutDst,
-                                            const GRFMultirange &src, const GRFMultirange &dst,
-                                            const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                  const GRFMultirange &src, const GRFMultirange &dst,
+                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
 {
     copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, 0, 0, false, strategy, state, preserveSrc, s4Shift);
 }
 
 // Register-to-register copy, with no scaling.
 template <HW hw>
-void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<RegisterBlock> &layoutSrc, const vector<RegisterBlock> &layoutDst,
-                                            const GRFMultirange &src, const GRFMultirange &dst,
-                                            int dOffR, int dOffC, bool conjugate,
-                                            const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                  const GRFMultirange &src, const GRFMultirange &dst,
+                                  int dOffR, int dOffC, bool conjugate,
+                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
 {
     copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, dOffR, dOffC, Scalar{1},
                   SubregisterPair(), SubregisterPair(), conjugate, strategy, state, preserveSrc, s4Shift);
@@ -63,34 +83,34 @@ void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<Regis
 
 // Register-to-register copy, with scaling.
 template <HW hw>
-void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<RegisterBlock> &layoutSrc, const vector<RegisterBlock> &layoutDst,
-                                            const GRFMultirange &src, const GRFMultirange &dst,
-                                            int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag,
-                                            bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                  const GRFMultirange &src, const GRFMultirange &dst,
+                                  int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag,
+                                  bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
 {
     auto ned = elementsPerGRF(hw, Td.real());
 
     // Special s4 upconversion path for pre-shifted data.
     bool preshiftedS4 = (Ts == Type::s4 && !s4Shift);
     if (alpha == 1 && !conjugate && !preserveSrc && preshiftedS4) {
-        vector<RegisterBlock> emptyLayout;
+        RegisterLayout emptyLayout;
         GRFMultirange emptyRegs;
-        if (canDequantizeInt4(Ts, Td, layoutSrc, layoutDst, emptyLayout, emptyLayout)) {
-            dequantizeInt4(true, Ts, Td, layoutSrc, layoutDst, emptyLayout, emptyLayout,
-                           src, dst, emptyRegs, emptyRegs, Td, dOffR, dOffC, nullptr, strategy, state, s4Shift);
+        if (Ts != layoutSrc.type() || Td != layoutDst.type()) stub("No type punning allowed on this path");
+        if (canDequantizeInt4(layoutSrc, layoutDst, emptyLayout, emptyLayout)) {
+            dequantizeInt4(true, layoutSrc, layoutDst, emptyLayout, emptyLayout,
+                           src, dst, emptyRegs, emptyRegs, dOffR, dOffC, 0, nullptr, strategy, state, s4Shift);
             return;
         }
     }
     if (preshiftedS4) stub("Pre-shifted s4 data not supported on this path");
 
     // Check layouts.
-    bool sCM = isLayoutColMajor(layoutSrc);
-    bool dCM = isLayoutColMajor(layoutDst);
+    bool sCM = layoutSrc.colMajor();
+    bool dCM = layoutDst.colMajor();
     if (sCM != dCM) {
         /* Don't allow transposition in registers, except for vectors. */
-        int srcM, srcN;
-        getLayoutDims(layoutSrc, srcM, srcN);
-        if (srcM > 1 && srcN > 1) stub("Strategy requires transposing a matrix in registers");
+        if (layoutSrc.rows() > 1 && layoutSrc.cols() > 1)
+            stub("Strategy requires transposing a matrix in registers");
     }
 
     auto RegisterBlock::*nx = sCM ? &RegisterBlock::nr : &RegisterBlock::nc;
@@ -111,8 +131,9 @@ void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<Regis
         int cxComp = 0;
 
         // Locate source and destination registers.
-        CopyOperand sOp = findBlockRegion(Ts, sblock,    eoffR,                          eoffC,                          src, ns,         cxComp, 0, true);
-        CopyOperand dOp = findBlockRegion(Td, layoutDst, sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, nd, dblock, cxComp, 0, true);
+        CopyOperand sOp = sblock.findRegion(Ts,                 eoffR,                          eoffC,         src, &ns,          cxComp, 0, true);
+        CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, 0, true);
+        dOp.type = Td.real().ngen();
         int n = std::min(ns, nd);
 
         if (!preserveSrc) {
@@ -153,7 +174,7 @@ void BLASKernelGenerator<hw>::copyRegisters(Type Ts, Type Td, const vector<Regis
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
+void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
 {
     int nflag = FlagRegister::subcount(hw);
     constexpr int nflagMax = 8;
@@ -242,7 +263,7 @@ void BLASKernelGenerator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
 
 // Copy one GRFMultirange to another, allowing overlap between the two.
 template <HW hw>
-void BLASKernelGenerator<hw>::overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst, CommonState &state)
+void Generator<hw>::overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst, CommonState &state)
 {
     constexpr int regs = GRF::maxRegs();
     std::array<int16_t, regs> map;
@@ -327,4 +348,4 @@ void BLASKernelGenerator<hw>::overlappedCopy(const GRFMultirange &src, const GRF
         state.ra.release(r);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

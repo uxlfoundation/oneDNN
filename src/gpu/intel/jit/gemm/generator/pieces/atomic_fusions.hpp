@@ -18,10 +18,10 @@
 #ifndef GEMMSTONE_GUARD_ATOMIC_FUSIONS_HPP
 #define GEMMSTONE_GUARD_ATOMIC_FUSIONS_HPP
 
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Calculate per-thread stride within temporary C memory.
 inline int tempCThreadStride(const GEMMProblem &problem, const GEMMStrategy &strategy)
@@ -34,12 +34,11 @@ inline int tempCThreadStride(const GEMMProblem &problem, const GEMMStrategy &str
     return stride;
 }
 
-
 // Calculate per-workgroup stride within temporary C memory.
 inline int tempCWGStride(const GEMMProblem &problem, const GEMMStrategy &strategy) {
     return tempCThreadStride(problem, strategy) * strategy.wg[LoopM] * strategy.wg[LoopN];
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

@@ -580,7 +580,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     });
 
     add_mode_matches(true, [](Type dt) -> const char * {
-        if (dt.isFP4()) return "E";
+        if (dt.isF4()) return "E";
         return nullptr;
     });
 

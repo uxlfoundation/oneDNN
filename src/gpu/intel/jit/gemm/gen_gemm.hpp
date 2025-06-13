@@ -199,8 +199,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     = convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
             for (int i = 0; i < desc_.c_desc.ndims; i++) {
                 auto c_stride = desc_.c_desc.format_desc.blocking.strides[i];
-                VDISPATCH_GEMM(IMPLICATION((c_kernel_type.isInt4()
-                                                   || c_kernel_type.isFP4()),
+                VDISPATCH_GEMM(IMPLICATION(c_kernel_type.is4(),
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }

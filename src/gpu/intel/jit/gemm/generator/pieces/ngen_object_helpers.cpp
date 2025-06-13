@@ -19,9 +19,9 @@
 #include "ngen_emulation.hpp"
 #include "hw_utils.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 void movePipes(Subregister &s, bool sizeCanChange)
@@ -42,8 +42,7 @@ void movePipes(Subregister &s, bool sizeCanChange)
         case DataType::ud: type = DataType::f; break;
         case DataType::q:
         case DataType::uq: if (sizeCanChange) type = DataType::f; break;
-        default:
-            break;
+        default: break;
     }
 
     s = s.reinterpret(0, type);
@@ -63,8 +62,7 @@ void moveToIntPipe(Subregister &s)
         case DataType::f:
         case DataType::tf32:
         case DataType::df: type = DataType::ud; break;
-        default:
-            break;
+        default: break;
     }
 
     s = s.reinterpret(0, type);
@@ -83,10 +81,9 @@ void moveToIntPipe(int esize, RegData &s)
         case DataType::f:  s.setType(DataType::ud); break;
         case DataType::df:
             s.setType(DataType::uq);
-            ngen::EmulationImplementation::makeDWPair(s, esize);
+            EmulationImplementation::makeDWPair(s, esize);
             break;
-        default:
-            break;
+        default: break;
     }
 }
 
@@ -108,4 +105,4 @@ CacheSettingsLSC makeL1Uncacheable(CacheSettingsLSC c)
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

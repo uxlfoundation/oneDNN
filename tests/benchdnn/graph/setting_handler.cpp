@@ -104,16 +104,15 @@ bool get_driver_tag_by_idx(const deserialized_op_t &base_op_ref,
     return true;
 }
 
-bool get_driver_tag(const deserialized_op_t &base_op_ref, std::string &tag,
-        bool from_output = false) {
-    return get_driver_tag_by_idx(base_op_ref, tag, 0, from_output);
-}
-
 bool get_driver_stag_and_dtag(const deserialized_op_t &base_op_ref,
-        std::string &stag, std::string &dtag, bool from_output = false) {
-    bool ret = get_driver_tag(base_op_ref, stag, from_output);
-    dtag = stag;
-    return ret;
+        std::string &stag, std::string &dtag) {
+
+    // src and dst may have different tags.
+    if (!get_driver_tag_by_idx(base_op_ref, dtag, 0, true)
+            || !get_driver_tag_by_idx(base_op_ref, stag, 0, false)) {
+        return false;
+    }
+    return true;
 }
 
 bool get_driver_axis(const deserialized_op_t &base_op_ref, int &axis) {
@@ -412,7 +411,7 @@ bool get_bnorm_flag(
     DNN_GRAPH_CHECK_SETTINGS(
             bnorm::get_bnorm_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_tag(base_op_ref, op_setting.tag.front()), res);
+            get_driver_tag_by_idx(base_op_ref, op_setting.tag.front(), 0), res);
     DNN_GRAPH_CHECK_SETTINGS(
             bnorm::get_bnorm_flag(base_op_ref, op_setting.flags.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
@@ -852,6 +851,36 @@ bool get_deconv_wtag(const deserialized_op_t &base_op_ref, std::string &tag) {
     return true;
 }
 
+bool get_deconv_stag_and_dtag(const deserialized_op_t &base_op_ref,
+        ::deconv::settings_t &op_setting) {
+    std::string stag, dtag;
+
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "ConvTranspose") {
+        if (!get_driver_tag_by_idx(base_op_ref, stag, 0)
+                || !get_driver_tag_by_idx(base_op_ref, dtag, 0, true)) {
+            return false;
+        }
+    } else if (op_kind == "ConvTransposeBackwardData") {
+        if (!get_driver_tag_by_idx(base_op_ref, dtag, 0)
+                || !get_driver_tag_by_idx(base_op_ref, stag, 0, true)) {
+            return false;
+        }
+    } else if (op_kind == "ConvTransposeBackwardWeights") {
+        if (!get_driver_tag_by_idx(base_op_ref, stag, 0)
+                || !get_driver_tag_by_idx(base_op_ref, dtag, 1)) {
+            return false;
+        }
+    } else {
+        assert(!"unexpected op_kind");
+        return false;
+    }
+
+    op_setting.stag.front() = std::move(stag);
+    op_setting.dtag.front() = std::move(dtag);
+    return true;
+}
+
 ::deconv::settings_t get_setting(
         const deserialized_op_t &base_op_ref, res_t *res) {
     ::deconv::settings_t op_setting;
@@ -866,10 +895,7 @@ bool get_deconv_wtag(const deserialized_op_t &base_op_ref, std::string &tag) {
                     op_setting.dt.front()[0]),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front(),
-                    base_op_ref.kind_ == "ConvTransposeBackwardData"),
-            res);
+            get_deconv_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             deconv::get_deconv_wtag(base_op_ref, op_setting.wtag.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
@@ -1026,7 +1052,7 @@ bool get_eltwise_beta(const deserialized_op_t &base_op_ref, float &beta) {
     DNN_GRAPH_CHECK_SETTINGS(
             eltwise::get_eltwise_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_tag(base_op_ref, op_setting.tag.front()), res);
+            get_driver_tag_by_idx(base_op_ref, op_setting.tag.front(), 0), res);
     DNN_GRAPH_CHECK_SETTINGS(
             eltwise::get_eltwise_alg(base_op_ref, op_setting.alg.front()), res);
 
@@ -1254,7 +1280,8 @@ bool get_lnorm_flags(
     DNN_GRAPH_CHECK_SETTINGS(
             lnorm::get_lnorm_dt(base_op_ref, op_setting.dt[0].front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_tag(base_op_ref, op_setting.tag[0].front()), res);
+            get_driver_tag_by_idx(base_op_ref, op_setting.tag[0].front(), 0),
+            res);
     DNN_GRAPH_CHECK_SETTINGS(
             lnorm::get_lnorm_flags(base_op_ref, op_setting.flags.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
@@ -1312,8 +1339,9 @@ bool get_matmul_dt(const deserialized_op_t &base_op_ref,
     return true;
 }
 
-bool get_matmul_tags(const deserialized_op_t &base_op_ref, std::string &stag,
-        std::string &wtag, std::string &dtag, const int &ndims) {
+bool get_matmul_tags_or_strides(const deserialized_op_t &base_op_ref,
+        std::string &stag, std::string &wtag, std::string &dtag,
+        vdims_t &prb_strides, const int &ndims) {
     logical_tensor::dims src_strides = base_op_ref.in_lts_[0].stride_;
     logical_tensor::dims wei_strides = base_op_ref.in_lts_[1].stride_;
     const logical_tensor::dims &dst_strides = base_op_ref.out_lts_[0].stride_;
@@ -1363,6 +1391,12 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             matmul::get_matmul_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
+            matmul::get_matmul_tags_or_strides(base_op_ref,
+                    op_setting.stag.front(), op_setting.wtag.front(),
+                    op_setting.dtag.front(), op_setting.strides.front(),
+                    op_setting.prb_vdims.ndims),
+            res);
+    DNN_GRAPH_CHECK_SETTINGS(
             matmul::get_matmul_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
@@ -1370,11 +1404,6 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             res);
     DNN_GRAPH_CHECK_SETTINGS(matmul::get_matmul_bia_mask(
                                      base_op_ref, op_setting.bia_mask.front()),
-            res);
-    DNN_GRAPH_CHECK_SETTINGS(
-            matmul::get_matmul_tags(base_op_ref, op_setting.stag.front(),
-                    op_setting.wtag.front(), op_setting.dtag.front(),
-                    op_setting.prb_vdims.ndims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
@@ -1512,7 +1541,7 @@ bool get_pool_alg(const deserialized_op_t &base_op_ref, ::pool::alg_t &alg) {
     DNN_GRAPH_CHECK_SETTINGS(
             pool::get_pool_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_tag(base_op_ref, op_setting.tag.front()), res);
+            get_driver_tag_by_idx(base_op_ref, op_setting.tag.front(), 0), res);
 
     return op_setting;
 }
@@ -1708,14 +1737,6 @@ bool get_reorder_dt(const deserialized_op_t &base_op_ref, dnnl_data_type_t &sdt,
     return true;
 }
 
-bool get_reorder_stag_and_dtag(const deserialized_op_t &base_op_ref,
-        std::string &stag, std::string &dtag) {
-    bool ret = get_driver_stag_and_dtag(base_op_ref, stag, dtag);
-    if (!ret) return false;
-    ret = get_driver_tag(base_op_ref, dtag, true);
-    return ret;
-}
-
 bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
         attr_t::arg_scales_t &arg_scales, attr_t::zero_points_t &zp) {
 
@@ -1816,8 +1837,8 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
                     op_setting.ddt.front()),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
-            reorder::get_reorder_stag_and_dtag(base_op_ref,
-                    op_setting.stag.front(), op_setting.dtag.front()),
+            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
+                    op_setting.dtag.front()),
             res);
 
     if (op_kind == "Dequantize" || op_kind == "Quantize"
@@ -1913,7 +1934,7 @@ bool get_resampling_alg(
                     op_setting.ddt.front()),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_tag(base_op_ref, op_setting.tag.front()), res);
+            get_driver_tag_by_idx(base_op_ref, op_setting.tag.front(), 0), res);
     DNN_GRAPH_CHECK_SETTINGS(
             resampling::get_resampling_alg(base_op_ref, op_setting.alg.front()),
             res);
@@ -1944,6 +1965,30 @@ bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
     const auto &dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
     op_setting.sdt.front() = dt;
     op_setting.ddt.front() = dt;
+    return true;
+}
+
+bool get_softmax_mtag(const deserialized_op_t &base_op_ref,
+        ::softmax::settings_t &op_setting) {
+    std::string stag, dtag;
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "SoftMax" || op_kind == "LogSoftmax") {
+        if (!get_driver_tag_by_idx(base_op_ref, dtag, 0, true)
+                || !get_driver_tag_by_idx(base_op_ref, stag, 0, false)) {
+            return false;
+        }
+        op_setting.stag.front() = std::move(stag);
+        op_setting.dtag.front() = std::move(dtag);
+    } else if (op_kind == "SoftMaxBackward"
+            || op_kind == "LogSoftmaxBackward") {
+        if (!get_driver_tag_by_idx(base_op_ref, dtag, 1, false)) {
+            return false;
+        }
+        op_setting.dtag.front() = std::move(dtag);
+    } else {
+        assert(!"unsupported op_kind");
+        return false;
+    }
     return true;
 }
 
@@ -1979,9 +2024,7 @@ bool get_softmax_alg(
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front()),
-            res);
+            softmax::get_softmax_mtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_alg(base_op_ref, op_setting.alg.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(

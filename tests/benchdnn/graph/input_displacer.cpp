@@ -30,7 +30,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
     static const std::unordered_set<std::string> main_op_kind {"Convolution",
             "ConvTranspose", "AvgPool", "MaxPool", "MatMul", "Add", "Divide",
-            "Maximum", "Minimum", "Multiply", "Substract", "Select"};
+            "Maximum", "Minimum", "Multiply", "Subtract", "Select"};
 
     static const std::unordered_set<std::string> go_through_op_kind {
             "StaticTranspose", "StaticReshape", "TypeCast", "Quantize",
@@ -339,11 +339,34 @@ partition_data_displacer_t::partition_data_displacer_t(
             set_seq_len_displace_args(child_sub_op, seq_len_q);
             break;
         }
+
+        // Fill proper data for softmax stats in sdpa backward graph.
+        // TODO: check if it's a known sdpa pattern before doing the data filling
+        while (aop.kind_ == "Subtract") {
+            // for softmax stats, it's used as P = exp(S-stats)
+            // stats should be an input of the whole backward graph, so it should
+            // have no producer.
+            auto *aop_in_lt = &aop.in_lts_[1];
+            auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+            if (!parent_op->empty()) break;
+
+            // subtract should be followed by exp to resume a softmax functionality.
+            auto *aop_out_lt = &aop.out_lts_[0];
+            auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_exp_op->kind_ != "Exp") break;
+
+            displace_args_.emplace(aop_in_lt->id_,
+                    displace_args_t {
+                            aop, 1, *aop_in_lt, filling_type_t::softmax_stats});
+            break;
+        }
     }
 }
 
-int partition_data_displacer_t::displace_input_data(
-        size_t lt_id, dnn_mem_t &mem, res_t *res) {
+int partition_data_displacer_t::displace_input_data(size_t lt_id,
+        dnn_mem_t &mem,
+        const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
+        res_t *res) {
     if (!dg_) {
         res->state = FAILED;
         return FAIL;
@@ -376,6 +399,12 @@ int partition_data_displacer_t::displace_input_data(
         SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
     } else if (filling_type == filling_type_t::fixed_setting) {
         SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+    } else if (filling_type == filling_type_t::softmax_stats) {
+        auto softmax_src_lt = &main_op.in_lts_[0];
+        const dnn_mem_t &softmax_src_mem = lt_id_2_mems.at(softmax_src_lt->id_);
+        SAFE(gen_softmax_stats_filling(main_op, main_op_arg, softmax_src_mem,
+                     mem_replace, mem.md_, res),
+                WARN);
     } else {
         assert(!"unexpected filling type");
     }
@@ -612,6 +641,65 @@ int partition_data_displacer_t::gen_causal_mask_filling(
     });
 
     mem = std::move(tmp_mem);
+    return OK;
+}
+
+int partition_data_displacer_t::gen_softmax_stats_filling(
+        const ::graph::deserialized_op_t &main_op, int arg,
+        const dnn_mem_t &src_mem, dnn_mem_t &mem, const_dnnl_memory_desc_t md,
+        res_t *res) const {
+
+    dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
+    std::vector<float> dst(src_mem.nelems(), 0.f);
+
+    logical_tensor::dims softmax_src_shape = main_op.in_lts_[0].shape_;
+    logical_tensor::dims softmax_stats_shape = main_op.in_lts_[1].shape_;
+    size_t axis = 0;
+    for (; axis < softmax_src_shape.size() && axis < softmax_src_shape.size();
+            ++axis) {
+        if (softmax_src_shape[axis] != softmax_stats_shape[axis]) break;
+    }
+
+    int64_t outer_size {1}, inner_size {1}, axis_size {1};
+    for (size_t i = 0; i < axis; i++) {
+        outer_size *= softmax_src_shape[i];
+    }
+    for (size_t i = axis + 1; i < softmax_src_shape.size(); i++)
+        inner_size *= softmax_src_shape[i];
+    axis_size = softmax_src_shape[axis];
+
+    benchdnn_parallel_nd(outer_size, inner_size, [&](int64_t ou, int64_t in) {
+        float space_denom = 0.;
+        float space_max = -FLT_MAX;
+        int64_t ou_in_offset = ou * axis_size * inner_size + in;
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            space_max = MAX2(space_max, src_mem.get_f32_elem(idx));
+        }
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            float s = src_mem.get_f32_elem(idx);
+            float D = dst[idx] = expf(s - space_max);
+            space_denom += D;
+        }
+
+        space_denom = space_denom ? 1.f / space_denom : 1.f;
+        float dst_space_max = -FLT_MAX;
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            dst[idx] *= space_denom;
+            dst_space_max = MAX2(dst_space_max, dst[idx]);
+        }
+
+        // computes stats
+        int64_t stats_idx = ou * inner_size + in;
+        float stats_value = dst_space_max ? space_max - logf(space_denom) : 0.f;
+        m.set_elem(stats_idx, stats_value);
+    });
+
+    mem = std::move(m);
     return OK;
 }
 

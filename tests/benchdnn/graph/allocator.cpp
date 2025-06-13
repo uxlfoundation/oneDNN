@@ -65,14 +65,11 @@ bool check_memory_size(size_t size) {
 
 } // namespace
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 void graph_mem_manager_t::clear_memory_pool() {
     mem_pool_.clear();
 }
-#endif
 
-void *graph_mem_manager_t::host_malloc_wrapper(
+void *graph_mem_manager_t::default_host_malloc(
         size_t size, size_t alignment) const {
     CHECK_GRAPH_MEM_SIZE(need_mem_check_, size);
 
@@ -87,12 +84,35 @@ void *graph_mem_manager_t::host_malloc_wrapper(
     return (rc == 0) ? ptr : nullptr;
 }
 
-void graph_mem_manager_t::host_free_wrapper(void *ptr) {
+void graph_mem_manager_t::default_host_free(void *ptr) {
 #ifdef _WIN32
     _aligned_free((void *)ptr);
 #else
     ::free((void *)ptr);
 #endif /* _WIN32 */
+}
+
+void *graph_mem_manager_t::host_malloc_wrapper(size_t size, size_t alignment) {
+    void *ptr = nullptr;
+    if (!has_bench_mode_bit(mode_bit_t::corr) && is_cpu()) {
+        bool need_alloc_new_mm = mem_pool_.check_allocated_mem(ptr, size);
+
+        if (need_alloc_new_mm) {
+            CHECK_GRAPH_MEM_SIZE(need_mem_check_, size);
+            ptr = mem_pool_.allocate(size, alignment);
+        }
+    } else {
+        CHECK_GRAPH_MEM_SIZE(need_mem_check_, size);
+        ptr = default_host_malloc(size, alignment);
+    }
+    return ptr;
+}
+
+void graph_mem_manager_t::host_free_wrapper(void *ptr) {
+    if (!has_bench_mode_bit(mode_bit_t::corr) && is_cpu())
+        mem_pool_.deallocate(ptr);
+    else
+        default_host_free(ptr);
 }
 
 void *host_allocator(size_t size, size_t alignment) {

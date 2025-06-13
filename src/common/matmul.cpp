@@ -64,9 +64,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // weights decompression.
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    const bool wei_is_fp8
-            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (wei_is_int || wei_is_fp8) {
+    const bool wei_is_fp8_fp4 = utils::one_of(wei_dt, data_type::f8_e5m2,
+            data_type::f8_e4m3, data_type::f4_e2m1, data_type::f4_e3m0);
+    if (wei_is_int || wei_is_fp8_fp4) {
         attr_mask |= smask_t::zero_points_data_type;
         attr_mask |= smask_t::zero_points_groups;
         attr_mask |= smask_t::scales_groups;

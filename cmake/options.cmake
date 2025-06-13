@@ -218,6 +218,11 @@ option(DNNL_EXPERIMENTAL_LOGGING
     independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
+option(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    "Enable experimental SYCL OpenCL kernel compiler extension. This option
+    works independently from DNNL_EXPERIMENTAL."
+    OFF) # disabled by default
+
 # ======================
 # Profiling capabilities
 # ======================

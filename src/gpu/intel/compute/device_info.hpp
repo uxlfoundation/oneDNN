@@ -194,6 +194,8 @@ public:
         return status::success;
     }
 
+    std::string get_cl_ext_options() const;
+
     bool has(device_ext_t ext) const { return extensions_ & (uint64_t)ext; }
     bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }

@@ -30,6 +30,7 @@ Both kinds of experimental features can be enabled simultaneously.
 | ONEDNN_EXPERIMENTAL_UKERNEL                | Enable experimental microkernel APIs and functionalities.          |
 | ONEDNN_EXPERIMENTAL_PROFILING              | Enable experimental profiling API.                                 |
 | ONEDNN_EXPERIMENTAL_LOGGING                | Enable experimental logging support for oneDNN verbose mode.       |
+| ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER     | Enable SYCL kernel compiler extension to remove dependency on OpenCL runtime.       |
 
 ## Features details
 
@@ -140,3 +141,9 @@ The runtime controls for oneDNN logging are listed as follows:
 | ONEDNN_VERBOSE_LOGFILE_SIZE     | Specifies maximum size for the logfile.                            |
 | ONEDNN_VERBOSE_NUM_LOGFILES     | Number of rotating logfiles for the logger.                        |
 | ONEDNN_VERBOSE_LOG_WITH_CONSOLE | Enables printing to both stdout and the logfile.                   |
+
+### ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+
+This option enables the experimental SYCL OpenCL online kernel compiler,
+allowing OpenCL kernels to be compiled without directly invoking the OpenCL
+runtime.

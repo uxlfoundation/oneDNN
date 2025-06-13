@@ -162,11 +162,22 @@ int ref_partition_t::init_ref(
         }
     }
 
-    // displace data if needed
-    for (const auto &entry : lt_id_2_mems_) {
-        SAFE_V(data_displacer.displace_input_data(
-                entry.first, const_cast<dnn_mem_t &>(entry.second), res));
+    // displace data if needed, with topo order
+    for (const auto &par_op_ref : partition_ops_ref_) {
+        for (size_t i = 0; i < par_op_ref.get().in_lts_.size(); i++) {
+            size_t lt_id = par_op_ref.get().in_lts_[i].id_;
+            if (lt_id_2_mems_.find(lt_id) == lt_id_2_mems_.end()) continue;
+            if (data_displacer.get_filling_type(lt_id)
+                    == filling_type_t::softmax_stats) {
+                res_t temp_res;
+                exec_ops(&temp_res);
+            }
+            const dnn_mem_t &mem = lt_id_2_mems_.at(lt_id);
+            SAFE_V(data_displacer.displace_input_data(
+                    lt_id, const_cast<dnn_mem_t &>(mem), lt_id_2_mems_, res));
+        }
     }
+
     return OK;
 }
 
@@ -324,9 +335,9 @@ void ref_partition_t::exec_ops(res_t *res) {
         if (is_sdpa_pattern || is_gated_mlp_pattern) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
                 dnnl_data_type_t dt = dnnl_data_type_undef;
-                bool need_crop = need_unfusable_output_crop(op, i, dt);
-                // There's no need to reorder data for undefined or f32 tensors.
-                if (!need_crop || dt == dnnl_f32) continue;
+                if (!need_unfusable_output_crop(op, i, dt)) continue;
+                // There's no need to reorder data for f32 tensors.
+                if (dt == dnnl_f32) continue;
 
                 int arg = get_prim_arg_name_from_graph_op_output_offset(
                         ref_prim->get_kind(), i);

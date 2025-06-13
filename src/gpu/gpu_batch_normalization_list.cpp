@@ -17,7 +17,7 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/bnorm/gen9_batch_normalization.hpp"
+#include "gpu/intel/ocl/bnorm/xe_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/ref_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/reusable_bnorm.hpp"
@@ -54,7 +54,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
     {{forward}, {
         GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::nhwc_reusable_batch_normalization_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::nhwc_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_batch_normalization_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::simple_batch_normalization_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::reusable_batch_normalization_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::ref_batch_normalization_fwd_t)
@@ -66,7 +66,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
     {{backward}, REG_BWD_PK({
         GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::nhwc_reusable_batch_normalization_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::nhwc_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_batch_normalization_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::simple_batch_normalization_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::reusable_batch_normalization_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::ref_batch_normalization_bwd_t)

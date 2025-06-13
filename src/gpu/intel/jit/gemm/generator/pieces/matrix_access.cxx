@@ -330,10 +330,7 @@ void BLASKernelGenerator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const
                         case Type::u32:
                         case Type::s32: atomic(AtomicOp::add, mod, scattered_dword(), astrategy.base, addr[hoff], curSrc); break;
                         case Type::u16:
-                        case Type::s16:
-                            if (hw < HW::Gen12LP) hw_unsupported();
-                            atomic(AtomicOp::add, mod, scattered_word(), astrategy.base, addr[hoff], curSrc);
-                            break;
+                        case Type::s16: atomic(AtomicOp::add, mod, scattered_word(), astrategy.base, addr[hoff], curSrc); break;
                         default: stub();
                     }
                 }
@@ -397,8 +394,7 @@ void BLASKernelGenerator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const
                     if (astrategy.newDP)
                         atomic(AtomicOp::cmpwr, atomicMod, rOld, specLSC, astrategy.base, getAddress(addr[hoff], block, astrategy), rOld);
                     else switch (ebytes) {
-                        case 2: if (hw < HW::Gen12LP) hw_unsupported();
-                                atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_word(),  astrategy.base, addr[hoff], rOld); break;
+                        case 2: atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_word(),  astrategy.base, addr[hoff], rOld); break;
                         case 4: atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_dword(), astrategy.base, addr[hoff], rOld); break;
                         case 8: atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_qword(), astrategy.base, addr[hoff], rOld); break;
                         default: stub();

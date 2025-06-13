@@ -50,7 +50,6 @@ type_t to_type(data_type_t dt) {
 
 hw_t to_hw(ngen::HW hw) {
     switch (hw) {
-        case ngen::HW::Gen9:
         case ngen::HW::XeLP:
         case ngen::HW::XeHP:
         case ngen::HW::XeHPG: return hw_t::xehpg;

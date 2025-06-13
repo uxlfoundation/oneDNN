@@ -443,9 +443,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             if (substep_simd <= 0) continue;
             const Vmm vmm = accm(m_blocks, n_blocks, m, n, v_i);
             if (is_superset(brg.isa_impl, avx512_core)) {
-                vmulps(vmm, vmm, ptr_b[reg_aux_dst_scales]);
+                vdivps(vmm, vmm, ptr_b[reg_aux_dst_scales]);
             } else {
-                vmulps(vmm, vmm, vmm_dst_scales);
+                vdivps(vmm, vmm, vmm_dst_scales);
             }
         }
     }

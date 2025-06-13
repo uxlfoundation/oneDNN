@@ -866,18 +866,17 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 
     if (brg_.beta != 0 && brg_.with_dst_scales) {
         mov(aux_reg_dst_scales, ptr[rsp + reg_dst_scales_offs_]);
-        const auto addr = ptr[aux_reg_dst_scales];
-        auto vmm_scales = vmm_tmp(0);
-        if (!isa_has_masks(brg_.isa_impl)) vmovups(vmm_scales, addr);
+        auto vmm_dst_scales = vmm_tmp(0);
+        uni_vbroadcastss(vmm_dst_scales, ptr[aux_reg_dst_scales]);
 
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             auto vmm = vector(m, n);
             if (isa_has_masks(brg_.isa_impl)) {
                 vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
-                vmulps(vmm, vmm, addr);
+                uni_vdivps(vmm, vmm, vmm_dst_scales);
             } else {
-                vmulps(vmm, vmm, vmm_scales);
+                uni_vdivps(vmm, vmm, vmm_dst_scales);
             }
         }
     }

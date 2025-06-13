@@ -552,7 +552,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || (one_of(src_type, u8, s8) && wei_type == s8) // oscales needed
+            || jcp_.with_scales
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum || jcp_.use_M_mask
             || jcp_.src_zero_point || jcp_.dst_zero_point;
 
@@ -1271,7 +1271,9 @@ status_t brgemm_convolution_fwd_t<isa>::execute(
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    // DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const memory_tracking::grantor_t scratchpad = ctx->get_scratchpad_grantor();
 

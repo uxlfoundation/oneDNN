@@ -114,7 +114,12 @@ private:
     // keep the memory for each logical tensor
     // before the execution of each reference primitive,
     // replace the args with the memory from this map.
-    std::unordered_map<size_t, const dnn_mem_t &> lt_id_2_mems_;
+    // We use a map instead of unordered_map here because, in SDPA training,
+    // softmax stats need to be recomputed from the softmax input,
+    // which depends on Q, K, optional scale, and optional mask.
+    // All these memories must be finalized before
+    // recomputing the softmax stats.
+    std::map<size_t, const dnn_mem_t &> lt_id_2_mems_;
     // keep the lt id for fake output which is not supported by primitive
     std::unordered_set<size_t> fake_lt_ids_;
 

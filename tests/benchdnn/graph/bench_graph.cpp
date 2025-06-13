@@ -36,18 +36,29 @@ void check_correctness(const settings_t &s) {
     for (const auto &i_mb : s.mb) {
         deserialized_graph_t dg;
         dg.load(locate_file(s.json_file));
-        flex_rewrite_t fw(i_in_shapes, i_op_attrs, i_fpmath_mode, i_mb, i_dt,
-                i_dt_map, i_op_kind_map);
-        fw.rewrite(dg);
-        BENCHDNN_PRINT(7, "[INFO] Graph dump:\n%s\n", dg.get_string().c_str());
 
-        const prb_t prb(dg, i_expected_n_partition);
+        res_t res {};
         const auto &cpp_pstr = case_to_str(s.json_file, i_in_shapes, i_op_attrs,
                 i_fpmath_mode, i_expected_n_partition, i_mb, i_dt, i_dt_map,
                 i_op_kind_map);
         const char *pstr = cpp_pstr.c_str();
+
+        // rewrite the graph
+        flex_rewrite_t fw(i_in_shapes, i_op_attrs, i_fpmath_mode, i_mb, i_dt,
+                i_dt_map, i_op_kind_map);
+        auto rewrite_res = fw.rewrite(dg);
+        if (rewrite_res != OK) {
+            res.state = SKIPPED;
+            res.reason = skip_reason::invalid_case;
+            parse_result(res, pstr);
+            fw.reset();
+
+            continue;
+        }
+
+        BENCHDNN_PRINT(7, "[INFO] Graph dump:\n%s\n", dg.get_string().c_str());
+        const prb_t prb(dg, i_expected_n_partition);
         BENCHDNN_PRINT(1, "run: %s\n", pstr);
-        res_t res {};
 
         // A timer for each test case.
         auto &tct = res.timer_map.get_timer(timer::names::test_case_timer);
@@ -55,8 +66,9 @@ void check_correctness(const settings_t &s) {
         doit(&prb, &res);
         tct.stamp();
 
-        // Reset the memory size args for the graph after testing.
+        // reset the memory size args for the graph after testing.
         reset_graph_mem_req();
+        fw.reset();
 
         parse_result(res, pstr);
         if (has_bench_mode_bit(mode_bit_t::perf)) {

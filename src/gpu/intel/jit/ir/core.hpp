@@ -1435,9 +1435,9 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(value); }
 
-    static expr_t shrink_type(const expr_t &e) {
+    static expr_t shrink_type(const expr_t &e, bool prefer_unsigned = false) {
         auto &imm = e.as<int_imm_t>();
-        type_t new_type = shrink_type(imm.value);
+        type_t new_type = shrink_type(imm.value, prefer_unsigned);
         if (new_type == imm.type) return e;
         return make(imm.value, new_type);
     }
@@ -1459,7 +1459,11 @@ private:
         : expr_impl_t(_type_info(), type.is_undef() ? shrink_type(value) : type)
         , value(value) {}
 
-    static type_t shrink_type(int64_t v) {
+    static type_t shrink_type(int64_t v, bool prefer_unsigned = false) {
+        if (prefer_unsigned && try_shrink_type<uint32_t>(v))
+            return type_t::u32();
+        if (prefer_unsigned && try_shrink_type<uint64_t>(v))
+            return type_t::u64();
         if (try_shrink_type<int32_t>(v)) return type_t::s32();
         return type_t::s64();
     }

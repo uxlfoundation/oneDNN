@@ -125,7 +125,7 @@ std::string print_to_string(const ::testing::TestParamInfo<sdpa_dims_t> &info) {
 
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | Vdt | "
-                 "mask | quant |  time (us) | BW eff/actual (Gbps) | "
+                 "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
 
@@ -1457,12 +1457,12 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 #endif
 }
-std::vector<std::chrono::microseconds> timeit(
+std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {
     using namespace std::chrono;
     func();
     func();
-    std::vector<std::chrono::microseconds> times;
+    std::vector<std::chrono::nanoseconds> times;
     for (int j = 0; j < 5; j++) {
         auto e = steady_clock::now();
         str.wait();
@@ -1472,7 +1472,7 @@ std::vector<std::chrono::microseconds> timeit(
         }
         str.wait();
         e = steady_clock::now();
-        times.push_back(std::chrono::duration_cast<microseconds>(e - s));
+        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
     }
     return times;
 }
@@ -1574,12 +1574,12 @@ GPU_TEST_P(sdpa_test_t, perf) {
             throw;
     }
 
-    auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
-            p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
-            t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
-            alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
-    auto sdpaf16_p = sdpa(sdpaf16_pd);
+    // auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
+    //         p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
+    //         t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
+    //         invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
+    //         alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
+    // auto sdpaf16_p = sdpa(sdpaf16_pd);
 
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},
             {DNNL_ARG_VALUES, t.m_value_quantized},
@@ -1649,7 +1649,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
     //auto sdpa_f16_time = timeit(loop_sdpa_f16, strm, iterations);
 
     using namespace std::chrono;
-    auto min_time = [](const std::vector<microseconds> &a) {
+    auto min_time = [](const std::vector<nanoseconds> &a) {
         return *std::min_element(a.begin(), a.end());
     };
 

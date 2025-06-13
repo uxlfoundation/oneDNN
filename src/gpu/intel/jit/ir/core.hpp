@@ -371,8 +371,8 @@ public:
     static type_t f64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
         return type_t(type_kind_t::f64, elems, attr);
     }
-    static type_t f32(int elems = 1) { return type_t(type_kind_t::f32, elems); }
-    static type_t f64(int elems = 1) { return type_t(type_kind_t::f64, elems); }
+    //static type_t f32(int elems = 1) { return type_t(type_kind_t::f32, elems); }
+    //static type_t f64(int elems = 1) { return type_t(type_kind_t::f64, elems); }
 
     static type_t byte(int elems = 1, type_attr_t attr = type_attr_t::undef) {
         return type_t(type_kind_t::byte, elems, attr);

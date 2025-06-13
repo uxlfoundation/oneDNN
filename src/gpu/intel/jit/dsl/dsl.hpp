@@ -19,8 +19,10 @@
 
 #include <stack>
 
-#include "gpu/intel/jit/gemm/ir/builder.hpp"
+
+#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/blocking.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/v2/conv/plan.hpp"
 #include "gpu/intel/jit/v2/ir/tensor.hpp"

@@ -81,6 +81,8 @@
 --reset --dt=bf16 --case=op/f32/logsoftmax.json
 --reset --dt=bf16 --case=op/f32/logsoftmax_bwd.json
 --reset --dt=bf16 --case=op/f32/matmul_2d_4d.json
+--reset --dt=0:bf16+2:bf16 --case=op/f32/matmul_2d_4d.json
+--reset --dt=0:bf16+1:bf16 --case=op/f32/matmul_2d_4d.json
 --reset --dt=bf16 --in-shapes=0:384x32 --op-attrs=0:transpose_a:1 --case=op/f32/matmul_2d_4d.json
 --reset --dt=bf16 --in-shapes=0:384x32+1:1024x384 --op-attrs=0:transpose_a:1*transpose_b:1 --case=op/f32/matmul_2d_4d.json
 --reset --dt=bf16 --case=op/f32/maxpool.json
@@ -118,6 +120,7 @@
 --reset --dt=bf16 --case=op/f32/reorder.json
 --reset --dt=bf16 --case=op/f32/softmax.json
 --reset --dt=bf16 --case=op/f32/softmax_bwd.json
+--reset --dt=0:bf16+1:bf16 --case=op/f32/softmax_bwd.json
 --reset --case=op/bf16/typecast.json
 --reset --case=op/bf16/dynamicdq_s4.json
 --reset --case=op/bf16/dynamicdq_u4.json

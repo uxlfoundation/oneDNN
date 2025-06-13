@@ -151,8 +151,15 @@ int ref_partition_t::init_ref(
 
     // displace data if needed
     for (const auto &entry : lt_id_2_mems_) {
-        SAFE_V(data_displacer.displace_input_data(
-                entry.first, const_cast<dnn_mem_t &>(entry.second), res));
+        // special handling for softmax stats, need to recompute the forward
+        // graph (which is the same as the backward graph before the subtract op
+        if (data_displacer.get_filling_type(entry.first)
+                == filling_type_t::softmax_stats) {
+            res_t temp_res;
+            exec_ops(&temp_res);
+        }
+        SAFE_V(data_displacer.displace_input_data(entry.first,
+                const_cast<dnn_mem_t &>(entry.second), lt_id_2_mems_, res));
     }
     return OK;
 }

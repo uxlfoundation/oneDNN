@@ -702,8 +702,8 @@ void split_const_nary_op_arg(op_kind_t op_kind, const std::vector<expr_t> &args,
                 const_arg = a;
                 continue;
             }
-            const_arg = const_fold_non_recursive(
-                    binary_op_t::make(op_kind, const_arg, a));
+            auto bin = binary_op_t::make(op_kind, const_arg, a);
+            const_arg = const_fold_non_recursive(bin);
         } else {
             other_args.push_back(a);
         }
@@ -2309,7 +2309,12 @@ expr_t const_fold_non_recursive(const expr_t &e) {
         // Always perform integer const folding in s64 to avoid overflow.
         auto compute_type
                 = is_int ? type_t::s64(e.type().elems()) : common_type(a, b);
-        return const_fold_binary(compute_type, op_kind, a, b);
+        auto result = const_fold_binary(compute_type, op_kind, a, b);
+
+        if (result.is<int_imm_t>()) {
+            return int_imm_t::shrink_type(result, e.type().is_unsigned());
+        }
+        return result;
     }
 
     auto *iif = e.as_ptr<iif_t>();

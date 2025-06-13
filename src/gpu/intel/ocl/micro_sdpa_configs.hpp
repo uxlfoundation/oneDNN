@@ -32,6 +32,9 @@ struct sdpa_config_t {
     int wg_m_vs, wg_n_vs; // Workgroup configuration for V*S GEMM
 };
 
+sdpa_config_t *choose_config_xehpg_fma(
+        dim_t head_size, dim_t seq, bool thin_q, bool quantized);
+
 sdpa_config_t *choose_config_xehpg(
         dim_t head_size, dim_t seq, bool thin_q, bool quantized);
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2023 Arm Ltd. and affiliates 
+* Copyright 2023,2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -213,6 +213,7 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
         return 0;
 };
 
+// SVE length in bytes
 static inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }
@@ -276,6 +277,18 @@ inline size_t data_type_vnni_simd_elems(data_type_t data_type) {
     const size_t dt_size = types::data_type_size(data_type);
     assert(dt_size > 0);
     return cpu_isa_traits<isa>::vlen / dt_size;
+}
+
+// Maximum number of elements of a given type in a SIMD (SVE/Neon) vector for a
+// given ISA
+inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
+    switch (cpu_isa) {
+        case sve_512: return data_type_vnni_simd_elems<sve_512>(dt);
+        case sve_256: return data_type_vnni_simd_elems<sve_256>(dt);
+        case sve_128:
+        case asimd: return data_type_vnni_simd_elems<sve_128>(dt);
+        default: return 0;
+    }
 }
 
 } // namespace aarch64

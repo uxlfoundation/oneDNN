@@ -9,6 +9,7 @@
 --reset --dt=f32,bf16,f16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f16-bs1.json
 --reset --dt=f32,bf16,f16 --case=complex_fusion/mha/GQA-fp16.json
 --reset --dt=f32,bf16,f16 --case=complex_fusion/mha/GQA-fp16-v2.json
+--reset --dt=f32,bf16,f16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --dt=f32,bf16,f16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f16.json
 --reset --dt=f32,bf16,f16 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 
@@ -32,6 +33,8 @@
 --reset --dt=1:f16+2:f16+3:f16+4:f16+6:f16+104:f16 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --dt=4:f32+9:f32+14:f32 --case=complex_fusion/mha/GQA-fp16-v2.json
 --reset --dt=4:f32+9:f32+14:f32 --case=complex_fusion/mha/GQA-fp16.json
+--reset --dt=1:f16+3:f16+8:f16+16:f16+19:f16+20:f16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
+--reset --case=complex_fusion/mha/gqa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 --reset --dt=3:f16+4:f16+2:f16+1:f16+11:f16+0:f16+12:f16+14:f16+16:f16 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json
 --reset --dt=0:f16+1:f16+3:f16+7:f16+2:f16+8:f16 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
 --reset --dt=15:f32+16:f32+5:f32+21:f32 --case=complex_fusion/mha/sdpa-compressed-kv-implicit-causal-mask-int8-gs128.json
@@ -57,6 +60,8 @@
 --reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=3:bf16+4:bf16+2:bf16+1:bf16+11:bf16+0:bf16+12:bf16+14:bf16+16:bf16 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json
 --reset --dt=4:f32+9:f32+14:f32+1:bf16+3:bf16+8:bf16+11:bf16+16:bf16+20:bf16+19:bf16 --case=complex_fusion/mha/GQA-fp16-v2.json
+--reset --dt=1:bf16+3:bf16+8:bf16+16:bf16+19:bf16+20:bf16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
+--reset --dt=0:bf16+1:bf16+4:bf16+22:bf16+24:bf16+25:bf16 --case=complex_fusion/mha/gqa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 --reset --dt=4:f32+9:f32+14:f32+0:bf16+1:bf16+2:bf16+3:bf16+11:bf16+12:bf16+18:bf16+19:bf16+8:bf16+16:bf16+20:bf16+23:bf16 --case=complex_fusion/mha/GQA-fp16.json
 --reset --dt=0:bf16+1:bf16+3:bf16+7:bf16+2:bf16+8:bf16 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
 --reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json

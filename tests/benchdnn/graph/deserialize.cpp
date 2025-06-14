@@ -326,9 +326,13 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         // for each output id of the op, find the ops with the same input id
         // check the input
         for (const auto &out : op.out_lts_) {
-            for (const auto &aop : in_lt_2_ops_[out.id_]) {
-                deg[aop.id_]--;
-                if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+            // if the out tensor is not the output port of the graph, reduce
+            // the in-degree of its consumer.
+            if (in_lt_2_ops_.count(out.id_)) {
+                for (const auto &aop : in_lt_2_ops_[out.id_]) {
+                    deg[aop.id_]--;
+                    if (deg[aop.id_] == 0) { ops_.push_back(ops_map[aop.id_]); }
+                }
             }
         }
     }
@@ -367,6 +371,10 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
     for (const auto &item : graph_tensors_) {
         input_ports_.emplace_back(item.first);
     }
+
+    // detect whether the parsed graph belong to any specific patterns that
+    // requires special handling, such as SDPA.
+    detect_recognized_patterns();
 }
 
 // Prints the lt in the plain string format: `(id):dt:shape`.
@@ -514,6 +522,83 @@ const deserialized_op_t &deserialized_graph_t::get_op_by_in_lt(
 
     static deserialized_op_t dummy;
     return dummy;
+}
+
+void deserialized_graph_t::detect_recognized_patterns() {
+    if (ops_.size() >= 3 && detect_sdpa_impl()) {
+        recognized_pattern_ = graph_recognized_pattern_t::sdpa;
+        return;
+    }
+}
+
+bool deserialized_graph_t::detect_sdpa_impl() const {
+
+    static const std::unordered_set<std::string> mm1_post_op_kind
+            = {"Divide", "Multiply", "Add", "Select", "GenIndex",
+                    "GreaterEqual", "StaticReshape", "StaticTranspose"};
+    const auto is_root_op = [&](const deserialized_op_t &op) {
+        return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
+                [&](const deserialized_lt_t &lt) {
+                    return !get_op_by_out_lt(lt.id_).empty();
+                });
+    };
+
+    std::vector<std::reference_wrapper<const deserialized_op_t>> starter_ops;
+    for (const auto &aop : ops_)
+        if (is_root_op(aop)) starter_ops.emplace_back(aop);
+
+    const auto find_next_util
+            = [&](const deserialized_op_t &start_op,
+                      const std::string &target_kind,
+                      const std::unordered_set<std::string> &allowed_skips)
+            -> deserialized_op_t {
+        auto current = start_op;
+        while (!current.empty() && current.kind_ != target_kind) {
+            if (!allowed_skips.empty() && allowed_skips.count(current.kind_)) {
+                break;
+            }
+            current = get_post_op(current);
+        }
+        return (current.kind_ == target_kind) ? current : deserialized_op_t {};
+    };
+
+    for (const auto &starter : starter_ops) {
+        // find the first MatMul
+        auto cur_op = find_next_util(starter.get(), "MatMul", {});
+        if (cur_op.empty()) continue;
+
+        // find the Softmax
+        cur_op = get_post_op(cur_op);
+        cur_op = find_next_util(cur_op, "SoftMax", mm1_post_op_kind);
+        if (cur_op.empty()) continue;
+
+        // find the second MatMul
+        cur_op = get_post_op(cur_op);
+        cur_op = find_next_util(cur_op, "MatMul", {});
+        if (cur_op.empty()) continue;
+
+        // if we find a path that conatins MatMul->SoftMax->MatMul, the graph
+        // will be considered as a SDPA implementation.
+        return true;
+    }
+
+    return false;
+}
+
+const deserialized_op_t &deserialized_graph_t::get_post_op(
+        const deserialized_op_t &op) const {
+
+    if (op.out_lts_.empty()) {
+        BENCHDNN_PRINT(
+                0, "Error: Getting post op of op with id %zu failed\n", op.id_);
+        SAFE_V(FAIL);
+    }
+
+    const auto out_id = op.out_lts_[0].id_;
+    static deserialized_op_t dummy;
+
+    if (in_lt_2_ops_.find(out_id) == in_lt_2_ops_.end()) return dummy;
+    return in_lt_2_ops_.at(out_id).front();
 }
 
 bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,

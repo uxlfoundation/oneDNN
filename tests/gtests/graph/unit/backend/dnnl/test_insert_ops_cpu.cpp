@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -78,11 +78,13 @@ TEST(test_insert_ops, InsertPermuteForOpOnlyRequireDataFormat) {
             = utils::logical_tensor_init(id++, dims, graph::data_type::f32);
     prelu_op->add_input(in_lt1);
 
-    auto &mgr = subgraph->fusion_info_mgr_;
-    auto key = mgr.init_info();
-    prelu_op->set_attr<int64_t>(
-            graph::dnnl_impl::op_attr::fusion_info_key, key);
-    auto &fusion_info = mgr.get_mutable_info(key);
+    graph::dnnl_impl::fusion_info_t init_info;
+    prelu_op->set_attr<graph::dnnl_impl::fusion_info_t>(
+            graph::dnnl_impl::op_attr::fusion_info, init_info);
+
+    graph::dnnl_impl::fusion_info_t &fusion_info
+            = prelu_op->get_mutable_attr<graph::dnnl_impl::fusion_info_t>(
+                    graph::dnnl_impl::op_attr::fusion_info);
 
     auto post_op = std::make_shared<graph::op_t>(id++,
             static_cast<graph::op_kind_t>(

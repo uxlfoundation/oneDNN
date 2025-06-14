@@ -108,6 +108,19 @@ public:
 
     fusion_info_t() = default;
 
+    // TODO(GX): the operator here is mainly for making compiler happy, and it's
+    // not actually used becasue fusion_info_t is an internal attribute. We may
+    // need to extend the logic here in case of future necessarity.
+    bool operator==(const fusion_info_t &other) const {
+        return input_scales_.size() == other.input_scales_.size()
+                && input_zps_.size() == other.input_zps_.size()
+                && post_ops_.size() == other.post_ops_.size();
+    }
+
+    bool operator!=(const fusion_info_t &other) const {
+        return !(*this == other);
+    }
+
     // used to modify the fused arg scales, like modifying it's axis after
     // inserting reshape op
     op_t *get_mutable_scales(bool is_input, size_t index) {
@@ -285,31 +298,10 @@ public:
     fusion_info_mgr_t &operator=(const fusion_info_mgr_t &) = delete;
     fusion_info_mgr_t &operator=(fusion_info_mgr_t &&) = delete;
 
-    // Initialize an empty fusion info object and return its key
-    int64_t init_info() {
-        data_.emplace_back();
-        return static_cast<int64_t>(data_.size() - 1);
-    }
-
-    // Get out a mutable fusion info reference according to the key
-    fusion_info_t &get_mutable_info(int64_t key) {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
-    // Get out a constant fusion info reference according to the key
-    const fusion_info_t &get_info(int64_t key) const {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
     const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
     bool get_use_blocked_layout() const { return can_use_blocked_layout_; }
 
 private:
-    std::vector<fusion_info_t> data_;
     // specified floating-point math mode for all fusions
     fpmath_t fpmath_mode_;
     bool can_use_blocked_layout_;

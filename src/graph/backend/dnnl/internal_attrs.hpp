@@ -56,6 +56,7 @@ const op_attr_t group_mask = 0x10104;
 const op_attr_t data_type = 0x10105;
 const op_attr_t axis_row = 0x10106;
 const op_attr_t axis_col = 0x10107;
+const op_attr_t fusion_info_keys = 0x10108; // used for sdpa
 
 // string
 const op_attr_t dw_type = 0x10201;
@@ -96,6 +97,7 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(fusion_info_key);
         CASE(axis_row);
         CASE(axis_col);
+        CASE(fusion_info_keys);
         CASE(dw_type);
         CASE(kind);
         CASE(p);

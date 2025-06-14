@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2021-2022 Intel Corporation
+ * Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,6 +66,11 @@ struct attribute_value_traits<bool> {
 };
 
 template <typename value_type>
+struct attribute_value_traits {
+    static attribute_kind_t constexpr kind = attribute_kind::c;
+};
+
+template <typename value_type>
 using base_value_type = typename std::remove_cv<
         typename std::remove_reference<value_type>::type>::type;
 
@@ -76,9 +81,12 @@ constexpr attribute_kind_t get_attribute_kind() {
                     || std::is_same<std::vector<float>, value_type>::value
                     || std::is_same<std::vector<int64_t>, value_type>::value
                     || std::is_same<std::string, value_type>::value
-                    || std::is_same<bool, value_type>::value,
+                    || std::is_same<bool, value_type>::value
+                    || (attribute_value_traits<
+                                base_value_type<value_type>>::kind
+                            == attribute_kind::c),
             "value_type should be one of int64_t, float, string, "
-            "bool, vector<float>, or vector<int64_t>.");
+            "bool, vector<float>, vector<int64_t> or custom type.");
 
     return attribute_value_traits<base_value_type<value_type>>::kind;
 }

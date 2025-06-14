@@ -143,12 +143,12 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
                 "failed to fill layout info for reorder before conv bias");
     }
 
-    fusion_info_t fusion_info;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        fusion_info = mgr.get_info(key);
+    if (!op->has_attr(op_attr::fusion_info)) {
+        fusion_info_t fusion_info;
+        op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
     }
+    const fusion_info_t &fusion_info
+            = op->get_attr<fusion_info_t>(op_attr::fusion_info);
 
     if (fusion_info.has_post_dw_conv()) {
         const auto &dw_conv = fusion_info.get_post_dw_conv();

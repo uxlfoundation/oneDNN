@@ -312,8 +312,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_convolution, 1,
                 // Attributes inherited from Convolution.
                 .SET_CONV_COMMON_ATTRS
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::with_bias, false, attribute_kind::b, false)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
@@ -340,8 +339,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_convtranspose, 1,
                         std::vector<int64_t>(DNNL_MAX_NDIMS, 0))
                 .SET_DNNL_CONVTRANSPOSE_COMMON_ATTRS
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::with_bias, false, attribute_kind::b, false)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
@@ -427,8 +425,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_pool, 1,
                 .set_attr(op_attr::auto_pad, false, attribute_kind::s, "None",
                         {"None", "SAME_UPPER", "SAME_LOWER", "VALID"})
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::kind, true, attribute_kind::s)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
@@ -623,8 +620,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_batchnorm, 1,
                 .set_attr(op_attr::data_format, false, attribute_kind::s, "NXC",
                         {"NXC", "NCX"})
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::is_training, false, attribute_kind::b)
                 .set_attr(op_attr::fuse_relu, false, attribute_kind::b)
                 .set_attr(
@@ -653,8 +649,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_batchnorm_bwd, 1,
                 .set_output(2, "beta_delta")
                 .set_output(3, "scratchpad")
                 .set_attr(op_attr::epsilon, true, attribute_kind::f)
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::data_format, false, attribute_kind::s, "NXC",
                         {"NXC", "NCX"})
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
@@ -684,8 +679,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_resampling_bwd, 1,
                 .set_attr(op_attr::scales, false, attribute_kind::fs)
                 .set_attr(op_attr::data_format, false, attribute_kind::s, "NXC",
                         {"NXC", "NCX"})
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_identity_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_resampling_bwd)
@@ -728,8 +722,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_binary, 1,
                         {"NXC", "NCX"})
                 // New added attributes
                 .set_attr(op_attr::is_bias_add, false, attribute_kind::b, false)
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::alg_kind, true, attribute_kind::i)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
@@ -754,8 +747,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_eltwise, 1,
                 .set_attr(op_attr::alpha, false, attribute_kind::f, 0.f)
                 .set_attr(op_attr::beta, false, attribute_kind::f, 0.f)
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::alg_kind, true, attribute_kind::i)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
@@ -777,8 +769,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_eltwise_bwd, 1,
                 .set_attr(op_attr::beta, false, attribute_kind::f, 0.f)
                 .set_attr(op_attr::use_dst, false, attribute_kind::b, false)
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::alg_kind, true, attribute_kind::i)
                 .set_attr(op_attr::fwd_alg_kind, true, attribute_kind::i)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
@@ -836,8 +827,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_reduction, 1,
                 // Attributes inherited from front reduction ops
                 .SET_REDUCE_COMMON_ATTRS
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::alg_kind, true, attribute_kind::i)
                 .set_attr(op_attr::p, false, attribute_kind::f, 0.0f)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
@@ -906,8 +896,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_resampling, 1,
                 .set_attr(op_attr::data_format, false, attribute_kind::s, "NXC",
                         {"NXC", "NCX"})
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
@@ -956,8 +945,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_layernorm_bwd, 1,
                 .set_attr(op_attr::begin_norm_axis, false, attribute_kind::i,
                         int64_t(-1))
                 .set_attr(op_attr::epsilon, false, attribute_kind::f, 1e-5f)
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_norm_bprop_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_layernorm_bwd)
@@ -978,8 +966,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_matmul, 1,
                 // Attributes inherited from MatMul.
                 .SET_MATMUL_COMMON_ATTRS
                 // New added attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::with_bias, false, attribute_kind::b, false)
                 .set_attr(
                         op_attr::canonicalized, false, attribute_kind::b, false)
@@ -1006,8 +993,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_softmax, 1,
                         {"none", "inf_as_zero"})
                 // New added attributes
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_softmax)
@@ -1052,8 +1038,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_layernorm, 1,
                         int64_t(-1))
                 .set_attr(op_attr::use_affine, false, attribute_kind::b, true)
                 .set_attr(op_attr::epsilon, false, attribute_kind::f, 1e-5f)
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 // New added attributes
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
@@ -1077,8 +1062,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_reorder, 1,
                 .set_attr(
                         op_attr::qtype, false, attribute_kind::s, "per_tensor")
                 // Attributes
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(
                         op_attr::change_layout, false, attribute_kind::b, false)
                 .set_attr(op_attr::scales, false, attribute_kind::fs)
@@ -1122,8 +1106,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_groupnorm, 1,
                 .set_attr(op_attr::epsilon, false, attribute_kind::f, 1e-5f)
                 .set_attr(op_attr::data_format, false, attribute_kind::s, "NXC",
                         {"NCX", "NXC"})
-                .set_attr(op_attr::fusion_info_key, false, attribute_kind::i,
-                        (int64_t)-1)
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 // New added attributes
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
@@ -1171,6 +1154,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_input(4, "mask") // optional
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
+                .set_attr(op_attr::fusion_info, false, attribute_kind::c)
                 .set_attr(op_attr::with_scale, true, attribute_kind::b)
                 .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
                         false)

@@ -45,68 +45,134 @@ namespace dnnl_impl {
     VCONDCHECK(graph, create, check, fusion_info, (cond), status, msg, \
             ##__VA_ARGS__);
 
+using op_ptr = std::shared_ptr<op_t>;
+
+// A meta op is used to represent the op that has been fused away, like the
+// scales op or post-ops op.
+class meta_op_t {
+public:
+    // for scales and zps
+    meta_op_t(const op_ptr &op) : op_(op) {};
+    // for post-eltwise
+    meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {};
+    // for post-sum and post_binary
+    meta_op_t(const op_ptr &op, const std::vector<size_t> &extra_input_indices,
+            float scale, int32_t zp)
+        : op_(op)
+        , scale_(scale)
+        , zp_(zp)
+        , unfused_input_indices_(extra_input_indices) {};
+    // for post-conv
+    meta_op_t(const op_ptr &op, const std::vector<size_t> &extra_input_indices)
+        : op_(op), unfused_input_indices_(extra_input_indices) {};
+
+    float get_scale() const { return scale_; }
+    int32_t get_zp() const { return zp_; }
+    const std::vector<size_t> &get_unfused_input_indices() const {
+        return unfused_input_indices_;
+    }
+
+    const op_t *get_op() const { return op_.get(); }
+
+    bool is_post_sum() const {
+        return op_->get_kind() == op_kind::dnnl_binary && is_post_sum_;
+    }
+
+    bool is_post_binary() const {
+        return op_->get_kind() == op_kind::dnnl_binary && !is_post_sum_;
+    }
+
+    void set_post_sum() { is_post_sum_ = true; }
+
+private:
+    std::shared_ptr<op_t> op_;
+    // used to represent post-eltwise and post-sum's scale
+    float scale_ = 1.0f;
+    // used to represent post-sum's zp
+    int32_t zp_ = 0;
+    // used to represent post-sum, post-binary and post-convolution's
+    // unfused input index
+    std::vector<size_t> unfused_input_indices_;
+    // used to identify post-sum
+    bool is_post_sum_ = false;
+};
+
+class customized_sdpa_fusion_info {
+public:
+    using meta_op_t = dnnl::impl::graph::dnnl_impl::meta_op_t;
+
+    bool operator==(const customized_sdpa_fusion_info &other) const {
+        return input_scales_.size() == other.input_scales_.size();
+    }
+
+    bool operator!=(const customized_sdpa_fusion_info &other) const {
+        return !(*this == other);
+    }
+
+    bool with_runtime_zero_points(bool is_input, size_t index) const {
+        if (is_input) {
+            if (input_zps_.find(index) == input_zps_.end()) return false;
+            const op_t *zp_op
+                    = const_cast<op_t *>(input_zps_.at(index)->get_op());
+            if (zp_op->has_attr(op_attr::with_runtime_zps)) {
+                return zp_op->get_attr<bool>(op_attr::with_runtime_zps);
+            } else {
+                return false;
+            }
+        } else {
+            if (!output_zps_) return false;
+            const op_t *zp_op = const_cast<op_t *>(output_zps_->get_op());
+            if (zp_op->has_attr(op_attr::with_runtime_zps)) {
+                return zp_op->get_attr<bool>(op_attr::with_runtime_zps);
+            } else {
+                return false;
+            }
+        }
+    }
+
+    bool with_runtime_scales(bool is_input, size_t index) const {
+        if (is_input) {
+            if (input_scales_.find(index) == input_scales_.end()) return false;
+            const op_t *zp_op
+                    = const_cast<op_t *>(input_scales_.at(index)->get_op());
+            if (zp_op->has_attr(op_attr::with_runtime_scales)) {
+                return zp_op->get_attr<bool>(op_attr::with_runtime_scales);
+            } else {
+                return false;
+            }
+        } else {
+            if (!dst_scales_) return false;
+            const op_t *zp_op = const_cast<op_t *>(dst_scales_->get_op());
+            if (zp_op->has_attr(op_attr::with_runtime_scales)) {
+                return zp_op->get_attr<bool>(op_attr::with_runtime_scales);
+            } else {
+                return false;
+            }
+        }
+    }
+
+    std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_zps_;
+    std::shared_ptr<meta_op_t> output_zps_;
+    std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_scales_;
+    std::shared_ptr<meta_op_t> dst_scales_;
+};
+
 // This class is used to represent an op's fusion information, such as the post
 // ops, the zero points or scales.
 class fusion_info_t {
-    using op_ptr = std::shared_ptr<op_t>;
-
-    // A meta op is used to represent the op that has been fused away, like the
-    // scales op or post-ops op.
-    class meta_op_t {
-    public:
-        // for scales and zps
-        meta_op_t(const op_ptr &op) : op_(op) {};
-        // for post-eltwise
-        meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {};
-        // for post-sum and post_binary
-        meta_op_t(const op_ptr &op,
-                const std::vector<size_t> &extra_input_indices, float scale,
-                int32_t zp)
-            : op_(op)
-            , scale_(scale)
-            , zp_(zp)
-            , unfused_input_indices_(extra_input_indices) {};
-        // for post-conv
-        meta_op_t(const op_ptr &op,
-                const std::vector<size_t> &extra_input_indices)
-            : op_(op), unfused_input_indices_(extra_input_indices) {};
-
-        float get_scale() const { return scale_; }
-        int32_t get_zp() const { return zp_; }
-        const std::vector<size_t> &get_unfused_input_indices() const {
-            return unfused_input_indices_;
-        }
-
-        const op_t *get_op() const { return op_.get(); }
-
-        bool is_post_sum() const {
-            return op_->get_kind() == op_kind::dnnl_binary && is_post_sum_;
-        }
-
-        bool is_post_binary() const {
-            return op_->get_kind() == op_kind::dnnl_binary && !is_post_sum_;
-        }
-
-        void set_post_sum() { is_post_sum_ = true; }
-
-    private:
-        std::shared_ptr<op_t> op_;
-        // used to represent post-eltwise and post-sum's scale
-        float scale_ = 1.0f;
-        // used to represent post-sum's zp
-        int32_t zp_ = 0;
-        // used to represent post-sum, post-binary and post-convolution's
-        // unfused input index
-        std::vector<size_t> unfused_input_indices_;
-        // used to identify post-sum
-        bool is_post_sum_ = false;
-    };
-
 public:
     friend dnnl::primitive_attr make_dnnl_primitive_attr(
             const op_ptr &op, const fusion_info_t &fusion_info);
 
     fusion_info_t() = default;
+
+    bool operator==(const fusion_info_t &other) const {
+        return input_scales_.size() == other.input_scales_.size();
+    }
+
+    bool operator!=(const fusion_info_t &other) const {
+        return !(*this == other);
+    }
 
     // used to modify the fused arg scales, like modifying it's axis after
     // inserting reshape op
@@ -259,7 +325,6 @@ public:
         }
     }
 
-private:
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_zps_;
     std::shared_ptr<meta_op_t> output_zps_;
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_scales_;
@@ -285,31 +350,10 @@ public:
     fusion_info_mgr_t &operator=(const fusion_info_mgr_t &) = delete;
     fusion_info_mgr_t &operator=(fusion_info_mgr_t &&) = delete;
 
-    // Initialize an empty fusion info object and return its key
-    int64_t init_info() {
-        data_.emplace_back();
-        return static_cast<int64_t>(data_.size() - 1);
-    }
-
-    // Get out a mutable fusion info reference according to the key
-    fusion_info_t &get_mutable_info(int64_t key) {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
-    // Get out a constant fusion info reference according to the key
-    const fusion_info_t &get_info(int64_t key) const {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
     const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
     bool get_use_blocked_layout() const { return can_use_blocked_layout_; }
 
 private:
-    std::vector<fusion_info_t> data_;
     // specified floating-point math mode for all fusions
     fpmath_t fpmath_mode_;
     bool can_use_blocked_layout_;

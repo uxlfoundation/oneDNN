@@ -40,7 +40,7 @@ void rnn_utils::init_rnn_conf(
 
     rnn.aux_data_type
             = acc_data_t == data_type::f16 ? data_type::f16 : data_type::f32;
-
+    rnn.diff_data_type = rnn_pd->diff_dst_md(0)->data_type;
     rnn.acc_data_type = acc_data_t;
 
     rnn.wei_layer_type = rnn_pd->weights_md(0)->data_type;
@@ -50,7 +50,7 @@ void rnn_utils::init_rnn_conf(
     rnn.n_iter = rnn_pd->src_md(0)->dims[0];
     rnn.n_dir = rnn_pd->weights_md(0)->dims[1];
     rnn.n_gates = rnn_pd->weights_md(0)->dims[3];
-    rnn.n_states = rnn_pd->desc()->cell_kind == dnnl_vanilla_lstm ? 2 : 1;
+    rnn.n_states = 1;
     rnn.n_bias = rnn.n_gates + 1;
     rnn.mb = rnn_pd->src_md(0)->dims[1];
     rnn.sic = rnn_pd->weights_md(1)->dims[2];
@@ -58,7 +58,10 @@ void rnn_utils::init_rnn_conf(
     rnn.dhc = rnn_pd->weights_md(0)->dims[4];
     rnn.dlc = rnn_pd->dst_md(0)->dims[2];
 
-    rnn.gates_ld = rnn.dhc * rnn.n_gates;
+    rnn.gates_ld = (rnn_pd->get_prop_kind() == prop_kind::forward_inference
+                                   ? rnn.dhc
+                                   : nstl::max(rnn.slc, rnn.dhc))
+            * rnn.n_gates;
 
     rnn.n_parts_bias = 1;
     rnn.parts_bias[0] = rnn.n_bias;
@@ -73,7 +76,6 @@ void rnn_utils::init_rnn_conf(
     rnn.dst_data_type = rnn_pd->dst_md(0)->data_type;
     rnn.output_data_type = rnn_pd->dst_md(1)->data_type;
 
-    // Assign types for optional parameters for improved kernel reuse.
     if (rnn.input_data_type == data_type::undef)
         rnn.input_data_type = rnn.src_data_type;
     if (rnn.output_data_type == data_type::undef)
@@ -86,9 +88,11 @@ void rnn_utils::set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd) {
 
     dim_t aux_elsz
             = static_cast<dim_t>(types::data_type_size(rnn.aux_data_type));
-    rnn.ws_states_elsz = types::data_type_size(rnn.src_data_type);
+    rnn.ws_states_elsz = aux_elsz;
 
     rnn.scratch_gates_elsz = types::data_type_size(rnn.acc_data_type);
+    rnn.scratch_diff_gates_elsz
+            = !is_fwd ? types::data_type_size(rnn.diff_data_type) : 0;
 
     // Set workspace sizes to store:
     // states to compute a pass
@@ -96,6 +100,10 @@ void rnn_utils::set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd) {
     rnn.states_ws_ld = nstl::max(rnn.slc, nstl::max(rnn.sic, rnn.dhc));
     rnn.gates_ws_ld = rnn.gates_ld;
     rnn.scratch_gates_ld = rnn.gates_ld;
+    rnn.scratch_diff_states_ld
+            = nstl::max(rnn.slc, nstl::max(rnn.sic, rnn.dhc));
+
+    rnn.scratch_diff_gates_ld = !is_fwd ? rnn.dhc * rnn.n_gates : 0;
 
     rnn.ws_states_cell_size = rnn.mb * rnn.states_ws_ld * rnn.ws_states_elsz;
     rnn.ws_states_size = (rnn.n_layer + 1) * rnn.n_dir * (rnn.n_iter + 1)
@@ -105,18 +113,25 @@ void rnn_utils::set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd) {
     rnn.ws_gates_size = rnn.ws_gates_cell_size;
     rnn.scratch_gates_size
             = rnn.mb * rnn.scratch_gates_ld * rnn.scratch_gates_elsz;
+    rnn.ws_gates_elsz = aux_elsz;
 
+    rnn.ws_data_type = rnn.aux_data_type;
+
+    auto diff_states_cell_size = rnn.mb * rnn.scratch_diff_states_ld * aux_elsz;
+
+    rnn.scratch_diff_states_size = ((rnn.n_layer + 1) * 2) * rnn.n_dir
+            * (rnn.n_iter + 1) * diff_states_cell_size * (rnn.n_states + 1);
+
+    rnn.scratch_diff_gates_size = !is_fwd
+            ? rnn.mb * rnn.scratch_diff_gates_ld * rnn.scratch_diff_gates_elsz
+            : 0;
     rnn.ws_bias_size
             = rnn.n_layer * rnn.n_dir * rnn.n_bias * rnn.dhc * aux_elsz;
 
     // For intermediate step in post-gemm fwd lbr gru
-    rnn.scratch_cell_size = [&]() {
-        if (is_fwd) {
-            return rnn.mb * rnn.scratch_gates_ld * rnn.scratch_gates_elsz;
-        } else {
-            return static_cast<dim_t>(0);
-        }
-    }();
+    rnn.scratch_cell_size = is_fwd
+            ? rnn.mb * rnn.scratch_gates_ld * rnn.scratch_gates_elsz
+            : static_cast<dim_t>(0);
 
     // Used for storing the intermediate value from fwd pass in training lbr gru
     rnn.ws_per_cell = rnn.mb * rnn.dhc * aux_elsz;

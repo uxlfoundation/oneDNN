@@ -1,0 +1,15 @@
+--reset
+--dt=u8:s8:f16
+--bia-dt=f16
+--attr-scales=src0:per_tensor:f16:1x32
+
+# random batched shapes for correctness testing
+2x1x32:1x32x1
+3x1x32:1x32x20
+30x1x32:1x32x20
+
+# batch broadcast shapes
+7x1x32:1x32x8
+128x1x32:1x32x16
+2x1x32:1x32x8
+26x1x32:1x32x65

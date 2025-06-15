@@ -112,10 +112,21 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
     }
 
     if (eng.get_kind() == dnnl::engine::kind::cpu) {
-        uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
-        if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
-        for (size_t i = 0; i < size; ++i)
-            dst[i] = ((uint8_t *)handle)[i];
+        if (mem.get_desc().get_data_type() != dnnl_f32
+                && std::is_same<T, float>::value) {
+            dnnl::memory mem_f32_mem(
+                    {mem.get_desc().get_dims(), dnnl::memory::data_type::f32,
+                            mem.get_desc().get_strides()},
+                    eng);
+            write_to_dnnl_memory<float>((const float *)handle, mem_f32_mem);
+            dnnl::reorder(mem_f32_mem, mem).execute(s, mem_f32_mem, mem);
+        } else {
+            uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
+            if (!dst)
+                throw std::runtime_error("get_data_handle returned nullptr.");
+            for (size_t i = 0; i < size; ++i)
+                dst[i] = ((uint8_t *)handle)[i];
+        }
         return;
     }
 

@@ -448,7 +448,7 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
     if (pd()->with_value_scales() || pd()->with_value_zp())
         kernel_ctx.define_int("VAL_GROUP_SIZE", pd()->value_group_size());
 
-    def_data_type(kernel_ctx, d->scale_dt, "SCALE");
+    def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", d->invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_type::undef);
@@ -502,6 +502,10 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
 
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
             d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
+
+    if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) {
+        kernel_ctx.define_int("HOST_SIDE_SCALE", 1);
+    }
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;
@@ -559,7 +563,18 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    arg_list.append(scale);
+
+    if (pd()->scale_md()->format_kind == format_kind::host_side_scalar) {
+        void *handle = scale.data_handle();
+        if (pd()->scale_md()->data_type == data_type::f16) {
+            arg_list.append(*(float16_t *)handle);
+        } else if (pd()->scale_md()->data_type == data_type::bf16) {
+            arg_list.append(*(ushort *)handle);
+        }
+    } else {
+        arg_list.append(scale);
+    }
+
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

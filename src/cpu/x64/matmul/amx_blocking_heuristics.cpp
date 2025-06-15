@@ -683,6 +683,28 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
 
             if (repeat_loop_over_k && critical_l2_set_issues_a)
                 vertical_not_possible = true;
+
+            // The following consts are correct for all platforms supporting AMX
+            constexpr size_t l2_ways = 16;
+            constexpr size_t l2_ways_threshold = size_t(l2_ways * 0.75);
+            constexpr size_t l2_sets = 2048;
+            constexpr size_t l2_line_size = l2_sets * 64;
+
+            // If output matrix in vertical traversal suffers from set issues in
+            // the L2, then go horizontally.
+            // First, calculate the stride on the N dim within a page
+            size_t cache_stride = N * c_dt_sz % PAGE_4K;
+            if (cache_stride == 0) { cache_stride = PAGE_4K; }
+            // Second, calculate the number of ways the output matrix will use
+            // in each set. If higher than the threshold, useful cache lines in
+            // L2 will be evicted.
+            if (l2_line_size % cache_stride == 0) {
+                size_t num_ways_c
+                        = div_up(cache_stride * m_per_thread, l2_line_size);
+                if (num_ways_c >= l2_ways_threshold) {
+                    vertical_not_possible = true;
+                }
+            }
         }
     };
 

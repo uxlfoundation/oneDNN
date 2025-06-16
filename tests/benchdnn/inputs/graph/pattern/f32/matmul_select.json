@@ -115,18 +115,6 @@
                     "property_type": "undef"
                 },
                 {
-                    "id": 4,
-                    "dtype": "f32",
-                    "shape": [
-                        1
-                    ],
-                    "stride": [
-                        1
-                    ],
-                    "layout_type": "strided",
-                    "property_type": "undef"
-                },
-                {
                     "id": 2,
                     "dtype": "f32",
                     "shape": [
@@ -139,6 +127,18 @@
                         16384,
                         1024,
                         32,
+                        1
+                    ],
+                    "layout_type": "strided",
+                    "property_type": "undef"
+                },
+                {
+                    "id": 4,
+                    "dtype": "f32",
+                    "shape": [
+                        1
+                    ],
+                    "stride": [
                         1
                     ],
                     "layout_type": "strided",

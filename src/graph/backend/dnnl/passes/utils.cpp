@@ -382,7 +382,6 @@ bool post_binary_fusible(
     auto fused_out = base_op->get_output_values()[0];
     auto consumers = fused_out->get_consumers();
     if (consumers.size() != 1) return false;
-    if (consumers[0].get_op().num_inputs() != 2) return false;
 
     size_t fused_in_off = consumers[0].get_offset();
     auto fused_in = bin_op->get_input_value(fused_in_off)->get_logical_tensor();

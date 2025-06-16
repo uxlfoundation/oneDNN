@@ -181,26 +181,6 @@ endif()
 get_property(LIB_DEPS GLOBAL PROPERTY DNNL_LIB_DEPS)
 get_property(STATIC_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS)
 get_property(SHARED_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_SHARED_LIBS)
-add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
-    ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
-
-target_link_libraries(${LIB_PACKAGE_NAME} PRIVATE ${STATIC_LIB_DEPS} ${SHARED_LIB_DEPS})
-
-set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY OUTPUT_NAME ${DNNL_LIBRARY_NAME})
-set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY VERSION "${DNNL_VERSION_MAJOR}.${DNNL_VERSION_MINOR}")
-set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY SOVERSION "${DNNL_VERSION_MAJOR}")
-
-target_include_directories(${LIB_PACKAGE_NAME} PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    )
-
-target_link_libraries(${LIB_PACKAGE_NAME} PUBLIC "$<BUILD_INTERFACE:${EXTRA_SHARED_LIBS};${EXTRA_STATIC_LIBS}>")
-target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_SHARED_LIBS}")
-if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
-    target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_STATIC_LIBS}")
-endif()
 
 foreach(object_library IN LISTS LIB_DEPS)
     string(REPLACE "$<TARGET_OBJECTS:" "" object_library "${object_library}")
@@ -210,50 +190,85 @@ foreach(object_library IN LISTS LIB_DEPS)
     set_target_properties(${object_library} PROPERTIES COMPILE_PDB_NAME ${object_library})
 endforeach()
 
-set(LIB_EXPORT_NAME "${LIB_PACKAGE_NAME}-targets")
-install(TARGETS ${LIB_PACKAGE_NAME}
-    EXPORT "${LIB_EXPORT_NAME}"
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+if (DNNL_LIBRARY_TYPE STREQUAL "OBJ_LIBS_ONLY")
+    # Dissallow using OBJ_LIBS_ONLY with install target
+    # as it does not make sense to install object files.
+    if(CMAKE_INSTALL_COMPONENT OR CMAKE_INSTALL_DO_STRIP)
+        message(FATAL_ERROR "OBJ_LIBS_ONLY cannot be used with the install target.
+                             Please disable installation or use STATIC/SHARED library type.")
+    endif()
 
-# If only Cmake could preserve the directory hierarchy...
-foreach(header ${HEADERS_ROOT})
-    install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/")
-endforeach()
-foreach(header ${HEADERS_SUBDIR})
-    install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/oneapi/dnnl/")
-endforeach()
+    # Make the variable visible to parent scope and install tree
+    # so that it can be used via target_link_libraries() in other CMakeLists.txt
+    set(ONEDNN_OBJ_LIBS ${LIB_DEPS})    
+    set(ONEDNN_OBJ_LIBS ${ONEDNN_OBJ_LIBS} PARENT_SCOPE)
+    set(ONEDNN_OBJ_LIBS ${ONEDNN_OBJ_LIBS} CACHE INTERNAL "oneDNN object libraries")
+else()
+    add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
+        ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
+    target_link_libraries(${LIB_PACKAGE_NAME} PRIVATE ${STATIC_LIB_DEPS} ${SHARED_LIB_DEPS})
 
-string(TOUPPER "${LIB_PACKAGE_NAME}::" LIB_NAMESPACE)
-if(DNNL_INSTALL_MODE STREQUAL "BUNDLE" AND WIN32)
-    # Config file for binary distribution needs to define a mapping
-    # DEBUG -> RELWITHMDD so that proper library (dnnld) is picked up for the
-    # DEBUG configuration.
-    set(HANDLE_BUNDLE_DEBUG_SYCL_CONFIGURATION
-        "set_property(TARGET ${LIB_NAMESPACE}${LIB_PACKAGE_NAME} PROPERTY \"MAP_IMPORTED_CONFIG_DEBUG\" \"RELWITHMDD\")")
+    set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY OUTPUT_NAME ${DNNL_LIBRARY_NAME})
+    set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY VERSION "${DNNL_VERSION_MAJOR}.${DNNL_VERSION_MINOR}")
+    set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY SOVERSION "${DNNL_VERSION_MAJOR}")
+
+    target_include_directories(${LIB_PACKAGE_NAME} PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        )
+
+    target_link_libraries(${LIB_PACKAGE_NAME} PUBLIC "$<BUILD_INTERFACE:${EXTRA_SHARED_LIBS};${EXTRA_STATIC_LIBS}>")
+    target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_SHARED_LIBS}")
+    if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
+        target_link_libraries_install(${LIB_PACKAGE_NAME} "${EXTRA_STATIC_LIBS}")
+    endif()
+
+    set(LIB_EXPORT_NAME "${LIB_PACKAGE_NAME}-targets")
+    install(TARGETS ${LIB_PACKAGE_NAME}
+        EXPORT "${LIB_EXPORT_NAME}"
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+    # If only Cmake could preserve the directory hierarchy...
+    foreach(header ${HEADERS_ROOT})
+        install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/")
+    endforeach()
+    foreach(header ${HEADERS_SUBDIR})
+        install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/oneapi/dnnl/")
+    endforeach()
+
+    string(TOUPPER "${LIB_PACKAGE_NAME}::" LIB_NAMESPACE)
+    if(DNNL_INSTALL_MODE STREQUAL "BUNDLE" AND WIN32)
+        # Config file for binary distribution needs to define a mapping
+        # DEBUG -> RELWITHMDD so that proper library (dnnld) is picked up for the
+        # DEBUG configuration.
+        set(HANDLE_BUNDLE_DEBUG_SYCL_CONFIGURATION
+            "set_property(TARGET ${LIB_NAMESPACE}${LIB_PACKAGE_NAME} PROPERTY \"MAP_IMPORTED_CONFIG_DEBUG\" \"RELWITHMDD\")")
+    endif()
+
+    # Write version and package config files
+    set(LIB_CONFIG_GENERATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    set(LIB_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${LIB_PACKAGE_NAME}")
+    set(LIB_VERSION_FILE
+        "${LIB_CONFIG_GENERATE_DIR}/${LIB_PACKAGE_NAME}-config-version.cmake")
+    set(LIB_CONFIG_FILE
+        "${LIB_CONFIG_GENERATE_DIR}/${LIB_PACKAGE_NAME}-config.cmake")
+    write_basic_package_version_file(
+        "${LIB_VERSION_FILE}"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    configure_package_config_file(
+        "../cmake/config.cmake.in"
+        "${LIB_CONFIG_FILE}"
+        INSTALL_DESTINATION ${LIB_CONFIG_INSTALL_DIR})
+    install(FILES ${LIB_CONFIG_FILE} ${LIB_VERSION_FILE}
+        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
+    install(EXPORT ${LIB_EXPORT_NAME}
+        NAMESPACE ${LIB_NAMESPACE}
+        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
 endif()
-
-# Write version and package config files
-set(LIB_CONFIG_GENERATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-set(LIB_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${LIB_PACKAGE_NAME}")
-set(LIB_VERSION_FILE
-    "${LIB_CONFIG_GENERATE_DIR}/${LIB_PACKAGE_NAME}-config-version.cmake")
-set(LIB_CONFIG_FILE
-    "${LIB_CONFIG_GENERATE_DIR}/${LIB_PACKAGE_NAME}-config.cmake")
-write_basic_package_version_file(
-    "${LIB_VERSION_FILE}"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-configure_package_config_file(
-    "../cmake/config.cmake.in"
-    "${LIB_CONFIG_FILE}"
-    INSTALL_DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-install(FILES ${LIB_CONFIG_FILE} ${LIB_VERSION_FILE}
-    DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-install(EXPORT ${LIB_EXPORT_NAME}
-    NAMESPACE ${LIB_NAMESPACE}
-    DESTINATION ${LIB_CONFIG_INSTALL_DIR})
 
 # Apply a workaround to CMake config file to make it work with symlinks.
 # The patched config file is only used in oneAPI binary distribution.

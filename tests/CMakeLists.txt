@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2016-2024 Intel Corporation
+# Copyright 2016-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@
 if (NOT DNNL_BUILD_TESTS)
     return()
 endif()
+
+# Xbyak and XLA threadpool iface implementation needed
+include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party)
 
 # propagate TEST specific flags
 append(CMAKE_C_FLAGS "${CMAKE_TEST_CCXX_FLAGS}")
@@ -90,6 +93,11 @@ if(NOT DNNL_ENABLE_PRIMITIVE_CACHE)
 endif()
 
 set(TEST_THREAD ${CMAKE_CURRENT_SOURCE_DIR}/test_thread.cpp)
+if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
+  # we also use async threadpool in that case for test_thread
+  file(GLOB XLA_THREADPOOL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/xla_threadpool/*.cpp)
+  list(APPEND TEST_THREAD ${XLA_THREADPOOL_SOURCES})
+endif()
 
 # Switch on threading layer for GPU only configurations to speed up testing.
 # For non-dppcp compilers OpenMP threading will be used which is handled in

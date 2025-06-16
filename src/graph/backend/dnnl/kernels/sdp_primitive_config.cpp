@@ -374,15 +374,17 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
     attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(mgr.get_fpmath_mode().mode_));
 
-    if (mm1_->has_attr(op_attr::fusion_info_key)
-            && mm1_->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = mm1_->get_attr<int64_t>(op_attr::fusion_info_key);
-        qk_attr = make_dnnl_primitive_attr(mm1_, mgr.get_info(key));
+    if (mm1_->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = mm1_->get_attr<dnnl_impl::fusion_info_t>(
+                        op_attr::fusion_info);
+        qk_attr = make_dnnl_primitive_attr(mm1_, fusion_info);
     }
-    if (mm2_->has_attr(op_attr::fusion_info_key)
-            && mm2_->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = mm2_->get_attr<int64_t>(op_attr::fusion_info_key);
-        vs_attr = make_dnnl_primitive_attr(mm2_, mgr.get_info(key));
+    if (mm2_->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = mm2_->get_attr<dnnl_impl::fusion_info_t>(
+                        op_attr::fusion_info);
+        vs_attr = make_dnnl_primitive_attr(mm2_, fusion_info);
     }
 
     const alg_kind_t softmax_alg = softmax_mode_ == "inf_as_zero"

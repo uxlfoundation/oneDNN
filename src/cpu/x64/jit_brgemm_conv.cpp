@@ -552,7 +552,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || jcp_.with_scales
+            || jcp_.with_scales || jcp_.with_dst_scales
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum || jcp_.use_M_mask
             || jcp_.src_zero_point || jcp_.dst_zero_point;
 
@@ -1691,15 +1691,17 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
 
-        if (do_postops)
+        if (do_postops) {
             brgemm_kernel_execute_postops(brg_ker, batch_size, ptrA, ptrB,
                     btc.brg_batch, ptr_C, ptr_D, post_ops_data, scratch);
-        else
+        } else {
             brgemm_kernel_execute_postops(brg_ker, batch_size, ptrA, ptrB,
                     btc.brg_batch, ptr_C, ptr_C, post_ops_data, scratch);
-    } else
+        }
+    } else {
         brgemm_kernel_execute(brg_ker, batch_size, ptrA, ptrB, btc.brg_batch,
                 ptr_C, static_cast<void *>(btc.wsp_tile));
+    }
 }
 
 template <cpu_isa_t isa>

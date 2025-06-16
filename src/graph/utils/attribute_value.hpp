@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2021-2022 Intel Corporation
+ * Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,40 +29,57 @@
 namespace dnnl {
 namespace impl {
 namespace graph {
+namespace dnnl_impl {
+
+class fusion_info_t; // Forward declaration of fusion_info_t
+
+} // namespace dnnl_impl
+} // namespace graph
+} // namespace impl
+} // namespace dnnl
+
+namespace dnnl {
+namespace impl {
+namespace graph {
 namespace utils {
 // Add new attribute types by specializing on the C++ type and
 // defining an enum value below
 template <typename value_type>
-struct attribute_value_traits;
+struct attribute_value_traits_t;
 
 template <>
-struct attribute_value_traits<int64_t> {
+struct attribute_value_traits_t<int64_t> {
     static attribute_kind_t constexpr kind = attribute_kind::i;
 };
 
 template <>
-struct attribute_value_traits<std::vector<int64_t>> {
+struct attribute_value_traits_t<std::vector<int64_t>> {
     static attribute_kind_t constexpr kind = attribute_kind::is;
 };
 
 template <>
-struct attribute_value_traits<float> {
+struct attribute_value_traits_t<float> {
     static attribute_kind_t constexpr kind = attribute_kind::f;
 };
 
 template <>
-struct attribute_value_traits<std::vector<float>> {
+struct attribute_value_traits_t<std::vector<float>> {
     static attribute_kind_t constexpr kind = attribute_kind::fs;
 };
 
 template <>
-struct attribute_value_traits<std::string> {
+struct attribute_value_traits_t<std::string> {
     static attribute_kind_t constexpr kind = attribute_kind::s;
 };
 
 template <>
-struct attribute_value_traits<bool> {
+struct attribute_value_traits_t<bool> {
     static attribute_kind_t constexpr kind = attribute_kind::b;
+};
+
+template <>
+struct attribute_value_traits_t<dnnl::impl::graph::dnnl_impl::fusion_info_t> {
+    static attribute_kind_t constexpr kind = attribute_kind::fusion_info;
 };
 
 template <typename value_type>
@@ -76,11 +93,14 @@ constexpr attribute_kind_t get_attribute_kind() {
                     || std::is_same<std::vector<float>, value_type>::value
                     || std::is_same<std::vector<int64_t>, value_type>::value
                     || std::is_same<std::string, value_type>::value
-                    || std::is_same<bool, value_type>::value,
+                    || std::is_same<bool, value_type>::value
+                    || std::is_same<dnnl::impl::graph::dnnl_impl::fusion_info_t,
+                            value_type>::value,
             "value_type should be one of int64_t, float, string, "
-            "bool, vector<float>, or vector<int64_t>.");
+            "bool, vector<float>, vector<int64_t> or fusion_info_t class "
+            "type.");
 
-    return attribute_value_traits<base_value_type<value_type>>::kind;
+    return attribute_value_traits_t<base_value_type<value_type>>::kind;
 }
 
 template <typename value_type>

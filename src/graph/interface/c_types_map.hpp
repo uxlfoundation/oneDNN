@@ -307,6 +307,7 @@ const attribute_kind_t i = 2;
 const attribute_kind_t is = 3;
 const attribute_kind_t s = 4;
 const attribute_kind_t b = 5;
+const attribute_kind_t c = 6; // custom attribute type
 } // namespace attribute_kind
 
 using allocator_t = dnnl_graph_allocator;

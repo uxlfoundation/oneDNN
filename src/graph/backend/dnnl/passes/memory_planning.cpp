@@ -63,11 +63,11 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(
 
     // Make post-sum inplace has higher priority since it affects both
     // performance and memory footprint
-    if (op.has_attr(op_attr::fusion_info_key)
-            && op.get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
+    if (op.has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op.get_attr<fusion_info_t>(op_attr::fusion_info);
         // sum post ops support inplace
-        int64_t key = op.get_attr<int64_t>(op_attr::fusion_info_key);
-        const auto &pops = mgr.get_info(key).get_post_ops();
+        const auto &pops = fusion_info.get_post_ops();
 
         // the post-ops input offset
         size_t index = 1;
@@ -78,14 +78,10 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(
                             && op.get_attr<bool>(op_attr::with_bias)
                     ? 3 // src, wei, bias
                     : 2; // src, wei
-            if (mgr.get_info(key).with_runtime_scales(true, 0)) { index += 1; }
-            if (mgr.get_info(key).with_runtime_scales(true, 1)) { index += 1; }
-            if (mgr.get_info(key).with_runtime_zero_points(true, 0)) {
-                index += 1;
-            }
-            if (mgr.get_info(key).with_runtime_zero_points(true, 1)) {
-                index += 1;
-            }
+            if (fusion_info.with_runtime_scales(true, 0)) { index += 1; }
+            if (fusion_info.with_runtime_scales(true, 1)) { index += 1; }
+            if (fusion_info.with_runtime_zero_points(true, 0)) { index += 1; }
+            if (fusion_info.with_runtime_zero_points(true, 1)) { index += 1; }
         } else if (op.get_kind() == op_kind::dnnl_binary) {
             index = 2;
         } else {

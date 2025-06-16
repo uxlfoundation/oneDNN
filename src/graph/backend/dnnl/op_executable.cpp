@@ -69,10 +69,8 @@ conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
 
     dnnl::primitive_attr prm_attr;
     fusion_info_t fusion_info;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        fusion_info = mgr.get_info(key);
+    if (op->has_attr(op_attr::fusion_info)) {
+        fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -186,10 +184,10 @@ deconv_fwd_executable_t::desc_t deconv_fwd_executable_t::create_desc(
     dilates = get_compatible_dilates(dilates);
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto fpmath = mgr.get_fpmath_mode();
@@ -247,10 +245,10 @@ deconv_bwd_data_executable_t::desc_t deconv_bwd_data_executable_t::create_desc(
     dilates = get_compatible_dilates(dilates);
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto fpmath = mgr.get_fpmath_mode();
@@ -301,9 +299,10 @@ deconv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     dilates = get_compatible_dilates(dilates);
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     auto fpmath = mgr.get_fpmath_mode();
     prm_attr.set_fpmath_mode(
@@ -344,10 +343,10 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
     }
     const bool can_use_blocked_layout = mgr.get_use_blocked_layout();
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto fpmath = mgr.get_fpmath_mode();
@@ -456,10 +455,10 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -543,9 +542,10 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -646,10 +646,10 @@ batchnorm_executable_t::desc_t batchnorm_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -700,10 +700,10 @@ batchnorm_bwd_executable_t::desc_t batchnorm_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -739,10 +739,10 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
 
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -790,10 +790,10 @@ layernorm_bwd_executable_t::desc_t layernorm_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -841,10 +841,10 @@ conv_bwd_data_executable_t::desc_t conv_bwd_data_executable_t::create_desc(
     dilates = get_compatible_dilates(dilates);
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto fpmath = mgr.get_fpmath_mode();
@@ -902,9 +902,10 @@ conv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     dilates = get_compatible_dilates(dilates);
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto fpmath = mgr.get_fpmath_mode();
@@ -961,10 +962,10 @@ eltwise_executable_t::desc_t eltwise_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -997,10 +998,10 @@ eltwise_bwd_executable_t::desc_t eltwise_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1092,10 +1093,10 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
     const auto axis = res.second;
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1131,10 +1132,10 @@ resampling_executable_t::desc_t resampling_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     // resampling src doesn't support any
@@ -1174,10 +1175,10 @@ resampling_bwd_executable_t::desc_t resampling_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1221,10 +1222,10 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1279,10 +1280,10 @@ prelu_executable_t::desc_t prelu_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1314,10 +1315,10 @@ prelu_bwd_executable_t::desc_t prelu_bwd_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1357,10 +1358,10 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1457,10 +1458,10 @@ shuffle_executable_t::desc_t shuffle_executable_t::create_desc(
     const int axis = static_cast<int>(op->get_attr<int64_t>(op_attr::axis));
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1489,10 +1490,10 @@ reduction_executable_t::desc_t reduction_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -1527,10 +1528,10 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
 
     // generate mask
@@ -1781,10 +1782,10 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
     }
 
     dnnl::primitive_attr prm_attr;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        prm_attr = make_dnnl_primitive_attr(op, mgr.get_info(key));
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
 
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -1845,10 +1846,8 @@ void genindex_executable_t ::execute(const stream &stream,
 
 static void get_arg_indices_for_post_ops(const op_t *op, fusion_info_mgr_t &mgr,
         arg_indices_t &indices, size_t &base_index) {
-    const fusion_info_t &fusion_info
-            = (op->has_attr(op_attr::fusion_info_key)
-                      && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1)
-            ? mgr.get_info(op->get_attr<int64_t>(op_attr::fusion_info_key))
+    const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
     const auto &pops = fusion_info.get_post_ops();
     for (size_t i = 0; i < pops.size(); i++) {
@@ -1884,10 +1883,8 @@ static arg_indices_t get_arg_indices_for_conv_and_matmul(
         arg_indices.insert({DNNL_ARG_BIAS, indices_t {input, index++}});
     }
 
-    const fusion_info_t &fusion_info
-            = (op->has_attr(op_attr::fusion_info_key)
-                      && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1)
-            ? mgr.get_info(op->get_attr<int64_t>(op_attr::fusion_info_key))
+    const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
 
     if (fusion_info.with_runtime_scales(true, 0)) {
@@ -2019,10 +2016,8 @@ static arg_indices_t get_arg_indices_for_siso_op(
     size_t index = 0;
     arg_indices.insert({DNNL_ARG_FROM, indices_t {input, index++}});
 
-    const fusion_info_t &fusion_info
-            = (op->has_attr(op_attr::fusion_info_key)
-                      && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1)
-            ? mgr.get_info(op->get_attr<int64_t>(op_attr::fusion_info_key))
+    const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
 
     get_arg_indices_for_post_ops(op, mgr, arg_indices, index);
@@ -2278,10 +2273,8 @@ static arg_indices_t get_arg_indices_for_lnorm_and_gnorm(
         arg_indices.insert({DNNL_ARG_SHIFT, indices_t {input, in_index++}});
     }
 
-    const fusion_info_t &fusion_info
-            = (op->has_attr(op_attr::fusion_info_key)
-                      && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1)
-            ? mgr.get_info(op->get_attr<int64_t>(op_attr::fusion_info_key))
+    const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
 
     get_arg_indices_for_post_ops(op, mgr, arg_indices, in_index);
@@ -2349,10 +2342,8 @@ arg_indices_t reorder_executable_t::get_arg_indices(
     size_t index = 0;
     arg_indices.insert({DNNL_ARG_FROM, indices_t {input, index++}});
 
-    const fusion_info_t &fusion_info
-            = (op->has_attr(op_attr::fusion_info_key)
-                      && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1)
-            ? mgr.get_info(op->get_attr<int64_t>(op_attr::fusion_info_key))
+    const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
 
     if ((op->has_attr(op_attr::with_runtime_scales)

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@ TEST(test_internal_attrs, InternalAttr2str) {
     CASE(is_bias_add);
     CASE(with_sum);
     CASE(alg_kind);
-    CASE(fusion_info_key);
     CASE(dw_type);
     CASE(kind);
     CASE(p);

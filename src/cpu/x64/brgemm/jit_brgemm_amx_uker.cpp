@@ -133,7 +133,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
                     || with_binary_batch_bcast_ || with_binary_spatial_bcast_
                     || with_binary_no_bcast_;
         }
-        use_ils_ = brg.brgattr.use_interleave_stores;
+        use_ils_ = brg.brgattr.use_interleave_stores && !brg.is_amx10();
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_amx_uker_base_t)
@@ -403,7 +403,6 @@ private:
     brgemm_iteration_t prev_bi_;
     // current storing coordinates
     int ils_vec_ = 0, ils_bdb_ = 0, ils_ldb_ = 0, ils_bd_start_ = 0;
-    int ils_bd_step_ = 3; // heuristic value
     prf_t prf0A, prf1A, prf2A, prfntaA, prf0B, prf1B, prf2B, prfntaB, prf0C,
             prf1C;
 
@@ -411,11 +410,21 @@ private:
     bool use_sat_cvt_ = false;
 
     bool ununroll_bd_loop = false;
+    // Number of ZMM registers per bd block for AMX10 microkernel.
+    static constexpr int amx10_zmms_per_bd_block = 4;
 
-    Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
-    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
-    Xbyak::Opmask fp_col_mask = Xbyak::Opmask(4);
-    Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(5);
+    Xbyak::Opmask ld_full_mask = Xbyak::Opmask(0);
+    //!! post-ops may use Opmask(1) and doesn't preserve it! Why??!!
+    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(7);
+    Xbyak::Opmask fp_col_mask = Xbyak::Opmask(2);
+    Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(3);
+    Xbyak::Opmask fp8_tmp_mask = Xbyak::Opmask(4);
+
+    Xbyak::Opmask amx10_load_A_mask = Xbyak::Opmask(2);
+    Xbyak::Opmask amx10_load_A_mask_f = Xbyak::Opmask(3);
+    Xbyak::Opmask amx10_load_A_mask_f0 = Xbyak::Opmask(4);
+    Xbyak::Opmask amx10_load_A_mask_f00 = Xbyak::Opmask(5);
+    Xbyak::Opmask amx10_load_A_mask_f000 = Xbyak::Opmask(6);
 
     // Zmm map below
     const Xbyak::Zmm &zmm_tmp_1() const noexcept { return this->zmm0; }
@@ -428,7 +437,6 @@ private:
     Xmm fp8_emu_xmm_3() const noexcept { return Xmm(3); }
     Xmm fp8_emu_xmm_4() const noexcept { return Xmm(6); }
     Xmm fp8_emu_xmm_5() const noexcept { return Xmm(7); }
-    Xbyak::Opmask fp8_tmp_mask = Xbyak::Opmask(6);
     const reg64_t fp8_tmp_reg = rax;
 
     const Xbyak::Zmm zmm_bf32_permute = zmm6;
@@ -437,23 +445,74 @@ private:
     const Xbyak::Zmm zmm_lbound = zmm8;
     const Xbyak::Zmm zmm_ubound = zmm9;
 
+    int store_bd_step() const {
+        return brg.is_amx10() ? 8 : 3; /*heuristic values*/
+    }
+
     // zmm_bias, zmm_bias and accm shouldn't be overlapped
     Xbyak::Zmm accm(int bd) const {
         assert(bd < 16);
-        return Xbyak::Zmm(31 - (bd % ils_bd_step_));
+        return Xbyak::Zmm(31 - (bd % store_bd_step()));
     }
 
+    int amx10_reserved_zmms() { return 5; }
+
     Xbyak::Zmm zmm_bias(int ldb) const {
-        assert(ldb < 5);
-        // zmm10 - zmm14
-        return Xbyak::Zmm(10 + ldb);
+        if (brg.is_amx10()) {
+            assert(ldb < 8);
+            return Xbyak::Zmm(4 /*??*/ + ldb);
+        } else {
+            assert(ldb < 5);
+            // zmm10 - zmm14
+            return Xbyak::Zmm(10 + ldb);
+        }
     }
 
     Xbyak::Zmm zmm_scales(int ldb) const {
-        assert(ldb < 5);
-        assert(ils_bd_step_ < 10);
-        // zmm15 - zmm19
-        return Xbyak::Zmm(15 + ldb);
+        if (brg.is_amx10()) {
+            assert(ldb < 8);
+            assert(store_bd_step() < 10);
+            return Xbyak::Zmm(12 /*??*/ + ldb);
+        } else {
+            assert(ldb < 5);
+            assert(store_bd_step() < 10);
+            // zmm15 - zmm19
+            return Xbyak::Zmm(15 + ldb);
+        }
+    }
+
+    // amx10_rd_steps is the number of rd steps in the amx10 microkernel loop.
+    // It is the number of ZMM registers used for each block of A and B matrices.
+    int amx10_rd_steps(int rd_block) noexcept {
+        return div_up(rd_block, brg.rd_step);
+    }
+
+    Xbyak::Zmm amx10_zmm_gather_idx() {
+        // zmm used to keep strides for load from A
+        return Xbyak::Zmm(0);
+    }
+
+    Xbyak::Zmm amx10_zmm_tmp(int i) {
+        assert(1 <= i && i <= 4);
+        return Xbyak::Zmm(i);
+    }
+
+    // Returns the Zmm register for matrix A for AMX10 microkernel.
+    // bdb: block index in bd dimension
+    // rds: register index within the block
+    Xbyak::Zmm amx10_zmm_A(int bdb, int rds) {
+        const int base_idx
+                = amx10_rd_steps(brg.rd_block) * (brg.n_bcast_1_load ? bdb : 0);
+        return Xbyak::Zmm(amx10_reserved_zmms() + base_idx + rds);
+    }
+
+    // Returns the Zmm register for matrix B for AMX10 microkernel.
+    // ldb: block index in ld dimension
+    // rds: register index within the block
+    Xbyak::Zmm amx10_zmm_B(int ldb, int rds) {
+        const int base_idx = amx10_rd_steps(brg.rd_block)
+                * (brg.n_bcast_1_load ? brg.bd_block2 : (1 + ldb));
+        return Xbyak::Zmm(amx10_reserved_zmms() + base_idx + rds);
     }
 
     template <typename U>
@@ -547,11 +606,21 @@ private:
     void maybe_fused_copy_A_nt_load(brgemm_iteration_t &bi, int bdb);
 
     void maybe_sprinkle_prefetches();
+    void amx10_load_A_4x16bytes(
+            const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset);
+    void amx10_topbf16pse(const Tmm &accm, const Zmm &zmm_a, const Zmm &zmm_b);
+    void amx10_tilemovrow(const Zmm &zmm, const Tmm &tmm, int row);
+
+    void amx10_load_A(brgemm_iteration_t &bi, int bdb, dim_t offset);
+    void amx10_load_B(
+            brgemm_iteration_t &bi, int ldb, dim_t offset, int rdstep);
+    void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
 
     void tdpbxxd(brgemm_iteration_t &bi, int bdb_idx, int ldb_idx,
             bool do_pre_tilestore, bool do_post_tilestore);
 
     void gemm_microkernel_amx(brgemm_iteration_t &bi);
+    void gemm_microkernel_amx10(brgemm_iteration_t &bi);
 
     void rdb_loop(brgemm_iteration_t &bi);
 
@@ -949,8 +1018,39 @@ void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
     for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
         if (may_load_accumulators_) {
             auto c_offset = C_offset(bi, bdb, 0, bi.ldi->pos(ldb)) + ils_shift;
-            tileloadd(Tmm(get_C_tensor(bi, bdb, ldb)),
-                    ptr[reg_C + c_offset + reg_stride_ld_block]);
+            if (brg.is_amx10()
+                    && (bi.ldi->is_tail(ldb) || bi.bdi->is_tail(bdb))) {
+                // Loads tile accumulators from C buffer for AMX10 when there are tails
+                // using temporary buffer because tiles configured as full blocks
+                const auto zmm_tmp1 = amx10_zmm_tmp(1);
+                vpxord(zmm_tmp1, zmm_tmp1, zmm_tmp1);
+                const auto zmm_load = bi.ldi->is_tail(ldb)
+                        ? zmm_tmp1 | ld_tail_mask
+                        : zmm_tmp1;
+                for (int r = 0; r < bi.bdi->block(bdb); r++) {
+                    const auto inp_row_offset = c_offset
+                            + r * bi.ldi->block(ldb) * brg.typesize_C;
+                    vmovups(zmm_load, ptr[reg_C + inp_row_offset]);
+                    const auto buf_row_addr
+                            = ptr[reg_buf + r * zmm_width_in_bytes];
+                    vmovups(buf_row_addr, zmm_tmp1);
+                }
+                if (bi.bdi->is_tail(bdb)) {
+                    // zero out remaining rows in the temporary buffer
+                    vpxord(zmm_tmp1, zmm_tmp1, zmm_tmp1);
+                    for (int r = bi.bdi->block(bdb); r < 16; r++) {
+                        const auto buf_row_addr
+                                = ptr[reg_buf + r * zmm_width_in_bytes];
+                        vmovups(buf_row_addr, zmm_tmp1);
+                    }
+                }
+                mov(reg_converted_stride, zmm_width_in_bytes);
+                tileloadd(Tmm(get_C_tensor(bi, bdb, ldb)),
+                        ptr[reg_buf + reg_converted_stride]);
+            } else {
+                tileloadd(Tmm(get_C_tensor(bi, bdb, ldb)),
+                        ptr[reg_C + c_offset + reg_stride_ld_block]);
+            }
         } else {
             // call tilezero on very first iteration
             if (!brg.interleave_tilestores_
@@ -1429,13 +1529,17 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         auto zmm = accm(bd);
         if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
-        auto vreg_acc = bi.ldi->is_tail(ldb) ? accm(bd) | ld_tail_mask | T_z
-                                             : accm(bd);
         some_bd_mask = true;
 
+        auto vreg_acc = accm(bd);
+        // fill accumulator vector by data
         if (bi.skip_accumulation) {
             vpxord(vreg_acc, vreg_acc, vreg_acc);
+        } else if (brg.is_amx10()) {
+            amx10_tilemovrow(vreg_acc, Tmm(get_C_tensor(bi, bdb, ldb)), bd);
         } else {
+            vreg_acc = bi.ldi->is_tail(ldb) ? vreg_acc | ld_tail_mask | T_z
+                                            : vreg_acc;
             const auto wsp_offset = (use_ils_ || brg.interleave_tilestores_)
                     ? (bdb * prev_bi_.ldi->block2() + ldb)
                             * prev_bi_.bdi->block(0) * ld_block_C_size_
@@ -1597,8 +1701,7 @@ void jit_brgemm_amx_uker_base_t::store_vector(
 
     if (!is_out_bd(bi.bdi, bdb, inp_bd)) return;
 
-    auto vreg_acc = bi.ldi->is_tail(ldb) ? accm(inp_bd) | ld_tail_mask | T_z
-                                         : accm(inp_bd);
+    auto acc_idx = accm(inp_bd).getIdx();
 
     auto ldb_pos = bi.ldi->pos(ldb);
     auto is_ld_tail = bi.ldi->is_tail(ldb);
@@ -1609,11 +1712,11 @@ void jit_brgemm_amx_uker_base_t::store_vector(
     auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
 
     if (bi.apply_postops)
-        store_vector_with_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
+        store_vector_with_post_ops(acc_idx, ptr_D, is_ld_tail);
     else if (are_post_ops_applicable_)
-        store_vector_without_post_ops(vreg_acc.getIdx(), ptr_C, is_ld_tail);
+        store_vector_without_post_ops(acc_idx, ptr_C, is_ld_tail);
     else
-        store_vector_without_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
+        store_vector_without_post_ops(acc_idx, ptr_D, is_ld_tail);
 }
 
 void jit_brgemm_amx_uker_base_t::interleave_store(
@@ -1635,7 +1738,7 @@ void jit_brgemm_amx_uker_base_t::interleave_store(
         }
         prepare_post_ops_registers_ldb(prev_bi_, 0);
         ils_bd_start_ = 0;
-        auto bd_finish = nstl::min(ils_bd_step_, prev_bi_.bdi->block(0));
+        auto bd_finish = nstl::min(store_bd_step(), prev_bi_.bdi->block(0));
         process_output_range(prev_bi_, 0, bd_finish, cur_bdb, cur_ldb);
     }
 
@@ -1661,10 +1764,10 @@ void jit_brgemm_amx_uker_base_t::interleave_store(
         if (ldb != cur_ldb) prepare_post_ops_registers_ldb(prev_bi_, ldb);
 
         if (bdb != cur_bdb || ldb != cur_ldb
-                || rnd_dn(bd, ils_bd_step_) != ils_bd_start_) {
-            ils_bd_start_ = rnd_dn(bd, ils_bd_step_);
+                || rnd_dn(bd, store_bd_step()) != ils_bd_start_) {
+            ils_bd_start_ = rnd_dn(bd, store_bd_step());
             auto bd_finish = nstl::min(
-                    ils_bd_start_ + ils_bd_step_, prev_bi_.bdi->block(bdb));
+                    ils_bd_start_ + store_bd_step(), prev_bi_.bdi->block(bdb));
             process_output_range(prev_bi_, ils_bd_start_, bd_finish, bdb, ldb);
         }
 
@@ -1701,10 +1804,24 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
     if (store_by_vectors && !real_ils && !prepare_post_ops_registers_once_)
         prepare_post_ops_registers(bi);
 
+    //!! TODO: review this
+    const bool blocked_output = (brg.LDC == 16) && (brg.LDC == brg.LDD)
+            && (brg.brgattr.LDC2_M > 0) && (brg.brgattr.LDC2_M % 16 == 0)
+            && (brg.brgattr.LDC2_N > 0) && (brg.brgattr.LDC2_N % 256 == 0)
+            && (brg.brgattr.LDC2_M / 16 == brg.brgattr.LDC2_N / 256)
+            && (brg.dt_c == brg.dt_d) && (brg.dt_c == data_type::f32);
+
     for_(int bdb = 0; bdb < bi.bdi->block2(); bdb++)
     for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
-        if (store_by_vectors) {
-            if (!brg.interleave_tilestores_ && !bi.skip_accumulation) {
+
+        const bool amx10_tile_store = IMPLICATION(brg.is_amx10(),
+                (bi.bdi->block(bdb) == 16 && bi.ldi->block(ldb) == 16)
+                        || blocked_output);
+        const bool tile_store_by_vectors
+                = store_by_vectors || !amx10_tile_store;
+        if (tile_store_by_vectors) {
+            if (!brg.interleave_tilestores_ && !bi.skip_accumulation
+                    && !brg.is_amx10()) {
                 const auto wsp_offset = use_ils_
                         ? (bdb * bi.ldi->block2() + ldb) * bi.bdi->block(0)
                                 * ld_block_C_size_
@@ -1717,9 +1834,9 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
             prepare_post_ops_registers_ldb(bi, ldb);
 
             for (int bd_step = 0; bd_step < bi.bdi->block(bdb);
-                    bd_step += ils_bd_step_) {
-                auto bd_finish
-                        = nstl::min(bd_step + ils_bd_step_, bi.bdi->block(bdb));
+                    bd_step += store_bd_step()) {
+                auto bd_finish = nstl::min(
+                        bd_step + store_bd_step(), bi.bdi->block(bdb));
                 process_output_range(bi, bd_step, bd_finish, bdb, ldb);
 
                 for (auto bd = bd_step; bd < bd_finish; bd++)
@@ -2352,6 +2469,207 @@ void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
     }
 }
 
+void jit_brgemm_amx_uker_base_t::amx10_load_A_4x16bytes(
+        const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset) {
+    constexpr size_t full_mask = 0xFFFF;
+    constexpr size_t all_full_mask = 0xFFFFFFFFFFFFFFFF;
+
+    // Seems vploadstridei8x16 in current (June 2025) version of
+    // sde implemented so that it always reads/touch all 4 128 blocks even if mask is partial
+    // so we don't use vploadstridei8x16 in this case by checking mask for 0xFFFFFFFFFFFFFFFF
+
+    bool use_bcst = true; // TODO: for now we always use broadcast
+
+    if (use_bcst || mask != all_full_mask) {
+        const auto zmm_tmp1 = amx10_zmm_tmp(1);
+        const auto xmm_tmp = Xmm(zmm_tmp1.getIdx());
+        if (mask != all_full_mask) vpxord(zmm, zmm, zmm);
+
+        for (int i = 0; i < 4; ++i) {
+            const auto cur_offset
+                    = offset + i * lda() * amx10_zmms_per_bd_block;
+            const size_t cur_mask = (mask >> (16 * i)) & full_mask;
+            if (cur_mask == 0) continue;
+
+            if (cur_mask != full_mask) {
+                // Partial mask: load by bytes and insert into zmm
+                // Note: we can't use vbroadcasti32x4 here because it reads
+                // whole 128-bit block and only after that applies mask.
+                mov(reg_tmp_gpr, cur_mask);
+                kmovq(amx10_load_A_mask, reg_tmp_gpr);
+                vmovdqu8(xmm_tmp | amx10_load_A_mask | T_z,
+                        ptr[reg_A + cur_offset]);
+                vinserti64x2(zmm, zmm, xmm_tmp, i);
+            } else {
+                Xbyak::Opmask &bcst_mask = amx10_load_A_mask;
+                switch (i) {
+                    case 0: bcst_mask = amx10_load_A_mask_f; break;
+                    case 1: bcst_mask = amx10_load_A_mask_f0; break;
+                    case 2: bcst_mask = amx10_load_A_mask_f00; break;
+                    case 3: bcst_mask = amx10_load_A_mask_f000; break;
+                    default: assert(!"unexpected i value");
+                }
+                vbroadcasti32x4(zmm | bcst_mask, ptr[reg_A + cur_offset]);
+            }
+        }
+    } else {
+        if (mask == all_full_mask) {
+            // no mask
+            kxnorq(amx10_load_A_mask, amx10_load_A_mask, amx10_load_A_mask);
+        } else {
+            mov(reg_tmp_gpr, mask);
+            kmovq(amx10_load_A_mask, reg_tmp_gpr);
+        }
+
+        vploadstridei8x16(zmm | amx10_load_A_mask | T_z,
+                ptr[reg_A + reg_stride_lda + offset]);
+    }
+}
+
+void jit_brgemm_amx_uker_base_t::amx10_topbf16pse(
+        const Tmm &accm, const Zmm &zmm_a, const Zmm &zmm_b) {
+    topbf16pse(accm, zmm_a, zmm_b);
+}
+
+void jit_brgemm_amx_uker_base_t::amx10_tilemovrow(
+        const Zmm &zmm, const Tmm &tmm, int row) {
+    tilemovrow(zmm, tmm, row);
+}
+
+void jit_brgemm_amx_uker_base_t::amx10_load_A(
+        brgemm_iteration_t &bi, int bdb, dim_t offset) {
+
+    // TODO: what about load_nt ?
+    // TODO: what about has_mem_advice;
+
+    const auto bd_block = bi.bdi->block(bdb);
+    const auto rd_block = bi.rdi->block(0);
+    // load 4 zmm registers with 16 rows, 4 bytes per each row
+    // So overall we have (16x2)x4 bf16 values in 4 zmm registers
+
+    const int mask_stride = 16; // 16 bytes per row
+    const auto rd_block2 = rd_block;
+    for (int rb = 0; rb < amx10_zmms_per_bd_block; ++rb) {
+        auto zmm = amx10_zmm_A(bdb, rb);
+        if (rb >= bd_block) {
+            vpxord(zmm, zmm, zmm);
+            continue;
+        }
+        size_t mask = 0;
+        int mask_row_offs = 0;
+        for (int row = rb; row < bd_block; row += amx10_zmms_per_bd_block) {
+            for (int col = 0; col < rd_block2; ++col) {
+                if (brg.typesize_A == 2) {
+                    // bf16, f16
+                    mask |= (size_t)0b11 << (mask_row_offs + col * 2);
+                } else if (brg.typesize_A == 1) {
+                    // f8_e5m2, f8_e4m3, s8, u8
+                    mask |= (size_t)0b1 << (mask_row_offs + col);
+                } else {
+                    assert(!"Unsupported data type for amx10_load_A");
+                }
+            }
+            mask_row_offs += mask_stride;
+        }
+        amx10_load_A_4x16bytes(zmm, mask, reg_A, offset + rb * lda());
+    }
+    // transpose four 4x4 blocks
+    const auto base_zmm_idx = amx10_zmm_A(bdb, 0).getIdx();
+    const auto a_zmm1 = Zmm(base_zmm_idx + 0);
+    const auto a_zmm2 = Zmm(base_zmm_idx + 1);
+    const auto a_zmm3 = Zmm(base_zmm_idx + 2);
+    const auto a_zmm4 = Zmm(base_zmm_idx + 3);
+    const auto tmp_zmm1 = amx10_zmm_tmp(1);
+    const auto tmp_zmm2 = amx10_zmm_tmp(2);
+    const auto tmp_zmm3 = amx10_zmm_tmp(3);
+    const auto tmp_zmm4 = amx10_zmm_tmp(4);
+    vpunpckldq(tmp_zmm1, a_zmm1, a_zmm2);
+    vpunpckhdq(tmp_zmm2, a_zmm1, a_zmm2);
+    vpunpckldq(tmp_zmm3, a_zmm3, a_zmm4);
+    vpunpckhdq(tmp_zmm4, a_zmm3, a_zmm4);
+    vpunpcklqdq(a_zmm1, tmp_zmm1, tmp_zmm3);
+    vpunpckhqdq(a_zmm2, tmp_zmm1, tmp_zmm3);
+    vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
+    vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
+}
+
+void jit_brgemm_amx_uker_base_t::amx10_load_B(
+        brgemm_iteration_t &bi, int ldb, dim_t offset, int rdstep) {
+    // if rdstep is -1, then we load all registers for this ldb
+    const auto start_rdstep = (rdstep == -1) ? 0 : rdstep;
+    const auto finish_rdstep
+            = (rdstep == -1) ? amx10_rd_steps(bi.rdi->block(0)) : rdstep + 1;
+    for (int rds = start_rdstep; rds < finish_rdstep; rds++) {
+        // if rdstep != -1 , then (rds - start_rdstep) shoild be 0
+        auto zmm = amx10_zmm_B(ldb, rds - start_rdstep);
+        auto k_mask = (!bi.ldi->is_tail(ldb)) ? ld_full_mask : ld_tail_mask;
+        vmovupd(zmm | k_mask | T_z,
+                EVEX_compress_addr(
+                        reg_B, offset + rds * brg.rd_step * LDB_size_));
+    }
+}
+
+void jit_brgemm_amx_uker_base_t::outer_product(
+        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
+    using namespace data_type;
+    if (brg.dt_a == bf16 && brg.dt_b == bf16) {
+        amx10_topbf16pse(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        topbf8pse(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        tophf8pse(accm, zmm_a, zmm_b);
+    } else {
+        assert(!"Unsupported data type for outer product");
+    }
+}
+
+void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx10(
+        brgemm_iteration_t &bi) {
+    prf0A.reset();
+    prf1A.reset();
+    prf2A.reset();
+    prfntaA.reset();
+    prf0B.reset();
+    prf1B.reset();
+    prf2B.reset();
+    prfntaB.reset();
+
+    if (brg.n_bcast_1_load) {
+        for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+            // load several registers for this ldb
+            amx10_load_A(bi, bdb, A_offset(bi, bdb));
+        }
+
+        for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
+            for (int rds = 0; rds < amx10_rd_steps(bi.rdi->block(0)); rds++) {
+                // load one line from B for current ldb and rds into amx10_zmm_B(ldb, 0)
+                amx10_load_B(bi, ldb, B_offset(bi, ldb), rds);
+                for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+                    const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
+                    outer_product(
+                            amx10_zmm_A(bdb, rds), amx10_zmm_B(ldb, 0), accm);
+                }
+            }
+        }
+    } else {
+        for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
+            // load several registers for each ldb
+            amx10_load_B(bi, ldb, B_offset(bi, ldb), -1);
+        }
+
+        for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+            // load several registers for this ldb
+            amx10_load_A(bi, bdb, A_offset(bi, bdb));
+            for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
+                const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
+                for (int rds = 0; rds < amx10_rd_steps(bi.rdi->block(0)); rds++)
+                    outer_product(
+                            amx10_zmm_A(bdb, rds), amx10_zmm_B(ldb, rds), accm);
+            }
+        }
+    }
+}
+
 void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
     prf0A.reset();
     prf1A.reset();
@@ -2404,11 +2722,27 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
     for (auto &rdi : tloop.rdis) {
         bi.rdi = &rdi;
-        gemm_microkernel_amx(bi);
+        if (brg.is_amx10())
+            gemm_microkernel_amx10(bi);
+        else
+            gemm_microkernel_amx(bi);
     }
 }
 
 void jit_brgemm_amx_uker_base_t::bs_loop_body(brgemm_iteration_t &bi) {
+    if (brg.is_amx10()) {
+        // for AMX10 we need to load masks for A matrix
+        // !! TODO: check when these masks really needed
+        mov(reg_tmp_gpr, 0xf);
+        kmovq(amx10_load_A_mask_f, reg_tmp_gpr);
+        mov(reg_tmp_gpr, 0xf0);
+        kmovq(amx10_load_A_mask_f0, reg_tmp_gpr);
+        mov(reg_tmp_gpr, 0xf00);
+        kmovq(amx10_load_A_mask_f00, reg_tmp_gpr);
+        mov(reg_tmp_gpr, 0xf000);
+        kmovq(amx10_load_A_mask_f000, reg_tmp_gpr);
+    }
+
     if (brg.brgattr.var_bs) {
         set_A_B_matrices();
         add(reg_aux1_batch, sizeof(brgemm_batch_element_t));
@@ -2881,8 +3215,9 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
 
     // for many primitives which use brgemm the brg.ldb2 is equal or less than 1
     // so we can read post ops data only once per brgemm call
-
-    if (brg.ldb2 > 1) {
+    // For AMX10, ZMM registers are used intensively for loading data from A and B,
+    // which prevents keeping post-ops data until post-processing.
+    if (brg.ldb2 > 1 || brg.is_amx10()) {
         prepare_post_ops_registers_once_ = false;
     } else if (brg.ldb2 == 1) {
         if (brg.ldb2_tail == 0 && brg.ldb_tail == 0) {
@@ -2947,6 +3282,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
 
     mov(reg_mask, full_mask);
     kmovq(ld_full_mask, reg_mask);
+
     mov(reg_mask, tail_mask);
     kmovq(ld_tail_mask, reg_mask);
 
@@ -3004,7 +3340,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
             vmovups(zmm_bf32_permute, ptr[rip + permute_index_table]);
     }
 
-    mov(reg_stride_lda, lda());
+    mov(reg_stride_lda, lda() * (brg.is_amx10() ? amx10_zmms_per_bd_block : 1));
     mov(reg_stride_ldb, ldb());
 
     bool non_postops_generate

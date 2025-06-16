@@ -73,6 +73,33 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
+#ifdef DNNL_EXPERIMENTAL_ASYNC_VERBOSE
+
+    // container for holding timing data for asynchronous verbose mode
+    struct async_timing_data_t {
+        double start_ms = 0; // event start timestamp (ms)
+        double end_ms = 0; // event end timestamp (ms)
+        double duration_ms = 0; // event duration (ms)
+        bool profiler_enabled = false; // whether stream profiling is enabled
+        bool timing_stat = true; // event registration status
+        std::string vinfo; // verbose info for the event
+    };
+
+    // initializes stream parameters for the asyn c tracker -
+    // parameters differ depending on runtime
+    virtual dnnl::impl::status_t init_async_tracking(std::string vinfo) {
+        return dnnl::impl::status::unimplemented;
+    }
+
+    // This ensures that the verbose profiling info is printed for
+    // the operation in case of failures / disabled functionalities
+    // for the asynchronous mode. The operation here falls back to
+    // using the default blocking stream.wait() calls.
+    virtual dnnl::impl::status_t check_async_exec_times() {
+        return dnnl::impl::status::unimplemented;
+    }
+#endif
+
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 

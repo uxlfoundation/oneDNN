@@ -17,6 +17,11 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -3228,5 +3233,8 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
 
 } /* namespace NGEN_NAMESPACE */
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif /* header guard */

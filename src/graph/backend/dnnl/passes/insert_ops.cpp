@@ -43,7 +43,6 @@ using value_ptr = std::shared_ptr<value_t>;
 
 status_t insert_permute_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
-    const auto &mgr = sg->fusion_info_mgr_;
 
     for (auto &op : sg->get_ops()) {
         if (!(op->get_kind() == op_kind::dnnl_convolution
@@ -59,10 +58,8 @@ status_t insert_permute_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
         bool need_permute_post_dw_conv_wei = false;
         const op_t *post_dw_conv = nullptr;
         fusion_info_t fusion_info;
-        if (op->has_attr(op_attr::fusion_info_key)
-                && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info = mgr.get_info(key);
+        if (op->has_attr(op_attr::fusion_info)) {
+            fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         }
         if (fusion_info.has_post_dw_conv()) {
             post_dw_conv = fusion_info.get_post_dw_conv()->get_op();
@@ -166,7 +163,6 @@ std::unordered_map<op_kind_t, std::pair<io_indices_t, io_indices_t>>
 status_t insert_permute_for_op_only_require_data_format(
         std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
-    const auto &mgr = sg->fusion_info_mgr_;
 
     for (auto &op : sg->get_ops()) {
         if (!io_idx_to_permute.count(op->get_kind())) continue;
@@ -188,10 +184,8 @@ status_t insert_permute_for_op_only_require_data_format(
         }
 
         fusion_info_t fusion_info;
-        if (op->has_attr(op_attr::fusion_info_key)
-                && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info = mgr.get_info(key);
+        if (op->has_attr(op_attr::fusion_info)) {
+            fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         }
 
         // permute extra inputs for fused post-binary
@@ -265,7 +259,6 @@ status_t insert_permute_for_shuffle(std::shared_ptr<subgraph_t> &sg) {
 
 status_t insert_to_group_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
-    const auto &mgr = sg->fusion_info_mgr_;
 
     auto insert_to_group = [&](const op_ptr &op, int64_t groups,
                                    const size_t offset) -> bool {
@@ -296,10 +289,8 @@ status_t insert_to_group_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
             continue;
 
         fusion_info_t fusion_info;
-        if (cur_op->has_attr(op_attr::fusion_info_key)
-                && cur_op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = cur_op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info = mgr.get_info(key);
+        if (cur_op->has_attr(op_attr::fusion_info)) {
+            fusion_info = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
         }
 
         if (fusion_info.has_post_dw_conv()) {
@@ -453,7 +444,6 @@ status_t insert_permute_for_dynamic_mul_scale_sub_zp(
 }
 
 status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     subgraph_rewriter_t rewriter(sg);
 
     for (auto &cur_op : sg->get_ops()) {
@@ -475,18 +465,17 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             permute_op->set_attr<std::vector<int64_t>>(
                     op_attr::permutation, perm);
             rewriter.insert_op_before(permute_op, cur_op, i);
-            if (cur_op->has_attr(op_attr::fusion_info_key)
-                    && cur_op->get_attr<int64_t>(op_attr::fusion_info_key)
-                            != -1) {
-                int64_t key
-                        = cur_op->get_attr<int64_t>(op_attr::fusion_info_key);
-                fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            if (cur_op->has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info
+                        = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
                 op_t *scales_op = fusion_info.get_mutable_scales(true, i);
                 if (scales_op
                         && scales_op->get_attr<std::string>(op_attr::qtype)
                                 == "per_channel") {
                     scales_op->set_attr<int64_t>(op_attr::axis, ndims - 1);
                 }
+                cur_op->set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
         }
         // remove attr to avoid re-transpose during shape inference
@@ -499,7 +488,6 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
 
     subgraph_rewriter_t rewriter(sg);
 
@@ -540,10 +528,9 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
                 op_attr::shape, expected_dims2);
         rewriter.insert_op_after(reshape_op2, cur_op, 0);
 
-        if (cur_op->has_attr(op_attr::fusion_info_key)
-                && cur_op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = cur_op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+        if (cur_op->has_attr(op_attr::fusion_info)) {
+            fusion_info_t fusion_info
+                    = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
             const auto &pops = fusion_info.get_post_ops();
             for (size_t i = 0; i < pops.size(); i++) {
                 if (!pops[i]->is_post_binary() && !pops[i]->is_post_sum())
@@ -567,6 +554,8 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
                             == "per_channel") {
                 scales_op->set_attr<int64_t>(op_attr::axis, 1);
             }
+            // update fusion info
+            cur_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
     }
 
@@ -679,7 +668,6 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
 status_t insert_unsqueeze_and_squeeze_for_matmul(
         std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
-    auto &mgr = sg->fusion_info_mgr_;
 
     for (auto &op : sg->get_ops()) {
         if (op->get_kind() != op_kind::dnnl_matmul) continue;
@@ -730,10 +718,9 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
             }
 
             // update the axis
-            if (i == 1 && op->has_attr(op_attr::fusion_info_key)
-                    && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-                int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-                fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            if (i == 1 && op->has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info
+                        = op->get_attr<fusion_info_t>(op_attr::fusion_info);
                 op_t *scales_op = fusion_info.get_mutable_scales(true, 1);
                 if (scales_op
                         && scales_op->get_attr<std::string>(op_attr::qtype)
@@ -741,6 +728,7 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
                     scales_op->set_attr<int64_t>(op_attr::axis,
                             unsqueezed_dst_ndims - 1); // the 2nd dim;
                 }
+                op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
             }
         }
 
@@ -829,16 +817,23 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
             const_data_dst_value->set_strides({1});
             const_data_op->add_output(const_data_dst_value);
 
-            int64_t key = -1;
-            if (cur_op->has_attr(op_attr::fusion_info_key)) {
-                key = cur_op->get_attr<int64_t>(op_attr::fusion_info_key);
+            if (cur_op->has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info
+                        = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
+                fusion_info.set_zero_points(
+                        zps_op->shared_from_this(), true, 1);
+                cur_op->set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             } else {
-                key = mgr.init_info();
-                cur_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+                fusion_info_t fusion_info;
+                fusion_info.set_zero_points(
+                        zps_op->shared_from_this(), true, 1);
+                cur_op->set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
 
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
-            fusion_info.set_zero_points(zps_op->shared_from_this(), true, 1);
+            // fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            // fusion_info.set_zero_points(zps_op->shared_from_this(), true, 1);
 
             // connect add_zp and constant data
             cur_op->add_input(const_data_dst_value);
@@ -875,7 +870,6 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
 }
 
 status_t insert_u8_to_s8_for_matmul(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
 
     subgraph_rewriter_t rewriter(sg);
 
@@ -891,15 +885,13 @@ status_t insert_u8_to_s8_for_matmul(std::shared_ptr<subgraph_t> &sg) {
                 || new_src1_dtype != graph::data_type::u8)
             continue;
 
-        int64_t key = -1;
-        if (cur_op->has_attr(op_attr::fusion_info_key)
-                && cur_op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            key = cur_op->get_attr<int64_t>(op_attr::fusion_info_key);
-        } else {
-            key = mgr.init_info();
-            cur_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+        if (!cur_op->has_attr(op_attr::fusion_info)) {
+            fusion_info_t fusion_info;
+            cur_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
-        fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+        fusion_info_t fusion_info
+                = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
+
         op_t *wei_zps_op = fusion_info.get_mutable_zero_points(
                 true, /*the wei index*/ 1);
         if (wei_zps_op) { // already fused zps, update the zps
@@ -922,6 +914,8 @@ status_t insert_u8_to_s8_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zp);
             fusion_info.set_zero_points(zps_op, true, /*the wei index*/ 1);
         }
+        // update fusion info
+        cur_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
 
         op_ptr u8_to_s8_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
         u8_to_s8_op->set_attr<std::vector<int64_t>>(

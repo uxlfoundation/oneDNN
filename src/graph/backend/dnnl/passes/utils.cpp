@@ -198,14 +198,11 @@ status_t infer_shape(std::shared_ptr<subgraph_t> &sg) {
     // internal dw_type attr to record the post-dw-conv info used to infer
     // correct shape. Here the dw_type attr is a temporary attr only used during
     // shape infer, and will be removed from the op before existing shape infer.
-    const auto &mgr = sg->fusion_info_mgr_;
     std::vector<op_ptr> conv_fused_post_s2_dw_conv;
     for (auto &op : sg->get_ops()) {
         fusion_info_t fusion_info;
-        if (op->has_attr(op_attr::fusion_info_key)
-                && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info = mgr.get_info(key);
+        if (op->has_attr(op_attr::fusion_info)) {
+            fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         }
 
         if (fusion_info.has_post_dw_conv()) {
@@ -601,10 +598,9 @@ bool is_typecast(const op_t *op) {
 
 bool with_runtime_zps(const op_ptr &op, const fusion_info_mgr_t &mgr,
         bool is_input, size_t index) {
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         return fusion_info.with_runtime_zero_points(is_input, index);
     } else {
         return false;
@@ -613,10 +609,9 @@ bool with_runtime_zps(const op_ptr &op, const fusion_info_mgr_t &mgr,
 
 bool with_runtime_scales(const op_ptr &op, const fusion_info_mgr_t &mgr,
         bool is_input, size_t index) {
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         return fusion_info.with_runtime_scales(is_input, index);
     } else {
         return false;

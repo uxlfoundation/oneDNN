@@ -69,6 +69,9 @@ const op_attr_t dst_zps = 0x10400;
 const op_attr_t src_zps = 0x10401;
 const op_attr_t permutation = 0x10402;
 
+// backend specific attribute to store op's fusion info
+const op_attr_t fusion_info = 0x10500;
+
 static inline std::string internal_attr2str(op_attr_t attr) {
 #define CASE(a) \
     case (a): return #a
@@ -102,6 +105,7 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(dst_zps);
         CASE(src_zps);
         CASE(permutation);
+        CASE(fusion_info);
         default: return "undefined_attr";
     }
 #undef CASE

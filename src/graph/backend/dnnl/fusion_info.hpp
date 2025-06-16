@@ -324,33 +324,6 @@ private:
     std::vector<std::shared_ptr<meta_op_t>> post_ops_;
 };
 
-// This class is used to manage all fusion infos in a subgraph. The
-// fusion_info_t can't be directly stored in op's attribute system, so we store
-// them in this manager class and then store the generated int64_t typed key in
-// op's attribute system. When using an ops' fusion info, we can use the fusion
-// info key to query it out from the manager.
-class fusion_info_mgr_t {
-public:
-    fusion_info_mgr_t(
-            graph::fpmath_t fpm_mode = {}, bool can_use_blocked_layout = false)
-        : fpmath_mode_(fpm_mode)
-        , can_use_blocked_layout_(can_use_blocked_layout) {}
-
-    // Disable assignment and copy
-    fusion_info_mgr_t(const fusion_info_mgr_t &) = delete;
-    fusion_info_mgr_t(fusion_info_mgr_t &&) = delete;
-    fusion_info_mgr_t &operator=(const fusion_info_mgr_t &) = delete;
-    fusion_info_mgr_t &operator=(fusion_info_mgr_t &&) = delete;
-
-    const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
-    bool get_use_blocked_layout() const { return can_use_blocked_layout_; }
-
-private:
-    // specified floating-point math mode for all fusions
-    fpmath_t fpmath_mode_;
-    bool can_use_blocked_layout_;
-};
-
 // This function is used to make a dnnl::primitive_attr from the fusion info.
 // Note that the op and fusion_info arguments must be matched since a fusion
 // info make sense only when it belongs to a specific op.

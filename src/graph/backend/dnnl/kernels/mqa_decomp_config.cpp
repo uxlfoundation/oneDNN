@@ -129,13 +129,11 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
 
-    auto &mgr = sg->fusion_info_mgr_;
-
     // per-head: reorder wei1 to dense, first matmul
     // create reorder1 primitive attr
     auto original_reorder1 = mqa_op[0];
     dnnl::primitive_attr sub_reorder1_attr
-            = make_primitive_attr(original_reorder1, mgr);
+            = make_primitive_attr(original_reorder1);
     memory::dims sub_wei1_dims = {1, size_per_head, seq_len};
 
     auto original_matmul1 = mqa_op[1];
@@ -152,7 +150,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // first matmul
     // create first matmul primitive attr
     dnnl::primitive_attr sub_matmul1_attr
-            = make_primitive_attr(original_matmul1, mgr);
+            = make_primitive_attr(original_matmul1);
     memory::dims sub_mm1_src_dims = {1, seq_len, size_per_head};
     memory::dims sub_mm1_wei_dims = {1, size_per_head, seq_len};
     memory::dims sub_mm1_dst_dims = {1, seq_len, seq_len};
@@ -183,7 +181,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // create softmax primitive attr
     auto original_softmax = mqa_op[2];
     dnnl::primitive_attr sub_softmax_attr
-            = make_primitive_attr(original_softmax, mgr);
+            = make_primitive_attr(original_softmax);
     sub_softmax_dst_md
             = memory::desc(sub_mm1_dst_dims, dt_src_user, format_tag::abc);
     const auto mode = mqa_op[2]->get_attr<std::string>(op_attr::mode);
@@ -201,7 +199,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // create reorder2 primitive attr
     auto original_reorder2 = mqa_op[3];
     dnnl::primitive_attr sub_reorder2_attr
-            = make_primitive_attr(original_reorder2, mgr);
+            = make_primitive_attr(original_reorder2);
     memory::dims sub_src2_dims = {1, size_per_head, seq_len};
     sub_src2_user_md
             = memory::desc(sub_src2_dims, dt_src_user, {1, seq_len, 1});
@@ -216,7 +214,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     // create second matmul primitive attr
     auto original_matmul2 = mqa_op[4];
     dnnl::primitive_attr sub_matmul2_attr
-            = make_primitive_attr(original_matmul2, mgr);
+            = make_primitive_attr(original_matmul2);
     memory::dims sub_mm2_src_dims = {1, size_per_head, seq_len};
     memory::dims sub_mm2_wei_dims = {1, seq_len, seq_len};
     memory::dims sub_mm2_dst_dims = {1, size_per_head, seq_len};
@@ -445,7 +443,7 @@ void mqa_decomp_config_t::memory_planning(registry_t &mqa_registry) {
 }
 
 dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
-        std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<op_t> &op) {
     dnnl::primitive_attr attr;
     if (op && op->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info

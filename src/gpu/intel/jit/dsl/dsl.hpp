@@ -17,19 +17,10 @@
 #ifndef GPU_INTEL_JIT_DSL_DSL_HPP
 #define GPU_INTEL_JIT_DSL_DSL_HPP
 
-#include <stack>
-
-#include "gpu/intel/jit/ir/blocking.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/message_patterns.hpp"
-#include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/v2/ir/bridge.hpp"
 #include "gpu/intel/jit/v2/ir/tensor.hpp"
-#include "ngen_core.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,116 +33,8 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
-struct transform_t {
-    // Sample transforms on bf16 data with pack_size 16:
-    // none:           64a64b -> 64a64b
-    // block:          64a64b -> 4b64a16b
-    // vnni:           64a64b -> 4b32a16b2a
-    // transpose_vnni: 64a64b -> 4a32b16a2b
-    enum class kind_t { none, block, vnni, transpose_vnni };
-
-    transform_t() = default;
-
-    transform_t(kind_t t_kind, int pack_size, ngen::CacheSettingsLSC cache_hint,
-            std::array<pvar_t, 2> dims)
-        : kind(t_kind)
-        , pack_size(pack_size)
-        , cache_hint(to_ir(cache_hint))
-        , dims(std::move(dims)) {}
-
-    v2::layout_t get_layout(const tile_t &sizes, type_t type,
-            const v2::layout_desc_t &desc) const {
-
-        auto col_var = dims[0];
-        auto col = sizes[dims[0]];
-        auto row_var = dims[1];
-        auto row = sizes[dims[1]];
-        auto t = type.size();
-
-        auto normalized = kind;
-        if (normalized == kind_t::transpose_vnni) {
-            std::swap(col_var, row_var);
-            std::swap(col, row);
-            normalized = kind_t::vnni;
-        }
-
-        if (normalized == kind_t::vnni && t >= 4) normalized = kind_t::block;
-
-        int col_inner = pack_size ? pack_size : grf_size();
-        if (normalized == kind_t::block && col <= col_inner)
-            normalized = kind_t::none;
-
-        switch (normalized) {
-            case kind_t::none:
-                return v2::layout_t(desc, type, 0,
-                        {{col_var, col, 1}, {row_var, row, col}});
-
-            case kind_t::block: {
-                int col_outer = (int)(col / col_inner);
-                return v2::layout_t(desc, type, 0,
-                        {{col_var, col_inner, 1}, {row_var, row, col_inner},
-                                {col_var, col_outer, row * col_inner}});
-            }
-
-            case kind_t::vnni: {
-                int row_inner = 4 / t;
-                int row_outer = (int)(row / row_inner);
-                int col_outer = (int)(col / col_inner);
-                return v2::layout_t(desc, type, 0,
-                        {{row_var, row_inner, 1},
-                                {col_var, col_inner, row_inner},
-                                {row_var, row_outer, col_inner * row_inner},
-                                {col_var, col_outer,
-                                        row_outer * col_inner * row_inner}});
-            }
-
-            // Impossible to hit due to normalization
-            case kind_t::transpose_vnni:
-            default: gpu_assert(false); return {};
-        }
-    }
-
-    // Tile used for 2d messages
-    tile_t get_2d_tile(type_t type) const {
-        if (kind == kind_t::transpose_vnni) {
-            auto width = pack_size ? pack_size
-                                   : grf_size() / std::max(type.size(), 4);
-            auto height = 32;
-            return {{dims[1], width}, {dims[0], height}};
-        }
-
-        auto width = pack_size ? pack_size : grf_size() / type.size();
-        auto height = 32;
-        return {{dims[0], width}, {dims[1], height}};
-    }
-
-    // Tile used for block loads
-    tile_t get_block_tile(type_t type) const {
-        if (kind == kind_t::none) {
-            return {{dims[0], 8 * grf_size() / type.size()}, {dims[1], 1}};
-        } else if (kind == kind_t::block) {
-            return {{dims[0], pack_size ? pack_size : grf_size() / type.size()},
-                    {dims[1], 1}};
-        } else {
-            gpu_assert(false);
-            return {};
-        }
-    }
-
-    static send_cache_hint_t to_ir(ngen::CacheSettingsLSC hint) {
-        switch (hint) {
-            case ngen::CacheSettingsLSC::L1C_L3C:
-                return send_cache_hint_t::load_once;
-            case ngen::CacheSettingsLSC::Default:
-                return send_cache_hint_t::hw_default;
-            default: gpu_assert(false); return send_cache_hint_t::undef;
-        }
-    }
-
-    kind_t kind = kind_t::none;
-    int pack_size = 0;
-    send_cache_hint_t cache_hint = send_cache_hint_t::undef;
-    std::array<pvar_t, 2> dims = {};
+struct send_hint_t {
+    send_cache_hint_t cache = send_cache_hint_t::undef;
 };
 
 struct tensor_t {
@@ -261,12 +144,12 @@ tensor_t def(const v2::layout_t &layout, const std::string &name,
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
 
-void prefetch(const global_tensor_t &g, const transform_t &transform,
-        const icoord_t &base);
+void prefetch(const global_tensor_t &g, const icoord_t &base = {},
+        const send_hint_t &hint = {});
 void load(const tensor_t &t, const global_tensor_t &g,
-        const transform_t &transform, const icoord_t &base);
+        const icoord_t &base = {}, const send_hint_t &hint = {});
 void store(const global_tensor_t &g, const tensor_t &t,
-        const transform_t &transform, const icoord_t &base);
+        const icoord_t &base = {}, const send_hint_t &hint = {});
 
 void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const tile_t &tile, const icoord_t &base, bool is_systolic);

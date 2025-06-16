@@ -369,10 +369,9 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
 
     dnnl::primitive_attr attr, qk_attr, vs_attr;
 
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &fpm = sg->get_fpmath_mode();
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(mgr.get_fpmath_mode().mode_));
+    attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpm.mode_));
 
     if (mm1_->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info

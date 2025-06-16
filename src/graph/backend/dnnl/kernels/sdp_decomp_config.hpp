@@ -186,8 +186,7 @@ private:
 
     void memory_planning(registry_t &sdp_registry);
 
-    impl::status_t prepare_sdp_scales_zps(const fusion_info_mgr_t &mgr,
-            std::shared_ptr<op_t> &op, int index,
+    impl::status_t prepare_sdp_scales_zps(std::shared_ptr<op_t> &op, int index,
             std::unordered_map<int, memory> &args,
             const dnnl::engine &p_engine);
 
@@ -200,8 +199,7 @@ private:
                 producer.get_attr<std::vector<attr_dt>>(attr_name)[0]);
     }
 
-    dnnl::primitive_attr make_primitive_attr(
-            std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr);
+    dnnl::primitive_attr make_primitive_attr(std::shared_ptr<op_t> &op);
 };
 
 } // namespace dnnl_impl

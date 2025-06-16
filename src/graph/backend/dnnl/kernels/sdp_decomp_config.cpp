@@ -174,12 +174,9 @@ impl::status_t sdp_decomp_config_t::construct_params(
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
 
-    auto &mgr = sg->fusion_info_mgr_;
-
     // per-head: reorder u8->s8 wei for first matmul
     // create reorder1 primitive attr
-    dnnl::primitive_attr sub_reorder1_attr
-            = make_primitive_attr(sdp_op[0], mgr);
+    dnnl::primitive_attr sub_reorder1_attr = make_primitive_attr(sdp_op[0]);
     dims sub_wei1_dims = {head_size_qk, seq_len_kv};
     auto wei_md = make_dnnl_memory_desc(
             sdp_op[1]->get_input_value(1)->get_logical_tensor());
@@ -194,7 +191,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // first matmul
     // create first matmul primitive attr
-    dnnl::primitive_attr sub_matmul1_attr = make_primitive_attr(sdp_op[1], mgr);
+    dnnl::primitive_attr sub_matmul1_attr = make_primitive_attr(sdp_op[1]);
     dims sub_mm1_src_dims = {seq_len_q, head_size_qk};
     dims sub_mm1_wei_dims = {head_size_qk, seq_len_kv};
     dims sub_mm1_dst_dims = {seq_len_q, seq_len_kv};
@@ -236,8 +233,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     //select
     if (has_select) {
-        dnnl::primitive_attr sub_select_attr
-                = make_primitive_attr(sdp_op[5], mgr);
+        dnnl::primitive_attr sub_select_attr = make_primitive_attr(sdp_op[5]);
         auto select_cond_lt
                 = sdp_op[5]->get_input_value(2)->get_logical_tensor();
         auto select_cond_ltw = ltw(select_cond_lt);
@@ -264,7 +260,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // softmax
     // create softmax primitive attr
-    dnnl::primitive_attr sub_softmax_attr = make_primitive_attr(sdp_op[2], mgr);
+    dnnl::primitive_attr sub_softmax_attr = make_primitive_attr(sdp_op[2]);
 
     dnnl_pops = {};
     auto softmax_ori_dnnl_pops = sub_softmax_attr.get_post_ops();
@@ -299,8 +295,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // reorder u8->s8 wei for second matmul
     // create reorder2 primitive attr
-    dnnl::primitive_attr sub_reorder2_attr
-            = make_primitive_attr(sdp_op[3], mgr);
+    dnnl::primitive_attr sub_reorder2_attr = make_primitive_attr(sdp_op[3]);
     dims sub_wei2_dims = {seq_len_kv, head_size_v};
     wei2_strides = ltw(inputs[graph_inport[mm2_wei]]).vstrides();
     sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
@@ -313,7 +308,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // second matmul
     // create second matmul primitive attr
-    dnnl::primitive_attr sub_matmul2_attr = make_primitive_attr(sdp_op[4], mgr);
+    dnnl::primitive_attr sub_matmul2_attr = make_primitive_attr(sdp_op[4]);
     dims sub_mm2_src_dims = {seq_len_q, seq_len_kv};
     dims sub_mm2_wei_dims = {seq_len_kv, head_size_v};
     dims sub_mm2_dst_dims = {seq_len_q, head_size_v};
@@ -467,11 +462,11 @@ impl::status_t sdp_decomp_config_t::construct_params(
                     {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     // add scales and zps for mm1, softmax, mm2
-    prepare_sdp_scales_zps(mgr, sdp_op[0], 1, sub_reorder1_args, p_engine);
-    prepare_sdp_scales_zps(mgr, sdp_op[1], 2, sub_mm1_args, p_engine);
-    prepare_sdp_scales_zps(mgr, sdp_op[2], 1, sub_softmax_args, p_engine);
-    prepare_sdp_scales_zps(mgr, sdp_op[3], 1, sub_reorder2_args, p_engine);
-    prepare_sdp_scales_zps(mgr, sdp_op[4], 2, sub_mm2_args, p_engine);
+    prepare_sdp_scales_zps(sdp_op[0], 1, sub_reorder1_args, p_engine);
+    prepare_sdp_scales_zps(sdp_op[1], 2, sub_mm1_args, p_engine);
+    prepare_sdp_scales_zps(sdp_op[2], 1, sub_softmax_args, p_engine);
+    prepare_sdp_scales_zps(sdp_op[3], 1, sub_reorder2_args, p_engine);
+    prepare_sdp_scales_zps(sdp_op[4], 2, sub_mm2_args, p_engine);
     ////////////////////////////////////////////////////////////////////////
     /////////////// End Constructing exec args /////////////////////////////
     ////////////////////////////////////////////////////////////////////////
@@ -730,7 +725,7 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
 }
 
 impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
-        const fusion_info_mgr_t &mgr, std::shared_ptr<op_t> &op, int index,
+        std::shared_ptr<op_t> &op, int index,
         std::unordered_map<int, memory> &args, const dnnl::engine &p_engine) {
     const auto dt_scale = memory::data_type::f32,
                dt_zp = memory::data_type::s32;
@@ -826,7 +821,7 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 }
 
 dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
-        std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<op_t> &op) {
     dnnl::primitive_attr attr;
     if (op && op->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info

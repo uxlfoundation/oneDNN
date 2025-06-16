@@ -606,8 +606,7 @@ bool is_typecast(const op_t *op) {
     return is_typecast;
 }
 
-bool with_runtime_zps(const op_ptr &op, const fusion_info_mgr_t &mgr,
-        bool is_input, size_t index) {
+bool with_runtime_zps(const op_ptr &op, bool is_input, size_t index) {
     if (op->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
@@ -617,8 +616,7 @@ bool with_runtime_zps(const op_ptr &op, const fusion_info_mgr_t &mgr,
     }
 }
 
-bool with_runtime_scales(const op_ptr &op, const fusion_info_mgr_t &mgr,
-        bool is_input, size_t index) {
+bool with_runtime_scales(const op_ptr &op, bool is_input, size_t index) {
     if (op->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);

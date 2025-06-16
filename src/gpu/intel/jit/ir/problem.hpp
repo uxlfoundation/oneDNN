@@ -404,6 +404,18 @@ inline coord_t operator+(const coord_t &a, const coord_t &b) {
     return ret;
 }
 
+inline icoord_t operator+(const icoord_t &a, const icoord_t &b) {
+    icoord_t ret;
+    for (auto &d : a) {
+        ret[d] = a.get(d, 0) + b.get(d, 0);
+    }
+    for (auto &d : b) {
+        if (ret.has(d)) continue;
+        ret[d] = a.get(d, 0) + b.get(d, 0);
+    }
+    return ret;
+}
+
 struct tile_coord_t {
     tile_t tile;
     coord_t coord;

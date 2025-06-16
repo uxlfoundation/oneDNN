@@ -67,30 +67,25 @@ transform_t get_plan(const MatrixAddressing &matrix_type,
             // TODO: Remove workaround unimplemented scattered->vnni support.
             if (is_prefetch)
                 return transform_t(transform_t::kind_t::none, 0,
-                        matrix_type.alignment, 0, matrix_strategy.cachingR,
-                        dims);
+                        matrix_strategy.cachingR, dims);
 
             return transform_t(transform_t::kind_t::transpose_vnni,
-                    matrix_strategy.tileR, matrix_type.alignment, 0,
-                    matrix_strategy.cachingR, dims);
+                    matrix_strategy.tileR, matrix_strategy.cachingR, dims);
 
         case AccessType::ChannelScattered: stub(); return {};
         case AccessType::Block2DTranspose:
             return transform_t(transform_t::kind_t::transpose_vnni,
-                    matrix_strategy.tileR, matrix_type.alignment, min_pitch_2d,
-                    matrix_strategy.cachingR, dims);
+                    matrix_strategy.tileR, matrix_strategy.cachingR, dims);
         case AccessType::Block:
         case AccessType::PseudoBlock:
             return transform_t(transform_t::kind_t::none, matrix_strategy.tileR,
-                    matrix_type.alignment, 0, matrix_strategy.cachingR, dims);
+                    matrix_strategy.cachingR, dims);
         case AccessType::Block2D: {
             return transform_t(transform_t::kind_t::block,
-                    matrix_strategy.tileR, matrix_type.alignment, min_pitch_2d,
-                    matrix_strategy.cachingR, dims);
+                    matrix_strategy.tileR, matrix_strategy.cachingR, dims);
         };
         case AccessType::Block2DVNNI: {
             return transform_t(transform_t::kind_t::vnni, matrix_strategy.tileR,
-                    matrix_type.alignment, min_pitch_2d,
                     matrix_strategy.cachingR, dims);
         }
         default: stub(); return {};
@@ -296,6 +291,21 @@ struct gemm_ir {
         k_loop_config_t k_loop_short {m_blk, n_blk, k_unroll_blk, k_unroll_blk,
                 0, 0, 0, kloop_it, A_prefetch_plan, A_load_plan,
                 B_prefetch_plan, B_load_plan, C_store_plan, C};
+
+        if (problem.A.alignment) {
+            assume(arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
+        }
+        if (problem.B.alignment) {
+            assume(arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
+        }
+        if (problem.C.alignment) {
+            assume(arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
+        }
+
+        // TODO: This needs moved inside the following if statements
+        assume(arg("lda") >= (64 / problem.Ta_ext));
+        assume(arg("ldb") >= (64 / problem.Ta_ext));
+        assume(arg("ldc") >= (64 / problem.Ta_ext));
         if_(kloop_it.is_inbounds(1, 1, 1), [&]() {
             if_(
                     k >= k_loop_main.warmup_k(),

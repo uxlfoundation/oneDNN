@@ -126,16 +126,16 @@ struct ctx_t {
         auto h_dim = plan.dims[1];
         auto type = g.type;
         gpu_assert(is_prefetch || type == t.layout.type());
-
-        if ((plan.min_alignment >= min_align_2d
-                    && plan.min_pitch >= min_pitch_2d)
-                && ((plan.transform == transform_t::kind_t::none
-                            && t.layout.int_dim_sizes()[w_dim] * type.size()
-                                    <= grf_size)
-                        || plan.transform == transform_t::kind_t::block
-                        || plan.transform == transform_t::kind_t::vnni
-                        || plan.transform
-                                == transform_t::kind_t::transpose_vnni)) {
+        if (((plan.transform == transform_t::kind_t::none
+                     && t.layout.int_dim_sizes()[w_dim] * type.size()
+                             <= grf_size)
+                    || plan.transform == transform_t::kind_t::block
+                    || plan.transform == transform_t::kind_t::vnni
+                    || plan.transform == transform_t::kind_t::transpose_vnni)
+                && ctx_->cset().can_prove(
+                        tensor_pitch % (min_align_2d / type.size()) == 0)
+                && ctx_->cset().can_prove(
+                        tensor_pitch >= (min_pitch_2d / type.size()))) {
             auto tile = plan.get_2d_tile(type);
             v2::for_each(g.tile, tile, [&](const pvar_coord_t<int64_t> &coord) {
                 auto buf = is_prefetch

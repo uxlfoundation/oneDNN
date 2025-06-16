@@ -47,13 +47,10 @@ struct transform_t {
     enum class kind_t { none, block, vnni, transpose_vnni };
 
     transform_t() = default;
-    transform_t(kind_t transform, int pack_size, int min_alignment,
-            int min_pitch, ngen::CacheSettingsLSC cache_hint,
-            std::array<pvar_t, 2> dims)
+    transform_t(kind_t transform, int pack_size,
+            ngen::CacheSettingsLSC cache_hint, std::array<pvar_t, 2> dims)
         : transform(transform)
         , pack_size(pack_size)
-        , min_alignment(min_alignment)
-        , min_pitch(min_pitch)
         , cache_hint(to_ir(cache_hint))
         , dims(dims) {}
 
@@ -148,8 +145,6 @@ struct transform_t {
 
     kind_t transform = kind_t::none;
     int pack_size = 0;
-    int min_alignment = 0;
-    int min_pitch = 0;
     send_cache_hint_t cache_hint = send_cache_hint_t::undef;
     std::array<pvar_t, 2> dims = {};
 };

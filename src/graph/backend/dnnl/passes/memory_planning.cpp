@@ -51,8 +51,7 @@ struct op_inplace_pair_t {
     const size_t out_idx_;
 };
 
-std::vector<op_inplace_pair_t> get_op_inplace_pairs(
-        op_t &op, fusion_info_mgr_t &mgr) {
+std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
     // TODO(xxx) extend the set
     const static std::set<op_kind_t> ops {op_kind::dnnl_mul_scales,
             op_kind::dnnl_add_zps, op_kind::dnnl_reorder, op_kind::dnnl_binary,
@@ -387,7 +386,7 @@ status_t memory_planner_t::assign_external_inputs_buffer(
 // to them.
 status_t memory_planner_t::assign_external_outputs_buffer(
         std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &outputs, fusion_info_mgr_t &mgr) {
+        const std::vector<logical_tensor_t> &outputs) {
     for (const auto &op : sg->get_ops()) {
         for (const auto &val : op->get_output_values()) {
             for (size_t i = 0; i < outputs.size(); i++) {
@@ -418,8 +417,7 @@ status_t memory_planner_t::assign_external_outputs_buffer(
                         // push the inplaced input to queue for next visit
                         if (!cur_val->has_producer()) continue;
                         auto &producer = cur_val->get_producer();
-                        auto op_inplace_pairs
-                                = get_op_inplace_pairs(producer, mgr);
+                        auto op_inplace_pairs = get_op_inplace_pairs(producer);
                         for (auto &pair : op_inplace_pairs) {
                             if (pair.out_idx_ != cur_val->get_offset())
                                 continue;
@@ -451,7 +449,7 @@ status_t memory_planner_t::assign_external_outputs_buffer(
 // the same buffers and assign the same buffer to them. This can be regarded as
 // a kind of constant folding, with which the cached buffer can be reduced.
 status_t memory_planner_t::assign_internal_persistent_buffer(
-        std::shared_ptr<subgraph_t> &sg, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<subgraph_t> &sg) {
     for (auto &val : get_constant_block_output_values(sg)) {
         assign_info_t orig_info = buffer_assignments_.at(val);
         if (orig_info.kind_ != internal_temporary) continue;
@@ -479,7 +477,7 @@ status_t memory_planner_t::assign_internal_persistent_buffer(
 
             // push the inplaced input to queue for next visit
             auto &producer = cur_val->get_producer();
-            auto op_inplace_pairs = get_op_inplace_pairs(producer, mgr);
+            auto op_inplace_pairs = get_op_inplace_pairs(producer);
             for (auto &pair : op_inplace_pairs) {
                 if (pair.out_idx_ != cur_val->get_offset()) continue;
                 auto in_val = producer.get_input_value(pair.in_idx_);
@@ -505,7 +503,7 @@ status_t memory_planner_t::assign_internal_persistent_buffer(
 status_t memory_planner_t::assign_internal_temporary_buffer(
         std::shared_ptr<subgraph_t> &sg,
         const std::unordered_map<value_t *, size_t> &edge_ref_count,
-        fusion_info_mgr_t &mgr, bool enable_standard_sharing) {
+        bool enable_standard_sharing) {
     std::unordered_map<size_t, size_t> temporary_buffer_ref_count;
 
     auto func = [&](op_t *op) {
@@ -523,7 +521,7 @@ status_t memory_planner_t::assign_internal_temporary_buffer(
         }
 
         // Handle inplace
-        auto op_inplace_pairs = get_op_inplace_pairs(*op, mgr);
+        auto op_inplace_pairs = get_op_inplace_pairs(*op);
         if (!op_inplace_pairs.empty()) {
             for (const auto &pair : op_inplace_pairs) {
                 value_t *in = op->get_input_value(pair.in_idx_).get();
@@ -604,8 +602,7 @@ status_t memory_planner_t::prepare_subgraph_inplace_pairs(
 
             // check if can inplaced sharing external input buffer
             bool inplace_shared = false;
-            auto op_inplace_pairs
-                    = get_op_inplace_pairs(*cur_op, sg->fusion_info_mgr_);
+            auto op_inplace_pairs = get_op_inplace_pairs(*cur_op);
             for (const auto &pair : op_inplace_pairs) {
                 if (pair.out_idx_ != out_val->get_offset()) continue;
 
@@ -742,8 +739,7 @@ status_t memory_planner_t::book_buffers(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t memory_planner_t::prepare_execution_args_set(
-        std::shared_ptr<subgraph_t> &sg, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr) {
+        std::shared_ptr<subgraph_t> &sg, const dnnl::engine &p_engine) {
     status_t ret;
 
     auto classify_mem = [&, this](const dnnl::memory &mem, const value_t *val) {
@@ -816,7 +812,7 @@ status_t memory_planner_t::prepare_execution_args_set(
         auto getter = opm->get_additional_item<arg_indices_getter_func>(
                 "arg_indices_getter");
 
-        auto arg_indices = getter(op, mgr);
+        auto arg_indices = getter(op);
 
         exec_args dnnl_exec_args;
         for (auto arg_idx : arg_indices) {
@@ -862,7 +858,6 @@ status_t memory_planner_t::prepare_execution_args_set(
 // - Assign internal allocated persistent buffer to corresponding edges.
 // - Prepare the memory objects which will be used in execution.
 status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     const auto &p_engine = *(sg->p_engine_);
     const auto &inputs = sg->ins_;
     const auto &outputs = sg->outs_;
@@ -900,14 +895,14 @@ status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
     CHECK(assign_external_inputs_buffer(sg, inputs));
 
     // Assign internal temporary buffer for all other edges
-    CHECK(assign_internal_temporary_buffer(sg, edge_ref_count, mgr, false));
+    CHECK(assign_internal_temporary_buffer(sg, edge_ref_count, false));
 
     // Replace some internal temporary buffers to user given external output
     // buffer
-    CHECK(assign_external_outputs_buffer(sg, outputs, mgr));
+    CHECK(assign_external_outputs_buffer(sg, outputs));
 
     // Replace some internal temporary buffers to cached persistent buffer
-    CHECK(assign_internal_persistent_buffer(sg, mgr));
+    CHECK(assign_internal_persistent_buffer(sg));
 
     // Reset the unreplaced internal temporary buffer
     temporary_buffer_assigner_.clear();
@@ -922,13 +917,13 @@ status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
 
     // Re-assign internal temporary buffer for reset ones (will re-do memory
     // sharing between temporary buffers)
-    CHECK(assign_internal_temporary_buffer(sg, edge_ref_count, mgr, true));
+    CHECK(assign_internal_temporary_buffer(sg, edge_ref_count, true));
     // Check which input/output pair of the subgraph can be inplaced
     CHECK(prepare_subgraph_inplace_pairs(sg, false));
 
     CHECK(book_buffers(sg));
     // Bind memory object to each value
-    CHECK(prepare_execution_args_set(sg, p_engine, mgr));
+    CHECK(prepare_execution_args_set(sg, p_engine));
     return status::success;
 }
 

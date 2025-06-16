@@ -735,10 +735,9 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
     // 1. src scale, wei scale
     // 2. src zp, wei zp
     // 3. dst scale, dst zp
-    if (op && op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op && op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         if (fusion_info.with_runtime_scales(true, 0)) {
             memory::desc sub_src_scale_md
                     = memory::desc({1}, dt_scale, format_tag::x);
@@ -826,10 +825,9 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
         std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
     dnnl::primitive_attr attr;
-    if (op && op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op && op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     if (op && op->get_kind() == op_kind::dnnl_reorder) {

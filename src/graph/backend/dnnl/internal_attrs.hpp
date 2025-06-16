@@ -51,7 +51,6 @@ const op_attr_t mask_type = 0x10012;
 
 // int64_t
 const op_attr_t alg_kind = 0x10100;
-const op_attr_t fusion_info_key = 0x10103;
 const op_attr_t group_mask = 0x10104;
 const op_attr_t data_type = 0x10105;
 const op_attr_t axis_row = 0x10106;
@@ -96,7 +95,6 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(is_invert_scale);
         CASE(mask_type);
         CASE(alg_kind);
-        CASE(fusion_info_key);
         CASE(axis_row);
         CASE(axis_col);
         CASE(dw_type);

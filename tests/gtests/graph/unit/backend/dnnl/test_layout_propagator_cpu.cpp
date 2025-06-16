@@ -43,7 +43,7 @@ TEST(test_layout_propagator, LayoutPropagatorForPermute) {
 
     graph::engine_t &eng = *get_engine();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
@@ -68,7 +68,7 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
 
     graph::engine_t &eng = *get_engine();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
@@ -83,7 +83,7 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
 TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {
     graph::engine_t &eng = *get_engine();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     auto lt_in = utils::logical_tensor_init(
@@ -104,7 +104,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {
 
 TEST(test_layout_propagator, LayoutPropagatorForSumFailDeathTest) {
     dnnl::engine p_engine;
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     auto lt_in = utils::logical_tensor_init(
@@ -126,7 +126,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSumFailDeathTest) {
 TEST(test_layout_propagator, LayoutPropagatorForSubZpsDeathTest) {
     graph::engine_t &eng = *get_engine();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
@@ -148,7 +148,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSubZpsDeathTest) {
 TEST(test_layout_propagator, LayoutPropagatorForAddZpsDeathTest) {
     graph::engine_t &eng = *get_engine();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};

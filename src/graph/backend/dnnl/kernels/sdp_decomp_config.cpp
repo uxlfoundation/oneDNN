@@ -170,7 +170,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
 
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
 
     // per-head: reorder u8->s8 wei for first matmul
     // create reorder1 primitive attr
@@ -703,7 +703,7 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
 }
 
 impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
-        const fusion_info_mgr_t &mgr, std::shared_ptr<op_t> &op, int index,
+        const subgraph_info_mgr_t &mgr, std::shared_ptr<op_t> &op, int index,
         std::unordered_map<int, memory> &args, const dnnl::engine &p_engine) {
     const auto dt_scale = memory::data_type::f32,
                dt_zp = memory::data_type::s32;
@@ -792,7 +792,7 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 }
 
 dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
-        std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<op_t> &op, subgraph_info_mgr_t &mgr) {
     dnnl::primitive_attr attr;
     if (op && op->has_attr(op_attr::fusion_info)) {
         const fusion_info_t &fusion_info

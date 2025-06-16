@@ -79,8 +79,8 @@ public:
     // The engine that the subgraph is compiled for
     const dnnl::engine *p_engine_;
 
-    // This manager holds each op's fusion information
-    fusion_info_mgr_t fusion_info_mgr_;
+    // This manager holds subgraph information
+    subgraph_info_mgr_t subgraph_info_mgr_;
 
     // The custom cache to store the created primitive desc
     pd_cache_t pd_cache_;

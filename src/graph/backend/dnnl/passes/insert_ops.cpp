@@ -745,7 +745,7 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
 
 impl::status_t insert_runtime_u8_to_s8_for_matmul(
         std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
     subgraph_rewriter_t rewriter(sg);
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;

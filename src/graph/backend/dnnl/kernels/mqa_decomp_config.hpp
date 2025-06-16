@@ -156,7 +156,7 @@ private:
     }
 
     dnnl::primitive_attr make_primitive_attr(
-            std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr);
+            std::shared_ptr<op_t> &op, subgraph_info_mgr_t &mgr);
 };
 
 } // namespace dnnl_impl

@@ -2534,7 +2534,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
     const static std::set<op_kind_t> reorder_op_set = {op_kind::dnnl_reorder};
 
     auto fuse_two_adjacent_reorders = [&](bool &changed) -> status_t {
-        auto &mgr = sg->fusion_info_mgr_;
+        auto &mgr = sg->subgraph_info_mgr_;
         auto &p_engine = sg->p_engine_;
         auto &pd_cache = sg->pd_cache_;
 

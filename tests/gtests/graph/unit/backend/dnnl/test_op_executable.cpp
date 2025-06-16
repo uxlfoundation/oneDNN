@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ namespace dnnl_impl = graph::dnnl_impl;
 
 TEST(test_op_executable, DummyArgIndicesGetterDeathTest) {
     graph::op_t op {0, graph::op_kind::Wildcard, "op"};
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
 #ifndef NDEBUG
     EXPECT_DEATH(dnnl_impl::dummy_arg_indices_getter(&op, mgr),
             "dummy getter should never be called");
@@ -42,7 +42,7 @@ TEST(test_op_executable, DummyArgIndicesGetterDeathTest) {
 
 TEST(test_op_executable, DummyExecutableCreatorDeathTest) {
     dnnl::engine p_engine;
-    dnnl_impl::fusion_info_mgr_t mgr;
+    dnnl_impl::subgraph_info_mgr_t mgr;
     dnnl_impl::pd_cache_t pd_cache;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     EXPECT_DEBUG_DEATH(

@@ -608,8 +608,27 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
     }
 
     if (has_select) {
+        // Note: Currently, decompose kernel only supports the pattern1 where
+        // input1 is an external graph input and input2 comes from the output of
+        // preceding op, and doesn't suppoort pattern which swaps input1 and
+        // input2. May need to extend support if requested by user.
+        ///                             |                     |
+        ///                         Preceding_op         Preceding_op
+        ///                             |                     |
+        ///    input0     input1     input2       input0    input1     input2
+        ///  (condition) (graph in)  (inter)    (condition) (inter)  (graph in)
+        ///          \      |        /                \      |        /
+        ///            \    |      /                    \    |       /
+        ///               Select                           Select
+        ///                 |                                |
+        ///               output                           output
+        ///                 |                                 |
+        ///             Succeeding_op                    Succeeding_op
+        ///              (pattern1)                      (pattern2)
         int cond_id = find_graph_inport(select->get_input_value(0));
         int src0_id = find_graph_inport(select->get_input_value(1));
+        VCHECK_SDP_DECOMP(src0_id != -1 && cond_id != -1, status::invalid_graph,
+                "failed to find graph inport, unsupported select input order");
         graph_inport.emplace_back(cond_id);
         graph_inport.emplace_back(src0_id);
     } else {

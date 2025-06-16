@@ -745,7 +745,6 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
 
 impl::status_t insert_runtime_u8_to_s8_for_matmul(
         std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     subgraph_rewriter_t rewriter(sg);
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
@@ -762,11 +761,11 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
         bool with_bias = cur_op->has_attr(op_attr::with_bias)
                 && cur_op->get_attr<bool>(op_attr::with_bias);
         const bool has_runtime_src_scales
-                = with_runtime_scales(cur_op, mgr, true, 0);
+                = with_runtime_scales(cur_op, true, 0);
         const bool has_runtime_wei_scales
-                = with_runtime_scales(cur_op, mgr, true, 1);
-        const bool has_runtime_src_zps = with_runtime_zps(cur_op, mgr, true, 0);
-        const bool has_runtime_wei_zps = with_runtime_zps(cur_op, mgr, true, 1);
+                = with_runtime_scales(cur_op, true, 1);
+        const bool has_runtime_src_zps = with_runtime_zps(cur_op, true, 0);
+        const bool has_runtime_wei_zps = with_runtime_zps(cur_op, true, 1);
 
         size_t index = 2;
         if (with_bias) index += 1;
@@ -828,9 +827,6 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
                 cur_op->set_attr<fusion_info_t>(
                         op_attr::fusion_info, fusion_info);
             }
-
-            // fusion_info_t &fusion_info = mgr.get_mutable_info(key);
-            // fusion_info.set_zero_points(zps_op->shared_from_this(), true, 1);
 
             // connect add_zp and constant data
             cur_op->add_input(const_data_dst_value);

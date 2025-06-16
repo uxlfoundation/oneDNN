@@ -55,7 +55,7 @@ subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, const dnnl::engine &eng,
         bool reset_layout)
     : graph_t(ops, static_cast<engine_kind_t>(eng.get_kind()))
     , p_engine_(&eng)
-    , fusion_info_mgr_(fpm_mode, can_use_blocked_layout) {
+    , can_use_blocked_layout_(can_use_blocked_layout) {
     set_fpmath_mode(fpm_mode.mode_, fpm_mode.apply_to_int_);
     if (reset_layout) { set_all_layout_to_any(get_mutable_ops()); }
 }

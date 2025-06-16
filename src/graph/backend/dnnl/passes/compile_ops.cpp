@@ -40,9 +40,10 @@ namespace dnnl_impl {
 /// complete shape/dtype/layout information. We can create executable for these
 /// ops.
 status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     const auto &p_engine = *(sg->p_engine_);
     auto &pd_cache = sg->pd_cache_;
+    auto &fpm = sg->get_fpmath_mode();
+    bool use_block_layout = sg->can_use_blocked_layout_;
 
     return topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
         const op_schema_t *opm
@@ -61,7 +62,7 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
                 "executable_creator");
 
         std::shared_ptr<op_executable_t> exec
-                = creator(cur_op, p_engine, mgr, pd_cache);
+                = creator(cur_op, p_engine, pd_cache, fpm, use_block_layout);
         VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
                 "unimplemented op, can't compile op %s",
                 op->get_name().c_str());

@@ -44,9 +44,6 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     float *interim_scratchpad
             = ctx->get_scratchpad_grantor().template get<float>(
                     key_softmax_interim_store);
@@ -73,6 +70,9 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
     const int nthr = pd()->nthr_;
 
     parallel_nd_ext(nthr, outer_size_, [=](int ithr, int, dim_t ou) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
         const void *src_data = reinterpret_cast<const char *>(src)
                 + ou * ou_stride * src_dt_size;
         void *dst_data
@@ -189,6 +189,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(
                 io::store_float_value(
                         dst_d.data_type(), 0, dst_data, channels_ + i);
         }
+        return status::success;
     });
     return status::success;
 }

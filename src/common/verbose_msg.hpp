@@ -76,6 +76,7 @@
 #define VERBOSE_BAD_DIM "bad dimension %s:%d"
 #define VERBOSE_OUT_OF_RANGE_DIMS "out-of-range dimensions for %s"
 
+#define VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME "unsupported threadpool runtime"
 #define VERBOSE_UNSUPPORTED_ISA "unsupported isa"
 #define VERBOSE_UNSUPPORTED_DT "unsupported datatype"
 #define VERBOSE_UNSUPPORTED_MD_FLAG "unsupported %s md flags"

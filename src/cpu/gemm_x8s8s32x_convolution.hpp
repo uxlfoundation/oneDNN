@@ -51,6 +51,9 @@ struct gemm_x8s8s32x_convolution_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             const auto dst_type = dst_md(0)->data_type;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -138,6 +141,9 @@ struct gemm_x8s8s32x_convolution_bwd_data_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(utils::one_of(diff_dst_md()->data_type, s8, u8),

@@ -81,6 +81,9 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
         virtual status_t init(engine_t *engine) {
             using namespace primitive_kind;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(attr()->post_ops_.has_default_values(
                                    {binary, eltwise, convolution}),

@@ -52,6 +52,9 @@ struct gemm_x8s8s32x_inner_product_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_INNER_PRODUCT(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_INNER_PRODUCT(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_INNER_PRODUCT(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");

@@ -45,6 +45,9 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(
                     expect_data_types(bf16, bf16, dnnl::impl::data_type::undef,
@@ -248,6 +251,9 @@ struct gemm_bf16_convolution_bwd_data_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(diff_src_data_type, bf16,
@@ -308,6 +314,9 @@ struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(bf16, diff_wei_data_type,

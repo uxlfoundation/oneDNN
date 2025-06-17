@@ -50,6 +50,9 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
             using namespace utils;
             using namespace data_type;
 
+            VDISPATCH_INNER_PRODUCT(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             // disabling verbose dispatch messages for unsupported isa for
             // better readability
             if (!mayiuse(avx512_core)) return status::unimplemented;
@@ -158,6 +161,9 @@ struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace data_type;
+            VDISPATCH_INNER_PRODUCT(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             // disabling verbose dispatch messages for unsupported isa for
             // better readability
             if (!mayiuse(avx512_core)) return status::unimplemented;
@@ -230,6 +236,9 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
             using namespace data_type;
+            VDISPATCH_INNER_PRODUCT(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             // disabling verbose dispatch messages for unsupported isa for
             // better readability
             if (!mayiuse(avx512_core)) return status::unimplemented;

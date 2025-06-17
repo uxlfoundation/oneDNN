@@ -42,10 +42,6 @@ status_t ref_binary_t::execute_ref(
 
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    const float *scales[2];
-    ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
-    ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);
-
     const memory_desc_wrapper src0_d(pd()->src_md(0));
     const memory_desc_wrapper src1_d(pd()->src_md(1));
     const memory_desc_wrapper src2_d(pd()->src_md(2));
@@ -90,6 +86,10 @@ status_t ref_binary_t::execute_ref(
     }
 
     parallel_nd(nelems, [=](dim_t i) {
+        const float *scales[2];
+        ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
+        ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);
+
         // decomposition for physical offsets
         dims_t dims_src0, dims_src1, dims_src2;
         utils::l_dims_by_l_offset(dims_src0, i, dst_d.dims(), ndims);
@@ -133,6 +133,7 @@ status_t ref_binary_t::execute_ref(
         }
 
         io::store_float_value(dst_dt, acc, dst, off_D);
+        return status::success;
     });
 
     return status::success;

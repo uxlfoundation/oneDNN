@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 * Copyright 2020-2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,6 +45,11 @@
 #define CPU_INSTANCE_AARCH64_ACL(...) \
     DNNL_AARCH64_ACL_ONLY(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_RV64GCV(...) DNNL_RV64GCV_ONLY(CPU_INSTANCE(__VA_ARGS__))
+
+#define CPU_INSTANCE_NO_THREADPOOL(...) \
+    DNNL_NO_THREADPOOL(CPU_INSTANCE(__VA_ARGS__))
+#define CPU_INSTANCE_AVX512_NO_THREADPOOL(...) \
+    DNNL_NO_THREADPOOL(CPU_INSTANCE_AVX512(__VA_ARGS__))
 
 namespace dnnl {
 namespace impl {

@@ -73,8 +73,8 @@ std::vector<std::string> feature_names(model_kind_t kind) {
     return std::vector<std::string>();
 }
 
-void to_bmnk(prop_kind_t prop, const pvar_tile_t &tile, dim_t &b, dim_t &m,
-        dim_t &n, dim_t &k) {
+void to_bmnk(prop_kind_t prop, const tile_t &tile, dim_t &b, dim_t &m, dim_t &n,
+        dim_t &k) {
     const auto t = to_gemm(tile, prop);
     b = t[pvars::b];
     m = t[pvars::m];
@@ -122,7 +122,7 @@ struct bmnk_helper_t {
 dim_t layout_size(const layout_tag_t &tag, const problem_t &prb) {
     gpu_assert(!tag.is_any() && !tag.is_empty())
             << "Unexpected tag: " << tag.str();
-    pvar_tile_t tile;
+    tile_t tile;
     for (auto &d : tag.desc().letter_map())
         tile[d] = prb.shape().at(d);
     dim_t elems = 1;

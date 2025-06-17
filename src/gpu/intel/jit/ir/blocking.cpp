@@ -361,7 +361,7 @@ const tiler_params_t &tiler_params() {
     return params;
 }
 
-tile_to_vec_t::tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
+tile_to_vec_t::tile_to_vec_t(const std::vector<std::vector<tile_t>> &tiles,
         const std::vector<int> &_ids) {
     if (tiles.empty()) return;
     int ntiles = (int)tiles.size();

@@ -669,8 +669,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    expr_t to_base(
-            const layout_t &tlayout, const std::vector<expr_t> &targs) const {
+    expr_t to_base(const layout_t &tlayout, const coord_t &targs) const {
         auto t = targs;
         if (use_xy) {
             t[w_tidx] = expr_t(0);
@@ -678,20 +677,20 @@ struct send_2d_params_t {
         }
         auto ret = tlayout.offset_in_bytes(t);
         if (h_vstride != 1) {
-            std::vector<expr_t> t(targs.size(), expr_t(0));
+            coord_t t(targs.size());
             t[h_tidx] = targs[h_tidx] % h_vstride;
             ret += tlayout.offset_in_bytes(t);
         }
         return ret;
     }
 
-    expr_t to_x(const std::vector<expr_t> &targs) const {
+    expr_t to_x(const coord_t &targs) const {
         if (!use_xy) return expr_t(0);
         auto ret = targs[w_tidx];
         return ret;
     }
 
-    expr_t to_y(const std::vector<expr_t> &targs) const {
+    expr_t to_y(const coord_t &targs) const {
         if (!use_xy) return expr_t(0);
         auto ret = targs[h_tidx];
         if (h_vstride != 1) ret /= h_vstride;
@@ -868,11 +867,11 @@ class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
         gpu_assert(layout.has_zero_offset()) << layout;
-        auto tile = layout.split_exact(factor);
-        if (tile.is_empty()) return;
+        auto tile_coord = layout.split_exact(factor);
+        if (tile_coord.is_empty()) return;
 
-        layout.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            int off = into<int>(layout.offset_in_bytes(start));
+        layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {
+            int off = layout.offset_in_bytes<int>(start);
             offs_.push_back(off);
         });
     }

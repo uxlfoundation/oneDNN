@@ -476,50 +476,54 @@ public:
         }
     }
 
-    tensor_t tg_view_tile(const view_t &view) const {
-        return view_tile(view, tile_level_t::thread_group);
+    tile_coord_t tg_view_tile_coord(const view_t &view) const {
+        return view_tile_coord(view, tile_level_t::thread_group);
     }
 
-    tensor_t thr_view_tile(const view_t &view, bool is_relative = true) const {
-        auto thr_tile = view_tile(view, tile_level_t::iter);
+    tile_coord_t thr_view_tile_coord(
+            const view_t &view, bool is_relative = true) const {
+        auto thr_tile = view_tile_coord(view, tile_level_t::iter);
         if (is_relative) return thr_tile;
-        return tg_view_tile(view).create_sub_tensor(thr_tile);
+        return tg_view_tile_coord(view).sub(thr_tile);
     }
 
     view_t a_tg_view() const {
         gpu_assert(is_finalized_);
-        return a_view_.create_sub_view(a_tg_tile_);
+        return a_view_.create_sub_view(
+                a_tg_tile_coord_.tile, a_tg_tile_coord_.coord);
     }
 
     view_t b_tg_view() const {
         gpu_assert(is_finalized_);
-        return b_view_.create_sub_view(b_tg_tile_);
+        return b_view_.create_sub_view(
+                b_tg_tile_coord_.tile, b_tg_tile_coord_.coord);
     }
 
     view_t c_tg_view() const {
         gpu_assert(is_finalized_);
-        return c_view_.create_sub_view(c_tg_tile_);
+        return c_view_.create_sub_view(
+                c_tg_tile_coord_.tile, c_tg_tile_coord_.coord);
     }
 
     // Thread group tiles for A, B, C.
-    const tensor_t &a_tg_tile() const { return a_tg_tile_; }
-    const tensor_t &b_tg_tile() const { return b_tg_tile_; }
-    const tensor_t &c_tg_tile() const { return c_tg_tile_; }
+    const tile_coord_t &a_tg_tile_coord() const { return a_tg_tile_coord_; }
+    const tile_coord_t &b_tg_tile_coord() const { return b_tg_tile_coord_; }
+    const tile_coord_t &c_tg_tile_coord() const { return c_tg_tile_coord_; }
 
     // Thread tiles for A, B, C.
-    tensor_t a_thr_tile(bool is_relative = true) const {
-        if (is_relative) return a_thr_tile_;
-        return a_tg_tile_.create_sub_tensor(a_thr_tile_);
+    tile_coord_t a_thr_tile_coord(bool is_relative = true) const {
+        if (is_relative) return a_thr_tile_coord_;
+        return a_tg_tile_coord_.sub(a_thr_tile_coord_);
     }
 
-    tensor_t b_thr_tile(bool is_relative = true) const {
-        if (is_relative) return b_thr_tile_;
-        return b_tg_tile_.create_sub_tensor(b_thr_tile_);
+    tile_coord_t b_thr_tile_coord(bool is_relative = true) const {
+        if (is_relative) return b_thr_tile_coord_;
+        return b_tg_tile_coord_.sub(b_thr_tile_coord_);
     }
 
-    tensor_t c_thr_tile(bool is_relative = true) const {
-        if (is_relative) return c_thr_tile_;
-        return c_tg_tile_.create_sub_tensor(c_thr_tile_);
+    tile_coord_t c_thr_tile_coord(bool is_relative = true) const {
+        if (is_relative) return c_thr_tile_coord_;
+        return c_tg_tile_coord_.sub(c_thr_tile_coord_);
     }
 
     dim_t var_bound(const expr_t &var) const {
@@ -688,8 +692,8 @@ public:
         for (int i = 0; i < bmnk_mapper_.ndims(abc_kind_t::a); i++) {
             if (bmnk_mapper_.bmnk_kind(abc_kind_t::a, i) != bmnk_kind_t::k)
                 continue;
-            k_thr *= a_thr_tile_(i);
-            k_tg *= a_tg_tile_(i);
+            k_thr *= a_thr_tile_coord_.tile[i];
+            k_tg *= a_tg_tile_coord_.tile[i];
         }
         gpu_assert(k_tg % k_thr == 0);
         return k_thr < k_tg;
@@ -1013,17 +1017,17 @@ private:
                 split_infos.insert({v, get_split_info(v)});
             }
         }
-        a_tg_tile_ = compute_problem_tile(
+        a_tg_tile_coord_ = compute_problem_tile_coord(
                 a_view_.vvars(), split_infos, tile_level_t::thread_group);
-        b_tg_tile_ = compute_problem_tile(
+        b_tg_tile_coord_ = compute_problem_tile_coord(
                 b_view_.vvars(), split_infos, tile_level_t::thread_group);
-        c_tg_tile_ = compute_problem_tile(
+        c_tg_tile_coord_ = compute_problem_tile_coord(
                 c_view_.vvars(), split_infos, tile_level_t::thread_group);
-        a_thr_tile_ = compute_problem_tile(
+        a_thr_tile_coord_ = compute_problem_tile_coord(
                 a_view_.vvars(), split_infos, tile_level_t::iter);
-        b_thr_tile_ = compute_problem_tile(
+        b_thr_tile_coord_ = compute_problem_tile_coord(
                 b_view_.vvars(), split_infos, tile_level_t::iter);
-        c_thr_tile_ = compute_problem_tile(
+        c_thr_tile_coord_ = compute_problem_tile_coord(
                 c_view_.vvars(), split_infos, tile_level_t::iter);
     }
 
@@ -1050,13 +1054,13 @@ private:
         }
     }
 
-    tensor_t view_tile(const view_t &view, tile_level_t level) const {
+    tile_coord_t view_tile_coord(const view_t &view, tile_level_t level) const {
         object_map_t<expr_t, split_info_t> split_infos;
         for (auto &v : view.vvars()) {
             if (split_infos.count(v) > 0) continue;
             split_infos.insert({v, get_split_info(v)});
         }
-        return compute_problem_tile(view.vvars(), split_infos, level);
+        return compute_problem_tile_coord(view.vvars(), split_infos, level);
     }
 
     split_info_t get_split_info(const expr_t &root_var) const {
@@ -1090,7 +1094,7 @@ private:
         return ret;
     }
 
-    tensor_t compute_problem_tile(const std::vector<expr_t> &vars,
+    tile_coord_t compute_problem_tile_coord(const std::vector<expr_t> &vars,
             const object_map_t<expr_t, split_info_t> &split_infos,
             tile_level_t tile_level) const {
         std::vector<dim_t> tile_dims;
@@ -1104,7 +1108,7 @@ private:
             tile_start.push_back(
                     split_info.start(v_expanded, tile_level, with_outer));
         }
-        return tensor_t(tile_dims, tile_start);
+        return tile_coord_t(tile_dims, tile_start);
     }
 
     stmt_t maybe_inject_let_for_fused_vars(
@@ -1142,14 +1146,14 @@ private:
     view_t c_view_;
 
     // Thread group tiles for A, B, C.
-    tensor_t a_tg_tile_;
-    tensor_t b_tg_tile_;
-    tensor_t c_tg_tile_;
+    tile_coord_t a_tg_tile_coord_;
+    tile_coord_t b_tg_tile_coord_;
+    tile_coord_t c_tg_tile_coord_;
 
     // Thread tiles for A, B, C (relative to thread group tiles).
-    tensor_t a_thr_tile_;
-    tensor_t b_thr_tile_;
-    tensor_t c_thr_tile_;
+    tile_coord_t a_thr_tile_coord_;
+    tile_coord_t b_thr_tile_coord_;
+    tile_coord_t c_thr_tile_coord_;
 };
 
 } // namespace jit

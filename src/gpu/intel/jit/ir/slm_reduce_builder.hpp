@@ -36,13 +36,13 @@ public:
 
     slm_reduce_builder_t(ir_context_t &ir_ctx, const grid_info_t &tg_grid,
             const expr_t &reg_buf, const layout_t &reg_layout,
-            const tensor_t &thr_tile, dim_idx_t dim = 2);
+            const tile_coord_t &thr_tile_coord, dim_idx_t dim = 2);
 
     bool is_empty() const { return reg_buf_.is_empty(); }
 
     const layout_t &reg_layout() const { return reg_layout_; }
 
-    const tensor_t &thr_tile() const { return thr_tile_; }
+    const tile_coord_t &thr_tile_coord() const { return thr_tile_coord_; }
 
     const stmt_t &store_stmt() const { return store_stmt_; }
 
@@ -79,7 +79,7 @@ private:
 
     expr_t reg_buf_;
     layout_t reg_layout_;
-    tensor_t thr_tile_;
+    tile_coord_t thr_tile_coord_;
 
     dim_idx_t dim_ = -1;
 

@@ -184,7 +184,7 @@ public:
 
 class tile_param_t : public param_t {
 public:
-    using value_t = pvar_tile_t;
+    using value_t = tile_t;
 
     const value_t &get() const { return tile_; }
 
@@ -195,7 +195,7 @@ public:
     dim_t operator()(const pvar_t &pvar) const { return get(pvar); }
 
     void set_from_str(const std::string &s) override {
-        tile_ = pvar_tile_t();
+        tile_ = tile_t();
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
             tile_[pvar_t(kv.first)] = kv.second;
         }
@@ -287,7 +287,7 @@ public:
     ~prim_config_t() override = default;
     std::string str() const override = 0;
 
-    virtual pvar_tile_t shape(bool pad) const = 0;
+    virtual tile_t shape(bool pad) const = 0;
     virtual const std::vector<pvar_t> &index_dims() const = 0;
     virtual int pad_block(const pvar_t &d) const = 0;
 
@@ -434,12 +434,12 @@ public:
                 loop_dim(dim) * thread_group_dim(dim) * iter_dim(dim));
     }
 
-    pvar_tile_t dims() const { return shape(/* pad = */ false); }
+    tile_t dims() const { return shape(/* pad = */ false); }
     dim_t dim(const pvar_t &d) const { return dims().get(d); }
 
     int sort_key(const param_t *param) const override;
 
-    void init_kernel_grid(const std::array<pvar_tile_t, 3> &grid) {
+    void init_kernel_grid(const std::array<tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
         for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i]) {
@@ -451,7 +451,7 @@ public:
         set_kernel_grid(grid_info_t(dims, ir_builder_t::tg_idx));
     }
 
-    void init_thread_group_grid(const std::array<pvar_tile_t, 3> &grid) {
+    void init_thread_group_grid(const std::array<tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
         for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i])

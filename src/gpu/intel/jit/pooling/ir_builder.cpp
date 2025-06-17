@@ -352,11 +352,13 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     oh = schedule.expand(oh, true, expand_loop_kinds);
     ow = schedule.expand(ow, true, expand_loop_kinds);
 
-    auto src_thr_tile = schedule.thr_view_tile(src_view, /*is_relative=*/false);
-    auto src_thr_view = src_view.create_sub_view(src_thr_tile);
+    auto src_thr_tile_coord
+            = schedule.thr_view_tile_coord(src_view, /*is_relative=*/false);
+    auto src_thr_view = src_view.create_sub_view(src_thr_tile_coord);
 
-    auto dst_thr_tile = schedule.thr_view_tile(dst_view, /*is_relative=*/false);
-    auto dst_thr_view = dst_view.create_sub_view(dst_thr_tile);
+    auto dst_thr_tile_coord
+            = schedule.thr_view_tile_coord(dst_view, /*is_relative=*/false);
+    auto dst_thr_view = dst_view.create_sub_view(dst_thr_tile_coord);
 
     const auto &src_buf = ki.arg_var(0);
     const auto &dst_buf = ki.arg_var(1);
@@ -394,8 +396,8 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     const auto &write_layout = write.reg_layout();
     auto write_stmt = write.stmt();
 
-    tensor_t src_tile(read_layout.split_into_max_tile(simd, true));
-    tensor_t dst_tile(write_layout.split_into_max_tile(simd, true));
+    tile_t src_tile(read_layout.split_into_max_tile(simd, true));
+    tile_t dst_tile(write_layout.split_into_max_tile(simd, true));
     gpu_assert(src_tile.elems() == simd);
     gpu_assert(dst_tile.elems() == simd);
 
@@ -426,11 +428,11 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
         return std::make_pair(v_short, v_long);
     };
     auto gen_zero_out = [&](int simd, bool isneg, const expr_t &buf,
-                                const tensor_t &tile, const layout_t &layout) {
+                                const tile_t &tile, const layout_t &layout) {
         stmt_t retn;
         const auto values = gen_fill_values(simd, isneg, layout.type());
-        layout.for_each_tile(tile, [&](const std::vector<dim_t> &s) {
-            const dim_t off = layout(s) * layout.type().size();
+        layout.for_each_tile(tile, [&](const icoord_t &s) {
+            const dim_t off = layout.offset<dim_t>(s) * layout.type().size();
             if (off >= utils::rnd_dn(layout.size(), simd * 4))
                 retn = retn.append(store_t::make(buf, off, values.first));
             else if (off % (simd * 4) == 0)
@@ -464,8 +466,9 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
                     (acc_size - i < simd * 4) ? a_fv.first : a_fv.second));
         fill_stmt = gen_zero_out(simd, is_neg, read_buf, src_tile, read_layout);
 
-        read_layout.for_each_tile(src_tile, [&](const std::vector<dim_t> &s) {
-            const dim_t off_l = read_layout(s) * read_layout.type().size();
+        read_layout.for_each_tile(src_tile, [&](const icoord_t &s) {
+            const dim_t off_l
+                    = read_layout.offset<dim_t>(s) * read_layout.type().size();
             const dim_t off_a = (s[0] * lg[1] + s[1]) * acc_sc_size;
 
             auto load = cast_t::make(
@@ -511,7 +514,7 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     post_op_context_t post_op_ctx(*pd.attr(), cfg.zp_cfg(), schedule, ki,
             *pd.invariant_dst_md(), *pd.invariant_dst_md(), view_mapper);
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,
-            /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile,
+            /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile_coord,
             write_layout.retype(acc_type.scalar()), dst_buf, acc_buf,
             buf_size));
 

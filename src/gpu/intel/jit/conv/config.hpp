@@ -523,7 +523,7 @@ public:
     const std::vector<pvar_t> &index_dims() const override {
         return conv_index_dims(prb().prop_kind());
     }
-    pvar_tile_t shape(bool pad) const override;
+    tile_t shape(bool pad) const override;
 
     std::string blocking_brief_str() const;
 
@@ -661,9 +661,9 @@ public:
     dim_t loop_dim(const pvar_t &d) const { return gemm_loop_.get(d, 1); }
 
 private:
-    pvar_tile_t gemm_iter_;
-    pvar_tile_t gemm_thread_group_;
-    pvar_tile_t gemm_loop_;
+    tile_t gemm_iter_;
+    tile_t gemm_thread_group_;
+    tile_t gemm_loop_;
 };
 
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
@@ -683,9 +683,8 @@ void init_walk_order(conv_config_t &cfg);
 void init_thread_group_grid(conv_config_t &cfg);
 void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         dim_t *odhw, dim_t *pdhw, dim_t *ddhw);
-std::array<pvar_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
-std::array<pvar_tile_t, 3> get_thread_group_grid_conv_dims(
-        const conv_config_t &cfg);
+std::array<tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
+std::array<tile_t, 3> get_thread_group_grid_conv_dims(const conv_config_t &cfg);
 
 } // namespace jit
 } // namespace intel

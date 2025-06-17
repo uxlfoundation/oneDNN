@@ -269,12 +269,7 @@ private:
 
 class pvar_tile_t : public pvar_map_t<dim_t> {
 public:
-    using pvar_map_t<dim_t>::at;
     using pvar_map_t<dim_t>::pvar_map_t;
-    using pvar_map_t<dim_t>::has;
-    using pvar_map_t<dim_t>::operator[];
-    using pvar_map_t<dim_t>::str_impl;
-    using pvar_map_t<dim_t>::get_hash;
 
     dim_t elems() const {
         dim_t ret = 1;

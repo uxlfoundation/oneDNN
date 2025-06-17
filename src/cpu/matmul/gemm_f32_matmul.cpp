@@ -89,6 +89,8 @@ status_t gemm_f32_matmul_t::pd_t::init(engine_t *engine) {
             && desc()->accum_data_type == acc_type
             && dst_md()->data_type == dst_type;
 
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");

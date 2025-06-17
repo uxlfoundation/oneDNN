@@ -108,6 +108,8 @@ status_t gemm_x8s8s32x_matmul_t::pd_t::init(engine_t *engine) {
                 && IMPLICATION(N() == DNNL_RUNTIME_DIM_VAL, !has_prelu);
     };
 
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 

@@ -38,10 +38,6 @@ if [[ "$OS" == "Linux" ]]; then
         SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
     fi
 
-    SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_ci_cpu"
-    SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_different_dt_ci_cpu"
-
-    SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
     SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
 fi
 
@@ -50,7 +46,6 @@ SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_all_blocked_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_regressions_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_conv_int8_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_matmul_sparse_gpu_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_reorder_all_cpu"
 
 # c7g failures. TODO: scope these to c7g only. Better yet, fix them.

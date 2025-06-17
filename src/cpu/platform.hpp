@@ -85,6 +85,16 @@
 #define DNNL_S390X_ONLY(...) Z_CONDITIONAL_DO(DNNL_S390X_ONLY, __VA_ARGS__)
 #define DNNL_AARCH64_ONLY(...) Z_CONDITIONAL_DO(DNNL_AARCH64, __VA_ARGS__)
 
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#define DNNL_CPU_THREADING_RUNTIME_THREADPOOL 1
+#else
+#define DNNL_CPU_THREADING_RUNTIME_THREADPOOL 0
+#endif
+// Helper macros: expand the parameters only on the corresponding threading
+// runtime.
+#define DNNL_NO_THREADPOOL(...) \
+    Z_CONDITIONAL_DO(Z_NOT(DNNL_CPU_THREADING_RUNTIME_THREADPOOL), __VA_ARGS__)
+
 // Using RISC-V implementations optimized with RVV Intrinsics is optional for RISC-V builds
 // and can be enabled with DNNL_ARCH_OPT_FLAGS="-march=<ISA-string>" option, where <ISA-string>
 // contains V extension. If disabled, generic reference implementations will be used.
@@ -172,7 +182,7 @@ unsigned DNNL_API get_per_core_cache_size(int level);
 uint32_t get_num_ways_in_cache(int level);
 uint32_t get_num_sets_in_cache(int level);
 unsigned DNNL_API get_num_cores();
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#if DNNL_CPU_THREADING_RUNTIME_THREADPOOL
 unsigned DNNL_API get_max_threads_to_use();
 #endif
 

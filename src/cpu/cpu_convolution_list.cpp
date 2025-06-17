@@ -155,9 +155,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
-            CPU_INSTANCE(gemm_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, f32, f16, f32}, {
@@ -191,7 +191,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_bf16_1x1_convolution_fwd_t<f32>)
             CPU_INSTANCE_AVX512(jit_avx512_core_bf16_convolution_fwd_t)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
-            CPU_INSTANCE_AVX512(gemm_bf16_convolution_fwd_t<f32>)
+            CPU_INSTANCE_AVX512_NO_THREADPOOL(gemm_bf16_convolution_fwd_t<f32>)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE(ref_convolution_fwd_t)
@@ -210,12 +210,12 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_bf16_1x1_convolution_fwd_t<bf16>)
             CPU_INSTANCE_AVX512(jit_avx512_core_bf16_convolution_fwd_t)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
-            CPU_INSTANCE_AVX512(gemm_bf16_convolution_fwd_t<bf16>)
+            CPU_INSTANCE_AVX512_NO_THREADPOOL(gemm_bf16_convolution_fwd_t<bf16>)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, f16, f16, f32}, {
@@ -246,7 +246,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_gemm_convolution_fwd_t<f16>)
             CPU_INSTANCE(ref_convolution_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f16),
@@ -479,9 +479,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<s8, f32>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, s8, s8, bf16}, {
@@ -496,7 +496,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -512,7 +512,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -538,9 +538,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<s8, s32>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, s8, s8, s8}, {
@@ -566,9 +566,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<s8, s8>)
             CPU_INSTANCE_AARCH64_ACL(acl_gemm_convolution_fwd_t<s8, s8, s8, s32>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, s8, s8, u8}, {
@@ -593,9 +593,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<s8, u8>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         // FWD int8 (src:u8)
@@ -621,7 +621,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<u8, f32>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -639,7 +639,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -657,7 +657,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_core_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -683,7 +683,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<u8, s32>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
             nullptr,
         }},
@@ -709,9 +709,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<u8, s8>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         {{forward, u8, s8, u8}, {
@@ -736,9 +736,9 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<u8, u8>)
-            CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)
-            CPU_INSTANCE(ref_fused_convolution_fwd_t)
+            CPU_INSTANCE_NO_THREADPOOL(ref_fused_convolution_fwd_t)
             nullptr,
         }},
         // BWD int8 (diff_dst:u8)

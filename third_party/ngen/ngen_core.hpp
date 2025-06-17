@@ -1066,6 +1066,8 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
 {
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
+    if (execSize != utils::rounddown_pow2(execSize)) throw invalid_modifiers_exception();
+    if (hs > 4) throw invalid_region_exception();
 #endif
 
     if (getType() == DataType::invalid) {

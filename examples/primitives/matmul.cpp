@@ -39,7 +39,75 @@
 #include "example_utils.hpp"
 #include "oneapi/dnnl/dnnl.hpp"
 
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
 using namespace dnnl;
+
+size_t div_up(const size_t a, const size_t b) {
+    return (a + b - 1) / b;
+}
+
+size_t rnd_up(const size_t a, const size_t b) {
+    return div_up(a, b) * b;
+}
+
+void *zmalloc_protect(size_t size) {
+    const size_t page_sz = getpagesize();
+
+    const size_t block_sz = size + 3 * sizeof(void *);
+    const size_t total_sz = rnd_up(block_sz, page_sz) + page_sz;
+
+    void *mem_ptr;
+    int rc = ::posix_memalign(&mem_ptr, page_sz, total_sz);
+    if (rc != 0) return nullptr;
+
+    uint8_t *ptr_start = (uint8_t *)mem_ptr;
+    uint8_t *ptr = ptr_start + total_sz - page_sz - size;
+
+    // Aligned on a page boundary
+    void *ptr_protect = ptr + size;
+
+    // Layout of the allocated region:
+    // ptr_start   <- start of the allocated region
+    // ptr[-16]    <- stores start address: ptr_start
+    // ptr[-8]     <- stores protected address: ptr_protect
+    // ptr         <- pointer to be returned from the function
+    // ptr_protect <- pointer to the block to protect
+
+    // Protect one page right after the block of size bytes
+    int err = mprotect(ptr_protect, page_sz, PROT_NONE);
+    if (err != 0) {
+        printf("Error: mprotect returned \'%s\'.\n", strerror(errno));
+        ::free(ptr_start);
+        return nullptr;
+    }
+
+    // Align down `ptr` on 8 bytes before storing addresses to make behavior
+    // defined.
+    ptrdiff_t to_align = reinterpret_cast<ptrdiff_t>(ptr) % sizeof(void *);
+    void *ptr_aligned_8 = ptr - to_align;
+    // Save pointers for zfree_protect
+    ((void **)ptr_aligned_8)[-2] = ptr_start;
+    ((void **)ptr_aligned_8)[-1] = ptr_protect;
+
+    return ptr;
+}
+
+void zfree_protect(void *ptr) {
+    // Get aligned ptr before obtaining addresses
+    ptrdiff_t to_align = reinterpret_cast<ptrdiff_t>(ptr) % sizeof(void *);
+    void *ptr_aligned_8 = reinterpret_cast<uint8_t *>(ptr) - to_align;
+
+    // Restore read-write access for the protected region
+    void *ptr_protect = ((void **)ptr_aligned_8)[-1];
+    const size_t page_sz = getpagesize();
+    mprotect(ptr_protect, page_sz, PROT_READ | PROT_WRITE);
+
+    // Deallocate the whole region
+    void *ptr_start = ((void **)ptr_aligned_8)[-2];
+    ::free(ptr_start);
+}
 
 void matmul_example(dnnl::engine::kind engine_kind) {
 
@@ -88,11 +156,23 @@ void matmul_example(dnnl::engine::kind engine_kind) {
     auto dst_md = memory::desc(
             dst_dims, memory::data_type::f32, memory::format_tag::abcd);
 
-    auto src_mem = memory(src_md, engine);
-    auto weights_mem = memory(weights_md, engine);
-    auto sel_src1_mem = memory(sel_src1_md, engine);
-    auto sel_cond_mem = memory(sel_cond_md, engine);
-    auto dst_mem = memory(dst_md, engine);
+    auto src_mem = memory(src_md, engine, nullptr);
+    auto weights_mem = memory(weights_md, engine, nullptr);
+    auto sel_src1_mem = memory(sel_src1_md, engine, nullptr);
+    auto sel_cond_mem = memory(sel_cond_md, engine, nullptr);
+    auto dst_mem = memory(dst_md, engine, nullptr);
+
+    auto ptr_src = zmalloc_protect(src_md.get_size());
+    auto ptr_weights = zmalloc_protect(weights_md.get_size());
+    auto ptr_sel_src1 = zmalloc_protect(sel_src1_md.get_size());
+    auto ptr_sel_cond = zmalloc_protect(sel_cond_md.get_size());
+    auto ptr_dst = zmalloc_protect(dst_md.get_size());
+
+    src_mem.set_data_handle(ptr_src);
+    weights_mem.set_data_handle(ptr_weights);
+    sel_src1_mem.set_data_handle(ptr_sel_src1);
+    sel_cond_mem.set_data_handle(ptr_sel_cond);
+    dst_mem.set_data_handle(ptr_dst);
 
     // Write data to memory object's handles.
     write_to_dnnl_memory(src_data.data(), src_mem);
@@ -130,6 +210,12 @@ void matmul_example(dnnl::engine::kind engine_kind) {
 
     // Read data from memory object's handle.
     read_from_dnnl_memory(dst_data.data(), dst_mem);
+
+    zfree_protect(ptr_src);
+    zfree_protect(ptr_weights);
+    zfree_protect(ptr_sel_src1);
+    zfree_protect(ptr_sel_cond);
+    zfree_protect(ptr_dst);
 }
 
 int main(int argc, char **argv) {

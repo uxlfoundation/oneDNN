@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -322,10 +322,12 @@ status_t DNNL_API dnnl_graph_compiled_partition_execute(
 
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        if (DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL)
+            stream->wait();
         double start_ms = dnnl::impl::get_msec();
         CHECK(compiled_partition->execute(stream, ins, outs));
-        stream->wait();
+        if (DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL)
+            stream->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile,
                 compiled_partition->info(), duration_ms);

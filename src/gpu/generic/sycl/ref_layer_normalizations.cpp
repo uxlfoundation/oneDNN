@@ -68,6 +68,7 @@ status_t ref_layer_normalization_fwd_t::pd_t::init_conf() {
     conf_.save_stats = is_training();
     conf_.calculate_stats = !stats_are_src();
     conf_.zero_dims = has_zero_dim_memory();
+    conf_.skip_mean = skip_mean();
 
     return status::success;
 }
@@ -144,6 +145,7 @@ status_t ref_layer_normalization_bwd_t::pd_t::init_conf() {
     conf_.layer_norm_epsilon = desc()->layer_norm_epsilon;
     conf_.save_stats = is_training();
     conf_.calculate_diff_stats = !use_global_stats();
+    conf_.skip_mean = skip_mean();
 
     return status::success;
 }

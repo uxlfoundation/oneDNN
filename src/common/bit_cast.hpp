@@ -36,8 +36,10 @@ namespace utils {
 template <typename T, typename U>
 inline T bit_cast(const U &u) {
     static_assert(sizeof(T) == sizeof(U), "Bit-casting must preserve size.");
-    static_assert(std::is_trivial<T>::value, "T must be trivially copyable.");
-    static_assert(std::is_trivial<U>::value, "U must be trivially copyable.");
+    static_assert(std::is_trivially_copyable<T>::value,
+            "T must be trivially copyable.");
+    static_assert(std::is_trivially_copyable<U>::value,
+            "U must be trivially copyable.");
 
     T t;
     // Since bit_cast is used in SYCL kernels it cannot use std::memcpy as it

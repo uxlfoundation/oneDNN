@@ -96,6 +96,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     conf->ss_dt = ss_buf.data_type;
     conf->calculate_stats = !pd->stats_are_src();
     conf->save_stats = pd->is_training();
+    conf->skip_mean = pd->skip_mean();
 
     // We require that the lnorm axis is a single dense block, so that it can
     // be represented by a stride + size alone.
@@ -212,7 +213,7 @@ reusable_vectorized_lnorm_params_t::get_kernel_ctx() const {
 
     kernel_ctx.define_int("USE_SCALE", use_scale);
     kernel_ctx.define_int("USE_SHIFT", use_shift);
-
+    kernel_ctx.define_int("SKIP_MEAN", skip_mean);
     kernel_ctx.define_int("CALCULATE_STATS", calculate_stats);
     kernel_ctx.define_int("SAVE_STATS", save_stats && calculate_stats);
 

@@ -201,6 +201,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     conf.calculate_stats = !pd->stats_are_src();
     conf.save_stats = pd->is_training();
     conf.eps = pd->desc()->layer_norm_epsilon;
+    conf.skip_mean = pd->skip_mean();
 
     if (conf.use_scale || conf.use_shift) {
         memory_desc_wrapper weights_mdw(
@@ -501,6 +502,7 @@ static status_t init_kernel_ctx_common(
     kernel_ctx.define_int("N_CHUNKS", conf.n_chunks);
     kernel_ctx.define_int("FINALIZE_N_CHUNKS", conf.finalize_n_chunks);
     kernel_ctx.define_int("USE_SRC_BUFFER", conf.use_src_buffer);
+    kernel_ctx.define_int("SKIP_MEAN", conf.skip_mean);
 
     kernel_ctx.add_option("-cl-std=CL2.0");
     def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");

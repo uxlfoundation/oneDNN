@@ -399,6 +399,7 @@ struct lnorm_conf_t {
     dim_t n_chunks;
     int vector_size_scaleshift;
     bool use_src_buffer;
+    bool skip_mean;
 
     compute::dispatch_t dispatch_scaleshift;
     compute::dispatch_t dispatch_scaleshift_finalize;

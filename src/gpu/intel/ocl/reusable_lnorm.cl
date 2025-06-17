@@ -43,7 +43,7 @@ __kernel void lnorm_reusable_calc_var(__global SRC_STAT_DT *src,
     mean = GWS_GET_BUFFER_POS_NAMED(STAT, STAT, gws_params, mean);
     variance = GWS_GET_BUFFER_POS_NAMED(STAT, STAT, gws_params, variance);
 
-    float mean_val = load(mean_val, mean);
+    float mean_val = SKIP_MEAN ? 0 : load(mean_val, mean);
     float sum = 0.0f;
     for (off_t i = 0; i < reduce_size; i++) {
         ACC_DT src_val = load(src_val, src + i * (off_t)reduce_stride);
@@ -75,7 +75,7 @@ __kernel void lnorm_reusable_fwd(__global SRC_DT *src, __global float *mean,
     if (USE_SHIFT) load(&sv, shift);
     float src_val = load(src_val, src);
     float var_val = load(var_val, variance);
-    float mean_val = load(mean_val, mean);
+    float mean_val = SKIP_MEAN ? 0 : load(mean_val, mean);
     float sqrt_variance = 1.0f / sqrt(var_val + eps);
     float res = sm * (src_val - mean_val) * sqrt_variance + sv;
 
@@ -112,7 +112,7 @@ __kernel void lnorm_reusable_bwd_scaleshift(__global SRC_SS_DT *src,
         off_t off = i * stat_stride;
         ACC_BWD_DT dst_val = load(dst_val, diff_dst + off);
         ACC_DT src_val = load(src_val, src + off);
-        float mean_val = load(mean_val, mean + i);
+        float mean_val = SKIP_MEAN ? 0 : load(mean_val, mean + i);
         float var_val = load(var_val, variance + i);
 
         beta += dst_val;
@@ -140,7 +140,7 @@ __kernel void lnorm_reusable_bwd(__global SRC_STAT_DT *src,
     mean = GWS_GET_BUFFER_POS_NAMED(STAT, STAT, gws_params, mean);
     variance = GWS_GET_BUFFER_POS_NAMED(STAT, STAT, gws_params, variance);
 
-    float mean_val = load(mean_val, mean);
+    float mean_val = SKIP_MEAN ? 0 : load(mean_val, mean);
     float var_val = load(var_val, variance);
 
     float inv_var = rsqrt(var_val + eps);

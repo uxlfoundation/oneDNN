@@ -70,8 +70,6 @@ struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
             return status::success;
@@ -150,8 +148,7 @@ struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "rms normalization is not supported");
+
             VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
             init_scratchpad();
             return status::success;

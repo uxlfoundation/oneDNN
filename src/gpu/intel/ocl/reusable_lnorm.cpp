@@ -48,6 +48,8 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     conf->src_dt = src_buf.data_type;
     conf->dst_dt = dst_buf.data_type;
 
+    conf->skip_mean = pd->skip_mean();
+
     const auto &scales = pd->attr()->scales_;
     conf->with_src_scale = !scales.has_default_values(DNNL_ARG_SRC);
     conf->with_dst_scale = !scales.has_default_values(DNNL_ARG_DST);
@@ -185,6 +187,7 @@ compute::kernel_ctx_t reusable_lnorm_params_t::get_kernel_ctx() const {
 
     kernel_ctx.define_int("USE_SCALE", use_scale);
     kernel_ctx.define_int("USE_SHIFT", use_shift);
+    kernel_ctx.define_int("SKIP_MEAN", skip_mean);
 
     kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scale);
     kernel_ctx.define_int("WITH_DST_SCALES", with_dst_scale);

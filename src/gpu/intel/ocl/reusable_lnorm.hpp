@@ -57,7 +57,8 @@ struct reusable_lnorm_params_t
     data_type_t dst_dt = data_type::undef;
     bool use_scale = false;
     bool use_shift = false;
-    uint8_t padding[4] = {0};
+    bool skip_mean = false;
+    uint8_t padding[3] = {0};
 
     // Not used by bwd impl, but would be padding otherwise
     bool with_src_scale = false;
@@ -113,8 +114,6 @@ struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
             if (stats_are_tmp()) init_scratchpad();
@@ -192,8 +191,6 @@ struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
 

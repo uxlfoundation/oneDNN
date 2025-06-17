@@ -130,11 +130,11 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
     return md;
 }
 
-layout_t layout_t::map(const tensor_t &tensor) const {
-    if (ndims() != tensor.ndims())
+layout_t layout_t::map(const tile_t &tile, const coord_t &start) const {
+    if (ndims() != tile.size())
         gpu_error_not_expected() << "Dimensions do not match.";
 
-    std::vector<dim_t> remaining_dims = tensor.dims();
+    std::vector<dim_t> remaining_dims = tile.values();
     std::vector<block_t> mapped_blocks;
 
     for (auto &eb : enumerated_blocks()) {
@@ -157,7 +157,8 @@ layout_t layout_t::map(const tensor_t &tensor) const {
             // Try to split the current block and start mapping from
             // scratch.
             if (block % rem_dim == 0)
-                return split_block(eb, rem_dim, block / rem_dim).map(tensor);
+                return split_block(eb, rem_dim, block / rem_dim)
+                        .map(tile, start);
 
             // TODO: Remove exception usage.
             gpu_except_not_implemented("Can't map tensor layout.");
@@ -172,7 +173,8 @@ layout_t layout_t::map(const tensor_t &tensor) const {
         MAYBE_UNUSED(d);
     }
 
-    return layout_t(type(), ndims(), operator()(tensor.start()), mapped_blocks);
+    return layout_t(type(), ndims(), start.is_empty() ? 0 : operator()(start),
+            mapped_blocks);
 }
 
 layout_t layout_t::reinterpret(
@@ -288,7 +290,7 @@ layout_t layout_t::split_into_multi_blocks(
     return tmp;
 }
 
-tensor_t layout_t::split_into_max_tile(
+tile_t layout_t::split_into_max_tile(
         dim_t max_tile_elems, bool is_dense_tile) const {
     stride_t dense_stride = 1;
     std::vector<dim_t> tile_dims(ndims(), 1);
@@ -311,7 +313,7 @@ tensor_t layout_t::split_into_max_tile(
         auto tmp_layout = split_block(eb, max_block, b.block / max_block);
         return tmp_layout.split_into_max_tile(max_tile_elems, is_dense_tile);
     }
-    return tensor_t(tile_dims);
+    return tile_t(tile_dims);
 }
 
 void layout_t::align_layouts(layout_t &a, layout_t &b) {
@@ -459,13 +461,13 @@ stride_t tdim_t::compute_stride(
     return stride_t::unknown();
 }
 
-view_t view_t::create_sub_view(const tensor_t &sub_tensor) const {
-    gpu_assert(sub_tensor.ndims() == nvdims()) << "Dimensions don't match.";
+view_t view_t::create_sub_view(const tile_t &tile, const coord_t &coord) const {
+    gpu_assert(tile.size() == nvdims()) << "Dimensions don't match.";
 
     auto ret = *this;
-    ret.vdims_ = sub_tensor.dims();
+    ret.vdims_ = tile;
     for (dim_idx_t i = 0; i < nvdims(); i++) {
-        auto &i_start = sub_tensor.start()[i];
+        auto &i_start = coord[i];
         if (is_zero(i_start)) continue;
         auto &s = ret.vstart_[i];
         s += i_start;
@@ -501,7 +503,7 @@ layout_t view_t::create_pseudo_vlayout(
         const layout_t &tlayout, bool init_offset) const {
     gpu_assert(!tlayout.is_empty());
 
-    std::vector<dim_t> rem_vdims = vdims_;
+    std::vector<dim_t> rem_vdims = vdims_.values();
     std::vector<block_t> blocks;
 
     for (auto &teb : tlayout.enumerated_blocks()) {

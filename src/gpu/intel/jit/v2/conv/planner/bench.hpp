@@ -65,7 +65,7 @@ struct bench_input_params_t {
     prb_reqs_t reqs;
     bool is_dw = false;
     type_t bias_type;
-    pvar_tile_t tile;
+    tile_t tile;
     int nprbs = 0;
 
     bench_input_params_t() = default;

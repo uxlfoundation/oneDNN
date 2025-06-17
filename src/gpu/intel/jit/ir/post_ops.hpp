@@ -192,9 +192,10 @@ public:
 
     bool do_convert() const { return do_convert_; }
 
-    post_op_tensor_info_t create_sub_tensor(const tensor_t &tile) const {
+    post_op_tensor_info_t create_sub_tensor(
+            const tile_t &tile, const coord_t &coord) const {
         auto ret = *this;
-        ret.view_ = ret.view_.create_sub_view(tile);
+        ret.view_ = ret.view_.create_sub_view(tile, coord);
         return ret;
     }
 
@@ -238,7 +239,7 @@ public:
     const view_t &cp_view() const { return cp_view_; };
 
     virtual view_t create_view(const type_t &type, uint32_t rhs_mask) const {
-        std::vector<dim_t> rhs_dims = cp_view_.vdims();
+        std::vector<dim_t> rhs_dims = cp_view_.vdims().values();
         uint32_t bound_check_mask = 0;
         for (int i = 0; i < int(rhs_dims.size()); i++) {
             if ((rhs_mask & (1 << i)) == 0) {

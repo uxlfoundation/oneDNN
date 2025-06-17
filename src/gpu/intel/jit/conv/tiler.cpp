@@ -51,7 +51,7 @@ bool is_reduction_dim(const pvar_t &d, const conv_problem_t &prb) {
     return to_gemm(d, prb) == pvars::k;
 }
 
-pvar_t vectorized_dim(const conv_problem_t &prb, const pvar_tile_t &tile) {
+pvar_t vectorized_dim(const conv_problem_t &prb, const tile_t &tile) {
     pvar_t vec_dim;
     if (prb.is_dw) {
         vec_dim = pvars::g;
@@ -68,7 +68,7 @@ pvar_t vectorized_dim(const conv_problem_t &prb, const pvar_tile_t &tile) {
 }
 
 bool is_vectorized_dim(
-        const pvar_t &d, const conv_problem_t &prb, const pvar_tile_t &tile) {
+        const pvar_t &d, const conv_problem_t &prb, const tile_t &tile) {
     return d == vectorized_dim(prb, tile);
 }
 
@@ -246,7 +246,7 @@ public:
     }
 
     level_tile_set_t make_level_tile_set(
-            const pvar_tile_t &padded_shape) const override {
+            const tile_t &padded_shape) const override {
         const auto all_dims = dims();
         const int ndims = (int)all_dims.size();
         std::vector<int> deps(ndims, -1);
@@ -604,8 +604,7 @@ private:
                     to_gemm(blk.thread_group(), cfg.prb())) {}
 
         context_t(const blocking_t &blk, const conv_config_t &cfg,
-                const pvar_tile_t &iter, const pvar_tile_t &loop,
-                const pvar_tile_t &tg)
+                const tile_t &iter, const tile_t &loop, const tile_t &tg)
             : blk(blk)
             , b_iter(iter.get(pvars::b, 1))
             , m_iter(iter.get(pvars::m, 1))
@@ -969,8 +968,8 @@ private:
     }
 
     const conv_config_t &cfg_;
-    const pvar_tile_t padded_shape_;
-    const pvar_tile_t padded_gemm_shape_;
+    const tile_t padded_shape_;
+    const tile_t padded_gemm_shape_;
     const int max_tg_size_ = 0;
 
     uint64_t check_mask_ = 0;
@@ -1316,7 +1315,7 @@ public:
             blocking_checker_t &chk,
             const std::vector<level_tile_set_t> &level_tile_sets,
             const conv_key_t &key, double ops,
-            const std::function<pvar_tile_t(const pvar_tile_t &)> &convert,
+            const std::function<tile_t(const tile_t &)> &convert,
             bool create_if_not_found = false) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto *tuner = get_tuner(key, /*do_lock=*/false);
@@ -1325,10 +1324,10 @@ public:
 
         params_generator_t params_gen(
                 tune_level, simd_size, chk, level_tile_sets);
-        std::vector<std::vector<pvar_tile_t>> tiles;
+        std::vector<std::vector<tile_t>> tiles;
         for (auto &p : params_gen.params_vec()) {
             auto &b = p.blocking();
-            std::vector<pvar_tile_t> p_tiles;
+            std::vector<tile_t> p_tiles;
             p_tiles.push_back(convert(b.iter()));
             p_tiles.push_back(convert(b.thread_group()));
             p_tiles.push_back(convert(b.loop()));
@@ -1599,7 +1598,7 @@ private:
                 break;
             }
             case tiler_mode_t::tune: {
-                auto convert = [&](const pvar_tile_t &tile) {
+                auto convert = [&](const tile_t &tile) {
                     return to_gemm(tile, cfg.prb());
                 };
                 tuner_ = conv_tuner_t::get_tuner(tune_level, simd_size, chk,

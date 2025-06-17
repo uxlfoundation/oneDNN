@@ -43,7 +43,7 @@ public:
         return ss.str();
     }
 
-    pvar_tile_t shape(bool pad) const override { return {}; };
+    tile_t shape(bool pad) const override { return {}; };
 
     const std::vector<pvar_t> &index_dims() const override {
         static const std::vector<pvar_t> null {};
@@ -54,14 +54,14 @@ public:
 
     int simd() const { return exec_cfg().simd(); }
     compute::nd_range_t nd_range() const;
-    const std::vector<tensor_t> &tiles() const { return tiles_; }
-    const std::array<pvar_tile_t, 3> &grid() const { return grid_; }
+    const std::vector<tile_t> &tiles() const { return tiles_; }
+    const std::array<tile_t, 3> &grid() const { return grid_; }
 
     reorder_config_t(const exec_config_t &ec, layout_t src, layout_t dst);
 
 private:
-    std::vector<tensor_t> tiles_;
-    std::array<pvar_tile_t, 3> grid_;
+    std::vector<tile_t> tiles_;
+    std::array<tile_t, 3> grid_;
 };
 
 } // namespace jit

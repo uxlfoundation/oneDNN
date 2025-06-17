@@ -277,9 +277,9 @@ bool post_op_context_t::init_need_to_restore_zero_padding(
                                 alg_kind::binary_max, alg_kind::binary_gt,
                                 alg_kind::binary_lt, alg_kind::binary_ne);
 
-                uint32_t rhs_mask
-                        = utils::get_dims_mask(cp_view().vdims().data(),
-                                po.binary.src1_desc.dims, cp_ndims());
+                uint32_t rhs_mask = utils::get_dims_mask(
+                        cp_view().vdims().values().data(),
+                        po.binary.src1_desc.dims, cp_ndims());
                 if ((rhs_mask & (1 << j)) == 0 && !zero_op_x_ok) return true;
                 if (!zero_op_zero_ok) return true;
             }

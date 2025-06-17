@@ -34,8 +34,8 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-inline pvar_tile_t to_shape(const convolution_pd_t *pd) {
-    pvar_tile_t shape;
+inline tile_t to_shape(const convolution_pd_t *pd) {
+    tile_t shape;
     shape[pvars::mb] = pd->MB();
     shape[pvars::ic] = ir_utils::safe_div(pd->IC(), pd->G());
     shape[pvars::oc] = ir_utils::safe_div(pd->OC(), pd->G());
@@ -166,7 +166,7 @@ inline jit::layout_t to_conv_layout(const layout_tag_t &_tag,
 }
 
 inline jit::layout_t to_conv_layout(
-        const layout_tag_t &_tag, const pvar_tile_t &shape) {
+        const layout_tag_t &_tag, const tile_t &shape) {
     int ndims = _tag.desc().ndims();
     const auto &tag = _tag.raw_tag();
     std::vector<dim_t> dims(ndims);
@@ -177,8 +177,7 @@ inline jit::layout_t to_conv_layout(
     return jit::layout_t(_tag.type(), expr_t(0), tag.str(), dims);
 }
 
-inline jit::grid_info_t to_grid_info(
-        const grid_t &grid, const pvar_tile_t &tile) {
+inline jit::grid_info_t to_grid_info(const grid_t &grid, const tile_t &tile) {
     std::vector<dim_t> dims;
     std::vector<expr_t> idxs;
     for (int i = 0; i < grid_t::N; i++) {

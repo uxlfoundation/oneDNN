@@ -210,7 +210,7 @@ using problem_t = dnnl::impl::gpu::intel::jit::v2::conv::problem_t;
 using kernel_desc_t = dnnl::impl::gpu::intel::jit::v2::conv::kernel_desc_t;
 using bench_data_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_data_t;
 using bench_time_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_time_t;
-using pvar_tile_t = dnnl::impl::gpu::intel::jit::pvar_tile_t;
+using tile_t = dnnl::impl::gpu::intel::jit::tile_t;
 namespace pvars = dnnl::impl::gpu::intel::jit::pvars;
 
 std::string c_pd_name(dnnl_primitive_desc_t pd) {
@@ -478,8 +478,7 @@ random_dim_set_t operator|(const random_dim_t &a, const random_dim_set_t &b) {
     return random_dim_set_t(a) | b;
 }
 
-pvar_tile_t random_shape(
-        const bench_input_params_t &params, const pvar_tile_t &tile) {
+tile_t random_shape(const bench_input_params_t &params, const tile_t &tile) {
     auto make_random_dim = [&](const pvar_t &dim, dim_t lo = 0, dim_t hi = 0) {
         auto ret = random_dim_t(dim, tile.get(dim, 1));
         return ret.with_range(lo, hi);
@@ -492,7 +491,7 @@ pvar_tile_t random_shape(
                   auto d_l = d.with_range(m + 1, l);
                   return d_s | d_m | d_l;
               };
-    pvar_tile_t s = problem_t::default_shape();
+    tile_t s = problem_t::default_shape();
     auto g = make_random_dim(pvars::g, 2, 512);
     auto mb = make_random_dim_set(pvars::mb, 1, 16, 128);
     auto ic = make_random_dim_set(pvars::ic, 64, 512, 2048);
@@ -524,7 +523,7 @@ pvar_tile_t random_shape(
 }
 
 double footprint(const layout_tag_t &src, const layout_tag_t &wei,
-        const layout_tag_t &dst, const pvar_tile_t &shape) {
+        const layout_tag_t &dst, const tile_t &shape) {
 #define GET(name) shape[pvars::name]
     double src_elems
             = (double)GET(g) * GET(mb) * GET(ic) * GET(id) * GET(ih) * GET(iw);
@@ -540,9 +539,9 @@ double footprint(const layout_tag_t &src, const layout_tag_t &wei,
     return ret;
 }
 
-pvar_tile_t expand_tile(
-        prop_kind_t prop, const prb_reqs_t &reqs, const pvar_tile_t &_tile) {
-    pvar_tile_t tile = _tile;
+tile_t expand_tile(
+        prop_kind_t prop, const prb_reqs_t &reqs, const tile_t &_tile) {
+    tile_t tile = _tile;
     for (auto &d : conv_index_dims(prop)) {
         dim_t mod = reqs.max_factor(d);
         mod = math::lcm(mod, tile.get(d, 1));

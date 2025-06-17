@@ -31,12 +31,13 @@ namespace jit {
 
 slm_reduce_builder_t::slm_reduce_builder_t(ir_context_t &ir_ctx,
         const grid_info_t &tg_grid, const expr_t &reg_buf,
-        const layout_t &reg_layout, const tensor_t &thr_tile, dim_idx_t dim)
+        const layout_t &reg_layout, const tile_coord_t &thr_tile_coord,
+        dim_idx_t dim)
     : ir_ctx_(&ir_ctx)
     , tg_grid_(tg_grid)
     , reg_buf_(reg_buf)
     , reg_layout_(reg_layout)
-    , thr_tile_(thr_tile)
+    , thr_tile_coord_(thr_tile_coord)
     , dim_(dim) {
     gpu_assert((dim_ != dim_idx::invalid) && (dim_ <= 2));
     gpu_assert(tg_grid_.dim(dim_) > 1);
@@ -62,16 +63,16 @@ void slm_reduce_builder_t::build() {
     slm_buf_size_ = into<int>(slm_layout.size());
 
     // Write thread tile to SLM.
-    std::vector<dim_t> write_dims = reg_layout_.dims();
-    std::vector<expr_t> write_start(ndims + tg_ndims_, 0);
-    write_dims.resize(ndims + tg_ndims_, 1);
+    tile_t write_tile(ndims + tg_ndims_);
+    coord_t write_start(ndims + tg_ndims_);
+    for (int i = 0; i < ndims; i++)
+        write_tile[i] = reg_layout_.dims()[i];
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
         write_start[ndims + i] = tg_grid_.idx(i);
     }
-    auto write_tile = tensor_t(write_dims, write_start);
-    auto write
-            = make_access_builder(*ir_ctx_, view_t(slm_layout.map(write_tile)),
-                    slm_buf_, reg_buf_, send_op_t::store, send_address_t::slm);
+    auto write = make_access_builder(*ir_ctx_,
+            view_t(slm_layout.map(write_tile, write_start)), slm_buf_, reg_buf_,
+            send_op_t::store, send_address_t::slm);
     store_stmt_ = write.stmt();
 
     auto &write_layout = write.reg_layout();
@@ -81,8 +82,8 @@ void slm_reduce_builder_t::build() {
     // thread.
     grid_info_t full_grid = tg_grid_.sub_grid({dim_});
     grid_info_t split_grid;
-    auto local_thr_tile = reg_layout_.split(full_grid, &split_grid);
-    reg_layout_ = reg_layout_.map(tensor_t(local_thr_tile.dims()));
+    auto local_thr_tile_coord = reg_layout_.split(full_grid, &split_grid);
+    reg_layout_ = reg_layout_.map(local_thr_tile_coord.tile);
 
     if (split_grid.elems() != full_grid.elems()) {
         for (dim_idx_t i = 0; i < full_grid.ndims(); i++) {
@@ -95,24 +96,24 @@ void slm_reduce_builder_t::build() {
         }
     }
 
-    std::vector<dim_t> read_dims(ndims + tg_ndims_, 1);
-    std::vector<expr_t> read_start(ndims + tg_ndims_);
+    tile_t read_tile(ndims + tg_ndims_);
+    coord_t read_start(ndims + tg_ndims_);
     for (int i = 0; i < ndims; i++) {
-        read_dims[i] = local_thr_tile(i);
-        read_start[i] = local_thr_tile.start(i);
+        read_tile[i] = local_thr_tile_coord.tile[i];
+        read_start[i] = local_thr_tile_coord.coord[i];
         auto cond = read_start[i] < slm_layout.dims()[i];
         if (reduce_cond_.is_empty())
             reduce_cond_ = std::move(cond);
         else
             reduce_cond_ &= cond;
     }
-    read_dims[ndims + dim_] = tg_grid_.dim(dim_);
+    read_tile[ndims + dim_] = tg_grid_.dim(dim_);
     for (dim_idx_t i = 0; i < tg_ndims_; i++) {
         read_start[ndims + i] = (i == dim_) ? 0 : tg_grid_.idx(i);
     }
-    tensor_t read_tile(read_dims, read_start);
-    auto read = make_access_builder(*ir_ctx_, view_t(slm_layout.map(read_tile)),
-            slm_buf_, tmp_reg_buf_, send_op_t::load, send_address_t::slm);
+    auto read = make_access_builder(*ir_ctx_,
+            view_t(slm_layout.map(read_tile, read_start)), slm_buf_,
+            tmp_reg_buf_, send_op_t::load, send_address_t::slm);
 
     load_stmt_
             = load_stmt_.append(funcs::zero_out(reg_buf_, reg_layout_.size()));
@@ -122,7 +123,7 @@ void slm_reduce_builder_t::build() {
 
     auto &read_layout = read.reg_layout();
     load_stmt_ = load_stmt_.append(create_reduce_stmt(read_layout, reg_layout_,
-            tmp_reg_buf_, reg_buf_, tensor_t(), reduction_mask()));
+            tmp_reg_buf_, reg_buf_, tile_t(), reduction_mask()));
 
     allocs_.push_back(
             alloc_t::make(slm_buf_, slm_buf_size_, alloc_kind_t::slm));
@@ -131,8 +132,8 @@ void slm_reduce_builder_t::build() {
 
     if (!reduce_cond_.is_empty())
         load_stmt_ = if_t::make(reduce_cond_, load_stmt_);
-    if (!thr_tile_.is_empty()) {
-        thr_tile_ = thr_tile_.create_sub_tensor(local_thr_tile);
+    if (!thr_tile_coord_.is_empty()) {
+        thr_tile_coord_ = thr_tile_coord_.sub(local_thr_tile_coord);
     }
 }
 

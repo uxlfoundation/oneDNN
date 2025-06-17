@@ -410,7 +410,7 @@ dim_mapper_t extend_mapper(
 }
 
 std::vector<pvar_t> skip_mask(
-        const view_t &view, const pvar_tile_t &tile, const prb_reqs_t &reqs) {
+        const view_t &view, const tile_t &tile, const prb_reqs_t &reqs) {
     std::vector<pvar_t> ret;
     auto &mask_desc = view.mask_desc();
     auto dim_sizes = view.base_layout().dim_sizes();

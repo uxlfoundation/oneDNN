@@ -408,7 +408,7 @@ struct send_1d_entry_t {
     expr_t addr_inc;
     std::vector<expr_t> mask_incs; // Per dimension mask.
     int reg_off = 0;
-    pvar_coord_t<dim_t> coord;
+    coord_t coord;
 
     std::string str() const {
         using namespace ir_utils;
@@ -426,7 +426,7 @@ struct send_1d_plan_t : public base_plan_t {
     mask_t mask;
     std::vector<send_1d_entry_t> entries;
     layout_t reg_layout;
-    pvar_tile_t entry_tile;
+    tile_t entry_tile;
 
     using base_plan_t::base_plan_t;
 
@@ -618,7 +618,7 @@ struct send_2d_entry_t {
     expr_t x_inc;
     expr_t y_inc;
     int reg_off = 0;
-    pvar_coord_t<dim_t> coord;
+    coord_t coord;
 
     std::string str() const {
         std::ostringstream oss;
@@ -639,15 +639,14 @@ struct send_2d_plan_t : public base_plan_t {
     mask_t mask;
     std::vector<send_2d_entry_t> entries;
     layout_t reg_layout;
-    pvar_tile_t entry_tile;
+    tile_t entry_tile;
 
     using base_plan_t::base_plan_t;
 
     int nentries() const { return static_cast<int>(entries.size()); }
     explicit operator bool() const { return (bool)desc; }
 
-    bool add_entry(const pvar_coord_t<dim_t> &coord, int reg_off,
-            const prover_t &prover) {
+    bool add_entry(const coord_t &coord, int reg_off, const prover_t &prover) {
         entries.emplace_back();
         auto &e = entries.back();
         e.x_inc = coord.at(desc.w_dim);
@@ -710,7 +709,7 @@ struct send_plan_t : public base_plan_t {
         return _2d.reg_layout;
     }
 
-    const pvar_tile_t &entry_tile() const {
+    const tile_t &entry_tile() const {
         if (is_1d()) return _1d.entry_tile;
         return _2d.entry_tile;
     }
@@ -886,7 +885,7 @@ private:
         int reg_off = 0;
         for (int h = 0; h < plane.h; h += desc.h) {
             for (int w = 0; w < plane.w; w += desc.w * desc.c) {
-                pvar_coord_t<dim_t> coord;
+                coord_t coord;
                 coord[plane.w_dim] = w;
                 coord[plane.h_dim] = h;
                 if (!plan_2d.add_entry(coord, reg_off, prover))

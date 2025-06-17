@@ -48,17 +48,17 @@ reorder_config_t::reorder_config_t(
     dim_idx_t ndims = src.ndims();
     const auto &thr_tile = tiles_.front();
 
-    pvar_tile_t iter_tile;
-    pvar_tile_t loop_tile;
-    pvar_tile_t tg_tile;
+    tile_t iter_tile;
+    tile_t loop_tile;
+    tile_t tg_tile;
 
-    pvar_tile_t dims;
+    tile_t dims;
     dim_idx_t grid_idx = 0;
 
     for (dim_idx_t i = 0; i < ndims; ++i) {
         pvar_t &d = reorder::pvars[i];
 
-        dim_t tg_dim = thr_tile(i);
+        dim_t tg_dim = thr_tile[i];
         dim_t outer = utils::div_up(dst.dim(i), tg_dim);
         iter_tile[d] = tg_dim;
         loop_tile[d] = 1;
@@ -70,7 +70,7 @@ reorder_config_t::reorder_config_t(
 
     for (dim_idx_t i = 0; i < ndims; ++i) {
         pvar_t &d = reorder::pvars[i];
-        dim_t tg_dim = thr_tile(i);
+        dim_t tg_dim = thr_tile[i];
         dim_t outer = utils::div_up(dims[d], tg_dim);
 
         if (outer % 2 == 0) {

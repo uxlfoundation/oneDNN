@@ -40,12 +40,13 @@ public:
 
     bool is_empty() const { return mem_view_.is_empty(); }
 
-    expr_t create_mask(const layout_t &reg_layout, const tensor_t &tile) const {
+    expr_t create_mask(const layout_t &reg_layout, const tile_t &tile,
+            const coord_t &coord) const {
         gpu_assert(!is_empty());
-        auto layout = reg_layout.map(tile);
-        auto view = mem_view_.create_sub_view(tile);
+        auto layout = reg_layout.map(tile, coord);
+        auto view = mem_view_.create_sub_view(tile, coord);
         mask_tensor_t mask_tensor(layout);
-        std::vector<dim_t> args(layout.ndims());
+        icoord_t args(layout.ndims());
         fill_mask_impl(mask_tensor, 0, args, view, layout);
         mask_tensor.simplify(ir_ctx_->cset());
         return mask_tensor.to_expr(tile.elems());
@@ -59,31 +60,28 @@ public:
         auto base_tile = reg_layout.split_into_max_tile(
                 max_step, /*is_dense_tile=*/true);
         stmt_t stmt;
-        reg_layout.for_each_tile(
-                base_tile, [&](const std::vector<dim_t> &start) {
-                    tensor_t tile(base_tile.dims(), start);
-                    dim_t off = reg_layout(start) * reg_layout.type().size();
-                    auto mask = create_mask(reg_layout, tile);
-                    auto zero = to_expr(0, reg_layout.type());
-                    auto store = store_t::make(reg_buf, off,
-                            shuffle_t::make_broadcast(zero, tile.elems()),
-                            store_t::default_stride, -mask);
-                    stmt = stmt.append(store);
-                });
+        reg_layout.for_each_tile(base_tile, [&](const icoord_t &start) {
+            dim_t off = reg_layout.offset<dim_t>(start)
+                    * reg_layout.type().size();
+            auto mask = create_mask(reg_layout, base_tile, start);
+            auto zero = to_expr(0, reg_layout.type());
+            auto store = store_t::make(reg_buf, off,
+                    shuffle_t::make_broadcast(zero, base_tile.elems()),
+                    store_t::default_stride, -mask);
+            stmt = stmt.append(store);
+        });
         return stmt;
     }
 
 private:
     void fill_mask_impl(mask_tensor_t &mask_tensor, dim_idx_t idx,
-            std::vector<dim_t> &args, const view_t &view,
-            const layout_t &layout) const {
+            icoord_t &args, const view_t &view, const layout_t &layout) const {
         if (idx == layout.ndims()) {
-            std::vector<expr_t> vargs;
-            vargs.reserve(layout.ndims());
+            coord_t vargs(layout.ndims());
             for (dim_idx_t i = 0; i < layout.ndims(); i++)
-                vargs.push_back(view.vstart(i) + args[i]);
+                vargs[i] = view.vstart()[i] + args[i];
             expr_t mask = full_mem_view_.vmask(vargs);
-            auto off = layout.offset(args, /*ignore_offset=*/true);
+            auto off = layout.offset<dim_t>(args, /*ignore_offset=*/true);
             mask_tensor.set_mask(off, mask);
             return;
         }
@@ -153,16 +151,17 @@ public:
 
     const expr_t &reg_buf() const { return reg_buf_; }
 
-    post_op_tensor_t create_sub_tensor(const tensor_t &_tile) const {
+    post_op_tensor_t create_sub_tensor(const tile_coord_t &_tile_coord) const {
         auto ret = *this;
-        auto tile = apply_mask(_tile);
-        ret.info_ = ret.info_.create_sub_tensor(tile);
+        auto tile_coord = apply_mask(_tile_coord);
+        ret.info_ = ret.info_.create_sub_tensor(
+                tile_coord.tile, tile_coord.coord);
         if (!reg_layout_.is_empty()) {
             if (needs_reduction()) {
-                tensor_t reduce_tile(_tile.dims(), tile.start());
+                tile_coord_t reduce_tile(_tile_coord.tile, tile_coord.coord);
                 ret.reg_layout_ = ret.reg_layout_.map(reduce_tile);
             } else {
-                ret.reg_layout_ = ret.reg_layout_.map(tile);
+                ret.reg_layout_ = ret.reg_layout_.map(tile_coord);
             }
         }
         ret.allocs_.clear();
@@ -226,21 +225,19 @@ public:
 
     bool do_preload() const { return do_preload_; }
 
-    tensor_t apply_mask(const tensor_t &tile) const {
-        gpu_assert(mem_view().nvdims() == tile.ndims());
+    tile_coord_t apply_mask(const tile_coord_t &tile_coord) const {
+        gpu_assert(mem_view().nvdims() == tile_coord.size());
 
-        auto start = tile.start();
-        auto dims = tile.dims();
-
-        for (dim_idx_t i = 0; i < tile.ndims(); i++) {
+        auto ret = tile_coord;
+        for (dim_idx_t i = 0; i < tile_coord.size(); i++) {
             if (!is_broadcast_dim(i)) continue;
-            start[i] = expr_t(0);
-            dims[i] = 1;
+            ret.coord[i] = expr_t(0);
+            ret.tile[i] = 1;
         }
-        return tensor_t(dims, start);
+        return ret;
     }
 
-    void init_output_buffer(const tensor_t &tile) {
+    void init_output_buffer(const tile_t &tile) {
         gpu_assert(needs_store());
 
         gpu_assert(reg_layout_.is_empty());
@@ -254,12 +251,12 @@ public:
         // If this is output and there are masked dimensions then this buffer
         // is computed via reduction. Extend layout to cover full masked_tile
         // and apply the final reduction after all tiles.
-        auto masked_tile = apply_mask(tile);
-        for (dim_idx_t i = 0; i < masked_tile.ndims(); i++) {
-            if (masked_tile(i) >= tile(i)) continue;
-            gpu_assert(masked_tile(i) == 1)
+        auto masked_tile = apply_mask(tile_coord_t(tile)).tile;
+        for (dim_idx_t i = 0; i < masked_tile.size(); i++) {
+            if (masked_tile[i] >= tile[i]) continue;
+            gpu_assert(masked_tile[i] == 1)
                     << "Unexpected output tensor shape.";
-            reg_layout_ = reg_layout_.add_outer_block(i, tile(i));
+            reg_layout_ = reg_layout_.add_outer_block(i, tile[i]);
         }
         register_buffer(reg_buf_, into<int>(reg_layout_.size()));
     }
@@ -314,7 +311,7 @@ public:
         gpu_assert(is_f32_scalar()) << "Only f32 scalars are supported.";
         reg_layout_ = mem_view().create_pseudo_vlayout();
         auto e = compute_expr();
-        tensor_t tile(std::vector<dim_t>(reg_layout_.ndims(), 1));
+        tile_t tile(std::vector<dim_t>(reg_layout_.ndims(), 1));
         for (auto &t : tensors) {
             if (contains_object(e, t.op_var())) {
                 gpu_assert(t.is_f32_scalar())
@@ -344,9 +341,8 @@ public:
             auto reduced_layout = mem_view().create_dense_vlayout();
             gpu_assert(reduced_layout.size() <= reg_layout_.size());
 
-            stmt = stmt.append(
-                    create_reduce_stmt(reg_layout_, reduced_layout, reg_buf_,
-                            reg_buf_, tensor_t(), mask(), /*drop_dims=*/false));
+            stmt = stmt.append(create_reduce_stmt(reg_layout_, reduced_layout,
+                    reg_buf_, reg_buf_, tile_t(), mask(), /*drop_dims=*/false));
             reg_layout_ = std::move(reduced_layout);
         }
 
@@ -355,7 +351,7 @@ public:
 
     stmt_t build_slm_store_stmt(const grid_info_t &tg_grid) {
         gpu_assert(needs_store());
-        tensor_t tile(mem_view().vdims());
+        tile_t tile(mem_view().vdims());
         slm_reduce_builder_ = slm_reduce_builder_t(
                 *ir_ctx_, tg_grid, reg_buf_, reg_layout_, tile, 1);
         return slm_reduce_builder_.store_stmt();
@@ -367,8 +363,9 @@ public:
 
         reg_layout_ = slm_reduce_builder_.reg_layout();
 
-        const auto &new_tile = slm_reduce_builder_.thr_tile();
-        info_ = info_.create_sub_tensor(new_tile);
+        const auto &new_tile_coord = slm_reduce_builder_.thr_tile_coord();
+        info_ = info_.create_sub_tensor(
+                new_tile_coord.tile, new_tile_coord.coord);
 
         auto &slm_allocs = slm_reduce_builder_.allocs();
         allocs_.insert(allocs_.end(), slm_allocs.begin(), slm_allocs.end());
@@ -386,29 +383,31 @@ public:
         return write.stmt();
     }
 
-    expr_t load_expr(const tensor_t &tile, int dim_idx) const {
+    expr_t load_expr(const tile_coord_t &tile_coord, int dim_idx) const {
         auto &type = reg_layout_.type();
-        int elems = is_broadcast_dim(dim_idx) ? 1 : into<int>(tile.elems());
-        dim_t off = reg_layout_.offset_in_bytes(expr_cast<dim_t>(tile.start()));
+        int elems
+                = is_broadcast_dim(dim_idx) ? 1 : into<int>(tile_coord.elems());
+        dim_t off = reg_layout_.offset_in_bytes<dim_t>(tile_coord.coord);
         auto ret = (reg_buf_.type().is_ptr()
                         ? load_t::make(type.with_elems(elems), reg_buf_, off)
                         : reg_buf_);
-        if (elems != tile.elems())
-            ret = shuffle_t::make_broadcast(ret, into<int>(tile.elems()));
+        if (elems != tile_coord.elems())
+            ret = shuffle_t::make_broadcast(ret, into<int>(tile_coord.elems()));
         return ret;
     }
 
-    stmt_t store_stmt(const tensor_t &tile, int dim_idx, const expr_t &_value,
-            const expr_t &mask = expr_t()) const {
+    stmt_t store_stmt(const tile_coord_t &tile_coord, int dim_idx,
+            const expr_t &_value, const expr_t &mask = expr_t()) const {
         auto value = _value;
         gpu_assert(!is_broadcast_dim(dim_idx));
-        gpu_assert(value.type().elems() == tile.elems());
+        gpu_assert(value.type().elems() == tile_coord.elems());
         // Add cast for booleans for comparison ops.
         if (value.type().is_bool()) {
             value = cast(value,
-                    reg_layout_.type().with_elems(into<int>(tile.elems())));
+                    reg_layout_.type().with_elems(
+                            into<int>(tile_coord.elems())));
         }
-        dim_t off = reg_layout_.offset_in_bytes(expr_cast<dim_t>(tile.start()));
+        dim_t off = reg_layout_.offset_in_bytes<dim_t>(tile_coord.coord);
         auto ret = store_t::make(
                 reg_buf_, off, value, store_t::default_stride, mask);
         return ret;
@@ -514,8 +513,7 @@ public:
     const post_op_t &post_op() const { return post_op_; }
 
     // Applies post-op for a single tile.
-    stmt_t build_tile_stmt(const tensor_t &tile,
-            const object_map_t<expr_t, post_op_tensor_t *> &args,
+    stmt_t build_tile_stmt(const object_map_t<expr_t, post_op_tensor_t *> &args,
             const zero_pad_builder_t &zero_pad_builder) const {
         auto &lhs_tensor = *args.at(post_op_.lhs());
         if (!post_op_.eltwise().is_empty()) {
@@ -554,18 +552,18 @@ public:
         // within a single dimension.
         stmt_t stmt;
         lhs_tensor.reg_layout().for_each_tile(
-                base_inner_tile, [&](const std::vector<dim_t> &lhs_start) {
-                    tensor_t inner_tile(base_inner_tile.dims(), lhs_start);
-                    auto rhs_value = compute_post_op_expr(
-                            post_op_.rhs(), inner_tile, inner_dim_idx, args);
+                base_inner_tile, [&](const icoord_t &lhs_start) {
+                    tile_coord_t inner_tile_coord(base_inner_tile, lhs_start);
+                    auto rhs_value = compute_post_op_expr(post_op_.rhs(),
+                            inner_tile_coord, inner_dim_idx, args);
                     auto &t = *args.at(post_op_.lhs());
                     expr_t store_mask;
                     if (lhs_tensor.needs_masked_update()) {
-                        store_mask = zero_pad_builder.create_mask(
-                                inner_layout, inner_tile);
+                        store_mask = zero_pad_builder.create_mask(inner_layout,
+                                inner_tile_coord.tile, inner_tile_coord.coord);
                     }
-                    auto inner_stmt = t.store_stmt(
-                            inner_tile, inner_dim_idx, rhs_value, store_mask);
+                    auto inner_stmt = t.store_stmt(inner_tile_coord,
+                            inner_dim_idx, rhs_value, store_mask);
                     stmt = stmt.append(inner_stmt);
                 });
 
@@ -575,7 +573,7 @@ public:
 private:
     // Returns a 1D tile corresponding to an instruction to partially apply the
     // post-op.
-    tensor_t find_1d_tile(const type_t &lhs_type,
+    tile_t find_1d_tile(const type_t &lhs_type,
             const object_map_t<expr_t, post_op_tensor_t *> &args,
             int &inner_dim_idx) const {
         auto &lhs_tensor = *args.at(post_op_.lhs());
@@ -584,7 +582,7 @@ private:
         std::vector<dim_t> dims(lhs_tensor.mem_view().nvdims(), 1);
 
         if (lhs_tensor.reg_layout().blocks().empty()) {
-            for (dim_t d : lhs_tensor.mem_view().vdims())
+            for (dim_t d : lhs_tensor.mem_view().vdims().values())
                 gpu_assert(d == 1);
             inner_dim_idx = 0;
         } else {
@@ -610,19 +608,20 @@ private:
             }
             dims[b0.dim_idx] = inner_block;
         }
-        return tensor_t(dims);
+        return tile_t(dims);
     }
 
-    expr_t compute_post_op_expr(const expr_t &expr, const tensor_t &tile,
-            int dim_idx,
+    expr_t compute_post_op_expr(const expr_t &expr,
+            const tile_coord_t &tile_coord, int dim_idx,
             const object_map_t<expr_t, post_op_tensor_t *> &args) const {
         object_map_t<object_t, object_t> sub_map;
         for (auto &kv : args) {
             auto &t = *kv.second;
-            auto te = t.load_expr(tile, dim_idx);
+            auto te = t.load_expr(tile_coord, dim_idx);
             sub_map.insert({t.op_var(), te});
         }
-        post_op_bcast_mutator_t bcast_mutator(into<int>(tile.elems()), sub_map);
+        post_op_bcast_mutator_t bcast_mutator(
+                into<int>(tile_coord.elems()), sub_map);
         return bcast_mutator.mutate(expr);
     }
 
@@ -705,10 +704,10 @@ class epilogue_builder_t {
 public:
     epilogue_builder_t(ir_context_t &ir_ctx, const exec_config_t &exec_cfg,
             const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
-            const post_op_context_t &post_op_ctx, const tensor_t &thr_tile,
-            const view_t &c_mem_view, const layout_t &c_reg_layout,
-            const expr_t &c_mem_buf, const expr_t &c_reg_buf,
-            int preload_max_size, int post_op_blk)
+            const post_op_context_t &post_op_ctx,
+            const tile_coord_t &thr_tile_coord, const view_t &c_mem_view,
+            const layout_t &c_reg_layout, const expr_t &c_mem_buf,
+            const expr_t &c_reg_buf, int preload_max_size, int post_op_blk)
         : ir_ctx_(ir_ctx)
         , gemm_schedule_(gemm_schedule)
         , post_op_ctx_(post_op_ctx)
@@ -733,7 +732,7 @@ public:
 
         for (auto &po_tensor_info : post_op_ctx_.post_op_tensor_infos()) {
             post_op_tensor_t po_tensor(ir_ctx_, po_tensor_info);
-            po_tensor = po_tensor.create_sub_tensor(thr_tile);
+            po_tensor = po_tensor.create_sub_tensor(thr_tile_coord);
             if (po_tensor_info.buf().is_empty()
                     && !po_tensor_info.needs_compute()) {
                 // C tensor.
@@ -835,7 +834,7 @@ private:
         auto tmp_type = (post_op_builders_.empty() ? c_mem_view_.type()
                                                    : type_t::f32());
         int tmp_buf_elems = tile_size_ / tmp_type.size();
-        tensor_t base_tile;
+        tile_t base_tile;
         while (tmp_buf_elems) {
             base_tile = c_mem_view_.split_into_max_tile(
                     tmp_buf_elems, /*is_dense=*/false);
@@ -889,12 +888,11 @@ private:
         }
 
         // Iterate by tiles and apply post-ops.
-        c_mem_view_.for_each_tile(
-                base_tile, [&](const std::vector<dim_t> &start) {
-                    tensor_t tile(base_tile.dims(), start);
-                    auto c_tile_layout = c_reg_layout.map(tile);
-                    build_tile(tile, c_tile_layout, c_reg_buf);
-                });
+        c_mem_view_.for_each_tile(base_tile, [&](const icoord_t &start) {
+            tile_coord_t tile_coord(base_tile, start);
+            auto c_tile_layout = c_reg_layout.map(tile_coord);
+            build_tile(tile_coord, c_tile_layout, c_reg_buf);
+        });
 
         // TODO: Generalize the condition. Iterate through output tensor masks
         // and ensure C is distributed accordingly in thread group.
@@ -939,9 +937,9 @@ private:
     }
 
     // Builds statements for a tile iterating through all post-ops.
-    void build_tile(const tensor_t &tile, const layout_t &c_tile_layout,
-            const expr_t &c_reg_buf) {
-        auto c_mem_tile_view = c_mem_view_.create_sub_view(tile);
+    void build_tile(const tile_coord_t &tile_coord,
+            const layout_t &c_tile_layout, const expr_t &c_reg_buf) {
+        auto c_mem_tile_view = c_mem_view_.create_sub_view(tile_coord);
         auto tmp_reg_buf = make_c_tmp_buffer();
 
         type_t post_op_type
@@ -1032,7 +1030,7 @@ private:
         std::vector<post_op_tensor_t> sub_po_tensors;
         sub_po_tensors.reserve(post_op_tensors_.size());
         for (auto &t : post_op_tensors_)
-            sub_po_tensors.push_back(t.create_sub_tensor(tile));
+            sub_po_tensors.push_back(t.create_sub_tensor(tile_coord));
 
         // Set C tensor layout and buffer to use for post-ops.
         if (c_f32_stage_idx != -1) {
@@ -1051,7 +1049,7 @@ private:
                     int k_beg = j;
                     int k_end = std::min(npost_ops, j + post_op_blk_);
                     auto blk_stmt = build_post_op_block_stmt(
-                            tile, sub_po_tensors, k_beg, k_end);
+                            sub_po_tensors, k_beg, k_end);
                     tile_stmt = tile_stmt.append(blk_stmt);
                 }
             }
@@ -1074,7 +1072,7 @@ private:
         c_reg_buf_size_ = std::max(c_reg_buf_size_, c_off_bytes + buf_sizes[0]);
     }
 
-    stmt_t build_post_op_block_stmt(const tensor_t &tile,
+    stmt_t build_post_op_block_stmt(
             std::vector<post_op_tensor_t> &sub_po_tensors, int po_beg,
             int po_end) const {
         // Collect post-op inputs/outputs.
@@ -1107,8 +1105,7 @@ private:
 
         for (int i = po_beg; i < po_end; i++) {
             auto &po_builder = post_op_builders_[i];
-            auto po_stmt
-                    = po_builder.build_tile_stmt(tile, args, zero_pad_builder_);
+            auto po_stmt = po_builder.build_tile_stmt(args, zero_pad_builder_);
             stmt = stmt.append(po_stmt);
         }
 
@@ -1160,9 +1157,9 @@ private:
 
 stmt_t create_epilogue_stmt(const exec_config_t &exec_cfg, ir_context_t &ir_ctx,
         const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
-        const post_op_context_t &post_op_ctx, const tensor_t &thr_tile,
-        const layout_t &c_reg_layout, const expr_t &c_mem_buf,
-        const expr_t &c_reg_buf, int &c_reg_buf_size) {
+        const post_op_context_t &post_op_ctx,
+        const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,
+        const expr_t &c_mem_buf, const expr_t &c_reg_buf, int &c_reg_buf_size) {
     // Max size of post-op tensor buffers to preload and reuse for all tiles.
     int preload_max_size = 512;
     // Block size to apply post-ops within tile. A post-op may have associated
@@ -1170,9 +1167,10 @@ stmt_t create_epilogue_stmt(const exec_config_t &exec_cfg, ir_context_t &ir_ctx,
     // across multiple post-ops.
     int post_op_blk = 8;
 
-    const auto c_mem_view = post_op_ctx.cp_view().create_sub_view(thr_tile);
+    const auto c_mem_view
+            = post_op_ctx.cp_view().create_sub_view(thr_tile_coord);
     epilogue_builder_t builder(ir_ctx, exec_cfg, gemm_schedule, force_c_reorder,
-            post_op_ctx, thr_tile, c_mem_view, c_reg_layout, c_mem_buf,
+            post_op_ctx, thr_tile_coord, c_mem_view, c_reg_layout, c_mem_buf,
             c_reg_buf, preload_max_size, post_op_blk);
     c_reg_buf_size = utils::rnd_up(builder.c_reg_buf_size(), ir_ctx.grf_size());
     return builder.stmt();

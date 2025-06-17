@@ -158,12 +158,12 @@ public:
         return std::to_string(simd_) + " (dim_idx: " + di_str + ")";
     }
 
-    const tensor_t &get_simd_tile() const { return simd_tile_; }
+    const tile_t &get_simd_tile() const { return simd_tile_; }
 
-    std::vector<dim_t> c_to_comp(const std::vector<dim_t> &c) const {
+    icoord_t c_to_comp(const icoord_t &c) const {
         // c:    ngcdhw or ngc[osp]
         // comp: goidhw
-        std::vector<dim_t> ret(6);
+        icoord_t ret(6);
         ret[comp_g_idx_] = c[c_g_idx_];
         ret[comp_c_idx_] = c[c_c_idx_];
         return ret;
@@ -191,7 +191,7 @@ public:
 
     explicit operator bool() const { return bool(split_); }
 
-    bool in_subtile(const std::vector<dim_t> &start, int subtile_idx) const {
+    bool in_subtile(const icoord_t &start, int subtile_idx) const {
         return split_.in_subtile(start, subtile_idx);
     }
 
@@ -247,8 +247,7 @@ private:
 
         explicit operator bool() const { return factor_ != 0; }
 
-        bool in_subtile(
-                const std::vector<dim_t> &start, int subtile_idx) const {
+        bool in_subtile(const icoord_t &start, int subtile_idx) const {
             if (!*this) return false;
             if (factor_ == 1) return true;
             dim_t beg = subtile_idx * subtile_dim_;
@@ -263,10 +262,10 @@ private:
         dim_t subtile_dim_ = -1;
     };
 
-    tensor_t get_simd_tile(const layout_t &c_layout) const {
-        std::vector<dim_t> tile_dims(c_layout.ndims(), 1);
-        tile_dims[simd_dim_idx_] = simd_;
-        return tensor_t(tile_dims);
+    tile_t get_simd_tile(const layout_t &c_layout) const {
+        tile_t tile(c_layout.ndims());
+        tile[simd_dim_idx_] = simd_;
+        return tile;
     }
 
     int comp_g_idx_ = -1;
@@ -280,7 +279,7 @@ private:
     std::vector<split_t> a_splits_;
     std::vector<split_t> b_splits_;
     split_t split_ = split_t::no_split();
-    tensor_t simd_tile_;
+    tile_t simd_tile_;
 };
 
 class zp_wei_init_plan_t : public base_plan_t {
@@ -336,17 +335,16 @@ public:
         bool small_ic = is_small(data_type_, ic);
         dim_idx_t kw_idx = 5; // TODO: support non-forward kw!
 
-        std::vector<dim_t> tile_dim(b_layout_.ndims(), 1);
+        tile_t tile(b_layout_.ndims());
         for (auto &b : b_layout_.blocks()) {
             if (b.dim_idx == kw_idx) break;
-            tile_dim[b.dim_idx] *= b.block;
+            tile[b.dim_idx] *= b.block;
         }
-        tensor_t tile(tile_dim);
         gpu_assert(tile.elems() % sdepth_size == 0);
         wei_load = simd_bcast(load_t::make(
                 dpas_type(data_type_), (size > 1) ? dpas_buf : wei_buf, 0));
-        b_layout_.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            auto off = b_layout_.offset_in_bytes(start);
+        b_layout_.for_each_tile(tile, [&](const icoord_t &start) {
+            auto off = b_layout_.offset_in_bytes<int>(start);
             auto mask = (small_ic) ? kw_var < simd_bcast(kw - start[kw_idx])
                                    : expr_t();
             for (int i = 0; i < tile.elems(); i += sdepth_size)
@@ -501,28 +499,24 @@ public:
         auto load_wei = simd_bcast(load_t::make(
                 type_t::s16(), (src_buf.is_empty()) ? comp_buf : src_buf, 0));
 
-        comp_layout_.for_each_tile(
-                get_simd_tile(), [&](const std::vector<dim_t> &start) {
-                    if (!in_subtile(start, subtile_idx)) return;
-                    auto comp = comp_buf[get_comp_off(start)];
-                    for (int ck = 0; ck < wei_layout_.dim(ck_idx_);
-                            ck += ck_blk) {
-                        auto zp = zp_buf[get_zp_off(start, ck)];
-                        auto wei = wei_buf[get_wei_off(start, ck)];
-                        stmt = stmt.append(
-                                create_tile_stmt(zp, wei, comp, buf_mgr));
-                    }
-                    stmt = stmt.append(create_zp_common_mul_stmt(zp_buf, comp));
+        comp_layout_.for_each_tile(get_simd_tile(), [&](const icoord_t &start) {
+            if (!in_subtile(start, subtile_idx)) return;
+            auto comp = comp_buf[get_comp_off(start)];
+            for (int ck = 0; ck < wei_layout_.dim(ck_idx_); ck += ck_blk) {
+                auto zp = zp_buf[get_zp_off(start, ck)];
+                auto wei = wei_buf[get_wei_off(start, ck)];
+                stmt = stmt.append(create_tile_stmt(zp, wei, comp, buf_mgr));
+            }
+            stmt = stmt.append(create_zp_common_mul_stmt(zp_buf, comp));
 
-                    // TODO: this implies that zp_wei and zp_src are scalar
-                    auto mask = kw_var < simd_bcast(kw - start[kw_idx]);
-                    mask = (!src_buf.is_empty())
-                            ? (small_ic) ? mask : simd_bcast(expr_t(bool(true)))
-                            : simd_bcast(expr_t(bool(false)));
-                    comp_buf_fill = comp_buf_fill.append(
-                            store_t::make(comp, 0, load_mul * load_wei,
-                                    store_t::default_stride, mask, true));
-                });
+            // TODO: this implies that zp_wei and zp_src are scalar
+            auto mask = kw_var < simd_bcast(kw - start[kw_idx]);
+            mask = (!src_buf.is_empty())
+                    ? (small_ic) ? mask : simd_bcast(expr_t(bool(true)))
+                    : simd_bcast(expr_t(bool(false)));
+            comp_buf_fill = comp_buf_fill.append(store_t::make(comp, 0,
+                    load_mul * load_wei, store_t::default_stride, mask, true));
+        });
         auto zp_1x4 = buf_mgr.get("zp_1x4");
         if (!zp_1x4.is_empty()) {
             if (zp_layout_.type().is_s8()) {
@@ -635,14 +629,14 @@ private:
         return is_wei_Xy_s16(cn_idx_, vec_dim_idx, simd);
     }
 
-    tensor_t get_simd_tile() const {
-        std::vector<dim_t> tile_dims(ndims(), 1);
-        tile_dims[simd_dim_idx_] = simd_;
-        return tensor_t(tile_dims);
+    tile_t get_simd_tile() const {
+        tile_t tile(ndims());
+        tile[simd_dim_idx_] = simd_;
+        return tile;
     }
 
-    int get_comp_off(const std::vector<dim_t> &start) const {
-        int off = (int)comp_layout_.offset_in_bytes(start);
+    int get_comp_off(const icoord_t &start) const {
+        int off = comp_layout_.offset_in_bytes<int>(start);
         return off % comp_reg_buf_size();
     }
 
@@ -652,22 +646,22 @@ private:
         return ret;
     }
 
-    int get_wei_off(const std::vector<dim_t> &_start, int ck) const {
+    int get_wei_off(const icoord_t &_start, int ck) const {
         auto start = _start;
         start[ck_idx_] = ck;
-        int off = (int)wei_layout_.offset_in_bytes(start);
+        int off = wei_layout_.offset_in_bytes<int>(start);
         return off % wei_reg_buf_size();
     }
 
-    int get_zp_off(const std::vector<dim_t> &_start, int ck) const {
-        std::vector<dim_t> start(2);
+    int get_zp_off(const icoord_t &_start, int ck) const {
+        icoord_t start(2);
         start[0] = _start[g_idx_];
         start[1] = is_zp_common() ? 0 : ck;
-        int off = (int)zp_layout_.offset_in_bytes(start);
+        int off = zp_layout_.offset_in_bytes<int>(start);
         return off;
     }
 
-    bool in_subtile(const std::vector<dim_t> &start, int subtile_idx) const {
+    bool in_subtile(const icoord_t &start, int subtile_idx) const {
         if (split_factor_ == 1) return true;
 
         auto &b = comp_layout_.blocks().back();
@@ -813,8 +807,7 @@ struct texpr_t {
         return ret;
     }
 
-    expr_t to_expr(const std::vector<expr_t> &vstart,
-            const std::vector<dim_t> &vstart_inc,
+    expr_t to_expr(const coord_t &vstart, const icoord_t &vstart_inc,
             const std::vector<expr_t> &vvars, int simd_vidx) const {
         int ndims = (int)vstart.size();
         gpu_assert((int)vstart_inc.size() == ndims);
@@ -977,7 +970,7 @@ struct texpr_t {
 class zp_mask_desc_t {
 public:
     zp_mask_desc_t(const expr_t &mask, const std::vector<expr_t> &vvars,
-            const std::vector<expr_t> &vstart) {
+            const coord_t &vstart) {
         vinfo_t vinfo(vvars, vstart);
         if (is_x_op_y(mask, vinfo, op_, lhs_, rhs_)) return;
         gpu_error_not_expected() << mask;
@@ -986,10 +979,8 @@ public:
     const texpr_t &lhs() const { return lhs_; }
     const texpr_t &rhs() const { return rhs_; }
 
-    expr_t normalize(const std::vector<expr_t> &vvars,
-            const std::vector<expr_t> &vstart,
-            const std::vector<dim_t> &vstart_inc, int simd,
-            int simd_vidx) const {
+    expr_t normalize(const std::vector<expr_t> &vvars, const coord_t &vstart,
+            const icoord_t &vstart_inc, int simd, int simd_vidx) const {
         auto e_lhs = lhs_.to_expr(vstart, vstart_inc, vvars, simd_vidx);
         auto e_rhs = rhs_.to_expr(vstart, vstart_inc, vvars, simd_vidx);
         e_lhs = shuffle_t::make_broadcast(e_lhs, simd);
@@ -1016,8 +1007,7 @@ public:
 
 private:
     struct vinfo_t {
-        vinfo_t(const std::vector<expr_t> &vvars,
-                const std::vector<expr_t> &vstart)
+        vinfo_t(const std::vector<expr_t> &vvars, const coord_t &vstart)
             : vvars(vvars), vstart(vstart) {}
 
         int vidx(const expr_t &var) const {
@@ -1028,7 +1018,7 @@ private:
         }
 
         const std::vector<expr_t> &vvars;
-        const std::vector<expr_t> &vstart;
+        const coord_t &vstart;
     };
 
     static bool is_x_op_y(const expr_t &e, const vinfo_t &vinfo, op_kind_t &op,
@@ -1090,9 +1080,10 @@ public:
             const gemm_schedule_t &gemm_schedule, const layout_t &src_layout)
         : base_plan_t(cfg.hw()) {
         auto &a_view = gemm_schedule.a_view();
-        auto a_thr_tile = gemm_schedule.a_thr_tile(/*is_relative=*/false);
+        auto a_thr_tile_coord
+                = gemm_schedule.a_thr_tile_coord(/*is_relative=*/false);
         vvars_ = a_view.vvars();
-        vstart_ = a_thr_tile.start();
+        vstart_ = a_thr_tile_coord.coord;
         init_mask_descs(cfg, a_view);
         init_mask_layout(src_layout, a_view.vvars());
     }
@@ -1116,24 +1107,22 @@ public:
         if (subtile_idx > 0) return stmt_t();
 
         stmt_t stmt;
-        mask_layout_.for_each_tile(
-                get_simd_tile(), [&](const std::vector<dim_t> &start) {
-                    auto mask = mask_buf[get_mask_off(start)];
-                    std::vector<expr_t> e_masks;
-                    for (auto &m : mask_descs_) {
-                        auto e_m = m.normalize(
-                                vvars_, vstart_, start, simd_, simd_dim_idx_);
-                        e_masks.push_back(std::move(e_m));
-                    }
-                    auto cond = e_masks[0];
-                    for (int i = 1; i < (int)e_masks.size(); i++)
-                        cond &= e_masks[i];
-                    auto s32_type = type_t::s32().with_elems(simd_);
-                    auto mask_s32 = -cast(cond, s32_type);
-                    auto store
-                            = store_t::make(mask, 0, cast(mask_s32, s32_type));
-                    stmt = stmt.append(store);
-                });
+        mask_layout_.for_each_tile(get_simd_tile(), [&](const icoord_t &start) {
+            auto mask = mask_buf[get_mask_off(start)];
+            std::vector<expr_t> e_masks;
+            for (auto &m : mask_descs_) {
+                auto e_m = m.normalize(
+                        vvars_, vstart_, start, simd_, simd_dim_idx_);
+                e_masks.push_back(std::move(e_m));
+            }
+            auto cond = e_masks[0];
+            for (int i = 1; i < (int)e_masks.size(); i++)
+                cond &= e_masks[i];
+            auto s32_type = type_t::s32().with_elems(simd_);
+            auto mask_s32 = -cast(cond, s32_type);
+            auto store = store_t::make(mask, 0, cast(mask_s32, s32_type));
+            stmt = stmt.append(store);
+        });
         return stmt;
     }
 
@@ -1217,15 +1206,15 @@ private:
         return true;
     }
 
-    int get_mask_off(const std::vector<dim_t> &start) const {
-        int off = (int)mask_layout_.offset_in_bytes(start);
+    int get_mask_off(const icoord_t &start) const {
+        int off = mask_layout_.offset_in_bytes<int>(start);
         return off;
     }
 
-    tensor_t get_simd_tile() const {
-        std::vector<dim_t> tile_dims(mask_layout_.ndims(), 1);
-        tile_dims[simd_dim_idx_] = simd_;
-        return tensor_t(tile_dims);
+    tile_t get_simd_tile() const {
+        tile_t tile(mask_layout_.ndims());
+        tile[simd_dim_idx_] = simd_;
+        return tile;
     }
 
     void add_mask_desc(
@@ -1242,7 +1231,7 @@ private:
 
     std::vector<zp_mask_desc_t> mask_descs_;
     std::vector<expr_t> vvars_;
-    std::vector<expr_t> vstart_;
+    coord_t vstart_;
     layout_t mask_layout_;
     int simd_ = 1;
     int simd_dim_idx_ = 0;
@@ -1274,16 +1263,14 @@ public:
         const dim_t kw_dim = comp_layout_.dim(comp_kw_idx_);
         std::vector<int> comp_off;
         std::vector<int> mask_off;
-        c_layout_.for_each_tile(
-                sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
-                    if (!sd.in_subtile(start, subtile_idx)) return;
-                    for (int kw = 0; kw < kw_dim; kw++) {
-                        comp_off.emplace_back(get_comp_off(start, kw, sd));
-                        mask_off.emplace_back((mask_buf.is_empty())
-                                        ? -1
-                                        : get_mask_off(start, kw));
-                    }
-                });
+        c_layout_.for_each_tile(sd.get_simd_tile(), [&](const icoord_t &start) {
+            if (!sd.in_subtile(start, subtile_idx)) return;
+            for (int kw = 0; kw < kw_dim; kw++) {
+                comp_off.emplace_back(get_comp_off(start, kw, sd));
+                mask_off.emplace_back(
+                        (mask_buf.is_empty()) ? -1 : get_mask_off(start, kw));
+            }
+        });
 
         std::vector<std::pair<int, stmt_t>> precomp;
         for (int i = 0; i < int(comp_off.size()) / kw_dim; i++) {
@@ -1336,7 +1323,7 @@ public:
                     || ((sd.abc() == abc_kind_t::b) && (sd.factor() > 1));
             int p_iter = -1, t_iter = 0;
             c_layout_.for_each_tile(
-                    sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
+                    sd.get_simd_tile(), [&](const icoord_t &start) {
                         if (!sd.in_subtile(start, subtile_idx)) return;
                         if (precomp[p_iter + 1].first == t_iter++) {
                             p_iter++;
@@ -1355,7 +1342,7 @@ public:
                     });
         } else {
             c_layout_.for_each_tile(
-                    sd.get_simd_tile(), [&](const std::vector<dim_t> &start) {
+                    sd.get_simd_tile(), [&](const icoord_t &start) {
                         if (!sd.in_subtile(start, subtile_idx)) return;
                         for (int kw = 0; kw < kw_dim; kw++) {
                             auto comp = comp_buf[get_comp_off(start, kw, sd)];
@@ -1408,31 +1395,31 @@ private:
         return utils::rnd_up(ret, grf_size());
     }
 
-    int get_comp_off(const std::vector<dim_t> &_start, int kw,
+    int get_comp_off(const icoord_t &_start, int kw,
             const split_dispatcher_t &sd) const {
         auto start = sd.c_to_comp(_start);
         start[comp_kw_idx_] = kw;
-        int off = (int)comp_layout_.offset_in_bytes(start);
+        int off = comp_layout_.offset_in_bytes<int>(start);
         return off % comp_reg_buf_size(sd);
     }
 
-    int get_mask_off(const std::vector<dim_t> &_start, int kw) const {
+    int get_mask_off(const icoord_t &_start, int kw) const {
         auto start = c_to_mask(_start);
         int mask_kw_idx = mask_layout_.ndims() - 1;
         start[mask_kw_idx] = kw;
-        int off = (int)mask_layout_.offset_in_bytes(start);
+        int off = mask_layout_.offset_in_bytes<int>(start);
         return off;
     }
 
-    int get_c_off(const std::vector<dim_t> &start, int kw) const {
-        int off = (int)c_layout_.offset_in_bytes(start);
+    int get_c_off(const icoord_t &start, int kw) const {
+        int off = c_layout_.offset_in_bytes<int>(start);
         return off;
     }
 
-    std::vector<dim_t> c_to_mask(const std::vector<dim_t> &c) const {
+    icoord_t c_to_mask(const icoord_t &c) const {
         // c:    ngcdhw or ngc[osp]
         // mask: ngcdhw[kd][kh][kw] or ngc[osp][kd][kh][kw]
-        std::vector<dim_t> ret(mask_layout_.ndims());
+        icoord_t ret(mask_layout_.ndims());
         for (int i = 0; i < (int)c.size(); i++)
             ret[i] = c[i];
         return ret;

@@ -109,7 +109,7 @@ type_t to_send_type(const send_1d_desc_t &desc) {
     return type_t::oword(desc.type_size / 16);
 }
 
-int get_reg_off(const send_1d_plan_t &plan, const pvar_coord_t<dim_t> &coord) {
+int get_reg_off(const send_1d_plan_t &plan, const coord_t &coord) {
     return into<int>(plan.reg_layout.offset_in_bytes(coord));
 }
 
@@ -381,7 +381,7 @@ private:
         const auto &b_buf = buf_info_.reg_buf("b");
         const auto &c_buf = buf_info_.reg_buf("c");
 
-        pvar_tile_t sizes = a_layout.int_dim_sizes();
+        tile_t sizes = a_layout.int_dim_sizes();
         auto b_sizes = b_layout.int_dim_sizes();
         for (auto &d : b_sizes) {
             if (sizes.has(d)) gpu_assert(sizes[d] == b_sizes[d]);
@@ -421,18 +421,17 @@ private:
             default: gpu_error_not_expected();
         }
         stmt_t call_stmt;
-        for_each(sizes, fma.inst_tile, dim_order,
-                [&](const pvar_coord_t<dim_t> &coord) {
-                    dim_t a_off = a_layout.offset_in_bytes(coord);
-                    dim_t b_off = b_layout.offset_in_bytes(coord);
-                    dim_t c_off = c_layout.offset_in_bytes(coord);
-                    auto dst = c_buf[c_off];
-                    auto src1 = a_buf[a_off];
-                    auto src2 = b_buf[b_off];
-                    if (fma.fma == fma_kind_t::dpas) std::swap(src1, src2);
-                    call_stmt = call_stmt.append(fma_func.call(
-                            {dst, dst, std::move(src1), std::move(src2)}));
-                });
+        for_each(sizes, fma.inst_tile, dim_order, [&](const coord_t &coord) {
+            dim_t a_off = a_layout.offset_in_bytes(coord);
+            dim_t b_off = b_layout.offset_in_bytes(coord);
+            dim_t c_off = c_layout.offset_in_bytes(coord);
+            auto dst = c_buf[c_off];
+            auto src1 = a_buf[a_off];
+            auto src2 = b_buf[b_off];
+            if (fma.fma == fma_kind_t::dpas) std::swap(src1, src2);
+            call_stmt = call_stmt.append(fma_func.call(
+                    {dst, dst, std::move(src1), std::move(src2)}));
+        });
 
         if (fma.fma == fma_kind_t::dpas) {
             call_stmt
@@ -467,8 +466,8 @@ private:
 class post_op_builder_t : public ir_builder_t {
 public:
     post_op_builder_t(ir_builder_t &parent, const kernel_desc_t &desc,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
-            alg_kind_t binary_alg, const gpu_post_ops_t::entry_t *post_op_entry,
+            const coord_t &coord, const tile_t &tile, alg_kind_t binary_alg,
+            const gpu_post_ops_t::entry_t *post_op_entry,
             const layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
             const expr_t &rhs_mem_buf, const type_t &_rhs_type,
             uint16_t rhs_mask, float rhs_scale, int rhs_zero_point)
@@ -493,8 +492,8 @@ public:
     }
 
 private:
-    view_t rhs_mem_view(const pvar_coord_t<expr_t> &_coord,
-            const pvar_tile_t &_tile, const type_t &type, uint16_t mask) {
+    view_t rhs_mem_view(const coord_t &_coord, const tile_t &_tile,
+            const type_t &type, uint16_t mask) {
         dim_mapper_manager_t mger(desc_.prop, desc_.spec.reqs());
         auto &c_mapper = mger.mapper(tensor_kind_t::c);
         auto kind = pick_c(desc_.prop, tensor_kind_t::src, tensor_kind_t::wei,
@@ -556,25 +555,23 @@ private:
             }
         }
         elems = (elems < 8 ? 1 : elems);
-        pvar_tile_t tile;
+        tile_t tile;
         tile[lhs0.dim] = elems;
-        for_each(lhs.int_dim_sizes(), tile,
-                [&](const pvar_coord_t<dim_t> &coord) {
-                    auto lhs_off = lhs.offset_in_bytes(coord);
-                    auto rhs_off = rhs.offset_in_bytes(coord);
-                    auto e_l = load_t::make(
-                            type_t::f32().with_elems(elems), lhs_buf, lhs_off);
-                    auto e_r = load_t::make(
-                            type_t::f32().with_elems(is_bcast ? 1 : elems),
-                            rhs_buf, rhs_off);
-                    if (is_bcast) e_r = shuffle_t::make_broadcast(e_r, elems);
-                    auto e_op = binary_op_t::make(
-                            alg_kind_to_op_kind(alg), e_l, e_r);
-                    if (e_op.type().is_bool()) {
-                        e_op = cast(e_op, lhs.type().with_elems(elems));
-                    }
-                    emit(store_t::make(lhs_buf, lhs_off, e_op));
-                });
+        for_each(lhs.int_dim_sizes(), tile, [&](const coord_t &coord) {
+            auto lhs_off = lhs.offset_in_bytes(coord);
+            auto rhs_off = rhs.offset_in_bytes(coord);
+            auto e_l = load_t::make(
+                    type_t::f32().with_elems(elems), lhs_buf, lhs_off);
+            auto e_r = load_t::make(
+                    type_t::f32().with_elems(is_bcast ? 1 : elems), rhs_buf,
+                    rhs_off);
+            if (is_bcast) e_r = shuffle_t::make_broadcast(e_r, elems);
+            auto e_op = binary_op_t::make(alg_kind_to_op_kind(alg), e_l, e_r);
+            if (e_op.type().is_bool()) {
+                e_op = cast(e_op, lhs.type().with_elems(elems));
+            }
+            emit(store_t::make(lhs_buf, lhs_off, e_op));
+        });
     }
 
     const kernel_desc_t &desc_;
@@ -585,8 +582,7 @@ public:
     epilogue_tile_builder_t(ir_builder_t &parent, const buffer_info_t &buf_info,
             const kernel_desc_t &desc, const layout_t &c_layout,
             const expr_t &c_mem_buf, const expr_t &c_reg_buf,
-            const pvar_coord_t<expr_t> &c_coord,
-            const pvar_coord_t<dim_t> &coord,
+            const coord_t &c_coord, const coord_t &coord,
             const epilogue_store_plan_t &store_plan)
         : ir_builder_t(parent, loop_nest_t())
         , buf_info_(buf_info)
@@ -612,9 +608,8 @@ private:
         return ret;
     }
 
-    void build_post_op(const pvar_coord_t<expr_t> &coord,
-            const pvar_tile_t &tile, alg_kind_t binary_alg,
-            const gpu_post_ops_t::entry_t *post_op_entry,
+    void build_post_op(const coord_t &coord, const tile_t &tile,
+            alg_kind_t binary_alg, const gpu_post_ops_t::entry_t *post_op_entry,
             const layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
             const expr_t &rhs_mem_buf = expr_t(),
             const type_t &rhs_type = type_t::undef(), uint16_t rhs_mask = 0,
@@ -626,9 +621,8 @@ private:
         emit(builder.get_stmt());
     }
 
-    expr_t build_post_ops(const layout_t &layout,
-            const pvar_coord_t<expr_t> &coord, const expr_t &_buf,
-            layout_t &out_layout) {
+    expr_t build_post_ops(const layout_t &layout, const coord_t &coord,
+            const expr_t &_buf, layout_t &out_layout) {
         if (desc_.post_ops.len() == 0 && desc_.scales.has_default_values()
                 && !desc_.with_bias_fwd()) {
             out_layout = layout;
@@ -744,7 +738,7 @@ private:
         const auto &c_mem_buf = buf_info_.mem_buf("c");
         const auto &c_reg_buf = buf_info_.reg_buf("c");
         for_each(c_layout.int_dim_sizes(), store_plan.tile,
-                [&](const pvar_coord_t<dim_t> &coord) {
+                [&](const coord_t &coord) {
                     epilogue_tile_builder_t builder(*this, buf_info_, desc_,
                             c_layout, c_mem_buf, c_reg_buf, plan_.c_coord,
                             coord, store_plan);

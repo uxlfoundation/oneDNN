@@ -745,24 +745,6 @@ expr_t cast(const expr_t &e, const type_t &type, bool saturate) {
     return const_fold(cast_t::make(type, e, saturate));
 }
 
-bool is_zero(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(0, e.type()));
-}
-
-bool is_one(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(1, e.type()));
-}
-
-bool is_minus_one(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(-1, e.type()));
-}
-
 bool is_const_broadcast(const expr_t &e) {
     auto *shuffle = e.as_ptr<shuffle_t>();
     if (!shuffle) return false;

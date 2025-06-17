@@ -96,9 +96,9 @@ struct block_2d_params_t {
 };
 
 block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
-        const tensor_kind_t &tensor_kind, int type_size,
-        const pvar_tile_t &tg_tile, const pvar_tile_t &iter_tile,
-        const pvar_map_t<stride_t> &strides, const prb_reqs_t &reqs) {
+        const tensor_kind_t &tensor_kind, int type_size, const tile_t &tg_tile,
+        const tile_t &iter_tile, const pvar_map_t<stride_t> &strides,
+        const prb_reqs_t &reqs) {
     bool is_fwd = (prop == prop_kind::forward);
     bool is_bwd_d = (prop == prop_kind::backward_data);
     bool is_bwd_w = (prop == prop_kind::backward_weights);

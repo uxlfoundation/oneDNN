@@ -328,12 +328,12 @@ private:
             dims[b.dim_idx] *= b.block;
             stride = b.block * b.stride;
         }
-        tensor_t tile(dims);
+        tile_t tile(dims);
         dense_block_size_ = tile.elems() * type().size() / type().packing();
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
-        view_.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            auto off = view_.offset_in_bytes(expr_cast<expr_t>(start));
+        view_.for_each_tile(tile, [&](const icoord_t &start) {
+            auto off = view_.offset_in_bytes(start);
             off = simplify(off, cset);
 
             const int base_alignment = 128;
@@ -508,7 +508,7 @@ void access_builder_t::build() {
 }
 
 static bool stride_dimension_ok(const view_t &view, int stride_tidx,
-        dim_idx_t stride_vidx, const std::vector<expr_t> &vstart) {
+        dim_idx_t stride_vidx, const coord_t &vstart) {
     auto &tdim = view.tdim(stride_tidx);
     auto e = tdim.expr();
     for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
@@ -658,7 +658,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     std::vector<dim_t> dims(vlayout.ndims(), 1);
     dims[b0.dim_idx] = count * width;
     dims[b1.dim_idx] = height;
-    tensor_t tile(dims);
+    tile_t tile(dims);
 
     reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type, 0,
             std::vector<dim_t>(vlayout.ndims(), 1));
@@ -712,7 +712,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     stmt_ = stmt_t();
     bool ok = true;
     auto vstart0 = mem_view_.vstart();
-    vlayout.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
+    vlayout.for_each_tile(tile, [&](const icoord_t &start) {
         if (!ok) return;
 
         int access_size = send.access_size();
@@ -720,8 +720,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
         // Check mask requirements.
         expr_t mask;
-        if (!check_2d_mask(tensor_t(tile.dims(), start), use_virtual_surface,
-                    w_dim_idx, h_dim_idx, mask)) {
+        if (!check_2d_mask(tile, start, use_virtual_surface, w_dim_idx,
+                    h_dim_idx, mask)) {
             ok = false;
             return;
         }
@@ -849,10 +849,10 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
     return whp_ok();
 }
 
-bool access_builder_t::check_2d_mask(const tensor_t &tile,
+bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
         bool use_virtual_surface, dim_idx_t w_dim_idx, dim_idx_t h_dim_idx,
         expr_t &mask) const {
-    auto sub_view = mem_view_.create_sub_view(tile);
+    auto sub_view = mem_view_.create_sub_view(tile, coord);
     auto mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset());
     mask = mask_tensor.to_expr(1);
     if (!mask.is_empty()) return true;

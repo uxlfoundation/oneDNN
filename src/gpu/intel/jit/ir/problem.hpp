@@ -135,7 +135,7 @@ public:
     bool has(const pvar_t &key) const { return map_.count(key) != 0; }
     iterator_t begin() const { return iterator_t(map_.begin()); }
     iterator_t end() const { return iterator_t(map_.end()); }
-    int size() const { return (int)map_.size(); }
+    size_t size() const { return map_.size(); }
     bool is_empty() const { return map_.empty(); }
 
     void set(const pvar_t &key, const ValueT &value) { map_[key] = value; }
@@ -162,15 +162,42 @@ public:
         return map_[key];
     }
 
-    const ValueT &at(const pvar_t &key) const { return operator[](key); }
+    const ValueT &operator[](size_t idx) const {
+        gpu_assert(idx < size()) << "Index not found: " << idx;
+        auto it = map_.begin();
+        for (size_t i = 0; i < idx; i++)
+            it = std::next(it);
+        return it->second;
+    }
 
+    ValueT &operator[](size_t idx) {
+        gpu_assert(idx < size()) << "Index not found: " << idx;
+        auto it = map_.begin();
+        for (size_t i = 0; i < idx; i++)
+            it = std::next(it);
+        return it->second;
+    }
+
+    const ValueT &at(const pvar_t &key) const { return operator[](key); }
+    const ValueT &at(size_t idx) const { return operator[](idx); }
     ValueT get(
             const pvar_t &key, const ValueT &default_value = ValueT()) const {
         if (!has(key)) return default_value;
         return at(key);
     }
-
+    ValueT get(
+            const size_t &idx, const ValueT &default_value = ValueT()) const {
+        if (idx >= size()) return default_value;
+        return at(idx);
+    }
     void erase(const pvar_t &key) { map_.erase(key); }
+
+    std::vector<ValueT> values() const {
+        std::vector<ValueT> ret(size());
+        for (size_t i = 0; i < size(); i++)
+            ret[i] = at(i);
+        return ret;
+    }
 
     std::unordered_map<std::string, dim_t> to_string_map() const {
         std::unordered_map<std::string, dim_t> ret;
@@ -196,8 +223,11 @@ public:
         if (size() != other.size()) return false;
         auto it1 = map_.begin();
         auto it2 = other.map_.begin();
-        for (int i = 0; i < size(); i++) {
-            if (*it1 != *it2) return false;
+        for (size_t i = 0; i < size(); i++) {
+            if (it1->first != it2->first) return false;
+            if (!ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
+                        it1->second, it2->second))
+                return false;
             it1++;
             it2++;
         }
@@ -211,7 +241,9 @@ public:
     pvar_map_t drop_defaults() const {
         pvar_map_t ret;
         for (auto &d : *this) {
-            if (at(d) == ValueT()) continue;
+            if (ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
+                        at(d), ValueT()))
+                continue;
             ret[d] = at(d);
         }
         return ret;
@@ -267,9 +299,16 @@ private:
     std::map<pvar_t, ValueT> map_;
 };
 
-class pvar_tile_t : public pvar_map_t<dim_t> {
+class tile_t : public pvar_map_t<dim_t> {
 public:
     using pvar_map_t<dim_t>::pvar_map_t;
+
+    tile_t() = default;
+    tile_t(size_t size) : tile_t(std::vector<dim_t>(size, 1)) {}
+    tile_t(const std::vector<dim_t> &values) {
+        for (size_t i = 0; i < values.size(); i++)
+            set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
+    }
 
     dim_t elems() const {
         dim_t ret = 1;
@@ -286,57 +325,130 @@ public:
         value /= factor;
         return true;
     }
+
+    bool is_equal(const std::vector<dim_t> &dims) const {
+        if (size() != dims.size()) return false;
+        for (size_t i = 0; i < size(); i++) {
+            if (at(i) != dims[i]) return false;
+        }
+        return true;
+    }
+
+    bool is_divisible(const tile_t &other) const {
+        if (size() != other.size()) return false;
+        for (size_t i = 0; i < size(); i++) {
+            if (at(i) % other.at(i) != 0) return false;
+        }
+        return true;
+    }
+
 #if __cplusplus >= 202002L
-    bool operator==(const pvar_tile_t &other) const = default;
+    bool operator==(const tile_t &other) const = default;
 #endif
 
     std::string str() const override { return str_impl(/*multiline=*/false); }
 };
 
-template <typename ValueT>
-class pvar_coord_t : public pvar_map_t<ValueT> {
+class coord_t;
+
+// Coordinate with integer values.
+class icoord_t : public pvar_map_t<dim_t> {
 public:
-    using pvar_map_t<ValueT>::pvar_map_t;
+    using pvar_map_t<dim_t>::pvar_map_t;
+
+    icoord_t() = default;
+    icoord_t(size_t size) : icoord_t(std::vector<dim_t>(size, 0)) {}
+    icoord_t(const std::vector<dim_t> &values) {
+        for (size_t i = 0; i < values.size(); i++)
+            set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
+    }
+    icoord_t(const coord_t &coord);
 };
 
-template <typename T1, typename T2>
-struct coord_add_type_t {
-    using type = expr_t;
+// Coordinate with expression values.
+class coord_t : public pvar_map_t<expr_t> {
+public:
+    using pvar_map_t<expr_t>::pvar_map_t;
+
+    coord_t() = default;
+    coord_t(size_t size) : coord_t(std::vector<expr_t>(size, 0)) {}
+    coord_t(const std::vector<expr_t> &values) {
+        for (size_t i = 0; i < values.size(); i++)
+            set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
+    }
+    coord_t(const icoord_t &icoord) {
+        for (auto &d : icoord)
+            set(d, icoord[d]);
+    }
 };
 
-template <>
-struct coord_add_type_t<int, int> {
-    using type = int;
-};
+inline icoord_t::icoord_t(const coord_t &coord) {
+    for (auto &d : coord)
+        set(d, to_cpp<dim_t>(coord.at(d)));
+}
 
-template <>
-struct coord_add_type_t<dim_t, dim_t> {
-    using type = dim_t;
-};
-
-template <>
-struct coord_add_type_t<dim_t, int> {
-    using type = dim_t;
-};
-
-template <>
-struct coord_add_type_t<int, dim_t> {
-    using type = dim_t;
-};
-
-template <typename T1, typename T2,
-        typename T = typename coord_add_type_t<T1, T2>::type>
-inline pvar_coord_t<T> operator+(
-        const pvar_coord_t<T1> &a, const pvar_coord_t<T2> &b) {
-    pvar_coord_t<T> ret;
+inline coord_t operator+(const coord_t &a, const coord_t &b) {
+    coord_t ret;
     for (auto &d : a) {
-        ret[d] = a.get(d, T1(0)) + b.get(d, T2(0));
+        ret[d] = a.get(d, expr_t(0)) + b.get(d, expr_t(0));
     }
     for (auto &d : b) {
         if (ret.has(d)) continue;
-        ret[d] = a.get(d, T1(0)) + b.get(d, T2(0));
+        ret[d] = a.get(d, expr_t(0)) + b.get(d, expr_t(0));
     }
     return ret;
+}
+
+struct tile_coord_t {
+    tile_t tile;
+    coord_t coord;
+
+    tile_coord_t() = default;
+    tile_coord_t(const tile_t &tile, const coord_t &coord = {})
+        : tile(tile), coord(coord) {
+        if (coord.is_empty()) {
+            for (auto &d : tile)
+                this->coord[d] = expr_t(0);
+        }
+    }
+    bool is_empty() const { return tile.is_empty(); }
+    size_t size() const { return tile.size(); }
+    dim_t elems() const { return tile.elems(); }
+    bool has_zero_coord() const {
+        for (auto &d : coord) {
+            if (!is_zero(coord.at(d))) return false;
+        }
+        return true;
+    }
+
+    tile_coord_t sub(
+            const tile_t &sub_tile, const coord_t &sub_coord = {}) const {
+        gpu_assert(size() == sub_tile.size()) << "Incompatible sizes.";
+        gpu_assert(size() == sub_coord.size()) << "Incompatible sizes.";
+        coord_t new_coord = coord;
+        for (size_t i = 0; i < size(); i++)
+            new_coord[i] += sub_coord[i];
+        return tile_coord_t(sub_tile, new_coord);
+    }
+
+    tile_coord_t sub(const tile_coord_t &sub_tile_coord) const {
+        return sub(sub_tile_coord.tile, sub_tile_coord.coord);
+    }
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "tile: " << tile.str();
+        if (!has_zero_coord()) oss << " coord: " << coord.str();
+        return oss.str();
+    }
+
+    IR_DEFINE_DUMP()
+};
+
+template <typename F>
+void for_each(const tile_t &tile, const F &f) {
+    ir_utils::for_each(tile.values(),
+            [&](const std::vector<dim_t> &idxs) { f(icoord_t(idxs)); });
 }
 
 template <typename T>

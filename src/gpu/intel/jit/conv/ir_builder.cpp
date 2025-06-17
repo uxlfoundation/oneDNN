@@ -512,14 +512,16 @@ private:
                 cfg_.prb().c_md(), view_mapper);
         auto c_buf = buf_mgr_.find("c").buf;
         auto c_thr_reg_layout = plan_.fma.c_prb_layout;
-        auto thr_tile = gemm_schedule.c_thr_tile(/*is_relative=*/false);
+        auto thr_tile_coord
+                = gemm_schedule.c_thr_tile_coord(/*is_relative=*/false);
         expr_t reduce_cond;
         if (gemm_schedule.with_thread_group_k_slicing()) {
             slm_reduce_builder_t slm_reduce_builder(ir_ctx_,
-                    gemm_schedule.tg_grid(), c_buf, c_thr_reg_layout, thr_tile);
+                    gemm_schedule.tg_grid(), c_buf, c_thr_reg_layout,
+                    thr_tile_coord);
             c_store_stmt_ = c_store_stmt_.append(slm_reduce_builder.stmt());
             c_thr_reg_layout = slm_reduce_builder.reg_layout();
-            thr_tile = slm_reduce_builder.thr_tile();
+            thr_tile_coord = slm_reduce_builder.thr_tile_coord();
             reduce_cond = slm_reduce_builder.reduce_cond();
         }
 
@@ -529,7 +531,7 @@ private:
 
         int c_buf_size = 0;
         auto stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx_,
-                gemm_schedule, force_c_reorder, post_op_ctx, thr_tile,
+                gemm_schedule, force_c_reorder, post_op_ctx, thr_tile_coord,
                 c_thr_reg_layout, cp_buf_, c_buf, c_buf_size);
         (void)buf_mgr_.get("c", c_buf_size);
         if (!reduce_cond.is_empty()) stmt = if_t::make(reduce_cond, stmt);
@@ -561,13 +563,13 @@ private:
     void build_x_reduce_store() {
         auto &gemm_schedule = plan_.gemm_schedule;
         bool use_atomic = (gemm_schedule.with_kernel_grid_k_slicing()
-                || !plan_.slm.x_reduce_tile.is_empty());
+                || !plan_.slm.x_reduce_tile_coord.is_empty());
         auto x_reduce_buf = buf_mgr_.find("x_reduce", /*allow_empty=*/true).buf;
         if (x_reduce_buf.is_empty()) return;
         auto x_reduce_dummy_buf
                 = var_t::make(type_t::byte_ptr(), "x_reduce_dummy");
         auto x_reduce_view
-                = plan_.bia_view.create_sub_view(plan_.x_reduce_tile());
+                = plan_.bia_view.create_sub_view(plan_.x_reduce_tile_coord());
         auto r2g = make_access_builder(ir_ctx_, x_reduce_view, x_reduce_buf_,
                 x_reduce_dummy_buf,
                 use_atomic ? send_op_t::atomic_fadd : send_op_t::store,

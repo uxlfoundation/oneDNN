@@ -772,8 +772,7 @@ void reduce_plan_t::set_split(int factor) {
 stmt_t reduce_plan_t::create_stmt(
         const expr_t &src_buf, const expr_t &dst_buf) const {
     if (!*this) return stmt_t();
-    auto stmt
-            = create_reduce_stmt(src, dst, src_buf, dst_buf, tensor_t(), mask);
+    auto stmt = create_reduce_stmt(src, dst, src_buf, dst_buf, tile_t(), mask);
     return stmt;
 }
 
@@ -990,9 +989,9 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
     int k0 = bmnk_start_idx(bmnk_kind_t::k, subtile_idx);
     int k1 = bmnk_stop_idx(bmnk_kind_t::k, subtile_idx);
 
-    std::vector<dim_t> a_idx(3);
-    std::vector<dim_t> b_idx(3);
-    std::vector<dim_t> c_idx(3);
+    icoord_t a_idx(3);
+    icoord_t b_idx(3);
+    icoord_t c_idx(3);
 
     auto fma_funcs = create_fma_funcs(ir_ctx.hw());
 
@@ -1005,9 +1004,9 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
                 b_idx[2] = c_idx[2] = n;
                 for (int m = m0; m < m1; m += m_blk) {
                     a_idx[1] = c_idx[1] = m;
-                    dim_t a_off = a_layout.offset_in_bytes(a_idx);
-                    dim_t b_off = b_layout.offset_in_bytes(b_idx);
-                    dim_t c_off = c_layout.offset_in_bytes(c_idx);
+                    dim_t a_off = a_layout.offset_in_bytes<dim_t>(a_idx);
+                    dim_t b_off = b_layout.offset_in_bytes<dim_t>(b_idx);
+                    dim_t c_off = c_layout.offset_in_bytes<dim_t>(c_idx);
                     a_off = a_off % a_buf_size();
                     b_off = b_off % b_buf_size();
                     stmt = stmt.append(create_fma_block(fma_funcs, a_buf[a_off],
@@ -1596,17 +1595,17 @@ std::vector<int> get_reduce_dim_map(uint32_t mask, int &ndims) {
     return ret;
 }
 
-tensor_t to_reduce_tensor(const tensor_t &tile, uint32_t mask) {
-    int reduce_ndims = tile.ndims();
+tile_coord_t to_reduce_tensor(const tile_coord_t &tile_coord, uint32_t mask) {
+    int reduce_ndims = into<int>(tile_coord.size());
     auto map = get_reduce_dim_map(mask, reduce_ndims);
-    std::vector<dim_t> reduce_dims(reduce_ndims);
-    std::vector<expr_t> reduce_start(reduce_ndims);
-    for (dim_idx_t i = 0; i < tile.ndims(); i++) {
+    tile_t reduce_dims(reduce_ndims);
+    coord_t reduce_start(reduce_ndims);
+    for (dim_idx_t i = 0; i < tile_coord.size(); i++) {
         if (map[i] == -1) continue;
-        reduce_dims[map[i]] = tile(i);
-        reduce_start[map[i]] = tile.start(i);
+        reduce_dims[map[i]] = tile_coord.tile[i];
+        reduce_start[map[i]] = tile_coord.coord[i];
     }
-    return tensor_t(reduce_dims, reduce_start);
+    return tile_coord_t(reduce_dims, reduce_start);
 }
 
 layout_t to_reduce_layout(
@@ -1726,7 +1725,7 @@ private:
             auto &tstart = tdim_starts[tidx];
             if (tdim.is_identity()) {
                 textent = view_.vdims()[tdim.vidx(0)];
-                tstart = view_.vstart(tdim.vidx(0));
+                tstart = view_.vstart()[tdim.vidx(0)];
                 continue;
             }
             textent = 1;
@@ -1736,7 +1735,7 @@ private:
                 auto vdim = view_.vdims()[vidx];
                 textent += (dim_t)tdim.vstride(i) * (vdim - 1);
                 tstart = substitute(
-                        tstart, view_.vvar(vidx), view_.vstart(vidx));
+                        tstart, view_.vvar(vidx), view_.vstart()[vidx]);
             }
         }
 
@@ -1920,9 +1919,9 @@ private:
         plan_.reset();
         plan_.reserved_regs = cfg_.reserved_regs();
         PLAN_CHECK(init_x_g2r_direct_view(gemm_schedule_.a_tg_view(),
-                gemm_schedule_.a_thr_tile(), a_direct_view_));
+                gemm_schedule_.a_thr_tile_coord(), a_direct_view_));
         PLAN_CHECK(init_x_g2r_direct_view(gemm_schedule_.b_tg_view(),
-                gemm_schedule_.b_thr_tile(), b_direct_view_));
+                gemm_schedule_.b_thr_tile_coord(), b_direct_view_));
         PLAN_CHECK(init_slm_plan(plan_.slm));
         PLAN_CHECK(init_prefetch_plan(plan_.prefetch));
         PLAN_CHECK(init_x2r_plan(plan_.slm, plan_.x2r));
@@ -2014,8 +2013,9 @@ private:
     }
 
     plan_status_t init_x_g2r_direct_view(const view_t &tg_view,
-            const tensor_t &thr_tile, direct_view_t &direct_view) const {
-        auto gmem_view = tg_view.create_sub_view(thr_tile);
+            const tile_coord_t &thr_tile_coord,
+            direct_view_t &direct_view) const {
+        auto gmem_view = tg_view.create_sub_view(thr_tile_coord);
         direct_view = direct_view_t(gmem_view, allow_direct_view_);
         return plan_status_t::success;
     }
@@ -2066,17 +2066,17 @@ private:
             send_plan_t &g2s_store, reorder_plan_t &reorder,
             reduce_mask_t reduce_mask = reduce_mask_t(),
             reduce_plan_t *reduce = nullptr,
-            tensor_t *reduce_tile = nullptr) const {
+            tile_coord_t *reduce_tile_coord = nullptr) const {
         if (!use_slm(abc)) return plan_status_t::success;
         auto &tg = cfg_.thread_group_grid();
         slm_layout = get_slm_layout(
                 fma_ctx_, abc, gemm_schedule_.bmnk_mapper(), tg_view, tg);
         if (slm_layout == layout_t()) return plan_status_t::invalid_slm_layout;
-        auto thr_tile = slm_layout.split(tg, &grid);
-        auto abs_thr_tile = tg_view.vtile().create_sub_tensor(thr_tile);
-        auto slm_thr_layout = slm_layout.map(thr_tile);
+        auto thr_tile_coord = slm_layout.split(tg, &grid);
+        auto abs_thr_tile_coord = tg_view.vtile_coord().sub(thr_tile_coord);
+        auto slm_thr_layout = slm_layout.map(thr_tile_coord);
         auto slm_thr_view = view_t(slm_thr_layout);
-        auto thr_view = tg_view.create_sub_view(thr_tile);
+        auto thr_view = tg_view.create_sub_view(thr_tile_coord);
         auto load_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
                 send_address_t::a64, abc, thr_view);
         auto store_params = get_send_params(cfg_.exec_cfg(), send_op_t::store,
@@ -2088,7 +2088,8 @@ private:
         auto &dst = g2s_store.reg_layout();
         reorder = create_reorder_plan(cfg_.hw(), src, dst);
         if (reduce_mask && cfg_.allow_global_reduction()) {
-            *reduce_tile = to_reduce_tensor(abs_thr_tile, reduce_mask.mask);
+            *reduce_tile_coord
+                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout = to_reduce_layout(cfg_, src, reduce_mask.mask);
             *reduce = create_reduce_plan(
                     cfg_.hw(), src, reduce_layout, reduce_mask.mask);
@@ -2101,7 +2102,7 @@ private:
             g2s_store = send_plan_t();
             reorder = reorder_plan_t();
             if (reduce_mask) {
-                *reduce_tile = tensor_t();
+                *reduce_tile_coord = tile_coord_t();
                 *reduce = reduce_plan_t();
             }
         }
@@ -2112,11 +2113,11 @@ private:
         PLAN_CHECK(init_x_slm_plan(abc_kind_t::a, gemm_schedule_.a_tg_view(),
                 plan.a_layout, plan.a_grid, plan.a_g2s_load, plan.a_g2s_store,
                 plan.a_reorder, reduce_mask(cfg_, abc_kind_t::a),
-                &plan.x_reduce, &plan.x_reduce_tile));
+                &plan.x_reduce, &plan.x_reduce_tile_coord));
         PLAN_CHECK(init_x_slm_plan(abc_kind_t::b, gemm_schedule_.b_tg_view(),
                 plan.b_layout, plan.b_grid, plan.b_g2s_load, plan.b_g2s_store,
                 plan.b_reorder, reduce_mask(cfg_, abc_kind_t::b),
-                &plan.x_reduce, &plan.x_reduce_tile));
+                &plan.x_reduce, &plan.x_reduce_tile_coord));
         return plan_status_t::success;
     }
 
@@ -2141,19 +2142,20 @@ private:
     }
 
     plan_status_t init_x_s2r_plan(abc_kind_t abc, bool has_x_slm,
-            const layout_t &slm_layout, const tensor_t &thr_tile,
-            const tensor_t &abs_thr_tile, send_plan_t &load, layout_t &layout,
-            reduce_mask_t reduce_mask = reduce_mask_t(),
+            const layout_t &slm_layout, const tile_coord_t &thr_tile_coord,
+            const tile_coord_t &abs_thr_tile_coord, send_plan_t &load,
+            layout_t &layout, reduce_mask_t reduce_mask = reduce_mask_t(),
             reduce_plan_t *reduce = nullptr,
-            tensor_t *reduce_tile = nullptr) const {
+            tile_coord_t *reduce_tile_coord = nullptr) const {
         if (!has_x_slm) return plan_status_t::success;
-        auto thr_view = view_t(slm_layout).create_sub_view(thr_tile);
+        auto thr_view = view_t(slm_layout).create_sub_view(thr_tile_coord);
         auto params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
                 send_address_t::slm, abc, thr_view);
         load = create_send_plan(cfg_.exec_cfg(), thr_view, params);
         layout = load.reg_layout();
         if (reduce_mask && !cfg_.allow_global_reduction()) {
-            *reduce_tile = to_reduce_tensor(abs_thr_tile, reduce_mask.mask);
+            *reduce_tile_coord
+                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout
                     = to_reduce_layout(cfg_, layout, reduce_mask.mask);
             *reduce = create_reduce_plan(
@@ -2168,14 +2170,14 @@ private:
     }
 
     plan_status_t init_x_g2r_plan(abc_kind_t abc, bool has_x_slm,
-            const view_t &tg_view, const tensor_t &thr_tile,
-            const tensor_t &abs_thr_tile, send_plan_t &load,
+            const view_t &tg_view, const tile_coord_t &thr_tile_coord,
+            const tile_coord_t &abs_thr_tile_coord, send_plan_t &load,
             reorder_plan_t &reorder, layout_t &layout,
             reduce_mask_t reduce_mask = reduce_mask_t(),
             reduce_plan_t *reduce = nullptr,
-            tensor_t *reduce_tile = nullptr) const {
+            tile_coord_t *reduce_tile_coord = nullptr) const {
         if (has_x_slm) return plan_status_t::success;
-        auto gmem_view = tg_view.create_sub_view(thr_tile);
+        auto gmem_view = tg_view.create_sub_view(thr_tile_coord);
 
         auto &direct_view
                 = (abc == abc_kind_t::a ? a_direct_view_ : b_direct_view_);
@@ -2196,7 +2198,8 @@ private:
 
         if (reduce_mask) {
             gpu_assert(!direct_view);
-            *reduce_tile = to_reduce_tensor(abs_thr_tile, reduce_mask.mask);
+            *reduce_tile_coord
+                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout
                     = to_reduce_layout(cfg_, reg_layout, reduce_mask.mask);
             *reduce = create_reduce_plan(
@@ -2249,7 +2252,7 @@ private:
 
         if (plan_.hw < ngen::HW::XeHPG) {
             // Verifies that SLM loads after k-slicing are at GRF granularity.
-            auto l_sub = l.map(tensor_t(rem_dims));
+            auto l_sub = l.map(tile_t(rem_dims));
             int bytes = l_sub.type().size();
             stride_t stride = 1;
             for (auto &b : l_sub.blocks()) {
@@ -2321,25 +2324,27 @@ private:
 
     plan_status_t init_x2r_plan(const slm_plan_t &slm, x2r_plan_t &plan) const {
         PLAN_CHECK(init_x_s2r_plan(abc_kind_t::a, slm.has_a(), slm.a_layout,
-                gemm_schedule_.a_thr_tile(),
-                gemm_schedule_.a_thr_tile(/*is_relative=*/false), plan.a_load,
-                plan.a_layout, reduce_mask(cfg_, abc_kind_t::a), &plan.x_reduce,
-                &plan.x_reduce_tile));
+                gemm_schedule_.a_thr_tile_coord(),
+                gemm_schedule_.a_thr_tile_coord(/*is_relative=*/false),
+                plan.a_load, plan.a_layout, reduce_mask(cfg_, abc_kind_t::a),
+                &plan.x_reduce, &plan.x_reduce_tile_coord));
         PLAN_CHECK(init_x_s2r_plan(abc_kind_t::b, slm.has_b(), slm.b_layout,
-                gemm_schedule_.b_thr_tile(),
-                gemm_schedule_.b_thr_tile(/*is_relative=*/false), plan.b_load,
-                plan.b_layout, reduce_mask(cfg_, abc_kind_t::b), &plan.x_reduce,
-                &plan.x_reduce_tile));
+                gemm_schedule_.b_thr_tile_coord(),
+                gemm_schedule_.b_thr_tile_coord(/*is_relative=*/false),
+                plan.b_load, plan.b_layout, reduce_mask(cfg_, abc_kind_t::b),
+                &plan.x_reduce, &plan.x_reduce_tile_coord));
         PLAN_CHECK(init_x_g2r_plan(abc_kind_t::a, slm.has_a(),
-                gemm_schedule_.a_tg_view(), gemm_schedule_.a_thr_tile(),
-                gemm_schedule_.a_thr_tile(/*is_relative=*/false), plan.a_load,
-                plan.a_reorder, plan.a_layout, reduce_mask(cfg_, abc_kind_t::a),
-                &plan.x_reduce, &plan.x_reduce_tile));
+                gemm_schedule_.a_tg_view(), gemm_schedule_.a_thr_tile_coord(),
+                gemm_schedule_.a_thr_tile_coord(/*is_relative=*/false),
+                plan.a_load, plan.a_reorder, plan.a_layout,
+                reduce_mask(cfg_, abc_kind_t::a), &plan.x_reduce,
+                &plan.x_reduce_tile_coord));
         PLAN_CHECK(init_x_g2r_plan(abc_kind_t::b, slm.has_b(),
-                gemm_schedule_.b_tg_view(), gemm_schedule_.b_thr_tile(),
-                gemm_schedule_.b_thr_tile(/*is_relative=*/false), plan.b_load,
-                plan.b_reorder, plan.b_layout, reduce_mask(cfg_, abc_kind_t::b),
-                &plan.x_reduce, &plan.x_reduce_tile));
+                gemm_schedule_.b_tg_view(), gemm_schedule_.b_thr_tile_coord(),
+                gemm_schedule_.b_thr_tile_coord(/*is_relative=*/false),
+                plan.b_load, plan.b_reorder, plan.b_layout,
+                reduce_mask(cfg_, abc_kind_t::b), &plan.x_reduce,
+                &plan.x_reduce_tile_coord));
         PLAN_CHECK(verify_2d());
         PLAN_CHECK(fixup_k_blocks_order(plan.a_layout, plan.b_layout));
         return plan_status_t::success;
@@ -2436,7 +2441,8 @@ private:
             zp_plan_t &plan) const {
         auto &prb = cfg_.prb();
 
-        auto b_tile = gemm_schedule_.b_thr_tile(/*is_relative=*/false);
+        auto b_tile_coord
+                = gemm_schedule_.b_thr_tile_coord(/*is_relative=*/false);
 
         int g_idx = 0;
         int ic_idx = 2;
@@ -2447,11 +2453,11 @@ private:
             zp_g_dim = 1;
             zp_ic_dim = 1;
         } else {
-            auto &w_g = b_tile.start()[g_idx];
-            auto &w_ic = b_tile.start()[ic_idx];
+            auto &w_g = b_tile_coord.coord[g_idx];
+            auto &w_ic = b_tile_coord.coord[ic_idx];
             zp_off = w_g * prb.ic + w_ic;
-            zp_g_dim = b_tile(g_idx);
-            zp_ic_dim = b_tile(ic_idx);
+            zp_g_dim = b_tile_coord.tile[g_idx];
+            zp_ic_dim = b_tile_coord.tile[ic_idx];
         }
 
         const auto src_zp_type = (cfg_.zp_cfg().do_src_compensation)

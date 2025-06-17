@@ -504,12 +504,6 @@ expr_t min(const expr_t &a, const expr_t &b);
 
 expr_t cast(const expr_t &e, const type_t &type, bool saturate = false);
 
-bool is_zero(const expr_t &e);
-
-bool is_one(const expr_t &e);
-
-bool is_minus_one(const expr_t &e);
-
 bool is_const_broadcast(const expr_t &e);
 
 bool is_const_broadcast(const expr_t &e, const expr_t &value);

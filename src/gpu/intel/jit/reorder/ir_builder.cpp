@@ -46,11 +46,11 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-void split_tile(const tensor_t &wg_tile, const tensor_t &iter_tile,
-        pvar_tile_t &iter_dims, pvar_tile_t &loop_dims) {
-    const auto &wg_dims = wg_tile.dims();
-    const auto &it_dims = iter_tile.dims();
-    for (dim_idx_t i = 0; i < wg_tile.ndims(); ++i) {
+void split_tile(const tile_t &wg_tile, const tile_t &iter_tile,
+        tile_t &iter_dims, tile_t &loop_dims) {
+    const auto &wg_dims = wg_tile.values();
+    const auto &it_dims = iter_tile.values();
+    for (dim_idx_t i = 0; i < wg_tile.size(); ++i) {
         pvar_t &d = reorder::pvars[i];
         iter_dims[d] = it_dims[i];
         loop_dims[d] = wg_dims[i] / it_dims[i];
@@ -60,7 +60,7 @@ void split_tile(const tensor_t &wg_tile, const tensor_t &iter_tile,
 void reorder_ir_builder_t::build() {
     const auto &wg_block = cfg_.tiles().front();
 
-    pvar_tile_t iter_tile, loop_tile;
+    tile_t iter_tile, loop_tile;
     for (auto &loop_block : cfg_.tiles()) {
         if (!wg_block.is_divisible(loop_block)) continue;
         split_tile(wg_block, loop_block, iter_tile, loop_tile);
@@ -78,7 +78,7 @@ void reorder_ir_builder_t::build() {
 }
 
 bool reorder_ir_builder_t::try_build(
-        const pvar_tile_t &iter_tile, const pvar_tile_t &loop_tile) {
+        const tile_t &iter_tile, const tile_t &loop_tile) {
     constraint_set_t init_cset;
 
     const auto &padded_dims = cfg_.padded_dims().get();
@@ -173,9 +173,10 @@ bool reorder_ir_builder_t::try_build(
 
     schedule.finalize();
 
-    auto thr_tile = schedule.thr_view_tile(src_view, /*is_relative=*/false);
-    auto src_thr_view = src_view.create_sub_view(thr_tile);
-    auto dst_thr_view = dst_view.create_sub_view(thr_tile);
+    auto thr_tile_coord
+            = schedule.thr_view_tile_coord(src_view, /*is_relative=*/false);
+    auto src_thr_view = src_view.create_sub_view(thr_tile_coord);
+    auto dst_thr_view = dst_view.create_sub_view(thr_tile_coord);
 
     auto src_buf = kernel_info_.arg_var(0);
     auto dst_buf = kernel_info_.arg_var(1);
@@ -220,8 +221,8 @@ bool reorder_ir_builder_t::try_build(
         post_op_context_t post_op_ctx(*attr_, cfg_.zp_cfg(), schedule,
                 kernel_info_, *dst_md_, *dst_md_, view_mapper);
         write_stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx, schedule,
-                /*force_c_reorder=*/true, post_op_ctx, thr_tile, read_layout,
-                dst_buf, reg_buf, write_buf_size);
+                /*force_c_reorder=*/true, post_op_ctx, thr_tile_coord,
+                read_layout, dst_buf, reg_buf, write_buf_size);
     } else if (read_layout != write_layout) {
         auto tmp_buf = ir_ctx.create_tmp_var(type_t::byte_ptr(), "tmp");
         allocs.push_back(

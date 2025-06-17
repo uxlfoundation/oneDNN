@@ -441,12 +441,12 @@ inline stmt_t create_stmt(const reorder_plan_t &plan, const expr_t &src_buf,
 }
 
 stmt_t create_stmt(const send_plan_t &plan, const expr_t &mem_buf,
-        const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile);
+        const expr_t &reg_buf, offset_ctx_t &off_ctx, const coord_t &coord,
+        const tile_t &tile);
 
 inline stmt_t create_stmt(const send_plan_t &plan, const expr_t &mem_buf,
         const expr_t &reg_buf, offset_ctx_t &off_ctx) {
-    return create_stmt(plan, mem_buf, reg_buf, off_ctx, pvar_coord_t<dim_t>(),
+    return create_stmt(plan, mem_buf, reg_buf, off_ctx, coord_t(),
             plan.reg_layout().int_dim_sizes());
 }
 
@@ -572,8 +572,7 @@ public:
     }
 
     void store(const send_plan_t &plan, const expr_t &mem_buf,
-            const expr_t &reg_buf, const pvar_coord_t<dim_t> &coord,
-            const pvar_tile_t &tile) {
+            const expr_t &reg_buf, const coord_t &coord, const tile_t &tile) {
         auto store_stmt
                 = create_stmt(plan, mem_buf, reg_buf, off_ctx_, coord, tile);
         emit(store_stmt);
@@ -603,7 +602,7 @@ public:
     void reduce(const layout_t &src, const layout_t &dst, const expr_t &src_buf,
             const expr_t &dst_buf, uint32_t mask) {
         auto stmt = create_reduce_stmt(
-                to_ir(src), to_ir(dst), src_buf, dst_buf, tensor_t(), mask);
+                to_ir(src), to_ir(dst), src_buf, dst_buf, tile_t(), mask);
         emit(stmt);
     }
 

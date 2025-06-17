@@ -31,6 +31,7 @@
 #include "common/memory_desc_wrapper.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/problem.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
@@ -39,112 +40,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-
-class tensor_t {
-public:
-    tensor_t() = default;
-
-    tensor_t(const std::vector<dim_t> &dims)
-        : tensor_t(dims, std::vector<expr_t>()) {}
-
-    tensor_t(const std::vector<dim_t> &dims, const std::vector<expr_t> &start)
-        : dims_(dims), start_(start) {
-        if (start_.empty()) start_.resize(dims.size(), 0);
-    }
-
-    tensor_t(const std::vector<dim_t> &dims, const std::vector<dim_t> &start)
-        : tensor_t(dims) {
-        start_.resize(start.size());
-        for (size_t i = 0; i < start.size(); i++)
-            start_[i] = start[i];
-    }
-
-    dim_t operator()(dim_idx_t idx) const { return dims_[idx]; }
-
-    const expr_t &start(dim_idx_t idx) const { return start_[idx]; }
-
-    dim_idx_t ndims() const { return into<dim_idx_t>(dims_.size()); }
-
-    dim_t elems() const {
-        dim_t ret = 1;
-        for (dim_idx_t i = 0; i < ndims(); i++)
-            ret *= dims_[i];
-        return ret;
-    }
-
-    const std::vector<dim_t> &dims() const { return dims_; }
-
-    const std::vector<expr_t> &start() const { return start_; }
-
-    bool is_empty() const { return dims_.empty(); }
-
-    bool is_equal(const tensor_t &other) const {
-        if (ndims() != other.ndims()) return false;
-        for (dim_idx_t i = 0; i < ndims(); i++) {
-            if (dims_[i] != other.dims_[i]) return false;
-            if (!start_[i].is_equal(other.start_[i])) return false;
-        }
-        return true;
-    }
-
-    bool is_divisible(const tensor_t &other) const {
-        if (ndims() != other.ndims()) return false;
-        for (dim_idx_t i = 0; i < ndims(); i++) {
-            if (dims_[i] % other.dims_[i] != 0) return false;
-        }
-        return true;
-    }
-
-    std::string str() const {
-        using ir_utils::operator<<;
-
-        if (is_empty()) return "(nil)";
-        std::ostringstream oss;
-        oss << ir_utils::make_seq_print_helper(dims_, "x");
-        if (!has_zero_start()) oss << " start: [" << start_ << "]";
-        return oss.str();
-    }
-
-    IR_DEFINE_DUMP()
-
-    bool has_zero_start() const {
-        for (dim_idx_t i = 0; i < ndims(); i++)
-            if (!is_zero(start_[i])) return false;
-        return true;
-    }
-
-    dim_t to_1d_offset(const std::vector<dim_t> &args) const {
-        gpu_assert(has_zero_start());
-
-        dim_t off = 0;
-        for (dim_idx_t i = 0; i < ndims(); i++) {
-            off *= dims_[i];
-            off += args[i];
-        }
-        return off;
-    }
-
-    tensor_t create_sub_tensor(const tensor_t &tile) const {
-        gpu_assert(ndims() == tile.ndims()) << "Incompatible sizes.";
-        std::vector<expr_t> new_start = start_;
-        for (dim_idx_t i = 0; i < ndims(); i++)
-            new_start[i] += tile.start(i);
-        return tensor_t(tile.dims(), new_start);
-    }
-
-    tensor_t substitute(const expr_t &from, const expr_t &to) const {
-        tensor_t ret = *this;
-        for (dim_idx_t i = 0; i < ndims(); i++) {
-            ret.start_[i] = jit::substitute(ret.start_[i], from, to);
-            ret.start_[i] = simplify(ret.start_[i]);
-        }
-        return ret;
-    }
-
-private:
-    std::vector<dim_t> dims_;
-    std::vector<expr_t> start_;
-};
 
 class grid_info_t {
 public:
@@ -411,28 +306,25 @@ public:
     }
 
     template <typename T = expr_t>
-    T offset(
-            const std::vector<T> &args = {}, bool ignore_offset = false) const {
-        if (args.empty()) return expr_cast<T>(offset_);
+    T offset(const coord_t &args = {}, bool ignore_offset = false) const {
+        if (args.is_empty()) return expr_cast<T>(offset_);
 
         gpu_assert(args.size() == ndims()) << "Dimensions do not match.";
 
-        T off = 0;
+        expr_t off = 0;
         auto _args = args;
         for (auto &eb : enumerated_blocks()) {
             auto &b = eb.second;
             auto &idx = _args[b.dim_idx];
-            if (ir_utils::is_equal(idx, T(0))) continue;
+            if (is_zero(idx)) continue;
 
             // Do not use modulus for outermost blocks.
             auto i = is_outermost(eb) ? idx : (idx % b.block);
             off = i * dim_t(b.stride) + off;
             idx /= b.block;
         }
-        if (ignore_offset) return off;
-
-        T off0 = expr_cast<T>(offset_);
-        return off0 + off;
+        if (ignore_offset) return expr_cast<T>(off);
+        return expr_cast<T>(offset_ + off);
     }
 
     const type_t &type() const { return type_; }
@@ -518,15 +410,13 @@ public:
         return ir_utils::get_hash(type_, ndims_, offset_, blocks_);
     }
 
-    template <typename T>
-    T operator()(const std::vector<T> &args) const {
-        return offset(args);
-    }
+    expr_t operator()(const coord_t &coord) const { return offset(coord); }
 
     template <typename T = expr_t>
     T offset_in_bytes(
-            const std::vector<T> &args = {}, bool ignore_offset = false) const {
-        return offset(args, ignore_offset) * type().size() / type().packing();
+            const coord_t &coord = {}, bool ignore_offset = false) const {
+        return offset<T>(coord, ignore_offset) * type().size()
+                / type().packing();
     }
 
     std::string desc_str(bool dnnl_style = false) const {
@@ -637,7 +527,11 @@ public:
     // Assumption: the original layout can be tiled by the passed sub-tensor.
     // For example: XaYb4a2b can be tiled into 2x2 sub-tensors but it's not
     // possible to tile it into 3x2 sub-tensors.
-    layout_t map(const tensor_t &tensor) const;
+    layout_t map(const tile_t &tile, const coord_t &start = {}) const;
+
+    layout_t map(const tile_coord_t &tile_coord) const {
+        return map(tile_coord.tile, tile_coord.coord);
+    }
 
     layout_t reinterpret(
             const type_t &new_type, bool do_normalize = true) const;
@@ -724,13 +618,13 @@ public:
         gpu_assert(type() == inner.type());
         gpu_assert(ndims() == inner.ndims());
         auto cur_dims = dims();
-        std::vector<dim_t> rem_dims(ndims());
+        tile_t rem_tile(ndims());
         for (dim_idx_t i = 0; i < ndims(); i++)
-            rem_dims[i] = ir_utils::safe_divide(dim(i), inner.dim(i));
+            rem_tile[i] = ir_utils::safe_divide(dim(i), inner.dim(i));
         auto ret = inner;
         for (auto &b : blocks()) {
             auto &d = cur_dims[b.dim_idx];
-            auto &r = rem_dims[b.dim_idx];
+            auto &r = rem_tile[b.dim_idx];
             d = ir_utils::safe_divide(d, b.block);
             if (r <= d) continue;
             auto blk = ir_utils::safe_divide(r, d);
@@ -738,7 +632,7 @@ public:
             r = ir_utils::safe_divide(r, blk);
         }
         for (dim_idx_t i = 0; i < ndims(); i++)
-            gpu_assert(rem_dims[i] == 1);
+            gpu_assert(rem_tile[i] == 1);
         return ret;
     }
 
@@ -791,12 +685,11 @@ public:
     // 1) It consists of consecutive blocks only.
     // 2) It contains less or equal than max_tile_elems elements.
     // 3) It is dense if is_dense_tile is true.
-    tensor_t split_into_max_tile(
-            dim_t max_tile_elems, bool is_dense_tile) const;
+    tile_t split_into_max_tile(dim_t max_tile_elems, bool is_dense_tile) const;
 
-    tensor_t split(const grid_info_t &grid_info,
+    tile_coord_t split(const grid_info_t &grid_info,
             grid_info_t *out_grid = nullptr) const {
-        tensor_t min_tile;
+        tile_coord_t min_tile_coord;
         std::vector<dim_t> cur_dims(grid_info.ndims(), 1);
 
         for (int iter = 0; iter < grid_info.elems(); iter++) {
@@ -805,45 +698,46 @@ public:
                 cur_dims[i] = 1;
             }
             auto sub_grid = grid_info.resize(cur_dims);
-            auto tile = split_exact(sub_grid);
-            if (tile.is_empty()) continue;
-            if (min_tile.is_empty() || tile.elems() < min_tile.elems()) {
-                min_tile = std::move(tile);
+            auto tile_coord = split_exact(sub_grid);
+            if (tile_coord.is_empty()) continue;
+            if (min_tile_coord.is_empty()
+                    || tile_coord.elems() < min_tile_coord.elems()) {
+                min_tile_coord = std::move(tile_coord);
                 if (out_grid) { *out_grid = std::move(sub_grid); }
             }
         }
-        return min_tile;
+        return min_tile_coord;
     }
 
-    tensor_t split_exact(const grid_info_t &grid) const {
-        std::vector<dim_t> tile_dims(ndims(), 1);
-        if (elems() % grid.elems() != 0) return tensor_t();
+    tile_coord_t split_exact(const grid_info_t &grid) const {
+        tile_t tile(ndims());
+        if (elems() % grid.elems() != 0) return {};
 
         dim_t cur_elems_per_tile = 1;
         dim_t elems_per_tile = elems() / grid.elems();
         for (auto &b : blocks()) {
             dim_t block
                     = std::min(b.block, elems_per_tile / cur_elems_per_tile);
-            tile_dims[b.dim_idx] *= block;
+            tile[b.dim_idx] *= block;
             cur_elems_per_tile *= block;
         }
-        if (cur_elems_per_tile != elems_per_tile) return tensor_t();
+        if (cur_elems_per_tile != elems_per_tile) return {};
 
-        return split(tensor_t(tile_dims), grid);
+        return split(tile, grid);
     }
 
-    tensor_t split_exact(int factor) const {
-        if (factor == 1) return tensor_t(dims());
-        if (elems() % factor != 0) return tensor_t();
+    tile_coord_t split_exact(int factor) const {
+        if (factor == 1) return tile_coord_t(tile_t(dims()));
+        if (elems() % factor != 0) return {};
         dim_t cur_elems = 1;
         dim_t split_elems = elems() / factor;
         std::vector<block_t> split_blocks;
         for (auto &b : blocks()) {
             if (cur_elems * b.block > split_elems) {
-                if (split_elems % cur_elems != 0) return tensor_t();
+                if (split_elems % cur_elems != 0) return {};
                 auto bb = b;
                 bb.block = split_elems / cur_elems;
-                if (b.block % bb.block != 0) return tensor_t();
+                if (b.block % bb.block != 0) return {};
                 split_blocks.push_back(bb);
             } else {
                 split_blocks.push_back(b);
@@ -851,21 +745,20 @@ public:
             cur_elems *= split_blocks.back().block;
             if (cur_elems == split_elems) break;
         }
-        std::vector<dim_t> split_dims(ndims(), 1);
+        tile_t split_tile(ndims());
         for (auto &b : split_blocks)
-            split_dims[b.dim_idx] *= b.block;
-        return tensor_t(split_dims);
+            split_tile[b.dim_idx] *= b.block;
+        return tile_coord_t(split_tile);
     }
 
-    tensor_t split(const tensor_t &tile, const grid_info_t &grid,
+    tile_coord_t split(const tile_t &tile, const grid_info_t &grid,
             std::vector<block_t> *outer_blocks = nullptr) const {
-        gpu_assert(ndims() == tile.ndims())
+        gpu_assert(ndims() == tile.size())
                 << "Number of dimensions doesn't match.";
-        gpu_assert(tile.has_zero_start());
 
         if (outer_blocks) outer_blocks->resize(0);
 
-        if (grid.elems() == 1) return tile;
+        if (grid.elems() == 1) return tile_coord_t(tile);
 
         dim_t total_elems = elems();
         dim_t tile_elems = tile.elems();
@@ -876,14 +769,14 @@ public:
         MAYBE_UNUSED(total_elems);
         MAYBE_UNUSED(tile_elems);
 
-        std::vector<dim_t> dims(tile.ndims(), 1);
-        std::vector<expr_t> start(tile.ndims(), 0);
-        std::vector<dim_t> rem_dims = tile.dims();
+        std::vector<dim_t> dims(tile.size(), 1);
+        coord_t start(tile.size());
+        auto rem_tile = tile;
         for (auto &eb : enumerated_blocks()) {
             auto &b = eb.second;
             if (b.block == 1) continue;
 
-            dim_t &e = rem_dims[b.dim_idx];
+            dim_t &e = rem_tile[b.dim_idx];
             if (e > 1) {
                 if (e % b.block == 0) {
                     e /= b.block;
@@ -891,7 +784,7 @@ public:
                     auto tmp_layout = split_block(eb, e, b.block / e);
                     return tmp_layout.split(tile, grid, outer_blocks);
                 } else {
-                    return tensor_t();
+                    return {};
                 }
             } else {
                 dim_t next_chunk
@@ -905,23 +798,22 @@ public:
                             = split_block(eb, next_chunk, b.block / next_chunk);
                     return tmp_layout.split(tile, grid, outer_blocks);
                 } else {
-                    return tensor_t();
+                    return {};
                 }
             }
             dims[b.dim_idx] *= b.block;
         }
-        return tensor_t(tile.dims(), start);
+        return tile_coord_t(tile, start);
     }
 
     // Iterates through tiles of the layout, calling `f` with relative offsets
     // for each tile. The iteration order is defined by the layout blocks -
     // absolute 1D offsets are increasing between callback calls.
     template <typename F>
-    void for_each_tile(const tensor_t &tile, const F &f) const {
-        gpu_assert(tile.ndims() == ndims());
-        gpu_assert(tile.has_zero_start());
+    void for_each_tile(const tile_t &tile, const F &f) const {
+        gpu_assert(tile.size() == ndims());
         for (dim_idx_t i = 0; i < ndims(); i++) {
-            gpu_assert(dim(i) % tile.dims()[i] == 0);
+            gpu_assert(dim(i) % tile[i] == 0);
         }
 
         int nblocks = int(blocks().size());
@@ -930,7 +822,7 @@ public:
             sub_blocks[i] = blocks()[i].block;
 
         for (dim_idx_t i = 0; i < into<dim_idx_t>(ndims()); i++) {
-            dim_t dim = tile.dims()[i];
+            dim_t dim = tile[i];
             for (auto &eb : enumerated_blocks()) {
                 auto &b = eb.second;
                 if (b.dim_idx != i) continue;
@@ -952,7 +844,7 @@ public:
         for (int i = 0; i < ntiles; i++) {
             // Convert sub-block indices to dimension indices.
             std::vector<dim_t> dims(ndims(), 1);
-            std::vector<dim_t> start(ndims());
+            icoord_t start(ndims());
             for (int j = 0; j < nblocks; j++) {
                 auto &b = blocks()[j];
                 dim_t k = sub_block_idxs[j]
@@ -1006,7 +898,7 @@ public:
     // Reinterprets layouts to wider data type (up to 4 bytes).
     // Example: 16a16b (s8 type) -> 16a4b (s32 type)
     static bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
-            const tensor_t &tile = {}, bool do_update = true,
+            const tile_t &tile = {}, bool do_update = true,
             int *new_size_out = nullptr) {
         if (src.blocks().empty() || dst.blocks().empty()) return false;
         if (src.type() != dst.type()) return false;
@@ -1028,7 +920,7 @@ public:
         auto tile_ok = [&](const layout_t &l) {
             if (tile.is_empty()) return true;
             int factor = new_size / old_size;
-            if (tile(l.blocks()[0].dim_idx) % factor != 0) return false;
+            if (tile[l.blocks()[0].dim_idx] % factor != 0) return false;
             return true;
         };
 
@@ -1118,7 +1010,7 @@ public:
         return *this;
     }
 
-    tensor_t tile() const {
+    tile_t tile() const {
         std::vector<dim_t> dims(l_.ndims(), 1);
         for (int i = 0; i <= block_idx_; i++) {
             auto &b = l_.blocks()[i];
@@ -1126,7 +1018,7 @@ public:
             if (i == block_idx_) b_block /= block_;
             dims[b.dim_idx] *= b_block;
         }
-        return tensor_t(dims);
+        return tile_t(dims);
     }
 
     int nblocks() const { return block_idx_ + 1; }
@@ -1214,16 +1106,16 @@ public:
         }
     }
 
-    mask_tensor_t map(const tensor_t &tile) const {
-        auto tile_start = expr_cast<dim_t>(tile.start());
-        auto sub_layout = layout_.map(tensor_t(tile.dims()));
+    mask_tensor_t map(const tile_t &tile, const coord_t &start) const {
+        icoord_t tile_start(start);
+        auto sub_layout = layout_.map(tile);
         mask_tensor_t sub_mask(sub_layout);
-        ir_utils::for_each(
-                tile.dims(), [&](const std::vector<dim_t> &sub_start) {
-                    dim_t sub_off = sub_layout(sub_start);
-                    dim_t off = layout_(tile_start) + layout_(sub_start);
-                    sub_mask.set_mask(sub_off, mask(off));
-                });
+        for_each(tile, [&](const icoord_t &sub_start) {
+            dim_t sub_off = sub_layout.offset<dim_t>(sub_start);
+            dim_t off = layout_.offset<dim_t>(tile_start)
+                    + layout_.offset<dim_t>(sub_start);
+            sub_mask.set_mask(sub_off, mask(off));
+        });
         return sub_mask;
     }
 
@@ -1313,7 +1205,7 @@ public:
     void set_mask(const expr_t &value) { mask_ = value; }
 
     expr_t mask(const expr_t &tvalue, const std::vector<expr_t> &vvars,
-            const std::vector<expr_t> &vvalues) const {
+            const coord_t &vvalues) const {
         auto ret = substitute(mask_, placeholder_var(), tvalue);
         for (dim_idx_t i = 0; i < vvars.size(); i++) {
             if (contains_object(ret, vvars[i])) {
@@ -1397,7 +1289,7 @@ public:
             const std::vector<dim_t> &_vdims, uint32_t bound_check_mask)
         : vvars_(_vvars)
         , vdims_(_vdims)
-        , vstart_(layout.ndims(), 0)
+        , vstart_(layout.ndims())
         , tdims_(layout.ndims())
         , tlayout_(layout) {
         if (vvars_.empty()) vvars_ = create_vvars(layout.ndims());
@@ -1411,11 +1303,11 @@ public:
 
     const std::vector<expr_t> &vvars() const { return vvars_; }
 
-    const std::vector<dim_t> &vdims() const { return vdims_; }
+    const tile_t &vdims() const { return vdims_; }
 
-    std::vector<expr_t> vstart() const { return vstart_; }
+    const coord_t &vstart() const { return vstart_; }
 
-    expr_t vstart(dim_idx_t vidx) const { return vstart_[vidx]; }
+    tile_coord_t vtile_coord() const { return tile_coord_t(vdims_, vstart_); }
 
     const layout_t &tlayout() const { return tlayout_; }
 
@@ -1468,7 +1360,7 @@ public:
     void set_vdim(
             const expr_t &varg, dim_t vdim, const expr_t &vstart = expr_t(0)) {
         dim_idx_t vidx = vvar_index(varg);
-        gpu_assert(vstart_[vidx].is_empty());
+        gpu_assert(is_zero(vstart_[vidx]));
         vstart_[vidx] = vstart;
         vdims_[vidx] = vdim;
     }
@@ -1511,7 +1403,7 @@ public:
 
         if (is_empty()) return "(nil)";
         std::ostringstream oss;
-        oss << ir_utils::make_seq_print_helper(vdims_, "x");
+        oss << vdims_.str();
         if (!has_zero_vstart()) oss << " vstart: [" << vstart_ << "]";
         oss << " tlayout: " << tlayout_;
         return oss.str();
@@ -1519,7 +1411,7 @@ public:
 
     IR_DEFINE_DUMP()
 
-    bool is_empty() const { return vdims_.empty(); }
+    bool is_empty() const { return vdims_.is_empty(); }
 
     bool has_zero_vstart() const {
         for (dim_idx_t i = 0; i < nvdims(); i++)
@@ -1534,14 +1426,13 @@ public:
 
     const type_t &type() const { return tlayout_.type(); }
 
-    expr_t offset(const std::vector<expr_t> &vargs = {},
-            bool ignore_offset = false) const {
+    expr_t offset(const coord_t &vargs = {}, bool ignore_offset = false) const {
         auto targs = cvt_vargs_to_targs(vargs);
         return tlayout_.offset(targs, ignore_offset);
     }
 
-    expr_t offset_in_bytes(const std::vector<expr_t> &vargs = {},
-            bool ignore_offset = false) const {
+    expr_t offset_in_bytes(
+            const coord_t &vargs = {}, bool ignore_offset = false) const {
         return offset(vargs, ignore_offset) * type().size() / type().packing();
     }
 
@@ -1560,13 +1451,11 @@ public:
         return dim_idx::invalid;
     }
 
-    template <typename T>
-    T operator()(const std::vector<T> &vargs) const {
-        auto targs = cvt_vargs_to_targs(vargs);
-        return tlayout_(targs);
-    }
+    view_t create_sub_view(const tile_t &tile, const coord_t &coord) const;
 
-    view_t create_sub_view(const tensor_t &sub_tensor) const;
+    view_t create_sub_view(const tile_coord_t &tile_coord) const {
+        return create_sub_view(tile_coord.tile, tile_coord.coord);
+    }
 
     view_t retype(const type_t &new_type) const {
         auto ret = *this;
@@ -1607,7 +1496,7 @@ public:
     //      fine to load/store elements with indices in the range [A, 31]
     //      assuming the zero padding invariant. However in some cases we need
     //      to generate the exact bound condition based on the logical indices.
-    expr_t vmask(const std::vector<expr_t> &vargs) const {
+    expr_t vmask(const coord_t &vargs) const {
         gpu_assert(vargs.size() == nvdims()) << "Incompatible dimensions.";
         gpu_assert(has_zero_vstart())
                 << "Can't be reliably determined if the view is a sub-view.";
@@ -1665,8 +1554,8 @@ public:
 
     layout_t create_vlayout(bool force_zero_offset = false) const {
         gpu_assert(can_convert_to_vlayout()) << "Can't convert view to layout.";
-        if (force_zero_offset) return tlayout_.map(tensor_t(vdims_));
-        return tlayout_.map(tensor_t(vdims_, vstart_));
+        if (force_zero_offset) return tlayout_.map(vdims_);
+        return tlayout_.map(vdims_, vstart_);
     }
 
     dim_t vlayout_size() const { return create_vlayout().size(); }
@@ -1677,31 +1566,30 @@ public:
                 other.create_vlayout(), compare_offset);
     }
 
-    view_t split(const grid_info_t &grid, tensor_t &vtile,
+    view_t split(const grid_info_t &grid, tile_coord_t &vtile_coord,
             grid_info_t *out_grid = nullptr) const {
         auto vlayout = create_pseudo_vlayout();
-        vtile = vlayout.split(grid, out_grid);
-        return create_sub_view(vtile);
+        vtile_coord = vlayout.split(grid, out_grid);
+        return create_sub_view(vtile_coord.tile, vtile_coord.coord);
     }
 
     view_t split(
             const grid_info_t &grid, grid_info_t *out_grid = nullptr) const {
-        tensor_t vtile;
-        return split(grid, vtile, out_grid);
+        tile_coord_t vtile_coord;
+        return split(grid, vtile_coord, out_grid);
     }
 
     // Returns a tensor corresponding to the biggest innermost sub-layout so that
     // 1) It consists of consecutive blocks only.
     // 2) It contains less or equal than max_tile_elems elements.
     // 3) It is dense if is_dense_tile is true.
-    tensor_t split_into_max_tile(
-            dim_t max_tile_elems, bool is_dense_tile) const {
+    tile_t split_into_max_tile(dim_t max_tile_elems, bool is_dense_tile) const {
         auto vlayout = create_pseudo_vlayout();
         return vlayout.split_into_max_tile(max_tile_elems, is_dense_tile);
     }
 
     template <typename F>
-    void for_each_tile(const tensor_t &tile, const F &f) const {
+    void for_each_tile(const tile_t &tile, const F &f) const {
         auto vlayout = create_dense_vlayout();
         vlayout.for_each_tile(tile, f);
     }
@@ -1712,7 +1600,7 @@ public:
             const constraint_set_t &cset, uint32_t tmask = 0xFFFFFFFF) const {
         auto _vlayout = create_dense_vlayout();
         mask_tensor_t mask_tensor(_vlayout);
-        std::vector<dim_t> vargs(nvdims());
+        icoord_t vargs(nvdims());
         create_mask_tensor(mask_tensor, _vlayout, 0, vargs, tmask);
         mask_tensor.simplify(cset);
         return mask_tensor;
@@ -1729,7 +1617,7 @@ public:
             auto &buf_vvar = buf_view.vvars()[i];
             if (tdim.is_identity()) {
                 dim_idx_t vidx = tdim.vidx(0);
-                buf_view.set_vdim(buf_vvar, vdims()[vidx], vstart(vidx));
+                buf_view.set_vdim(buf_vvar, vdims()[vidx], vstart()[vidx]);
                 buf_view.set_tdim(i, buf_vvar, tdim.mask());
                 inv_view.set_tdim(i, tdim.expr());
                 continue;
@@ -1763,7 +1651,7 @@ public:
             for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
                 dim_idx_t vidx = tdim.vidx(j);
                 buf_vstart = jit::substitute(
-                        buf_vstart, vvars()[vidx], vstart(vidx));
+                        buf_vstart, vvars()[vidx], vstart()[vidx]);
                 inv_vstart
                         = jit::substitute(inv_vstart, vvars()[vidx], expr_t(0));
             }
@@ -1795,35 +1683,31 @@ public:
         buf_view.set_tlayout(tlayout_);
     }
 
-    tensor_t vtile() const { return tensor_t(vdims_, vstart_); }
-
     static const expr_t &placeholder_var() { return tdim_t::placeholder_var(); }
 
     static std::vector<expr_t> create_vvars(dim_idx_t nvdims);
 
-    template <typename SrcT = expr_t, typename DstT = SrcT>
-    std::vector<DstT> cvt_vargs_to_targs(const std::vector<SrcT> &_vargs = {},
-            bool ignore_vstart = false) const {
-        std::vector<expr_t> vargs = expr_cast<expr_t>(_vargs);
-        if (vargs.empty()) vargs.resize(nvdims(), 0);
+    coord_t cvt_vargs_to_targs(
+            coord_t vcoord = {}, bool ignore_vstart = false) const {
+        if (vcoord.is_empty()) vcoord = coord_t(nvdims());
 
         if (!ignore_vstart) {
             for (dim_idx_t i = 0; i < nvdims(); i++) {
-                if (!is_zero(vstart_[i])) vargs[i] += vstart_[i];
+                if (!is_zero(vstart_[i])) vcoord[i] += vstart_[i];
             }
         }
 
-        std::vector<expr_t> targs(ntdims());
+        coord_t tcoord(ntdims());
         for (dim_idx_t i = 0; i < ntdims(); i++) {
-            targs[i] = tdims_[i].expr();
+            tcoord[i] = tdims_[i].expr();
             for (dim_idx_t j = 0; j < nvdims(); j++) {
-                targs[i] = jit::substitute(targs[i], vvars_[j], vargs[j]);
+                tcoord[i] = jit::substitute(tcoord[i], vvars_[j], vcoord[j]);
             }
         }
         for (dim_idx_t i = 0; i < ntdims(); i++) {
-            targs[i] = const_fold(targs[i]);
+            tcoord[i] = const_fold(tcoord[i]);
         }
-        return expr_cast<DstT>(targs);
+        return tcoord;
     }
 
 private:
@@ -1831,12 +1715,12 @@ private:
             const layout_t &tlayout, bool init_offset) const;
 
     void create_mask_tensor(mask_tensor_t &mask_tensor,
-            const layout_t &_vlayout, dim_idx_t vidx, std::vector<dim_t> &vargs,
+            const layout_t &_vlayout, dim_idx_t vidx, icoord_t &vargs,
             uint32_t tmask) const {
         if (vidx == _vlayout.ndims()) {
             bool is_init = false;
-            std::vector<expr_t> vvalues;
-            std::vector<expr_t> targs;
+            coord_t vvalues;
+            coord_t targs;
             expr_t mask = bool_imm_t::make(true);
             for (dim_idx_t i = 0; i < ntdims(); i++) {
                 auto &tdim = tdims_[i];
@@ -1844,15 +1728,15 @@ private:
                 if (tdim.mask().is_empty()) continue;
                 if (!is_init) {
                     // Lazily initialize values
-                    vvalues = vstart_;
+                    vvalues = vstart_.values();
                     for (dim_idx_t i = 0; i < nvdims(); i++)
                         vvalues[i] += vargs[i];
-                    targs = cvt_vargs_to_targs<dim_t, expr_t>(vargs);
+                    targs = cvt_vargs_to_targs(vargs);
                     is_init = true;
                 }
                 mask &= tdim.mask(targs[i], vvars_, vvalues);
             }
-            mask_tensor.set_mask(_vlayout(vargs), mask);
+            mask_tensor.set_mask(_vlayout.offset<dim_t>(vargs), mask);
             return;
         }
 
@@ -1883,8 +1767,8 @@ private:
     }
 
     std::vector<expr_t> vvars_;
-    std::vector<dim_t> vdims_;
-    std::vector<expr_t> vstart_;
+    tile_t vdims_;
+    coord_t vstart_;
 
     std::vector<tdim_t> tdims_;
     layout_t tlayout_;

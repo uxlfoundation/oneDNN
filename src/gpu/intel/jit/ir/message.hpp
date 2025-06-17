@@ -495,8 +495,9 @@ private:
             bool transpose, bool use_xy, int &W, int &H, int &P, int &w, int &h,
             int &c, int &vnni_permute_factor);
 
-    bool check_2d_mask(const tensor_t &tile, bool use_virtual_surface,
-            dim_idx_t w_idx, dim_idx_t h_idx, expr_t &mask) const;
+    bool check_2d_mask(const tile_t &tile, const coord_t &coord,
+            bool use_virtual_surface, dim_idx_t w_idx, dim_idx_t h_idx,
+            expr_t &mask) const;
 
     std::vector<layout_t> candidate_payload_layouts() const;
     stmt_t create_send_stmt(

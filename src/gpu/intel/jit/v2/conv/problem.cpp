@@ -42,7 +42,7 @@ const type_t &problem_t::out_type() const {
 
 void problem_t::set_shape(const std::string &s) {
     gpu_assert(prop_ != prop_kind::undef);
-    pvar_tile_t s_tile(s);
+    tile_t s_tile(s);
     bool has_d = has_spatial(s_tile, 'd');
     bool has_h = has_spatial(s_tile, 'h');
     bool has_w = has_spatial(s_tile, 'w');
@@ -184,9 +184,9 @@ std::string problem_t::csv_str() const {
     return oss.str();
 }
 
-pvar_tile_t problem_t::default_shape() {
-    static pvar_tile_t _default_shape = []() {
-        static pvar_tile_t ret;
+tile_t problem_t::default_shape() {
+    static tile_t _default_shape = []() {
+        static tile_t ret;
         ret[pvars::g] = 1;
         ret[pvars::mb] = 1;
         ret[pvars::id] = ret[pvars::ih] = ret[pvars::iw] = 1;
@@ -203,7 +203,7 @@ pvar_tile_t problem_t::default_shape() {
     return _default_shape;
 }
 
-double problem_t::ops(prop_kind_t prop, const pvar_tile_t &shape) {
+double problem_t::ops(prop_kind_t prop, const tile_t &shape) {
 #define GET(name) shape[pvars::name]
     double ret = 2.0;
     ret *= (double)GET(g) * GET(mb) * GET(oc) * GET(ic);

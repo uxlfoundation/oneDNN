@@ -39,13 +39,13 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-pvar_tile_t default_spec_tile(const problem_t &prb) {
-    pvar_tile_t xd;
+tile_t default_spec_tile(const problem_t &prb) {
+    tile_t xd;
     xd[pvars::id] = xd[pvars::od] = xd[pvars::kd] = 1;
     xd[pvars::dd] = xd[pvars::pd] = 0;
     xd[pvars::sd] = 1;
     if (prb.shape().at(pvars::g) == 1) xd[pvars::g] = 1;
-    pvar_tile_t xhd = xd;
+    tile_t xhd = xd;
     xhd[pvars::ih] = xhd[pvars::oh] = xhd[pvars::kh] = 1;
     xhd[pvars::dh] = xhd[pvars::ph] = 0;
     xhd[pvars::sh] = 1;
@@ -59,10 +59,10 @@ pvar_tile_t default_spec_tile(const problem_t &prb) {
         }
         if (ok) return *t;
     }
-    return pvar_tile_t();
+    return tile_t();
 }
 
-pvar_tile_t get_dims_tile(const problem_t &prb, specialization_mode_t mode) {
+tile_t get_dims_tile(const problem_t &prb, specialization_mode_t mode) {
     switch (mode) {
         case specialization_mode_t::_default: return default_spec_tile(prb);
         case specialization_mode_t::max: return prb.shape();
@@ -119,7 +119,7 @@ void specialization_t::parse(std::istream &in) {
             }
         }
         if (found) continue;
-        auto tile = jit::parse<pvar_tile_t>(p);
+        auto tile = jit::parse<tile_t>(p);
         for (auto &d : tile) {
             if (d.name().back() == '@') {
                 dim_mods[pvar_t(d.name().substr(0, d.name().size() - 1))]
@@ -843,8 +843,8 @@ static bool try_parse_internal_arg(std::string s, pvar_t &dim, dim_t &denom,
     return true;
 }
 
-bool try_register_internal_arg(kernel_info_t &kernel_info, const expr_t &var,
-        const pvar_tile_t &pvar_map) {
+bool try_register_internal_arg(
+        kernel_info_t &kernel_info, const expr_t &var, const tile_t &pvar_map) {
     auto &type = var.type();
     auto &name = var.as<var_t>().name;
     pvar_t dim;
@@ -921,7 +921,7 @@ kernel_desc_t to_stream_k(const kernel_desc_t &desc, bool check_ext) {
 
 void init_kernel_info(kernel_info_t &kernel_info, const problem_t &prb,
         const kernel_desc_t &desc, const grid_t &tg_grid,
-        const pvar_tile_t &grid_dims, dim_t max_tgs, dim_t &stream_k_tg0,
+        const tile_t &grid_dims, dim_t max_tgs, dim_t &stream_k_tg0,
         dim_t &stream_k_tg1) {
     auto pvar_map = prb.shape();
     for (auto &d : grid_dims) {
@@ -972,7 +972,7 @@ void kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,
     auto tg_grid = create_thread_group_grid(*this);
     auto thr_grid = create_thread_grid(*this);
     auto &shape = prb.shape();
-    pvar_tile_t grid_dims;
+    tile_t grid_dims;
     for (auto &d : tg_grid.all_dims()) {
         dim_t tg_size = thread_group_tile.get(d, 1);
         dim_t iter_size = iter_tile.get(d, 1);

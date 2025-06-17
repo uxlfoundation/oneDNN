@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,8 +56,9 @@ private:
 };
 
 stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
-        const expr_t &src_buf, const expr_t &dst_buf, const tensor_t &_subtile,
-        uint32_t reduction_mask, bool drop_dims = true);
+        const expr_t &src_buf, const expr_t &dst_buf,
+        const tile_coord_t &_sub_tile_coord, uint32_t reduction_mask,
+        bool drop_dims = true);
 
 stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf);

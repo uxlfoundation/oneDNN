@@ -100,10 +100,12 @@ status_t primitive_execute(const primitive_iface_t *primitive_iface,
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
-        stream->wait();
+        if (DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL)
+            stream->wait();
         double start_ms = get_msec();
         status = stream->enqueue_primitive(primitive_iface, ctx);
-        stream->wait();
+        if (DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL)
+            stream->wait();
         double duration_ms = get_msec() - start_ms;
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency

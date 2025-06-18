@@ -33,8 +33,8 @@ constructing an operation.
 
 SoftMaxBackward operation supports the following data type combinations.
 
-| Dst  | Diff_dst | Diff_src |
-|:-----|:---------|:---------|
-| f32  | f32      | f32      |
-| bf16 | bf16     | bf16     |
-| f16  | f16      | f16      |
+| Dst  | Diff_dst | Diff_src      |
+|:-----|:---------|:--------------|
+| f32  | f32      | f32           |
+| bf16 | bf16     | f32, bf16     |
+| f16  | f16      | f32, f16      |

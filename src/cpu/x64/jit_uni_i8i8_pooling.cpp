@@ -769,6 +769,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
             maskmovq(mmx_dst_i8, mmx_full_msk);
         }
     };
+
     switch (jpp.dst_dt) {
         case s32:
             if (masked) {

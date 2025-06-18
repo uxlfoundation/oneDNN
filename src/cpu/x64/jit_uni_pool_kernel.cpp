@@ -831,6 +831,7 @@ inline void jit_uni_pool_kernel_t<isa>::maybe_recalculate_divisor(
 template <cpu_isa_t isa>
 inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
         int pad_r, bool with_c_tail_proccessing) {
+
     auto iw = jpp.iw;
     auto kw = jpp.kw;
     auto stride_w = jpp.stride_w;
@@ -864,7 +865,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
                         is_tail_processing(bci));
                 uni_vdivps(accvr, accvr, vmm_tmp);
             } else {
-                uni_vxorps(accvr, accvr, accvr);
+                uni_vpxor(accvr, accvr, accvr);
             }
         }
     }
@@ -1340,6 +1341,7 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src(
 
 template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::generate() {
+
     this->preamble();
 
     int ow = jpp.ow;

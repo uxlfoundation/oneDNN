@@ -227,6 +227,13 @@ int ref_partition_t::init_graph_mem(
 }
 
 void ref_partition_t::exec_ops(res_t *res) {
+    // check if there's softmax backward op in the partition,
+    // which will be a candidate for sdpa training backward pattern
+    bool has_softmax_backward = std::any_of(partition_ops_ref_.begin(),
+            partition_ops_ref_.end(), [](const op_ref_t &op_ref) {
+                return op_ref.get().kind_ == "SoftMaxBackward";
+            });
+
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
         auto ref_prim = ref_prims_.at(op.id_);
@@ -282,6 +289,17 @@ void ref_partition_t::exec_ops(res_t *res) {
         const bool is_sdpa_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::SoftMax
                 && has_parent_op(op, /* check_all_in_lts = */ true);
+
+        // For SDPA training backward, it is limited for MatMuls used to compute
+        // dQ, dK, dV.
+        const bool is_matmul
+                = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul;
+        bool is_sdpa_bwd_pattern = false;
+        if (is_matmul && has_softmax_backward) {
+            const deserialized_op_t *child_op = nullptr;
+            if (!has_child_op(op, &child_op)) is_sdpa_bwd_pattern = true;
+        }
+
         // For gated-MLP, it is complicated - the Swish op is decomposed into
         // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its
         // output is passed to another Multiply which is the target for the
@@ -301,7 +319,7 @@ void ref_partition_t::exec_ops(res_t *res) {
                     || (parent0 == "Multiply" && parent1 == "MatMul");
         }
 
-        if (is_sdpa_pattern || is_gated_mlp_pattern) {
+        if (is_sdpa_pattern || is_sdpa_bwd_pattern || is_gated_mlp_pattern) {
             for (size_t i = 0; i < op.in_lts_.size(); i++) {
                 const auto dt = ref_prim->get_lt_dt(op.in_lts_[i].id_);
                 // There's no need to reorder data for f32 tensors.

@@ -902,9 +902,9 @@ void jit_io_helper_t<Vmm>::store_f8(
 }
 
 template <typename Vmm>
-void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
-        const Xbyak::Address &dst_addr, const bool use_sat_cvt) {
-    if (use_sat_cvt && isa_has_sat_cvt(isa_, data_type_)) {
+void jit_io_helper_t<Vmm>::store_i8(
+        const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
+    if (isa_has_sat_cvt(isa_, data_type_)) {
         host_->vpmovusdb(dst_addr, src_vmm);
     } else if (!is_superset(isa_, avx512_core)) {
         static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -927,6 +927,7 @@ void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
             store_i8_fn(src_xmm, src_vmm);
             host_->uni_vmovntps(dst_addr, src_xmm);
         } else {
+            host_->vcvtps2dq(src_vmm, src_vmm);
             store_i8_fn(dst_addr, src_vmm);
         }
     }

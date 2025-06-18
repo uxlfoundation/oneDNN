@@ -223,10 +223,6 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     jpp.dst_dt = jpp.is_backward ? pd.diff_dst_desc.data_type
                                  : pd.dst_desc.data_type;
 
-    if (jpp.src_dt == data_type::u8 && jpp.dst_dt == data_type::u8) {
-        return status::unimplemented;
-    }
-
     jpp.tmp_md = memory_desc_t();
 
     jpp.is_bf16 = (src_d.data_type() == data_type::bf16
@@ -835,7 +831,6 @@ inline void jit_uni_pool_kernel_t<isa>::maybe_recalculate_divisor(
 template <cpu_isa_t isa>
 inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
         int pad_r, bool with_c_tail_proccessing) {
-
     auto iw = jpp.iw;
     auto kw = jpp.kw;
     auto stride_w = jpp.stride_w;
@@ -869,7 +864,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
                         is_tail_processing(bci));
                 uni_vdivps(accvr, accvr, vmm_tmp);
             } else {
-                uni_vpxor(accvr, accvr, accvr);
+                uni_vxorps(accvr, accvr, accvr);
             }
         }
     }
@@ -1345,7 +1340,6 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src(
 
 template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::generate() {
-
     this->preamble();
 
     int ow = jpp.ow;

@@ -255,27 +255,39 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     // attention_probs = softmax(masked_score) = exp(masked_score - stats)
     auto stats_b
             = logical_tensor(id++, dt_inter, stats_sz, layout_type::strided);
-    auto sub_out_b = logical_tensor(id++, dt, score_sz, layout_type::strided);
+    auto sub_out_b
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto subtract_b = op(id++, op::kind::Subtract, "subtract");
     subtract_b.add_inputs({masked_score_b, stats_b});
     subtract_b.add_outputs({sub_out_b});
 
-    auto probs_b = logical_tensor(id++, dt, score_sz, layout_type::strided);
+    auto probs_b
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto exp_b = op(id++, op::kind::Exp, "exp");
     exp_b.add_inputs({sub_out_b});
     exp_b.add_outputs({probs_b});
+
+    // the following bmm doesn't support different input dtypes, insert a typecast
+    auto probs_b_cast = probs_b;
+    auto typecast_b = op(id++, op::kind::TypeCast, "typecast");
+    if (dt != dt_inter) {
+        probs_b_cast = logical_tensor(id++, dt, score_sz, layout_type::strided);
+        typecast_b.add_inputs({probs_b});
+        typecast_b.add_outputs({probs_b_cast});
+    }
 
     // compute dvalue = P^T * doutput
     auto doutput = logical_tensor(id++, dt, qv_sz, layout_type::strided);
     auto dvalue = logical_tensor(id++, dt, k_sz, layout_type::strided);
     auto bmm_p_do = op(id++, op::kind::MatMul, "bmm1");
     bmm_p_do.set_attr<bool>(op::attr::transpose_a, true);
-    bmm_p_do.add_inputs({probs_b, doutput});
+    bmm_p_do.add_inputs({probs_b_cast, doutput});
     bmm_p_do.add_outputs({dvalue});
 
     // compute dprobs = doutput * value^T
     auto value_b = logical_tensor(id++, dt, k_sz, layout_type::strided);
-    auto dprobs = logical_tensor(id++, dt, score_sz, layout_type::strided);
+    auto dprobs
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto bmm_do_v = op(id++, op::kind::MatMul, "bmm2");
     bmm_do_v.set_attr<bool>(op::attr::transpose_b, true);
     bmm_do_v.add_inputs({doutput, value_b});
@@ -296,17 +308,27 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     scale_div_b2.add_inputs({dmasked_score, scale_b});
     scale_div_b2.add_outputs({dscaled_score});
 
+    // the following bmm doesn't support different input dtypes, insert a typecast
+    auto dscaled_score_cast = dscaled_score;
+    auto typecast_b2 = op(id++, op::kind::TypeCast, "typecast");
+    if (dt != dt_inter) {
+        dscaled_score_cast
+                = logical_tensor(id++, dt, score_sz, layout_type::strided);
+        typecast_b2.add_inputs({dscaled_score});
+        typecast_b2.add_outputs({dscaled_score_cast});
+    }
+
     // compute dquery = dscaled_score * key
     auto dquery = logical_tensor(id++, dt, qv_sz, layout_type::strided);
     auto bmm_dscaled_score_k = op(id++, op::kind::MatMul, "bmm3");
-    bmm_dscaled_score_k.add_inputs({dscaled_score, key_b});
+    bmm_dscaled_score_k.add_inputs({dscaled_score_cast, key_b});
     bmm_dscaled_score_k.add_outputs({dquery});
 
     // compute dkey = dscaled_score^T * query
     auto dkey = logical_tensor(id++, dt, k_sz, layout_type::strided);
     auto bmm_dscaled_score_q = op(id++, op::kind::MatMul, "bmm4");
     bmm_dscaled_score_q.set_attr<bool>(op::attr::transpose_a, true);
-    bmm_dscaled_score_q.add_inputs({dscaled_score, query_b});
+    bmm_dscaled_score_q.add_inputs({dscaled_score_cast, query_b});
     bmm_dscaled_score_q.add_outputs({dkey});
 
     // Construct a sdpa graph with engine kind and operations.
@@ -322,6 +344,12 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     sdpa_bwd.add_op(scale_div_b2);
     sdpa_bwd.add_op(bmm_dscaled_score_k);
     sdpa_bwd.add_op(bmm_dscaled_score_q);
+    if (dt != dt_inter) {
+        // Add typecast op to the sdpa graph.
+        sdpa_bwd.add_op(typecast_b);
+        sdpa_bwd.add_op(typecast_b2);
+    }
+
     sdpa_bwd.finalize();
 
     // Get partitions from the sdpa graph.

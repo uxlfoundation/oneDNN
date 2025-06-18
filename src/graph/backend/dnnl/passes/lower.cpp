@@ -187,6 +187,20 @@ static status_t batchnorm_fwd_handler(
 
 static status_t reduction_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    auto product = [](const dnnl::memory::dims &dims) {
+        return std::accumulate(dims.begin(), dims.end(),
+                static_cast<dnnl::memory::dim>(1),
+                std::multiplies<dnnl::memory::dim>());
+    };
+    auto in0 = ltw(op->get_input_values()[0]->get_logical_tensor());
+    auto src_dims = product(in0.vdims());
+    //For now, reduction dimension exceeds 65535 is unsupported on NV GPU.
+    if (src_dims > 65535) { return status::unimplemented; }
+#endif
+
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
     new_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(op->get_kind()));

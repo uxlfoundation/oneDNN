@@ -117,6 +117,7 @@
 --reset --dt=f16 --case=op/f32/reorder.json
 --reset --dt=f16 --case=op/f32/softmax.json
 --reset --dt=f16 --case=op/f32/softmax_bwd.json
+--reset --dt=0:f16+1:f16 --case=op/f32/softmax_bwd.json
 --reset --case=op/f16/typecast.json
 --reset --case=op/f16/dynamicdq_s4.json
 --reset --case=op/f16/dynamicdq_u4.json

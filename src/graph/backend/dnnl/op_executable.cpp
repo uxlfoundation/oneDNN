@@ -1388,12 +1388,14 @@ softmax_bwd_executable_t::desc_t softmax_bwd_executable_t::create_desc(
     assertm(res.first, "Incorrect axis value.");
     const auto axis = res.second;
 
+    auto dst_lt = op->get_input_value(1)->get_logical_tensor();
+    auto dst = make_dnnl_memory_desc(dst_lt);
+
     // construct src with layout information from dst and data type information
     // from diff_src.
-    auto dst_lt = op->get_input_value(1)->get_logical_tensor();
-    dst_lt.data_type = diff_src_lt.data_type;
-    auto dst = make_dnnl_memory_desc(dst_lt);
-    const dnnl::memory::desc &src = dst;
+    auto src_lt = dst_lt;
+    src_lt.data_type = diff_src_lt.data_type;
+    auto src = make_dnnl_memory_desc(src_lt);
 
     const dnnl::algorithm algo
             = op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax_bwd

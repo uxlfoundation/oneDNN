@@ -212,7 +212,7 @@ __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
 #if HOST_SIDE_SCALE
-        const SCALE_DATA_T scale_value,
+        const float scale, const float iscale,
 #else
         const global SCALE_DATA_T *scale_ptr,
 #endif
@@ -346,23 +346,16 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (k0end > 0) {
 #if WITH_ATTN_SCALE
 #if INVERT_SCALE
-#if HOST_SIDE_SCALE
-        iscale = SCALES_TO_FLOAT(scale_value);
-#else
         iscale = SCALES_TO_FLOAT(*scale_ptr);
-#endif
         scale = native_recip(iscale);
 #else
-#if HOST_SIDE_SCALE
-        scale = SCALES_TO_FLOAT(scale_value);
-#else
         scale = SCALES_TO_FLOAT(*scale_ptr);
-#endif
         iscale = native_recip(scale);
 #endif
 #endif
         scale *= 1.442695f; // log2(e)
     }
+#endif
 
 #ifdef PREFETCH_K0
     if (k0end > 0) {

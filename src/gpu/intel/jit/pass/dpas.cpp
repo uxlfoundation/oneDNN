@@ -82,11 +82,12 @@ public:
                 if (cur_src1.is_equal(next_src1)
                         && cur_src2_base.is_equal(next_src2_base)) {
                     auto atomic_attr = instruction_modifier_attr_t::make(
-                            ngen_proxy::InstructionModifier().with_atomic());
+                            ngen::InstructionModifier(
+                                    ngen::ThreadCtrl::Atomic));
                     auto &call = s.as<func_call_t>();
                     auto *attr
                             = call.attr.as_ptr<instruction_modifier_attr_t>();
-                    if (!attr || !attr->mod.is_atomic) {
+                    if (!attr || !attr->mod.isAtomic()) {
                         s = atomic_attr.apply_to(s);
                     }
                 }

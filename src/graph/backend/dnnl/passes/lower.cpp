@@ -187,6 +187,15 @@ static status_t batchnorm_fwd_handler(
 
 static status_t reduction_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    auto src_lt = op->get_input_values()[0]->get_logical_tensor();
+    auto src_nelems = ltw(src_lt).nelems();
+    //For now, reduction element size > 65535 is unsupported on NV GPU.
+    if (src_nelems > 65535) { return status::unimplemented; }
+#endif
+
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
     new_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(op->get_kind()));

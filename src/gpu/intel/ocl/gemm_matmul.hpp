@@ -64,11 +64,6 @@ struct gemm_matmul_t : public gpu_primitive_t {
             bool per_tensor_sc = false, per_tensor_zp = false;
             bool trivial_sc_group = false, trivial_zp_group = false;
 
-            int per_tensor_mask = 0xfff;
-            int per_tensor_eq = 0x0;
-            for (int i = 0; i < orig_dims; ++i) {
-                per_tensor_eq |= (1 << i);
-            }
             // 2D reshape is incompatible with grouped attrs unless they are trivial.
             if (orig_dims > 2) {
                 int batch_a_dims = 1;
@@ -79,8 +74,8 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         && !scales.get(DNNL_ARG_SRC).has_default_groups()) {
                     trivial_sc_group = ((
                             k_dim / scales.get_group(DNNL_ARG_SRC, 1) <= 1));
-                    per_tensor_sc = utils::one_of(scales.get_mask(DNNL_ARG_SRC),
-                            per_tensor_mask, per_tensor_eq);
+                    per_tensor_sc = utils::one_of(
+                            scales.get_mask(DNNL_ARG_SRC), full_tensor_mask());
                     attr_compat_2d &= (trivial_sc_group || per_tensor_sc
                             || batch_a_dims == 1);
                 }
@@ -88,8 +83,8 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         && !zp.get(DNNL_ARG_SRC).has_default_groups()) {
                     trivial_zp_group
                             = ((k_dim / zp.get_group(DNNL_ARG_SRC, 1) <= 1));
-                    per_tensor_zp = utils::one_of(zp.get_mask(DNNL_ARG_SRC),
-                            per_tensor_mask, per_tensor_eq);
+                    per_tensor_zp = utils::one_of(
+                            zp.get_mask(DNNL_ARG_SRC), full_tensor_mask());
                     attr_compat_2d &= (trivial_zp_group || per_tensor_zp
                             || batch_a_dims == 1);
                 }

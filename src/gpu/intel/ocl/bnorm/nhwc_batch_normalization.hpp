@@ -136,26 +136,26 @@ struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
         std::vector<const char *> kernel_names
                 = {nullptr, nullptr, nullptr, nullptr, nullptr};
 
-        kernel_names[0] = "gen9_bnorm_fwd_nhwc";
+        kernel_names[0] = "xe_bnorm_fwd_nhwc";
 
         if (pd()->conf.calculate_stats) {
             if (pd()->conf.use_stats_one_pass) {
-                kernel_names[1] = "gen9_calc_mean_var_nhwc";
+                kernel_names[1] = "xe_calc_mean_var_nhwc";
                 if (!pd()->conf.use_fused_atomics_reduction()) {
-                    kernel_names[2] = "gen9_reduce_mean_var";
+                    kernel_names[2] = "xe_reduce_mean_var";
                 } else {
-                    kernel_names[2] = "gen9_fused_reduce_init";
-                    kernel_names[3] = "gen9_fused_reduce_final";
+                    kernel_names[2] = "xe_fused_reduce_init";
+                    kernel_names[3] = "xe_fused_reduce_final";
                 }
             } else { // regular algorithm
-                kernel_names[1] = "gen9_calc_mean_nhwc";
-                kernel_names[2] = "gen9_calc_variance_nhwc";
+                kernel_names[1] = "xe_calc_mean_nhwc";
+                kernel_names[2] = "xe_calc_variance_nhwc";
                 if (!pd()->conf.use_fused_atomics_reduction()) {
-                    kernel_names[3] = "gen9_reduce_mean";
-                    kernel_names[4] = "gen9_reduce_variance";
+                    kernel_names[3] = "xe_reduce_mean";
+                    kernel_names[4] = "xe_reduce_variance";
                 } else {
-                    kernel_names[3] = "gen9_fused_reduce_init";
-                    kernel_names[4] = "gen9_fused_reduce_final";
+                    kernel_names[3] = "xe_fused_reduce_init";
+                    kernel_names[4] = "xe_fused_reduce_final";
                 }
             }
         }
@@ -280,13 +280,13 @@ struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
         std::vector<const char *> kernel_names
                 = {nullptr, nullptr, nullptr, nullptr};
 
-        kernel_names[0] = "gen9_bnorm_bwd_nhwc";
-        kernel_names[1] = "gen9_calculate_stats_nhwc";
+        kernel_names[0] = "xe_bnorm_bwd_nhwc";
+        kernel_names[1] = "xe_calculate_stats_nhwc";
         if (pd()->conf.use_fused_atomics_reduction()) {
-            kernel_names[2] = "gen9_fused_reduce_init";
-            kernel_names[3] = "gen9_fused_reduce_final";
+            kernel_names[2] = "xe_fused_reduce_init";
+            kernel_names[3] = "xe_fused_reduce_final";
         } else {
-            kernel_names[2] = "gen9_reduce_stats";
+            kernel_names[2] = "xe_reduce_stats";
         }
         std::vector<compute::kernel_t> kernels;
         status = create_kernels(engine, &kernels, kernel_names, kernel_ctx);

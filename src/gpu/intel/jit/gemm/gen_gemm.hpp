@@ -220,9 +220,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool with_eltwise = (post_ops_.find(eltwise) != -1);
 
             // Check GPU architecture.
-            bool arch_ok = utils::one_of(arch_, arch_t::gen9, arch_t::gen11,
-                    arch_t::xe_lp, arch_t::xe_hp, arch_t::xe_hpg,
-                    arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
+            bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
+                    arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
             VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),

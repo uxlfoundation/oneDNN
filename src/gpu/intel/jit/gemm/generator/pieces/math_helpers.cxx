@@ -258,10 +258,7 @@ void BLASKernelGenerator<hw>::divMod(const Subregister &qot, const Subregister &
     auto numFP = state.ra.alloc_sub<float>();
     auto denomFP = state.ra.alloc_sub<float>();
 
-    if (hw < HW::Gen12LP) {
-        irem(1, rem, num, denom);
-        iqot(1, qot, num, denom);
-    } else if (large) {
+    if (large) {
         or_(1, cr0[0], cr0[0], 0x20);               // round toward -inf
         mov(1, denomFP, denom);
         mov(1, numFP, -num);

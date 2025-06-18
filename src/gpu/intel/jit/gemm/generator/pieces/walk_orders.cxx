@@ -199,8 +199,7 @@ void BLASKernelGenerator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN,
         soff = 0;
     }
     auto swapXY = [&](InstructionModifier mod = 8) {
-        if (hw >= HW::Gen12LP)
-            subdep(Operand::src0, storage);
+        subdep(Operand::src0, storage);
         movi(8 | mod, storage.ud(), indirect[a0].ud(soff)(1));
     };
 
@@ -427,8 +426,6 @@ void BLASKernelGenerator<hw>::gemmBoustrophedonOrder(const Subregister &groupIDM
             mov(1, qFP, q);
             mad(1, qFP, bias, qFP, two);
             esqt(1, qFP, qFP, strategy, state);
-            if (hw == HW::Gen9)
-                rnde(1, qFP, qFP);
             mov(1, j, qFP);
             mul(1, temp0, j.uw(), j.uw());
             avg(1, temp0, temp0, -j);
@@ -444,8 +441,6 @@ void BLASKernelGenerator<hw>::gemmBoustrophedonOrder(const Subregister &groupIDM
             mov(1, qFP, q);
             mad(1, qFP, bias, qFP, two);
             esqt(1, qFP, qFP, strategy, state);
-            if (hw == HW::Gen9)
-                rnde(1, qFP, qFP);
             mov(1, i, qFP);
             mul(1, temp0, i.uw(), i.uw());
             avg(1, temp0, temp0, -i);

@@ -894,7 +894,7 @@ status_t init_tensor_layouts(
 }
 
 bool hw_ok(const hw_t &hw) {
-    if (hw < ngen::HW::Gen9) return false;
+    if (hw < ngen::HW::XeLP) return false;
     return true;
 }
 

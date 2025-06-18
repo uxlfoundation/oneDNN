@@ -197,7 +197,7 @@ int test_persistent_cache_api(
     }
 
     // Start testing persistent cache API.
-    if (!is_gpu() || (is_gpu() && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL)) {
+    if (!is_gpu() || (is_gpu())) {
         return OK;
     }
 

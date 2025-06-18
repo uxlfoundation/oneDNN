@@ -82,6 +82,10 @@ size_t matmul_amx_blocking_params_t::L2_threshold() {
     return 3 * platform::get_per_core_cache_size(2) / 4;
 }
 
+size_t matmul_amx_blocking_params_t::L2_ways_threshold() {
+    return 3 * platform::get_num_ways_in_cache(2) / 4;
+}
+
 size_t matmul_amx_blocking_params_t::L1_threshold() {
     return 5 * platform::get_per_core_cache_size(1) / 6;
 }
@@ -155,15 +159,16 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
     matmul_amx_blocking_params_macro_t current_blocking(bgmmc);
     assert(bgmmc.tr_a_dt_sz == bgmmc.tr_b_dt_sz);
     current_blocking.gemm_dt_sz = bgmmc.tr_a_dt_sz;
-    current_blocking.min_m_elem = current_blocking.min_m_dim;
-    current_blocking.min_k_elem
-            = current_blocking.min_k_dim / current_blocking.gemm_dt_sz;
-    current_blocking.min_n_elem = current_blocking.min_n_dim / bgmmc.c_dt_sz;
+    current_blocking.min_m_elem = matmul_amx_blocking_params_macro_t::min_m_dim;
+    current_blocking.min_k_elem = matmul_amx_blocking_params_macro_t::min_k_dim
+            / current_blocking.gemm_dt_sz;
+    current_blocking.min_n_elem
+            = matmul_amx_blocking_params_macro_t::min_n_dim / bgmmc.c_dt_sz;
     current_blocking.k_threshold_write_bound_layer_elem
-            = current_blocking.k_threshold_write_bound_layer
+            = matmul_amx_blocking_params_macro_t::k_threshold_write_bound_layer
             / current_blocking.gemm_dt_sz;
     current_blocking.min_n_dim_write_bound_layer_elem
-            = current_blocking.min_n_dim_write_bound_layer
+            = matmul_amx_blocking_params_macro_t::min_n_dim_write_bound_layer
             / current_blocking.gemm_dt_sz;
 
     for (size_t nthr_to_check = bgmmc.nthr; nthr_to_check > 0;
@@ -686,6 +691,25 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
 
             if (repeat_loop_over_k && critical_l2_set_issues_a)
                 vertical_not_possible = true;
+
+            uint32_t l2_sets = platform::get_num_sets_in_cache(2);
+            size_t l2_line_size = l2_sets * platform::get_cache_line_size();
+
+            // If output matrix in vertical traversal suffers from set issues in
+            // the L2, then go horizontally.
+            // First, calculate the stride on the N dim within a page
+            size_t cache_stride = N * c_dt_sz % PAGE_4K;
+            if (cache_stride == 0) { cache_stride = PAGE_4K; }
+            // Second, calculate the number of ways the output matrix will use
+            // in each set. If higher than the threshold, useful cache lines in
+            // L2 will be evicted.
+            if (l2_line_size % cache_stride == 0) {
+                size_t num_ways_c
+                        = div_up(cache_stride * m_per_thread, l2_line_size);
+                if (num_ways_c >= L2_ways_threshold()) {
+                    vertical_not_possible = true;
+                }
+            }
         }
     };
 

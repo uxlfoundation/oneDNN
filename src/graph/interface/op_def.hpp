@@ -1057,13 +1057,16 @@ DNNL_GRAPH_OP_SCHEMA(SoftMaxBackward, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(1)
-                .set_input(0, "diff_dst", "T")
-                .set_input(1, "dst", "T")
-                .set_output(0, "diff_src", "T")
+                .set_input(0, "diff_dst", "T1")
+                .set_input(1, "dst", "T1")
+                .set_output(0, "diff_src", "T2")
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
                 .set_type_constraints(
-                        "T", {data_type::f32, data_type::bf16, data_type::f16})
-                .set_shape_inference_function(infer_identity_output_shape))
+                        "T1", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_shape_inference_function(infer_identity_output_shape)
+                .set_op_def_constraint_function(check_softmax_bwd_output_dtype))
 
 DNNL_GRAPH_OP_SCHEMA(SoftPlus, 1,
         op_schema_t()

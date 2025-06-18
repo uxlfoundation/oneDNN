@@ -91,7 +91,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->vdims[1].data());
     const auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_reduction_primitive_desc_create(
             &init_pd_args.pd, init_pd_args.engine, alg2alg_kind(prb->alg),

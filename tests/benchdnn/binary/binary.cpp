@@ -110,7 +110,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 
     // For the benchdnn binary driver in general, the shape and memory tag
     // information for the src2 condition mirrors that of the src0 tensor and

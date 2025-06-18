@@ -357,7 +357,7 @@ int init_kernel(kernel_args_t &kernel_args) {
                 prb->attr, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, 2);
     }
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
     dims_t dst_strides = {prb->get_ldd(), 1};
     auto dst_md = dnn_mem_t::init_md(
             prb->ndims, prb->dst_dims.data(), prb->dst_dt(), "", dst_strides);
@@ -402,7 +402,7 @@ int init_kernel(kernel_args_t &kernel_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
     auto dnnl_post_ops = query_post_ops(dnnl_attr);
 
     dnnl_status_t st = dnnl_success;
@@ -829,7 +829,7 @@ void init_memory_args(
         if (b.mask_input == mask_input_t::mask) {
             mask = b.mask;
         } else if (b.mask_input == mask_input_t::policy) {
-            mask = attr_t::policy2mask(po_arg, b.policy, dnnl_matmul, 2);
+            mask = attr_t::policy2mask(po_arg, b.policy, 2, dnnl_matmul);
         } else {
             mask = attr_t::get_default_mask(b.policy);
         }

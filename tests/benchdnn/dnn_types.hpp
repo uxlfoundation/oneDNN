@@ -76,10 +76,10 @@ struct attr_t {
 
     static policy_t str2policy(const std::string &str);
     static const char *policy2str(policy_t policy);
-    static int get_default_mask(policy_t policy);
-    static int policy2mask(int arg, policy_t policy,
+    static int get_default_mask(policy_t policy, int ndims = -1);
+    static int policy2mask(int arg, policy_t policy, int ndims = -1,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
-            int ndims = -1, bool has_groups = false);
+            bool has_groups = false);
 
     struct zero_points_t {
         struct entry_t {
@@ -138,7 +138,7 @@ struct attr_t {
                 int ndims = -1, bool has_groups = false) const {
             const auto &e = get(arg);
             return attr_t::policy2mask(
-                    arg, e.policy, prim_kind, ndims, has_groups);
+                    arg, e.policy, ndims, prim_kind, has_groups);
         }
 
         std::map<int, entry_t> points;
@@ -176,7 +176,7 @@ struct attr_t {
                 int ndims = -1, bool has_groups = false) const {
             const auto &e = get(arg);
             return attr_t::policy2mask(
-                    arg, e.policy, prim_kind, ndims, has_groups);
+                    arg, e.policy, ndims, prim_kind, has_groups);
         }
 
         bool is_def(int arg) const {
@@ -643,7 +643,7 @@ std::string trim_tag_by_mask(const std::string &tag, int mask);
 std::string normalize_tag(const std::string &tag, int ndims = -1);
 
 dnnl_primitive_attr_t create_dnnl_attr(
-        const attr_t &attr, const attr_args_t &attr_args);
+        const attr_t &attr, const attr_args_t &attr_args, int ndims);
 
 dnnl_engine_kind_t str2engine_kind(const std::string &s);
 dnnl_scratchpad_mode_t str2scratchpad_mode(const char *str);

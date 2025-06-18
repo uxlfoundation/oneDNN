@@ -177,7 +177,7 @@ dnnl_rounding_mode_t str2rounding_mode(const std::string &str) {
     return dnnl_rounding_mode_environment;
 }
 
-int attr_t::get_default_mask(policy_t policy) {
+int attr_t::get_default_mask(policy_t policy, int ndims) {
     switch (policy) {
         case PER_DIM_0: return (1 << 0);
         case PER_OC:
@@ -186,20 +186,22 @@ int attr_t::get_default_mask(policy_t policy) {
         case PER_DIM_01: return (1 << 0) + (1 << 1);
         case PER_DIM_2: return (1 << 2);
         case PER_DIM_3: return (1 << 3);
-        case PER_TENSOR: return (1 << DNNL_MAX_NDIMS) - 1;
+        case PER_TENSOR:
+            assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
+            return (1 << ndims) - 1;
         case COMMON: return 0;
         default: SAFE(FAIL, CRIT); return 0;
     }
 }
 
-int attr_t::policy2mask(int arg, policy_t policy,
-        dnnl_primitive_kind_t prim_kind, int ndims, bool has_groups) {
+int attr_t::policy2mask(int arg, policy_t policy, int ndims,
+        dnnl_primitive_kind_t prim_kind, bool has_groups) {
 
     // Handle of weights mask for various primitives.
     if (prim_kind == dnnl_convolution || prim_kind == dnnl_deconvolution
             || prim_kind == dnnl_inner_product) {
         if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy);
+            return attr_t::get_default_mask(policy, ndims);
 
         switch (policy) {
             case PER_OC:
@@ -213,19 +215,19 @@ int attr_t::policy2mask(int arg, policy_t policy,
         if ((arg != DNNL_ARG_SRC && arg != DNNL_ARG_WEIGHTS
                     && arg != DNNL_ARG_DST)
                 || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy);
+            return attr_t::get_default_mask(policy, ndims);
 
         if (ndims < 2) SAFE_V(FAIL);
         switch (policy) {
             case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
-            case PER_TENSOR: return attr_t::get_default_mask(policy);
+            case PER_TENSOR: return attr_t::get_default_mask(policy, ndims);
             default: SAFE_V(FAIL); return -1;
         }
     } else if (prim_kind == dnnl_layer_normalization) {
         if (arg != DNNL_ARG_SRC_1 || policy != policy_t::PER_OC)
-            return attr_t::get_default_mask(policy);
+            return attr_t::get_default_mask(policy, ndims);
 
         // PER_OC
         assert(policy == policy_t::PER_OC);
@@ -233,7 +235,7 @@ int attr_t::policy2mask(int arg, policy_t policy,
         return 1 << (ndims - 1);
     } else {
         // Default case
-        return attr_t::get_default_mask(policy);
+        return attr_t::get_default_mask(policy, ndims);
     }
 }
 
@@ -588,10 +590,10 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
             mask = mask_input == mask_input_t::mask
                     ? e.binary.mask
                     : policy2mask(
-                            DNNL_ARG_SRC_1, e.binary.policy, prim_kind, ndims);
+                            DNNL_ARG_SRC_1, e.binary.policy, ndims, prim_kind);
             arg = DNNL_ARG_SRC_1;
         } else if (e.is_prelu_kind()) {
-            mask = attr_t::get_default_mask(e.prelu.policy);
+            mask = attr_t::get_default_mask(e.prelu.policy, ndims);
             arg = DNNL_ARG_WEIGHTS;
         } else
             continue;
@@ -1042,7 +1044,7 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
         dnnl_primitive_kind_t prim_kind) {
     if (entry.is_prelu_kind()) {
         const auto &prelu = entry.prelu;
-        const int mask = attr_t::get_default_mask(prelu.policy);
+        const int mask = attr_t::get_default_mask(prelu.policy, ndims);
         return {dnnl_f32, mask, tag::axb, DNNL_ARG_WEIGHTS};
     } else if (entry.is_binary_kind()) {
         const auto &binary = entry.binary;
@@ -1055,7 +1057,7 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
             case mask_input_t::mask: mask = binary.mask; break;
             case mask_input_t::policy:
                 mask = attr_t::policy2mask(
-                        DNNL_ARG_SRC_1, binary.policy, prim_kind, ndims);
+                        DNNL_ARG_SRC_1, binary.policy, ndims, prim_kind);
                 break;
             default: assert(!"unknown mask_input value"); break;
         }
@@ -1127,7 +1129,7 @@ void attr_args_t::prepare_dw_post_op(
 }
 
 dnnl_primitive_attr_t create_dnnl_attr(
-        const attr_t &attr, const attr_args_t &attr_args) {
+        const attr_t &attr, const attr_args_t &attr_args, const int ndims) {
     dnnl_primitive_attr_t dnnl_attr = nullptr;
     DNN_SAFE_V(dnnl_primitive_attr_create(&dnnl_attr));
 
@@ -1143,7 +1145,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             // If it's non-default, use it, otherwise, deduce it.
             int mask = args_mask != attr_args_t::undefined_mask
                     ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy);
+                    : attr_t::policy2mask(arg_name, e.policy, ndims);
 
             DNN_SAFE_V(dnnl_primitive_attr_set_scales(dnnl_attr, arg_name, mask,
                     static_cast<int>(e.groups.size()), e.groups.data(), e.dt));
@@ -1163,7 +1165,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             // If it's non-default, use it, otherwise, deduce it.
             int mask = args_mask != attr_args_t::undefined_mask
                     ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy);
+                    : attr_t::policy2mask(arg_name, e.policy, ndims);
 
             int ndims = static_cast<int>(e.groups.size());
             const auto &groups = e.groups.data();
@@ -1217,7 +1219,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
 
             } else if (e.is_prelu_kind()) {
                 const auto &policy = e.prelu.policy;
-                const auto mask = attr_t::get_default_mask(policy);
+                const auto mask = attr_t::get_default_mask(policy, ndims);
                 DNN_SAFE_V(dnnl_post_ops_append_prelu(ops, mask));
             } else {
                 assert(!"unknown attr::post_ops::kind");

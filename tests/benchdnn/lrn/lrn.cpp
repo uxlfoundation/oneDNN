@@ -92,7 +92,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     dnnl_alg_kind_t alg = alg2alg_kind(prb->alg);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args_t()));
+            create_dnnl_attr(prb->attr, attr_args_t(), prb->ndims));
 
     if (dir & FLAG_FWD) {
         auto prop = prb->dir & FLAG_INF ? dnnl_forward_inference

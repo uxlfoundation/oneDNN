@@ -156,7 +156,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_matmul_primitive_desc_create(
             &init_pd_args.pd, init_pd_args.engine,
@@ -403,14 +403,16 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
 
     const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);
     const bool has_src_zp = !e_zp_src.is_def();
-    const int src_zp_mask = attr_t::get_default_mask(e_zp_src.policy);
+    const int src_zp_mask
+            = attr_t::get_default_mask(e_zp_src.policy, prb->ndims);
     // Apply src_zp for source tensor only.
     int src_zp = kind == SRC && has_src_zp && src_zp_mask == 0 ? e_zp_src.value
                                                                : 0;
 
     const auto &e_zp_wei = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
     const bool has_wei_zp = !e_zp_wei.is_def();
-    const int wei_zp_mask = attr_t::get_default_mask(e_zp_wei.policy);
+    const int wei_zp_mask
+            = attr_t::get_default_mask(e_zp_wei.policy, prb->ndims);
     // Apply wei_zp for weights tensor only.
     int wei_zp = kind == WEI && has_wei_zp && wei_zp_mask == 0 ? e_zp_wei.value
                                                                : 0;

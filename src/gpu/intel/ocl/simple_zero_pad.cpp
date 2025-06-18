@@ -15,6 +15,7 @@
  *******************************************************************************/
 
 #include "gpu/intel/ocl/simple_zero_pad.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
@@ -80,7 +81,8 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
 
         // Balance work unit size with parallelism
         cl_ulong step_block = 1;
-        if (!engine->is_xe_hp() && !engine->is_xe_hpg()) {
+        if (!utils::one_of(device->gpu_arch(), compute::gpu_arch_t::xe_hp,
+                    compute::gpu_arch_t::xe_hpg)) {
             while (step_nelems / nelems_block * step_block < 4 * 1024
                     && step_count % (step_block * 2) == 0
                     && npsteps / step_block > 2 * hw_threads) {

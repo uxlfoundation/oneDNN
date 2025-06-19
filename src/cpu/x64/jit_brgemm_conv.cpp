@@ -347,7 +347,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     ndims = cpu_convolution_fwd_pd_t::ndims();
 
     const auto src_type = src_md(0)->data_type;
-    const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
     const bool is_fp8 = one_of(src_type, f8_e4m3, f8_e5m2);
@@ -554,9 +553,13 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             jcp_.os_block % jcp_.ow == 0 && jcp_.os_block / jcp_.ow <= jcp_.oh
                     && jcp_.os_block / jcp_.ow == jcp_.oh_block));
 
+    const bool need_compensation
+            = (jcp_.src_zero_point || jcp_.s8s8_compensation_required)
+            && !jcp_.req_brg_comp_pad;
+
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || (one_of(src_type, u8, s8) && wei_type == s8) // oscales needed
+            || jcp_.with_scales || jcp_.with_dst_scales || need_compensation
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum || jcp_.use_M_mask
             || jcp_.src_zero_point || jcp_.dst_zero_point;
 

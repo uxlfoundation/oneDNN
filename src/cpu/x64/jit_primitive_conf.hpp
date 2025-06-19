@@ -786,6 +786,7 @@ struct jit_brgemm_conv_conf_t {
 
     bool with_scales;
     int is_ic_scale, is_oc_scale;
+    bool with_dst_scales;
 
     int LDA, LDB, LDC, LDD;
 

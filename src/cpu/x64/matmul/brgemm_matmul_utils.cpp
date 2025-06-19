@@ -24,6 +24,7 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/matmul/postops_estimator.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
 // TODO add a method to print brgemm conf info
@@ -1528,6 +1529,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - N_blk, N_Chunk
     // - K_blk, batch_size
     // - nthr_K
+    if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, bm_conf_utils))
+        bgmmc.post_inst_count
+                = postops_estimator_t::estimate_insts_per_cacheline(
+                        dst_md, attr);
+
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 

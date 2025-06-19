@@ -38,8 +38,8 @@ struct acl_reorder_obj_t {
 struct acl_reorder_conf_t {
     arm_compute::TensorInfo src_info;
     arm_compute::TensorInfo dst_info;
-    arm_compute::WeightFormat src_wf;
-    arm_compute::WeightFormat dst_wf;
+    arm_compute::WeightFormat src_wf = arm_compute::WeightFormat::OHWI;
+    arm_compute::WeightFormat dst_wf = arm_compute::WeightFormat::OHWI;
     bool transpose;
 };
 
@@ -85,7 +85,9 @@ private:
     // To guard the const execute_forward, the mutex must be 'mutable'
     mutable std::mutex mtx;
     status_t execute_forward(const exec_ctx_t &ctx) const;
-    const pd_t *pd() const;
+    inline const pd_t *pd() const {
+        return (const pd_t *)primitive_t::pd().get();
+    }
 
 }; // acl_reorder_fwd_t
 

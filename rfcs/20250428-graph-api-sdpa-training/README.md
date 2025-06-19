@@ -351,14 +351,14 @@ In this proposal, the oneDNN Graph API will not support the Dropout operation.
 
 The proposed definition for the Dropout operation is as follows:
 
-| **Inputs/Attributes/Outputs** | **Name**           | **Description**                                                               |
-|-------------------------------|--------------------|-------------------------------------------------------------------------------|
-| Input                         | `src`             | The tensor to which Dropout will be applied.                                   |
-| Input                         | `seed`            | Seed for the Philox random number generator used in Dropout.                   |
-| Input                         | `offset`          | Offset for the Philox random number generator used in Dropout.                 |
-| Attribute                     | `p`               | The dropout probability (e.g., 0.1 for 10% dropout), with values in the range [0, 1). |
-| Output                        | `dst`             | The input tensor with randomly dropped elements scaled by the inverse of the keep probability (`1 - p`). |
-| Output                        | `mask`            | The optional mask output tensor.                                               |
+| **Inputs/Attributes/Outputs** | **Name**           | **Data Type** | **Description**                                                                                          |
+|-------------------------------|--------------------|---------------|----------------------------------------------------------------------------------------------------------|
+| Input                         | `src`              | f32/bf16/f16  | The tensor to which Dropout will be applied.                                                             |
+| Input                         | `seed`             | s64           | Seed for the Philox random number generator used in Dropout.                                             |
+| Input                         | `offset`           | s64           | Offset for the Philox random number generator used in Dropout.                                           |
+| Attribute                     | `p`                | float         | The dropout probability (e.g., 0.1 for 10% dropout), with values in the range [0, 1).                    |
+| Output                        | `dst`              | f32/bf16/f16  | The input tensor with randomly dropped elements scaled by the inverse of the keep probability (`1 - p`). |
+| Output                        | `mask`             | f32           | The optional mask output tensor.                                                                         |
 
 The backward pass for Dropout is mathematically identical to the forward pass.
 The only difference lies in the interpretation of the input (`src` in the
@@ -383,14 +383,14 @@ forward pass vs. `diff_src` in the backward pass). Therefore, a dedicated
 
 The proposed definition for the RNG operation is as follows:
 
-| **Inputs/Attributes/Outputs** | **Name**           | **Description**                                                                 |
-|-------------------------------|--------------------|---------------------------------------------------------------------------------|
-| Input                         | `src`             | The tensor whose shape will be used to generate the output random numbers.      |
-| Input                         | `seed`            | Seed for the Philox random number generator.                                    |
-| Input                         | `offset`          | Offset for the Philox random number generator.                                  |
-| Attribute                     | `distribution_mode` | The probability distribution used for the RNG operation (default: `BERNOULLI`). |
-| Attribute                     | `p`               | The probability ratio, with values in the range [0, 1).                         |
-| Output                        | `dst`             | A tensor of random numbers with the same shape as `src`.                        |
+| **Inputs/Attributes/Outputs** | **Name**           | **Data Type** | **Description**                                                                 |
+|-------------------------------|--------------------|---------------|---------------------------------------------------------------------------------|
+| Input                         | `src`              | f32/bf16/f16  | The tensor whose shape will be used to generate the output random numbers.      |
+| Input                         | `seed`             | s64           | Seed for the Philox random number generator.                                    |
+| Input                         | `offset`           | s64           | Offset for the Philox random number generator.                                  |
+| Attribute                     | `distribution_mode`| string        | The probability distribution used for the RNG operation (default: `BERNOULLI`). |
+| Attribute                     | `p`                | float         | The probability ratio, with values in the range [0, 1).                         |
+| Output                        | `dst`              | f32/bf16/f16  | A tensor of random numbers with the same shape as `src`.                        |
 
 The RNG operation supports only Philox random number generator. With RNG, the Dropout functionality can be implemented using a combination of
 RNG, Multiply, and Multiply operations.
@@ -451,13 +451,13 @@ The corresponding backward graph would look like this:
 
 This proposal extends the SoftMax operation to output statistics (`stats`) as an additional result. The updated SoftMax operation is defined as follows:
 
-| **Inputs/Attributes/Outputs** | **Name**           | **Description**                                                                 |
-|-------------------------------|--------------------|---------------------------------------------------------------------------------|
-| Input                         | `src`             | Input tensor.                                                                  |
-| Attribute                     | `axis`            | The axis along which SoftMax is calculated.                                    |
-| Attribute                     | `mode`            | The computation mode of SoftMax (`none` or `inf_as_zero`).                      |
-| Output                        | `dst`             | Output tensor.                                                                 |
-| **Output**                    | **`stats`**       | **Optional output that computes the log of the sum of exponentials for SoftMax, used in the backward pass.** |
+| **Inputs/Attributes/Outputs** | **Name**           | **Data Type** | **Description**                                                                                              |
+|-------------------------------|--------------------|---------------|--------------------------------------------------------------------------------------------------------------|
+| Input                         | `src`              | f32/bf16/f16  | Input tensor.                                                                                                |
+| Attribute                     | `axis`             | s64           | The axis along which SoftMax is calculated.                                                                  |
+| Attribute                     | `mode`             | string        |The computation mode of SoftMax (`none` or `inf_as_zero`).                                                    |
+| Output                        | `dst`              | f32/bf16/f16  |Output tensor.                                                                                                |
+| **Output**                    | **`stats`**        | f32           | **Optional output that computes the log of the sum of exponentials for SoftMax, used in the backward pass.** |
 
 The `stats` output is saved and used during the backward pass to reconstruct the
 SoftMax output. With this approach, the forward and backward graphs are as

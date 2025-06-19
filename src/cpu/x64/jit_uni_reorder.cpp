@@ -2397,28 +2397,26 @@ void jit_uni_reorder_t::omp_driver_0d(int off, const char *in, char *out,
         int dst_zp, int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
 
-    parallel(1, [=](int, int) {
-        tr::call_param_t base_params;
-        base_params.in = in;
-        base_params.out = out;
-        base_params.src_scales = src_scales;
-        base_params.dst_scales = dst_scales;
-        base_params.src_zp = src_zp;
-        base_params.dst_zp = dst_zp;
-        base_params.compensation_scratch = compensation_scratch;
+    tr::call_param_t base_params;
+    base_params.in = in;
+    base_params.out = out;
+    base_params.src_scales = src_scales;
+    base_params.dst_scales = dst_scales;
+    base_params.src_zp = src_zp;
+    base_params.dst_zp = dst_zp;
+    base_params.compensation_scratch = compensation_scratch;
 
-        if (prb.is_tail_present) {
-            tr::tail_call_param_t tail_params;
-            tail_params.base_params = base_params;
+    if (prb.is_tail_present) {
+        tr::tail_call_param_t tail_params;
+        tail_params.base_params = base_params;
 
-            static constexpr int omp_ndims = 0;
-            fill_curr_data_chunks(prb, off, nullptr, omp_ndims, tail_params);
+        static constexpr int omp_ndims = 0;
+        fill_curr_data_chunks(prb, off, nullptr, omp_ndims, tail_params);
 
-            (*kernel_)(&tail_params);
-        } else {
-            (*kernel_)(&base_params);
-        }
-    });
+        (*kernel_)(&tail_params);
+    } else {
+        (*kernel_)(&base_params);
+    }
 }
 
 void jit_uni_reorder_t::omp_driver_1d(int ithr, int nthr, int off,

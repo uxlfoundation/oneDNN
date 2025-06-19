@@ -2104,19 +2104,10 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
         Label tail_processing;
 
-        const auto load_zp = [&](const ZRegS ymm_zp, const XReg reg_zp) {
-            dup(ymm_zp, WReg(reg_zp.getIdx()));
-            scvtf(ymm_zp, P_ALL_ONE / T_m, ymm_zp);
-        };
-
         set_preg(p_tmp2.s, 4, X_TMP_0, X_TMP_1);
         rev(p_tmp1.s, p_tmp2.s);
 
         preamble();
-
-        if (prb_.req_src_zp) load_zp(ymm_src_zp, reg_src_zp);
-
-        if (prb_.req_dst_zp) load_zp(ymm_dst_zp, reg_dst_zp);
 
         cmp(reg_ptr_tail, true);
         b(EQ, tail_processing);
@@ -2315,13 +2306,11 @@ struct jit_single_blk_kernel_t : public jit_generator {
                         i_off + i * input_stride * itype_sz_, x_tmp_0);
                 gen_loadu(ZRegS(i), x_addr, lane * itype_sz_);
             }
-            if (prb_.req_src_zp) { fsub(ZRegS(i), ZRegS(i), ymm_src_zp); }
         }
 
         gen_transpose_8x8();
 
         for (int i = 0; i < in_tail; ++i) {
-            if (prb_.req_dst_zp) { fadd(ZRegS(i), ZRegS(i), ymm_dst_zp); }
             if (out_tail == lane) {
                 add_imm(x_addr, reg_ptr_out_,
                         o_off + i * output_stride * otype_sz_, x_tmp_0);
@@ -2523,8 +2512,6 @@ private:
     XReg reg_ptr_in_ = abi_param1;
     XReg reg_ptr_out_ = abi_param2;
     XReg reg_ptr_tail = abi_param3;
-    XReg reg_src_zp = abi_param4;
-    XReg reg_dst_zp = abi_param5;
 
     /* Because the callee-saved registers are not restored blk_reorder,
      the temporary registers (x9-x15) must be assigned.
@@ -2540,8 +2527,6 @@ private:
     PReg p_tmp2 = p3;
 
     ZRegS ymm_tmp = z0.s;
-    ZRegS ymm_src_zp = z14.s;
-    ZRegS ymm_dst_zp = z15.s;
 
     const std::vector<uint32_t> tmp_vec_idx = {20, 21, 22, 23, 24, 25, 26, 27};
     VReg v_tmp0 = v20;
@@ -3314,8 +3299,6 @@ status_t jit_blk_reorder_t::init(engine_t *engine) {
 status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
 
     // kernel handle 2-dimension tiles, a tail is possible
     auto &prb = this->pd()->prb_;
@@ -3339,7 +3322,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;
         auto *o = out + (bh_b + fl_b * o1) * otype_sz_;
-        (*kernel_)(i, o, n1 - fl_b < block_sz, src_zp, dst_zp);
+        (*kernel_)(i, o, n1 - fl_b < block_sz);
     });
 
     return status::success;

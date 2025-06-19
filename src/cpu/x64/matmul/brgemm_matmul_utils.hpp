@@ -112,6 +112,7 @@ struct brgemm_matmul_conf_t {
     bool packed_sparse_weights;
     bool req_transpose_scales;
     bool with_wei_decompression;
+    int postops_inst_count;
     brgemm_broadcast_t src_zp_type;
     brgemm_broadcast_t wei_zp_type;
     brgemm_broadcast_t dst_zp_type;

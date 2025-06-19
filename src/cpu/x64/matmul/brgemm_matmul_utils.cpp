@@ -24,6 +24,7 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/matmul/postops_estimator.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
 // TODO add a method to print brgemm conf info
@@ -1522,6 +1523,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                           && ((bgmmc.wei_tag == abcd)
                                   || bm_conf_utils.is_any_B_layout())),
             VERBOSE_UNSUPPORTED_FPMATH_MODE);
+
+    if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, bm_conf_utils))
+        if (postops_estimator_t::estimate_insts_per_cacheline(
+                    dst_md, attr, bgmmc.postops_inst_count)
+                != status::success) {
+            // Failed to estimate postops length. Assumption is no impact on
+            // gemm execution.
+            bgmmc.postops_inst_count = 0;
+        }
 
     // Heuristic tries to optimize the following parameters:
     // - M_blk, M_Chunk

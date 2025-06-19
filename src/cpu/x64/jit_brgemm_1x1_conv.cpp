@@ -89,9 +89,13 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     brgs_ = std::make_shared<brgemm_containers::brgemm_desc_container_t>(32);
 
+    const bool need_compensation
+            = (jcp_.src_zero_point || jcp_.s8s8_compensation_required)
+            && !jcp_.req_brg_comp_pad;
+
     ic_chunks_ = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork_ = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || (one_of(src_type, u8, s8) && wei_type == s8) // oscales needed
+            || jcp_.with_scales || jcp_.with_dst_scales || need_compensation
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum;
 
     const bool need_extra_m_kernel = get_extra_m_kernel_req(jcp_);

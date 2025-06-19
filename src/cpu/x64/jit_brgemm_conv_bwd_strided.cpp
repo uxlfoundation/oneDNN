@@ -615,7 +615,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
             && !jcp.req_brg_comp_pad;
 
     need_postwork = jcp.with_bias || jcp.with_eltwise || jcp.with_binary
-            || (one_of(jcp.src_dt, u8, s8) && jcp.wei_dt == s8)
+            || jcp.with_scales || jcp.with_dst_scales || need_compensation
             || (jcp.dst_dt != jcp.acc_dt) || jcp.with_sum || jcp.use_M_mask
             || jcp.src_zero_point || jcp.dst_zero_point;
 

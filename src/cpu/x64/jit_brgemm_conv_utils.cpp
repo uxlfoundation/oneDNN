@@ -2381,10 +2381,12 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
+    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
+    jcp.with_dst_scales = !dst_scales.has_default_values();
 
     const bool compensation_w_padding
             = (jcp.s8s8_compensation_required || jcp.src_zero_point)
@@ -2656,10 +2658,12 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
+    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     jcp.with_scales = !src_scales.has_default_values()
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
+    jcp.with_dst_scales = !dst_scales.has_default_values();
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop

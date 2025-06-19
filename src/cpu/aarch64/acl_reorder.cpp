@@ -19,10 +19,10 @@
 namespace {
 /*
 * Find the index of the dense dimension.
-* The stride of the dense block will be multiplied by
-* the blocking of all prior blocks.
+* The stride of the inner most dense block will be
+* multiplied by the blocking of all prior blocks.
 */
-int find_dense_idx(const dnnl_memory_desc *md) {
+int find_innermost_dense_idx(const dnnl::impl::memory_desc_t *md) {
     uint32_t dense_blk = 1;
     for (int i = 0; i < md->format_desc.blocking.inner_nblks; i++) {
         dense_blk *= md->format_desc.blocking.inner_blks[i];
@@ -72,28 +72,28 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
             && utils::one_of(dst_md->data_type, data_type::f32, data_type::bf16)
             && attr->has_default_values();
 
-    if (!ok) return status::unimplemented;
+    VDISPATCH_REORDER_IC(ok, "unsupported datatype");
 
     if (!attr->scales_.has_default_values(DNNL_ARG_DST)) {
         int mask = attr->scales_.get_mask(DNNL_ARG_DST);
         const memory_desc_wrapper input_d(src_md);
-        if (input_d.has_runtime_dims_or_strides() && mask > 0)
-            return status::unimplemented;
+        VDISPATCH_REORDER_IC(
+                !(input_d.has_runtime_dims_or_strides() && mask > 0),
+                "unsupported strides or masks");
     }
 
     // Create and check primitive descriptor
     auto _pd = make_unique_pd<pd_t>(
             attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
     if (_pd == nullptr) return status::out_of_memory;
-    if (_pd->init(engine, src_engine, dst_engine) != status::success) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REORDER_IC(
+            _pd->init(engine, src_engine, dst_engine) == status::success,
+            "pd initialization failed");
 
     // In case we have two or four dimensions, we can't have one of the
     // two first dimensions as 1. This is valid for f32->f32 and f32->bf16.
-    if (dst_md->dims[0] == 1 || dst_md->dims[1] == 1) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REORDER_IC(dst_md->dims[0] != 1 && dst_md->dims[1] != 1,
+            "first two dimensions cannot be 1");
 
     auto src_tag = memory_desc_matches_one_of_tag(
             *src_md, format_tag::ab, format_tag::ba, format_tag::cdba);
@@ -119,45 +119,41 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
             "ACL only supports 2D and 4D reorders");
     // Check if a transpose is needed during the reorder
     if (src_md->ndims == 4) {
-        if (memory_desc_matches_tag(*src_md, dnnl::impl::format_tag::cdba)
-                && (memory_desc_matches_tag(
-                            *dst_md, dnnl::impl::format_tag::Acdb4a)
-                        || memory_desc_matches_tag(
-                                *dst_md, dnnl::impl::format_tag::Acdb8a))) {
-            transpose = true;
-        } else {
-            return status::unimplemented;
-        };
+        VDISPATCH_REORDER_IC(
+                memory_desc_matches_tag(*src_md, dnnl::impl::format_tag::cdba)
+                        && (memory_desc_matches_one_of_tag(*dst_md,
+                                dnnl::impl::format_tag::Acdb4a,
+                                dnnl::impl::format_tag::Acdb8a)),
+                "unsupported memory format");
+        transpose = true;
     } else {
-        int src_dense_idx = find_dense_idx(src_md);
-        int dst_dense_idx = find_dense_idx(dst_md);
+        int src_dense_idx = find_innermost_dense_idx(src_md);
+        int dst_dense_idx = find_innermost_dense_idx(dst_md);
 
         transpose = src_dense_idx != dst_dense_idx;
     }
 
     auto &dst_wf = _pd->app_.dst_wf;
 
-    dst_wf = arm_compute::WeightFormat::OHWI;
+    VDISPATCH_REORDER_IC(
+            dst_blocking.inner_nblks <= 2, "unsupported blocking format");
     // Offsets to calculate the enum for ComputeLibrary weight formats
     // defined in arm_compute/core/CoreTypes.h
     const auto interleave_offset = 0x000100;
     const auto block_by_offset = 0x100000;
     for (int i = 0; i < dst_blocking.inner_nblks; i++) {
-        auto idx = dst_blocking.inner_idxs[i];
         auto blk = dst_blocking.inner_blks[i];
-        if (idx == 0) {
+        if (i == 0) {
             auto offset = dst_blocking.inner_nblks == 1 ? interleave_offset
                                                         : block_by_offset;
             dst_wf = (arm_compute::WeightFormat)(
                     static_cast<long int>(dst_wf) + offset * (blk - 1));
-        } else if (idx == 1) {
+        } else if (i == 1) {
             auto offset = dst_blocking.inner_nblks == 1 ? block_by_offset
                                                         : interleave_offset;
             // Set block_by
             dst_wf = (arm_compute::WeightFormat)(
                     static_cast<long int>(dst_wf) + offset * (blk - 1));
-        } else {
-            return status::unimplemented;
         }
     }
 
@@ -185,9 +181,8 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         } break;
         case 4: {
             // Currently only supporting AxBx1x1 cases
-            if (dst_md->dims[2] != 1 || dst_md->dims[3] != 1) {
-                return status::unimplemented;
-            }
+            VDISPATCH_REORDER_IC(dst_md->dims[2] == 1 && dst_md->dims[3] == 1,
+                    "currently only AxBx1x1 4d reorders are supported");
 
             acl_tensor_shape_in = arm_compute::TensorShape(src_md->dims[3],
                     src_md->dims[2], src_md->dims[1], src_md->dims[0]);
@@ -266,10 +261,6 @@ status_t acl_reorder_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     acl_obj.dst_tensor.allocator()->free();
 
     return status::success;
-}
-
-const acl_reorder_fwd_t::pd_t *acl_reorder_fwd_t::pd() const {
-    return (const pd_t *)primitive_t::pd().get();
 }
 
 } // namespace aarch64

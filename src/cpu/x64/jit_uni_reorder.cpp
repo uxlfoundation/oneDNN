@@ -2608,46 +2608,44 @@ void jit_uni_reorder_t::omp_driver(const char *in, char *out,
     const auto wspace_per_thr_size = utils::rnd_up(G * N, cache_line_size);
     const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
 
-    if (ndims - ndims_ker == 0) {
-        if (req_compensation)
-            std::memset(compensation_reduce_scratch, 0, wspace_per_thr_bytes);
-
-        omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales, src_zp,
-                dst_zp, compensation_reduce_scratch);
-    } else {
-        parallel(pd()->nthr_, [=](const int ithr, const int nthr) {
-            int32_t *compensation_scratch = nullptr;
-            if (req_compensation) {
+    const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
+    parallel(nthr, [=](const int ithr, const int nthr) {
+        int32_t *compensation_scratch = nullptr;
+        if (req_compensation) {
+            if (ndims - ndims_ker == 0)
+                compensation_scratch = compensation_reduce_scratch;
+            else
                 compensation_scratch = &compensation_reduce_scratch[ithr
                         * wspace_per_thr_size];
-                std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
-            }
+            std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
+        }
 
-            switch (ndims - ndims_ker) {
-                case 1:
-                    omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 2:
-                    omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 3:
-                    omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 4:
-                    omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                default: assert(!"unimplemented");
-            }
-        });
-    }
+        switch (ndims - ndims_ker) {
+            case 0:
+                omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales,
+                        src_zp, dst_zp, compensation_scratch);
+            case 1:
+                omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 2:
+                omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 3:
+                omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 4:
+                omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            default: assert(!"unimplemented");
+        }
+    });
 
     //reduction of intermediate compensation results to the final output
     if (req_compensation) {
-        const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
         reduce_compensation(
                 out, compensation_reduce_scratch, nthr, wspace_per_thr_size);
     }

@@ -38,8 +38,34 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-const char *get_kernel_source(const char *name);
 const char *get_kernel_header(const std::string &name);
+
+status_t preprocess_headers(std::stringstream &pp_code, const char *code,
+        const compute::kernel_ctx_t &kernel_ctx) {
+    std::stringstream code_stream(code);
+
+    for (std::string line; std::getline(code_stream, line);) {
+        const size_t include_pos = line.find("#include");
+        if (include_pos != std::string::npos) {
+            static constexpr size_t include_len = 8;
+            const size_t first_quote_pos
+                    = line.find("\"", include_pos + include_len);
+            const size_t second_quote_pos
+                    = line.find("\"", first_quote_pos + 1);
+            const size_t kernel_name_len
+                    = second_quote_pos - first_quote_pos - 1;
+            const auto header_name
+                    = line.substr(first_quote_pos + 1, kernel_name_len);
+            const char *header_source
+                    = kernel_ctx.get_custom_header(header_name);
+            if (!header_source) header_source = get_kernel_header(header_name);
+            CHECK(preprocess_headers(pp_code, header_source, kernel_ctx));
+        } else {
+            pp_code << line << std::endl;
+        }
+    }
+    return status::success;
+}
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         cl_device_id dev, cl_context ctx, size_t index,
@@ -173,33 +199,6 @@ cl_int maybe_print_debug_info(
     MAYBE_UNUSED(err);
     return err_;
 };
-
-inline status_t preprocess_headers(std::stringstream &pp_code, const char *code,
-        const compute::kernel_ctx_t &kernel_ctx) {
-    std::stringstream code_stream(code);
-
-    for (std::string line; std::getline(code_stream, line);) {
-        const size_t include_pos = line.find("#include");
-        if (include_pos != std::string::npos) {
-            static constexpr size_t include_len = 8;
-            const size_t first_quote_pos
-                    = line.find("\"", include_pos + include_len);
-            const size_t second_quote_pos
-                    = line.find("\"", first_quote_pos + 1);
-            const size_t kernel_name_len
-                    = second_quote_pos - first_quote_pos - 1;
-            const auto header_name
-                    = line.substr(first_quote_pos + 1, kernel_name_len);
-            const char *header_source
-                    = kernel_ctx.get_custom_header(header_name);
-            if (!header_source) header_source = get_kernel_header(header_name);
-            CHECK(preprocess_headers(pp_code, header_source, kernel_ctx));
-        } else {
-            pp_code << line << std::endl;
-        }
-    }
-    return status::success;
-}
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         xpu::ocl::wrapper_t<cl_program> &program, const char *code) {

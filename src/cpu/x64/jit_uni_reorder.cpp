@@ -1793,18 +1793,7 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
 
         Label tail_processing;
 
-        const auto load_zp = [&](const Ymm ymm_zp, const Reg64 reg_zp) {
-            const Xmm xmm_zp = Xmm(ymm_zp.getIdx());
-            uni_vmovq(xmm_zp, reg_zp);
-            uni_vpbroadcastd(ymm_zp, xmm_zp);
-            uni_vcvtdq2ps(ymm_zp, ymm_zp);
-        };
-
         preamble();
-
-        if (prb_.req_src_zp) load_zp(ymm_src_zp, reg_src_zp);
-
-        if (prb_.req_dst_zp) load_zp(ymm_dst_zp, reg_dst_zp);
 
         cmp(reg_ptr_tail, true);
         je(tail_processing, T_NEAR);
@@ -1946,13 +1935,11 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
                         ptr[reg_ptr_in_ + i_off + i * input_stride * itype_sz_],
                         lane * itype_sz_);
             }
-            if (prb_.req_src_zp) { vsubps(Ymm(i), Ymm(i), ymm_src_zp); }
         }
 
         gen_transpose_8x8();
 
         for (int i = 0; i < in_tail; ++i) {
-            if (prb_.req_dst_zp) { vaddps(Ymm(i), Ymm(i), ymm_dst_zp); }
             if (out_tail == lane) {
                 gen_storeu(ptr[reg_ptr_out_ + o_off
                                    + i * output_stride * otype_sz_],
@@ -2026,9 +2013,6 @@ private:
 
     void preamble() {
         if (is_windows) {
-            // retrieve 5th function call argument from call stack
-            static constexpr int param5 = 0x8;
-            mov(reg_dst_zp, ptr[rsp + param5]);
             sub(rsp, xmm_save_for_windows * xmm_width);
             for (int i = 0; i < xmm_save_for_windows; ++i) {
                 uni_vmovdqu(ptr[rsp + i * xmm_width],
@@ -2058,13 +2042,9 @@ private:
     Reg64 reg_ptr_out_ = abi_param2;
     // Windows bool is 1-byte in register
     Reg8 reg_ptr_tail = is_windows ? r8b : dl;
-    Reg64 reg_src_zp = abi_param4;
-    Reg64 reg_dst_zp = is_windows ? r10 : r8;
 
     Ymm ymm_mask = ymm12;
     Ymm ymm_tmp = ymm0;
-    Ymm ymm_src_zp = ymm14;
-    Ymm ymm_dst_zp = ymm15;
 };
 
 status_t kernel_t::desc_init(
@@ -2868,8 +2848,6 @@ status_t jit_blk_reorder_t::execute(
     auto FL = (n1 + block_sz - 1) / block_sz;
 
     parallel_nd(BH, FL, [=](dim_t bh, dim_t fl) {
-        DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-        DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
         auto &prb = this->pd()->prb_;
         auto block_sz = prb.n(0);
         auto n1 = prb.n(1);
@@ -2883,7 +2861,7 @@ status_t jit_blk_reorder_t::execute(
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;
         auto *o = out + (bh_b + fl_b * o1) * otype_sz_;
-        (*kernel_)(i, o, n1 - fl_b < block_sz, src_zp, dst_zp);
+        (*kernel_)(i, o, n1 - fl_b < block_sz);
         return status::success;
     });
 

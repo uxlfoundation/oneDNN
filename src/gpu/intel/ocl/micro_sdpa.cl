@@ -254,6 +254,42 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
      for (int i = 0; i < 8; i++)
          f = A_tile1.x[i][0];
 */
+
+inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
+        int m, int n, int ldq, int offset_r, int offset_c) {
+
+#if USE_SYSTOLIC_UKERNEL
+
+#ifdef BLOCK_Q
+    tile_load_block_rem_q(
+            Q_tile, (global uint *)Q, n, ldq >> 1, offset_r, offset_c);
+#elif Q_ALIGN >= 4
+        tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r, offset_c;
+#else
+    tile_load_packed_vec2(Q_tile, Q, m, n, ldq, offset_r, offset_c);
+#endif
+
+#else // FMA
+
+#ifdef BLOCK_Q
+    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c);
+#else
+    tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
+#endif
+
+#endif
+}
+
+inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
+        int panel, int ld, int offset_r, int offset_c) {
+#if USE_SYSTOLIC_UKERNEL
+    tile_store_t_sys_src1(
+            *Q_tile, (local uint *)&Q_slm[0], ld / 2, offset_r, offset_c);
+#else // FMA
+    tile_store_t_packed_src1(*Q_tile, Q_slm, panel, ld, offset_r, offset_c);
+#endif
+}
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
@@ -363,34 +399,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
 
-#if USE_SYSTOLIC_UKERNEL
-
-#ifdef BLOCK_Q
-        tile_load_block_rem_q(
-                &Q_tile, (global uint *)Q, q, ldq >> 1, 0, wg_j0 + q0_copy);
-#elif Q_ALIGN >= 4
-        tile_load(&Q_tile, (global uint *)Q, (d + 1) >> 1, q, ldq >> 1, 0,
-                wg_j0 + q0_copy);
-#else
-        tile_load_packed_vec2(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy);
-#endif
+        tile_load_src1(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy);
 
         /* Store Q tile to SLM */
-        tile_store_t_sys_src1(
-                Q_tile, (local uint *)&Q_slm[0], D_MAX / 2, q0_copy, 0);
-
-#else // FMA
-
-#ifdef BLOCK_Q
-        tile_load_block_rem_q(&Q_tile, Q, q, ldq, 0, wg_j0 + q0_copy);
-#else
-        tile_load(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy);
-#endif
-
-        /* Store Q tile to SLM */
-        tile_store_t_packed_src1(
-                Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
-#endif
+        tile_store_t_slm_src1(
+                &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
 
 #if Q_ARRIVE_AWAIT_BARRIER
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);

@@ -70,3 +70,7 @@
 --batch=option_set_fwks_key_gpu
 --reset
 --batch=option_set_fwks_ext_gpu
+
+# Regression
+--reset
+--batch=harness_softmax_regression

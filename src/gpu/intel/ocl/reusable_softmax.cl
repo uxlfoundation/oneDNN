@@ -114,6 +114,8 @@ reusable_softmax_fwd_generic(__global DATA_T *src, __global DST_DATA_T *dst,
         dim_t softmax_axis_chunk_size, dispatch_gws_rt_params_t gws_params) {
 
     float scale = 1.0f;
+    if (src_scale) { scale = *src_scale; }
+    if (dst_scale) { scale /= *dst_scale; }
 
     const off_t linear_thread_id = get_global_id(0);
     const off_t data_off

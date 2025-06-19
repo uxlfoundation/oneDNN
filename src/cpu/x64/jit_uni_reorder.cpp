@@ -2576,82 +2576,6 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
             });
 }
 
-void jit_uni_reorder_t::omp_driver(const char *in, char *out,
-        const float *src_scales, const float *dst_scales, int src_zp,
-        int dst_zp, const memory_tracking::grantor_t &scratchpad) const {
-    in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
-    out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
-
-    DEBUG({
-        verbose_printf(verbose_t::debuginfo, "prb  : %s\n",
-                tr::prb_dump(pd()->prb_).c_str());
-    });
-    DEBUG({
-        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
-                tr::prb_dump(pd()->ker_desc_.prb).c_str());
-    });
-
-    int ndims = pd()->prb_.ndims;
-    int ndims_ker = pd()->ker_desc_.prb.ndims;
-    const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
-    const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
-    const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
-    assert(ndims - ndims_ker <= ndims_driver_max);
-
-    int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
-            memory_tracking::names::key_reorder_space);
-
-    const memory_desc_wrapper od(pd()->dst_md());
-    const auto G = pd()->with_groups_ ? od.padded_dims()[0] : 1;
-    const auto N = od.padded_dims()[pd()->with_groups_ ? 1 : 0];
-    static constexpr int cache_line_size = 16;
-    const auto wspace_per_thr_size = utils::rnd_up(G * N, cache_line_size);
-    const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
-
-    const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
-    parallel(nthr, [=](const int ithr, const int nthr) {
-        int32_t *compensation_scratch = nullptr;
-        if (req_compensation) {
-            if (ndims - ndims_ker == 0)
-                compensation_scratch = compensation_reduce_scratch;
-            else
-                compensation_scratch = &compensation_reduce_scratch[ithr
-                        * wspace_per_thr_size];
-            std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
-        }
-
-        switch (ndims - ndims_ker) {
-            case 0:
-                omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales,
-                        src_zp, dst_zp, compensation_scratch);
-                break;
-            case 1:
-                omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
-                        dst_scales, src_zp, dst_zp, compensation_scratch);
-                break;
-            case 2:
-                omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
-                        dst_scales, src_zp, dst_zp, compensation_scratch);
-                break;
-            case 3:
-                omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
-                        dst_scales, src_zp, dst_zp, compensation_scratch);
-                break;
-            case 4:
-                omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
-                        dst_scales, src_zp, dst_zp, compensation_scratch);
-                break;
-            default: assert(!"unimplemented");
-        }
-    });
-
-    //reduction of intermediate compensation results to the final output
-    if (req_compensation) {
-        reduce_compensation(
-                out, compensation_reduce_scratch, nthr, wspace_per_thr_size);
-    }
-}
-
 void jit_uni_reorder_t::reduce_compensation(char *out,
         const int32_t *compensation_reduce_scratch, const int nthr,
         const dim_t wspace_per_thr_size) const {
@@ -2746,23 +2670,133 @@ status_t jit_uni_reorder_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
+struct jit_reorder_args_t {
+    jit_reorder_args_t(const std::shared_ptr<exec_ctx_t> &ctx,
+            const jit_uni_reorder_t::pd_t *pd)
+        : in_(CTX_IN_MEM(const char *, DNNL_ARG_FROM))
+        , out_(CTX_OUT_MEM(char *, DNNL_ARG_TO)) {
+        const auto &scratchpad = ctx->get_scratchpad_grantor();
+        DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(
+                pd->attr(), src_scales_, DNNL_ARG_SRC, src_scales_buf16_);
+        DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(
+                pd->attr(), dst_scales_, DNNL_ARG_DST, dst_scales_buf16_);
+
+        dst_scales_ = pd->precompute_scales(
+                scratchpad, pd->attr(), pd->D_mask_, dst_scales_);
+        assert(dst_scales_);
+
+        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(
+                pd->attr(), src_zp_, DNNL_ARG_FROM, 0);
+        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(pd->attr(), dst_zp_, DNNL_ARG_TO, 0);
+    }
+
+    const char *in() const { return in_; }
+    char *out() const { return out_; }
+    const float *src_scales() const { return src_scales_; }
+    const float *dst_scales() const { return dst_scales_; }
+    int src_zp() const { return src_zp_; }
+    int dst_zp() const { return dst_zp_; }
+
+private:
+    const char *in_;
+    char *out_;
+
+    const float *src_scales_;
+    float src_scales_buf16_[16];
+    const float *dst_scales_;
+    float dst_scales_buf16_[16];
+
+    int src_zp_;
+    int dst_zp_;
+};
+
 status_t jit_uni_reorder_t::execute(
         const std::shared_ptr<exec_ctx_t> &ctx) const {
-    const auto &scratchpad = ctx->get_scratchpad_grantor();
+    auto reorder_ctx = std::make_shared<jit_reorder_args_t>(ctx, pd());
 
-    auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
-    auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales_, DNNL_ARG_DST);
+    auto in = reorder_ctx->in()
+            + pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
+    auto out = reorder_ctx->out()
+            + pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
 
-    const float *dst_scales = pd()->precompute_scales(
-            scratchpad, pd()->attr(), pd()->D_mask_, dst_scales_);
-    assert(dst_scales);
+    DEBUG({
+        verbose_printf(verbose_t::debuginfo, "prb  : %s\n",
+                tr::prb_dump(pd()->prb_).c_str());
+    });
+    DEBUG({
+        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
+                tr::prb_dump(pd()->ker_desc_.prb).c_str());
+    });
 
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
+    int ndims = pd()->prb_.ndims;
+    int ndims_ker = pd()->ker_desc_.prb.ndims;
+    const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
+    const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
+    const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
+    assert(ndims - ndims_ker <= ndims_driver_max);
 
-    omp_driver(in, out, src_scales, dst_scales, src_zp, dst_zp, scratchpad);
+    const memory_desc_wrapper od(pd()->dst_md());
+    const auto G = pd()->with_groups_ ? od.padded_dims()[0] : 1;
+    const auto N = od.padded_dims()[pd()->with_groups_ ? 1 : 0];
+    static constexpr int cache_line_size = 16;
+    const auto wspace_per_thr_size = utils::rnd_up(G * N, cache_line_size);
+    const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
+
+    const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
+    parallel(nthr, [=](const int ithr, const int nthr) {
+        const auto &scratchpad = ctx->get_scratchpad_grantor();
+        int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
+                memory_tracking::names::key_reorder_space);
+        int32_t *compensation_scratch = nullptr;
+
+        if (req_compensation) {
+            if (ndims - ndims_ker == 0)
+                compensation_scratch = compensation_reduce_scratch;
+            else
+                compensation_scratch = &compensation_reduce_scratch[ithr
+                        * wspace_per_thr_size];
+            std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
+        }
+
+        auto src_scales = reorder_ctx->src_scales();
+        auto dst_scales = reorder_ctx->dst_scales();
+        auto src_zp = reorder_ctx->src_zp();
+        auto dst_zp = reorder_ctx->dst_zp();
+
+        switch (ndims - ndims_ker) {
+            case 0:
+                omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales,
+                        src_zp, dst_zp, compensation_scratch);
+                break;
+            case 1:
+                omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 2:
+                omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 3:
+                omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 4:
+                omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            default: assert(!"unimplemented");
+        }
+    });
+
+    //reduction of intermediate compensation results to the final output
+    if (req_compensation) {
+        const auto &scratchpad = ctx->get_scratchpad_grantor();
+        int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
+                memory_tracking::names::key_reorder_space);
+
+        reduce_compensation(
+                out, compensation_reduce_scratch, nthr, wspace_per_thr_size);
+    }
 
     return status::success;
 }

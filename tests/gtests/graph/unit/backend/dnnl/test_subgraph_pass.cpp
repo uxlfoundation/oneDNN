@@ -936,13 +936,13 @@ TEST_P(int8_matmul_with_diff_inputs_t, Int8MatmulPasses) {
 
 INSTANTIATE_TEST_SUITE_P(test_subgraph_pass, int8_matmul_with_diff_inputs_t,
         testing::Values(matmul_params_t {{1, 1024}, {1000, 1024}, {1000},
-                                {1, 1000}, false, true, false, 7, 8},
+                                {1, 1000}, false, true, false, 7, 7},
                 matmul_params_t {{1, 1024}, {1000, 1024}, {1000}, {1, 1000},
-                        false, true, true, 7, 8},
+                        false, true, true, 7, 7},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, false, 8, 9},
+                        true, false, 8, 8},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, true, 8, 9}));
+                        true, true, 8, 8}));
 
 class matmul_with_diff_inputs_t
     : public ::testing::TestWithParam<matmul_params_t> {};
@@ -1041,19 +1041,16 @@ TEST_P(matmul_with_diff_inputs_t, MatmulPasses) {
 
     ASSERT_EQ(dnnl_impl::layout_propagation(subgraph), graph::status::success);
     auto final_subgraph_size = params.final_subgraph_size;
-    if (params.transpose_a && p_eng.get_kind() == dnnl::engine::kind::gpu) {
-        final_subgraph_size -= 1;
-    }
     ASSERT_EQ(subgraph->get_ops().size(), final_subgraph_size);
 }
 
 INSTANTIATE_TEST_SUITE_P(test_subgraph_pass, matmul_with_diff_inputs_t,
         testing::Values(matmul_params_t {{1, 1024}, {1000, 1024}, {1000},
-                                {1, 1000}, false, true, false, 4, 5},
+                                {1, 1000}, false, true, false, 4, 4},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, false, 6, 7},
+                        true, false, 6, 6},
                 matmul_params_t {{4, 64, 3}, {3, 64}, {3}, {4, 3, 3}, true,
-                        true, false, 6, 8}));
+                        true, false, 6, 6}));
 
 TEST(test_subgraph_pass, ExecutionArgsSet) {
     ///////////////////////////

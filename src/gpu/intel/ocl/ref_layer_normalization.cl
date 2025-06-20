@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,17 +40,19 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
 
     int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-    ACC_DATA_T v_mean = CALCULATE_STATS ? 0 : mean[s_off];
+    ACC_DATA_T v_mean = (CALCULATE_STATS || SKIP_MEAN) ? 0 : mean[s_off];
     ACC_DATA_T v_variance = CALCULATE_STATS ? 0 : variance[s_off];
 
     if (CALCULATE_STATS) {
-        for (int c = 0; c < C; ++c) {
-            x[NDIMS - 1] = c;
-            int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+        if (!SKIP_MEAN) {
+            for (int c = 0; c < C; ++c) {
+                x[NDIMS - 1] = c;
+                int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-            v_mean += SRC_TO_REF(src[src_off]);
+                v_mean += SRC_TO_REF(src[src_off]);
+            }
+            v_mean /= C;
         }
-        v_mean /= C;
 
         for (int c = 0; c < C; ++c) {
             x[NDIMS - 1] = c;
@@ -84,7 +86,7 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
 
     if (CALCULATE_STATS) {
         if (SAVE_STATS) {
-            mean[s_off] = convert_float(v_mean);
+            if (!SKIP_MEAN) mean[s_off] = convert_float(v_mean);
             variance[s_off] = convert_float(v_variance);
         }
     }
@@ -122,7 +124,8 @@ __kernel void ref_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
                             = rsqrt(variance[s_off] + eps);
                     const float dd = DST_TO_REF(diff_dst[dst_off]);
 
-                    diff_gamma += (SRC_TO_REF(src[src_off]) - mean[s_off]) * dd
+                    const float mean_val = SKIP_MEAN ? 0 : mean[s_off];
+                    diff_gamma += (SRC_TO_REF(src[src_off]) - mean_val) * dd
                             * inv_sqrt_variance;
                     diff_beta += dd;
                 }
@@ -146,7 +149,7 @@ __kernel void ref_lnorm_bwd(__global SRC_DATA_T *src, __global float *mean,
     x[3] = GWS_GET_X3();
 
     const int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-    const ACC_DATA_T mean_val = mean[s_off];
+    const ACC_DATA_T mean_val = SKIP_MEAN ? 0 : mean[s_off];
 
     const ACC_DATA_T inv_sqrt_variance = rsqrt(variance[s_off] + eps);
     ACC_DATA_T dd_gamma = 0;

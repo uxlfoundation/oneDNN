@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -281,6 +281,7 @@ struct sycl_layer_normalization_conf_t {
     int ndims;
     int block_size;
     int wg_size;
+    bool skip_mean;
 };
 
 struct sycl_batch_normalization_conf_t {

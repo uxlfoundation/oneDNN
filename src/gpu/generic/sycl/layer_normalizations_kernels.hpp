@@ -203,13 +203,15 @@ private:
         dim_t C = conf_.C;
 
         if (conf_.calculate_stats) {
-            for (dim_t c = 0; c < C; ++c) {
-                dim_t index = idx * C + c;
-                const auto sd_off = data_md().off_l(index);
-                float s = data_mem.load(sd_off);
-                v_mean += s;
+            if (!conf_.skip_mean) {
+                for (dim_t c = 0; c < C; ++c) {
+                    dim_t index = idx * C + c;
+                    const auto sd_off = data_md().off_l(index);
+                    float s = data_mem.load(sd_off);
+                    v_mean += s;
+                }
+                v_mean /= C;
             }
-            v_mean /= C;
             for (dim_t c = 0; c < C; ++c) {
                 dim_t index = idx * C + c;
                 const auto s_off = data_md().off_l(index);
@@ -239,7 +241,7 @@ private:
         }
 
         if (conf_.calculate_stats && conf_.save_stats) {
-            stat_out_mem.store(v_mean, s_off);
+            if (!conf_.skip_mean) stat_out_mem.store(v_mean, s_off);
             var_out_mem.store(v_variance, s_off);
         }
     }

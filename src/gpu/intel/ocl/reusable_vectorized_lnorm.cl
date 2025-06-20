@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
             sum += vec_sum(val);
         }
 
-        local_mean = sub_group_reduce_add(sum) * rrs;
+        if (!SKIP_MEAN) local_mean = sub_group_reduce_add(sum) * rrs;
         FLT_ACC_DATA_T sumsq = 0;
         unroll_for_by(N_UNROLL)(int i = 0; i < greads; i++) {
             VECT_FLOAT_T val;
@@ -104,9 +104,11 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
         if (USE_SHIFT) shift -= SG_STRIDE;
     }
     if (SAVE_STATS && get_sub_group_local_id() == 0) {
-        mean = GWS_GET_BUFFER_POS(STAT, gws_params, mean);
+        if (!SKIP_MEAN) {
+            mean = GWS_GET_BUFFER_POS(STAT, gws_params, mean);
+            *mean = local_mean;
+        }
         variance = GWS_GET_BUFFER_POS(STAT, gws_params, variance);
-        *mean = local_mean;
         *variance = local_variance;
     }
 }

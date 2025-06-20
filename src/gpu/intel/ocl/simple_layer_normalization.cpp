@@ -53,6 +53,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     conf.is_fwd = pd->is_fwd();
     conf.vect_dt_n = 1;
     conf.sub_group_size = 1;
+    conf.skip_mean = pd->skip_mean();
 
     if (conf.use_scale || conf.use_shift) {
         memory_desc_wrapper weights_mdw(
@@ -252,6 +253,7 @@ static status_t init_kernel_ctx_common(
             "VECTOR_SIZE_SCALESHIFT", conf.vector_size_scaleshift);
     kernel_ctx.define_int("N_CHUNK_SIZE", conf.n_chunk_size);
     kernel_ctx.define_int("N_CHUNKS", conf.n_chunks);
+    kernel_ctx.define_int("SKIP_MEAN", conf.skip_mean);
 
     def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");

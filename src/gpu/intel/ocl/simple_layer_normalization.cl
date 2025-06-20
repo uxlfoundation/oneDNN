@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
 
     int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-    float v_mean = CALCULATE_STATS ? 0 : mean[s_off];
+    float v_mean = (CALCULATE_STATS || SKIP_MEAN) ? 0 : mean[s_off];
     float v_variance = CALCULATE_STATS ? 0 : variance[s_off];
 
     if (CALCULATE_STATS) {
@@ -52,6 +52,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
             v_acc += CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
                     (const __global BLOCK_DATA_T *)&src[src_off])));
         }
+#if !SKIP_MEAN
 #if VECT_DT_N == 1
         v_mean = v_acc;
 #else // VECT_DT_N == 1
@@ -60,10 +61,9 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
             v_mean += v_acc[i];
         }
 #endif // VECT_DT_N == 1
-
         float total_sum = sub_group_reduce_add(v_mean);
         v_mean = total_sum / C;
-
+#endif // SKIP_MEAN
         v_acc = 0;
         VECT_FLOAT_T m = 0;
 
@@ -112,7 +112,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
 
     if (CALCULATE_STATS) {
         if (SAVE_STATS) {
-            mean[s_off] = v_mean;
+            if (!SKIP_MEAN) mean[s_off] = v_mean;
             variance[s_off] = v_variance;
         }
     }
@@ -139,7 +139,7 @@ __kernel void simple_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
     vector_float diff_beta_vect = 0;
 
     for (int n_off = n_start; n_off < n_end; n_off += VECTOR_SIZE_SCALESHIFT) {
-        const vector_float mean_vect = vector_load(mean[n_off]);
+        const vector_float mean_vect = SKIP_MEAN ? 0 : vector_load(mean[n_off]);
         const vector_float variance_vect = vector_load(variance[n_off]);
         const vector_float inv_sqrt_variance = rsqrt(variance_vect + eps);
 #if NDIMS == 2
@@ -215,7 +215,7 @@ __kernel void simple_lnorm_bwd(__global DATA_T *src, __global float *mean,
     x[3] = GWS_GET_X3();
 
     const int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-    const float mean_val = mean[s_off];
+    const float mean_val = SKIP_MEAN ? 0 : mean[s_off];
     const float inv_sqrt_variance = rsqrt(variance[s_off] + eps);
 
     float dd_gamma = 0, dd_gamma_x = 0;

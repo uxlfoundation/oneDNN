@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
     conf.stat_md_info = memory_desc_info_t::create(stat_mdw);
     conf.is_fwd = pd->is_fwd();
+    conf.skip_mean = pd->skip_mean();
 
     if (conf.use_shift || conf.use_scale) {
         memory_desc_wrapper weights_mdw(
@@ -98,6 +99,7 @@ static status_t init_kernel_ctx_common(
     kernel_ctx.define_int("IS_FWD", conf.is_fwd);
     kernel_ctx.define_int("IS_BWD", !conf.is_fwd);
     kernel_ctx.define_int("VECT_DT_N", conf.vect_dt_n);
+    kernel_ctx.define_int("SKIP_MEAN", conf.skip_mean);
 
     def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");

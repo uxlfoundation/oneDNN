@@ -68,6 +68,7 @@ struct reusable_vectorized_lnorm_params_t
 
     bool use_scale = false;
     bool use_shift = false;
+    bool skip_mean = false;
 
     /// If true calculate the mean and variance values. Otherwise reads from global memory
     bool calculate_stats = false;
@@ -75,7 +76,7 @@ struct reusable_vectorized_lnorm_params_t
     /// Saves the mean and variance to memory
     bool save_stats = false;
 
-    uint8_t padding[4] = {false};
+    uint8_t padding[3] = {false};
 };
 
 struct reusable_vectorized_lnorm_runtime_params_t {
@@ -123,9 +124,6 @@ struct reusable_vectorized_layer_normalization_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM(!skip_mean(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "rms normalization is not supported");
 
             VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
 

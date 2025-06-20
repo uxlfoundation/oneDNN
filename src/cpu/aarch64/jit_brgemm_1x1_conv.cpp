@@ -279,7 +279,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
         int od, int oh, int ow, int icc, int *last_brg_idx,
         const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-        int32_t *dst_zp_vals, int32_t *s8s8_compensation,
+        const int32_t *dst_zero_points, int32_t *s8s8_compensation,
         const float *dst_scales) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -369,8 +369,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
                     post_ops_binary_rhs_arg_vec.data(),
                     static_cast<size_t>(g_oc), 0, dst, 0,
                     static_cast<void *>(src_zp_comp_ptr), nullptr,
-                    static_cast<void *>(dst_zp_vals), false, src_zp_vals, false,
-                    false, dst_scales};
+                    dst_zero_points, false, src_zp_vals, false, false,
+                    dst_scales};
 
             void *scratch = static_cast<void *>(s8s8_comp_ptr);
             brgemm_kernel_execute_postops(brg_ker, n_ic_blocks, brg_batch,
@@ -418,8 +418,11 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
             src_scales, wei_scales, pd()->OC(), pd()->attr(),
             jcp.scale_adjust_factor);
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+    const int src_zero_point = src_zero_points ? src_zero_points[0] : 0;
 
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
@@ -433,7 +436,6 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
                                     ? jcp.s8s8_comp_buffer_size
                                     : 0)
             : nullptr;
-    int32_t *dst_zp_vals = jcp.dst_zero_point ? &dst_zero_point : nullptr;
 
     brgemm_batch_element_t *const brg_batch_global
             = (jcp.brg_type != brgemm_strd)
@@ -496,8 +498,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
                     exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, \
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc, \
                             &last_brg_idx, oscales, src_zero_point, \
-                            zp_compensation, dst_zp_vals, s8s8_compensation, \
-                            dst_scales); \
+                            zp_compensation, dst_zero_points, \
+                            s8s8_compensation, dst_scales); \
                 } \
             } \
             last_n = n; \
@@ -537,7 +539,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
                 const int ow = owb * jcp.ow_block; \
                 exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n, \
                         ocb, od, oh, ow, icc, &last_brg_idx, oscales, \
-                        src_zero_point, zp_compensation, dst_zp_vals, \
+                        src_zero_point, zp_compensation, dst_zero_points, \
                         s8s8_compensation, dst_scales); \
             } \
             nd_iterator_step(__VA_ARGS__); \

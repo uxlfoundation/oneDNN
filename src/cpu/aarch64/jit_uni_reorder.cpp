@@ -3048,8 +3048,9 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
 }
 
 void jit_uni_reorder_t::omp_driver(const char *in, char *out,
-        const float *src_scales, const float *dst_scales, int src_zp,
-        int dst_zp, const memory_tracking::grantor_t &scratchpad) const {
+        const float *src_scales, const float *dst_scales,
+        const int32_t *src_zero_points, const int32_t *dst_zero_points,
+        const memory_tracking::grantor_t &scratchpad) const {
     in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
     out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
 
@@ -3069,6 +3070,8 @@ void jit_uni_reorder_t::omp_driver(const char *in, char *out,
     const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
     assert(ndims - ndims_ker <= ndims_driver_max);
 
+    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
     int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
             memory_tracking::names::key_reorder_space);
 
@@ -3229,10 +3232,13 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
             scratchpad, pd()->attr(), pd()->D_mask_, dst_scales_);
     assert(dst_scales);
 
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    omp_driver(in, out, src_scales, dst_scales, src_zp, dst_zp, scratchpad);
+    omp_driver(in, out, src_scales, dst_scales, src_zero_points,
+            dst_zero_points, scratchpad);
 
     return status::success;
 }

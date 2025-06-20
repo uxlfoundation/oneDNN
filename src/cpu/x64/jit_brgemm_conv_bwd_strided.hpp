@@ -153,7 +153,7 @@ private:
             , sw(0)
             , oscales(nullptr)
             , dst_scales(nullptr)
-            , src_zp_vals(0)
+            , src_zp_val(0)
             , src_zp_comp_ptr(nullptr)
             , dst_zp_vals(nullptr)
             , s8s8_comp_ptr(nullptr) {}
@@ -171,9 +171,9 @@ private:
         int sw;
         const float *oscales;
         const float *dst_scales;
-        int32_t src_zp_vals;
+        int32_t src_zp_val;
         int32_t *src_zp_comp_ptr;
-        int32_t *dst_zp_vals;
+        const int32_t *dst_zp_vals;
         int32_t *s8s8_comp_ptr;
     };
 
@@ -193,7 +193,7 @@ private:
             const char *bias_w, int od, int oh, int ow, int iw_raw, int g_oc,
             bool is_oc_tail, int ker_ow_s, int ker_ow_f, int kd_l, int kh_l,
             const void *post_ops_binary_rhs_arg_vec, const float *oscales,
-            int32_t src_zp_vals, int32_t *src_zp_ptr, int32_t *dst_zp_ptr,
+            int32_t src_zp_val, int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
             int32_t *s8s8_compensation, size_t comp_ker_offs,
             bool maybe_do_init, bool do_postwork, bool do_post_comp,
             const float *dst_scales) const;
@@ -201,7 +201,7 @@ private:
     void call_brgemm_kernel(brgemm_bwd_thread_ctx_t &btc, int brg_idx,
             int batch_size, char *ptr_C, char *ptr_D, const char *bias_w,
             int g_ic, bool do_postops, const void *binary_post_ops_rhs,
-            int32_t src_zp_vals, int32_t *src_zp_ptr, int32_t *dst_zp_ptr,
+            int32_t src_zp_val, int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
             int32_t *s8s8_comp, bool do_only_comp,
             bool is_first_call_postops) const;
 

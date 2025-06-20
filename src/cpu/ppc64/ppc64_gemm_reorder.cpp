@@ -261,8 +261,12 @@ status_t ppc64_matrixA_reorder_t::execute_body(const exec_ctx_t &ctx) const {
     const float *dst_scales = pd()->precompute_scales(
             scratchpad, pd()->attr(), D_mask, dst_scales_);
 
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+    int src_zp = src_zero_points ? src_zero_points[0] : 0;
+    int dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
 
     const float alpha = src_scales[0] * dst_scales[0];
     MAYBE_UNUSED(alpha);

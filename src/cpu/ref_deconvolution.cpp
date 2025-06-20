@@ -219,7 +219,9 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
             = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
     const int dst_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_DST);
 
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
     const bool has_dst_zp
             = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     const int dst_zp_mask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
@@ -262,7 +264,7 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
                         tmp_result *= dst_scales[ocp * (dst_scale_mask > 0)];
                     }
                     if (has_dst_zp) {
-                        tmp_result += dst_zero_point[ocp * (dst_zp_mask > 0)];
+                        tmp_result += dst_zero_points[ocp * (dst_zp_mask > 0)];
                     }
                 }
                 io::store_float_value(
@@ -292,7 +294,7 @@ dim_t get_weights_off(const memory_desc_wrapper &wei_d, bool with_groups,
 
 template <data_type_t wei_type>
 static void compute_src_zp_compensation(const exec_ctx_t &ctx,
-        const int32_t *src_zero_point, const bool is_src_zp_common,
+        const int32_t *src_zero_points, const bool is_src_zp_common,
         typename prec_traits_t<wei_type>::type *wei,
         const cpu_deconvolution_fwd_pd_t *pd) {
     using namespace memory_tracking::names;
@@ -326,9 +328,9 @@ static void compute_src_zp_compensation(const exec_ctx_t &ctx,
                 const int32_t wei32 = static_cast<int32_t>(wei[weights_offset]);
 
                 if (is_src_zp_common)
-                    acc += wei32 * src_zero_point[0];
+                    acc += wei32 * src_zero_points[0];
                 else
-                    acc += wei32 * src_zero_point[g * IC + ic];
+                    acc += wei32 * src_zero_points[g * IC + ic];
             }
         }
 
@@ -339,7 +341,7 @@ static void compute_src_zp_compensation(const exec_ctx_t &ctx,
 template <data_type_t wei_type>
 static std::function<int32_t(
         const dim_t, const dim_t, const dim_t, const dim_t, const dim_t)>
-prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
+prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_points,
         const bool is_src_zp_common,
         typename prec_traits_t<wei_type>::type *wei,
         const cpu_deconvolution_fwd_pd_t *deconv_pd) {
@@ -400,7 +402,7 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
                                 zp_pad_compensation += wei32;
                             else
                                 zp_pad_compensation
-                                        += wei32 * src_zero_point[g * IC + ic];
+                                        += wei32 * src_zero_points[g * IC + ic];
                         }
                     }
                 }
@@ -408,7 +410,7 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
         }
 
         if (is_src_zp_common && zp_pad_compensation)
-            zp_pad_compensation *= src_zero_point[0];
+            zp_pad_compensation *= src_zero_points[0];
 
         return zp_pad_compensation;
     };
@@ -416,35 +418,34 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_point,
 
 template <data_type_t wei_type>
 static status_t apply_src_zero_point(const exec_ctx_t &ctx,
-        const cpu_deconvolution_fwd_pd_t *deconv_pd, float *conv_output) {
+        const cpu_deconvolution_fwd_pd_t *pd, float *conv_output) {
     using wei_data_t = typename prec_traits_t<wei_type>::type;
     using namespace memory_tracking::names;
     using namespace data_type;
 
-    // required by DEFINE_ZERO_POINTS_BUFFER macro
-    const auto pd = [&]() { return deconv_pd; };
     const auto wei = CTX_OUT_MEM(wei_data_t *, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const bool is_src_zp_common
-            = deconv_pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0;
+            = pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0;
 
     const auto scratchpad = ctx.get_scratchpad_grantor();
     const int32_t *const zp_src_compensation
             = scratchpad.get<int32_t>(key_deconv_zp);
-    const memory_desc_wrapper dst_d(pd()->dst_md());
+    const memory_desc_wrapper dst_d(pd->dst_md());
     const auto ndims = dst_d.ndims();
 
-    const auto G = pd()->G();
-    const auto MB = pd()->MB();
-    const auto OH = pd()->OH();
-    const auto OW = pd()->OW();
-    const auto OD = pd()->OD();
-    const auto OC = pd()->OC() / G;
+    const auto G = pd->G();
+    const auto MB = pd->MB();
+    const auto OH = pd->OH();
+    const auto OW = pd->OW();
+    const auto OD = pd->OD();
+    const auto OC = pd->OC() / G;
 
     compute_src_zp_compensation<wei_type>(
-            ctx, src_zero_point, is_src_zp_common, wei, deconv_pd);
+            ctx, src_zero_points, is_src_zp_common, wei, pd);
     const auto zp_pad_comp_ker = prepare_zp_pad_comp_ker<wei_type>(
-            ndims, src_zero_point, is_src_zp_common, wei, deconv_pd);
+            ndims, src_zero_points, is_src_zp_common, wei, pd);
 
     parallel_nd(MB, G, OC, OD, OH, OW,
             [&](const dim_t mb, const dim_t g, const dim_t oc, const dim_t od,

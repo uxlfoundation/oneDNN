@@ -123,20 +123,23 @@ private:
             brgemm_batch_element_t *const __restrict brg_batch,
             char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
             int od, int oh, int ow, int icc, int *last_brg_idx,
-            const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-            int32_t *dst_zp_vals, int32_t *s8s8_compensation,
-            const float *dst_scales, const bool is_last_os = false) const;
+            const float *oscales, const int32_t *src_zero_points,
+            int32_t *src_zp_comp, const int32_t *dst_zero_points,
+            int32_t *s8s8_compensation, const float *dst_scales,
+            const bool is_last_os = false) const;
     void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
-            const float *dst_scales, const float *oscales, int32_t src_zp_vals,
-            int32_t *src_zp_comp, int32_t *dst_zp_vals,
-            int32_t *s8s8_compensation, char *const c_buffer_global,
-            char *inp_buffer_base, uint8_t *inp_buffer_mask_base) const;
+            const float *dst_scales, const float *oscales,
+            const int32_t *src_zero_points, int32_t *src_zp_comp,
+            const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+            char *const c_buffer_global, char *inp_buffer_base,
+            uint8_t *inp_buffer_mask_base) const;
     void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
-            const float *dst_scales, const float *oscales, int32_t src_zp_vals,
-            int32_t *src_zp_comp, int32_t *dst_zp_vals,
-            int32_t *s8s8_compensation, char *const c_buffer_global) const;
+            const float *dst_scales, const float *oscales,
+            const int32_t *src_zero_points, int32_t *src_zp_comp,
+            const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+            char *const c_buffer_global) const;
 
     status_t execute_forward_all(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

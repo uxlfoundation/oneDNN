@@ -217,9 +217,16 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             src_d.dims()[ndims - 1], dst_d.dims()[ndims - 1], false,
             wei_scale_mask > 0, pd()->attr());
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(weights_zero_point, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
+    const int32_t src_zero_point = src_zero_points ? src_zero_points[0] : 0;
+    const int32_t wei_zero_point = wei_zero_points ? wei_zero_points[0] : 0;
+    const int32_t dst_zero_point = dst_zero_points ? dst_zero_points[0] : 0;
 
     if (src_d.has_zero_dim() || weights_d.has_zero_dim()
             || dst_d.has_zero_dim())
@@ -227,12 +234,12 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     int8_t gemm_off_a_int8 = static_cast<int8_t>(src_zero_point);
     uint8_t gemm_off_a_uint8 = static_cast<uint8_t>(src_zero_point);
-    int8_t gemm_off_b = static_cast<int8_t>(weights_zero_point);
+    int8_t gemm_off_b = static_cast<int8_t>(wei_zero_point);
     const bool ok = IMPLICATION(src_d.data_type() == data_type::s8,
                             gemm_off_a_int8 == src_zero_point)
             && IMPLICATION(src_d.data_type() == data_type::u8,
                     gemm_off_a_uint8 == src_zero_point)
-            && gemm_off_b == weights_zero_point;
+            && gemm_off_b == wei_zero_point;
     const bool pp_src_and_weights_zero_points_outside_of_gemm = !ok;
     if (pp_src_and_weights_zero_points_outside_of_gemm) {
         gemm_off_a_int8 = gemm_off_a_uint8 = gemm_off_b = 0;
@@ -396,7 +403,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                                     src_strides[1], curr_weights,
                                     weights_strides[0], weights_strides[1],
                                     curr_acc, acc_ldc, src_zero_point,
-                                    weights_zero_point);
+                                    wei_zero_point);
                         }
 
                     } break;
@@ -422,7 +429,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                                     src_strides[1], curr_weights,
                                     weights_strides[0], weights_strides[1],
                                     curr_acc, acc_ldc, src_zero_point,
-                                    weights_zero_point);
+                                    wei_zero_point);
                         }
 
                     } break;
@@ -486,7 +493,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         weights_compensation, M, N, K, src, src_strides[0],
                         src_strides[1], weights, weights_strides[0],
                         weights_strides[1], acc, acc_ldc, src_zero_point,
-                        weights_zero_point);
+                        wei_zero_point);
             }
 
             bool postops_in_matmul

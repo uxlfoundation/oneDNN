@@ -896,8 +896,7 @@ void flex_rewrite_t::infer_output_shape(
             // infer_unsupported_output_shape
             case dnnl::graph::op::kind::Wildcard:
             // no output, do nothing
-            case dnnl::graph::op::kind::End:
-            case dnnl::graph::op::kind::LastSymbol: break;
+            case dnnl::graph::op::kind::End: break;
         }
 
         for (auto &lt : aop.in_lts_) {
@@ -1348,12 +1347,6 @@ void flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
         if (v.second == "default") return;
 
         auto target_kind = opstr2kind(v.second);
-        if (target_kind == dnnl::graph::op::kind::LastSymbol) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: invalid target op kind %s is provided\n",
-                    v.second.c_str());
-            SAFE_V(FAIL);
-        }
 
         // Only support op kind rewrite for binary and eltwise ops.
         auto target_driver = opkind2driver(target_kind);

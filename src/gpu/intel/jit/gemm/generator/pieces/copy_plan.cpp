@@ -770,10 +770,10 @@ void CopyPlan::planTypeConversions()
                     planEmulatedHalveFloat(i);
             }
         } else if (st == DataType::hf8 && dt == DataType::hf) {
-            if (hw < HW::Xe3)
+            if (hw < HW::Xe3 || dnnl::impl::getenv_int("DISABLE_NATIVE_HF8"))
                 planEmulatedHF8ToHF(i);
         } else if (st == DataType::hf && dt == DataType::hf8) {
-            if (hw < HW::Xe3)
+            if (hw < HW::Xe3 || dnnl::impl::getenv_int("DISABLE_NATIVE_HF8"))
                 planEmulatedHFToHF8(i);
         } else if (st == Type::ngen_f8_e8m0() && dt == DataType::hf) {
                 planEmulatedFP8E8M0ToHF(i);

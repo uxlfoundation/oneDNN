@@ -144,6 +144,7 @@
 --reset --in-shapes=,0:64x16x28x28*abcd+1:64x16x28x28*abcd,0:64x16x28x28*acdb+1:64x16x28x28*acdb,0:64x2048x7x7+1:64x2048x7x7,0:64x512x28x28*acdb+1:64x512x28x28*acdb --op-attrs=,0:use_dst:1 --op-kind=0:ReLUBackward,0:SigmoidBackward,0:SqrtBackward,0:TanhBackward --case=op/f32/relu_bwd.json
 --reset --case=op/f32/reorder.json
 --reset --case=op/f32/softmax.json
+--reset --case=op/f32/softmax_w_stats.json
 --reset --case=op/f32/softmax_bwd.json
 --reset --case=op/f32/typecast.json
 # concat

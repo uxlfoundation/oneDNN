@@ -117,6 +117,7 @@
 --reset --dt=bf16 --op-kind=0:ReLUBackward,0:SigmoidBackward,0:SqrtBackward,0:TanhBackward --case=op/f32/relu_bwd.json
 --reset --dt=bf16 --case=op/f32/reorder.json
 --reset --dt=bf16 --case=op/f32/softmax.json
+--reset --dt=1:f16+2:f16 --case=op/f32/softmax_w_stats.json
 --reset --dt=bf16 --case=op/f32/softmax_bwd.json
 --reset --dt=0:bf16+1:bf16 --case=op/f32/softmax_bwd.json
 --reset --case=op/bf16/typecast.json

@@ -2664,18 +2664,12 @@ struct jit_reorder_args_t {
         dst_scales_ = pd->precompute_scales(
                 scratchpad, pd->attr(), pd->D_mask_, dst_scales_);
         assert(dst_scales_);
-
-        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(
-                pd->attr(), src_zp_, DNNL_ARG_FROM, 0);
-        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(pd->attr(), dst_zp_, DNNL_ARG_TO, 0);
     }
 
     const char *in() const { return in_; }
     char *out() const { return out_; }
     const float *src_scales() const { return src_scales_; }
     const float *dst_scales() const { return dst_scales_; }
-    int src_zp() const { return src_zp_; }
-    int dst_zp() const { return dst_zp_; }
 
 private:
     const char *in_;
@@ -2685,14 +2679,16 @@ private:
     float src_scales_buf16_[16];
     const float *dst_scales_;
     float dst_scales_buf16_[16];
-
-    int src_zp_;
-    int dst_zp_;
 };
 
 status_t jit_uni_reorder_t::execute(
         const std::shared_ptr<exec_ctx_t> &ctx) const {
     auto reorder_ctx = std::make_shared<jit_reorder_args_t>(ctx, pd());
+
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     auto in = reorder_ctx->in()
             + pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
@@ -2740,8 +2736,8 @@ status_t jit_uni_reorder_t::execute(
 
         auto src_scales = reorder_ctx->src_scales();
         auto dst_scales = reorder_ctx->dst_scales();
-        auto src_zp = reorder_ctx->src_zp();
-        auto dst_zp = reorder_ctx->dst_zp();
+        auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+        auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
 
         switch (ndims - ndims_ker) {
             case 0:

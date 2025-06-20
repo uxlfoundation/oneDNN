@@ -50,7 +50,8 @@ status_t ref_matmul_t::execute_ref(
             unsigned char *, dropout_mask, DNNL_ARG_ATTR_DROPOUT_MASK, status);
     CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
-    DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
     const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d

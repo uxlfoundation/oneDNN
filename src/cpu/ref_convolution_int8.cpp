@@ -58,6 +58,11 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -102,8 +107,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     const int dst_zp_idx_mult
             = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST) > 0;
 
-    auto ker = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow,
-                       const int32_t *src_zero_point) {
+    auto ker = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         int d = 0;
         for_(dim_t ic = 0; ic < IC; ++ic)
         for_(dim_t kd = 0; kd < KD; ++kd)
@@ -123,8 +127,8 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                     weights_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
 
             const int s = io::load_int_value(src_d.data_type(), src, src_off);
-            const int src_zp = src_zero_point
-                    ? io::load_int_value(data_type::s32, src_zero_point,
+            const int src_zp = src_zero_points
+                    ? io::load_int_value(data_type::s32, src_zero_points,
                             src_zp_idx_mult * (g * IC + ic))
                     : 0;
             const int w = io::load_int_value(
@@ -151,7 +155,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
             = (ndims >= 3) ? weights_str[ndims - 1 + gr_shift] : 0;
 
     auto ker_plain = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                             dim_t ow, const int32_t *src_zero_point) {
+                             dim_t ow) {
         assert(3 <= ndims && ndims <= 5);
         int d = 0;
 
@@ -182,10 +186,10 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                             + kw;
                     const int s = io::load_int_value(
                             src_d.data_type(), src_loc, src_off + src_loc_off);
-                    const int src_zp = src_zero_point
-                            ? io::load_int_value(data_type::s32, src_zero_point,
-                                    src_zp_idx_mult * (g * IC + ic))
-                            : 0;
+                    const int src_zp = src_zero_points ? io::load_int_value(
+                                               data_type::s32, src_zero_points,
+                                               src_zp_idx_mult * (g * IC + ic))
+                                                       : 0;
                     const int w = io::load_int_value(weights_d.data_type(),
                             weights_loc, weights_off + weights_loc_off);
                     d += (s - src_zp) * w;
@@ -209,8 +213,8 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                         + kd * weights_kd_stride + kh * weights_kh_stride + kw;
                 const int s = io::load_int_value(
                         src_d.data_type(), src_loc, src_off + src_loc_off);
-                const int src_zp = src_zero_point
-                        ? io::load_int_value(data_type::s32, src_zero_point,
+                const int src_zp = src_zero_points
+                        ? io::load_int_value(data_type::s32, src_zero_points,
                                 src_zp_idx_mult * (g * IC + ic))
                         : 0;
                 const int w = io::load_int_value(weights_d.data_type(),
@@ -229,15 +233,12 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                 DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
                 DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-                DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-                DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
-
                 int acc = 0;
                 if (src_d.is_plain() && weights_d.is_plain()
                         && src_ic_stride == 1 && weights_kw_stride == 1)
-                    acc += ker_plain(g, mb, oc, od, oh, ow, src_zero_point);
+                    acc += ker_plain(g, mb, oc, od, oh, ow);
                 else
-                    acc += ker(g, mb, oc, od, oh, ow, src_zero_point);
+                    acc += ker(g, mb, oc, od, oh, ow);
 
                 float d = static_cast<float>(acc);
 
@@ -265,9 +266,9 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
 
                 if (dst_scales) quantize(d, g, OC, oc, dst_scales);
 
-                if (dst_zero_point) {
+                if (dst_zero_points) {
                     const int dst_zp = io::load_int_value(data_type::s32,
-                            dst_zero_point, dst_zp_idx_mult * (g * OC + oc));
+                            dst_zero_points, dst_zp_idx_mult * (g * OC + oc));
                     d += dst_zp;
                 }
                 io::store_float_value(dst_d.data_type(), d, dst, dst_off);

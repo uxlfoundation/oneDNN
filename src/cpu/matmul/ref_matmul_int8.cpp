@@ -43,6 +43,13 @@ status_t ref_matmul_int8_t::execute_ref(
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     CTX_OUT_CLEAN_MEM(void *, dst, DNNL_ARG_DST, status);
 
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
     const auto src_d = ctx->memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d
             = ctx->memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
@@ -146,9 +153,7 @@ status_t ref_matmul_int8_t::execute_ref(
     // always possible to do that.
     auto ker = [=](const dims_t dst_dims_idx, dim_t m, dim_t n,
                        const float *src_scales, const float *wei_scales,
-                       const float *dst_scales, const int32_t *src_zero_points,
-                       const int32_t *wei_zero_points,
-                       const int32_t *dst_zero_point) {
+                       const float *dst_scales) {
         float d = 0;
         dims_t src_dims_idx, weights_dims_idx;
         utils::copy_dims_with_mask(src_dims_idx, dst_dims_idx, ndims, src_mask);
@@ -233,16 +238,11 @@ status_t ref_matmul_int8_t::execute_ref(
         DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
         DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-        DEFINE_ZERO_POINTS_BUFFER(src_zero_points, DNNL_ARG_SRC);
-        DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
-        DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
-
         dims_t dst_dims_idx;
         // account for M, N dims for index calculations
         const size_t l_offset = mb * M * N + m * N + n;
         utils::l_dims_by_l_offset(dst_dims_idx, l_offset, dst_d.dims(), ndims);
-        float d = ker(dst_dims_idx, m, n, src_scales, wei_scales, dst_scales,
-                src_zero_points, wei_zero_points, dst_zero_point);
+        float d = ker(dst_dims_idx, m, n, src_scales, wei_scales, dst_scales);
         if (bias) d += ker_bias(dst_dims_idx);
 
         const auto dst_off = dst_d.off_v(dst_dims_idx);
@@ -255,9 +255,9 @@ status_t ref_matmul_int8_t::execute_ref(
             ref_post_ops->execute(d, args);
 
             if (with_dst_scales) d *= dst_scales[0];
-            if (dst_zero_point) {
+            if (dst_zero_points) {
                 const int dst_zp = io::load_int_value(
-                        data_type::s32, dst_zero_point, dst_zp_idx_mult * n);
+                        data_type::s32, dst_zero_points, dst_zp_idx_mult * n);
                 d += static_cast<float>(dst_zp);
             }
         }

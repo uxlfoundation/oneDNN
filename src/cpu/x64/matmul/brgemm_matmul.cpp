@@ -1188,14 +1188,29 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         bias_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
 
         // setup scales / zp pointers
-        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(
-                pd->attr(), zero_point_a_negative_val_, DNNL_ARG_SRC, 0);
-        zero_point_a_negative_val_ = -zero_point_a_negative_val_;
-        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(
-                pd->attr(), zero_point_b_val_, DNNL_ARG_WEIGHTS, 0);
+        const void *src_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+        const void *wei_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+        const void *dst_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
+        zero_point_a_negative_val_ = src_zero_points
+                ? -cpu::io::load_int_value(
+                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
+                        src_zero_points, 0)
+                : 0;
+        zero_point_b_val_ = wei_zero_points ? cpu::io::load_int_value(
+                                    pd->attr()->zero_points_.get_data_type(
+                                            DNNL_ARG_WEIGHTS),
+                                    wei_zero_points, 0)
+                                            : 0;
         zero_point_b_negative_val_ = -zero_point_b_val_;
-        DEFINE_ZERO_POINT_VALUE_ATTR_NORET(
-                pd->attr(), zero_point_c_val_, DNNL_ARG_DST, 0);
+        zero_point_c_val_ = dst_zero_points
+                ? cpu::io::load_int_value(
+                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_DST),
+                        dst_zero_points, 0)
+                : 0;
 
         DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(
                 pd->attr(), src_scales_, DNNL_ARG_SRC, src_scales_buf16_);

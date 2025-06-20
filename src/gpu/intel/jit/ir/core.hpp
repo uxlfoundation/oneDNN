@@ -51,7 +51,8 @@
     HANDLE_IR_OBJECT(shuffle_t) \
     HANDLE_IR_OBJECT(ternary_op_t) \
     HANDLE_IR_OBJECT(unary_op_t) \
-    HANDLE_IR_OBJECT(var_t)
+    HANDLE_IR_OBJECT(var_t) \
+    HANDLE_IR_OBJECT(ref_t)
 
 // All IR statement objects.
 #define HANDLE_STMT_IR_OBJECTS() \
@@ -702,7 +703,7 @@ public:
 private:
     type_kind_t kind_ = type_kind_t::undef;
     int elems_ = 0;
-    type_attr_t attr_;
+    type_attr_t attr_ = type_attr_t::undef;
     bool is_slm_ = false;
     bool is_ptr_ = false;
 };
@@ -1886,6 +1887,46 @@ private:
         : expr_impl_t(_type_info(), type), name(name), is_mutable(is_mutable) {}
 };
 
+class ref_t : public expr_impl_t {
+public:
+    IR_DECL_EXPR_TYPE_ID(ref_t)
+
+    static expr_t make(const expr_t &var, int off, int elems) {
+        return expr_t(new ref_t(var, off, elems));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+
+        return other.var.is_equal(var) && other.off == off
+                && other.elems == elems;
+    }
+
+    std::string str() const override {
+        std::ostringstream oss;
+        oss << var.str() << "[" << off;
+        if (elems > 1) oss << ":" << off + elems;
+        oss << "]";
+        return oss.str();
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(str()); }
+
+    IR_DECLARE_TRAVERSERS()
+
+    expr_t var;
+    int off;
+    int elems;
+
+private:
+    ref_t(const expr_t &var, int off, int elems)
+        : expr_impl_t(_type_info(), var.type().with_elems(elems))
+        , var(var)
+        , off(off)
+        , elems(elems) {}
+};
+
 // Convertor from C++ type to IR expression.
 template <typename T>
 expr_t to_expr(T value, const type_t &type) {
@@ -1952,7 +1993,7 @@ inline bool is_shuffle_const(const expr_t &e) {
 }
 
 inline bool is_var(const expr_t &e) {
-    return e.is<var_t>();
+    return e.is<var_t>() || e.is<ref_t>();
 }
 
 // Convertor from IR expression to C++ constant.

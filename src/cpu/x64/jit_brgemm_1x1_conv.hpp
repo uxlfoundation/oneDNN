@@ -202,8 +202,8 @@ private:
         return jcp.is_reduced_rtus && (!get_extra_m_kernel_req(jcp));
     }
 
-    brgemm_containers::brgemm_kernel_container_t brg_kernels_ {32};
-    brgemm_containers::brgemm_palette_container_t brgemm_palettes_ {32};
+    brgemm_containers::brgemm_kernel_container_t brg_kernels_ {64};
+    brgemm_containers::brgemm_palette_container_t brgemm_palettes_ {64};
 
     std::unique_ptr<jit_avx512_core_brgemm_conv_trans_kernel::
                     jit_avx512_core_brgemm_conv_rtus_kernel_t>

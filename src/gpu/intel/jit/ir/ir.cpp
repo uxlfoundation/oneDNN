@@ -226,6 +226,8 @@ public:
 
     void _visit(const var_t &obj) override { out_ << obj.name; }
 
+    void _visit(const ref_t &obj) override { out_ << obj.str(); }
+
     void _visit(const while_t &obj) override {
         print_indent();
         out_ << obj.line_str() << " {\n";

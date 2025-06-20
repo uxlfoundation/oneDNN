@@ -455,6 +455,14 @@ void ir_visitor_t::_visit(const alloc_t &obj) {
     visit(obj.body);
 }
 
+object_t ir_mutator_t::_mutate(const ref_t &obj) {
+    auto var = mutate(obj.var);
+    if (var.impl() == obj.var.impl()) return obj;
+    return ref_t::make(var, obj.off, obj.elems);
+}
+
+void ir_visitor_t::_visit(const ref_t &obj) {}
+
 object_t ir_mutator_t::_mutate(const binary_op_t &obj) {
     auto a = mutate(obj.a);
     auto b = mutate(obj.b);

@@ -26,6 +26,7 @@
 
 #include "common/primitive.hpp"
 #include "common/sdpa_utils.hpp"
+#include "common/stream.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
 #ifdef DNNL_WITH_SYCL
@@ -352,6 +353,13 @@ struct const_memory_filler_t : public op_executable_t {
         dnnl::reorder(src_mem, dst_mem)
                 .execute(stream, const_cast<memory &>(src_mem),
                         const_cast<memory &>(dst_mem));
+        // for(int i=0;i<attr_data_.size();i++) {
+        //     void*dst_handle = dst_mem.get_data_handle();
+        //     static_cast<target_dt *>(dst_handle)[i]
+        //             = static_cast<target_dt>(attr_data_[i]);
+        // }
+        
+        // stream.get()->wait(); // wait for the reorder to finish
     }
 
 #ifdef DNNL_WITH_SYCL
@@ -387,6 +395,10 @@ struct const_memory_filler_t : public op_executable_t {
         return e;
     }
 #endif
+
+    ~const_memory_filler_t() {
+        printf("const_memory_filler_t destructor called\n");
+    }
 
 private:
     std::vector<target_dt> get_attr_data(

@@ -94,7 +94,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, lift_up_post_add_for_matmul);
 
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
-    BACKEND_DNNL_ADD_PASS(pipeline, fold_mul_scales);
+//     BACKEND_DNNL_ADD_PASS(pipeline, fold_mul_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
@@ -104,7 +104,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
     BACKEND_DNNL_ADD_PASS(pipeline, fold_sub_zps_add_zps);
     BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
-    BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);
+//     BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);
 
     // fuse those new post-binaries converted from add_zps and mul_scales
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
@@ -296,8 +296,10 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
     }
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
+        printf("i:%d\n", i);
         if (subgraph_->is_constant_[i]) continue;
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
+        // if(i==8)p_stream.wait();
     }
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

@@ -47,9 +47,12 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_points, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(wei_zero_points, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
@@ -250,9 +253,9 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             ref_post_ops->execute(d, args);
 
             if (with_dst_scales) d *= dst_scales[0];
-            if (dst_zero_point) {
+            if (dst_zero_points) {
                 const int dst_zp = io::load_int_value(
-                        data_type::s32, dst_zero_point, dst_zp_idx_mult * n);
+                        data_type::s32, dst_zero_points, dst_zp_idx_mult * n);
                 d += static_cast<float>(dst_zp);
             }
         }

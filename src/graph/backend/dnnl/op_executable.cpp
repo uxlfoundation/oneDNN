@@ -357,68 +357,35 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
 
     auto src = make_dnnl_memory_desc(
             op->get_input_value(0)->get_logical_tensor());
-    // For non-constant activation, create primitive desc with strided layout
-    // when:
-    // 1) activation has 4 dimensions and layout is acbd since oneDNN has
-    //    optimized kernel
-    // 2) activation has 2/3 dimensions and device kind is gpu for avoiding
-    //    blocked activation. This can reduce the cost for the reorder between
-    //    plain and block layout, especially for users who compile partition
-    //    with plain layout. The performance of strided primitive on GPU will be
-    //    optimized by oneDNN.
+    // For non-constant activation and weight, create primitive desc with
+    // strided layout
     bool const_activation
             = logical_tensor_wrapper_t(
                       op->get_input_value(0)->get_logical_tensor())
                       .is_constant()
             && is_constant_cache_enabled(p_engine);
-    const bool use_strided_src = !const_activation
-            && ((src.get_ndims() == 4
-                        && is_format(src, dnnl::memory::format_tag::acbd))
-                    || ((src.get_ndims() == 2 || src.get_ndims() == 3)
-                            && p_engine.get_kind() == dnnl::engine::kind::gpu));
-    // convert src memory desc to any when:
-    // 1) not the situation mentioned above
-    // 2) the given md is blocked and convert to queried layout is necessary
-    if (can_use_blocked_layout && (!use_strided_src || !is_plain(src))) {
+    if (can_use_blocked_layout && const_activation) {
         src = to_format_any(src);
     }
     auto wei = make_dnnl_memory_desc(
             op->get_input_value(1)->get_logical_tensor());
-    // For non-constant weight, create primitive desc with strided layout when:
-    // 1) weight has 4 dimensions and layout is adbc/abdc/acbd since oneDNN has
-    //    optimized kernel
     bool const_weight = logical_tensor_wrapper_t(
                                 op->get_input_value(1)->get_logical_tensor())
                                 .is_constant()
             && is_constant_cache_enabled(p_engine);
-    const bool use_strided_wei = wei.get_ndims() == 4
-            && (is_format(wei, dnnl::memory::format_tag::adbc)
-                    || is_format(wei, dnnl::memory::format_tag::abdc)
-                    || is_format(wei, dnnl::memory::format_tag::acbd));
-    if (const_weight || (can_use_blocked_layout && !use_strided_wei)) {
-        wei = to_format_any(wei);
-    }
+    if (can_use_blocked_layout && const_weight) { wei = to_format_any(wei); }
     auto dst = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
     const bool keep_dst_layout = op->has_attr(op_attr::keep_dst_layout)
             && op->get_attr<bool>(op_attr::keep_dst_layout);
-    const bool use_strided_dst
-            = ((src.get_ndims() == 2 || src.get_ndims() == 3)
-                      && p_engine.get_kind() == dnnl::engine::kind::gpu)
-            || keep_dst_layout;
-    if (can_use_blocked_layout && !use_strided_dst) {
-        dst = to_format_any(dst);
-    } else if (dst.get_format_kind() == dnnl::memory::format_kind::any
+    if (dst.get_format_kind() == dnnl::memory::format_kind::any
             && !keep_dst_layout) {
         // convert to strided for avoiding blocked activation. The format kind
         // of dst is possible to be any when:
         // 1) It is created with internal logical tensor
         // 2) It is the partition output and defined by user
         dst = to_ncx_format(dst);
-    } else {
-        // do nothing
     }
-
     dnnl::matmul::primitive_desc pd;
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {

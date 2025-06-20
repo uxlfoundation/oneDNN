@@ -40,7 +40,7 @@ namespace dnnl_impl {
 /// complete shape/dtype/layout information. We can create executable for these
 /// ops.
 status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
     const auto &p_engine = *(sg->p_engine_);
     auto &pd_cache = sg->pd_cache_;
 

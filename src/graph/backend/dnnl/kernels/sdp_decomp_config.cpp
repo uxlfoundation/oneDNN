@@ -170,7 +170,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
 
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
 
     // per-head: reorder u8->s8 wei for first matmul
     // create reorder1 primitive attr
@@ -722,7 +722,7 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
 }
 
 impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
-        const fusion_info_mgr_t &mgr, std::shared_ptr<op_t> &op, int index,
+        const subgraph_info_mgr_t &mgr, std::shared_ptr<op_t> &op, int index,
         std::unordered_map<int, memory> &args, const dnnl::engine &p_engine) {
     const auto dt_scale = memory::data_type::f32,
                dt_zp = memory::data_type::s32;
@@ -730,10 +730,9 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
     // 1. src scale, wei scale
     // 2. src zp, wei zp
     // 3. dst scale, dst zp
-    if (op && op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op && op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         if (fusion_info.with_runtime_scales(true, 0)) {
             memory::desc sub_src_scale_md = memory::desc({1}, dt_scale, tag::x);
             memory sub_src_scale = memory(sub_src_scale_md, p_engine);
@@ -812,12 +811,11 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 }
 
 dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
-        std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<op_t> &op, subgraph_info_mgr_t &mgr) {
     dnnl::primitive_attr attr;
-    if (op && op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op && op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     if (op && op->get_kind() == op_kind::dnnl_reorder) {

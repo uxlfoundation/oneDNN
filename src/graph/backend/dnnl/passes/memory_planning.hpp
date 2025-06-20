@@ -437,14 +437,14 @@ private:
 
     status_t assign_external_outputs_buffer(std::shared_ptr<subgraph_t> &sg,
             const std::vector<logical_tensor_t> &outputs,
-            fusion_info_mgr_t &mgr);
+            subgraph_info_mgr_t &mgr);
 
     status_t assign_internal_persistent_buffer(
-            std::shared_ptr<subgraph_t> &sg, fusion_info_mgr_t &mgr);
+            std::shared_ptr<subgraph_t> &sg, subgraph_info_mgr_t &mgr);
 
     status_t assign_internal_temporary_buffer(std::shared_ptr<subgraph_t> &sg,
             const std::unordered_map<value_t *, size_t> &edge_ref_count,
-            fusion_info_mgr_t &mgr, bool enable_standard_sharing);
+            subgraph_info_mgr_t &mgr, bool enable_standard_sharing);
 
     status_t prepare_subgraph_inplace_pairs(
             std::shared_ptr<subgraph_t> &sg, bool enable_standard_sharing);
@@ -452,7 +452,7 @@ private:
     status_t book_buffers(std::shared_ptr<subgraph_t> &sg);
 
     status_t prepare_execution_args_set(std::shared_ptr<subgraph_t> &sg,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr);
+            const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr);
 
     execution_args_set_t exec_args_set_;
 

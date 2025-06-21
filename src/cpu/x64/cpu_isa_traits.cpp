@@ -129,10 +129,10 @@ struct isa_info_t {
         switch (isa) {
             case avx10_2_512_amx_2:
                 return "Intel AVX10.2/512 with float16, Intel DL Boost and "
-                       "Intel AMX with bfloat16, float16, float8 and"
+                       "Intel AMX with bfloat16, float16, float8 and "
                        "8-bit integer support";
             case avx10_2_512:
-                return "Intel AVX10.2/512 with float16, Intel DL Boost and"
+                return "Intel AVX10.2/512 with float16, Intel DL Boost and "
                        "bfloat16 support ";
             case avx512_core_amx_fp16:
                 return "Intel AVX-512 with float16, Intel DL Boost and "

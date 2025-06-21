@@ -201,11 +201,39 @@ const std::array<expr_t, 3> &local_ids();
 expr_t local_id(int idx);
 const std::array<expr_t, 3> &local_sizes();
 expr_t local_size(int idx);
+class lval_t : public expr_impl_t{
+
+	public:
+    /*static expr_t make(const var_t &v) {
+        return expr_t(new lval_t(v));
+    }*/
+
+ IR_DECL_EXPR_TYPE_ID(lval_t)
+
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash("def:"+var.as<var_t>().name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+	
+lval_t &operator=(const expr_t &obj);
+				   
+    expr_t	var;
+//private:
+    lval_t(const var_t &v)
+        :  expr_impl_t(_type_info(), type_kind_t::undef) {var = var_t::make(v.type, v.name);}
+
+};
 
 expr_t arg(const std::string &name);
-expr_t def(type_t type, const std::string &name, expr_t value = {},
+lval_t def(type_t type, const std::string &name, expr_t value = {},
         bool force_alloc = false);
-expr_t def(const std::string &name, expr_t value);
+lval_t def(const std::string &name, expr_t value);
 tensor_t def(v2::layout_t layout, const std::string &name, expr_t value = {});
 expr_t let(type_t type, const std::string &name, expr_t value);
 expr_t let(const std::string &name, expr_t value);
@@ -221,6 +249,41 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const pvar_tile_t tile, pvar_coord_t<int64_t> base, bool is_systolic);
 
 void assign(expr_t var, expr_t value);
+
+
+
+   /* static expr_t make(const type_t &type, const std::string &name) {
+        return expr_t(new const_var_t(type, name));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+    std::string name;
+
+private:
+    const_var_t(const type_t &type, const std::string &name)
+        : expr_impl_t(_type_info(), type), name(name) {}
+
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+    std::string name;*/
+
+
 
 template <typename F>
 void if_(expr_t cond, F if_body) {

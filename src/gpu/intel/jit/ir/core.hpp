@@ -106,6 +106,7 @@ enum ir_type_id_t : uint8_t {
     reduce_t,
     reorder_t,
     eltwise_t,
+    lval_t,
 
 #undef HANDLE_IR_OBJECT
 };
@@ -1867,7 +1868,7 @@ private:
 class var_t : public expr_impl_t {
 public:
     IR_DECL_EXPR_TYPE_ID(var_t)
-
+    
     static expr_t make(const type_t &type, const std::string &name,
             bool is_mutable = false) {
         return expr_t(new var_t(type, name, is_mutable));

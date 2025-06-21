@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2025 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -954,6 +955,8 @@ const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_BA24b8a) return "BA24b8a";
     if (v == dnnl_aCB24c8b) return "aCB24c8b";
     if (v == dnnl_abDC24d8c) return "abDC24d8c";
+    if (v == dnnl_decbA4a) return "decbA4a";
+    if (v == dnnl_defcbA4a) return "defcbA4a";
     if (v == dnnl_format_tag_last) return "format_tag_last";
     if (v == dnnl_x) return "x";
     if (v == dnnl_nc) return "nc";
@@ -1687,8 +1690,10 @@ const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_gIdhwO16o64i4o) return "gIdhwO16o64i4o";
     if (v == dnnl_hwioG16g) return "hwioG16g";
     if (v == dnnl_hwioG8g) return "hwioG8g";
+    if (v == dnnl_hwioG4g) return "hwioG4g";
     if (v == dnnl_dhwioG16g) return "dhwioG16g";
     if (v == dnnl_dhwioG8g) return "dhwioG8g";
+    if (v == dnnl_dhwioG4g) return "dhwioG4g";
     if (v == dnnl_NCdhw40n16c) return "NCdhw40n16c";
     if (v == dnnl_NCw40n16c) return "NCw40n16c";
     if (v == dnnl_NChw40n16c) return "NChw40n16c";

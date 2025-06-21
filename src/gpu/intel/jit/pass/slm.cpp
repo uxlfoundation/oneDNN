@@ -119,11 +119,11 @@ private:
         layout_iterator_t src_it(src);
         layout_iterator_t dst_it(dst);
 
-        tensor_t max_tile;
+        tile_t max_tile;
         for (;;) {
             auto src_tile = src_it.tile();
             auto dst_tile = dst_it.tile();
-            if (src_tile.is_equal(dst_tile)) {
+            if (src_tile == dst_tile) {
                 auto s = src.map(src_it.tile());
                 auto d = dst.map(dst_it.tile());
                 if (s.is_dense() && d.is_dense()
@@ -151,7 +151,7 @@ private:
         return create_slm_reorder(max_tile, src, dst, src_buf, dst_buf);
     }
 
-    stmt_t create_slm_reorder(const tensor_t &tile, const layout_t &src,
+    stmt_t create_slm_reorder(const tile_t &tile, const layout_t &src,
             const layout_t &dst, const expr_t &src_buf, const expr_t &dst_buf) {
         auto src_tile = src.map(tile);
         auto &src_tile_blocks = src_tile.blocks();
@@ -182,8 +182,8 @@ private:
 
         stmt_t store_stmt;
         stmt_t load_stmt;
-        src.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            expr_t off = (int)src.offset_in_bytes(start);
+        src.for_each_tile(tile, [&](const icoord_t &start) {
+            expr_t off = src.offset_in_bytes(start);
             auto store = store_send.call({slm_base_,
                     shuffle_t::make_broadcast(off0 + off, simd) + vec_off,
                     src_buf + off, expr_t()});

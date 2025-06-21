@@ -97,9 +97,9 @@ public:
         return entries_.at(dim).loop_idx;
     }
 
-    pvar_coord_t<expr_t> iter_coord() const;
-    pvar_coord_t<expr_t> tg_iter_coord() const;
-    pvar_tile_t tg_iter_tile() const;
+    coord_t iter_coord() const;
+    coord_t tg_iter_coord() const;
+    tile_t tg_iter_tile() const;
 
     std::string str() const {
         std::ostringstream oss;
@@ -231,7 +231,7 @@ struct fma_plan_t : public base_plan_t {
     layout_t a_layout;
     layout_t b_layout;
     layout_t c_layout;
-    pvar_tile_t inst_tile;
+    tile_t inst_tile;
     fma_kind_t fma = fma_kind_t::undef;
     int simd = 0;
 
@@ -279,7 +279,7 @@ struct x2r_fma_plan_t : public base_plan_t {
         }
     };
 
-    pvar_tile_t outer;
+    tile_t outer;
     layout_t c_layout;
     layout_t bias_layout;
     std::vector<stage_t> stages;
@@ -334,7 +334,7 @@ struct slm_reduce_plan_t : public base_plan_t {
     // C layout and tile coordinate after reduction and redistribution in
     // threadgroup.
     layout_t c_layout;
-    pvar_coord_t<expr_t> c_coord;
+    coord_t c_coord;
 
     using base_plan_t::base_plan_t;
 
@@ -364,7 +364,7 @@ struct slm_reduce_plan_t : public base_plan_t {
 };
 
 struct epilogue_store_plan_t : public base_plan_t {
-    pvar_tile_t tile;
+    tile_t tile;
     reorder_plan_t reorder;
     reorder_plan_t bias_reorder;
     send_plan_t c_store;
@@ -390,7 +390,7 @@ struct epilogue_store_plan_t : public base_plan_t {
 struct epilogue_plan_t : public base_plan_t {
     slm_reduce_plan_t slm_reduce;
     layout_t c_reg_layout;
-    pvar_coord_t<expr_t> c_coord;
+    coord_t c_coord;
     layout_t bias_layout;
     expr_t bias_reduce_cond;
 

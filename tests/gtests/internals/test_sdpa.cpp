@@ -395,12 +395,7 @@ sdpa_tensors_t get_descriptors(
     if (p.stype == scale_type::host_side) {
         out.m_scale
                 = memory(memory::desc({1, 1, 1, 1, 1}, p.qdt, abcde), cpu_eng);
-        out.scale_md = memory::desc([&] {
-            dnnl_memory_desc_t tmp_scale_md;
-            dnnl_memory_desc_create_host_side_scalar(
-                    &tmp_scale_md, (dnnl_data_type_t)p.qdt);
-            return tmp_scale_md;
-        }());
+        out.scale_md = memory::desc(p.qdt);
     } else {
         out.scale_md = memory::desc(scale_sz, p.qdt, abcd);
         out.m_scale = double_and_resize(out.scale_md, eng);

@@ -2969,6 +2969,23 @@ struct memory : public handle<dnnl_memory_t> {
             reset(md);
         }
 
+        /// Constructs a memory descriptor describing a host-side
+        /// scalar to be directly passed as an argument to device-side
+        /// kernels. Intended to avoid memory transfer overhead on
+        /// primitive execution. The resulting descriptor cannot be
+        /// utilized to generate a memory object.
+        ///
+        /// @param adata_type Data type of the scalar.
+        /// @returns A memory descriptor for host-side scalar input.
+        desc(data_type adata_type) {
+            dnnl_memory_desc_t md = nullptr;
+            error::wrap_c_api(dnnl_memory_desc_create_host_side_scalar(
+                                      &md, convert_to_c(adata_type)),
+                    "could not create a memory descriptor describing host side "
+                    "scalar");
+            reset(md);
+        }
+
         /// Constructs a memory descriptor for a region inside an area
         /// described by this memory descriptor.
         //

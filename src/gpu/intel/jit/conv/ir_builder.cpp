@@ -30,6 +30,7 @@
 #include "gpu/intel/jit/conv/normalization.hpp"
 #include "gpu/intel/jit/conv/pipeline.hpp"
 #include "gpu/intel/jit/conv/plan.hpp"
+#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/epilogue.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
@@ -771,6 +772,16 @@ void conv_ir_builder_t::build() {
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
     verify_buffer_access(stmt_, ir_ctx);
 #endif
+    using namespace dsl;
+    ir_context_t ir_ctx2(cfg_.exec_cfg(), init_cset);
+    declare_kernel(kernel_info_.iface(), ir_ctx2);
+    auto var = def("xr", expr_t(0));
+    var = var + 1;
+    var[0] = var[1] + 1;
+    var[1] += var[0];
+    var[1] += var[0] * 2;
+    var[0] -= 3;
+    end_kernel();
 
     gpu_debug() << "Convolution kernel body:\n" << stmt_;
     trace_perf();

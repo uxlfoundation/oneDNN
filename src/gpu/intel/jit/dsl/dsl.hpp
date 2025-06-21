@@ -19,10 +19,9 @@
 
 #include <stack>
 
-
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/blocking.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/v2/conv/plan.hpp"
 #include "gpu/intel/jit/v2/ir/tensor.hpp"
@@ -201,11 +200,100 @@ const std::array<expr_t, 3> &local_ids();
 expr_t local_id(int idx);
 const std::array<expr_t, 3> &local_sizes();
 expr_t local_size(int idx);
+//class lval_t : public expr_impl_t{
+
+//	public:
+/*static expr_t make(const var_t &v) {
+        return expr_t(new lval_t(v));
+    }*/
+
+/* IR_DECL_EXPR_TYPE_ID(lval_t)
+
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash("def:"+var.as<var_t>().name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+	
+lval_t &operator=(const expr_t &obj);
+				   
+    expr_t	var;
+//private:
+    lval_t(const var_t &v)
+        :  expr_impl_t(_type_info(), type_kind_t::undef) {var = var_t::make(v.type, v.name);}
+
+};*/
+class lval_t {
+
+public:
+    /*static expr_t make(const var_t &v) {
+        return expr_t(new lval_t(v));
+    }*/
+
+    lval_t(const expr_t &v) { var = v; } //var_t::make(v.type, v.name);}
+
+    lval_t &operator=(const expr_t &obj);
+    lval_t sub(int off, int elems) const {
+        // check that this expression is var_t or ref_t
+        return lval_t(ref_t::make(var, off, elems));
+    }
+    lval_t operator[](int off) const { return sub(off, 1); }
+
+#define DEFINE_BINARY_OPERATOR(op) \
+    expr_t operator op(const expr_t &b) { return var op b; }
+
+    DEFINE_BINARY_OPERATOR(+)
+    DEFINE_BINARY_OPERATOR(-)
+    DEFINE_BINARY_OPERATOR(*)
+    DEFINE_BINARY_OPERATOR(%)
+    DEFINE_BINARY_OPERATOR(/)
+    DEFINE_BINARY_OPERATOR(<<)
+    DEFINE_BINARY_OPERATOR(>>)
+
+    DEFINE_BINARY_OPERATOR(==)
+    DEFINE_BINARY_OPERATOR(!=)
+    DEFINE_BINARY_OPERATOR(>)
+    DEFINE_BINARY_OPERATOR(>=)
+    DEFINE_BINARY_OPERATOR(<)
+    DEFINE_BINARY_OPERATOR(<=)
+
+    DEFINE_BINARY_OPERATOR(&)
+    DEFINE_BINARY_OPERATOR(|)
+#undef DEFINE_BINARY_OPERATOR
+
+#define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
+    lval_t &operator op##=(const expr_t &rhs) { \
+        (*this) = (*this)op rhs; \
+        return *this; \
+    } \
+    lval_t &operator op##=(const lval_t &rhs) { \
+        (*this) = (*this).var op rhs.var; \
+        return *this; \
+    }
+
+    DEFINE_BINARY_ASSIGN_OPERATOR(+)
+    DEFINE_BINARY_ASSIGN_OPERATOR(-)
+    DEFINE_BINARY_ASSIGN_OPERATOR(*)
+    DEFINE_BINARY_ASSIGN_OPERATOR(/)
+    DEFINE_BINARY_ASSIGN_OPERATOR(%)
+    DEFINE_BINARY_ASSIGN_OPERATOR(&)
+
+#undef DEFINE_BINARY_ASSIGN_OPERATOR
+
+    expr_t var;
+
+    //private:
+};
 
 expr_t arg(const std::string &name);
-expr_t def(type_t type, const std::string &name, expr_t value = {},
+lval_t def(type_t type, const std::string &name, expr_t value = {},
         bool force_alloc = false);
-expr_t def(const std::string &name, expr_t value);
+lval_t def(const std::string &name, expr_t value);
 tensor_t def(v2::layout_t layout, const std::string &name, expr_t value = {});
 expr_t let(type_t type, const std::string &name, expr_t value);
 expr_t let(const std::string &name, expr_t value);
@@ -221,6 +309,37 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const pvar_tile_t tile, pvar_coord_t<int64_t> base, bool is_systolic);
 
 void assign(expr_t var, expr_t value);
+
+/* static expr_t make(const type_t &type, const std::string &name) {
+        return expr_t(new const_var_t(type, name));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+    std::string name;
+
+private:
+    const_var_t(const type_t &type, const std::string &name)
+        : expr_impl_t(_type_info(), type), name(name) {}
+
+
+    bool is_equal(const object_impl_t &obj) const override {
+        // Do not allow variable cloning.
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(name); }
+
+    IR_DECLARE_TRAVERSERS()
+
+    std::string name;*/
 
 template <typename F>
 void if_(expr_t cond, F if_body) {

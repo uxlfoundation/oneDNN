@@ -32,6 +32,7 @@ using namespace dnnl;
 
 using namespace dnnl::graph;
 using layout_type = logical_tensor::layout_type;
+using property_type = logical_tensor::property_type;
 using dim = logical_tensor::dim;
 using dims = logical_tensor::dims;
 
@@ -277,6 +278,15 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     // Create dnnl::stream.
     dnnl::stream strm(eng);
 
+// Create host engine for the host-side scale data. If oneDNN is built
+// without CPU runtime, we will not be able to create host engine and have
+// to use device-side scale on GPU.
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    const allocator host_alloc = create_allocator(engine::kind::cpu);
+    dnnl::engine host_eng
+            = make_engine_with_allocator(engine::kind::cpu, 0, host_alloc);
+#endif
+
     // Prepare input and output shapes to construct the sdpa graph.
     const dims qv_sz = {p.mb, p.head_num, p.query_num, p.head_size};
     const dims k_sz = {p.mb, p.head_num, p.seq_len, p.head_size};
@@ -300,7 +310,12 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     bmm1.add_outputs({score});
 
     // scaled_score = score / scale
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    auto scale = logical_tensor(id++, dt, scale_sz, layout_type::strided,
+            property_type::host_scalar);
+#else
     auto scale = logical_tensor(id++, dt, scale_sz, layout_type::strided);
+#endif
     auto scaled_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto scale_div = op(id++, op::kind::Divide, "scale_div");
@@ -354,7 +369,13 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     // Create tensor objects
     auto ts_query = tensor(query, eng);
     auto ts_key = tensor(key, eng);
+
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    auto ts_scale = ekind == engine::kind::cpu ? tensor(scale, eng)
+                                               : tensor(scale, host_eng);
+#else
     auto ts_scale = tensor(scale, eng);
+#endif
     auto ts_mask = tensor(mask, eng);
     auto ts_value = tensor(value, eng);
     auto ts_output = tensor(output, eng);

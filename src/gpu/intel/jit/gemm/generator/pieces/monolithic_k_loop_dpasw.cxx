@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
 
 #include "compute_utils.hpp"
 #include "kernel_queries.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
 
+static inline void sysgemmSetupCLayouts(HW hw, const GRFMultirange &C_regs, int accStride, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
 /**********************************************************************/
 /*                 Fixed Systolic GEMM (XeHP/XeHPG)                   */
@@ -61,7 +63,7 @@ namespace sysgemm {
 }
 
 template <HW hw>
-bool BLASKernelGenerator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm;
     auto params = systolicParams(hw, problem, strategy);
@@ -292,15 +294,28 @@ bool BLASKernelGenerator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEM
 
     state.ra.claim(C_ptr);
 
+    sysgemmSetupCLayouts(hw, C_regs, accStride, problem, strategy, state);
+
+    if (state.r0_info != acc0.ud())
+        mov<uint32_t>(8, state.r0_info, acc0);
+
+    return true;    // Success!
+}
+
+inline void sysgemmSetupCLayouts(HW hw, const GRFMultirange &C_regs, int accStride, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    auto unrollM = strategy.unroll[LoopM], unrollN = strategy.unroll[LoopN];
+
     // Set up C internal layout and registers.
     state.C_regs.resize(1);
     state.C_regs[0] = C_regs;
-    state.C_layout.clear();
-    state.C_layout.reserve((unrollM / 8) * (unrollN / 4));
+
+    vector<RegisterBlock> C_list;
+    C_list.reserve((unrollM / 8) * (unrollN / 4));
     for (int j0 = 0; j0 < unrollN; j0 += 4) {
         for (int i0 = 0; i0 < unrollM; i0 += 8) {
             RegisterBlock block;
-            block.log2GRFBytes = GRF::log2Bytes(hw);
+            block.hw = hw;
             block.colMajor = true;
             block.splitComplex = false;
             block.cxComponent = RegisterBlock::Interleaved;
@@ -318,27 +333,24 @@ bool BLASKernelGenerator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEM
                 j0Interleaved += 4 - unrollN;
 
             block.offsetBytes = (accStride * i0 / 8 + j0Interleaved) * GRF::bytes(hw);
-            state.C_layout.push_back(block);
+            C_list.push_back(block);
         }
     }
+
+    state.C_layout = RegisterLayout(problem.Tc, std::move(C_list));
 
     // Set up C external layout.
     state.copyC = true;
     bool remM_Ce, remN_Ce;
     getCRemainders(hw, problem, strategy, remM_Ce, remN_Ce);
 
-    if (!getRegLayout(problem.Tc_ext, state.C_layoutExt, unrollM, unrollN, remM_Ce, remN_Ce, true, AllowFragDesc, 0, 0, problem.C, state.Cext_strategy)) return false;
+    state.C_layoutExt = RegisterLayout(hw, problem.Tc_ext, unrollM, unrollN, problem.C, state.Cext_strategy, remM_Ce, remN_Ce, true, AllowFragDesc);
     if (remM_Ce || remN_Ce)
-        (void) getRegLayout(problem.Tc_ext, state.C_layoutExtUnmasked, unrollM, unrollN, false, false, true, AllowFragDesc, 0, 0, problem.C, state.Cext_strategy);
-
-    if (state.r0_info != acc0.ud())
-        mov<uint32_t>(8, state.r0_info, acc0);
-
-    return true;    // Success!
+        state.C_layoutExtUnmasked = RegisterLayout(hw, problem.Tc_ext, unrollM, unrollN, problem.C, state.Cext_strategy, false, false, true, AllowFragDesc);
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmKLoop(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::sysgemmKLoop(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm;
     Label top, bottom, skipMain, remTop, remBottom;
@@ -559,7 +571,7 @@ void BLASKernelGenerator<hw>::sysgemmKLoop(const GEMMProblem &problem, const GEM
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmKLoop4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool oddB)
+void Generator<hw>::sysgemmKLoop4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool oddB)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -764,7 +776,7 @@ void BLASKernelGenerator<hw>::sysgemmKLoop4(const GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmStoreSignal(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool forceFence)
+void Generator<hw>::sysgemmStoreSignal(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool forceFence)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -786,7 +798,7 @@ void BLASKernelGenerator<hw>::sysgemmStoreSignal(const GEMMProblem &problem, con
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmCopyLoad(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool useC)
+void Generator<hw>::sysgemmCopyLoad(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool useC)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -878,7 +890,7 @@ void BLASKernelGenerator<hw>::sysgemmCopyLoad(const GEMMProblem &problem, const 
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmCopyLoad4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool loadB, int useC, RegData flagLoadB)
+void Generator<hw>::sysgemmCopyLoad4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool loadB, int useC, RegData flagLoadB)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -993,7 +1005,7 @@ void BLASKernelGenerator<hw>::sysgemmCopyLoad4(const GEMMProblem &problem, const
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmCopyStore(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool first)
+void Generator<hw>::sysgemmCopyStore(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool first)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -1041,7 +1053,7 @@ void BLASKernelGenerator<hw>::sysgemmCopyStore(const GEMMProblem &problem, const
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmCopyStore4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool storeB, int useC, int useC_B)
+void Generator<hw>::sysgemmCopyStore4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int storeBuffer, bool storeB, int useC, int useC_B)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -1108,7 +1120,7 @@ void BLASKernelGenerator<hw>::sysgemmCopyStore4(const GEMMProblem &problem, cons
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmMultiply(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int buffer, bool lastMultiply)
+void Generator<hw>::sysgemmMultiply(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int buffer, bool lastMultiply)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -1177,8 +1189,8 @@ void BLASKernelGenerator<hw>::sysgemmMultiply(const GEMMProblem &problem, const 
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmMultiply4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
-                                               int buffer, bool firstMultiply, RegData flagWaitLoad, RegData flagSignal, Label *labelDone)
+void Generator<hw>::sysgemmMultiply4(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
+                                     int buffer, bool firstMultiply, RegData flagWaitLoad, RegData flagSignal, Label *labelDone)
 {
     using namespace sysgemm;
     auto &depAddr = state.sysgemm.depAddr;
@@ -1273,7 +1285,7 @@ void BLASKernelGenerator<hw>::sysgemmMultiply4(const GEMMProblem &problem, const
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmMultiplyChunk(const GEMMProblem &problem, const GEMMStrategy &strategy, bool first, int ao, int i0, bool waitB, bool prepB, const InstructionModifier &swsb0, const InstructionModifier &swsbEnd)
+void Generator<hw>::sysgemmMultiplyChunk(const GEMMProblem &problem, const GEMMStrategy &strategy, bool first, int ao, int i0, bool waitB, bool prepB, const InstructionModifier &swsb0, const InstructionModifier &swsbEnd)
 {
     using namespace sysgemm;
     int co = i0 * 6;
@@ -1331,14 +1343,14 @@ void BLASKernelGenerator<hw>::sysgemmMultiplyChunk(const GEMMProblem &problem, c
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmBarrierPrep(const InstructionModifier &swsb, const GRF &header)
+void Generator<hw>::sysgemmBarrierPrep(const InstructionModifier &swsb, const GRF &header)
 {
     using namespace sysgemm;
     mov<uint32_t>(1 | swsb, header[2], barrierVal);
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemmReorderLocalIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::sysgemmReorderLocalIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (strategy.splitCopy) return;
     if (strategy.wg[LoopM] != 8) return;
@@ -1395,7 +1407,7 @@ namespace sysgemm2 {
 }
 
 template <HW hw>
-bool BLASKernelGenerator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm2;
     auto params = systolicParams(hw, problem, strategy);
@@ -1663,44 +1675,7 @@ bool BLASKernelGenerator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GE
         state.j0 = saveJ0;
     }
 
-    // Set up C internal layout and registers.
-    state.C_regs.resize(1);
-    state.C_regs[0] = C_regs;
-    state.C_layout.clear();
-    state.C_layout.reserve((unrollM / 8) * (unrollN / 4));
-    for (int j0 = 0; j0 < unrollN; j0 += 4) {
-        for (int i0 = 0; i0 < unrollM; i0 += 8) {
-            RegisterBlock block;
-            block.log2GRFBytes = GRF::log2Bytes(hw);
-            block.colMajor = true;
-            block.splitComplex = false;
-            block.cxComponent = RegisterBlock::Interleaved;
-            block.nr = block.ld = 8;
-            block.nc = 4;
-            block.component = 0;
-            block.offsetR = i0;
-            block.offsetC = j0;
-            block.crosspack = 1;
-            block.bytes = 8 * 4 * problem.Tc;
-            block.simdSize = 0;
-
-            int j0Interleaved = j0 << 1;
-            if (j0Interleaved >= unrollN)
-                j0Interleaved += 4 - unrollN;
-
-            block.offsetBytes = (unrollN * i0 / 8 + j0Interleaved) * GRF::bytes(hw);
-            state.C_layout.push_back(block);
-        }
-    }
-
-    // Set up C external layout.
-    state.copyC = true;
-    bool remM_Ce, remN_Ce;
-    getCRemainders(hw, problem, strategy, remM_Ce, remN_Ce);
-
-    if (!getRegLayout(problem.Tc_ext, state.C_layoutExt, unrollM, unrollN, remM_Ce, remN_Ce, true, AllowFragDesc, 0, 0, problem.C, state.Cext_strategy)) return false;
-    if (remM_Ce || remN_Ce)
-        (void) getRegLayout(problem.Tc_ext, state.C_layoutExtUnmasked, unrollM, unrollN, false, false, true, AllowFragDesc, 0, 0, problem.C, state.Cext_strategy);
+    sysgemmSetupCLayouts(hw, C_regs, unrollN, problem, strategy, state);
 
     if (state.r0_info != acc0.ud())
         mov<uint32_t>(8, state.r0_info, acc0);
@@ -1709,7 +1684,7 @@ bool BLASKernelGenerator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GE
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2KLoopCopy(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::sysgemm2KLoopCopy(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm2;
 
@@ -2267,7 +2242,7 @@ void BLASKernelGenerator<hw>::sysgemm2KLoopCopy(const GEMMProblem &problem, cons
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2KLoopCompute(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::sysgemm2KLoopCompute(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm2;
 
@@ -2375,7 +2350,7 @@ void BLASKernelGenerator<hw>::sysgemm2KLoopCompute(const GEMMProblem &problem, c
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2Multiply(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
+void Generator<hw>::sysgemm2Multiply(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
 {
     if (strategy.unroll[LoopN] == 48)
         sysgemm2MultiplyX48(problem, strategy, state, slmBuffer, cooldown, flagWaitLoad, flagSignal);
@@ -2384,7 +2359,7 @@ void BLASKernelGenerator<hw>::sysgemm2Multiply(const GEMMProblem &problem, const
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2MultiplyX48(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
+void Generator<hw>::sysgemm2MultiplyX48(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
 {
     using namespace sysgemm2;
     using namespace sysgemm2::x48;
@@ -2476,7 +2451,7 @@ void BLASKernelGenerator<hw>::sysgemm2MultiplyX48(const GEMMProblem &problem, co
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2MultiplyX32(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
+void Generator<hw>::sysgemm2MultiplyX32(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int slmBuffer, bool cooldown, FlagRegister flagWaitLoad, FlagRegister flagSignal)
 {
     using namespace sysgemm2;
     using namespace sysgemm2::x32;
@@ -2549,7 +2524,7 @@ void BLASKernelGenerator<hw>::sysgemm2MultiplyX32(const GEMMProblem &problem, co
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2MultiplyChunkX48(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA)
+void Generator<hw>::sysgemm2MultiplyChunkX48(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA)
 {
     using namespace sysgemm2;
     using namespace sysgemm2::x48;
@@ -2591,7 +2566,7 @@ void BLASKernelGenerator<hw>::sysgemm2MultiplyChunkX48(const GEMMProblem &proble
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::sysgemm2MultiplyChunkX32(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA, bool odd)
+void Generator<hw>::sysgemm2MultiplyChunkX32(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA, bool odd)
 {
     using namespace sysgemm2;
     using namespace sysgemm2::x32;
@@ -2630,4 +2605,4 @@ void BLASKernelGenerator<hw>::sysgemm2MultiplyChunkX32(const GEMMProblem &proble
     }
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

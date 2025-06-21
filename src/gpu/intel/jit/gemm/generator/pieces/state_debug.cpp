@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,11 +15,11 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 
-#include "internal/namespace_start.hxx"
 
-
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

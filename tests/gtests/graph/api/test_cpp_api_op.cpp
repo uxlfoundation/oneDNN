@@ -24,7 +24,7 @@
 TEST(APIOp, CreateAllOps) {
     using namespace dnnl::graph;
     dnnl_graph_op_kind_t first_op = dnnl_graph_op_abs;
-    dnnl_graph_op_kind_t last_op = dnnl_graph_op_last_symbol;
+    dnnl_graph_op_kind_t last_op = dnnl_graph_op_greater_equal;
 
     // This list should be the same as the definition of `op::kind` in
     // dnnl_graph.hpp.
@@ -121,7 +121,7 @@ TEST(APIOp, CreateAllOps) {
 
     const auto num_ops = all_kind_enums.size();
     for (size_t i = static_cast<size_t>(first_op);
-            i < static_cast<size_t>(last_op); ++i) {
+            i <= static_cast<size_t>(last_op); ++i) {
         ASSERT_LT(i, num_ops);
         op::kind kind = all_kind_enums[i];
         ASSERT_EQ(i, static_cast<size_t>(kind));

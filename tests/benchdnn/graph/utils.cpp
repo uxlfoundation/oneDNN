@@ -356,8 +356,9 @@ dnnl::graph::op::kind opstr2kind(const std::string &kind) {
         fprintf(stderr, "graph: ERROR: Unsupported opkind: `%s`, exiting...\n",
                 kind.c_str());
         SAFE_V(FAIL);
+        // Should not reach here, but the function still needs to return.
+        return dnnl::graph::op::kind::Wildcard;
     }
-    return dnnl::graph::op::kind::LastSymbol;
 }
 
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {

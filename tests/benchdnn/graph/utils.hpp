@@ -82,6 +82,9 @@ extern bdnn_state_t convert_state(const dnnl_status_t &s);
 // relies on the fact that the values not intersect with each other.
 enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
 
+// For now, there are some feature gaps between Nvidia GPU and Intel GPU, as
+// fitting those gaps is a long-term task, many cases will be unsupported on
+// Nvidia GPU, here we directly skip those cases on Nvidia GPU.
 #define DNN_GRAPH_SAFE(f, s, ss) \
     do { \
         try { \
@@ -92,6 +95,15 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                 (ss)->state = bs.state; \
                 if ((ss)->state == res_state_t::SKIPPED) { \
                     (ss)->reason = bs.reason; \
+                } else if ((((ss)->state == res_state_t::UNIMPLEMENTED) \
+                                   || ((ss)->state \
+                                           == res_state_t::INVALID_ARGUMENTS)) \
+                        && is_nvidia_gpu()) { \
+                    (ss)->state = SKIPPED; \
+                    (ss)->reason = skip_reason::case_not_supported; \
+                    BENCHDNN_PRINT(2, \
+                            "SKIP: Function '%s' at (%s:%d) returned '%s'\n", \
+                            __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } else { \
                     BENCHDNN_PRINT(0, \
                             "Error: Function '%s' at (%s:%d) returned '%s'\n", \

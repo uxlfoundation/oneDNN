@@ -208,15 +208,17 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 
 #define binary_add(x, y) ((x) + (y))
 
+#if HOST_SIDE_SCALE
+#define SCALE_T SCALE_DATA_T
+#else
+#define SCALE_T global SCALE_DATA_T *
+#endif
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
-#if HOST_SIDE_SCALE
-        const float scale, const float iscale,
-#else
-        const global SCALE_DATA_T *scale_ptr,
-#endif
-        int d, int k, int q, const global KEY_ATTR_SCALES_DATA_T *K_scales,
+        const SCALE_T scale_ptr_or_scalar, int d, int k, int q,
+        const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
         const global VAL_ATTR_ZP_DATA_T *V_zp, const int attn_mask_type
@@ -339,23 +341,29 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
     }
 
-#if !HOST_SIDE_SCALE
     /* Load scale */
     float scale = 1.0f;
     float iscale = 1.0f;
     if (k0end > 0) {
 #if WITH_ATTN_SCALE
 #if INVERT_SCALE
-        iscale = SCALES_TO_FLOAT(*scale_ptr);
+#if HOST_SIDE_SCALE
+        iscale = SCALES_TO_FLOAT(scale_ptr_or_scalar);
+#else
+        iscale = SCALES_TO_FLOAT(*scale_ptr_or_scalar);
+#endif
         scale = native_recip(iscale);
 #else
-        scale = SCALES_TO_FLOAT(*scale_ptr);
+#if HOST_SIDE_SCALE
+        scale = SCALES_TO_FLOAT(scale_ptr_or_scalar);
+#else
+        scale = SCALES_TO_FLOAT(*scale_ptr_or_scalar);
+#endif
         iscale = native_recip(scale);
 #endif
 #endif
         scale *= 1.442695f; // log2(e)
     }
-#endif
 
 #ifdef PREFETCH_K0
     if (k0end > 0) {

@@ -564,33 +564,12 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->with_host_side_scale()) {
         const void *handle = scale.data_handle();
-
-        const float scale_value = [&]() {
-            switch (pd()->scale_md()->data_type) {
-                case data_type::f16: return float(*(float16_t *)handle);
-                case data_type::bf16: return float(*(bfloat16_t *)handle);
-                case data_type::f32: return *(float *)handle;
-                default:
-                    assert(!"Unsupported host-side scale datatype");
-                    return 0.f;
-            }
-        }();
-
-        float scale = 1.f, iscale = 1.f;
-        if (pd()->with_attn_scale()) {
-            if (pd()->desc()->invert_scale) {
-                iscale = scale_value;
-                scale = 1.f / iscale;
-            } else {
-                scale = scale_value;
-                iscale = 1.f / scale;
-            }
+        switch (pd()->scale_md()->data_type) {
+            case data_type::f16: arg_list.append(*(float16_t *)handle); break;
+            case data_type::bf16: arg_list.append(*(uint16_t *)handle); break;
+            case data_type::f32: arg_list.append(*(float *)handle); break;
+            default: assert(!"Unsupported host-side scale datatype");
         }
-        constexpr float log2e = 1.442695f;
-        scale *= log2e;
-
-        arg_list.append(scale);
-        arg_list.append(iscale);
     } else {
         arg_list.append(scale);
     }

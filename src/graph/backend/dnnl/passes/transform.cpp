@@ -2465,12 +2465,13 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         int32_t target_ndims = std::max(src0_ndims, src1_ndims);
         std::vector<int32_t> in_ndims {src0_ndims, src1_ndims};
         for (size_t i = 0; i < cur_op->num_inputs(); ++i) {
-            // For binary select op, broadcast for the third input is
-            // unsupported.
-            if (i == 2) { continue; }
-            if (in_ndims[i] == target_ndims) { continue; }
+            // broadcast for the condition input of Select op.
+            int current_ndims = i == 2
+                    ? cur_op->get_input_value(2)->get_logical_tensor().ndims
+                    : in_ndims[i];
+            if (current_ndims == target_ndims) { continue; }
 
-            std::vector<int64_t> axes(target_ndims - in_ndims[i]);
+            std::vector<int64_t> axes(target_ndims - current_ndims);
             std::iota(axes.begin(), axes.end(), 0);
 
             // Only for NCX format BiasAdd, we need to unsqueeze the 1D bias to

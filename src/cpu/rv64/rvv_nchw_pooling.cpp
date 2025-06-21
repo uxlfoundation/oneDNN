@@ -55,8 +55,15 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                         int od_offset = od * strideD - padFront;
                         int oh_offset = oh * strideH - padTop;
                         int ow_offset = ow * strideW - padLeft;
-                        size_t size = std::min(ow_offset + kerW, inW)
-                                - std::max(ow_offset, 0);
+                        int iw_start = std::max(ow_offset, 0);
+                        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+
+                        if (iw_start >= iw_end) {
+                            dst[dst_offset] = -__FLT_MAX__;
+                            continue;
+                        }
+
+                        size_t size = iw_end - iw_start;
                         size_t cycleLength = __riscv_vsetvl_e32m8(size);
                         vfloat32m8_t vmax = __riscv_vle32_v_f32m8(
                                 &arr_flt_min[0], cycleLength);

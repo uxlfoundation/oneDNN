@@ -121,6 +121,43 @@ if(DNNL_WITH_SYCL)
     endif()
 endif()
 
+if (DNNL_TARGET_ARCH STREQUAL "RV64")
+    # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles("#if !defined(__riscv) || !defined(__riscv_v)
+                               #error \"RISC-V or vector extension(RVV) is not supported by the compiler\"
+                               #endif
+
+                               #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic < 12000
+                               #error \"RISC-V intrinsics v0.12 or higher is required\"
+                               #endif
+
+                               #include <riscv_vector.h>
+                               int main() {
+                                return 0;
+                               };"
+                               CAN_COMPILE_RVV_INTRINSICS
+    )
+    
+    # Set CAN_COMPILE_RVV_INTRINSICS to TRUE / FALSE instead of 1 / "" (Undefined)
+    if (CAN_COMPILE_RVV_INTRINSICS)
+        set(CAN_COMPILE_RVV_INTRINSICS TRUE)
+        set(RV64_MARCH_FLAG "-march=rv64gcv")
+    else()
+        set(CAN_COMPILE_RVV_INTRINSICS FALSE)
+        set(RV64_MARCH_FLAG "-march=rv64gc")
+    endif()
+
+    set(DNNL_RISCV_USE_RVV_INTRINSICS ${CAN_COMPILE_RVV_INTRINSICS})
+    if (${DNNL_RISCV_USE_RVV_INTRINSICS})
+        add_definitions(-DDNNL_RISCV_USE_RVV_INTRINSICS)
+    endif()
+
+    message(STATUS "Can compile RVV Intrinsics: ${CAN_COMPILE_RVV_INTRINSICS}")
+    message(STATUS "DNNL_RISCV_USE_RVV_INTRINSICS: ${DNNL_RISCV_USE_RVV_INTRINSICS}")
+    message(STATUS "Using RV64 march flag: ${RV64_MARCH_FLAG}")
+endif()
+
 if(MSVC)
     set(USERCONFIG_PLATFORM "x64")
     append_if(DNNL_WERROR CMAKE_CCXX_FLAGS "/WX")
@@ -291,7 +328,7 @@ elseif(UNIX OR MINGW)
              endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "RV64")
              # G = General-purpose extensions, C = Compression extension (very common).
-             append(DEF_ARCH_OPT_FLAGS "-march=rv64gc")
+             append(DEF_ARCH_OPT_FLAGS "${RV64_MARCH_FLAG}")
         elseif(DNNL_TARGET_ARCH STREQUAL "X64")
              platform_clang_x64_arch_ccxx_flags(DEF_ARCH_OPT_FLAGS)
         endif()
@@ -403,7 +440,7 @@ elseif(UNIX OR MINGW)
             endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "RV64")
             # G = General-purpose extensions, C = Compression extension (very common).
-            append(DEF_ARCH_OPT_FLAGS "-march=rv64gc")
+            append(DEF_ARCH_OPT_FLAGS "${RV64_MARCH_FLAG}")
         elseif(DNNL_TARGET_ARCH STREQUAL "X64")
             platform_gnu_x64_arch_ccxx_flags(DEF_ARCH_OPT_FLAGS)
         endif()
@@ -461,39 +498,6 @@ if(APPLE)
         append(CMAKE_SHARED_LINKER_FLAGS "${_rpath}")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_rpath}")
     endforeach()
-endif()
-
-if (DNNL_TARGET_ARCH STREQUAL "RV64")
-    # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
-    include(CheckCXXSourceCompiles)
-    check_cxx_source_compiles("#if !defined(__riscv) || !defined(__riscv_v)
-                               #error \"RISC-V or vector extension(RVV) is not supported by the compiler\"
-                               #endif
-
-                               #if defined(__riscv_v_intrinsic) && __riscv_v_intrinsic < 12000
-                               #error \"RISC-V intrinsics v0.12 or higher is required\"
-                               #endif
-
-                               #include <riscv_vector.h>
-                               int main() {
-                                return 0;
-                               };"
-                               CAN_COMPILE_RVV_INTRINSICS
-    )
-    # set CAN_COMPILE_RVV_INTRINSICS to TRUE / FALSE instead of 1 / "" (Undefined)
-    if (CAN_COMPILE_RVV_INTRINSICS)
-        set(CAN_COMPILE_RVV_INTRINSICS TRUE)
-    else()
-        set(CAN_COMPILE_RVV_INTRINSICS FALSE)
-    endif()
-
-    set(DNNL_RISCV_USE_RVV_INTRINSICS ${CAN_COMPILE_RVV_INTRINSICS})
-    if (${DNNL_RISCV_USE_RVV_INTRINSICS})
-        add_definitions(-DDNNL_RISCV_USE_RVV_INTRINSICS)
-    endif()
-
-    message(STATUS "Can compile RVV Intrinsics: ${CAN_COMPILE_RVV_INTRINSICS}")
-    message(STATUS "DNNL_RISCV_USE_RVV_INTRINSICS: ${DNNL_RISCV_USE_RVV_INTRINSICS}")
 endif()
 
 append(CMAKE_C_FLAGS "${CMAKE_CCXX_FLAGS}")

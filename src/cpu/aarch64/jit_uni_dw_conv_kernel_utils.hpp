@@ -74,7 +74,7 @@ bool jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::post_ops_ok(
     auto is_eltwise = [&](int idx) {
         return p.entry_[idx].is_eltwise()
                 && eltwise_injector::is_supported(
-                        isa, p.entry_[idx].eltwise.alg);
+                        to_vla_sve(isa), p.entry_[idx].eltwise.alg);
     };
     auto is_sum = [&](int idx) { return p.entry_[idx].is_sum(); };
 

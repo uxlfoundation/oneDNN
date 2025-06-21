@@ -457,7 +457,7 @@ private:
     void signal(const func_call_attr_t &attr) {
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         host_->barriermsg(mod, host_->signal_header_);
     }
 
@@ -468,7 +468,7 @@ private:
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -479,7 +479,7 @@ private:
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -519,7 +519,7 @@ private:
 
         ngen::InstructionModifier mod = esize;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/true);
         if (dpas_func.is_dpasw) {
             host_->dpasw(mod, dpas_func.sdepth, dpas_func.rcount, dst, src0,
@@ -568,7 +568,7 @@ private:
 
         ngen::InstructionModifier mod = mad_func.exec_size;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/false);
         if (src0.isNull()) {
@@ -735,8 +735,7 @@ private:
 
         ngen::InstructionModifier mod = send_func.nmasks();
         gpu_assert(math::is_pow2(mod.getExecSize()));
-        if (!attr.is_empty())
-            mod |= to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (!attr.is_empty()) mod |= attr.as<instruction_modifier_attr_t>().mod;
         if (!mask_op.is_invalid()) mod |= mask_op.flag_register_mod();
 
         // Zero-out inactive channels unless told not to.

@@ -29,7 +29,6 @@
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/utils/ngen_proxy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
@@ -2645,7 +2644,7 @@ class instruction_modifier_attr_t : public func_call_attr_impl_t {
 public:
     IR_DECL_TYPE_ID(instruction_modifier_attr_t)
 
-    static func_call_attr_t make(const ngen_proxy::InstructionModifier &mod) {
+    static func_call_attr_t make(const ngen::InstructionModifier &mod) {
         return func_call_attr_t(new instruction_modifier_attr_t(mod));
     }
 
@@ -2653,10 +2652,12 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return mod == other.mod;
+        return mod.getAll() == other.mod.getAll();
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(mod); }
+    size_t get_hash() const override {
+        return ir_utils::get_hash(mod.getAll());
+    }
 
     std::string str() const override {
         std::ostringstream oss;
@@ -2667,18 +2668,18 @@ public:
             oss << s;
             is_first = false;
         };
-        if (mod.is_atomic) append("Atomic");
-        if (!mod.sbid.is_empty()) {
-            append(std::string("$") + std::to_string(mod.sbid.token));
+        if (mod.isAtomic()) append("Atomic");
+        if (mod.getSWSB().empty()) {
+            append(std::string("$") + std::to_string(mod.getSWSB().getToken()));
         }
         oss << "}";
         return oss.str();
     }
 
-    ngen_proxy::InstructionModifier mod;
+    ngen::InstructionModifier mod;
 
 private:
-    instruction_modifier_attr_t(const ngen_proxy::InstructionModifier &mod)
+    instruction_modifier_attr_t(const ngen::InstructionModifier &mod)
         : func_call_attr_impl_t(_type_info()), mod(mod) {}
 };
 

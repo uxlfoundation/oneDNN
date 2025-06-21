@@ -13,32 +13,42 @@
       individual test case. The option doesn't take effect for
       operations that don't support the `mb` concept. The default is `0`.
 
-  - `--in-shapes=ID:SHAPE[*TAG+ID:SHAPE*TAG+...]` -- Override a shape and
-      stride of a graph input tensor that includes `ID` in a graph with `SHAPE` and
-      `TAG` values. `SHAPE` and `TAG` are separated by a `*`. Multiple
-      inputs may be specified using the `+` delimiter.
+  - `--in-shapes=ID:SHAPE[*STRIDE/TAG+ID:SHAPE*STRIDE/TAG+...]` -- Override a
+      shape, stride and memory tag of a graph input tensor that includes `ID` in
+      a graph with `SHAPE` and `TAG` or `STRIDE` values. `SHAPE` and `TAG` or
+      `STRIDE` are separated by a `*`. Multiple inputs may be specified using
+      the `+` delimiter.
+
+      `TAG` means the memory layout of that tensor, represented by a string
+      starting with `a`. The order may differ; a different order means a
+      different memory layout that users may provide according to their own
+      needs. Assume, for instance, a tensor with shape `[1,32,4,4]` & stride
+      `[512,16,4,1]`, the stride of which can be represented as a Tag `abcd`.
+      If users want to modify stride to `[128,1,128,32]`, `TAG` should be
+      provided as `acdb`, and the stride values will be calculated within
+      benchdnn graph.
+
+      `STRIDE` should be represented by a vector with the same format as
+      `SHAPE`. The size of `STRIDE` and `TAG` should be the same as that of
+      `SHAPE`.
 
       If both `--mb` and `--in-shapes` are set, `--mb` takes precedence
-      over `--in-shapes`.
+      over `--in-shapes`. If only `SHAPE` rewriting is provided, the input
+      tensors will be in the dense format, such as `abcd`.
 
       The shape of internal tensors and graph output tensors are inferred
       by the graph driver automatically. By default, the option value is empty,
       meaning values are taken from the original graph.
 
-      `TAG` means the memory layout of that tensor, represented by a string starting with `a`.
-      The order may differ; a different order means a different memory layout that users may
-      provide according to their own needs. Assume, for instance, a tensor with shape `[1,32,4,4]`
-      & stride `[512,16,4,1]`, the stride of which can be represented as a Tag `abcd`. If users
-      want to modify stride to `[128,1,128,32]`, `TAG` should be provided as `acdb`, and the
-      stride values will be calculated within the Benchdnn-graph.
-
       Below are several use options for `--in-shapes`:
       1. Modify shape only: `--in-shapes=ID:SHAPE[+ID:SHAPE...]`. Users can modify
-              rank as well. Modifying shape to 1D tensor with shape `[0]` is also included:
-              `--in-shapes=ID:0[+ID:0+...]`.
-      2. Modify stride only: `--in-shapes=ID:TAG[+ID:TAG...]`.
-      3. Modify shape and stride: `--in-shapes=ID:SHAPE[*TAG+ID:SHAPE*TAG+...]`.
+              rank as well. Modifying shape to 1D tensor with shape `[0]` is also
+              included: `--in-shapes=ID:0[+ID:0+...]`.
+      2. Modify shape and tags: `--in-shapes=ID:SHAPE[*TAG+ID:SHAPE*TAG+...]`.
               Users can modify rank as well.
+      3. Modify shape and strides: `--in-shapes=ID:SHAPE[*STRIDE+ID:SHAPE*STRIDE+...]`
+      4. Modify tags only: `--in-shapes=ID:*TAG[+ID:*TAG...]`.
+      5. Modify strides only: `--in-shapes=ID:*STRIDE[+ID:*STRIDE...]`.
       4. Modify rank to 0; that is, a scalar with shape [], which is represented by `-`
               in cml: `--in-shapes=ID:-[+ID:-+...]`.
 
@@ -113,10 +123,14 @@ Run the demo pattern with new input shapes by using `--in-shapes`:
 ```shell
 # rewrite input shape only
 ./benchdnn --mode=C --graph --in-shapes=0:2x64x112x112+1:32x64x2x2 --case=pattern/f32/conv_post_ops_fusion.json
-# rewrite stride only
-./benchdnn --mode=C --graph --in-shapes=0:dcba+1:dcba --case=pattern/f32/conv_post_ops_fusion.json
-# rewrite shape and stride
+# rewrite tag only
+./benchdnn --mode=C --graph --in-shapes=0:*dcba+1:*dcba --case=pattern/f32/conv_post_ops_fusion.json
+# rewrite strides only
+./benchdnn --mode=C --graph --in-shapes=0:*802816x25088x112x1 --case=pattern/f32/conv_post_ops_fusion.json
+# rewrite shape and tag
 ./benchdnn --mode=C --graph --in-shapes=0:2x64x112x112*dcba+1:32x64x2x2*dcba --case=pattern/f32/conv_post_ops_fusion.json
+# rewrite shape and stride
+./benchdnn --mode=C --graph --in-shapes=0:2x64x112x112*802816x12544x112x1 --case=pattern/f32/conv_post_ops_fusion.json
 # rewrite rank
 ./benchdnn --mode=C --graph --in-shapes=0:2x64x112x112x112+1:32x64x2x2x2 --op-attrs=0:strides:1x1x1*pads_begin:0x0x0*pads_end:0x0x0*dilations:1x1x1 --case=pattern/f32/conv_post_ops_fusion.json
 # rewrite rank and stride

@@ -135,12 +135,12 @@ status_t softmax_fwd_t::execute_impl(const stream_t *g_stream,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    constant_cache_t::cached_t c_buffer;
+    constant_tensor_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
         const size_t encoded_key
                 = encode_constant_cache_key(inputs, const_md_hash_);
-        std::promise<constant_cache_t::cached_t> c_promise;
-        constant_cache_t::value_t cached_value
+        std::promise<constant_tensor_cache_t::cached_t> c_promise;
+        constant_tensor_cache_t::value_t cached_value
                 = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());
@@ -206,12 +206,12 @@ status_t softmax_fwd_t::sycl_execute_impl(const stream_t *g_stream,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    constant_cache_t::cached_t c_buffer;
+    constant_tensor_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
         const size_t encoded_key
                 = encode_constant_cache_key(inputs, const_md_hash_);
-        std::promise<constant_cache_t::cached_t> c_promise;
-        constant_cache_t::value_t cached_value
+        std::promise<constant_tensor_cache_t::cached_t> c_promise;
+        constant_tensor_cache_t::value_t cached_value
                 = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());
@@ -283,12 +283,12 @@ status_t softmax_fwd_t::ocl_execute_impl(const stream_t *g_stream,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    constant_cache_t::cached_t c_buffer;
+    constant_tensor_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
         const size_t encoded_key
                 = encode_constant_cache_key(inputs, const_md_hash_);
-        std::promise<constant_cache_t::cached_t> c_promise;
-        constant_cache_t::value_t cached_value
+        std::promise<constant_tensor_cache_t::cached_t> c_promise;
+        constant_tensor_cache_t::value_t cached_value
                 = dnnl_constant_cache_get_or_add(p_engine_, encoded_key,
                         memory_planner_.total_internal_persistent_size(),
                         c_promise.get_future());

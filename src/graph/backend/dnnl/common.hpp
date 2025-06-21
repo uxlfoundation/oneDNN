@@ -44,7 +44,6 @@ using memory = dnnl::memory;
 using desc = memory::desc;
 using format_tag = memory::format_tag;
 using format_kind = memory::format_kind;
-using tag = memory::format_tag;
 using data_type = typename memory::data_type;
 using dims = typename memory::dims;
 using dim = memory::dim;
@@ -52,8 +51,6 @@ using query = dnnl::query;
 using prop_kind = dnnl::prop_kind;
 using algorithm = dnnl::algorithm;
 using exec_args = std::unordered_map<int, memory>;
-
-using constant_cache_t = graph::constant_tensor_cache_t;
 
 using pd_cache_t = std::unordered_map<op_t *, graph::utils::any_t>;
 struct dnnl_allocator_t {

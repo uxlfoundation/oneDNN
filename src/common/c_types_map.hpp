@@ -1074,6 +1074,7 @@ const format_tag_t BA8a16b = dnnl_BA8a16b;
 const format_tag_t aCB8b16c = dnnl_aCB8b16c;
 const format_tag_t BA8a8b = dnnl_BA8a8b;
 const format_tag_t aCB8b8c = dnnl_aCB8b8c;
+const format_tag_t AB2a4b = dnnl_AB2a4b;
 
 const format_tag_t last = dnnl_format_tag_last;
 

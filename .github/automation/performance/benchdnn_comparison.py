@@ -56,10 +56,15 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
     r2_ctime = defaultdict(list)
 
     for key, exec_time, ctime in r1:
+        # Older versions of benchdnn outputs underscores
+        # instead of hyphens for some ops leading to
+        # mismatches in problems with newer versions
+        key = key.replace("_", "-")
         r1_exec[key].append(float(exec_time))
         r1_ctime[key].append(float(ctime))
 
     for key, exec_time, ctime in r2:
+        key = key.replace("_", "-")
         r2_exec[key].append(float(exec_time))
         r2_ctime[key].append(float(ctime))
 

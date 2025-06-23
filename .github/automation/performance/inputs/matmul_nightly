@@ -20,14 +20,14 @@
 # Plain cases
 --reset
 --dt=f32,s8:s8:f32
---bia-dt=f32,undef
+--bia_dt=f32,undef
 --bia_mask=2
 --batch=shapes_2d_ci
 --bia_mask=4
 --batch=shapes_3d
 
 --dt=f32
---bia-dt=f32,undef
+--bia_dt=f32,undef
 --bia_mask=2
 --attr-fpmath=bf16
 --batch=shapes_2d_ci
@@ -36,7 +36,7 @@
 
 #f16
 --dt=f16:f16:f16
---bia-dt=undef
+--bia_dt=undef
 --bia_mask=2
 --batch=shapes_2d_ci
 --bia_mask=4

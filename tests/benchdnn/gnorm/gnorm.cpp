@@ -500,6 +500,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->dt[0], prb->dt[1]}, prb->dir, res);
+    skip_unimplemented_attr(
+            prb->attr, res, dnnl_group_normalization, dnnl_data_type_undef);
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

@@ -268,6 +268,10 @@ void skip_unimplemented_prelu_po(
 void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
         dnnl_data_type_t ddt, const std::string &stag, const std::string &dtag);
 void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res);
+void skip_unimplemented_po_quantity(const attr_t &attr, res_t *res);
+void skip_unimplemented_attr(const attr_t &attr, res_t *res,
+        dnnl_primitive_kind_t prim_kind, dnnl_data_type_t src_dt,
+        dnnl_data_type_t dst_t = dnnl_data_type_undef);
 
 template <typename prb_t>
 int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,

@@ -132,6 +132,7 @@ struct profiler_t {
 
     std::string str() const {
         std::ostringstream oss;
+        oss.imbue(std::locale::classic());
         std::vector<record_t<std::string>> print_data(
                 _data.begin(), _data.end());
 

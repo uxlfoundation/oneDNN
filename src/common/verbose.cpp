@@ -995,6 +995,7 @@ std::string init_info_deconvolution(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_eltwise(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1164,6 +1165,7 @@ std::string init_info_layer_normalization(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_lrn(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1312,6 +1314,7 @@ std::string init_info_prelu(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_reduction(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1561,6 +1564,7 @@ std::string init_info_sum(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 

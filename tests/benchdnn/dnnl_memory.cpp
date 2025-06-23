@@ -25,12 +25,10 @@
 
 #ifdef DNNL_WITH_SYCL
 #include "oneapi/dnnl/dnnl_sycl.hpp"
-#include "src/gpu/intel/gpu_primitive.hpp"
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
-#include "src/gpu/intel/gpu_primitive.hpp"
 #include "src/xpu/ocl/usm_utils.hpp"
 #endif
 
@@ -545,60 +543,6 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     SAFE_V(FAIL);
 }
 
-void dnn_mem_t::memset_rng(size_t size, int buffer_index) const {
-    bool is_opencl = is_opencl_engine(engine_);
-    bool is_sycl = is_sycl_engine(engine_);
-    auto mem = m_padded_ ? m_padded_ : m_;
-    void *mem_handle;
-    DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
-
-    if (is_opencl) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        auto *ocl_compute_engine = static_cast<
-                dnnl::impl::gpu::intel::compute::compute_engine_t *>(engine_);
-        dnnl::impl::stream_t *stream_generic;
-        DNN_SAFE_V(ocl_compute_engine->get_service_stream(stream_generic));
-        auto stream = static_cast<
-                dnnl::impl::gpu::intel::compute::compute_stream_t *>(
-                stream_generic);
-        static std::vector<const char *> rng_kernel_name
-                = {"ocl_philox_kernel"};
-        std::vector<dnnl::impl::gpu::intel::compute::kernel_t> kernels(1);
-        dnnl::impl::gpu::intel::compute::kernel_ctx_t kernel_ctx;
-        DNN_SAFE_V(ocl_compute_engine->create_kernels(
-                &kernels, rng_kernel_name, kernel_ctx));
-
-        assert(size <= UINT64_MAX);
-        const uint64_t mem_size = static_cast<uint64_t>(size);
-        static constexpr uint64_t DEFAULT_SEED = -1;
-        dnnl::impl::gpu::intel::compute::kernel_arg_list_t arg_list;
-        arg_list.set(0, *mem->memory_storage());
-        arg_list.set(1, mem_size);
-        arg_list.set(2, DEFAULT_SEED);
-
-        const uint64_t block_size = 16;
-        const auto gws = dnnl::impl::gpu::intel::compute::nd_range_t(
-                size / block_size + (size % block_size > 0));
-
-        DNN_SAFE_V(dnnl::impl::gpu::intel::gpu_primitive_t::parallel_for(
-                dnnl::impl::exec_ctx_t(stream), gws, kernels[0], arg_list));
-
-        DNN_SAFE_V(dnnl_stream_wait(stream));
-        return;
-#endif
-    } else if (is_sycl) {
-#ifdef DNNL_WITH_SYCL
-        this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
-        return;
-#endif
-    }
-    if (is_cpu(engine_)) {
-        ::memset(mem_handle, dnnl_mem_default_perf_test_value, size);
-        return;
-    }
-    SAFE_V(FAIL);
-}
-
 dnn_mem_t dnn_mem_t::create_from_host_ptr(
         const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr) {
     // Pre-allocated handle_info won't use prefill no matter what.
@@ -921,8 +865,8 @@ int dnn_mem_t::initialize(
             if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                     || cold_cache_input.cold_cache_mode_
                             != default_cold_cache_input().cold_cache_mode_) {
-                // Try to fill memory with random values.
-                this->memset_rng(sz, i);
+                // Fill memory directly with 0x3F3F3F3F (0.747059f) number.
+                this->memset(dnnl_mem_default_perf_test_value, sz, i);
             } else {
                 // Fill memory with a magic number (NAN for fp data types)
                 // to catch possible uninitialized access.

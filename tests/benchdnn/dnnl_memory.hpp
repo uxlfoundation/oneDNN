@@ -172,7 +172,6 @@ struct dnn_mem_t {
     void map() const;
     void unmap() const;
     void memset(int value, size_t size, int buffer_index) const;
-    void memset_rng(size_t size, int buffer_index) const;
 
     static dnn_mem_t create_from_host_ptr(
             const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr);

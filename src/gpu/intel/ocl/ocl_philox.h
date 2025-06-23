@@ -20,7 +20,7 @@
 #define DT_UNDEF 1
 #include "gpu/intel/ocl/ocl_types.h"
 
-uint4 ref_philox_4x32(long idx, uint seed) {
+uint philox_4x32(long idx, uint seed) {
 #define PHILOX_4UINT_ROUND(mul, ctr, key) \
     as_uint4(convert_ulong2(ctr.s31) * mul) ^ (uint4)(ctr.s20 ^ key, 0, 0).s3120
 
@@ -43,11 +43,7 @@ uint4 ref_philox_4x32(long idx, uint seed) {
     ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.sEF);
     ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key1.s01);
     ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key1.s23);
-    return ctr;
-}
-
-uint philox_4x32(long idx, uint seed) {
-    return ref_philox_4x32(idx, seed)[~idx & 3L];
+    return ctr[~idx & 3L];
 }
 
 ushort philox_8x16(long idx, uint seed) {

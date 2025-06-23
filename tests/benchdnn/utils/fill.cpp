@@ -63,6 +63,7 @@ fill_cfg_t::fill_cfg_t(
 
 std::string fill_cfg_t::print_verbose() const {
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
 
     ss << "[FILL_CFG]";
     if (!name_.empty()) ss << " name:\'" << name_ << "\';";

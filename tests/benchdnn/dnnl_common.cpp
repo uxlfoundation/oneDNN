@@ -849,6 +849,35 @@ void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res) {
     }
 }
 
+void skip_unimplemented_po_quantity(const attr_t &attr, res_t *res) {
+    // Generic SYCL backend currently cannot support port more than 5 post-ops.
+    if (is_generic_gpu()) {
+        if (attr.post_ops.len() > 5) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+    }
+}
+
+void skip_unimplemented_attr(const attr_t &attr, res_t *res,
+        dnnl_primitive_kind_t prim_kind, dnnl_data_type_t src_dt,
+        dnnl_data_type_t dst_t) {
+
+    if (prim_kind != dnnl_binary && prim_kind != dnnl_group_normalization) {
+        skip_unimplemented_sum_po(attr, res, prim_kind, src_dt, dst_t);
+    }
+    if (prim_kind != dnnl_group_normalization) {
+        skip_unimplemented_binary_po(attr, res);
+        skip_unimplemented_prelu_po(attr, res, prim_kind);
+    }
+    if (prim_kind == dnnl_binary || prim_kind == dnnl_concat) {
+        skip_unimplemented_arg_scale(attr, res);
+    }
+
+    skip_unimplemented_po_quantity(attr, res);
+}
+
 void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
         dnnl_data_type_t ddt, const std::string &stag,
         const std::string &dtag) {

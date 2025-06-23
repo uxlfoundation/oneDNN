@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -77,6 +77,7 @@ dnnl_alg_kind_t alg2alg_kind(alg_t alg) {
 
 std::string prb_t::set_repro_line() {
     std::stringstream s;
+    s.imbue(std::locale::classic());
     dump_global_params(s);
     settings_t def;
 

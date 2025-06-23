@@ -290,10 +290,16 @@ inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
 #endif
 }
 
+#if HOST_SIDE_SCALE
+#define SCALE_T SCALE_DATA_T
+#else
+#define SCALE_T global SCALE_DATA_T *
+#endif
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
-        const global SCALE_DATA_T *scale_ptr, int d, int k, int q,
+        const SCALE_T scale_ptr_or_scalar, int d, int k, int q,
         const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
@@ -416,10 +422,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (k0end > 0) {
 #if WITH_ATTN_SCALE
 #if INVERT_SCALE
-        iscale = SCALES_TO_FLOAT(*scale_ptr);
+#if HOST_SIDE_SCALE
+        iscale = SCALES_TO_FLOAT(scale_ptr_or_scalar);
+#else
+        iscale = SCALES_TO_FLOAT(*scale_ptr_or_scalar);
+#endif
         scale = native_recip(iscale);
 #else
-        scale = SCALES_TO_FLOAT(*scale_ptr);
+#if HOST_SIDE_SCALE
+        scale = SCALES_TO_FLOAT(scale_ptr_or_scalar);
+#else
+        scale = SCALES_TO_FLOAT(*scale_ptr_or_scalar);
+#endif
         iscale = native_recip(scale);
 #endif
 #endif

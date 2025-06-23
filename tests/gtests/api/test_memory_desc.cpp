@@ -71,6 +71,21 @@ HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestQueryBlockedFormat) {
     EXPECT_TRUE(!md.is_zero());
 }
 
+HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestHostSideScalar) {
+    const memory::data_type dt1 = memory::data_type::f32;
+    const memory::desc md1 = memory::desc::host_scalar(dt1);
+    const memory::data_type dt2 = memory::data_type::f16;
+    const memory::desc md2 = memory::desc::host_scalar(dt2);
+    const memory::dims exp_dims = {1};
+
+    EXPECT_EQ(md1.get_ndims(), 1);
+    EXPECT_EQ(md1.get_dims(), exp_dims);
+    EXPECT_EQ(md1.get_format_kind(), memory::format_kind::host_side_scalar);
+    EXPECT_EQ(md1.get_data_type(), dt1);
+
+    EXPECT_EQ(md2.get_data_type(), dt2);
+}
+
 HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestComparison) {
     auto zero_md = memory::desc();
     auto blocked_md = memory::desc({32, 64, 3, 3}, memory::data_type::f32,

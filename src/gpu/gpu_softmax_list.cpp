@@ -45,7 +45,7 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_SOFTMAX_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::ocl::reusable_softmax_fwd_t)
+        //GPU_INSTANCE_INTEL(intel::ocl::reusable_softmax_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::gen9_softmax_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::simple_softmax_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_softmax_fwd_t)

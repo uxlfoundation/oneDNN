@@ -199,7 +199,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         return ((stride_w == 1 && vic >= ic) ? rnd_up(vsp * vic, simd_w)
                                              : vsp * rnd_up(vic, simd_w));
     }
-
+    dim_t grid_coverage(
+            dim_t nb, dim_t x, dim_t nx, dim_t xb, dim_t y, dim_t yb);
     static constexpr int MAXNLOOPS = 32;
     loop_t loop[MAXNLOOPS];
 };
@@ -783,9 +784,53 @@ bool brg_blocking_t::fast_check_oc_block() const {
     return res;
 }
 
-float brg_blocking_t::est_eff() {
-    const auto jcp = *this;
+dim_t brg_blocking_t::grid_coverage(
+        dim_t nb, dim_t x, dim_t nx, dim_t xb, dim_t y, dim_t yb) {
+    /*
+* Calculates the total area covered by a given number of blocks in a 2D grid.
+* This function estimates the number of operations required for a given blocking
+* configuration in a convolution by computing the area covered by rectangles
+* (blocks) in a grid. It accounts for blocks that may not fully fit into the
+* grid at the edges.
+* Parameters:
+* nb  The total number of blocks.
+* x   The size of the grid in the x dimension.
+* nx  The number of grid elements in the x dimension.
+* xb  The size of each block in the x dimension.
+* y   The size of the grid in the y dimension.
+* yb  The size of each block in the y dimension.
+* Returns:
+* The total area covered by the rectangles formed by the blocks.
+*/
+    const auto nb_x = div_up(x, xb);
+    const auto nb_y = div_up(y, yb);
+    // Compute how many full y blocks and x blocks are covered
+    const auto blocks_per_nx = nx * nb_x;
+    const auto yb_last = nb / blocks_per_nx;
+    const auto xb_last = nb % blocks_per_nx;
+    const auto yb_finish = yb_last % nb_y;
+    const auto xb_finish = xb_last % nb_x;
 
+    // Calculate the end positions for the last partial blocks
+    const auto x_end = xb_finish * xb;
+    const auto y1_end = yb_finish * yb;
+    const auto y2_end = nstl::min(y, y1_end + yb);
+
+    // Number of full rectangles
+    const auto n_rect = nx * (yb_last / nb_y);
+    // Area covered by full y blocks
+    const auto y_tail = x * nx * y1_end;
+    // Area covered by partial x and y blocks
+    const auto x_tail = (x * (xb_last / nb_x) + x_end) * (y2_end - y1_end);
+
+    // Area of a full rectangle
+    const auto rect_square = x * y;
+    // Total area covered
+    const auto res = n_rect * rect_square + y_tail + x_tail;
+    return res;
+}
+
+float brg_blocking_t::est_eff() {
     const auto brgemm_microkernel_eff = (static_cast<float>(adj_ocblock) * ur)
             / ((ur + adj_ocblock) * max_regs);
 
@@ -808,40 +853,20 @@ float brg_blocking_t::est_eff() {
 
     auto job_eff = 1.f;
     if (job < nthr) {
-        std::vector<dim_t> thr_jobs(nthr);
+        // the thread #0 is one of the most loaded threads
+        // so we use it to estimate the max_job
+        dim_t start {0}, end {0};
+        balance211(work_amount, nthr, 0, start, end);
+        const auto thread_job = end - start;
+        dim_t max_job {0}, sum_job {0};
+        max_job = (loop_order == loop_ndhwgc)
+                ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
+                : grid_coverage(
+                        thread_job, sp, nb_od * nb_oh, sp_block, oc, oc_block);
+        sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
-        for (int ithr = 0; ithr < nthr; ithr++) {
-            thr_jobs[ithr] = 0;
-            if (ithr >= work_amount) continue;
-            dim_t thr_job = 0;
-            dim_t start {0}, end {0};
-            balance211(work_amount, nthr, ithr, start, end);
-            dim_t n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
-            BRGEMM_CONV_ITERATOR_INIT;
-
-            for (auto work = start; work < end; work++) {
-                const auto ocp = ocb * oc_block;
-                const auto oc_sz
-                        = nstl::min(oc - ocp, static_cast<dim_t>(oc_block));
-                const auto spp = (is_os_blocking ? ohb : owb) * sp_block;
-                const auto sp_sz
-                        = nstl::min(sp - spp, static_cast<dim_t>(sp_block));
-                thr_job += sp_sz * oc_sz;
-
-                BRGEMM_CONV_ITERATOR_STEP;
-            }
-            thr_jobs[ithr] = thr_job;
-        }
-
-        dim_t max_job = 0;
-        dim_t sum_job = 0;
-        for (int ithr = 0; ithr < nthr; ithr++) {
-            if (thr_jobs[ithr] > max_job) max_job = thr_jobs[ithr];
-            sum_job += thr_jobs[ithr];
-        }
         job_eff = max_job == 0 ? 1
                                : static_cast<float>(sum_job) / (max_job * nthr);
-
     } else {
         job_eff = thr_eff;
     }
@@ -1313,73 +1338,27 @@ float brg_blocking_t::est_eff_1x1() {
 
     auto job_eff = 1.f;
     if (job < nthr) {
-        std::vector<dim_t> thr_jobs(nthr);
-        for (int ithr = 0; ithr < nthr; ithr++) {
-            thr_jobs[ithr] = 0;
-            if (ithr >= work_amount) continue;
-            dim_t thr_job = 0;
-            dim_t start {0}, end {0};
-            balance211(work_amount, nthr, ithr, start, end);
-            dim_t n {0}, g {0}, ocb {0}, oss {0}, odp {0}, ohp {0}, spb {0};
-            if (loop_order == loop_ndhwgc) {
-                if (is_os_blocking)
-                    nd_iterator_init(start, n, mb, oss, sp_amount, g, ngroups,
-                            ocb, nb_oc);
-                else
-                    nd_iterator_init(start, n, mb, odp, od, ohp, oh, spb, nb_sp,
-                            g, ngroups, ocb, nb_oc);
-            } else if (loop_order == loop_ngcdhw) {
-                if (is_os_blocking)
-                    nd_iterator_init(start, n, mb, g, ngroups, ocb, nb_oc, oss,
-                            sp_amount);
-                else
-                    nd_iterator_init(start, n, mb, g, ngroups, ocb, nb_oc, odp,
-                            od, ohp, oh, spb, nb_sp);
-            }
-
-            for (auto work = start; work < end; work++) {
-                const int ocp = ocb * oc_block;
-                const auto oc_sz = nstl::min(oc - ocp, oc_block);
-                dim_t sp_sz = 0;
-                if (is_os_blocking) {
-                    const auto osb_start = oss * nb_os_blocking;
-                    const auto osb_range = nstl::min(nb_os - osb_start,
-                            static_cast<dim_t>(nb_os_blocking));
-                    for (dim_t osb = 0; osb < osb_range; osb++) {
-                        const int osp = (osb_start + osb) * sp_block;
-                        sp_sz = nstl::min(os - osp, sp_block);
-                    }
-                } else {
-                    const auto spp = spb * sp_block;
-                    sp_sz = nstl::min(sp - spp, static_cast<dim_t>(sp_block));
-                }
-                thr_job += sp_sz * oc_sz;
-
-                if (loop_order == loop_ndhwgc) {
-                    if (is_os_blocking)
-                        nd_iterator_step(
-                                n, mb, oss, sp_amount, g, ngroups, ocb, nb_oc);
-                    else
-                        nd_iterator_step(n, mb, odp, od, ohp, oh, spb, nb_sp, g,
-                                ngroups, ocb, nb_oc);
-                } else if (loop_order == loop_ngcdhw) {
-                    if (is_os_blocking)
-                        nd_iterator_step(
-                                n, mb, g, ngroups, ocb, nb_oc, oss, sp_amount);
-                    else
-                        nd_iterator_step(n, mb, g, ngroups, ocb, nb_oc, odp, od,
-                                ohp, oh, spb, nb_sp);
-                }
-            }
-            thr_jobs[ithr] = thr_job;
+        // the thread #0 is one of the most loaded threads
+        // so we use it to estimate the max_job
+        dim_t start {0}, end {0};
+        balance211(work_amount, nthr, 0, start, end);
+        const auto thread_job = end - start;
+        dim_t max_job {0}, sum_job {0};
+        if (is_os_blocking) {
+            max_job = (loop_order == loop_ndhwgc)
+                    ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
+                            nb_os_blocking * sp_block)
+                    : grid_coverage(thread_job, os, 1,
+                            nb_os_blocking * sp_block, oc, oc_block);
+        } else {
+            max_job = (loop_order == loop_ndhwgc)
+                    ? grid_coverage(
+                            thread_job, oc, ngroups, oc_block, sp, sp_block)
+                    : grid_coverage(
+                            thread_job, sp, od * oh, sp_block, oc, oc_block);
         }
 
-        dim_t max_job = 0;
-        dim_t sum_job = 0;
-        for (int ithr = 0; ithr < nthr; ithr++) {
-            if (thr_jobs[ithr] > max_job) max_job = thr_jobs[ithr];
-            sum_job += thr_jobs[ithr];
-        }
+        sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
         job_eff = max_job == 0 ? 1
                                : static_cast<float>(sum_job) / (max_job * nthr);

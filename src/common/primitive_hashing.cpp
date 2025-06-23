@@ -735,6 +735,7 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, get_md_hash(desc.q_desc));
     seed = hash_combine(seed, get_md_hash(desc.k_desc));
     seed = hash_combine(seed, get_md_hash(desc.v_desc));
+    seed = hash_combine(seed, get_md_hash(desc.scale_desc));
     seed = hash_combine(seed, desc.kq_scales.get_hash());
     seed = hash_combine(seed, desc.kq_zero_points.get_hash());
     seed = hash_combine(seed, desc.vs_scales.get_hash());
@@ -742,7 +743,6 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, get_md_hash(desc.dst_desc));
     seed = hash_combine(seed, get_md_hash(desc.attn_mask_desc));
     // Scale type
-    seed = hash_combine(seed, static_cast<size_t>(desc.scale_dt));
     seed = hash_combine(seed, desc.invert_scale);
     seed = hash_combine(seed, desc.kv_head_number);
     seed = hash_combine(seed, static_cast<size_t>(desc.mask_type));

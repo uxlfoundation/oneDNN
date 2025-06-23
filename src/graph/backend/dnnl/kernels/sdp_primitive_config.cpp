@@ -351,8 +351,11 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
     if (attn_mask_)
         md_mask = make_dnnl_memory_desc(attn_mask_->get_logical_tensor());
 
-    auto scale_dt = impl::data_type::undef;
-    if (scale_) scale_dt = scale_->get_logical_tensor().data_type;
+    dnnl::memory::desc scale_md;
+    if (scale_)
+        scale_md = {dims {1},
+                static_cast<data_type>(scale_->get_logical_tensor().data_type),
+                dnnl::memory::format_tag::a};
 
     dnnl::primitive_attr attr, qk_attr, vs_attr;
 
@@ -376,9 +379,9 @@ status_t sdp_primitive_config_t::init(std::shared_ptr<subgraph_t> &sg,
             ? alg_kind::softmax_accurate_inf_as_zero
             : alg_kind::softmax_accurate;
     CHECK(create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(), md_k.get(),
-            md_v.get(), md_dst.get(), md_mask.get(), scale_dt, invert_scale_,
-            kv_head_number_, mask_type_, softmax_alg, attr.get(), qk_attr.get(),
-            vs_attr.get()));
+            md_v.get(), md_dst.get(), md_mask.get(), scale_md.get(),
+            invert_scale_, kv_head_number_, mask_type_, softmax_alg, attr.get(),
+            qk_attr.get(), vs_attr.get()));
 
     auto status = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
 

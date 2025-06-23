@@ -827,7 +827,7 @@ float brg_blocking_t::est_eff() {
                 const auto ocp = ocb * oc_block;
                 const auto oc_sz
                         = nstl::min(oc - ocp, static_cast<dim_t>(oc_block));
-                const auto spp = owb * sp_block;
+                const auto spp = (is_os_blocking ? ohb : owb) * sp_block;
                 const auto sp_sz
                         = nstl::min(sp - spp, static_cast<dim_t>(sp_block));
                 thr_job += sp_sz * oc_sz;
@@ -1138,7 +1138,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
     const auto max_ow_block_L2 = ow;
     auto start_ow_block = nstl::min(max_ow_block_thr, max_ow_block_L2);
 
-    sp = ow;
+    sp = ow * (is_os_blocking ? oh : 1);
     const auto start_sp_block = is_os_blocking ? ow : start_ow_block;
     auto prev_spb = 0;
     for (auto ns = 1; ns <= sp; ns++) {
@@ -1147,7 +1147,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         if (is_os_blocking && spb != ow) continue;
         prev_spb = spb;
         ow_block = spb;
-        sp_block = ow_block;
+        sp_block = ow_block * (is_os_blocking ? oh_block : 1);
 
         select_ic_block();
 
@@ -1161,7 +1161,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
 
         const status_t st = estimate_brgemm_ur();
         if (st != status::success) continue;
-        os_block = sp_block = ow_block;
+        os_block = sp_block = ow_block * (is_os_blocking ? oh_block : 1);
         update_blocks();
 
         eff = est_eff();
@@ -1171,7 +1171,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
 }
 
 status_t brg_blocking_t::calc_blocks() {
-    sp = ow;
+    sp = ow * (is_os_blocking ? oh : 1);
 
     nb_ic_blocking = 1;
     // --- Select kernel blocking ---

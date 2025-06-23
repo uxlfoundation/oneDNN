@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: MIT
  *
  * @file zes_ddi.h
- * @version v1.11-r1.11.8
+ * @version v1.13-r1.13.1
  *
  */
 #ifndef _ZES_DDI_H
@@ -1919,6 +1919,13 @@ typedef ze_result_t (ZE_APICALL *zes_pfnVFManagementGetVFEngineUtilizationExp2_t
     );
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Function-pointer for zesVFManagementGetVFCapabilitiesExp2 
+typedef ze_result_t (ZE_APICALL *zes_pfnVFManagementGetVFCapabilitiesExp2_t)(
+    zes_vf_handle_t,
+    zes_vf_exp2_capabilities_t*
+    );
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Table of VFManagementExp functions pointers
 typedef struct _zes_vf_management_exp_dditable_t
 {
@@ -1930,6 +1937,7 @@ typedef struct _zes_vf_management_exp_dditable_t
     zes_pfnVFManagementGetVFCapabilitiesExp_t                   pfnGetVFCapabilitiesExp;
     zes_pfnVFManagementGetVFMemoryUtilizationExp2_t             pfnGetVFMemoryUtilizationExp2;
     zes_pfnVFManagementGetVFEngineUtilizationExp2_t             pfnGetVFEngineUtilizationExp2;
+    zes_pfnVFManagementGetVFCapabilitiesExp2_t                  pfnGetVFCapabilitiesExp2;
 } zes_vf_management_exp_dditable_t;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1983,6 +1991,36 @@ typedef struct _zes_dditable_t
     zes_diagnostics_dditable_t          Diagnostics;
     zes_vf_management_exp_dditable_t    VFManagementExp;
 } zes_dditable_t;
+/// @brief Container for all DDI tables with version and tables set by the Driver
+typedef struct _zes_dditable_driver_t
+{
+    ze_api_version_t    version;
+    uint8_t             isValidFlag;
+    zes_global_dditable_t *             Global;
+    zes_device_dditable_t *             Device;
+    zes_device_exp_dditable_t *         DeviceExp;
+    zes_driver_dditable_t *             Driver;
+    zes_driver_exp_dditable_t *         DriverExp;
+    zes_overclock_dditable_t *          Overclock;
+    zes_scheduler_dditable_t *          Scheduler;
+    zes_performance_factor_dditable_t * PerformanceFactor;
+    zes_power_dditable_t *              Power;
+    zes_frequency_dditable_t *          Frequency;
+    zes_engine_dditable_t *             Engine;
+    zes_standby_dditable_t *            Standby;
+    zes_firmware_dditable_t *           Firmware;
+    zes_firmware_exp_dditable_t *       FirmwareExp;
+    zes_memory_dditable_t *             Memory;
+    zes_fabric_port_dditable_t *        FabricPort;
+    zes_temperature_dditable_t *        Temperature;
+    zes_psu_dditable_t *                Psu;
+    zes_fan_dditable_t *                Fan;
+    zes_led_dditable_t *                Led;
+    zes_ras_dditable_t *                Ras;
+    zes_ras_exp_dditable_t *            RasExp;
+    zes_diagnostics_dditable_t *        Diagnostics;
+    zes_vf_management_exp_dditable_t *  VFManagementExp;
+} zes_dditable_driver_t;
 
 #if defined(__cplusplus)
 } // extern "C"

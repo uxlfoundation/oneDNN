@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: MIT
  *
  * @file zet_api.h
- * @version v1.11-r1.11.8
+ * @version v1.13-r1.13.1
  *
  */
 #ifndef _ZET_API_H
@@ -102,7 +102,7 @@ typedef enum _zet_structure_type_t
     ZET_STRUCTURE_TYPE_METRIC_GROUP_TYPE_EXP = 0x00010006,                  ///< ::zet_metric_group_type_exp_t
     ZET_STRUCTURE_TYPE_EXPORT_DMA_EXP_PROPERTIES = 0x00010007,              ///< ::zet_export_dma_buf_exp_properties_t
     ZET_STRUCTURE_TYPE_METRIC_TRACER_EXP_DESC = 0x00010008,                 ///< ::zet_metric_tracer_exp_desc_t
-    ZET_STRUCTURE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_STRUCTURE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_STRUCTURE_TYPE_* ENUMs
 
 } zet_structure_type_t;
 
@@ -138,7 +138,7 @@ typedef enum _zet_value_type_t
     ZET_VALUE_TYPE_STRING = 5,                                              ///< C string
     ZET_VALUE_TYPE_UINT8 = 6,                                               ///< 8-bit unsigned-integer
     ZET_VALUE_TYPE_UINT16 = 7,                                              ///< 16-bit unsigned-integer
-    ZET_VALUE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_VALUE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_VALUE_TYPE_* ENUMs
 
 } zet_value_type_t;
 
@@ -270,6 +270,10 @@ typedef struct _zet_metric_group_type_exp_t zet_metric_group_type_exp_t;
 typedef struct _zet_export_dma_buf_exp_properties_t zet_export_dma_buf_exp_properties_t;
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare zet_metric_source_id_exp_t
+typedef struct _zet_metric_source_id_exp_t zet_metric_source_id_exp_t;
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Forward-declare zet_metric_global_timestamps_resolution_exp_t
 typedef struct _zet_metric_global_timestamps_resolution_exp_t zet_metric_global_timestamps_resolution_exp_t;
 
@@ -335,7 +339,7 @@ typedef struct _zet_metric_programmable_param_value_exp_t zet_metric_programmabl
 typedef enum _zet_module_debug_info_format_t
 {
     ZET_MODULE_DEBUG_INFO_FORMAT_ELF_DWARF = 0,                             ///< Format is ELF/DWARF
-    ZET_MODULE_DEBUG_INFO_FORMAT_FORCE_UINT32 = 0x7fffffff
+    ZET_MODULE_DEBUG_INFO_FORMAT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_MODULE_DEBUG_INFO_FORMAT_* ENUMs
 
 } zet_module_debug_info_format_t;
 
@@ -383,7 +387,7 @@ typedef uint32_t zet_device_debug_property_flags_t;
 typedef enum _zet_device_debug_property_flag_t
 {
     ZET_DEVICE_DEBUG_PROPERTY_FLAG_ATTACH = ZE_BIT(0),                      ///< the device supports attaching for debug
-    ZET_DEVICE_DEBUG_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_DEVICE_DEBUG_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEVICE_DEBUG_PROPERTY_FLAG_* ENUMs
 
 } zet_device_debug_property_flag_t;
 
@@ -480,7 +484,7 @@ typedef enum _zet_debug_event_flag_t
 {
     ZET_DEBUG_EVENT_FLAG_NEED_ACK = ZE_BIT(0),                              ///< The event needs to be acknowledged by calling
                                                                             ///< ::zetDebugAcknowledgeEvent.
-    ZET_DEBUG_EVENT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_EVENT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_EVENT_FLAG_* ENUMs
 
 } zet_debug_event_flag_t;
 
@@ -497,7 +501,7 @@ typedef enum _zet_debug_event_type_t
     ZET_DEBUG_EVENT_TYPE_THREAD_STOPPED = 6,                                ///< The thread stopped due to a device exception
     ZET_DEBUG_EVENT_TYPE_THREAD_UNAVAILABLE = 7,                            ///< The thread is not available to be stopped
     ZET_DEBUG_EVENT_TYPE_PAGE_FAULT = 8,                                    ///< A page request could not be completed on the device
-    ZET_DEBUG_EVENT_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_EVENT_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_EVENT_TYPE_* ENUMs
 
 } zet_debug_event_type_t;
 
@@ -507,7 +511,7 @@ typedef enum _zet_debug_detach_reason_t
 {
     ZET_DEBUG_DETACH_REASON_INVALID = 0,                                    ///< The detach reason is not valid
     ZET_DEBUG_DETACH_REASON_HOST_EXIT = 1,                                  ///< The host process exited
-    ZET_DEBUG_DETACH_REASON_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_DETACH_REASON_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_DETACH_REASON_* ENUMs
 
 } zet_debug_detach_reason_t;
 
@@ -547,7 +551,7 @@ typedef enum _zet_debug_page_fault_reason_t
     ZET_DEBUG_PAGE_FAULT_REASON_INVALID = 0,                                ///< The page fault reason is not valid
     ZET_DEBUG_PAGE_FAULT_REASON_MAPPING_ERROR = 1,                          ///< The address is not mapped
     ZET_DEBUG_PAGE_FAULT_REASON_PERMISSION_ERROR = 2,                       ///< Invalid access permissions
-    ZET_DEBUG_PAGE_FAULT_REASON_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_PAGE_FAULT_REASON_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_PAGE_FAULT_REASON_* ENUMs
 
 } zet_debug_page_fault_reason_t;
 
@@ -676,7 +680,7 @@ typedef enum _zet_debug_memory_space_type_t
     ZET_DEBUG_MEMORY_SPACE_TYPE_DEFAULT = 0,                                ///< default memory space (attribute may be omitted)
     ZET_DEBUG_MEMORY_SPACE_TYPE_SLM = 1,                                    ///< shared local memory space (GPU-only)
     ZET_DEBUG_MEMORY_SPACE_TYPE_ELF = 2,                                    ///< ELF file memory space
-    ZET_DEBUG_MEMORY_SPACE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_MEMORY_SPACE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_MEMORY_SPACE_TYPE_* ENUMs
 
 } zet_debug_memory_space_type_t;
 
@@ -763,7 +767,7 @@ typedef enum _zet_debug_regset_flag_t
 {
     ZET_DEBUG_REGSET_FLAG_READABLE = ZE_BIT(0),                             ///< register set is readable
     ZET_DEBUG_REGSET_FLAG_WRITEABLE = ZE_BIT(1),                            ///< register set is writeable
-    ZET_DEBUG_REGSET_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_DEBUG_REGSET_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_DEBUG_REGSET_FLAG_* ENUMs
 
 } zet_debug_regset_flag_t;
 
@@ -868,8 +872,8 @@ zetDebugReadRegisters(
                                                                             ///< than the `count` member of ::zet_debug_regset_properties_t for the
                                                                             ///< type
     uint32_t count,                                                         ///< [in] the number of registers to read; start+count must be less than or
-                                                                            ///< equal to the `count` member of ::zet_debug_register_group_properties_t
-                                                                            ///< for the type
+                                                                            ///< equal to the `count` member of ::zet_debug_regset_properties_t for the
+                                                                            ///< type
     void* pRegisterValues                                                   ///< [in,out][optional][range(0, count)] buffer of register values
     );
 
@@ -895,8 +899,8 @@ zetDebugWriteRegisters(
                                                                             ///< than the `count` member of ::zet_debug_regset_properties_t for the
                                                                             ///< type
     uint32_t count,                                                         ///< [in] the number of registers to write; start+count must be less than
-                                                                            ///< or equal to the `count` member of
-                                                                            ///< ::zet_debug_register_group_properties_t for the type
+                                                                            ///< or equal to the `count` member of ::zet_debug_regset_properties_t for
+                                                                            ///< the type
     void* pRegisterValues                                                   ///< [in,out][optional][range(0, count)] buffer of register values
     );
 
@@ -957,7 +961,7 @@ typedef enum _zet_metric_group_sampling_type_flag_t
     ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_EVENT_BASED = ZE_BIT(0),            ///< Event based sampling
     ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_TIME_BASED = ZE_BIT(1),             ///< Time based sampling
     ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_EXP_TRACER_BASED = ZE_BIT(2),       ///< Experimental Tracer based sampling
-    ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_GROUP_SAMPLING_TYPE_FLAG_* ENUMs
 
 } zet_metric_group_sampling_type_flag_t;
 
@@ -1022,7 +1026,7 @@ typedef enum _zet_metric_type_t
     ZET_METRIC_TYPE_IP_EXP = 0x7ffffffe,                                    ///< Metric type: instruction pointer. Deprecated, use
                                                                             ///< ::ZET_METRIC_TYPE_IP.
     ZET_METRIC_TYPE_IP = 0x7ffffffe,                                        ///< Metric type: instruction pointer
-    ZET_METRIC_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_TYPE_* ENUMs
 
 } zet_metric_type_t;
 
@@ -1032,7 +1036,7 @@ typedef enum _zet_metric_group_calculation_type_t
 {
     ZET_METRIC_GROUP_CALCULATION_TYPE_METRIC_VALUES = 0,                    ///< Calculated metric values from raw data.
     ZET_METRIC_GROUP_CALCULATION_TYPE_MAX_METRIC_VALUES = 1,                ///< Maximum metric values.
-    ZET_METRIC_GROUP_CALCULATION_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_GROUP_CALCULATION_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_GROUP_CALCULATION_TYPE_* ENUMs
 
 } zet_metric_group_calculation_type_t;
 
@@ -1348,7 +1352,7 @@ typedef enum _zet_metric_query_pool_type_t
 {
     ZET_METRIC_QUERY_POOL_TYPE_PERFORMANCE = 0,                             ///< Performance metric query pool.
     ZET_METRIC_QUERY_POOL_TYPE_EXECUTION = 1,                               ///< Skips workload execution between begin/end calls.
-    ZET_METRIC_QUERY_POOL_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_QUERY_POOL_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_QUERY_POOL_TYPE_* ENUMs
 
 } zet_metric_query_pool_type_t;
 
@@ -1626,7 +1630,7 @@ typedef enum _zet_profile_flag_t
     ZET_PROFILE_FLAG_REGISTER_REALLOCATION = ZE_BIT(0),                     ///< request the compiler attempt to minimize register usage as much as
                                                                             ///< possible to allow for instrumentation
     ZET_PROFILE_FLAG_FREE_REGISTER_INFO = ZE_BIT(1),                        ///< request the compiler generate free register info
-    ZET_PROFILE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_PROFILE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_PROFILE_FLAG_* ENUMs
 
 } zet_profile_flag_t;
 
@@ -1648,7 +1652,7 @@ typedef struct _zet_profile_properties_t
 typedef enum _zet_profile_token_type_t
 {
     ZET_PROFILE_TOKEN_TYPE_FREE_REGISTER = 0,                               ///< GRF info
-    ZET_PROFILE_TOKEN_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZET_PROFILE_TOKEN_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_PROFILE_TOKEN_TYPE_* ENUMs
 
 } zet_profile_token_type_t;
 
@@ -1721,7 +1725,7 @@ typedef enum _zet_api_tracing_exp_version_t
 {
     ZET_API_TRACING_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),              ///< version 1.0
     ZET_API_TRACING_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),          ///< latest known version
-    ZET_API_TRACING_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZET_API_TRACING_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_API_TRACING_EXP_VERSION_* ENUMs
 
 } zet_api_tracing_exp_version_t;
 
@@ -1890,7 +1894,7 @@ typedef enum _zet_concurrent_metric_groups_exp_version_t
 {
     ZET_CONCURRENT_METRIC_GROUPS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ), ///< version 1.0
     ZET_CONCURRENT_METRIC_GROUPS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ), ///< latest known version
-    ZET_CONCURRENT_METRIC_GROUPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZET_CONCURRENT_METRIC_GROUPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_CONCURRENT_METRIC_GROUPS_EXP_VERSION_* ENUMs
 
 } zet_concurrent_metric_groups_exp_version_t;
 
@@ -1942,7 +1946,7 @@ typedef enum _zet_metric_tracer_exp_version_t
 {
     ZET_METRIC_TRACER_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),            ///< version 1.0
     ZET_METRIC_TRACER_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),        ///< latest known version
-    ZET_METRIC_TRACER_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_TRACER_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_TRACER_EXP_VERSION_* ENUMs
 
 } zet_metric_tracer_exp_version_t;
 
@@ -2251,7 +2255,7 @@ zetMetricTracerDecodeExp(
     zet_metric_handle_t* phMetrics,                                         ///< [in] [range(0, metricsCount)] array of handles of decodable metrics in
                                                                             ///< the decoder for which the hMetricDecoder handle was 
                                                                             ///< provided. Metrics handles are expected to be for decodable metrics,
-                                                                            ///< see ::zetMetricDecoderGetDecodableMetrics() 
+                                                                            ///< see ::zetMetricDecoderGetDecodableMetricsExp() 
     uint32_t* pSetCount,                                                    ///< [in,out] pointer to number of metric sets. If count is zero, then the
                                                                             ///< driver shall update the value with the total
                                                                             ///< number of metric sets to be decoded. If count is greater than the
@@ -2291,9 +2295,10 @@ typedef enum _zet_metric_group_type_exp_flag_t
     ZET_METRIC_GROUP_TYPE_EXP_FLAG_EXPORT_DMA_BUF = ZE_BIT(0),              ///< Metric group and metrics exports memory using linux dma-buf, which
                                                                             ///< could be imported/mapped to the host process. Properties of the
                                                                             ///< dma_buf could be queried using ::zet_export_dma_buf_exp_properties_t.
-    ZET_METRIC_GROUP_TYPE_EXP_FLAG_USER_CREATED = ZE_BIT(1),                ///< Metric group created using ::zetMetricGroupCreateExp
+    ZET_METRIC_GROUP_TYPE_EXP_FLAG_USER_CREATED = ZE_BIT(1),                ///< Metric group created using ::zetDeviceCreateMetricGroupsFromMetricsExp
     ZET_METRIC_GROUP_TYPE_EXP_FLAG_OTHER = ZE_BIT(2),                       ///< Metric group which has a collection of metrics
-    ZET_METRIC_GROUP_TYPE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_GROUP_TYPE_EXP_FLAG_MARKER = ZE_BIT(3),                      ///< Metric group is capable of generating Marker metric
+    ZET_METRIC_GROUP_TYPE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_GROUP_TYPE_EXP_FLAG_* ENUMs
 
 } zet_metric_group_type_exp_flag_t;
 
@@ -2327,6 +2332,145 @@ typedef struct _zet_export_dma_buf_exp_properties_t
 #if !defined(__GNUC__)
 #pragma endregion
 #endif
+// Intel 'oneAPI' Level-Zero Tool Experimental Extension to support Markers using MetricGroup
+#if !defined(__GNUC__)
+#pragma region metricGroupMarker
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZET_METRIC_GROUP_MARKER_EXP_NAME
+/// @brief Marker Support Using MetricGroup Experimental Extension Name
+#define ZET_METRIC_GROUP_MARKER_EXP_NAME  "ZET_experimental_metric_group_marker"
+#endif // ZET_METRIC_GROUP_MARKER_EXP_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Marker Support Using MetricGroup Experimental Extension Version(s)
+typedef enum _zet_metric_group_marker_exp_version_t
+{
+    ZET_METRIC_GROUP_MARKER_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),      ///< version 1.0
+    ZET_METRIC_GROUP_MARKER_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
+    ZET_METRIC_GROUP_MARKER_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_GROUP_MARKER_EXP_VERSION_* ENUMs
+
+} zet_metric_group_marker_exp_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Query the metric source unique identifier using `pNext` of
+///        ::zet_metric_group_properties_t
+typedef struct _zet_metric_source_id_exp_t
+{
+    zet_structure_type_t stype;                                             ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    uint32_t sourceId;                                                      ///< [out] unique number representing the Metric Source.
+
+} zet_metric_source_id_exp_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Append a Marker based on the Metric source of the Metric Group, to a
+///        Command List.
+/// 
+/// @details
+///     - This function appends a Marker based on the Metric source of the
+///       Metric Group, to Command List.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hCommandList`
+///         + `nullptr == hMetricGroup`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zetCommandListAppendMarkerExp(
+    zet_command_list_handle_t hCommandList,                                 ///< [in] handle to the command list
+    zet_metric_group_handle_t hMetricGroup,                                 ///< [in] handle to the marker metric group.
+                                                                            ///< ::zet_metric_group_type_exp_flags_t could be used to check whether
+                                                                            ///< marker is supoported by the metric group.
+    uint32_t value                                                          ///< [in] marker value
+    );
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
+// Intel 'oneAPI' Level-Zero Tool Experimental Extension for Runtime Enabling and Disabling metrics
+#if !defined(__GNUC__)
+#pragma region metricRuntimeEnableDisable
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_NAME
+/// @brief Runtime Enabling and Disabling Metrics Extension Name
+#define ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_NAME  "ZET_experimental_metrics_runtime_enable_disable"
+#endif // ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Runtime Enabling and Disabling Metrics Extension Version(s)
+typedef enum _zet_metrics_runtime_enable_disable_exp_version_t
+{
+    ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),   ///< version 1.0
+    ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),   ///< latest known version
+    ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRICS_RUNTIME_ENABLE_DISABLE_EXP_VERSION_* ENUMs
+
+} zet_metrics_runtime_enable_disable_exp_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Enable Metrics collection during runtime.
+/// 
+/// @details
+///     - This API enables metric collection for a device/sub-device if not
+///       already enabled.
+///     - if ZET_ENABLE_METRICS=1 was already set, then calling this api would
+///       be a NOP.
+///     - This api should be called after calling zeInit().
+///     - If device is a root-device handle, then its sub-devices are also
+///       enabled.
+///     - ::zetDeviceDisableMetricsExp need not be called if if this api returns
+///       error.
+///     - This API can be used as runtime alternative to setting
+///       ZET_ENABLE_METRICS=1.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDevice`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zetDeviceEnableMetricsExp(
+    zet_device_handle_t hDevice                                             ///< [in] handle of the device where metrics collection has to be enabled.
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Disable Metrics collection during runtime, if it was already enabled.
+/// 
+/// @details
+///     - This API disables metrics collection for a device/sub-device, if it
+///       was previously enabled.
+///     - If device is a root-device handle, then its sub-devices are also
+///       disabled.
+///     - The application has to ensure that all metric operations are complete
+///       and all metric resources are released before this API is called.
+///     - If there are metric operations in progress or metric resources are not
+///       released, then ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE is returned.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDevice`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zetDeviceDisableMetricsExp(
+    zet_device_handle_t hDevice                                             ///< [in] handle of the device where metrics collection has to be disabled
+    );
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
 // Intel 'oneAPI' Level-Zero Tool Experimental Extension for Calculating Multiple Metrics
 #if !defined(__GNUC__)
 #pragma region multiMetricValues
@@ -2343,7 +2487,7 @@ typedef enum _ze_calculate_multiple_metrics_exp_version_t
 {
     ZE_CALCULATE_MULTIPLE_METRICS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),///< version 1.0
     ZE_CALCULATE_MULTIPLE_METRICS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),///< latest known version
-    ZE_CALCULATE_MULTIPLE_METRICS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_CALCULATE_MULTIPLE_METRICS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_CALCULATE_MULTIPLE_METRICS_EXP_VERSION_* ENUMs
 
 } ze_calculate_multiple_metrics_exp_version_t;
 
@@ -2421,7 +2565,7 @@ typedef enum _ze_metric_global_timestamps_exp_version_t
 {
     ZE_METRIC_GLOBAL_TIMESTAMPS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_METRIC_GLOBAL_TIMESTAMPS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_METRIC_GLOBAL_TIMESTAMPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_METRIC_GLOBAL_TIMESTAMPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_METRIC_GLOBAL_TIMESTAMPS_EXP_VERSION_* ENUMs
 
 } ze_metric_global_timestamps_exp_version_t;
 
@@ -2490,7 +2634,7 @@ typedef enum _zet_export_metric_data_exp_version_t
 {
     ZET_EXPORT_METRIC_DATA_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),       ///< version 1.0
     ZET_EXPORT_METRIC_DATA_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),   ///< latest known version
-    ZET_EXPORT_METRIC_DATA_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZET_EXPORT_METRIC_DATA_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_EXPORT_METRIC_DATA_EXP_VERSION_* ENUMs
 
 } zet_export_metric_data_exp_version_t;
 
@@ -2628,7 +2772,7 @@ typedef enum _zet_metric_programmable_exp_version_t
 {
     ZET_METRIC_PROGRAMMABLE_EXP_VERSION_1_1 = ZE_MAKE_VERSION( 1, 1 ),      ///< version 1.1
     ZET_METRIC_PROGRAMMABLE_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 1 ),  ///< latest known version
-    ZET_METRIC_PROGRAMMABLE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_PROGRAMMABLE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_PROGRAMMABLE_EXP_VERSION_* ENUMs
 
 } zet_metric_programmable_exp_version_t;
 
@@ -2643,6 +2787,12 @@ typedef enum _zet_metric_programmable_exp_version_t
 /// @brief Maximum export data element description string size
 #define ZET_MAX_PROGRAMMABLE_METRICS_ELEMENT_DESCRIPTION_EXP  256
 #endif // ZET_MAX_PROGRAMMABLE_METRICS_ELEMENT_DESCRIPTION_EXP
+
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZET_MAX_METRIC_GROUP_NAME_PREFIX_EXP
+/// @brief Maximum count of characters in metric group name prefix
+#define ZET_MAX_METRIC_GROUP_NAME_PREFIX_EXP  64
+#endif // ZET_MAX_METRIC_GROUP_NAME_PREFIX_EXP
 
 ///////////////////////////////////////////////////////////////////////////////
 #ifndef ZET_MAX_METRIC_PROGRAMMABLE_NAME_EXP
@@ -2716,7 +2866,8 @@ typedef enum _zet_metric_programmable_param_type_exp_t
     ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_NORMALIZATION_AVERAGE = 3,       ///< Produces normalization using raw_metric / HW instance_count.
     ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_NORMALIZATION_RATE = 4,          ///< Produces normalization average using raw_metric / timestamp.
     ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_NORMALIZATION_BYTES = 5,         ///< Produces normalization average using raw_metric * n bytes.
-    ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_FORCE_UINT32 = 0x7fffffff
+    ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_GENERIC = 6,                     ///< Generic Parameter type. Please refer the parameter's description.
+    ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_METRIC_PROGRAMMABLE_PARAM_TYPE_EXP_* ENUMs
 
 } zet_metric_programmable_param_type_exp_t;
 
@@ -2733,7 +2884,7 @@ typedef enum _zet_value_info_type_exp_t
     ZET_VALUE_INFO_TYPE_EXP_UINT16 = 6,                                     ///< 16-bit unsigned-integer
     ZET_VALUE_INFO_TYPE_EXP_UINT64_RANGE = 7,                               ///< 64-bit unsigned-integer range (minimum and maximum)
     ZET_VALUE_INFO_TYPE_EXP_FLOAT64_RANGE = 8,                              ///< 64-bit floating point range (minimum and maximum)
-    ZET_VALUE_INFO_TYPE_EXP_FORCE_UINT32 = 0x7fffffff
+    ZET_VALUE_INFO_TYPE_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZET_VALUE_INFO_TYPE_EXP_* ENUMs
 
 } zet_value_info_type_exp_t;
 
@@ -3045,7 +3196,7 @@ zetDeviceCreateMetricGroupsFromMetricsExp(
     zet_metric_handle_t * phMetrics,                                        ///< [in] metric handles to be added to the metric groups.
     const char * pMetricGroupNamePrefix,                                    ///< [in] prefix to the name created for the metric groups. Must point to a
                                                                             ///< null-terminated character array no longer than
-                                                                            ///< ZEX_MAX_METRIC_GROUP_NAME_PREFIX.
+                                                                            ///< ::ZET_MAX_METRIC_GROUP_NAME_PREFIX_EXP.
     const char * pDescription,                                              ///< [in] pointer to description of the metric groups. Must point to a
                                                                             ///< null-terminated character array no longer than
                                                                             ///< ::ZET_MAX_METRIC_GROUP_DESCRIPTION.
@@ -3067,7 +3218,7 @@ zetDeviceCreateMetricGroupsFromMetricsExp(
 /// 
 /// @details
 ///     - This API is deprecated. Please use
-///       ::zetCreateMetricGroupsFromMetricsExp() 
+///       ::zetDeviceCreateMetricGroupsFromMetricsExp 
 /// 
 /// @returns
 ///     - ::ZE_RESULT_SUCCESS
@@ -3097,7 +3248,7 @@ zetMetricGroupCreateExp(
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @brief Add a metric handle to the metric group handle created using
-///        ::zetMetricGroupCreateExp.
+///        ::zetDeviceCreateMetricGroupsFromMetricsExp.
 /// 
 /// @details
 ///     - Reasons for failing to add the metric could be queried using
@@ -3138,7 +3289,7 @@ zetMetricGroupAddMetricExp(
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @brief Remove a metric from the metric group handle created using
-///        ::zetMetricGroupCreateExp.
+///        ::zetDeviceCreateMetricGroupsFromMetricsExp.
 /// 
 /// @details
 ///     - Remove an already added metric handle from the metric group.
@@ -3164,8 +3315,9 @@ zetMetricGroupRemoveMetricExp(
     );
 
 ///////////////////////////////////////////////////////////////////////////////
-/// @brief Closes a created metric group using ::zetMetricGroupCreateExp, so that
-///        it can be activated.
+/// @brief Closes a created metric group using
+///        ::zetDeviceCreateMetricGroupsFromMetricsExp, so that it can be
+///        activated.
 /// 
 /// @details
 ///     - Finalizes the ::zetMetricGroupAddMetricExp and
@@ -3199,7 +3351,8 @@ zetMetricGroupCloseExp(
     );
 
 ///////////////////////////////////////////////////////////////////////////////
-/// @brief Destroy a metric group created using ::zetMetricGroupCreateExp.
+/// @brief Destroy a metric group created using
+///        ::zetDeviceCreateMetricGroupsFromMetricsExp.
 /// 
 /// @details
 ///     - Metric handles created using ::zetMetricCreateFromProgrammableExp2 and
@@ -3207,6 +3360,8 @@ zetMetricGroupCloseExp(
 ///     - It is necessary to call ::zetMetricDestroyExp for each of the metric
 ///       handles (created from ::zetMetricCreateFromProgrammableExp2) to
 ///       destroy them.
+///     - It is not necessary to remove the metrics in the metricGroup before
+///       destroying it.
 /// 
 /// @returns
 ///     - ::ZE_RESULT_SUCCESS

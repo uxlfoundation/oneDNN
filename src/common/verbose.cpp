@@ -1607,6 +1607,8 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     }
     ss << ",";
 
+    ss << "scale:" << (pd->with_host_side_scale() ? "host" : "device") << " ";
+
     if (pd->with_attn_mask()) {
         auto *md = pd->attn_mask_md();
         ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';

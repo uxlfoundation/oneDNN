@@ -577,13 +577,13 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     serialize(sstream, desc.q_desc);
     serialize(sstream, desc.k_desc);
     serialize(sstream, desc.v_desc);
+    serialize(sstream, desc.scale_desc);
     desc.kq_scales.serialize(sstream);
     desc.kq_zero_points.serialize(sstream);
     desc.vs_scales.serialize(sstream);
     desc.vs_zero_points.serialize(sstream);
     serialize(sstream, desc.dst_desc);
     serialize(sstream, desc.attn_mask_desc);
-    sstream.append(desc.scale_dt);
     sstream.append(desc.invert_scale);
     sstream.append(desc.kv_head_number);
     sstream.append(desc.mask_type);

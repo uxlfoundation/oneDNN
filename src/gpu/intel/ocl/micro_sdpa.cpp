@@ -477,12 +477,15 @@ status_t micro_sdpa_t::init(impl::engine_t *engine) {
 
     kernel_ctx.define_int("REMAINDER_K", !k_full);
 
+    auto &gemm_vs = pd()->gemm_vs();
+    int unroll_m_vs = gemm_vs.getSetting("sg_tile_m");
     if (d_full) {
         if (ldq % 4 == 0) kernel_ctx.define_int("BLOCK_Q", 1);
         if (lda % 4 == 0 && v_full) kernel_ctx.define_int("BLOCK_A", 1);
         if (ldmsk % 4 == 0) kernel_ctx.define_int("BLOCK_MSK", 1);
         kernel_ctx.define_int("REMAINDER_Q", (d->queries() % tile_q) != 0);
-    } else if (pd()->arch() >= compute::gpu_arch_t::xe_hpc) {
+    } else if (pd()->arch() >= compute::gpu_arch_t::xe_hpc
+            && unroll_m_vs < 64) {
         auto vbytes = d->values() * val_mdw.data_type_size();
         if (lda % 16 == 0 && vbytes % 4 == 0)
             kernel_ctx.define_int("BLOCK_2D_A", 1);

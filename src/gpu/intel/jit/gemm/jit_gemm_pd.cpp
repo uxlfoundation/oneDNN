@@ -344,7 +344,7 @@ bool jit_gemm_pd_t::scales_ok() {
         int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
         if (!dy_quant_enabled_
                 || (!utils::one_of(eff_a_type(), s4, u4)
-                        && (!per_tensor_mask(cmask_b_sc_, ndims)
+                        && ((cmask_b_sc_ != full_tensor_mask())
                                 || bsc_dims_ > 2)))
             return false;
     } else {
@@ -358,16 +358,7 @@ bool jit_gemm_pd_t::scales_ok() {
 
 bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
     return utils::one_of(mask, (1 << (ndims - 1)),
-                   (1 << (ndims - 1)) + (1 << (ndims - 2)))
-            || per_tensor_mask(mask, ndims);
-}
-
-bool jit_gemm_pd_t::per_tensor_mask(int mask, int ndims) {
-    int per_tensor_eq = 0x0;
-    for (int i = 0; i < ndims; ++i) {
-        per_tensor_eq |= (1 << i);
-    }
-    return (mask == 0xfff || mask == per_tensor_eq);
+            (1 << (ndims - 1)) + (1 << (ndims - 2)), full_tensor_mask());
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {

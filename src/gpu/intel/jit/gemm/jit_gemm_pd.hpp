@@ -68,7 +68,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         return binary_srcs_;
     }
     bool valid_2d_mask(int mask, int ndims);
-    bool per_tensor_mask(int mask, int ndims);
 
     float beta_ = 0.0f;
 

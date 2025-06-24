@@ -184,7 +184,7 @@ int get_vector_register_size();
 
 // Helper to avoid #ifdefs for DNNL_PPC64
 static constexpr bool is_ppc64() {
-#if defined(DNNL_PPC64)
+#if DNNL_PPC64
     return true;
 #else
     return false;

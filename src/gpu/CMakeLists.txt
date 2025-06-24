@@ -20,15 +20,13 @@ file(GLOB SOURCES
     )
 
 if(DNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DPRERELEASE_HW)
-add_definitions_with_host_compiler(-DXE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW=1)
+add_definitions_with_host_compiler(-DXE3P=1)
 endif()
 
 if(DNNL_WITH_XE4)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE4)
-add_definitions_with_host_compiler(-DPRERELEASE_HW)
-add_definitions_with_host_compiler(-DXE4)
+add_definitions_with_host_compiler(-DPRERELEASE_HW=1)
+add_definitions_with_host_compiler(-DXE4=1)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu)

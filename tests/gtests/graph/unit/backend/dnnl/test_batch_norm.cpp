@@ -262,7 +262,7 @@ public:
         g.finalize();
 
         graph::pass::pass_base_ptr apass = params.with_relu
-                ? get_pass("bn_relu_fusion")
+                ? get_pass("fp_bnorm_relu")
                 : (is_training ? get_pass("bn_fw_train_pass")
                                : get_pass("bn_pass"));
         apass->run(g);
@@ -1032,7 +1032,7 @@ TEST(test_batch_norm_execute, BatchNormInt8) {
                       {ref_dst_ts}, engine, strm),
             graph::status::success);
 
-    graph::pass::pass_base_ptr apass = get_pass("int8_bn_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("s8f32s8_bnorm");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     ASSERT_EQ((g.get_partitions()[0])->get_kind(),
@@ -1153,7 +1153,7 @@ TEST(test_batch_norm_execute, BatchNormReluInt8) {
     ASSERT_EQ(g.add_op(&quant), graph::status::success);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("int8_bn_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("s8f32s8_bnorm");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     ASSERT_EQ((g.get_partitions()[0])->get_kind(),

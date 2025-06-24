@@ -42,9 +42,9 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
             = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     OCL_CHECK(err);
 
-    init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
+    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
             gpu_product_family_, stepping_id_, native_extensions_,
-            mayiuse_systolic_, mayiuse_ngen_kernels_);
+            mayiuse_systolic_, mayiuse_ngen_kernels_));
 
     err = clReleaseContext(context);
     OCL_CHECK(err);

@@ -284,8 +284,8 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     result_buf.reset(storage);
 
     void *magic_host = nullptr;
-    magic_buf->map_data(&magic_host, nullptr, sizeof(int32_t));
-    if (!magic_host) {
+    status = magic_buf->map_data(&magic_host, nullptr, sizeof(int32_t));
+    if (!magic_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -293,11 +293,11 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     *reinterpret_cast<uint32_t *>(magic_host) = magic_ptr;
 
-    magic_buf->unmap_data(magic_host, nullptr);
+    CHECK(magic_buf->unmap_data(magic_host, nullptr));
 
     void *result_host = nullptr;
-    result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
-    if (!result_host) {
+    status = result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
+    if (!result_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -305,7 +305,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     *reinterpret_cast<uint32_t *>(result_host) = 0;
 
-    result_buf->unmap_data(result_host, nullptr);
+    CHECK(result_buf->unmap_data(result_host, nullptr));
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, magic0);
@@ -340,8 +340,8 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     }
 
     result_host = nullptr;
-    result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
-    if (!result_host) {
+    status = result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
+    if (!result_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -349,7 +349,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     auto result = *reinterpret_cast<uint32_t *>(result_host);
 
-    result_buf->unmap_data(result_host, nullptr);
+    CHECK(result_buf->unmap_data(result_host, nullptr));
 
     *ok = (result != 0);
 

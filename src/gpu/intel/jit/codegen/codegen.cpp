@@ -58,7 +58,6 @@ public:
         : host_(host)
         , expr_binding_(expr_binding)
         , simd_size_(host->getSIMD())
-        , eu_count_(host->exec_cfg().hw().eu_count())
         , with_atomic_fp64_(host->exec_cfg().hw().has_fp64_atomic_support()) {}
 
     ~ir_to_ngen_t() override
@@ -458,7 +457,7 @@ private:
     void signal(const func_call_attr_t &attr) {
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         host_->barriermsg(mod, host_->signal_header_);
     }
 
@@ -469,7 +468,7 @@ private:
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -480,7 +479,7 @@ private:
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -520,7 +519,7 @@ private:
 
         ngen::InstructionModifier mod = esize;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/true);
         if (dpas_func.is_dpasw) {
             host_->dpasw(mod, dpas_func.sdepth, dpas_func.rcount, dst, src0,
@@ -569,7 +568,7 @@ private:
 
         ngen::InstructionModifier mod = mad_func.exec_size;
         if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/false);
         if (src0.isNull()) {
@@ -736,8 +735,7 @@ private:
 
         ngen::InstructionModifier mod = send_func.nmasks();
         gpu_assert(math::is_pow2(mod.getExecSize()));
-        if (!attr.is_empty())
-            mod |= to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (!attr.is_empty()) mod |= attr.as<instruction_modifier_attr_t>().mod;
         if (!mask_op.is_invalid()) mod |= mask_op.flag_register_mod();
 
         // Zero-out inactive channels unless told not to.
@@ -798,8 +796,8 @@ private:
         auto &data_op = eltwise_t::arg_data(args);
         const auto &data_rd = data_op.reg_buf_data();
 
-        eltwise_injector_f32_t<ngen_generator_t> inj(host_, func.alg_kind,
-                func.alpha, func.beta, func.scale, eu_count_);
+        eltwise_injector_f32_t<ngen_generator_t> inj(
+                host_, func.alg_kind, func.alpha, func.beta, func.scale);
         auto scratch = scope.alloc_range(inj.preferred_scratch_regs());
         inj.set_scratch(scratch);
         inj.prepare();
@@ -863,7 +861,6 @@ private:
     ngen_generator_t *host_;
     expr_binding_t expr_binding_;
     int simd_size_;
-    int eu_count_;
     bool with_atomic_fp64_;
 
 #ifdef DNNL_DEV_MODE

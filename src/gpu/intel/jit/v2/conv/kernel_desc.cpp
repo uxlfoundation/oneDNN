@@ -463,8 +463,8 @@ status_t kernel_desc_t::set_attr(const convolution_pd_t *pd,
         // reused for group convolution as well.
         auto &e = scales.get(DNNL_ARG_WEIGHTS);
         if (e.get_mask() & ((1 << 0) | (1 << 1))) {
-            scales.set(DNNL_ARG_WEIGHTS, (e.get_mask() << 1) | 1,
-                    e.get_data_type(), 0, {});
+            CHECK(scales.set(DNNL_ARG_WEIGHTS, (e.get_mask() << 1) | 1,
+                    e.get_data_type(), 0, {}));
         }
     }
     auto &attr_post_ops = attr->post_ops_;

@@ -312,7 +312,6 @@ enum {
     key_rnn_diff_gates,
     key_rnn_src_layer_trans,
     key_rnn_src_iter_trans,
-    key_rnn_ht,
     key_rnn_diff_ht,
     key_rnn_ptrs_bia,
     key_rnn_ptrs_wei_layer,

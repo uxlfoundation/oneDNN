@@ -47,7 +47,7 @@ inline bool eltwise_injector_f32_is_supported(alg_kind_t alg) {
 template <typename ngen_generator_t>
 struct eltwise_injector_f32_t {
     eltwise_injector_f32_t(ngen_generator_t *host, alg_kind_t alg, float alpha,
-            float beta, float scale, int eu_count,
+            float beta, float scale,
             const ngen::GRFRange &scratch = ngen::GRFRange(),
             bool is_fwd = true)
         : alg_(alg)
@@ -55,7 +55,6 @@ struct eltwise_injector_f32_t {
         , beta_(beta)
         , scale_(scale)
         , is_fwd_(is_fwd)
-        , eu_count_(eu_count)
         , h(host)
         , scratch_(scratch) {
 
@@ -83,15 +82,10 @@ private:
     const float scale_;
     const bool is_fwd_;
 
-    const int eu_count_;
-
     ngen_generator_t *h;
 
     ngen::GRFRange scratch_;
 
-    bool is_gpu(ngen::HW arg_hw, int arg_eu_count) const {
-        return (hw() == arg_hw) && (eu_count_ == arg_eu_count);
-    }
     bool use_tanh_compat() const { return false; }
 
     int max_batch_size();

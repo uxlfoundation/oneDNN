@@ -121,10 +121,9 @@ struct PostOpsProblem {
             case dnnl::impl::gpu::intel::post_op::kind_t::eltwise: {
                 using Injector
                         = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
-                int euCount = 0; /* only used for a DG2 W/A for conv */
                 auto &ee = entry.as_eltwise();
                 Injector injector {g, ee.alg, ee.alpha, ee.beta, ee.scale,
-                        euCount, ngen::GRFRange(), fwd};
+                        ngen::GRFRange(), fwd};
 
                 auto scratch
                         = ra.try_alloc_range(injector.preferred_scratch_regs());
@@ -146,9 +145,8 @@ struct PostOpsProblem {
             int C_ngrf, const ngen::Subregister &seed, ngen::DataType t) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
         using Injector = jit::eltwise_injector_f32_t<jit::generator_t<hw>>;
-        int euCount = 0; /* only used for a DG2 W/A for conv */
         Injector injector {g, dnnl::impl::alg_kind::eltwise_stochastic_round,
-                0.0, 0.0, 1.0, euCount, ngen::GRFRange(), fwd};
+                0.0, 0.0, 1.0, ngen::GRFRange(), fwd};
         auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
         if (scratch.isInvalid())
             scratch = ra.alloc_range(injector.min_scratch_regs());

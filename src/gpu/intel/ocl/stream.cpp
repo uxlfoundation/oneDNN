@@ -42,7 +42,7 @@ status_t stream_t::init() {
     // Restore queue on successful exit, otherwise queue may be released
     // without retain
     cl_command_queue queue = impl()->queue();
-    impl()->set_queue(nullptr);
+    CHECK(impl()->set_queue(nullptr));
 
     assert(engine()->kind() == engine_kind::gpu);
 
@@ -72,7 +72,7 @@ status_t stream_t::init() {
 
         OCL_CHECK(clRetainCommandQueue(queue));
     }
-    impl()->set_queue(queue);
+    CHECK(impl()->set_queue(queue));
 
     if (is_profiling_enabled()) {
         cl_command_queue_properties props;

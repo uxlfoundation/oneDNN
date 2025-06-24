@@ -167,7 +167,7 @@ struct GEMMProblem : public CommonProblem {
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
-    bool aScale2D = false, bScale2D = false;        // A/B 2D scaling.
+    int asPtrDims = -1, bsPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
     COffset cOffset = COffset::None;                // C offset mode.
@@ -227,8 +227,11 @@ struct GEMMProblem : public CommonProblem {
     bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D; }
-    bool quantized2DB() const { return (boPtrDims == 2) || bScale2D; }
+    bool aScale2D() const { return (asPtrDims >= 2); }
+    bool bScale2D() const { return (bsPtrDims >= 2); }
+
+    bool quantized2DA() const { return (aoPtrDims == 2) || (asPtrDims >= 2); }
+    bool quantized2DB() const { return (boPtrDims == 2) || (bsPtrDims >= 2); }
 
     bool downconvertAScales() const { return Ta == Type::f16 && Ta_scale == Type::f32; }
     bool downconvertBScales() const { return Tb == Type::f16 && Tb_scale == Type::f32; }
@@ -236,13 +239,13 @@ struct GEMMProblem : public CommonProblem {
     bool earlyDequantizeA() const {
         return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)
                     && (Ta_ext.bits() < Ta.bits() || Ta.isFP()))
-            || (aScale2D && (Ta_scale.isSubsetOf(Ta) || downconvertAScales()));
+            || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || downconvertAScales()));
     }
 
     bool earlyDequantizeB() const {
         return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)
                     && (Tb_ext.bits() < Tb.bits() || Tb.isFP()))
-            || (bScale2D && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
+            || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || downconvertBScales()));
     }
 
     Type Tc_compute() const {
@@ -275,7 +278,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(checkBeta0);
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims);
-        s.append(aScale2D, bScale2D);
+        s.append(asPtrDims, bsPtrDims);
         s.append(aqGroupK, bqGroupK);
         s.append(cOffset);
         s.append(batch);

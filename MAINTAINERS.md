@@ -118,6 +118,7 @@ Team: @uxlfoundation/onednn-arch
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Ankit Manerikar    | @avmanerikar          | Intel Corporation | Code Owner |
 | Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
+| Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
 
 ## Graph API
 
@@ -164,6 +165,7 @@ Team: @uxlfoundation/onednn-cpu-aarch64
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 | Sunita Nadampalli  | @snadampal            | Amazon.com, Inc.  | Code Owner |
 | Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Renato Arantes     | @renato-arantes       | Arm Ltd           | Code Owner |
 
 ### OpenPOWER (PPC64)
 

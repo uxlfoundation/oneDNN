@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ bool keepIJ0(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (problem.hasBinaryPostOp()) return true;
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0) return true;
-    if (problem.aScale2D || problem.bScale2D) return true;
+    if (problem.aScale2D() || problem.bScale2D()) return true;
     if (problem.earlyDequantizeA() ||  problem.earlyDequantizeB()) return true;
     return false;
 }

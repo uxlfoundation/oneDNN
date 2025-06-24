@@ -1814,6 +1814,13 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         }
     }
 
+    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
+    // dst scales is not supported for fp8 with f32/xf16 dst
+    if (!dst_scales.has_default_values())
+        VDISPATCH_CONV_IC(
+                IMPLICATION(jcp.is_fp8, one_of(jcp.dst_dt, f8_e5m2, f8_e4m3)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
     // TODO: optimize depthwise convolutions (for now direct approach is faster)
     const bool is_depthwise
             = with_groups && jcp.ngroups > 1 && everyone_is(1, jcp.ic, jcp.oc);

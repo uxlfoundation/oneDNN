@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -385,7 +385,7 @@ status_t init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa,
 
     if (brg->is_f32) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
-                is_isa_ok(sve_256), sve_256);
+                is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
     }
 
     brg->is_dgmm = true;

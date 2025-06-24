@@ -87,6 +87,18 @@ struct micro_sdpa_t : public gpu_primitive_t {
             VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 
+            if (utils::one_of(key_md()->data_type, u4, s4)) {
+                VCHECK_SDPA_COND(desc()->keys() % 2 == 0,
+                        "The number of keys must be an even size with the data "
+                        "type is u4 or s4.");
+            }
+
+            if (utils::one_of(val_md()->data_type, u4, s4)) {
+                VCHECK_SDPA_COND(desc()->values() % 2 == 0,
+                        "The number of values must be an even size with the "
+                        "data type is u4 or s4.");
+            }
+
             VCHECK_SDPA_COND(qry_md()->dims[1] >= key_md()->dims[1]
                             && qry_md()->dims[1] >= val_md()->dims[1],
                     "number of heads in query tensor(%ld) must be greater "
@@ -114,14 +126,6 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         "unsupported mask for kq matmul(%d). must be 0, 1, 3, "
                         "11, or 15",
                         kq_zp_mask);
-
-            /// NOTE: Limitation of microkernels
-            if (utils::one_of(desc()->kq_zero_points.get_data_type(), s4, u4)) {
-                VCHECK_SDPA_COND(key_group_size() == 16,
-                        "if kq zero points data type is s4 or u4 then the "
-                        "group size(%d) must be 16.",
-                        key_group_size());
-            }
 
             int vs_scales_mask = desc()->vs_scales.get_mask();
             int vs_zp_mask = desc()->vs_zero_points.get_mask();
@@ -188,6 +192,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
         const micro::Package &gemm_vs() const { return gemm_vs_; }
 
         int sg_size() const { return sg_size_; }
+        bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
         // Block size for head_size, which must be hard-coded into the kernel.
         int d_max() const {
@@ -202,6 +207,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
     private:
         micro::Package gemm_kq_, gemm_vs_;
         int sg_size_ = 0;
+        bool use_systolic_ukernel_ = true;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
         status_t init_microkernels(impl::engine_t *engine);

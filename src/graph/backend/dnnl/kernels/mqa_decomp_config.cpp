@@ -123,7 +123,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::dims sub_src1_dims = {1, seq_len, size_per_head};
     sub_src1_md
             = memory::desc(sub_src1_dims, dt_src_user, {1, size_per_head, 1});
-    auto sub_src1_d_md = memory::desc(sub_src1_dims, dt_src_user, tag::abc);
+    auto sub_src1_d_md
+            = memory::desc(sub_src1_dims, dt_src_user, format_tag::abc);
     auto sub_reorder0_pd = reorder::primitive_desc(
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
@@ -143,7 +144,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_wei1_user_md = memory::desc(
             sub_wei1_dims, dt_wei_user, {1, seq_len * num_head, 1});
     // Flip the format to have `ba` weights MBI item in per thread loop.
-    sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, tag::abc);
+    sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, format_tag::abc);
     auto sub_reorder1_pd = reorder::primitive_desc(p_engine, sub_wei1_user_md,
             p_engine, sub_wei1_md, sub_reorder1_attr);
     sub_reorder1.init(sub_reorder1_pd);
@@ -156,14 +157,15 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::dims sub_mm1_wei_dims = {1, size_per_head, seq_len};
     memory::dims sub_mm1_dst_dims = {1, seq_len, seq_len};
 
-    sub_mm1_src_md = memory::desc(sub_mm1_src_dims, dt_src_user, tag::abc);
-    sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, tag::abc);
-    sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, tag::abc);
+    sub_mm1_src_md
+            = memory::desc(sub_mm1_src_dims, dt_src_user, format_tag::abc);
+    sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, format_tag::abc);
+    sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, format_tag::abc);
     dnnl::post_ops dnnl_pops;
     auto mask_dt = static_cast<dnnl::memory::data_type>(
             ltw(inputs[graph_inport[2]]).data_type());
     sub_mm1_post_add_md
-            = memory::desc({1, seq_len, seq_len}, mask_dt, tag::abc);
+            = memory::desc({1, seq_len, seq_len}, mask_dt, format_tag::abc);
     auto ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
     auto alg
             = static_cast<algorithm>(ori_dnnl_pops.get()->entry_[0].binary.alg);
@@ -182,7 +184,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     auto original_softmax = mqa_op[2];
     dnnl::primitive_attr sub_softmax_attr
             = make_primitive_attr(original_softmax, mgr);
-    sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::abc);
+    sub_softmax_dst_md
+            = memory::desc(sub_mm1_dst_dims, dt_src_user, format_tag::abc);
     const auto mode = mqa_op[2]->get_attr<std::string>(op_attr::mode);
     const dnnl::algorithm algo = mode == "inf_as_zero"
             ? static_cast<dnnl::algorithm>(
@@ -203,7 +206,8 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     sub_src2_user_md
             = memory::desc(sub_src2_dims, dt_src_user, {1, seq_len, 1});
     // The format is `abc` due to performance of reorder to `acb` is low.
-    auto sub_src2_md = memory::desc(sub_src2_dims, dt_src_user, tag::abc);
+    auto sub_src2_md
+            = memory::desc(sub_src2_dims, dt_src_user, format_tag::abc);
     auto sub_reorder2_pd = reorder::primitive_desc(p_engine, sub_src2_user_md,
             p_engine, sub_src2_md, sub_reorder2_attr);
     sub_reorder2.init(sub_reorder2_pd);
@@ -216,9 +220,12 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::dims sub_mm2_src_dims = {1, size_per_head, seq_len};
     memory::dims sub_mm2_wei_dims = {1, seq_len, seq_len};
     memory::dims sub_mm2_dst_dims = {1, size_per_head, seq_len};
-    sub_mm2_src_md = memory::desc(sub_mm2_src_dims, dt_src_user, tag::abc);
-    auto sub_mm2_wei_md = memory::desc(sub_mm2_wei_dims, dt_src_user, tag::abc);
-    sub_mm2_dst_md = memory::desc(sub_mm2_dst_dims, dt_src_user, tag::abc);
+    sub_mm2_src_md
+            = memory::desc(sub_mm2_src_dims, dt_src_user, format_tag::abc);
+    auto sub_mm2_wei_md
+            = memory::desc(sub_mm2_wei_dims, dt_src_user, format_tag::abc);
+    sub_mm2_dst_md
+            = memory::desc(sub_mm2_dst_dims, dt_src_user, format_tag::abc);
     auto sub_mm2_pd = matmul::primitive_desc(p_engine, sub_mm2_src_md,
             sub_mm2_wei_md, sub_mm2_dst_md, sub_matmul2_attr);
     sub_mm2_prim = matmul(sub_mm2_pd);
@@ -227,7 +234,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     primitive_attr sub_reorder3_attr;
     sub_reorder3_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     memory::dims sub_dst_dims = {1, size_per_head, seq_len};
-    sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, tag::abc);
+    sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, format_tag::abc);
     sub_dst_user_md = memory::desc(
             sub_dst_dims, dt_src_user, {1, seq_len * num_head, 1});
     auto sub_reorder3_pd = reorder::primitive_desc(

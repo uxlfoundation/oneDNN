@@ -136,6 +136,8 @@ The following tools are required to build oneDNN documentation:
 * [Doxyrest] 2.1.2 or later
 * [Sphinx] 4.0.2 or later
 * [sphinx-book-theme] 0.0.41 or later
+* [sphinx-copybutton] 0.5.2
+* [graphviz] 2.40.1
 
 Configurations of CPU and GPU engines may introduce additional build time
 dependencies.
@@ -145,6 +147,8 @@ dependencies.
 [Doxyrest]: https://github.com/vovkos/doxyrest
 [Sphinx]: https://www.sphinx-doc.org/en/master/usage/installation.html
 [sphinx-book-theme]: https://sphinx-book-theme.readthedocs.io/en/latest
+[sphinx-copybutton]:https://sphinx-copybutton.readthedocs.io/en/latest/
+[graphviz]:https://www.linuxfromscratch.org/blfs/view/8.2/general/graphviz.html
 
 ### CPU Engine
 
@@ -153,7 +157,7 @@ Processors, 64-bit Arm Architecture (AArch64) processors,
 64-bit Power ISA (PPC64) processors, IBMz (s390x), and compatible devices.
 
 The CPU engine is built by default but can be disabled at build time by setting
-`DNNL_CPU_RUNTIME` to `NONE`. In this case, GPU engine must be enabled.
+`ONEDNN_CPU_RUNTIME` to `NONE`. In this case, GPU engine must be enabled.
 The CPU engine can be configured to use the OpenMP, TBB or SYCL runtime.
 The following additional requirements apply:
 * OpenMP runtime requires C++ compiler with OpenMP 2.0 or later
@@ -259,13 +263,13 @@ Runtime-specific dependencies:
 
 | Runtime configuration    | Compiler                      | Dependency
 | :----------------------- | :---------------------------- | :---------
-| `DNNL_CPU_RUNTIME=OMP`   | GCC                           | GNU OpenMP runtime (`libgomp.so`)
-| `DNNL_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
-| `DNNL_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
-| `DNNL_CPU_RUNTIME=TBB`   | any                           | TBB (`libtbb.so`)
-| `DNNL_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`)
-| `DNNL_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`libOpenCL.so`)
-| `DNNL_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | GCC                           | GNU OpenMP runtime (`libgomp.so`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
+| `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`libtbb.so`)
+| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`)
+| `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`libOpenCL.so`)
+| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
 
 ### Windows
 
@@ -276,12 +280,12 @@ Runtime-specific dependencies:
 
 | Runtime configuration    | Compiler                      | Dependency
 | :----------------------- | :---------------------------- | :---------
-| `DNNL_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler | No additional requirements
-| `DNNL_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`iomp5.dll`)
-| `DNNL_CPU_RUNTIME=TBB`   | any                           | TBB (`tbb.dll`)
-| `DNNL_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), TBB (`tbb.dll`), OpenCL loader (`OpenCL.dll`)
-| `DNNL_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`OpenCL.dll`)
-| `DNNL_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), OpenCL loader (`OpenCL.dll`), oneAPI Level Zero loader (`ze_loader.dll`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler | No additional requirements
+| `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`iomp5.dll`)
+| `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`tbb.dll`)
+| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), TBB (`tbb.dll`), OpenCL loader (`OpenCL.dll`)
+| `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`OpenCL.dll`)
+| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), OpenCL loader (`OpenCL.dll`), oneAPI Level Zero loader (`ze_loader.dll`)
 
 ### macOS
 
@@ -292,8 +296,8 @@ Runtime-specific dependencies:
 
 | Runtime configuration  | Compiler                      | Dependency
 | :--------------------- | :---------------------------- | :---------
-| `DNNL_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
-| `DNNL_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
+| `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
+| `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
 
 # Installation
 
@@ -321,14 +325,14 @@ You can download and install the oneDNN library using one of the following optio
 x86-64 CPU engine was validated on RedHat\* Enterprise Linux 8 with
 * GNU Compiler Collection 8.5, 9.5, 11.1, 11.3
 * Clang\* 11.0, 14.0.6
-* [Intel oneAPI DPC++/C++ Compiler] 2024.0
+* [Intel oneAPI DPC++/C++ Compiler] 2025.1
 
 on Windows Server\* 2019 with
-* Microsoft Visual Studio 2022
-* [Intel oneAPI DPC++/C++ Compiler] 2024.0
+* Microsoft Visual Studio 2022 with MSVC 19.43
+* [Intel oneAPI DPC++/C++ Compiler] 2025.1
 
-on macOS 11 (Big Sur) with
-* Apple LLVM version 13.0
+on macOS 14 (Sonoma) with
+* Apple LLVM version 15.0
 
 AArch64 CPU engine was validated on Ubuntu 22.04 with
 * GNU Compiler Collection 10.0, 13.0
@@ -342,21 +346,20 @@ on macOS 14 (Sonoma) with
 
 GPU engine was validated on Ubuntu\* 22.04 with
 * GNU Compiler Collection 8.5, and 9.5
-* Clang 11.0
-* [Intel oneAPI DPC++/C++ Compiler] 2024.0
+* Clang\* 11.0
+* [Intel oneAPI DPC++/C++ Compiler] 2025.1
 * [Intel Software for General Purpose GPU capabilities] latest stable version
 available at the time of release
 
-on Windows Server 2019 with
-* Microsoft Visual Studio 2022
-* [Intel oneAPI DPC++/C++ Compiler] 2024.0
+on Windows Server\* 2019 with
+* Microsoft Visual Studio 2022 with MSVC 19.43
+* [Intel oneAPI DPC++/C++ Compiler] 2025.1
 * [Intel Arc & Iris Xe Graphics Driver] latest stable version available at the
 time of release
 
 [Intel Software for General Purpose GPU capabilities]: https://dgpu-docs.intel.com/index.html
 [Intel Arc & Iris Xe Graphics Driver]: https://www.intel.com/content/www/us/en/download/785597/intel-arc-iris-xe-graphics-windows.html
 [Arm Compiler for Linux]: https://developer.arm.com/Tools%20and%20Software/Arm%20Compiler%20for%20Linux
-
 
 # Support
 
@@ -444,6 +447,7 @@ and OpenCL Driver](https://github.com/intel/compute-runtime)
 * [Intel Metrics Discovery Application Programming
 Interface](https://github.com/intel/metrics-discovery)
 * [spdlog](https://github.com/gabime/spdlog)
+* [sphinx-copybutton](https://github.com/executablebooks/sphinx-copybutton)
 
 This third-party software, even if included with the distribution of
 the Intel software, may be governed by separate license terms,

@@ -76,24 +76,38 @@ status_t init_layouts(const kernel_desc_t &desc, convolution_pd_t *pd) {
     return status::success;
 }
 
+void iter_md(const convolution_pd_t *pd,
+        const std::function<void(const memory_desc_t &)> &func) {
+    func(*pd->invariant_src_md());
+    func(*pd->invariant_wei_md());
+    func(*pd->invariant_dst_md());
+    func(*pd->invariant_bia_md());
+    auto &post_ops = pd->attr()->post_ops_;
+    for (int i = 0; i < post_ops.len(); i++) {
+        auto &e = post_ops.entry_[i];
+        if (e.is_binary()) func(e.binary.src1_desc);
+    }
+}
+
 bool has_large_buffers(const convolution_pd_t *pd) {
     auto is_large = [](const memory_desc_t &md) {
         memory_desc_wrapper mdw(md);
         gpu_assert(!mdw.format_any());
         return mdw.size() > size_t(std::numeric_limits<int32_t>::max());
     };
-    if (is_large(*pd->invariant_src_md())) return true;
-    if (is_large(*pd->invariant_wei_md())) return true;
-    if (is_large(*pd->invariant_dst_md())) return true;
-    if (is_large(*pd->invariant_bia_md())) return true;
-    auto &post_ops = pd->attr()->post_ops_;
-    for (int i = 0; i < post_ops.len(); i++) {
-        auto &e = post_ops.entry_[i];
-        if (e.is_binary()) {
-            if (is_large(e.binary.src1_desc)) return true;
-        }
-    }
-    return false;
+    bool has = false;
+    iter_md(pd, [&](const memory_desc_t &md) {
+        if (is_large(md)) has = true;
+    });
+    return has;
+}
+
+bool has_shifted_mds(const convolution_pd_t *pd) {
+    bool has = false;
+    iter_md(pd, [&](const memory_desc_t &md) {
+        if (md.offset0 != 0) has = true;
+    });
+    return has;
 }
 
 class gen_convolution_t {
@@ -150,6 +164,8 @@ public:
 
         // Large buffer support is unimplemented.
         if (has_large_buffers(pd)) return status::unimplemented;
+        // Shifted memory descriptors are not supported.
+        if (has_shifted_mds(pd)) return status::unimplemented;
 
         CHECK(_desc.set_attr(pd, pd->attr(), out_md(pd)));
         if (!create_conv_plan(_desc, prb)) {

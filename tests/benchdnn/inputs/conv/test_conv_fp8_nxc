@@ -49,6 +49,7 @@
 --attr-post-ops=add:f8_e5m2:per_tensor --batch=shapes_tails
 --attr-post-ops=mul:f32+sum+tanh:1:1:2.5 --batch=shapes_tails
 --attr-post-ops=mul:f32+sum+tanh:1:1:2.5+prelu --batch=shapes_tails
+--attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc --batch=shapes_tails
 
 # f8_e4m3
 --reset
@@ -101,5 +102,6 @@
 --attr-post-ops=add:f8_e4m3:per_tensor --batch=shapes_tails
 --attr-post-ops=mul:f32+sum+tanh:1:1:2.5 --batch=shapes_tails
 --attr-post-ops=mul:f32+sum+tanh:1:1:2.5+prelu --batch=shapes_tails
+--attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc --batch=shapes_tails
 
 --batch=harness_conv_dw_fp8_nxc

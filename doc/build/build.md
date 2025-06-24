@@ -320,7 +320,7 @@ Another useful option is `--output-on-failure`, which will print verbose output
 in case a test fails. Full set of options can be found [here](https://cmake.org/cmake/help/latest/manual/ctest.1.html).
 
 @warning
-When using the `/opt/intel/oneapi/setvars.sh` script from the Intel oneAPI toolkit,
+When using the `/opt/intel/oneapi/setvars.sh` script from the Intel oneAPI Base Toolkit,
 the `LD_LIBRARY_PATH` environment variable is set to include the oneDNN library path.
 Make sure that the correct oneDNN library is present in
 `LD_LIBRARY_PATH` by setting it explicitly, if needed.

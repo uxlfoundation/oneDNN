@@ -33,51 +33,54 @@ find_package(ACL REQUIRED)
 
 # Required. The minimum compatible major-version as per Semantic Versioning.
 set(ACL_MIN_MAJOR_VERSION "52")
+set(ACL_MIN_MINOR_VERSION "0")
+set(ACL_MIN_VERSION "${ACL_MIN_MAJOR_VERSION}.${ACL_MIN_MINOR_VERSION}")
 
 # Optional. Maximum known compatible version if any.
 # Set to an empty-string if none.
 set(ACL_MAX_MAJOR_VERSION "")
 
 if(ACL_FOUND)
-    file(GLOB_RECURSE ACL_VERSION_FILE ${ACL_INCLUDE_DIR}/*/arm_compute_version.embed)
-    if ("${ACL_VERSION_FILE}" STREQUAL "")
+    file(GLOB_RECURSE ACL_FOUND_VERSION_FILE ${ACL_INCLUDE_DIR}/*/arm_compute_version.embed)
+    if ("${ACL_FOUND_VERSION_FILE}" STREQUAL "")
         message(WARNING
             "Build may fail. Could not determine ACL version.\n"
             "File 'arm_compute_version.embed' not found in ${ACL_INCLUDE_DIR}/**\n"
             "Minimum compatible ACL version is ${ACL_MIN_MAJOR_VERSION}\n"
         )
     else()
-        file(READ ${ACL_VERSION_FILE} ACL_VERSION_STRING)
+        file(READ ${ACL_FOUND_VERSION_FILE} ACL_FOUND_VERSION_STRING)
 
-        if("${ACL_VERSION_STRING}" MATCHES "arm_compute_version=v([0-9]+)\\.([0-9]+)\\.?([0-9]*)")
-            set(ACL_MAJOR_VERSION "${CMAKE_MATCH_1}")
-            set(ACL_MINOR_VERSION "${CMAKE_MATCH_2}")
+        if("${ACL_FOUND_VERSION_STRING}" MATCHES "arm_compute_version=v([0-9]+)\\.([0-9]+)\\.?([0-9]*)")
+            set(ACL_FOUND_MAJOR_VERSION "${CMAKE_MATCH_1}")
+            set(ACL_FOUND_MINOR_VERSION "${CMAKE_MATCH_2}")
+            set(ACL_FOUND_VERSION "${ACL_FOUND_MAJOR_VERSION}.${ACL_FOUND_MINOR_VERSION}")
 
-            if ("${ACL_MAJOR_VERSION}.${ACL_MINOR_VERSION}" VERSION_EQUAL "0.0")
+            if ("${ACL_FOUND_VERSION}" VERSION_EQUAL "0.0")
                 # Unreleased ACL versions come with version string "v0.0-unreleased", and may not be compatible with oneDNN.
                 # It is recommended to use a supported major-version of ACL.
                 message(WARNING
                     "Build may fail. Using an unreleased ACL version.\n"
-                    "Minimum compatible ACL version is ${ACL_MIN_MAJOR_VERSION}\n"
+                    "Minimum compatible ACL version is ${ACL_MIN_VERSION}\n"
                 )
-            elseif("${ACL_MAJOR_VERSION}" LESS "${ACL_MIN_MAJOR_VERSION}")
+            elseif("${ACL_FOUND_VERSION}" VERSION_LESS "${ACL_MIN_VERSION}")
                 message(FATAL_ERROR
-                    "Detected ACL version ${ACL_MAJOR_VERSION}, but minimum "
-                    "compatible is ${ACL_MIN_MAJOR_VERSION}\n"
+                    "Detected ACL version ${ACL_FOUND_VERSION}, but minimum "
+                    "compatible is ${ACL_MIN_VERSION}\n"
                 )
-            elseif("${ACL_MAJOR_VERSION}" GREATER "${ACL_MIN_MAJOR_VERSION}")
+            elseif("${ACL_FOUND_MAJOR_VERSION}" GREATER "${ACL_MIN_MAJOR_VERSION}")
                 # This is not necessarily an error. Need to check if there is a
                 # known incompatible maximum version:
                 if("${ACL_MAX_MAJOR_VERSION}" STREQUAL "")
                     message(WARNING
-                        "Build may fail. Using a newer ACL version than officially supported.\n"
-                        "Detected ACL version ${ACL_MAJOR_VERSION}, but "
-                        "supported version is ${ACL_MIN_MAJOR_VERSION}\n"
+                        "Build may fail. Using a newer ACL major version than officially supported.\n"
+                        "Detected ACL major version ${ACL_FOUND_MAJOR_VERSION}, but "
+                        "supported major version is ${ACL_MIN_MAJOR_VERSION}\n"
                     )
                 else()
-                    if("${ACL_MAJOR_VERSION}" GREATER "${ACL_MAX_MAJOR_VERSION}")
+                    if("${ACL_FOUND_MAJOR_VERSION}" GREATER "${ACL_MAX_MAJOR_VERSION}")
                     message(FATAL_ERROR
-                        "Detected ACL version ${ACL_MAJOR_VERSION}, but maximum "
+                        "Detected ACL version ${ACL_FOUND_MAJOR_VERSION}, but maximum "
                         "compatible version is ${ACL_MAX_MAJOR_VERSION}\n"
                     )
                     endif()
@@ -86,7 +89,7 @@ if(ACL_FOUND)
         else()
             message(WARNING
                 "Build may fail. Could not determine ACL version.\n"
-                "Unexpected version string format in ${ACL_VERSION_FILE}.\n"
+                "Unexpected version string format in ${ACL_FOUND_VERSION_FILE}.\n"
             )
         endif()
     endif()

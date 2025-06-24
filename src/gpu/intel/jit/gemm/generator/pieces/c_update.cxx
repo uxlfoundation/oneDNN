@@ -77,8 +77,7 @@ bool BLASKernelGenerator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &st
     if (useEltwiseInjector(problem)) {
         if (problem.hasBinaryPostOp()) stub();
 
-        const int eu_count = 0;
-        postOpInjector.reset(new Injector(this, problem.Ts.ngen(), problem.postOps.ops, eu_count, GRFRange(), problem.postOps.fwd));
+        postOpInjector.reset(new Injector(this, problem.Ts.ngen(), problem.postOps.ops, GRFRange(), problem.postOps.fwd));
         if (!postOpInjector) stub();
 
         postOpScratch = state.ra.try_alloc_range(postOpInjector->preferred_scratch_regs());

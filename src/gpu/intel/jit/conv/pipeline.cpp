@@ -833,7 +833,7 @@ public:
         gpu_assert(sbid_count_ <= max_sbid_count);
     }
 
-    ngen_proxy::SBID get_sbid(const expr_t &buf, int index = 0) {
+    ngen::SBID get_sbid(const expr_t &buf, int index = 0) {
         auto key = tuple_func_.call({buf, expr_t(index)});
 
         int free_idx = -1;
@@ -841,7 +841,7 @@ public:
             auto &e = entries_[i];
             if (key.is_equal(e.key)) {
                 e.time = cur_time_++;
-                return ngen_proxy::SBID(i);
+                return ngen::SBID(i);
             }
             if (free_idx == -1 && e.key.is_empty()) free_idx = i;
         }
@@ -849,7 +849,7 @@ public:
         // Not found but there is a free SBID.
         if (free_idx != -1) {
             entries_[free_idx] = {key, cur_time_++};
-            return ngen_proxy::SBID(free_idx);
+            return ngen::SBID(free_idx);
         }
 
         // Find the oldest SBID and use it.
@@ -863,7 +863,7 @@ public:
         }
 
         entries_[old_idx] = entry_t({std::move(key), cur_time_++});
-        return ngen_proxy::SBID(old_idx);
+        return ngen::SBID(old_idx);
     }
 
 private:
@@ -906,7 +906,7 @@ public:
                 auto &c = s.as<func_call_t>();
                 auto *mod_attr = c.attr.as_ptr<instruction_modifier_attr_t>();
                 if (!c.func.as<dpas_t>().is_dp4a() && // dp4a-s do not need SBID
-                        (!mod_attr || !mod_attr->mod.is_atomic)) {
+                        (!mod_attr || !mod_attr->mod.isAtomic())) {
                     // Last dpas in Atomic chain.
                     auto sbid = get_sbid(dpas_t::arg_src1(s));
                     s = update_call_with_sbid(s, sbid);
@@ -929,16 +929,16 @@ public:
     }
 
 private:
-    ngen_proxy::SBID get_sbid(const expr_t &ptr, int index = 0) {
+    ngen::SBID get_sbid(const expr_t &ptr, int index = 0) {
         auto &sbid_mgr
                 = (external_sbid_mgr_ ? *external_sbid_mgr_ : local_sbid_mgr_);
         return sbid_mgr.get_sbid(ptr, index);
     }
 
     static stmt_t update_call_with_sbid(
-            const stmt_t &s, const ngen_proxy::SBID &sbid) {
+            const stmt_t &s, const ngen::SBID &sbid) {
         return instruction_modifier_attr_t::make(
-                ngen_proxy::InstructionModifier().with_sbid(sbid))
+                ngen::InstructionModifier(sbid))
                 .apply_to(s);
     }
 

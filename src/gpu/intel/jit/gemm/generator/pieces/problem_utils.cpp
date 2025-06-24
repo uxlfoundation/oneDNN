@@ -36,7 +36,7 @@ void GEMMProblem::transpose()
     std::swap(Ta_scale, Tb_scale);
     std::swap(aOffset, bOffset);
     std::swap(aoPtrDims, boPtrDims);
-    std::swap(aScale2D, bScale2D);
+    std::swap(asPtrDims, bsPtrDims);
     std::swap(aqGroupM, bqGroupN);
     std::swap(aqGroupK, bqGroupK);
     std::swap(sumA, sumB);
@@ -90,10 +90,10 @@ std::string GEMMProblem::toString() const
         ss << ' ';
     }
 
-    if (aScale2D || bScale2D) {
+    if (aScale2D() || bScale2D()) {
         ss << "scale";
-        if (aScale2D) appendQString('a', 2, aqGroupM, aqGroupK);
-        if (bScale2D) appendQString('b', 2, bqGroupK, bqGroupN);
+        if (aScale2D()) appendQString('a', 2, aqGroupM, aqGroupK);
+        if (bScale2D()) appendQString('b', 2, bqGroupK, bqGroupN);
         ss << ' ';
     }
 

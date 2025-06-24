@@ -380,12 +380,19 @@ bool node_outputs_matcher_t::match_op_consumers() {
                 if (out_node->get_node_kind()
                         == pb_node_kind::PB_NODE_KIND_ALTERNATION)
                     continue;
-                // For repetition case, check if multi consumers exist
-                repetition_t *rep_node = dynamic_cast<repetition_t *>(out_node);
-                if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
-                    continue;
-                if (rep_node->get_body()->get_inner_consumer(0)->size() == 1)
-                    continue;
+                // For repetition case, check if multi consumers have been matched
+                if (updated_op_map_.find(out_op) == updated_op_map_.end()) {
+                    repetition_t *rep_node
+                            = dynamic_cast<repetition_t *>(out_node);
+                    if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
+                        continue;
+                    if (rep_node->get_body()->get_inner_consumer(0)->size()
+                            == 1)
+                        continue;
+                } else {
+                    consumer_matched = true;
+                    break;
+                }
             }
 
             binding_t out_bind(BIND_IN, out_op, op_consumer.get_offset(),

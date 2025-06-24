@@ -169,9 +169,6 @@ namespace custom {
             op_setting.alg = ::custom::alg_t::GENINDEX;
             base_op_ref.get_attr_s64(op_setting.axis, "axis");
             break;
-        case ::graph::op::kind::Select:
-            op_setting.alg = ::custom::alg_t::SELECT;
-            break;
         case ::graph::op::kind::StaticTranspose:
             op_setting.alg = ::custom::alg_t::TRANSPOSE;
             base_op_ref.get_attr_s64_vector(op_setting.order, "order");
@@ -232,6 +229,15 @@ bool get_binary_prb_vdims(
     auto &src1_dims = base_op.in_lts_[1].shape_;
     auto &dst_dims = base_op.out_lts_[0].shape_;
     const auto &ndims = dst_dims.size();
+    if (base_op_ref.kind_ == "Select") {
+        const auto &src2_dims = base_op.in_lts_[2].shape_;
+
+        ::graph::extend_dims(base_op.in_lts_[0], ndims);
+        ::graph::extend_dims(base_op.in_lts_[1], ndims);
+        ::graph::extend_dims(base_op.in_lts_[2], ndims);
+        prb_vdims = prb_vdims_t({src1_dims, src2_dims, src0_dims});
+        return true;
+    }
     // use Add to implement BiasAdd, need to align channel dims of src1
     if (base_op_ref.kind_ == "BiasAdd") {
         if (ndims == 1 && src0_dims[0] != src1_dims[0] && src1_dims[0] != 1) {
@@ -272,11 +278,18 @@ bool get_binary_prb_vdims(
 
 bool get_binary_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::binary::settings_t &op_setting) {
-    auto sdt0 = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
-    auto ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "Select") {
+        auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+        auto sdt2 = convert_dt(base_op_ref.in_lts_[2].get_data_type());
+        op_setting.sdt = {{sdt1, sdt2}};
+    } else {
+        auto sdt0 = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+        auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+        op_setting.sdt = {{sdt0, sdt1}};
+    }
 
-    op_setting.sdt = {{sdt0, sdt1}};
+    auto ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
     op_setting.ddt.front() = ddt;
     return true;
 }
@@ -290,7 +303,16 @@ bool get_binary_stag_and_dtag(const deserialized_op_t &base_op_ref,
             || !get_driver_tag_by_idx(base_op_ref, stag0, 0, false)) {
         return false;
     }
-    op_setting.stag = {{std::move(stag0), std::move(stag1)}};
+
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "Select") {
+        std::string stag2;
+        if (!get_driver_tag_by_idx(base_op_ref, stag2, 2, false)) return false;
+        op_setting.stag
+                = {{std::move(stag1), std::move(stag2), std::move(stag0)}};
+    } else {
+        op_setting.stag = {{std::move(stag0), std::move(stag1)}};
+    }
     op_setting.dtag.front() = std::move(dtag);
     return true;
 }
@@ -305,7 +327,8 @@ bool get_binary_alg(
                     {"Minimum", ::binary::alg_t::MIN},
                     {"Multiply", ::binary::alg_t::MUL},
                     {"Subtract", ::binary::alg_t::SUB},
-                    {"GreaterEqual", ::binary::alg_t::GE}};
+                    {"GreaterEqual", ::binary::alg_t::GE},
+                    {"Select", ::binary::alg_t::SELECT}};
 
     const auto &op_kind = base_op_ref.kind_;
     if (map_kind_to_alg.find(op_kind) == map_kind_to_alg.end()) return false;

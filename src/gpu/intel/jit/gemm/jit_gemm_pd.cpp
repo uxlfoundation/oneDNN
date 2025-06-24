@@ -104,6 +104,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
 
             binary_srcs_.insert(binary_srcs_.begin(),
                     binary_src_t {binary_src_t::scales, DNNL_ARG_WEIGHTS});
+            asc_dims_ = -1;
         }
     }
     if (!src_scales->has_default_values()) {
@@ -121,12 +122,18 @@ status_t jit_gemm_pd_t::init_post_ops() {
                 // TODO: is it inverted?
                 int n_group = src_scales->get_group(0);
                 int k_group = src_scales->get_group(1);
-                dim_t dims[]
-                        = {(mask & (d->batch() > 1 ? 2 : 1)) ? d->n() / n_group
-                                                             : 1,
-                                d->k() / k_group};
-                CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                        src_scales->get_data_type(), format_tag::ab));
+                int ndims = d->c_desc.ndims;
+                std::vector<dim_t> dims;
+                for (int i = ndims - 3; i >= 0; --i) {
+                    if (mask & (i + 1)) dims.push_back(d->c_desc.dims[i]);
+                }
+                dims.push_back((mask & (d->batch() > 1 ? 2 : 1))
+                                ? d->n() / n_group
+                                : 1);
+                dims.push_back(d->k() / k_group);
+                CHECK(memory_desc_init_by_tag(src_scales_md, dims.size(),
+                        dims.data(), src_scales->get_data_type(),
+                        get_abx_tag(dims.size())));
             } else {
                 dim_t dims[] = {d->n(), 1};
                 CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
@@ -137,6 +144,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
 
             binary_srcs_.insert(binary_srcs_.begin(),
                     binary_src_t {binary_src_t::scales, DNNL_ARG_SRC});
+            bsc_dims_ = -1;
         }
     }
     if (!c_scales->has_default_values()) {
@@ -160,20 +168,32 @@ status_t jit_gemm_pd_t::init_post_ops() {
     return status::success;
 }
 
-bool jit_gemm_pd_t::quant_attr_2d(int arg, const quant_entries_t &attr) const {
-    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    int k_idx = (arg == DNNL_ARG_A ? 0 : 1);
-    if (!attr.has_default_values(arg) && !attr.has_default_groups(arg)
-            && attr.get_group(arg, k_idx) < desc()->k())
-        return true;
-    return false;
+// Obtain dimension count for gemmstone (common scales give count 0).
+int jit_gemm_pd_t::quant_entry_ndims(
+        const quant_entry_t &entry, const memory_desc_t &md) const {
+    if (entry.has_default_values()) return -1;
+    int mask = entry.get_mask();
+    if (mask == 0) return 0;
+    if (entry.has_default_groups()) return mask > 0;
+    int count = 0;
+    for (int i = md.ndims - 1; i >= 0; --i) {
+        if (!(mask & (1 << i))) continue;
+        bool batch_dim = i < batch_dims();
+        if ((batch_dim && md.dims[i] > 1)
+                || (!batch_dim
+                        && (md.dims[i] / entry.get_group(i - batch_dims()) > 1
+                                || count)))
+            ++count;
+    }
+    return count;
 }
 
-int jit_gemm_pd_t::quant_attr_cmask(
-        int arg, const quant_entries_t &attr) const {
-    assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C));
-    if (!attr.has_default_values(arg)) { return attr.get_mask(arg); }
-    return -1;
+int jit_gemm_pd_t::quant_entry_group_prod(const quant_entry_t &attr) const {
+    int ret = 1;
+    if (attr.has_default_groups()) return ret;
+    for (int i = 0; i < 2; ++i)
+        ret *= attr.get_group(i);
+    return ret;
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {
@@ -182,7 +202,7 @@ bool jit_gemm_pd_t::dy_quant_enabled() {
     bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
             && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
             && utils::one_of(d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
-    return (utils::one_of(d->c_type(), f32, f16, bf16)
+    return (utils::one_of(d->c_type(), f32, f16, bf16, u8, s8)
                    && utils::one_of(d->a_type(), u8, s8, s4, u4)
                    && utils::one_of(d->b_type(), u8, s8))
             || all_f8;
@@ -209,35 +229,34 @@ void jit_gemm_pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
+    const auto &d = desc();
 
     auto &attr_zps = attr()->zero_points_;
-    bool wei_zp_2d = quant_attr_2d(DNNL_ARG_A, attr_zps);
-    bool src_zp_2d = quant_attr_2d(DNNL_ARG_B, attr_zps);
-    cmask_a_ = quant_attr_cmask(DNNL_ARG_A, attr_zps);
-    cmask_b_ = quant_attr_cmask(DNNL_ARG_B, attr_zps);
-    cmask_c_ = quant_attr_cmask(DNNL_ARG_C, attr_zps);
-    if (!attr_zps.has_default_values(DNNL_ARG_A))
-        ao_dims_ = (cmask_a_ > 0 ? (wei_zp_2d ? 2 : 1) : 0);
-    if (!attr_zps.has_default_values(DNNL_ARG_B))
-        bo_dims_ = (cmask_b_ > 0 ? (src_zp_2d ? 2 : 1) : 0);
+    cmask_a_ = attr_zps.get(DNNL_ARG_A).get_mask();
+    cmask_b_ = attr_zps.get(DNNL_ARG_B).get_mask();
+    cmask_c_ = attr_zps.get(DNNL_ARG_C).get_mask();
 
-    if (wei_zp_2d) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (src_zp_2d) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
+    // Swap descriptors to follow column major format.
+    ao_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
+    bo_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
+    if (wei_zp_2d()) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
+    if (src_zp_2d()) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    const auto &scales = attr()->scales_;
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
-    wei_scales_2d_ = quant_attr_2d(DNNL_ARG_A, attr()->scales_);
-    src_scales_2d_ = quant_attr_2d(DNNL_ARG_B, attr()->scales_);
+    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
+    asc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_A), d->b_desc);
+    bsc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_B), d->a_desc);
     wei_scales_group_k_ = wei_scales->get_group(0);
     src_scales_group_k_ = src_scales->get_group(1);
 
     wei_scales_type_ = wei_scales->get_data_type();
-    if (wei_scales_2d_) {
-        if (!wei_zp_2d) wei_q2d_group_k_ = wei_scales->get_group(0);
+    if (wei_scales_2d()) {
+        if (!wei_zp_2d()) wei_q2d_group_k_ = wei_scales->get_group(0);
     }
 
     src_scales_type_ = src_scales->get_data_type();
-    if (src_scales_2d_) { src_q2d_group_k_ = src_scales->get_group(1); }
+    if (src_scales_2d()) { src_q2d_group_k_ = src_scales->get_group(1); }
 }
 
 bool jit_gemm_pd_t::zp_ok() {
@@ -264,7 +283,7 @@ bool jit_gemm_pd_t::zp_ok() {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_scales_2d_)
+                    && wei_scales_2d())
                 return false;
         }
     }
@@ -274,10 +293,10 @@ bool jit_gemm_pd_t::zp_ok() {
         if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
             if (!valid_2d_mask(cmask_b_, ndims)) return false;
 
-            const auto src_q2d_group_m = attr_zps.get_group(DNNL_ARG_B, 0);
+            const auto src_q2d_group_n = attr_zps.get_group(DNNL_ARG_B, 0);
             zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_B, 1);
             // Non-trivial M group unsupported.
-            if (src_q2d_group_m != 1) return false;
+            if (!utils::one_of(src_q2d_group_n, 1, desc()->n())) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)
@@ -315,18 +334,22 @@ bool jit_gemm_pd_t::scales_ok() {
             return false;
     }
 
-    if (wei_scales_2d_) {
+    if (wei_scales_2d()) {
         if (wei_q2d_group_k_ != wei_scales_group_k_) return false;
         // Non-trivial N group unsupported.
         if (wei_scales->get_group(1) != 1) return false;
     }
 
-    if (src_scales_2d_) {
-        if (!dy_quant_enabled_ || !utils::one_of(eff_a_type(), s4, u4))
+    if (src_scales_2d()) {
+        int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
+        if (!dy_quant_enabled_
+                || (!utils::one_of(eff_a_type(), s4, u4)
+                        && (!per_tensor_mask(cmask_b_sc_, ndims)
+                                || bsc_dims_ > 2)))
             return false;
     } else {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
-                && wei_scales_group_k_ >= desc()->k())
+                && wei_scales_group_k_ > desc()->k())
             return false;
     }
 
@@ -334,8 +357,17 @@ bool jit_gemm_pd_t::scales_ok() {
 }
 
 bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
-    return utils::one_of(
-            mask, (1 << (ndims - 1)), (1 << (ndims - 1)) + (1 << (ndims - 2)));
+    return utils::one_of(mask, (1 << (ndims - 1)),
+                   (1 << (ndims - 1)) + (1 << (ndims - 2)))
+            || per_tensor_mask(mask, ndims);
+}
+
+bool jit_gemm_pd_t::per_tensor_mask(int mask, int ndims) {
+    int per_tensor_eq = 0x0;
+    for (int i = 0; i < ndims; ++i) {
+        per_tensor_eq |= (1 << i);
+    }
+    return (mask == 0xfff || mask == per_tensor_eq);
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {
@@ -357,6 +389,7 @@ dim_t jit_gemm_pd_t::ld_binary(int idx) const {
 dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
     switch (binary_srcs_[idx].type) {
         case binary_src_t::binary:
+        case binary_src_t::scales:
         case binary_src_t::bias: {
             const auto &entry = post_ops_.entry_[idx];
             assert(entry.kind == primitive_kind::binary);

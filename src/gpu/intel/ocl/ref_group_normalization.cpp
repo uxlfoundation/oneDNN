@@ -109,7 +109,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init_kernel_ctx(
             !attr()->scales_.has_default_values(DNNL_ARG_SRC));
     kernel_ctx.define_int("WITH_DST_SCALES",
             !attr()->scales_.has_default_values(DNNL_ARG_DST));
-    init_kernel_ctx_common(kernel_ctx, this);
+    CHECK(init_kernel_ctx_common(kernel_ctx, this));
 
     // promote macros defined by parameters to OpenCL command line
     def_dispatch(kernel_ctx, dispatch);
@@ -189,7 +189,7 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
 status_t ref_group_normalization_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
 
-    init_kernel_ctx_common(kernel_ctx, this);
+    CHECK(init_kernel_ctx_common(kernel_ctx, this));
 
     // promote macros defined by parameters to OpenCL command line
     def_dispatch(kernel_ctx, dispatch);

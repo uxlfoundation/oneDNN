@@ -79,7 +79,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
             req.transpose();
     }
 
-    if (scaleA != problem.aScale2D || scaleB != problem.bScale2D)
+    if (scaleA != problem.aScale2D() || scaleB != problem.bScale2D())
         stub("Protocol scales do not match problem description");
     if (offsetA != (problem.aoPtrDims >= 0) || offsetB != (problem.boPtrDims >= 0))
         stub("Protocol offsets do not match problem description");

@@ -124,7 +124,7 @@ status_t genindex_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
     prepare_args_set(res, inputs, outputs);
 
-    constant_cache_t::cached_t c_buffer;
+    constant_tensor_cache_t::cached_t c_buffer;
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;

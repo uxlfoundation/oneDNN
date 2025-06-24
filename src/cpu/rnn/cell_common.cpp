@@ -119,7 +119,7 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
             types::data_type_size(rnn.src_iter_c_dt), rnn.ws_states_iter_c_nld,
             src_iter_c_ld);
 
-    const ws_gates_aoc_t<const scratch_data_t> scratch_gates(
+    const scratch_gates_aoc_t<const scratch_data_t> scratch_gates(
             rnn, scratch_gates_);
     const weights_peephole_aoc_t<float> diff_weights_peephole(
             rnn, diff_weights_peephole_);

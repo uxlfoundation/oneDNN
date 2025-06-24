@@ -2,7 +2,7 @@
 * Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
-* You may not use this file except in compliance with the License.
+* you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 *
 *     http://www.apache.org/licenses/LICENSE-2.0
@@ -328,6 +328,8 @@ void vanilla_rnn(engine::kind engine_kind) {
     vanilla_rnn_bwd_args.insert({DNNL_ARG_WEIGHTS_ITER, weights_iter_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_BIAS, bias_bwd_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_DST_LAYER, dst_layer_mem});
+    vanilla_rnn_bwd_args.insert({DNNL_ARG_SRC_ITER, src_iter_mem});
+    vanilla_rnn_bwd_args.insert({DNNL_ARG_DST_ITER, dst_iter_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_SRC_LAYER, diff_src_layer_mem});
     vanilla_rnn_bwd_args.insert(
             {DNNL_ARG_DIFF_WEIGHTS_LAYER, diff_weights_layer_mem});

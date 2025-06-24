@@ -945,9 +945,9 @@ bool parse_perf_template(const char *&pt, const char *pt_def,
     const auto str2pt = [&pt_def, &pt_csv](const char *str_) {
         const std::string csv_pattern = "csv";
         const std::string def_pattern = "def";
-        if (csv_pattern.find(str_, 0, csv_pattern.size()) != eol)
+        if (parser_utils::option_matched(csv_pattern, str_))
             return pt_csv;
-        else if (def_pattern.find(str_, 0, def_pattern.size()) != eol)
+        else if (parser_utils::option_matched(def_pattern, str_))
             return pt_def;
         else
             return str_;
@@ -972,7 +972,7 @@ bool parse_batch(const bench_f bench, const char *str,
 
 bool parse_help(const char *str, const std::string &option_name /* = "help"*/) {
     std::string pattern = parser_utils::get_pattern(option_name, false);
-    if (pattern.find(str, 0, pattern.size()) == eol) return false;
+    if (!parser_utils::option_matched(pattern, str)) return false;
 
     BENCHDNN_PRINT(0, "%s\n", help_ss.str().c_str());
     exit(0);
@@ -981,7 +981,7 @@ bool parse_help(const char *str, const std::string &option_name /* = "help"*/) {
 bool parse_main_help(
         const char *str, const std::string &option_name /* = "help"*/) {
     std::string pattern = parser_utils::get_pattern(option_name, false);
-    if (pattern.find(str, 0, pattern.size()) == eol) return false;
+    if (!parser_utils::option_matched(pattern, str)) return false;
 
     static const std::string main_help
             = "Usage:\n    benchdnn --<driver> [global_options] "
@@ -1529,7 +1529,7 @@ static bool parse_verbose(
     if (parsed) return parsed;
 
     const std::string pattern("-v"); // check short option first
-    if (pattern.find(str, 0, pattern.size()) != eol) {
+    if (parser_utils::option_matched(pattern, str)) {
         verbose = parser_utils::stoll_safe(str + pattern.size());
         return true;
     }
@@ -1610,7 +1610,7 @@ void catch_unknown_options(const char *str) {
     last_parsed_is_problem = true; // if reached, means problem parsing
 
     std::string pattern = "--";
-    if (pattern.find(str, 0, pattern.size()) != eol) {
+    if (parser_utils::option_matched(pattern, str)) {
         BENCHDNN_PRINT(0, "%s %s \'%s\'\n",
                 "driver: ERROR: unknown option:", driver_name.c_str(), str);
         exit(2);
@@ -1618,7 +1618,7 @@ void catch_unknown_options(const char *str) {
 
     // Must stay after `--` check.
     pattern = "-";
-    if (pattern.find(str, 0, pattern.size()) != eol) {
+    if (parser_utils::option_matched(pattern, str)) {
         BENCHDNN_PRINT(0, "%s\n%s \'%s\'\n",
                 "ERROR: options should be passed with `--` prefix.",
                 "Given input:", str);

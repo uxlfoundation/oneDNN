@@ -1352,11 +1352,10 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         auto vmm_dst_scales = vmm_tmp(0);
         vbroadcastss(vmm_dst_scales, ptr[reg_aux_dst_scales]);
 
-        for (dim_t ld = 0; ld < ld_block2; ld++) {
-            for (dim_t bd = 0; bd < bd_block; bd++) {
-                auto vmm = accm(ld_block2, bd, ld);
-                vmulps(vmm, vmm, vmm_dst_scales);
-            }
+        for_(dim_t ld = 0; ld < ld_block2; ld++)
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            vdivps(vmm, vmm, vmm_dst_scales);
         }
     }
 

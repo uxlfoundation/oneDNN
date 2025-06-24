@@ -1216,8 +1216,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 pd->attr(), src_scales_, DNNL_ARG_SRC, src_scales_buf16_);
         DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(
                 pd->attr(), wei_scales_, DNNL_ARG_WEIGHTS, wei_scales_buf16_);
-        DEFINE_ARG_SCALES_BUFFER_ATTR_NORET(
-                pd->attr(), dst_scales_, DNNL_ARG_DST, dst_scales_buf16_);
+        dst_scales_ = CTX_IN_MEM(
+                const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
         const bool has_wei_scales
                 = !pd->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
         const int wei_scale_mask

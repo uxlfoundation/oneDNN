@@ -1408,7 +1408,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
             auto zmm = accm(bd);
-            vmulps(zmm, zmm, zmm_dst_scales);
+            vdivps(zmm, zmm, zmm_dst_scales);
         }
     }
 

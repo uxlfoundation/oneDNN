@@ -296,13 +296,13 @@ void _jit_uni_x8s8s32x_fwd_kernel<isa, Vmm>::store_output(
 
     if (jcp.dst_scale) {
         mov(reg_dst_scale, ptr[param1 + GET_OFF(dst_scale)]);
-        uni_vmovups(vmm_dst_scale, ptr[reg_dst_scale]);
+        uni_vbroadcastss(vmm_dst_scale, ptr[reg_dst_scale]);
 
         /* Apply dst scale to accumulator */
         for (int k = 0; k < nb_oc_block; k++) {
             for (int j = 0; j < ur_w; j++) {
                 const Vmm vmm = vmm_out(j, k);
-                uni_vmulps(vmm, vmm, vmm_dst_scale);
+                uni_vdivps(vmm, vmm, vmm_dst_scale);
             }
         }
     }

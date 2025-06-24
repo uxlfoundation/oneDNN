@@ -131,9 +131,9 @@ status_t jit_gemm_pd_t::init_post_ops() {
                                 ? d->n() / n_group
                                 : 1);
                 dims.push_back(d->k() / k_group);
-                CHECK(memory_desc_init_by_tag(src_scales_md, dims.size(),
+                CHECK(memory_desc_init_by_tag(src_scales_md, (int)dims.size(),
                         dims.data(), src_scales->get_data_type(),
-                        get_abx_tag(dims.size())));
+                        get_abx_tag((int)dims.size())));
             } else {
                 dim_t dims[] = {d->n(), 1};
                 CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,

@@ -179,6 +179,8 @@ struct matmul_pd_t : public primitive_desc_t {
         return 1 << (wei_ndims - 2);
     }
 
+    int full_tensor_mask() const { return (1 << ndims()) - 1; }
+
     int dst_qmask_N() const { return wei_qmask_N(); }
 
     int dst_qmask_M() const { return src_qmask_M(); }

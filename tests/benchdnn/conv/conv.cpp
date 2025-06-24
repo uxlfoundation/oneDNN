@@ -382,6 +382,9 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             prb->get_dt(SRC), prb->get_dt(DST));
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_convolution);
+    skip_unsupported_block_format(prb->stag, res);
+    skip_unsupported_block_format(prb->wtag, res);
+    skip_unsupported_block_format(prb->dtag, res);
 
     if (is_cpu()) {
         // Specific configurations are not supported.

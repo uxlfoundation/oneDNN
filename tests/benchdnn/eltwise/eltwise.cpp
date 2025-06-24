@@ -289,6 +289,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, dnnl_eltwise, prb->dt);
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_eltwise);
+    skip_unsupported_block_format(prb->tag, res);
 
     if (is_gpu() && (prb->dt == dnnl_f8_e5m2 || prb->dt == dnnl_f8_e4m3)
             && prb->dir == BWD_D) {

@@ -353,6 +353,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_deconvolution);
 
+    skip_unsupported_block_format(prb->dtag, res);
+    skip_unsupported_block_format(prb->stag, res);
+    skip_unsupported_block_format(prb->wtag, res);
+
     // GPU supports only post ops and all but x8s8bf16 and f32xf16f32 cfg
     if (is_gpu()) {
         const bool is_x8s8bf16_cfg

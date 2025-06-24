@@ -15,27 +15,9 @@
 #===============================================================================
 
 file(GLOB_RECURSE SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
-
-include("${PROJECT_SOURCE_DIR}/cmake/gen_gpu_kernel_list.cmake")
-
-file(GLOB_RECURSE CL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cl)
-file(GLOB_RECURSE CL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
-
-set(kernel_list_templ "${PROJECT_SOURCE_DIR}/src/gpu/intel/ocl/ocl_kernel_list.cpp.in")
-set(kernel_list_src "${PROJECT_BINARY_DIR}/src/gpu/intel/ocl/ocl_kernel_list.cpp")
-
-gen_gpu_kernel_list(
-    "${kernel_list_templ}"
-    "${kernel_list_src}"
-    "${CL_SOURCES}"
-    "${CL_HEADERS}")
-
-list(APPEND SOURCES ${kernel_list_src})
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel_ocl)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})

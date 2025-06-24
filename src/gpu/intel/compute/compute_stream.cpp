@@ -20,7 +20,7 @@
 
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/compute_stream.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
+#include "gpu/intel/types_interop.hpp"
 
 namespace dnnl {
 namespace impl {

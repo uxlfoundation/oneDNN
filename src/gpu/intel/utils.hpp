@@ -258,6 +258,9 @@ inline out_type into(in_type in) {
     return static_cast<out_type>(in);
 }
 
+// FIXME
+const uint32_t OCL_BUFFER_ALIGNMENT = 128;
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

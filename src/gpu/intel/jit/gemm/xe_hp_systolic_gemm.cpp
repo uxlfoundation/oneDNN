@@ -25,7 +25,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/gemm/xe_systolic_gemm_copy_kernel.hpp"
+#include "gpu/intel/gemm/xe_systolic_gemm_copy_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

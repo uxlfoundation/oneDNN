@@ -30,7 +30,7 @@
 #include "gpu/intel/gemm/gpu_gemm_exec_types.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
+#include "gpu/intel/types_interop.hpp"
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
 

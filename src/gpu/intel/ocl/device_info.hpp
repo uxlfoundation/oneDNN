@@ -22,7 +22,6 @@
 #include <CL/cl.h>
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -48,4 +47,4 @@ protected:
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_OCL_DEVICE_INFO_HPP
+#endif

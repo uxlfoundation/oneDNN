@@ -30,6 +30,10 @@
 #include "gpu/intel/ocl/gemm/conv_gemm.hpp"
 #endif
 
+#if XE4
+#include "gpu/intel/jit/gemm/xe4_gemm.hpp"
+#endif
+
 #endif
 
 namespace dnnl {
@@ -40,6 +44,9 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = {
+#if XE4
+        GPU_INSTANCE_INTEL(intel::jit::xe4_gemm_t)
+#endif
         GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::conv_gemm_t)
         GPU_INSTANCE_INTEL(intel::jit::xe_hp_systolic_gemm_t)
         GPU_INSTANCE_INTEL(intel::ocl::gemm_with_post_ops_t)

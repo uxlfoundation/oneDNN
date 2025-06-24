@@ -89,10 +89,6 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
                     "kernels)");
             mayiuse_ngen_kernels = false;
         }
-#if XE4 // remove after integrating ngen Xe4 support
-    } else if (hw == ngen::HW::Xe4) {
-        mayiuse_ngen_kernels = false;
-#endif
     } else if (hw != ngen::HW::Unknown)
         mayiuse_ngen_kernels = true;
 

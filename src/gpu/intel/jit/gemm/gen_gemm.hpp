@@ -68,9 +68,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             init_attrs();
             const auto d = desc();
 
-            VDISPATCH_GEMM(
-                    IMPLICATION(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3),
-                            arch_ >= arch_t::xe_hpc),
+            VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->a_type(), f8_e5m2,
+                                               f8_e4m3, f4_e2m1, f4_e3m0),
+                                   arch_ >= arch_t::xe_hpc),
                     VERBOSE_UNSUPPORTED_DT); /* temporary; pending gemmstone pulldown */
 
             CHECK(set_default_formats(false));

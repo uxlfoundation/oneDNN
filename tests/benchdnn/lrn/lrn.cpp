@@ -120,6 +120,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, dnnl_lrn, prb->dt);
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_lrn);
+    skip_unsupported_block_format(prb->tag, res);
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {}

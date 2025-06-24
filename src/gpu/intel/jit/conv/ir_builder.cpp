@@ -775,13 +775,15 @@ void conv_ir_builder_t::build() {
     using namespace dsl;
     ir_context_t ir_ctx2(cfg_.exec_cfg(), init_cset);
     declare_kernel(kernel_info_.iface(), ir_ctx2);
-    auto var = def("xr", expr_t(0));
-    var = var + 1;
-    var[0] = var[1] + 1;
+    auto var = def(type_t::s32(32), "xr", expr_t(0));
+    //var = var + 1;
+    var[4] = 1;
+    var.sub(0, 8) = var.sub(4, 8) + var.sub(8, 8);
     var[1] += var[0];
-    var[1] += var[0] * 2;
+    var[17] += var[0] * 2;
     var[0] -= 3;
-    end_kernel();
+    stmt_ = stmt_group_t::make(stmt_label_t::kernel(),
+            end_kernel()); // stmt_.append(end_kernel());
 
     gpu_debug() << "Convolution kernel body:\n" << stmt_;
     trace_perf();

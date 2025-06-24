@@ -264,7 +264,8 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
     tile_load_block_rem_q(
             Q_tile, (global uint *)Q, n, ldq >> 1, offset_r, offset_c);
 #elif Q_ALIGN >= 4
-        tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r, offset_c;
+    tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r,
+            offset_c);
 #else
     tile_load_packed_vec2(Q_tile, Q, m, n, ldq, offset_r, offset_c);
 #endif

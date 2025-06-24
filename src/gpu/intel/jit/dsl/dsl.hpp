@@ -243,8 +243,9 @@ public:
         return lval_t(ref_t::make(var, off, elems));
     }
     lval_t operator[](int off) const { return sub(off, 1); }
+    operator expr_t() const { return var; }
 
-#define DEFINE_BINARY_OPERATOR(op) \
+    /*#define DEFINE_BINARY_OPERATOR(op) \
     expr_t operator op(const expr_t &b) { return var op b; }
 
     DEFINE_BINARY_OPERATOR(+)
@@ -264,17 +265,17 @@ public:
 
     DEFINE_BINARY_OPERATOR(&)
     DEFINE_BINARY_OPERATOR(|)
-#undef DEFINE_BINARY_OPERATOR
+#undef DEFINE_BINARY_OPERATOR*/
 
 #define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
     lval_t &operator op##=(const expr_t &rhs) { \
         (*this) = (*this)op rhs; \
         return *this; \
     } \
-    lval_t &operator op##=(const lval_t &rhs) { \
+    /*    lval_t &operator op##=(const lval_t &rhs) { \
         (*this) = (*this).var op rhs.var; \
         return *this; \
-    }
+    }*/
 
     DEFINE_BINARY_ASSIGN_OPERATOR(+)
     DEFINE_BINARY_ASSIGN_OPERATOR(-)

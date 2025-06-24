@@ -101,7 +101,7 @@ struct ctx_t {
             v2::layout_t layout, const std::string &name, expr_t value = {}) {
         auto t = type_t(
                 layout.type().kind(), layout.type().elems() * layout.elems());
-        return {def(t, name, value, true).var, layout};
+        return {def(t, name, value, true), layout};
     }
 
     expr_t let(type_t type, const std::string &name, expr_t value) {

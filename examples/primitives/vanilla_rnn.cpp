@@ -338,7 +338,7 @@ void vanilla_rnn(engine::kind engine_kind) {
     vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_BIAS, diff_bias_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_DST_LAYER, diff_dst_layer_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_SRC_ITER, diff_src_iter_mem});
-    vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_DST_ITER, dst_iter_mem});
+    vanilla_rnn_bwd_args.insert({DNNL_ARG_DIFF_DST_ITER, diff_dst_iter_mem});
     vanilla_rnn_bwd_args.insert({DNNL_ARG_WORKSPACE, workspace_memory});
 
     // Primitive execution: vanilla rnn backward

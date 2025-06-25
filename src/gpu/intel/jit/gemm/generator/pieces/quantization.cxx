@@ -66,7 +66,7 @@ bool BLASKernelGenerator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMM
     bool downScale   = isA ? problem.downconvertAScales() : problem.downconvertBScales();
 
     bool Tx_bf = problem.Ta_ext ==  Type::bf16 || problem.Tb_ext == Type::bf16;
-    Tx_scaleOp = (Tx_bf ? Type(Tx_ext.isInt4() ? Type::f16 : Type::f32) : Txs);
+    Tx_scaleOp = (Tx_bf ? Type(Tx_ext.is4Bit() ? Type::f16 : Type::f32) : Txs);
     Txo_int    = Txo.isInteger() ? Tx.asSignedInt() : Tx;
     Txs_int    = Tx;
 

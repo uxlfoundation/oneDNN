@@ -429,7 +429,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     };
 
     dim_t n_block = nstl::min(rnn.N, rnn.n_block);
-    dim_t n_tail = nstl::min(rnn.N, rnn.nproj_tail);
+    dim_t n_tail = nstl::min(rnn.N, rnn.n_tail);
     if (rnn.LDA1[0] < rnn.k1_block && rnn.LDA1[1] < rnn.k1_block
             && rnn.LDA1[2] < rnn.k1_block)
         return status::unimplemented;

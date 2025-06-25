@@ -65,9 +65,11 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
         }
         local_variance = sub_group_reduce_add(sumsq) * rrs;
     } else {
-        mean = GWS_GET_BUFFER_POS(STAT, gws_params, mean);
+        if (!SKIP_MEAN) {
+            mean = GWS_GET_BUFFER_POS(STAT, gws_params, mean);
+            local_mean = *mean;
+        }
         variance = GWS_GET_BUFFER_POS(STAT, gws_params, variance);
-        local_mean = *mean;
         local_variance = *variance;
     }
 

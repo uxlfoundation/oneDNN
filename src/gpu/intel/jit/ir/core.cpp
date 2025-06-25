@@ -178,7 +178,7 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
 
 type_attr_t common_attr(const type_t &a, const type_t &b) {
     gpu_assert(!a.is_ptr() && !b.is_ptr());
-    return a.attr() | b.attr();
+    return (a.attr() | b.attr()) & ~type_attr_t::mut;
 }
 
 type_t common_int_type(const type_t &_a, const type_t &_b) {

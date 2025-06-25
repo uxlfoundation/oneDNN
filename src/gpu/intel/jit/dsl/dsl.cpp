@@ -79,7 +79,8 @@ struct ctx_t {
     // TODO: Remove IR restriction which requires force_alloc
     expr_t def(type_t _type, const std::string &name, expr_t value = {},
             bool force_alloc = false) {
-        auto type = type_t(_type.kind(), _type.elems(), type_attr_t::mut);
+        auto type = type_t(
+                _type.kind(), _type.elems(), _type.attr() | type_attr_t::mut);
         auto alloc_var = var(type, name);
         if (force_alloc || type.is_ptr()) {
             append(alloc_t::make(alloc_var, {}));

@@ -35,7 +35,7 @@ interested in improving application performance on CPUs and GPUs.
    :maxdepth: 1
 
    Key Concepts<dev_guide_basic_concepts>
-   Build oneDNN API Basic Workflow<page_getting_started_cpp>
+   Functional API Basic Workflow<page_getting_started_cpp>
 
 .. toctree::
    :caption: Developer Guide

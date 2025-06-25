@@ -111,7 +111,7 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
             )
         if ctime_regressed:
             ctime_failures.append(
-                f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
+                f"{prb} ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 

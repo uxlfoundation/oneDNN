@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/tag_traits.hpp"
 #include "gpu/gpu_gemm_pd.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
 
@@ -67,6 +68,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         return binary_srcs_;
     }
     bool valid_2d_mask(int mask, int ndims);
+    bool per_tensor_mask(int mask, int ndims);
 
     float beta_ = 0.0f;
 
@@ -74,8 +76,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool sum_at_begin_ = false;
 
     bool bias_via_binary_ = false;
-    bool wei_scales_2d_ = false;
-    bool src_scales_2d_ = false;
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
@@ -86,15 +86,16 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     data_type_t src_scales_type_ = data_type::undef;
 
     int ao_dims_ = -1, bo_dims_ = -1;
+    int asc_dims_ = -1, bsc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
 
     int zp_group_k_a_ = -1;
     int zp_group_k_b_ = -1;
 
-    int cmask_a_ = -1;
-    int cmask_b_ = -1;
-    int cmask_c_ = -1;
+    int cmask_a_ = INT_MIN;
+    int cmask_b_ = INT_MIN;
+    int cmask_c_ = INT_MIN;
 
     int src_scales_group_k_ = -1;
     int wei_scales_group_k_ = -1;
@@ -147,6 +148,11 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
             case sum_ab::sum_b_col: return 2;
         }
     }
+    bool with_a_scales() const { return (asc_dims_ >= 0); }
+    bool with_b_scales() const { return (bsc_dims_ >= 0); }
+    bool with_c_scales() const {
+        return !attr()->scales_.has_default_values(DNNL_ARG_DST);
+    }
 
     bool with_a_zero_points() const { return (ao_dims_ >= 0); }
     bool with_b_zero_points() const { return (bo_dims_ >= 0); }
@@ -155,12 +161,14 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     }
     bool with_sround() const { return with_sround_; }
 
-    bool wei_scales_2d() const { return wei_scales_2d_; }
-    bool src_scales_2d() const { return src_scales_2d_; }
+    bool wei_scales_2d() const { return asc_dims_ > 1; }
+    bool src_scales_2d() const { return bsc_dims_ > 1; }
 
-    bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
+    bool quant_entry_2d(int arg, const quant_entries_t &entry) const;
+    int quant_entry_ndims(
+            const quant_entry_t &entry, const memory_desc_t &md) const;
+    int quant_entry_group_prod(const quant_entry_t &attr) const;
 
-    int quant_attr_cmask(int arg, const quant_entries_t &attr) const;
     bool dy_quant_enabled();
     bool wei_decomp();
     bool quant_enabled();

@@ -681,7 +681,7 @@ public:
 	void setBit(int bit);
 	void setOpmaskIdx(int idx, bool /*ignore_idx0*/ = true)
 	{
-		if (mask_) XBYAK_THROW(ERR_OPMASK_IS_ALREADY_SET)
+		if (mask_ && (mask_ != idx)) XBYAK_THROW(ERR_OPMASK_IS_ALREADY_SET)
 		mask_ = idx;
 	}
 	void setRounding(int idx)

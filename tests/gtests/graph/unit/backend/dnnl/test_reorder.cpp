@@ -125,7 +125,7 @@ TEST(test_reorder_execute, Int8Reorder) {
 
     ASSERT_EQ(agraph.finalize(), graph::status::success);
 
-    graph::pass::pass_base_ptr apass = get_pass("int8_reorder_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("x8_reorder");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
     auto part = agraph.get_partitions()[0];
@@ -271,7 +271,7 @@ TEST(test_reorder_execute, ReorderAddBf16) {
 
     ASSERT_EQ(agraph.finalize(), graph::status::success);
 
-    graph::pass::pass_base_ptr apass = get_pass("reorder_sum_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_reorder_sum");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -321,7 +321,7 @@ TEST(test_reorder_compile, ReorderAddGetInplacePair) {
 
     ASSERT_EQ(agraph.finalize(), graph::status::success);
 
-    graph::pass::pass_base_ptr apass = get_pass("reorder_sum_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_reorder_sum");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
@@ -415,10 +415,9 @@ TEST(test_reorder_execute, Int8ReorderAdd) {
 
     ASSERT_EQ(agraph.finalize(), graph::status::success);
 
-    graph::pass::pass_base_ptr apass
-            = get_pass(engine->kind() == graph::engine_kind::cpu
-                            ? "int8_reorder_sum_fusion_cpu"
-                            : "int8_reorder_sum_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass(
+            engine->kind() == graph::engine_kind::cpu ? "x8_reorder_sum_cpu"
+                                                      : "x8_reorder_sum_gpu");
     apass->run(agraph);
 
     ASSERT_EQ(agraph.get_num_partitions(), 1U);

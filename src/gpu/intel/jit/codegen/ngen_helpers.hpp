@@ -18,7 +18,6 @@
 #define GPU_INTEL_JIT_CODEGEN_NGEN_HELPERS_HPP
 
 #include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/utils/ngen_proxy.hpp"
 #include "ngen.hpp"
 #include "ngen_register_allocator.hpp"
 
@@ -151,26 +150,6 @@ inline ngen::Immediate to_ngen(
     }
     gpu_error_not_expected() << "Can't convert expression: " << expr;
     return ngen::Immediate();
-}
-
-inline ngen::Bundle to_ngen(const ngen_proxy::Bundle &bundle) {
-    return ngen::Bundle(bundle.bank_id, bundle.bundle_id);
-}
-
-inline ngen::InstructionModifier to_ngen(
-        const ngen_proxy::InstructionModifier &mod_proxy) {
-    ngen::InstructionModifier mod;
-    if (mod_proxy.is_atomic) mod |= ngen::ThreadCtrl::Atomic;
-    if (!mod_proxy.sbid.is_empty()) mod |= ngen::SBID(mod_proxy.sbid.token).set;
-    return mod;
-}
-
-inline ngen::AtomicOp to_ngen(ngen_proxy::AtomicOp atomic_op) {
-    switch (atomic_op) {
-        case ngen_proxy::AtomicOp::fadd: return ngen::AtomicOp::fadd;
-        default: gpu_error_not_expected();
-    }
-    return ngen::AtomicOp(std::numeric_limits<uint16_t>::max());
 }
 
 inline ngen::Immediate ngen_negate(const ngen::Immediate &imm) {

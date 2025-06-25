@@ -59,10 +59,19 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
 
             int o_off = ch * ocb_stride + ow * ow_stride;
             if (this->jcp.with_sum) {
-                add_imm(reg_tmp_addr, reg_output, o_off * sizeof(float),
+                add_imm(reg_tmp_addr, reg_output, o_off * jcp.typesize_out,
                         reg_tmp_imm);
-                ld1w(ZRegS(0), P_ALL_ONE, ptr(reg_tmp_addr));
-                fadd(zregs_acc, zregs_acc, ZRegS(0));
+                if (jcp.dst_dt == data_type::f32) {
+                    ld1w(ZRegS(0), P_ALL_ONE, ptr(reg_tmp_addr));
+                    fadd(zregs_acc, zregs_acc, ZRegS(0));
+                } else if (jcp.dst_dt == data_type::bf16) {
+                    ld1h(ZRegS(0), P_ALL_ONE, ptr(reg_tmp_addr));
+                    // Convert BF16 input to FP32
+                    lsl(ZRegS(0), ZRegS(0), 16);
+                    fadd(zregs_acc, zregs_acc, ZRegS(0));
+                } else {
+                    assert(!"Unsupported: data type");
+                }
             }
         }
     }

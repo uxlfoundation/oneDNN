@@ -350,6 +350,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const bool is_int8 = one_of(src_type, u8, s8);
+    const bool is_fp8 = one_of(src_type, f8_e4m3, f8_e5m2);
 
     // The following check will detect if this implementation is being
     // executed through a BWD_D Convolution call and prevent the primitive from
@@ -364,7 +365,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
             | skip_mask_t::zero_points | skip_mask_t::fpmath_mode;
-    if (is_int8) skip_mask |= skip_mask_t::scales;
+    if (is_int8 || is_fp8) skip_mask |= skip_mask_t::scales;
 
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(IMPLICATION(is_int8,
@@ -674,8 +675,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
     if (jcp_.with_scales)
-        book_precomputed_scales(scratchpad, attr()->scales_, OC(),
-                jcp_.scale_adjust_factor != 1.0f);
+        book_precomputed_scales(
+                scratchpad, attr()->scales_, OC(), jcp_.scale_adjust_factor);
 
     return status::success;
 }
@@ -933,9 +934,9 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     // JIT to precompute scales
     const bool is_jit_supported = mayiuse(avx512_core);
     const auto attr = pd()->attr();
+    const auto &attr_scales = attr->scales_;
     if (is_jit_supported && pd()->OC() > 1
-            && req_copy_scales(attr, jcp.scale_adjust_factor)) {
-        const auto &attr_scales = attr->scales_;
+            && req_copy_scales(attr_scales, jcp.scale_adjust_factor)) {
         int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
         if (wei_scale_mask > 0) {
             CHECK(safe_ptr_assign(jit_scale_precompute_,
@@ -1462,21 +1463,24 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
 
     vector<int> adjusted_k;
     vector<int> adjusted_k_l;
-    int k = 0;
+    int vpad_k = 0;
     const bool has_relo_large_spatial /* heuristic*/
             = is_relo_with_relo_weights && jcp.oc_block * jcp.ow > 10240;
-    while (k < ker_vpad_sz) {
-        int next_k = k + 1;
-        while (!has_relo_large_spatial && next_k < ker_vpad_sz) {
-            if (kd_bs[next_k] != kd_bs[k] || kd_es[next_k] != kd_es[k]
-                    || kh_bs[next_k] != kh_bs[k] || kh_es[next_k] != kh_es[k]
-                    || kw_bs[next_k] != kw_bs[k] || kw_es[next_k] != kw_es[k])
+    while (vpad_k < ker_vpad_sz) {
+        int vpad_next_k = vpad_k + 1;
+        while (!has_relo_large_spatial && vpad_next_k < ker_vpad_sz) {
+            if (kd_bs[vpad_next_k] != kd_bs[vpad_k]
+                    || kd_es[vpad_next_k] != kd_es[vpad_k]
+                    || kh_bs[vpad_next_k] != kh_bs[vpad_k]
+                    || kh_es[vpad_next_k] != kh_es[vpad_k]
+                    || kw_bs[vpad_next_k] != kw_bs[vpad_k]
+                    || kw_es[vpad_next_k] != kw_es[vpad_k])
                 break;
-            next_k++;
+            vpad_next_k++;
         }
-        adjusted_k.push_back(k);
-        adjusted_k_l.push_back(next_k - k);
-        k = next_k;
+        adjusted_k.push_back(vpad_k);
+        adjusted_k_l.push_back(vpad_next_k - vpad_k);
+        vpad_k = vpad_next_k;
     }
 
     const int max_ker_sz = adjusted_k.size();

@@ -178,7 +178,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
             // utilize largest supported subgroup size
             conf.subgroup_size = [=] {
-                for (int size : {32, 16, 8}) {
+                for (int size : {16, 8}) {
                     if (compute_engine->mayiuse_sub_group(size)
                             && compute_engine
                                        ->mayiuse_block_reads_writes_with_sub_group(

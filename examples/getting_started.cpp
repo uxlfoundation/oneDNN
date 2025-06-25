@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@
 using namespace dnnl;
 // [Prologue]
 
-/// @page getting_started_cpp Getting started
+/// @page getting_started_cpp oneDNN API Basic Workflow Tutorial
 ///
 /// This C++ API example demonstrates the basics of the oneDNN programming model.
 ///

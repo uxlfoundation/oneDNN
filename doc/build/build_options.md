@@ -1,5 +1,5 @@
-Build Options {#dev_guide_build_options}
-====================================
+Use Build Options {#dev_guide_build_options}
+============================================
 
 oneDNN supports the following build-time options.
 

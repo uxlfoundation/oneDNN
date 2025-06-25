@@ -1115,11 +1115,9 @@ int default_regs(const conv_config_t &cfg) {
     return 128;
 }
 
-status_t init_regs(conv_config_t &cfg) {
-    if (cfg.exec_cfg_param().is_overridden("regs")) return status::success;
-
+void init_regs(conv_config_t &cfg) {
+    if (cfg.exec_cfg_param().is_overridden("regs")) return;
     cfg.set_regs(default_regs(cfg));
-    return status::success;
 }
 
 bool post_op_layouts_ok(const conv_problem_t &prb) {

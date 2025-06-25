@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -377,10 +378,13 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init_brdgmm_conf() {
     const auto &bcp_0 = bcps_[0];
     jcp.ch_block = bcp_0.ld_block;
     jcp.nb_ch = div_up(jcp.ngroups, jcp.ch_block);
-    const auto wei_tag = is_3d   ? (jcp.ch_block == 16 ? format_tag::dhwioG16g
-                                                       : format_tag::dhwioG8g)
-            : jcp.ch_block == 16 ? format_tag::hwioG16g
-                                 : format_tag::hwioG8g;
+    const auto wei_tag = is_3d
+            ? (jcp.ch_block == 16 ? format_tag::dhwioG16g
+                                  : (jcp.ch_block == 8 ? format_tag::dhwioG8g
+                                                       : format_tag::dhwioG4g))
+            : (jcp.ch_block == 16 ? format_tag::hwioG16g
+                                  : (jcp.ch_block == 8 ? format_tag::hwioG8g
+                                                       : format_tag::hwioG4g));
 
     const memory_desc_wrapper weights_d(&weights_md_);
     CHECK(init_tag(weights_md_, weights_d, wei_tag, true));
@@ -657,6 +661,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::execute(
 }
 template struct brdgmm_dw_convolution_fwd_t<sve_512>;
 template struct brdgmm_dw_convolution_fwd_t<sve_256>;
+template struct brdgmm_dw_convolution_fwd_t<sve_128>;
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

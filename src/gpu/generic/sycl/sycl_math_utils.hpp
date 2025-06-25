@@ -166,6 +166,11 @@ inline U logistic_bwd(T dd, T s) {
     return static_cast<U>(dd * v * (1.f - v));
 }
 
+template <typename T, typename U = rem_ref<T>>
+inline U logistic_use_dst(T dd, T s) {
+    return static_cast<U>(dd * s - s * s);
+}
+
 template <typename T, typename A, typename U = rem_ref<T>>
 inline U swish_bwd(T dd, T s, A alpha) {
     float v = logistic_fwd<float>(alpha * s);

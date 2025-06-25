@@ -97,6 +97,16 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int dst_qmask_M = src_qmask_K;
     int dst_qmask_N = wei_qmask_N;
 
+    // per_tensor_mask is the default mask created whenever per_tensor policy
+    // is used by benchdnn.
+    // TODO: per_tensor masks should reflect problem dimensions.
+    int per_tensor_mask = 0xfff;
+    int per_tensor_eq = 0x0;
+
+    for (int i = 0; i < ndims_src; ++i) {
+        per_tensor_eq |= (1 << i);
+    }
+
     // Check scales
     if (!attr->scales_.has_default_values()) {
         const auto &sc = attr->scales_;
@@ -106,7 +116,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
             VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                         src_qmask_M + src_qmask_K),
+                                         src_qmask_M + src_qmask_K,
+                                         per_tensor_mask, per_tensor_eq),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {

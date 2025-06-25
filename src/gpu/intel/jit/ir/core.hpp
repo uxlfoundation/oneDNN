@@ -195,21 +195,20 @@ static auto type_kind_names = nstl::to_array({
 });
 GPU_DEFINE_PARSE_ENUM(type_kind_t, type_kind_names)
 
-enum class type_attr_t : uint32_t { undef = 0, ptr = 1, mut = 2 };
-inline type_attr_t operator|(type_attr_t a, type_attr_t b) {
-    return type_attr_t(uint32_t(a) | uint32_t(b));
-}
-inline type_attr_t operator&(type_attr_t a, type_attr_t b) {
-    return type_attr_t(uint32_t(a) & uint32_t(b));
-}
+enum class type_attr_t : uint32_t {
+    undef = 0,
+    ptr = 1,
+    mut = 2,
+    simd = 4,
+    slm = 8
+};
+
+GPU_DEFINE_BIT_MASK_ENUM_OPS(type_attr_t)
 inline type_attr_t &operator|=(type_attr_t &a, type_attr_t b) {
     return a = a | b;
 }
 inline type_attr_t &operator&=(type_attr_t &a, type_attr_t b) {
     return a = a & b;
-}
-inline type_attr_t operator~(type_attr_t a) {
-    return type_attr_t(~uint32_t(a));
 }
 
 class type_t {
@@ -313,7 +312,9 @@ public:
     }
     static type_t byte_ptr(int elems = 1, bool is_slm = false,
             type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::byte, elems, attr).with_ptr(is_slm);
+        auto type = type_t(type_kind_t::byte, elems, attr).with_ptr();
+        if (is_slm) type = type.slm();
+        return type;
     }
     static type_t dword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
         return type_t(type_kind_t::dword, elems, attr);
@@ -465,9 +466,9 @@ public:
 
     type_attr_t attr() const { return attr_; }
 
-    bool is_ptr() const { return uint32_t(attr() & type_attr_t::ptr); }
+    bool is_ptr() const { return any(attr() & type_attr_t::ptr); }
 
-    bool is_slm() const { return is_slm_; }
+    bool is_slm() const { return any(attr() & type_attr_t::slm); }
 
     bool operator==(const type_t &other) const {
         return (kind() == other.kind()) && (elems() == other.elems())
@@ -559,7 +560,9 @@ public:
 
     bool is_scalar() const { return elems() == 1; }
 
-    bool is_mutable() const { return uint32_t(attr() & type_attr_t::mut); }
+    bool is_mutable() const { return any(attr() & type_attr_t::mut); }
+
+    bool is_simd() const { return any(attr() & type_attr_t::simd); }
 
     template <typename T>
     bool is_cpp() const {
@@ -590,16 +593,27 @@ public:
         return copy;
     }
 
-    type_t with_ptr(bool is_slm = false) const {
+    type_t with_ptr() const {
         type_t copy = *this;
         copy.attr_ |= type_attr_t::ptr;
-        copy.is_slm_ = is_slm;
         return copy;
     }
 
     type_t with_attr(type_attr_t attr) const {
         type_t copy = *this;
         copy.attr_ = attr;
+        return copy;
+    }
+
+    type_t simd() const {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::simd;
+        return copy;
+    }
+
+    type_t slm() const {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::slm;
         return copy;
     }
 
@@ -640,8 +654,6 @@ private:
     type_kind_t kind_ = type_kind_t::undef;
     int elems_ = 0;
     type_attr_t attr_ = type_attr_t::undef;
-    bool is_slm_ = false;
-    bool is_ptr_ = false;
 };
 
 // type_t to dnnl_data_type_t convertor.
@@ -1402,8 +1414,10 @@ public:
 
     template <typename T>
     static bool try_shrink_type(int64_t v) {
-        if (v >= std::numeric_limits<T>::min()
-                && v <= std::numeric_limits<T>::max())
+        if ((v >= 0 && (uint64_t)v <= (uint64_t)std::numeric_limits<T>::max())
+                || (v < 0
+                        && (int64_t)v
+                                >= (int64_t)std::numeric_limits<T>::min()))
             return true;
         return false;
     }

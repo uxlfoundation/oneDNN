@@ -196,6 +196,9 @@ private:
     std::once_flag zero_pad_init_;
 };
 
+extern const char *cl_microkernels_check_kernel_code;
+bool mayiuse_microkernels(const compute_engine_t *engine);
+
 } // namespace compute
 } // namespace intel
 } // namespace gpu

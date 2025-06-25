@@ -48,6 +48,8 @@ status_t create_ocl_engine(
 
 gpu_utils::device_id_t device_id(const ::sycl::device &dev);
 
+bool mayiuse_microkernels(const gpu::intel::sycl::engine_t *engine);
+
 } // namespace sycl
 } // namespace intel
 } // namespace gpu

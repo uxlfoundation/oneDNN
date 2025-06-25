@@ -320,7 +320,8 @@ private:
 };
 
 } // namespace compute
-}} // namespace gpu
+} // namespace intel
+} // namespace gpu
 } // namespace impl
 } // namespace dnnl
 

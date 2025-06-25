@@ -40,7 +40,8 @@ namespace ocl {
 
 enum { OCL_BUFFER_ALIGNMENT = 128 };
 
-bool mayiuse_microkernels(const impl::engine_t *engine);
+bool try_building(
+        cl_context context, cl_device_id device, const char *kernel_code);
 
 status_t get_ocl_kernel_arg_type(compute::scalar_type_t *type,
         cl_kernel ocl_kernel, int idx, bool allow_undef = false);

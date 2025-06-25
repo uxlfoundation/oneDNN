@@ -105,7 +105,7 @@ status_t micro_sdpa_t::pd_t::init_microkernels(impl::engine_t *engine) {
     arch_ = dev_info->gpu_arch();
     auto *d = desc();
 
-    VCHECK_SDPA_COND(mayiuse_microkernels(engine),
+    VCHECK_SDPA_COND(compute::mayiuse_microkernels(compute_engine),
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */

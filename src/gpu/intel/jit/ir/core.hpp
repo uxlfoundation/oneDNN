@@ -259,7 +259,13 @@ static auto type_kind_names = nstl::to_array({
 });
 GPU_DEFINE_PARSE_ENUM(type_kind_t, type_kind_names)
 
-enum class type_attr_t : uint32_t { undef = 0, ptr = 1, mut = 2 };
+enum class type_attr_t : uint32_t {
+    undef = 0,
+    ptr = 1,
+    mut = 2,
+    simd = 4,
+    packed = 8
+};
 inline type_attr_t operator|(type_attr_t a, type_attr_t b) {
     return type_attr_t(uint32_t(a) | uint32_t(b));
 }
@@ -625,6 +631,10 @@ public:
 
     bool is_mutable() const { return uint32_t(attr() & type_attr_t::mut); }
 
+    bool is_packed() const { return uint32_t(attr() & type_attr_t::packed); }
+
+    bool is_simd() const { return uint32_t(attr() & type_attr_t::simd); }
+
     template <typename T>
     bool is_cpp() const {
         return *this == type_t::from_cpp<T>();
@@ -664,6 +674,18 @@ public:
     type_t with_attr(type_attr_t attr) const {
         type_t copy = *this;
         copy.attr_ = attr;
+        return copy;
+    }
+
+    type_t packed() {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::packed;
+        return copy;
+    }
+
+    type_t simd() {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::simd;
         return copy;
     }
 
@@ -1399,8 +1421,10 @@ public:
 
     template <typename T>
     static bool try_shrink_type(int64_t v) {
-        if (v >= std::numeric_limits<T>::min()
-                && v <= std::numeric_limits<T>::max())
+        if ((v >= 0 && (uint64_t)v <= (uint64_t)std::numeric_limits<T>::max())
+                || (v < 0
+                        && (int64_t)v
+                                >= (int64_t)std::numeric_limits<T>::min()))
             return true;
         return false;
     }
@@ -2272,7 +2296,8 @@ private:
         , kind(kind)
         , attrs(attrs)
         , body(body) {
-        gpu_assert(buf.type().is_ptr() || buf.type().size() == size) << buf;
+        gpu_assert(buf.type().is_ptr() || (uint32_t)buf.type().size() == size)
+                << buf;
     }
 
     alloc_t(const expr_t &buf, const stmt_t &body)

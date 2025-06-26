@@ -2164,7 +2164,7 @@ void CopyPlan::legalizeRegions()
 
         /* Check destination offset */
         int channelOffset = (i.dst.offset * getBytes(dt)) & (channelSize - 1);
-        int maxChanOff = 4 / getBytes(dt);
+        int maxChanOff = std::max(1, 4 / getBytes(dt));
         if (getBytes(dt) == 1 && hw < HW::XeHPC)
             maxChanOff = 2;     /* special case: pre-PVC only allows .{0,1}:b */
         if (hfIntConvert)

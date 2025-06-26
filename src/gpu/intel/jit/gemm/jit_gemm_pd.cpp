@@ -268,7 +268,7 @@ bool jit_gemm_pd_t::zp_ok() {
     if (!attr_zps.has_default_values(DNNL_ARG_A)) {
         // Groups determine supported masks.
         if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
-            if (!valid_2d_mask(cmask_a_, ndims)) return false;
+            if (!valid_2d_mask(cmask_a_, ndims, false)) return false;
             const auto wei_q2d_group_n = attr_zps.get_group(DNNL_ARG_A, 1);
             // Non-trivial N group unsupported.
             if (wei_q2d_group_n != 1) return false;
@@ -291,7 +291,7 @@ bool jit_gemm_pd_t::zp_ok() {
     if (!attr_zps.has_default_values(DNNL_ARG_B)) {
         // Groups determine supported masks.
         if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
-            if (!valid_2d_mask(cmask_b_, ndims)) return false;
+            if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
 
             const auto src_q2d_group_n = attr_zps.get_group(DNNL_ARG_B, 0);
             zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_B, 1);
@@ -356,9 +356,10 @@ bool jit_gemm_pd_t::scales_ok() {
     return true;
 }
 
-bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims) {
-    return utils::one_of(mask, (1 << (ndims - 1)),
-            (1 << (ndims - 1)) + (1 << (ndims - 2)), full_tensor_mask());
+bool jit_gemm_pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
+    return (mask == full_tensor_mask() && per_tensor_ok)
+            || utils::one_of(mask, (1 << (ndims - 1)),
+                    (1 << (ndims - 1)) + (1 << (ndims - 2)));
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {

@@ -1991,8 +1991,8 @@ void CopyPlan::legalizeSIMD(bool initial)
         }
 
         if (initial) {
-            bool skip = isInt(i.dst.type) && isInt(i.src0.type);
-            skip |= is4(i.dst.type) || is4(i.src0.type) || is4(i.src1.type) || is4(i.src2.type);
+            bool skip = isInt(i.dst.type) && isInt(i.src0.type) && !i.sat;
+            skip |= isInt4(i.dst.type) || isInt4(i.src0.type) || isInt4(i.src1.type) || isInt4(i.src2.type);
             if (skip) {
                 n++; continue;
             }

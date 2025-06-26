@@ -263,6 +263,11 @@ void CopyPlan::transform()
     sort(SortType::PhaseOnly);
 
     legalizeImmediateTypes();
+
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
+    if (getVerbose(GEMMVerbose::DebugInfo) >= 170)
+        dump();
+#endif
 }
 
 
@@ -2974,7 +2979,7 @@ void CopyInstruction::dump(const CopyPlan &plan) const
     if (atomic)
         std::cout << "\t{Atomic}";
 
-    if (getenv("VERBOSE"))
+    if (getVerbose(GEMMVerbose::DebugInfo) >= 180)
         std::cout << "\t\t(phase = " << phase << ", cnum = [" << cnumMin << ", " << cnumMax << "])";
 
     std::cout << std::endl;

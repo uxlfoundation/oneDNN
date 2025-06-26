@@ -262,6 +262,11 @@ void CopyPlan::transform()
     sort(SortType::PhaseOnly);
 
     legalizeImmediateTypes();
+
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP && DNNL_DEV_MODE
+    if (getVerbose(GEMMVerbose::DebugInfo) >= 170)
+        dump();
+#endif
 }
 
 

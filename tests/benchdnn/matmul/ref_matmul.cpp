@@ -118,7 +118,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto src_broadcast_mask = prb->src_broadcast_mask();
     const auto wei_broadcast_mask = prb->weights_broadcast_mask();
     const auto bias_broadcast_mask = prb->bias_broadcast_mask();
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(MB, M, N, [&](int64_t mb, int64_t m, int64_t n) {
         float dst = 0;

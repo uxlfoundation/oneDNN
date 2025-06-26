@@ -41,7 +41,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const float dst_scale_val = has_dst_scale ? dst_scale.get_f32_elem(0) : 1.f;
     const float r_dst_scale_val = 1.0f / dst_scale_val;
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(outer_size, inner_size, [&](int64_t ou, int64_t in) {
         float space_denom = 0.;

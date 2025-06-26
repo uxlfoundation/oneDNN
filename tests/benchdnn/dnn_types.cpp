@@ -206,9 +206,9 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
         switch (policy) {
             case PER_OC:
                 if (has_groups)
-                    return attr_t::get_default_mask(PER_DIM_01);
+                    return attr_t::get_default_mask(PER_DIM_01, ndims);
                 else
-                    return attr_t::get_default_mask(PER_DIM_0);
+                    return attr_t::get_default_mask(PER_DIM_0, ndims);
             default: SAFE(FAIL, CRIT); return -1;
         }
     } else if (prim_kind == dnnl_matmul) {

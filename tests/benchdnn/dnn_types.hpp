@@ -76,7 +76,7 @@ struct attr_t {
 
     static policy_t str2policy(const std::string &str);
     static const char *policy2str(policy_t policy);
-    static int get_default_mask(policy_t policy, int ndims = -1);
+    static int get_default_mask(policy_t policy, int ndims);
     static int policy2mask(int arg, policy_t policy, int ndims = -1,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
             bool has_groups = false);
@@ -360,9 +360,9 @@ struct attr_t {
         // on the ndims. Currently this includes only lnorm with binary post-op
         // with policy PER_OC.
         // Some primitives might have a special handling for a policy provided.
-        // For such primitives prim_kind must be set so get_po_masks generates
+        // For such primitives prim_kind must be set so get_po_masks(prb->ndims) generates
         // a correct mask. Currently this behavior depends on policy2mask().
-        std::vector<std::pair<int, int>> get_po_masks(int ndims = -1,
+        std::vector<std::pair<int, int>> get_po_masks(int ndims,
                 dnnl_primitive_kind_t prim_kind
                 = dnnl_undefined_primitive) const;
 

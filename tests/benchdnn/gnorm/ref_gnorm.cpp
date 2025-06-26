@@ -49,7 +49,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const bool use_sc = prb->use_sc();
     const bool use_sh = prb->use_sh();
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(MB, G, [&](int64_t n, int64_t g) {
         float smean = mean.get_f32_elem(n * G + g);

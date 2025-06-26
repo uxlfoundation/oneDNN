@@ -58,11 +58,11 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
             = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
+            prb->attr.zero_points.get(DNNL_ARG_SRC).policy, src_m.ndims());
     const int wei_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy);
+            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy, wei_m.ndims());
     const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy);
+            prb->attr.zero_points.get(DNNL_ARG_DST).policy, dst_m.ndims());
 
     /* help compiler optimize the code */
     const int64_t MB = prb->mb, G = prb->g, OC = prb->oc, IC = prb->ic;
@@ -116,7 +116,7 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
         }
     };
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(G, MB, OCG, OD, OH, OW,
             [&](int64_t g, int64_t mb, int64_t oc, int64_t od, int64_t oh,
                     int64_t ow) {
@@ -191,11 +191,11 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
             = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
+            prb->attr.zero_points.get(DNNL_ARG_SRC).policy, diff_src_m.ndims());
     const int wei_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy);
+            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy, wei_m.ndims());
     const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy);
+            prb->attr.zero_points.get(DNNL_ARG_DST).policy, diff_dst_m.ndims());
 
     /* help compiler optimize the code */
     const int64_t MB = prb->mb, G = prb->g, OC = prb->oc, IC = prb->ic;
@@ -311,7 +311,7 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
         }
     };
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(G, MB, ICG, ID, IH, IW,
             [&](int64_t g, int64_t mb, int64_t ic, int64_t id, int64_t ih,
                     int64_t iw) {

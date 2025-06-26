@@ -831,7 +831,7 @@ void init_memory_args(
         } else if (b.mask_input == mask_input_t::policy) {
             mask = attr_t::policy2mask(po_arg, b.policy, 2, dnnl_matmul);
         } else {
-            mask = attr_t::get_default_mask(b.policy);
+            mask = attr_t::get_default_mask(b.policy, ndims);
         }
 
         switch (mask) {

@@ -70,11 +70,11 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
 
     const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy);
+            prb->attr.zero_points.get(DNNL_ARG_SRC).policy, src_m.ndims());
     const int wei_zp_mask = prb->attr.zero_points.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
     const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy);
+            prb->attr.zero_points.get(DNNL_ARG_DST).policy, dst_m.ndims());
 
     const int64_t BS = prb->batch_size;
     const int64_t M = prb->m;
@@ -130,7 +130,7 @@ void compute_ref_brgemm(const prb_t *prb, const args_t &args) {
         });
     }
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     static constexpr int bias_broadcast_mask = 2;
     benchdnn_parallel_nd(M, N, [&](int64_t m, int64_t n) {
         size_t dst_off = dst_off_f(prb, m, n);

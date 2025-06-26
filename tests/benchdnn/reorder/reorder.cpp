@@ -293,7 +293,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
                 const auto &e = prb->attr.scales.get(arg);
                 if (!e.is_def()) {
-                    int e_mask = attr_t::get_default_mask(e.policy);
+                    int e_mask = attr_t::get_default_mask(e.policy, prb->ndims);
                     masks_ok = masks_ok && e_mask == comp_mask;
                 }
             }
@@ -322,7 +322,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
         const auto &dst_scales = prb->attr.scales.get(DNNL_ARG_DST);
         if (!dst_scales.is_def()
-                && attr_t::get_default_mask(dst_scales.policy) > 0
+                && attr_t::get_default_mask(dst_scales.policy, prb->ndims) > 0
                 && prb->runtime_dim_mask != 0) {
             // Destination scale is not supported for runtime dimensions since
             // the implementation logic inverts dst scales and requires
@@ -339,8 +339,9 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
         const auto &src_scales = prb->attr.scales.get(DNNL_ARG_SRC);
         if (!src_scales.is_def() && !dst_scales.is_def()) {
-            if (attr_t::get_default_mask(src_scales.policy)
-                            != attr_t::get_default_mask(dst_scales.policy)
+            if (attr_t::get_default_mask(src_scales.policy, prb->ndims)
+                            != attr_t::get_default_mask(
+                                    dst_scales.policy, prb->ndims)
                     && prb->is_reorder_with_compensation(FLAG_ANY)) {
                 BENCHDNN_PRINT(2,
                         "[SKIP][%s:%d]: Compensation cases when both scales "

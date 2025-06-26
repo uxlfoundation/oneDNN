@@ -200,6 +200,7 @@ protected:
     void planEmulatedHFToHF8(CopyInstruction &i);
     void planFP8SIMD1Mov(CopyInstruction &i);
     void planEmulatedFP8E8M0ToHF(CopyInstruction &i);
+    void planIntegerMove(CopyInstruction &i);
     void emulateBooleanFunction();
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();

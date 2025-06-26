@@ -787,7 +787,7 @@ void CopyPlan::planTypeConversions()
             copyThrough(i, DataType::hf, 1);
             rerun = true;
         } else if (st == dt)
-            i.moveToIntegerPipe();
+            planIntegerMove(i);
     }
 
     mergeChanges();
@@ -852,6 +852,27 @@ void CopyPlan::emulateBooleanFunction() {
         ie[2]->dst = dst;
     }
     mergeChanges();
+}
+
+void CopyPlan::planIntegerMove(CopyInstruction &i) {
+    if (getBytes(i.src0.type) == 8) {
+        auto &i0 = i, &i1 = split(i);
+        i0.src0.type = DataType::ud;
+        i0.dst.type = DataType::ud;
+        i0.src0.stride *= 2;
+        i0.dst.stride *= 2;
+        i0.src0.offset *= 2;
+        i0.dst.offset *= 2;
+        i1.src0.type = DataType::ud;
+        i1.dst.type = DataType::ud;
+        i1.src0.stride *= 2;
+        i1.dst.stride *= 2;
+        i1.src0.offset *= 2;
+        i1.dst.offset *= 2;
+        i1.src0.offset += 1;
+        i1.dst.offset += 1;
+    } else
+        i.moveToIntegerPipe();
 }
 
 // uw->hf sequence when source range is uint10 or smaller.

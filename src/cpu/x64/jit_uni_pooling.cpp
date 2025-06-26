@@ -1480,6 +1480,8 @@ template struct jit_uni_pooling_bwd_t<avx512_core_fp16, data_type::f16>;
 
 template struct jit_uni_pooling_fwd_t<avx512_core_fp16, data_type::f8_e5m2>;
 template struct jit_uni_pooling_fwd_t<avx512_core_fp16, data_type::f8_e4m3>;
+template struct jit_uni_pooling_fwd_t<avx10_2_512, data_type::f8_e4m3>;
+template struct jit_uni_pooling_fwd_t<avx10_2_512, data_type::f8_e5m2>;
 
 } // namespace x64
 } // namespace cpu

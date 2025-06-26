@@ -58,7 +58,9 @@ bool is_data_supported(cpu_isa_t isa, data_type_t data_type) {
             return is_superset(isa, avx512_core_fp16)
                     || is_superset(isa, avx2_vnni_2);
         case data_type::f8_e5m2:
-        case data_type::f8_e4m3: return is_superset(isa, avx512_core_fp16);
+        case data_type::f8_e4m3:
+            return is_superset(isa, avx512_core_fp16)
+                    || is_superset(isa, avx10_2_512);
         case data_type::f4_e3m0:
         case data_type::f4_e2m1:
         case data_type::e8m0:
@@ -3855,6 +3857,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector(size_t idx,
     compute_vector_range({idx}, rhs_arg_idx, post_op, rhs_arg_params);
 }
 
+template class jit_uni_binary_injector_t<avx10_2_512>;
+template class jit_uni_binary_injector_t<avx10_2_512, Xbyak::Ymm>;
+template class jit_uni_binary_injector_t<avx10_2_512, Xbyak::Xmm>;
 template class jit_uni_binary_injector_t<avx512_core_fp16>;
 template class jit_uni_binary_injector_t<avx512_core_fp16, Xbyak::Ymm>;
 template class jit_uni_binary_injector_t<avx512_core_fp16, Xbyak::Xmm>;

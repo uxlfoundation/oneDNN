@@ -252,7 +252,9 @@ private:
     }
 
     inline bool use_fp8_emulation() const {
-        return jpp.is_fp8 && is_superset(isa, avx512_core_fp16);
+        return jpp.is_fp8
+                && (is_superset(isa, avx512_core_fp16)
+                        || is_superset(isa, avx10_2_512));
     }
 
     static bool has_large_buffers(const pooling_pd_t *ppd);

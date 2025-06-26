@@ -1564,6 +1564,109 @@ TEST(test_utils_pattern_matcher, SharedInputCase2) {
     ASSERT_EQ(fusion_ops2.size(), 0U);
 }
 
+TEST(test_utils_pattern_matcher, ParallelMatmulWithSharedInput) {
+    auto graphp = std::make_shared<pb_graph_t>();
+    /*  Pattern that captures two parallel MatMuls share inputs
+        with another MatMul
+           IN0    IN1
+            \    /
+            MatMul1
+              |
+             ReLU
+       IN0    |     IN1
+       1\   0/ \0   1/
+        MatMul2  MatMul3
+           |       |
+                Sigmoid
+                   |
+    */
+    auto pmm1 = graphp->append_op(MatMul);
+    auto prelu = graphp->append_op(ReLU, {in_edge(IN0, pmm1, OUT0)});
+    auto pmm2 = graphp->append_op(MatMul, {in_edge(IN0, prelu, OUT0)});
+    auto pmm3 = graphp->append_op(MatMul, {in_edge(IN0, prelu, OUT0)});
+    auto psigmoid = graphp->append_op(Sigmoid, {in_edge(IN0, pmm3, OUT0)});
+    UNUSED(psigmoid);
+    graphp->create_input_port(0, pmm1, 0);
+    graphp->create_input_port(0, pmm2, 1);
+    graphp->create_input_port(1, pmm1, 1);
+    graphp->create_input_port(1, pmm3, 1);
+
+    // a wrong graph that does not match the pattern
+    graph_t agraph1;
+    op_t g1_matmul1 {0, MatMul, "matmul1"};
+    op_t g1_relu {1, ReLU, "relu"};
+    op_t g1_matmul2 {2, MatMul, "matmul2"};
+    op_t g1_matmul3 {3, MatMul, "matmul3"};
+    op_t g1_sigmoid {4, Sigmoid, "sigmoid"};
+
+    std::vector<logical_tensor_t> lt_vec = create_logical_tensors(7);
+    g1_matmul1.add_input(lt_vec[0]);
+    g1_matmul1.add_input(lt_vec[1]);
+    g1_matmul1.add_output(lt_vec[2]);
+    g1_relu.add_input(lt_vec[2]);
+    g1_relu.add_output(lt_vec[3]);
+    g1_matmul2.add_input(lt_vec[3]);
+    g1_matmul2.add_input(lt_vec[0]);
+    g1_matmul2.add_output(lt_vec[4]);
+    g1_matmul3.add_input(lt_vec[3]);
+    g1_matmul3.add_input(lt_vec[1]);
+    g1_matmul3.add_output(lt_vec[5]);
+
+    // sigmoid takes the output of matmul2
+    // which is not correct
+    g1_sigmoid.add_input(lt_vec[4]);
+    g1_sigmoid.add_output(lt_vec[6]);
+
+    ASSERT_EQ(agraph1.add_op(&g1_matmul1), status::success);
+    ASSERT_EQ(agraph1.add_op(&g1_relu), status::success);
+    ASSERT_EQ(agraph1.add_op(&g1_matmul2), status::success);
+    ASSERT_EQ(agraph1.add_op(&g1_matmul3), status::success);
+    ASSERT_EQ(agraph1.add_op(&g1_sigmoid), status::success);
+    agraph1.finalize();
+
+    std::vector<op_t *> fusion_ops_g1;
+    EXPECT_FALSE(
+            match_pattern(agraph1.get_ops()[0].get(), graphp, fusion_ops_g1));
+
+    // a correct graph that matches the pattern
+    graph_t agraph2;
+    op_t g2_matmul1 {0, MatMul, "matmul1"};
+    op_t g2_relu {1, ReLU, "relu"};
+    op_t g2_matmul2 {2, MatMul, "matmul2"};
+    op_t g2_matmul3 {3, MatMul, "matmul3"};
+    op_t g2_sigmoid {4, Sigmoid, "sigmoid"};
+
+    std::vector<logical_tensor_t> lt_vec_g2 = create_logical_tensors(7);
+    g2_matmul1.add_input(lt_vec_g2[0]);
+    g2_matmul1.add_input(lt_vec_g2[1]);
+    g2_matmul1.add_output(lt_vec_g2[2]);
+    g2_relu.add_input(lt_vec_g2[2]);
+    g2_relu.add_output(lt_vec_g2[3]);
+    g2_matmul2.add_input(lt_vec_g2[3]);
+    g2_matmul2.add_input(lt_vec_g2[0]);
+    g2_matmul2.add_output(lt_vec_g2[4]);
+    g2_matmul3.add_input(lt_vec_g2[3]);
+    g2_matmul3.add_input(lt_vec_g2[1]);
+    g2_matmul3.add_output(lt_vec_g2[5]);
+
+    // sigmoid takes the output of matmul3
+    // which is correct
+    g2_sigmoid.add_input(lt_vec_g2[5]);
+    g2_sigmoid.add_output(lt_vec_g2[6]);
+
+    ASSERT_EQ(agraph2.add_op(&g2_matmul1), status::success);
+    ASSERT_EQ(agraph2.add_op(&g2_relu), status::success);
+    ASSERT_EQ(agraph2.add_op(&g2_matmul2), status::success);
+    ASSERT_EQ(agraph2.add_op(&g2_matmul3), status::success);
+    ASSERT_EQ(agraph2.add_op(&g2_sigmoid), status::success);
+    agraph2.finalize();
+
+    std::vector<op_t *> fusion_ops_g2;
+    EXPECT_TRUE(
+            match_pattern(agraph2.get_ops()[0].get(), graphp, fusion_ops_g2));
+    ASSERT_EQ(fusion_ops_g2.size(), 5U);
+}
+
 TEST(test_utils_pattern_matcher, ParallelMatmul) {
     auto graphp = std::make_shared<pb_graph_t>();
     // Pattern that captures shared input to three MatMuls

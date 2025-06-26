@@ -17,9 +17,12 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_REORDER_HPP
 #define GPU_INTEL_JIT_CODEGEN_REORDER_HPP
 
+#include <functional>
+
 #include "common/utils.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
+#include "gpu/intel/jit/gemm/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/utils/iterator.hpp"
@@ -1481,6 +1484,126 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     }
 }
 
+struct copy_operand_t : gemmstone::CopyOperand {
+    copy_operand_t() = default;
+    copy_operand_t(const CopyOperand &op) : CopyOperand(op) {}
+
+    copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
+        if (!rbd.is_empty()) {
+            const auto base = rbd.base();
+            const auto &rd = rbd.reg_buf();
+            block_size = rd.block_regs();
+            if (rd.blocks() <= 1) return;
+            block_bases.reserve(rd.blocks());
+            for (int i = 0, j = 0; i < rd.blocks(); ++i, j += block_size) {
+                auto block_base = rd.base(j);
+                block_bases.push_back(block_base);
+                if (block_base <= base && base < block_base + block_size)
+                    block_off = i;
+            }
+        }
+    }
+
+    copy_operand_t &advance(ngen::HW hw, int elems, uint8_t stride = 1) {
+        const auto grf_bits = ngen::GRF::bytes(hw) << 3;
+        const auto type_bit_size = ngen::getBits(type);
+        const auto bit_off = (offset + elems * stride) * type_bit_size;
+        const auto grf_shift = bit_off / grf_bits;
+        if (temp || block_bases.empty() || !block_size)
+            grf += grf_shift;
+        else {
+            const auto orig_block_base = block_bases[block_off];
+            const auto grf_off = grf - orig_block_base + grf_shift;
+            const auto block_shift = grf_off / block_size;
+            block_off += block_shift;
+            grf = (int16_t)(block_bases[block_off] + (grf_off % block_size));
+        }
+        offset = (uint8_t)((bit_off % grf_bits) / type_bit_size);
+        return *this;
+    }
+
+    std::vector<int> block_bases;
+    int block_size = 0;
+    int block_off = 0;
+};
+
+struct copy_plan_t : gemmstone::CopyPlan {
+    using gemmstone::CopyPlan::newTemp;
+
+    void mov(int simd, ngen::InstructionModifier mod, const copy_operand_t &dst,
+            const copy_operand_t &src) {
+        static constexpr ngen::Opcode mov = ngen::Opcode::mov;
+        const auto grf_bits = ngen::GRF::bytes(hw()) << 3;
+
+        auto max_simd = [&](const copy_operand_t &op) {
+            const auto &block_size = op.block_size;
+            const auto &block_bases = op.block_bases;
+            // Count contiguous registers
+            int regs = block_size - (op.grf - block_bases[op.block_off]);
+            for (size_t j = op.block_off; j < block_bases.size(); ++j) {
+                if (block_bases[j] + block_size != block_bases[j + 1]) break;
+                regs += block_size;
+            }
+            int type_bits = ngen::getBits(op.type);
+            int rem_bits = regs * grf_bits - type_bits * (1 + op.offset);
+            return rem_bits / (type_bits * op.stride) + 1;
+        };
+
+        auto block_src = src, block_dst = dst;
+        while (simd > 0) {
+            auto block_simd = simd;
+            for (auto &op : {block_dst, block_src}) {
+                if (op.block_bases.empty()) continue;
+                block_simd = std::min(block_simd, max_simd(op));
+            }
+
+            append(phase, mov, block_simd, mod, block_dst, block_src);
+            block_dst.advance(hw(), block_simd, dst.stride);
+            block_src.advance(hw(), block_simd, src.stride);
+            simd -= block_simd;
+        }
+    }
+
+    void mov(int simd, const copy_operand_t &dst, const copy_operand_t &src) {
+        return mov(simd, {}, dst, src);
+    }
+
+    copy_plan_t(ngen_register_scope_t &scope, bool systolic_support)
+        : CopyPlan(scope.hw(), systolic_support), scope_(scope) {}
+
+    ngen::HW hw() const { return CopyPlan::hw; }
+
+    template <typename Generator>
+    void execute(Generator &generator) {
+        using namespace std::placeholders;
+        GRFAllocator grf = std::bind(&copy_plan_t::alloc_grf, this, _1, _2);
+        FlagAllocator flag = std::bind(&copy_plan_t::alloc_flag, this, _1, _2);
+        CopyPlan::materializeTemps(grf, flag);
+        CopyPlan::execute(generator);
+    }
+
+    void alloc_grf(int count, ngen::GRFRange &range) {
+        if (count > 0)
+            range = scope_.try_alloc_range(count);
+        else
+            scope_.safeRelease(range);
+    }
+
+    void alloc_flag(int bytes, ngen::FlagRegister &flag) {
+        if (bytes > 0)
+            flag = scope_.try_alloc_flag(bytes * 8);
+        else
+            scope_.safeRelease(flag);
+    }
+
+    int phase = 0;
+
+protected:
+    using CopyPlan::materializeTemps;
+
+    ngen_register_scope_t &scope_;
+};
+
 template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const reg_buf_data_t &dst,
@@ -1562,6 +1685,13 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     align_src_dst_offset(host, scope, mod, dst, src0);
     align_src_dst_offset(host, scope, mod, dst, src1);
 }
+
+struct reorder_operand_t {
+    layout_t layout;
+    copy_operand_t buffer;
+
+    const type_t &type() const { return layout.type(); }
+};
 
 // Implementation of GRF reorder between 2D dense layouts.
 // Requirements for A -> B reorder:

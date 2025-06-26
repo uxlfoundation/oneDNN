@@ -343,9 +343,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         equivCLayout = (colMajor ? MatrixLayout::N : MatrixLayout::T);
     }
 
-    auto makeABConvert = [](Type T, Type T_ext, char *out) {
-        if (T == T_ext)
-            out[0] = precisionChar(T);
+    auto makeABConvert = [](Type T, Type T_ext, bool mixed_fp, char *out) {
+        if ((mixed_fp && T_ext.isSubsetOf(T)) || (T == T_ext))
+            out[0] = precisionChar(T_ext);
         else {
             out[0] = '[';
             out[1] = precisionChar(T_ext);
@@ -358,8 +358,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     std::fill(temp.begin(), temp.end(), '\0');
 
-    makeABConvert(problem.Ta, problem.Ta_ext, &temp[0]);
-    makeABConvert(problem.Tb, problem.Tb_ext, &temp[5]);
+    const bool mixed_fp = problem.Ta_ext.isFP() != problem.Tb_ext.isFP();
+    makeABConvert(problem.Ta, problem.Ta_ext, mixed_fp, &temp[0]);
+    makeABConvert(problem.Tb, problem.Tb_ext, mixed_fp, &temp[5]);
     temp[10] = precisionChar(problem.Tc);
     temp[12] = layoutChar(problem.A.layout);
     temp[14] = layoutChar(problem.B.layout);

@@ -66,7 +66,7 @@ struct CopyOperand
     ngen::Immediate ngenImmediate() const;
     ngen::FlagRegister ngenFlag() const;
 
-    CopyOperand() {}
+    CopyOperand() = default;
     CopyOperand(ngen::RegData rd);
     CopyOperand(ngen::Immediate imm) : type(imm.getType()), kind(Immediate), value(imm) {}
     CopyOperand(int imm) : CopyOperand(ngen::Immediate(imm)) {}

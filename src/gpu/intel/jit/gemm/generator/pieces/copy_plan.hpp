@@ -166,7 +166,7 @@ public:
     int tempFlagBytes() const;
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    void dump() const;
+    void dump(int n = -1) const;
     int cycleCount() const;
 #endif
 

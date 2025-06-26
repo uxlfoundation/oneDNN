@@ -691,7 +691,7 @@ void CopyPlan::split2DRegions()
     for (auto &i: insns) {
         if ((is2D(i.dst) && !is4(i.dst.type)) || is2D(i.src1) || is2D(i.src2))
             stub("Unsupported 2D region");
-        if (is2D(i.src0)) {
+        if (is2D(i.src0) && i.dst.stride < 4) {
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
 #if XE3P
@@ -1311,6 +1311,11 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
         bool even = (i.src0.offset % 2 == 0);
         i.src0.stride /= 2;
         i.src0.offset /= 2;
+	if ( getBits(i.dst.type) < 8 ) {
+	    i.dst.type = DataType::ub;
+	    i.dst.stride /= 2;
+	    i.dst.offset /= 2;
+	}
 
         if (even) {
             // Low nybbles
@@ -1352,85 +1357,168 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
     auto ddst = CopyOperand(i.dst);
     auto ssrc = CopyOperand(i.src0);
+
     bool sUw = ssrc.type == DataType::uw;
     bool sUb = ssrc.type == DataType::ub;
-    bool tempSrc = ((ssrc.stride > 1 && ssrc.type == DataType::uw) || (ssrc.stride == 1 && ssrc.type == DataType::ub));
     if ((!sUw && !sUb)) stub();
+
+    // Effective 4-bit type strides.
+    int sStride = ssrc.stride * getBytes(ssrc.type) * 2;
+    int dStride = ddst.stride / (getBytes(ssrc.type) * 2);
+
+    bool tempSrc = ((ssrc.stride > 1 && ssrc.type == DataType::uw) || (ssrc.stride == 1 && ssrc.type == DataType::ub));
     int idx = 0;
 
-    if(tempSrc){
-        ie[idx]->op = Opcode::mov;
-        ie[idx]->dst = ssrc;
-        ie[idx]->dst.type = DataType::ub;
-        ie[idx]->dst.stride = 2;
-        ie[idx]->src0 = ssrc;
-        if(sUw){
-           ie[idx]->src0.type = DataType::ub;
-           ie[idx]->src0.stride = ie[idx]->src0.stride * 2;
-        }
-    }else{
+
+    if(ddst.stride >= sStride && sStride > 1){
+	bool oddOff = ddst.offset % 2;
+        auto ddst_mask = !oddOff ? (ddst.stride > 2 ? Immediate::uw(0xf) : Immediate::uw(0xf0f))
+	                        : (ddst.stride > 2 ? Immediate::uw(0xf0) : Immediate::uw(0xf0f0));
+	auto dUwStride = std::max(ddst.stride / 4, 1);
+
         ie[idx]->invalidate();
+        ++idx;
+        if(ddst.stride > sStride){
+            ie[idx]->op = Opcode::mov;
+            ie[idx]->simd = simd / 2;
+            ie[idx]->dst = tmp;
+            ie[idx]->dst.type = DataType::ud;
+            ie[idx]->dst.stride = 1;
+            ie[idx]->src0 = Immediate::d(0);
+            ++idx;
+
+            int tmp_off = (ddst.offset / 4) * 2;
+            ie[idx]->op = Opcode::mov;
+            ie[idx]->simd = simd;
+            ie[idx]->dst = tmp;
+            ie[idx]->dst.type = ssrc.type;
+            ie[idx]->dst.stride = dStride;
+	        ie[idx]->dst.offset = tmp_off;
+            ie[idx]->src0 = ssrc;
+            ++idx;
+            
+	        tmp.type = ssrc.type;
+	        tmp.stride = ssrc.stride;
+	        ssrc = tmp;
+	    } else {
+            ie[idx]->invalidate();
+            ++idx;
+            ie[idx]->invalidate();
+            ++idx;
+	    }
+
+        int tmp_off = ddst.offset / 4;
+        if(ddst.offset % 4 ){
+            ie[idx]->op = Opcode::shl;
+            ie[idx]->simd = simd;
+            ie[idx]->dst = ssrc;
+            ie[idx]->dst.type = DataType::uw;
+            ie[idx]->dst.stride = 2;
+	        ie[idx]->dst.offset = tmp_off;
+            ie[idx]->src0 = ssrc;
+            ie[idx]->src0.type = DataType::uw;
+            ie[idx]->src0.stride = 2;
+	        ie[idx]->src0.offset = tmp_off;
+            ie[idx]->src1 = Immediate::uw(0x4 * (ddst.offset % 4));
+            ++idx;
+	    }else{
+            ie[idx]->invalidate();
+            ++idx;
+	    }
+
+        ie[idx]->op = Opcode::or_;
+        ie[idx]->simd = simd;
+        ie[idx]->dst = ddst;
+        ie[idx]->dst.type = DataType::uw;
+        ie[idx]->dst.stride = ssrc.stride; //sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->dst.offset = ddst.offset/4;
+					   //
+        ie[idx]->src0 = ssrc;
+        ie[idx]->src0.type = DataType::uw;
+        ie[idx]->src0.stride = ssrc.stride; // sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->src0.offset = tmp_off;
+        ie[idx]->src1 = ddst;
+        ie[idx]->src1.type = DataType::uw;
+        ie[idx]->src1.stride = ssrc.stride; //sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->src1.offset = ddst.offset/4;
+        ++idx;
+    }else{
+        if(tempSrc){
+            ie[idx]->op = Opcode::mov;
+            ie[idx]->dst = ssrc;
+            ie[idx]->dst.type = DataType::ub;
+            ie[idx]->dst.stride = 2;
+            ie[idx]->src0 = ssrc;
+            if(sUw){
+               ie[idx]->src0.type = DataType::ub;
+               ie[idx]->src0.stride = ie[idx]->src0.stride * 2;
+            }
+        }else{
+            ie[idx]->invalidate();
+        }
+        ++idx;
+
+        ie[idx]->op = Opcode::mov;
+        ie[idx]->simd = simd/2;
+        ie[idx]->dst = tmp;
+        ie[idx]->dst.type = DataType::uw;
+        ie[idx]->dst.stride = 1;
+        ie[idx]->src0 = ssrc;
+        ie[idx]->src0.type = DataType::uw;
+        ie[idx]->src0.stride = 2;
+        ++idx;
+
+        ie[idx]->op = Opcode::shl;
+        ie[idx]->simd = simd/2;
+        ie[idx]->dst = ssrc;
+        ie[idx]->dst.offset = 0;
+        ie[idx]->dst.stride = 1;
+        ie[idx]->dst.type = DataType::uw;
+        ie[idx]->src0 = ssrc;
+        ie[idx]->src0.type = DataType::uw;
+        ie[idx]->src0.offset = 1;
+        ie[idx]->src0.stride = 2;
+        ie[idx]->src1 = Immediate::uw(0x4);
+        ++idx;
+
+        ie[idx]->op = Opcode::or_;
+        ie[idx]->simd = simd/2;
+        ie[idx]->dst = tmp;
+        ie[idx]->dst.type = DataType::uw;
+        ie[idx]->dst.stride = 1;
+        ie[idx]->src0 = tmp;
+        ie[idx]->src0.type = DataType::uw;
+        ie[idx]->src0.stride = 1;
+        ie[idx]->src1 = ssrc;
+        ie[idx]->src1.type = DataType::uw;
+        ie[idx]->src1.stride = 1;
+        ++idx;
+
+        ie[idx]->op = Opcode::mov;
+        ie[idx]->simd = simd/2;
+        ie[idx]->dst = tmp;
+        ie[idx]->dst.type = DataType::ub;
+        ie[idx]->dst.stride = 1;
+        ie[idx]->src0 = tmp;
+        ie[idx]->src0.stride = 2;
+        ie[idx]->src0.type = DataType::ub;
+        ++idx;
+
+        ie[idx]->op = Opcode::mov;
+        ie[idx]->simd = simd/2;
+        ie[idx]->dst = ddst;
+        ie[idx]->dst.type = DataType::ub;
+        if (ddst.vs != 0)
+            ie[idx]->dst.stride = ddst.vs / ddst.width;
+        else if (ie[idx]->dst.stride != 0)
+            ie[idx]->dst.stride /= 2;
+        if (ie[idx]->dst.offset != 0)
+                ie[idx]->dst.offset /= 2;
+        ie[idx]->src0 = tmp;
+        ie[idx]->src0.stride = 1;
+        ie[idx]->src0.type = DataType::ub;
+        ++idx;
     }
-    ++idx;
-
-    ie[idx]->op = Opcode::mov;
-    ie[idx]->simd = simd/2;
-    ie[idx]->dst = tmp;
-    ie[idx]->dst.type = DataType::uw;
-    ie[idx]->dst.stride = 1;
-    ie[idx]->src0 = ssrc;
-    ie[idx]->src0.type = DataType::uw;
-    ie[idx]->src0.stride = 2;
-    ++idx;
-
-    ie[idx]->op = Opcode::shl;
-    ie[idx]->simd = simd/2;
-    ie[idx]->dst = ssrc;
-    ie[idx]->dst.offset = 0;
-    ie[idx]->dst.stride = 1;
-    ie[idx]->dst.type = DataType::uw;
-    ie[idx]->src0 = ssrc;
-    ie[idx]->src0.type = DataType::uw;
-    ie[idx]->src0.offset = 1;
-    ie[idx]->src0.stride = 2;
-    ie[idx]->src1 = Immediate::uw(0x4);
-    ++idx;
-
-    ie[idx]->op = Opcode::or_;
-    ie[idx]->simd = simd/2;
-    ie[idx]->dst = tmp;
-    ie[idx]->dst.type = DataType::uw;
-    ie[idx]->dst.stride = 1;
-    ie[idx]->src0 = tmp;
-    ie[idx]->src0.type = DataType::uw;
-    ie[idx]->src0.stride = 1;
-    ie[idx]->src1 = ssrc;
-    ie[idx]->src1.type = DataType::uw;
-    ie[idx]->src1.stride = 1;
-    ++idx;
-
-    ie[idx]->op = Opcode::mov;
-    ie[idx]->simd = simd/2;
-    ie[idx]->dst = tmp;
-    ie[idx]->dst.type = DataType::ub;
-    ie[idx]->dst.stride = 1;
-    ie[idx]->src0 = tmp;
-    ie[idx]->src0.stride = 2;
-    ie[idx]->src0.type = DataType::ub;
-    ++idx;
-
-    ie[idx]->op = Opcode::mov;
-    ie[idx]->simd = simd/2;
-    ie[idx]->dst = ddst;
-    ie[idx]->dst.type = DataType::ub;
-    if (ddst.vs != 0)
-        ie[idx]->dst.stride = ddst.vs / ddst.width;
-    if (ie[idx]->dst.offset != 0)
-            ie[idx]->dst.offset /= 2;
-    ie[idx]->src0 = tmp;
-    ie[idx]->src0.stride = 1;
-    ie[idx]->src0.type = DataType::ub;
-    ++idx;
 }
 
 // e8m0->f conversion.
@@ -3061,10 +3149,12 @@ int CopyPlan::cycleCount() const
     return count;
 }
 
-void CopyPlan::dump() const
+void CopyPlan::dump(int n) const
 {
-    for (const auto &i: insns)
-        i.dump(*this);
+    for (int i = 0; i < (int)insns.size(); ++i){
+	if(n < 0 || i < n)
+        insns[i].dump(*this);
+    }
 }
 
 void CopyInstruction::dump(const CopyPlan &plan) const

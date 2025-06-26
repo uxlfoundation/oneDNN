@@ -181,7 +181,7 @@ void CopyInstruction::moveToIntegerPipe()
     auto &st = src0.type, &dt = dst.type;
 
     if (op != Opcode::mov) return;
-    if (asSigned(st) != asSigned(dt)) return;
+    if (asSigned(st) != asSigned(dt) || sat) return;
     if (src0.neg) return;
 
     switch (getBytes(st)) {
@@ -607,6 +607,7 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
                                              &CopyInstruction::src2;
     auto type = (i.*src).type;
     auto bytes = getBytes(type);
+    auto abs = (i.*src).abs;
 
     bool inplaceDst = stride * bytes == i.dst.byteStride()
                    && offset * bytes == i.dst.byteOffset()
@@ -620,6 +621,7 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
 
     i0.op = Opcode::mov;
     i0.src0 = i0.*src;
+    i0.src0.abs = false;
     if (inplaceDst) {
         i0.dst.type = type;
         i0.dst.stride = stride;
@@ -633,6 +635,7 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
 
     i1.*src = i0.dst;
     (i1.*src).overwrite = true;
+    (i1.*src).abs = abs;
 
     i0.cmod = ConditionModifier::none;
     i0.moveToIntegerPipe();
@@ -718,7 +721,7 @@ void CopyPlan::planTypeConversions()
         auto &st = i.src0.type, &dt = i.dst.type;
         auto &srange = i.src0.range;
 
-        if (asSigned(st) == asSigned(dt) && st != dt)
+        if (asSigned(st) == asSigned(dt) && st != dt && !i.sat)
             dt = st;
 
         if (isInt4(st) && isInt(dt)) {
@@ -2112,6 +2115,18 @@ void CopyPlan::legalizeRegions()
                     }
                 }
             }
+
+            if (isB(s0t) && isB(dt) && s0t != dt && i.sat) {
+                if (i.simd == 1) {
+                    copyThrough(i, DataType::w, 1);
+                    rerun = true;
+                    continue;
+                } else if (i.dst.stride == 1) {
+                    restrideDst(i, 2);
+                    rerun = true;
+                    continue;
+                }
+            }
         }
 
         bool hfIntConvert = (dt  == DataType::hf && isInt(s0t))
@@ -2233,7 +2248,8 @@ void CopyPlan::legalizeRegions()
             if (!isW(dt)  && !isB(dt))  stub();
             if (!isW(s0t) && !isB(s0t)) stub();
 
-            if (isW(s0t)) {
+            if (i.simd == 1) {}
+            else if (isW(s0t)) {
                 strideOK &= (s0s <= 2);
                 if (s0s == 2) {
                     if (isW(dt)) {

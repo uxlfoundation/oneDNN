@@ -66,51 +66,20 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                 || attr()->scales_.get_mask(DNNL_ARG_DST) == 0;
         return src_scale_ok && dst_scale_ok;
     };
-    auto supports_bf16_conversion = [](data_type_t dt) {
-        return utils::one_of(dt, bf16, f32, f8_e5m2, f8_e4m3, f4_e3m0, f4_e2m1);
-    };
-    auto hf8_ok = [&]() {
-        bool any_hf8 = utils::one_of(f8_e4m3, dst_dt, src_dt);
-        return IMPLICATION(any_hf8,
-                utils::everyone_is(f8_e4m3, dst_dt, src_dt)
-                        || utils::one_of(src_dt, bf16, f16, f32)
-                        || utils::one_of(dst_dt, bf16, f16, f32));
-    };
     VDISPATCH_REORDER(
             src_engine == dst_engine && src_engine->kind() == engine_kind::gpu,
             VERBOSE_BAD_ENGINE_KIND);
     VDISPATCH_REORDER(utils::one_of(src_dt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                              f4_e3m0, f4_e2m1, s32, s8, u8, f64),
+                              f4_e3m0, f4_e2m1, s32, s8, u8, s4, u4, f64),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REORDER(utils::one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3,
                               f4_e3m0, f4_e2m1, s32, s8, u8, f64),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_REORDER(IMPLICATION(utils::one_of(src_dt, f4_e3m0, f4_e2m1),
-                              utils::one_of(dst_dt, f32, f16, bf16)),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_REORDER(IMPLICATION(utils::one_of(dst_dt, f4_e3m0, f4_e2m1),
-                              utils::one_of(src_dt, f32, f16, bf16)),
-            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REORDER(IMPLICATION(src_dt == f16 || dst_dt == f16,
                               device_info->has_native(f16)),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(
-            IMPLICATION(src_dt == bf16, supports_bf16_conversion(dst_dt)),
-            VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(
-            IMPLICATION(dst_dt == bf16, supports_bf16_conversion(src_dt)),
-            VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(IMPLICATION(utils::one_of(f8_e5m2, src_dt, dst_dt),
-                              device_info->has_native(f8_e5m2)),
-            VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_REORDER(IMPLICATION(src_dt == f64 || dst_dt == f64,
                               device_info->has_native(f64)),
-            VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(
-            IMPLICATION(src_dt == f64, utils::one_of(dst_dt, f32, f64)),
-            VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_REORDER(
-            IMPLICATION(dst_dt == f64, utils::one_of(src_dt, f32, f64)),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
     using sm = dnnl_primitive_attr::skip_mask_t;
@@ -131,7 +100,6 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                         || zp_cfg.is_common_dst_zero_point);
     };
     VDISPATCH_REORDER(zps_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-    VDISPATCH_REORDER(hf8_ok(), VERBOSE_UNSUPPORTED_DT);
 
     memory_desc_wrapper src_mdw {src_md()};
     memory_desc_wrapper dst_mdw {dst_md()};
@@ -195,13 +163,13 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
         return contiguous_inner_elems;
     };
 
-    if (utils::one_of(src_dt, f4_e2m1, f4_e3m0)) {
+    if (utils::one_of(src_dt, f4_e2m1, f4_e3m0, s4, u4)) {
         auto contiguous_inner_elems
                 = count_inner_elems(cfg->src_layout().user());
         VDISPATCH_REORDER(contiguous_inner_elems % 8 == 0,
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
     }
-    if (utils::one_of(dst_dt, f4_e2m1, f4_e3m0)) {
+    if (utils::one_of(dst_dt, f4_e2m1, f4_e3m0, s4, u4)) {
         auto contiguous_inner_elems
                 = count_inner_elems(cfg->dst_layout().user());
         VDISPATCH_REORDER(contiguous_inner_elems % 8 == 0,

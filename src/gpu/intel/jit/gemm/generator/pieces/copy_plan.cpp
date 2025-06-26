@@ -254,7 +254,7 @@ void CopyPlan::transform()
 
     legalizeImmediateTypes();
 #ifdef DNNL_DEV_MODE
-    if (getVerbose(GEMMVerbose::DebugInfo) > 100)
+    if (getVerbose(GEMMVerbose::DebugInfo) > 170)
         dump();
 #endif
 }

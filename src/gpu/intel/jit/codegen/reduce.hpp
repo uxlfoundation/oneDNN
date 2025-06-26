@@ -108,8 +108,8 @@ public:
                 }
                 auto tmp = tile_scope.alloc_reg_data(
                         tmp_type.with_elems(tile_elems));
-                emit_reorder_1d_tile(hw_, host, tile_scope, tile_elems, s,
-                        src_stride, tmp, 1);
+                emit_reorder_1d_tile(
+                        host, tile_scope, tile_elems, s, src_stride, tmp, 1);
                 s = tmp.format(0, tile_elems, 1, to_ngen(tmp_type));
             }
             align_src_dst_offset(host, tile_scope, tile_elems, d, s);

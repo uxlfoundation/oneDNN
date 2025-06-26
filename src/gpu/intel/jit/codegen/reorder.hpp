@@ -38,7 +38,7 @@ struct copy_operand_t : gemmstone::CopyOperand {
     copy_operand_t(const CopyOperand &op) : CopyOperand(op) {}
     copy_operand_t(const reg_buf_data_t &rbd);
 
-    copy_operand_t &advance(ngen::HW hw, int elems, uint8_t stride = 1);
+    copy_operand_t &advance(ngen::HW hw, dim_t elems, uint8_t stride = 1);
 
     std::vector<int> block_bases;
     int block_size = 0;
@@ -293,15 +293,16 @@ private:
     // Extracts dimension sizes and their indices from a multidimensional
     // tensor.
     static void tile_to_2d_dims(const tile_t &tile, dim_idx_t &a_idx,
-            dim_idx_t &b_idx, int &a, int &b);
+            dim_idx_t &b_idx, dim_t &a, dim_t &b);
 
     // Finds the optimal sequence of reorders between src and dst layouts.
     static std::vector<reorder_step_t> find_min_cost_path(ngen::HW hw,
-            const layout_t &src, const layout_t &dst, int tile_a, int tile_b);
+            const layout_t &src, const layout_t &dst, dim_t tile_a,
+            dim_t tile_b);
 
     // Returns all possible layouts for (a x b) tensor.
     static std::vector<layout_t> generate_all_layouts(
-            const type_t &type, int a, int b) {
+            const type_t &type, dim_t a, dim_t b) {
         std::vector<layout_t> ret;
         std::vector<block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
@@ -309,8 +310,8 @@ private:
     }
 
     static void generate_all_layouts_impl(std::vector<layout_t> &layouts,
-            std::vector<block_t> &blocks, const type_t &type, int a, int b,
-            int stride);
+            std::vector<block_t> &blocks, const type_t &type, dim_t a, dim_t b,
+            dim_t stride);
 
     ngen::HW hw_;
     tile_t tile_;
@@ -341,7 +342,7 @@ public:
             const reg_buf_data_t &dst);
 
 private:
-    using op_init_t = std::function<copy_operand_t(dim_t, ngen::DataType)>;
+    using op_init_t = std::function<copy_operand_t(int, ngen::DataType)>;
 
     void emit(copy_plan_t &plan, const reorder_operand_t &dst,
             const reorder_operand_t &src) {
@@ -356,7 +357,7 @@ private:
         if (layout.type().is_tf32()) layout = layout.retype(type_t::f32());
         auto elems = size_in_elems(layout);
         auto dt = to_ngen(layout.type());
-        auto buffer = init(elems, dt);
+        auto buffer = init(into<int>(elems), dt);
         buffer.stride = (uint8_t)1;
         return {layout, buffer};
     }

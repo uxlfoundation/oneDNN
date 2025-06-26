@@ -44,7 +44,7 @@ copy_operand_t::copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
 }
 
 copy_operand_t &copy_operand_t::advance(
-        ngen::HW hw, int elems, uint8_t stride) {
+        ngen::HW hw, dim_t elems, uint8_t stride) {
     const auto nblocks = into<int>(block_bases.size());
     const auto grf_bits = ngen::GRF::bytes(hw) << 3;
     const auto type_bit_size = ngen::getBits(type);
@@ -117,7 +117,7 @@ reorder_2d_impl_t::reorder_2d_impl_t(ngen::HW hw, tile_t tile,
     gpu_assert(src_layout.type() == dst_layout.type());
 
     dim_idx_t a_idx, b_idx;
-    int tile_a, tile_b;
+    dim_t tile_a, tile_b;
     tile_to_2d_dims(tile_, a_idx, b_idx, tile_a, tile_b);
 
     // Convert src/dst to 2D layouts.
@@ -141,7 +141,7 @@ void reorder_2d_impl_t::emit(
     // Allocate a temporary GRF buffer if needed.
     copy_operand_t tmp;
     const auto &type = dst_.type();
-    auto elems = dst_.size() * type.packing() / type.size();
+    auto elems = into<int>(dst_.size() * type.packing() / type.size());
     if (path_.size() > 1) tmp = plan.newTemp(to_ngen(type), elems, 1);
 
     // Iterate through found reorders.
@@ -195,7 +195,7 @@ void reorder_2d_impl_t::emit(
 }
 
 void reorder_2d_impl_t::tile_to_2d_dims(const tile_t &tile, dim_idx_t &a_idx,
-        dim_idx_t &b_idx, int &a, int &b) {
+        dim_idx_t &b_idx, dim_t &a, dim_t &b) {
     a_idx = dim_idx::invalid;
     b_idx = dim_idx::invalid;
     for (dim_idx_t i = 0; i < tile.size(); i++) {
@@ -230,7 +230,7 @@ void reorder_2d_impl_t::tile_to_2d_dims(const tile_t &tile, dim_idx_t &a_idx,
 }
 
 auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
-        const layout_t &dst, int tile_a, int tile_b)
+        const layout_t &dst, dim_t tile_a, dim_t tile_b)
         -> std::vector<reorder_step_t> {
     // Create all possible edges - 2D reorders.
     std::vector<edge_t> edges;
@@ -360,7 +360,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
 
 void reorder_2d_impl_t::generate_all_layouts_impl(
         std::vector<layout_t> &layouts, std::vector<block_t> &blocks,
-        const type_t &type, int a, int b, int stride) {
+        const type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
         layouts.emplace_back(type, 2, 0, blocks);
         return;
@@ -376,7 +376,7 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
     }
 
     if (iterate_a) {
-        for (int a_blk = 2; a_blk <= a; a_blk++) {
+        for (dim_t a_blk = 2; a_blk <= a; a_blk++) {
             if (a % a_blk != 0) continue;
             blocks.emplace_back(0, a_blk, stride);
             generate_all_layouts_impl(
@@ -385,7 +385,7 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
         }
     }
     if (iterate_b) {
-        for (int b_blk = 2; b_blk <= b; b_blk++) {
+        for (dim_t b_blk = 2; b_blk <= b; b_blk++) {
             if (b % b_blk != 0) continue;
             blocks.emplace_back(1, b_blk, stride);
             generate_all_layouts_impl(
@@ -460,7 +460,7 @@ int reorder_2d_impl_t::vertex_t::cost(
     uint32_t mask = (adj_edge_type_masks[e.idx] & v.adj_edge_type_masks[e.idx]);
     if (mask == 0) return std::numeric_limits<int>::max();
     int cur_size = layout.type().size();
-    int cur_cost = layout.elems() / (e.a * e.b);
+    int cur_cost = into<int>(layout.elems() / (e.a * e.b));
     int min_log_bytes = math::ilog2q(cur_size);
     int max_log_bytes = 3;
     int min_cost = std::numeric_limits<int>::max();
@@ -483,7 +483,7 @@ int reorder_2d_impl_t::vertex_t::cost(
 void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         const reg_buf_data_t &dst) {
     auto from_rd = [](const reg_buf_data_t &rd) -> op_init_t {
-        return [&](dim_t elems, ngen::DataType dt) {
+        return [&](int elems, ngen::DataType dt) {
             return rd.format(0, elems, 1, dt);
         };
     };
@@ -498,7 +498,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         };
     };
 
-    op_init_t from_temp = [&](dim_t elems, ngen::DataType dt) {
+    op_init_t from_temp = [&](int elems, ngen::DataType dt) {
         return plan.newTemp(dt, elems, 1);
     };
 
@@ -669,7 +669,8 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
 
         // Try to allocate/release a temporary buffer to avoid
         // out_of_registers exception.
-        auto tile_grfs = utils::div_up(dst_tile_layout.size(), grf_size);
+        auto tile_grfs
+                = into<int>(utils::div_up(dst_tile_layout.size(), grf_size));
         ngen::GRFRange dummy;
         plan.alloc_grf(tile_grfs, dummy);
         if (dummy.isInvalid()) continue;

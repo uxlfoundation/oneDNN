@@ -42,12 +42,12 @@ enum class sdpa_property : int {
     fma = 0x8
 };
 
-inline sdpa_property operator|(sdpa_property a, sdpa_property b);
-inline sdpa_property operator&(sdpa_property a, sdpa_property b);
-inline sdpa_property operator^(sdpa_property a, sdpa_property b);
-inline sdpa_property &operator|=(sdpa_property &a, sdpa_property b);
-inline sdpa_property &operator&=(sdpa_property &a, sdpa_property b);
-inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b);
+sdpa_property operator|(sdpa_property a, sdpa_property b);
+sdpa_property operator&(sdpa_property a, sdpa_property b);
+sdpa_property operator^(sdpa_property a, sdpa_property b);
+sdpa_property &operator|=(sdpa_property &a, sdpa_property b);
+sdpa_property &operator&=(sdpa_property &a, sdpa_property b);
+sdpa_property &operator^=(sdpa_property &a, sdpa_property b);
 
 struct config_query_t {
     static constexpr int any = -1;

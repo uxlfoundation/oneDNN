@@ -545,9 +545,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #endif
 
+        /* Prepare k mask: NaN in bounds, -inf out of bounds */
         kmask_tile_type_float k_mask;
         if (remainder_k) {
-/* Prepare k mask: NaN in bounds, -inf out of bounds */
 #pragma unroll
             for (int ii = 0; ii < ugemm_kq_sg_tile_m / SUBGROUP_SIZE; ii++) {
                 k_mask.x[0][ii] = (k0 + sg_i0_kq + ii * SUBGROUP_SIZE

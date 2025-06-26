@@ -108,7 +108,7 @@ struct micro_sdpa_t : public gpu_primitive_t {
         static constexpr int mask_k_index = 3;
         static constexpr int ndims = 4;
 
-        DECLARE_COMMON_PD_T("ocl:micro:any", micro_sdpa_t);
+        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_sdpa_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

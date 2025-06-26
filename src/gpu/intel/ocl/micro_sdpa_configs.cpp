@@ -67,6 +67,13 @@ std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
     return s;
 }
 
+// A matching config is a combination of mandatory and optional requirements
+// it is assumed the query criteria are specific whereas key criteria may be approximate
+// sorting all available configs will order them from most to least specific allowing
+// exact matches to happen before approxiate matches
+// head size and sequence length must strictly match the inequality with a caveat for
+// the more general key criteria "any = -1"
+// properties must match exactly if they are specified in the key criteria
 bool operator==(const config_record_t &key, const config_query_t &query) {
     bool result = ((query.arch == key.criteria.arch)
             && (query.head_size <= key.criteria.head_size)
@@ -163,8 +170,9 @@ static auto constexpr integrated = sdpa_property::integrated;
 static auto constexpr fma = sdpa_property::fma;
 
 // Kernel configurations: [ arch, head_size, {sequence length}, {properties} ] -> config
-static std::vector<config_record_t> configs = {
-        // clang-format off
+static std::vector<config_record_t> sorted_configs = []() {
+    std::vector<config_record_t> configs = {
+            // clang-format off
         // xe_hpg
         {{compute::gpu_arch_t::xe_hpg, 32},               {32, 16, 16, 16, 2, 16, 2, 16}},
         {{compute::gpu_arch_t::xe_hpg, 32, 256},          {16, 16, 16, 16, 2, 8, 2, 8}},
@@ -194,7 +202,6 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe_hpg, 64,      quantized | second_token}, {16, 16, 8, 8, 16, 2, 8, 4}},
         {{compute::gpu_arch_t::xe_hpg, 64, 128, quantized | second_token}, {16, 8, 8, 8, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpg, 64, 64,  quantized | second_token}, {8, 8, 8, 8, 8, 2, 8, 2}},
-
 
         {{compute::gpu_arch_t::xe_hpg, 80, fma}, {8, 16, 16, 16, 8, 4, 8, 4}},
 
@@ -435,29 +442,38 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe2, 512, 64,   integrated | second_token | quantized}, {16, 32, 64, 32, 16, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}}
-        // clang-format on
-};
+            // clang-format on
+    };
+
+    // ensures configs appear in order of most to least defined/desirable
+    std::sort(std::begin(configs), std::end(configs));
+    return configs;
+}();
+
+sdpa_property set_properties(
+        bool thin_q, bool quantized, bool integrated, bool fma) {
+    sdpa_property properties = sdpa_property::none;
+    if (thin_q) { properties |= sdpa_property::second_token; }
+    if (quantized) { properties |= sdpa_property::quantized; }
+    if (integrated) { properties |= sdpa_property::integrated; }
+    if (fma) { properties |= sdpa_property::fma; }
+    return properties;
+}
 
 sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
     if (fma && quantized) return nullptr;
 
-    // ensures configs appear in order of most to least defined/desirable
-    std::sort(std::begin(configs), std::end(configs));
-
-    sdpa_property query_properties = sdpa_property::none;
-    if (thin_q) { query_properties |= sdpa_property::second_token; }
-    if (quantized) { query_properties |= sdpa_property::quantized; }
-    if (integrated) { query_properties |= sdpa_property::integrated; }
-    if (fma) { query_properties |= sdpa_property::fma; }
-
-    compute::gpu_arch_t arch_query = (arch == compute::gpu_arch_t::xe3)
+    compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
             ? compute::gpu_arch_t::xe2
             : arch;
+    sdpa_property query_properties
+            = set_properties(thin_q, quantized, integrated, fma);
+
     config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
-    auto it = find(begin(configs), end(configs), query);
-    if (it != end(configs)) { return &it->config; }
+    auto it = find(begin(sorted_configs), end(sorted_configs), query);
+    if (it != end(sorted_configs)) { return &it->config; }
     return nullptr;
 }
 
@@ -467,16 +483,17 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
 // excessive recompilation with smaller power of 2 sizes
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
-    sdpa_property query_properties = sdpa_property::none;
-    if (thin_q) { query_properties |= sdpa_property::second_token; }
-    if (quantized) { query_properties |= sdpa_property::quantized; }
-    if (integrated) { query_properties |= sdpa_property::integrated; }
-    if (fma) { query_properties |= sdpa_property::fma; }
 
-    config_query_t query(arch, static_cast<int>(head_size),
+    compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
+            ? compute::gpu_arch_t::xe2
+            : arch;
+    sdpa_property query_properties
+            = set_properties(thin_q, quantized, integrated, fma);
+
+    config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
-    auto it = find(begin(configs), end(configs), query);
-    if (it != end(configs)) { return it->criteria.seq_len; }
+    auto it = find(begin(sorted_configs), end(sorted_configs), query);
+    if (it != end(sorted_configs)) { return it->criteria.seq_len; }
     return utils::rnd_up_pow2(seq);
 }
 

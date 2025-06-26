@@ -561,7 +561,7 @@ status_t micro_sdpa_params_t::get_kernel_ctx(
         if (block_q) kernel_ctx.define_int("BLOCK_Q", 1);
         if (block_a) kernel_ctx.define_int("BLOCK_A", 1);
         if (block_msk) kernel_ctx.define_int("BLOCK_MSK", 1);
-    } else if (arch_gte_hpc) {
+    } else if (arch_gte_hpc && ukernel_config.unroll_m_vs < 64) {
         if (block_2d_a) kernel_ctx.define_int("BLOCK_2D_A", 1);
     }
 
@@ -746,14 +746,14 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     append_offs(arg_list, dst_off);
 
     if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
-    const bool remainder_k = (K % kq_wg_tile_m) != 0;
+    const int remainder_k = (K % kq_wg_tile_m) != 0;
 
     auto *d = pd()->desc();
     const bool d_full = (d->head_size() == pd()->d_max());
-    const bool remainder_q = d_full && ((Q % kq_wg_tile_n) != 0);
+    const int remainder_q = d_full && ((Q % kq_wg_tile_n) != 0);
 
-    arg_list.append(static_cast<int>(remainder_k));
-    arg_list.append(static_cast<int>(remainder_q));
+    arg_list.append(remainder_k);
+    arg_list.append(remainder_q);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

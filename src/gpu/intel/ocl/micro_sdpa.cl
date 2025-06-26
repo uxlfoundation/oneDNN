@@ -314,7 +314,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     /* Calculate the number of keys to process */
     int k0end = k;
 #if WITH_CAUSAL_MASK
-    k0end = min(k, (int)(wg_j0 + ugemm_kq_wg_tile_n) - (q - k));
+    if (attn_mask_type == ATTN_MASK_TOP_LEFT) {
+        k0end = min(k, (int)(wg_j0 + ugemm_kq_wg_tile_n));
+    } else {
+        k0end = min(k, (int)(wg_j0 + ugemm_kq_wg_tile_n) - (q - k));
+    }
 #endif
 
     /* Leading dimension for matrices */

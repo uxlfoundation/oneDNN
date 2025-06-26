@@ -154,3 +154,14 @@
 
 # regression tests
 --reset --dt=f32,bf16,f16 --in-shapes=0:1x8x4096x16+1:1x8x5x16+5:1x1x4096x5+8:1x8x5x16 --case=complex_fusion/mha/sdpa-plain-simplified-f16.json
+
+# causal mask with Q larger than K/V
+--reset
+--dt=15:f32+16:f32+5:f32+21:f32
+--in-shapes=0:2x10x64x77*abdc+1:2x10x1x77+2:2x10x1x77+3:2x10x2304x64+6:2x10x77x64+7:2x10x77x1+8:2x10x77x1
+--op-attrs=0:group_shape:1x1x64x1+8:group_shape:1x1x1x64
+--case=complex_fusion/mha/sdpa-compressed-kv-implicit-causal-mask-int8-gs128.json
+
+--reset --dt=1:bf16+2:bf16+3:bf16+6:bf16+104:bf16 --in-shapes=1:2x10x2304x64*acbd+2:2x10x77x64*acbd+3:2x10x77x64*acbd --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
+--reset --dt=1:f16+2:f16+3:f16+6:f16+104:f16 --in-shapes=1:2x10x2304x64*acbd+2:2x10x77x64*acbd+3:2x10x77x64*acbd --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
+--reset --in-shapes=1:2x10x2304x64*acbd+2:2x10x77x64*acbd+3:2x10x77x64*acbd --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json

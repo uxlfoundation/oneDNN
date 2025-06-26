@@ -17,9 +17,12 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_REORDER_HPP
 #define GPU_INTEL_JIT_CODEGEN_REORDER_HPP
 
+#include <functional>
+
 #include "common/utils.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
+#include "gpu/intel/jit/gemm/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/utils/iterator.hpp"
@@ -1481,6 +1484,64 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     }
 }
 
+struct copy_operand_t : gemmstone::CopyOperand {
+    copy_operand_t() = default;
+    copy_operand_t(const CopyOperand &op) : CopyOperand(op) {}
+    copy_operand_t(const reg_buf_data_t &rbd);
+
+    copy_operand_t &advance(ngen::HW hw, int elems, uint8_t stride = 1);
+
+    std::vector<int> block_bases;
+    int block_size = 0;
+    int block_off = 0;
+};
+
+struct copy_plan_t : gemmstone::CopyPlan {
+    using gemmstone::CopyPlan::newTemp;
+
+    copy_plan_t(ngen_register_scope_t &scope, bool systolic_support)
+        : CopyPlan(scope.hw(), systolic_support), scope_(scope) {}
+
+    ngen::HW hw() const { return CopyPlan::hw; }
+
+    void mov(int simd, ngen::InstructionModifier mod, const copy_operand_t &dst,
+            const copy_operand_t &src);
+
+    void mov(int simd, const copy_operand_t &dst, const copy_operand_t &src) {
+        return mov(simd, {}, dst, src);
+    }
+
+    template <typename Generator>
+    void execute(Generator &generator) {
+        using namespace std::placeholders;
+        GRFAllocator grf = std::bind(&copy_plan_t::alloc_grf, this, _1, _2);
+        FlagAllocator flag = std::bind(&copy_plan_t::alloc_flag, this, _1, _2);
+        CopyPlan::materializeTemps(grf, flag);
+        CopyPlan::execute(generator);
+    }
+
+    void alloc_grf(int count, ngen::GRFRange &range) {
+        if (count > 0)
+            range = scope_.try_alloc_range(count);
+        else
+            scope_.safeRelease(range);
+    }
+
+    void alloc_flag(int bytes, ngen::FlagRegister &flag) {
+        if (bytes > 0)
+            flag = scope_.try_alloc_flag(bytes * 8);
+        else
+            scope_.safeRelease(flag);
+    }
+
+    int phase = 0;
+
+protected:
+    using CopyPlan::materializeTemps;
+
+    ngen_register_scope_t &scope_;
+};
+
 template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const reg_buf_data_t &dst,
@@ -1562,6 +1623,16 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     align_src_dst_offset(host, scope, mod, dst, src0);
     align_src_dst_offset(host, scope, mod, dst, src1);
 }
+
+struct reorder_operand_t {
+    layout_t layout;
+    copy_operand_t buffer;
+
+    const type_t &type() const { return layout.type(); }
+    bool operator==(const reorder_operand_t &other) const {
+        return layout == other.layout && buffer == other.buffer;
+    }
+};
 
 // Implementation of GRF reorder between 2D dense layouts.
 // Requirements for A -> B reorder:

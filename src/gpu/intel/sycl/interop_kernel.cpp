@@ -204,7 +204,7 @@ status_t interop_kernel_t::check_alignment(
             continue;
         auto *m = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
                 mem_storage);
-        CHECK(compute::kernel_impl_t::check_alignment(m->usm_ptr()));
+        CHECK(compute::kernel_impl_t::check_alignment(m->usm_ptr(), i));
     }
     return status::success;
 }

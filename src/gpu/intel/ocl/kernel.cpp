@@ -261,7 +261,7 @@ status_t kernel_t::check_alignment(
         auto *m = utils::downcast<const xpu::ocl::usm_memory_storage_t *>(
                 ocl_mem_storage);
         auto *usm_ptr = m->usm_ptr();
-        CHECK(compute::kernel_impl_t::check_alignment(usm_ptr));
+        CHECK(compute::kernel_impl_t::check_alignment(usm_ptr, i));
     }
     return status::success;
 }

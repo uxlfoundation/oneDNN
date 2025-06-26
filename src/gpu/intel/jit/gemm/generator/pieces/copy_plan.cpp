@@ -192,6 +192,8 @@ void CopyInstruction::moveToIntegerPipe()
             if (src0.stride == 1 && dst.stride == 1) {
                 st = dt = DataType::ud;
                 simd *= 2;
+                src0.offset *= 2;
+                dst.offset *= 2;
             } else
                 st = dt = DataType::uq;
             break;

@@ -1355,7 +1355,7 @@ void CopyPlan::planEmulatedFP8E8M0ToHF(CopyInstruction &i) {
 
     bool tempY = (y.stride > 1 && multiGRF(hw, i, y));
     if (tempY)  /* Replace y by temporary if nonunit stride hurts performance */
-        y = newTemp(DataType::uw, i.simd, 1);
+        y = newTemp(DataType::hf, i.simd, 1);
 
     auto yW = y;
     yW.type = DataType::w;
@@ -1459,7 +1459,7 @@ void CopyPlan::planEmulatedHF8ToHF(CopyInstruction &i)
 
     bool tempY = (y.stride > 1 && multiGRF(hw, i, y));
     if (tempY)  /* Replace y by temporary if nonunit stride hurts performance */
-        y = newTemp(DataType::uw, i.simd, 1);
+        y = newTemp(DataType::hf, i.simd, 1);
 
     auto yUW = y;
     yUW.type = DataType::uw;
@@ -1540,7 +1540,7 @@ void CopyPlan::planEmulatedF4E2M1ToHF(CopyInstruction &i) {
 
     bool tempY = (y.stride > 1 && multiGRF(hw, i, y));
     if (tempY)  /* Replace y by temporary if nonunit stride hurts performance */
-        y = newTemp(DataType::uw, i.simd, 1);
+        y = newTemp(DataType::hf, i.simd, 1);
 
     auto yUW = y;
     yUW.type = DataType::uw;
@@ -1758,7 +1758,7 @@ void CopyPlan::planEmulatedE3M0ToHF(CopyInstruction &i)
 
     bool tempY = (y.stride > 1 && multiGRF(hw, i, y));
     if (tempY)  /* Replace y by temporary if nonunit stride hurts performance */
-        y = newTemp(DataType::uw, i.simd, 1);
+        y = newTemp(DataType::hf, i.simd, 1);
 
     auto yUW = y;
     yUW.type = DataType::uw;

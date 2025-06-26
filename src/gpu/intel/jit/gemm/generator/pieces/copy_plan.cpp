@@ -2743,6 +2743,87 @@ void CopyPlan::optimizeMoveToIntPipe()
     }
 }
 
+struct AllocationManager {
+    ngen::HW hw;
+    const CopyPlan::GRFAllocator &grfAllocator;
+    const CopyPlan::FlagAllocator &flagAllocator;
+
+    AllocationManager(ngen::HW hw, const CopyPlan::GRFAllocator &grfAllocator, const CopyPlan::FlagAllocator &flagAllocator)
+        : hw(hw), grfAllocator(grfAllocator), flagAllocator(flagAllocator) {}
+    ~AllocationManager() {
+        for (auto &alloc : grfAllocations) grfAllocator(0, alloc.range);
+        for (auto &alloc : flagAllocations) flagAllocator(0, alloc.flag);
+        grfAllocations.clear();
+        flagAllocations.clear();
+    }
+
+    void reserve(size_t size) {
+        grfAllocations.reserve(size);
+        flagAllocations.reserve(size);
+    }
+
+    bool allocate(CopyTemporary &temp) {
+        if (temp.flag)
+            return allocateFlag(temp);
+        return allocateRange(temp);
+    }
+
+    void release(int cnum) {
+        release(cnum, grfAllocations);
+        release(cnum, flagAllocations);
+    }
+
+private:
+    template <typename AllocationType>
+    void release(int cnum, std::vector<AllocationType> &allocs) {
+        for (size_t i = 0; i < allocs.size();) {
+            auto &alloc = allocs[i];
+            if (alloc.cnum < cnum) {
+                dealloc(alloc);
+                std::swap(allocs[i], allocs[allocs.size() - 1]);
+                allocs.pop_back();
+            } else
+                ++i;
+        }
+    }
+
+protected:
+    struct GRFAllocation {
+        GRFRange range;
+        int cnum;
+    };
+
+    struct FlagAllocation {
+        FlagRegister flag;
+        int cnum;
+    };
+
+    void dealloc(GRFAllocation &alloc) { grfAllocator(0, alloc.range); }
+    void dealloc(FlagAllocation &alloc) { flagAllocator(0, alloc.flag); }
+
+    bool allocateFlag(CopyTemporary &temp) {
+        FlagRegister flag;
+        flagAllocator(temp.bytes, flag);
+        if (!flag.isValid()) return false;
+        temp.assignment = flag.index();
+        flagAllocations.push_back({flag, temp.cnumMax});
+        return true;
+    }
+
+    bool allocateRange(CopyTemporary &temp) {
+        GRFRange range;
+        auto grfs = div_up(temp.bytes, GRF::bytes(hw));
+        grfAllocator(grfs, range);
+        if (!range.isValid()) return false;
+        temp.assignment = range.getBase();
+        grfAllocations.push_back({range, temp.cnumMax});
+        return true;
+    }
+
+    std::vector<GRFAllocation> grfAllocations;
+    std::vector<FlagAllocation> flagAllocations;
+};
+
 // Materialize temporary GRF and flag registers in a copy plan, replacing
 //   them by physical GRF and flag registers.
 // Instructions will be reordered as needed if there are not enough temporary
@@ -2750,14 +2831,12 @@ void CopyPlan::optimizeMoveToIntPipe()
 void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllocator &flagAllocator)
 {
     std::vector<CopyInstruction> sortedInsns;
-    std::vector<GRFRange> grfAllocs;
-    std::vector<FlagRegister> flagAllocs;
-    int ncnum = 0;
+    AllocationManager manager(hw, grfAllocator, flagAllocator);
     uint16_t minPhaseTemp = 0xFFFF, maxPhaseTemp = 0xFFFF;
+    int ncnum = 0;
 
     sortedInsns.reserve(insns.size());
-    grfAllocs.reserve(temps.size());
-    flagAllocs.reserve(temps.size());
+    manager.reserve(temps.size());
 
     /* Round up instruction usage by each temporary */
     for (const auto &i: insns) {
@@ -2788,42 +2867,23 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
         cnumOrder.push_back(std::make_pair(temps[t].cnumMin, int(t)));
     std::sort(cnumOrder.begin(), cnumOrder.end());
 
+    auto emit = [&](int cnumMin, int cnumMax, uint16_t minPhase, uint16_t maxPhase) {
+        for (const auto &i: insns)
+            if (i.cnumMin >= cnumMin && i.cnumMax < cnumMax && i.phase >= minPhase && i.phase <= maxPhase)
+                sortedInsns.push_back(i);
+    };
+
     /* Issue instructions up to first temporary */
-    for (const auto &i: insns) {
-        if (i.phase >= minPhaseTemp) break;
-        sortedInsns.push_back(i);
-    }
+    if (minPhaseTemp > 0x0000)
+        emit(0, ncnum, 0x0000, minPhaseTemp - 1);
 
-    /* Main loop */
-    for (int cnum0 = 0; cnum0 < ncnum; ) {
-        int cnum1 = ncnum;
-
-        /* Allocate temporaries until we run out of space */
-        for (size_t ti = 0; ti < temps.size(); ti++) {
-            auto &temp = temps[cnumOrder[ti].second];
-            bool ok = false;
-
-            if (temp.cnumMax < cnum0) continue;
-
-            if (temp.flag) {
-                FlagRegister flag;
-                flagAllocator(temp.bytes, flag);
-                ok = flag.isValid();
-                if (ok) {
-                    flagAllocs.push_back(flag);
-                    temp.assignment = flag.index();
-                }
-            } else {
-                GRFRange range;
-                grfAllocator(div_up(temp.bytes, GRF::bytes(hw)), range);
-                ok = range.isValid();
-                if (ok) {
-                    grfAllocs.push_back(range);
-                    temp.assignment = range.getBase();
-                }
-            }
-
-            if (!ok) {
+    auto order = cnumOrder.begin();
+    const auto end = cnumOrder.end();
+    int cnum0 = 0, cnum1 = ncnum;
+    while (order != end) {
+        for (; order != end; ++order) {
+            auto &temp = temps[order->second];
+            if (!manager.allocate(temp)) {
                 cnum1 = temp.cnumMin; break;
             }
         }
@@ -2835,24 +2895,18 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
             throw out_of_registers_exception();
 
         /* Issue instructions for this batch of instruction groups */
-        for (const auto &i: insns)
-            if (i.cnumMin >= cnum0 && i.cnumMax < cnum1 && i.phase >= minPhaseTemp && i.phase <= maxPhaseTemp)
-                sortedInsns.push_back(i);
+        emit(cnum0, cnum1, minPhaseTemp, maxPhaseTemp);
 
-        /* Release temporaries for next round. */
-        for (auto &range: grfAllocs) grfAllocator(0, range);
-        for (auto &flag: flagAllocs) flagAllocator(0, flag);
-
-        grfAllocs.clear();
-        flagAllocs.clear();
-
+        manager.release(cnum1);
         cnum0 = cnum1;
+        cnum1 = ncnum;
     }
 
-    /* Issue instructions after last temporary */
-    for (const auto &i: insns)
-        if (i.phase > maxPhaseTemp)
-            sortedInsns.push_back(i);
+    /* Issue any remaining instructions */
+    if (cnum0 < ncnum)
+        emit(cnum0, cnum1, minPhaseTemp, maxPhaseTemp);
+    if (maxPhaseTemp < 0xFFFF)
+        emit(0, ncnum, maxPhaseTemp + 1, 0xFFFF);
 
     std::swap(insns, sortedInsns);
 

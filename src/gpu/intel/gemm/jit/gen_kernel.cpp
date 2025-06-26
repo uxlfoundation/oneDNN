@@ -281,7 +281,8 @@ status_t gen_desc_t::finalize(const char *tags) {
 
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
-    problem_.autoTypeConversions(hw_, strategy_.systolicAvailable);
+    if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
+        problem_.autoTypeConversions(hw_, strategy_.systolicAvailable);
     try {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }
@@ -548,7 +549,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     problem_.postOps.cStochasticRound = dst_sround;
 
-    problem_.autoTypeConversions(hw_, has_systolic);
+    if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
+        problem_.autoTypeConversions(hw_, has_systolic);
 
     if (problem_.needsAGroupSums()) {
         problem_.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);

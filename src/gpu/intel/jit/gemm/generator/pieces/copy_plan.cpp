@@ -2928,9 +2928,9 @@ void CopyOperand::dump() const
     auto outType = [](DataType dt) {
         if (dt == Type::ngen_f8_e8m0())
             std::cout << "e8m0";
-        if (dt == Type::ngen_f4_e2m1())
+        else if (dt == Type::ngen_f4_e2m1())
             std::cout << "e2m1";
-        if (dt == Type::ngen_f4_e3m0())
+        else if (dt == Type::ngen_f4_e3m0())
             std::cout << "e3m0";
         else
             std::cout << dt;

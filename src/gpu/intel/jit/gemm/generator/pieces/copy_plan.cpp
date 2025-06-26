@@ -2988,12 +2988,14 @@ void CopyInstruction::dump(const CopyPlan &plan) const
 void CopyOperand::dump() const
 {
     auto outType = [](DataType dt) {
-        if (dt == Type::ngen_nf4())     std::cout << "nf4";
-        if (dt == Type::ngen_e8m0())    std::cout << "e8m0";
-        else if (dt == ngen_uw_sb())    std::cout << "uw_sb";
-        else if (dt == ngen_uw_ss4())   std::cout << "uw_ss4";
-        else if (dt == ngen_b16())      std::cout << "b16";
-        else                            std::cout << dt;
+        if (dt == Type::ngen_nf4())       std::cout << "nf4";
+        else if (dt == Type::ngen_e8m0()) std::cout << "e8m0";
+        else if (dt == Type::ngen_e2m1()) std::cout << "e2m1";
+        else if (dt == Type::ngen_e3m0()) std::cout << "e3m0";
+        else if (dt == ngen_uw_sb())      std::cout << "uw_sb";
+        else if (dt == ngen_uw_ss4())     std::cout << "uw_ss4";
+        else if (dt == ngen_b16())        std::cout << "b16";
+        else                              std::cout << dt;
     };
 
     if (neg) std::cout << '-';

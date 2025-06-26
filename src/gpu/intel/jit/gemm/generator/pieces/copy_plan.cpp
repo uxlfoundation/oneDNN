@@ -2113,7 +2113,11 @@ void CopyPlan::legalizeRegions()
                     if (i.dst.stride == 1 && i.src0.stride == 1) {
                         int dstBO  = (i.dst.offset  * 4) & (GRF::bytes(hw) - 1);
                         int src0BO = (i.src0.offset * 4) & (GRF::bytes(hw) - 1);
-                        if (dstBO == src0BO)
+                        if (dt == DataType::f && dstBO == src0BO)
+                            continue;
+                        // Spec says this should also be dstBO == src0BO, but HW
+                        // doesn't behave that way. Half-GRF alignment seems fine.
+                        if (dt == DataType::hf && dstBO == 0 && src0BO == 0)
                             continue;
                     }
                 }

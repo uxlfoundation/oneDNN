@@ -237,6 +237,7 @@ void CopyPlan::transform()
 
     legalizeSIMD(true);
     planTypeConversions();
+    emulateBooleanFunction();
 
     sort(SortType::Register);
 
@@ -917,6 +918,65 @@ void CopyPlan::planUnpack8To16High(CopyInstruction &i)
     i1.src0 = i0.dst;
     i1.src0.type = ngen_b16();
     i1.src0.range = st;
+}
+
+// Emulate bfn instructions on pre-Gen12HP architectures.
+// Only handles bfn.0xCA currently.
+void CopyPlan::emulateBooleanFunction() {
+    if (hw > HW::Gen12LP) return;
+
+    for (auto &i: insns) {
+        if (i.op != Opcode::bfn) continue;
+        if (i.ctrl != 0xCA) stub();
+
+        auto dst = i.dst, src0 = i.src0, src1 = i.src1, src2 = i.src2;
+
+        // (s0 & ~s2) | (s1 & s2)
+        // t1 <- s0 & ~s2
+        // t2 <- s1 & s2
+        // d <- t2 | t1
+
+        auto ie = splitMultiple<3>(i);
+        ie[0]->op = Opcode::and_;
+        ie[1]->op = Opcode::and_;
+        ie[2]->op = Opcode::or_;
+        for (auto &ins: ie)
+            ins->src2 = {};
+
+        CopyOperand invSrc2 = src2, t1, t2;
+
+        if (src2.kind == CopyOperand::Immediate) {
+            const uint32_t mask = src2.value & ~0xFFFF ? 0xFFFFFFFF : 0xFFFF;
+            invSrc2.value = (~invSrc2.value) & mask;
+        }
+        else
+            invSrc2.neg = true;
+
+        if (src0.kind == CopyOperand::Immediate && src2.kind == CopyOperand::Immediate) {
+            t1.type = dst.type;
+            t1.kind = CopyOperand::Immediate;
+            t1.value = src0.value & invSrc2.value;
+            ie[0]->invalidate();
+        } else if (src0.kind == CopyOperand::Immediate) {
+            ie[0]->src0 = invSrc2;
+            ie[0]->src1 = src0;
+            ie[0]->dst = t1 = dst;
+        } else if (src2.kind == CopyOperand::Immediate) {
+            ie[0]->src0 = src0;
+            ie[0]->src1 = invSrc2;
+            ie[0]->dst = t1 = dst;
+        }
+
+        t2 = newTemp(dst.type, i.simd, dst.stride);
+        ie[1]->src0 = src1;
+        ie[1]->src1 = src2;
+        ie[1]->dst = t2;
+
+        ie[2]->src0 = t2;
+        ie[2]->src1 = t1;  // t1 might be an immediate
+        ie[2]->dst = dst;
+    }
+    mergeChanges();
 }
 
 // uw->hf sequence when source range is uint10 or smaller.
@@ -1654,7 +1714,7 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
 {
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
 
-    auto ie = splitMultiple<12>(i);
+    auto ie = splitMultiple<11>(i);
 
     // mad (lt)f0   t1:hf   0x8008:hf  (abs)x:hf  0x0200:hf  /* hf8 denormal check */
     // mul          t0:hf   (abs)x:hf  0x1C00:hf             /* adjust exponent */
@@ -1731,31 +1791,18 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     ie[8]->flag = f1;
     ie[8]->flag.neg = true;
 
-    if (hw >= HW::XeHP) {
-        ie[9]->op = Opcode::bfn;
-        ie[9]->dst = ie[9]->src0 = t0UW;
-        ie[9]->src1 = x;
-        ie[9]->src1.type = DataType::uw;
-        ie[9]->src2 = 0x8000;
-        ie[9]->ctrl = 0xCA;
-        ie[10]->invalidate();
-    } else {
-        ie[9]->op = Opcode::and_;
-        ie[9]->dst = t1UW;
-        ie[9]->src0 = x;
-        ie[9]->src0.type = DataType::uw;
-        ie[9]->src1 = 0x8000;
+    ie[9]->op = Opcode::bfn;
+    ie[9]->dst = ie[9]->src0 = t0UW;
+    ie[9]->src1 = x;
+    ie[9]->src1.type = DataType::uw;
+    ie[9]->src2 = 0x8000;
+    ie[9]->ctrl = 0xCA;
 
-        ie[10]->op = Opcode::or_;
-        ie[10]->dst = ie[10]->src0 = t0UW;
-        ie[10]->src1 = t1UW;
-    }
-
-    ie[11]->op = Opcode::mov;
-    ie[11]->src0 = t0;
-    ie[11]->src0.type = ie[11]->dst.type = DataType::ub;
-    ie[11]->src0.stride *= 2;
-    ie[11]->src0.offset++;
+    ie[10]->op = Opcode::mov;
+    ie[10]->src0 = t0;
+    ie[10]->src0.type = ie[10]->dst.type = DataType::ub;
+    ie[10]->src0.stride *= 2;
+    ie[10]->src0.offset++;
 }
 
 // hf->e2m1/e3m0 sequences.
@@ -1790,7 +1837,7 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         return;
     }
 
-    auto ie = splitMultiple<12>(i);
+    auto ie = splitMultiple<11>(i);
 
     auto t0 = newTemp(DataType::hf, i.simd, 1);
     auto t1 = newTemp(DataType::hf, i.simd, 1);
@@ -1847,36 +1894,22 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
     ie[7]->src1 = Immediate::uw(e2m1 ? 3 : 2);
 
     // Restore sign.
-    if (hw >= HW::XeHP) {
-        ie[8]->op = Opcode::bfn;
-        ie[8]->src0 = ie[8]->dst = t0UW;
-        ie[8]->src1 = x;
-        ie[8]->src1.type = DataType::uw;
-        ie[8]->src2 = 0x8000;
-        ie[8]->ctrl = 0xCA;
-
-        ie[9]->invalidate();
-    } else {
-        ie[8]->op = Opcode::and_;
-        ie[8]->dst = t1UW;
-        ie[8]->src0 = x;
-        ie[8]->src0.type = DataType::uw;
-        ie[8]->src1 = 0x8000;
-
-        ie[9]->op = Opcode::or_;
-        ie[9]->dst = ie[9]->src0 = t0UW;
-        ie[9]->src1 = t1UW;
-    }
+    ie[8]->op = Opcode::bfn;
+    ie[8]->src0 = ie[8]->dst = t0UW;
+    ie[8]->src1 = x;
+    ie[8]->src1.type = DataType::uw;
+    ie[8]->src2 = 0x8000;
+    ie[8]->ctrl = 0xCA;
 
     // Pack into bytes.
-    ie[10]->op = Opcode::shr;
-    ie[10]->src0 = ie[10]->dst = t0UW;
-    ie[10]->src1 = Immediate::uw(12);
+    ie[9]->op = Opcode::shr;
+    ie[9]->src0 = ie[9]->dst = t0UW;
+    ie[9]->src1 = Immediate::uw(12);
 
-    ie[11]->op = Opcode::mov;
-    ie[11]->dst = y;
-    ie[11]->dst.type = DataType::u4;
-    ie[11]->src0 = t0UW;
+    ie[10]->op = Opcode::mov;
+    ie[10]->dst = y;
+    ie[10]->dst.type = DataType::u4;
+    ie[10]->src0 = t0UW;
 }
 
 // Check that no types smaller than a byte are present.

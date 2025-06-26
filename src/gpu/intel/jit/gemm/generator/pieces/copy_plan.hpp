@@ -221,6 +221,7 @@ protected:
     void planEmulatedNF4ToHF(CopyInstruction &i);
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
+    void emulateBooleanFunction();
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();

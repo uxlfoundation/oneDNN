@@ -228,6 +228,7 @@ void CopyPlan::transform()
 
     legalizeSIMD(true);
     planTypeConversions();
+    emulateBooleanFunction();
 
     sort(SortType::Register);
 
@@ -789,6 +790,65 @@ void CopyPlan::planTypeConversions()
     mergeChanges();
     if (rerun)
         planTypeConversions();
+}
+
+void CopyPlan::emulateBooleanFunction() {
+    if (hw > HW::Gen12LP) return;
+
+    for (auto &i: insns) {
+        if (i.op != Opcode::bfn) continue;
+        if (i.ctrl != 0xCA) stub();
+
+        auto dst = i.dst, src0 = i.src0, src1 = i.src1, src2 = i.src2;
+
+        // (s0 & ~s2) | (s1 & s2)
+        // t1 <- s0 & ~s2
+        // t2 <- s1 & s2
+        // d <- t2 | t1
+
+        auto ie = splitMultiple<3>(i);
+        ie[0]->op = Opcode::and_;
+        ie[1]->op = Opcode::and_;
+        ie[2]->op = Opcode::or_;
+        for (auto &ins: ie)
+            ins->src2 = {};
+
+        CopyOperand invSrc2 = src2, t1, t2;
+
+        if (src2.kind == CopyOperand::Immediate) {
+            const uint32_t mask = src2.value & ~0xFFFF ? 0xFFFFFFFF : 0xFFFF;
+            invSrc2.value = (~invSrc2.value) & mask;
+        }
+        else
+            invSrc2.inv = true;
+
+        if (src0.kind == CopyOperand::Immediate && src2.kind == CopyOperand::Immediate) {
+            t1.type = dst.type;
+            t1.kind = CopyOperand::Immediate;
+            t1.value = src0.value & invSrc2.value;
+            ie[0]->invalidate();
+        } else if (src0.kind == CopyOperand::Immediate) {
+            t1 = newTemp(dst.type, i.simd, dst.stride);
+            ie[0]->src0 = invSrc2;
+            ie[0]->src1 = src0;
+            ie[0]->dst = t1;
+        } else if (src2.kind == CopyOperand::Immediate) {
+            t1 = newTemp(dst.type, i.simd, dst.stride);
+            ie[0]->src0 = src0;
+            ie[0]->src1 = invSrc2;
+            ie[0]->dst = t1;
+        }
+
+        t2 = newTemp(dst.type, i.simd, dst.stride);
+        ie[1]->src0 = src1;
+        ie[1]->src1 = src2;
+        ie[1]->dst = t2;
+
+        ie[2]->src0 = t2;
+        ie[2]->src1 = t1;  // t1 might be an immediate
+        ie[2]->dst = dst;
+    }
+    mergeChanges();
 }
 
 // uw->hf sequence when source range is uint10 or smaller.
@@ -1380,7 +1440,6 @@ void CopyPlan::planEmulatedFP8E8M0ToHF(CopyInstruction &i) {
 void CopyPlan::planEmulatedHF8ToHF(CopyInstruction &i)
 {
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
-    if (hw < HW::XeHP) stub("Unsupported HW");
 
     auto ie = splitMultiple<8>(i);
 
@@ -1756,7 +1815,6 @@ void CopyPlan::planEmulatedE3M0ToHF(CopyInstruction &i)
 void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
 {
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
-    if (hw < HW::XeHP) stub("Unsupported HW");
 
     auto ie = splitMultiple<10>(i);
 

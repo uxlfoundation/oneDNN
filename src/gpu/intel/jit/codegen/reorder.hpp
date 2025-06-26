@@ -1728,27 +1728,25 @@ public:
     const tile_t &tile() const { return tile_; }
     const std::vector<reorder_step_t> &path() const { return path_; }
 
-    template <typename GeneratorT>
-    void emit(GeneratorT *host, ngen_register_scope_t &scope,
-            const reg_buf_data_t &src_rd, const reg_buf_data_t &dst_rd) {
+    void emit(copy_plan_t &plan, copy_operand_t &src, copy_operand_t &dst) {
         auto &orig_type = src_.type();
+        auto orig_bits = orig_type.bitsize();
 
         // Allocate a temporary GRF buffer if needed.
-        reg_buf_data_t tmp;
-        if (path_.size() > 1) {
-            const int grf_size = ngen::GRF::bytes(hw_);
-            tmp = scope.alloc_reg_buf_data(
-                    utils::div_up(dst_.size(), grf_size));
-        }
+        copy_operand_t tmp;
+        const auto &type = dst_.type();
+        auto elems = dst_.size() * type.packing() / type.size();
+        if (path_.size() > 1) tmp = plan.newTemp(to_ngen(type), elems, 1);
 
         // Iterate through found reorders.
         auto *prev_layout = &src_;
-        auto prev_rd = src_rd;
+        auto prev_op = src;
         int path_len = int(path_.size());
         for (int i = 0; i < path_len; i++) {
             auto &step = path_[i];
             auto &tile = step.tile;
             auto &type = step.type;
+            auto type_bits = type.bitsize();
             auto *next_layout = &step.layout;
 
             // x -> y reorder.
@@ -1756,7 +1754,7 @@ public:
             auto y = next_layout->map(tile).reinterpret(type);
 
             bool use_dst = ((path_len - i) % 2 == 1);
-            auto next_rd = (use_dst ? dst_rd : tmp);
+            copy_operand_t next_op = use_dst ? dst : tmp;
             auto &x_blocks = x.blocks();
             auto &y_blocks = y.blocks();
             gpu_assert(x_blocks.size() <= 1);
@@ -1764,18 +1762,29 @@ public:
             int x_stride = (x_blocks.empty() ? 1 : int(x_blocks[0].stride));
             int y_stride = (y_blocks.empty() ? 1 : int(y_blocks[0].stride));
             int width = int(tile.elems()) * orig_type.size() / type.size();
-            next_layout->for_each_tile(tile, [&](const icoord_t &start) {
-                int prev_off = prev_layout->offset<int>(start)
-                        * orig_type.bitsize() / type.bitsize();
-                int next_off = next_layout->offset<int>(start)
-                        * orig_type.bitsize() / type.bitsize();
-                auto x_sub = prev_rd.format(prev_off, to_ngen(type));
-                auto y_sub = next_rd.format(next_off, to_ngen(type));
-                emit_reorder_1d_tile(hw_, host, scope, width, x_sub, x_stride,
-                        y_sub, y_stride);
-            });
+
+            const auto &src_layout = *prev_layout, &dst_layout = *next_layout;
+            auto swizzle = [&](const icoord_t &start) {
+                auto src = prev_op, dst = next_op;
+                src.type = dst.type = to_ngen(type);
+                src.offset = (uint8_t)(src.offset * orig_bits / type_bits);
+                dst.offset = (uint8_t)(dst.offset * orig_bits / type_bits);
+                auto src_off
+                        = src_layout.offset<int>(start) * orig_bits / type_bits;
+                auto dst_off
+                        = dst_layout.offset<int>(start) * orig_bits / type_bits;
+                src.advance(hw_, src_off);
+                dst.advance(hw_, dst_off);
+                src.stride = (uint8_t)x_stride;
+                dst.stride = (uint8_t)y_stride;
+
+                plan.mov(width, dst, src);
+            };
+
+            dst_layout.for_each_tile(tile, swizzle);
             prev_layout = next_layout;
-            prev_rd = std::move(next_rd);
+            prev_op = next_op;
+            ++plan.phase;
         }
     }
 
@@ -2154,44 +2163,191 @@ public:
         , src_layout_(reorder.src_layout)
         , dst_layout_(reorder.dst_layout) {
         layout_t::try_reinterpret_to_wider_type(src_layout_, dst_layout_);
-
-        // Pure bf moves are not supported.
-        if (utils::everyone_is(
-                    type_t::bf16(), src_layout_.type(), dst_layout_.type())) {
-            src_layout_ = src_layout_.retype(type_t::u16());
-            dst_layout_ = dst_layout_.retype(type_t::u16());
-        }
     }
 
     template <typename GeneratorT>
     void emit(GeneratorT *host, ngen_register_scope_t &scope,
             const reg_buf_data_t &src, const reg_buf_data_t &dst) {
-        if (try_emit_2d(host, scope, src, dst)) return;
-        emit_1d(host, scope, src, dst);
+        copy_plan_t plan(scope, host->exec_cfg().hw().systolic_support());
+
+        auto from_rd = [](const reg_buf_data_t &rd) -> op_init_t {
+            return [&](dim_t elems, ngen::DataType dt) {
+                return rd.format(0, elems, 1, dt);
+            };
+        };
+        op_init_t from_temp = [&](dim_t elems, ngen::DataType dt) {
+            return plan.newTemp(dt, elems, 1);
+        };
+
+        const bool direct_copy = layouts_compatible(src_layout_, dst_layout_);
+        auto src_op = init_operand(src_layout_, from_rd(src));
+        auto dst_op = init_operand(dst_layout_, from_rd(dst));
+
+        const auto &src_dt = src_op.layout.type();
+        const auto &dst_dt = dst_op.layout.type();
+        type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
+        layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
+        layout_t down_layout = make_compact_layout(dst_op.layout, tmp_dt);
+
+        const bool do_pre_conv = src_dt != tmp_dt;
+        const bool do_post_conv = dst_dt != tmp_dt;
+
+        if (direct_copy || !(do_pre_conv || do_post_conv)) {
+            // Pure conversion or pure swizzle
+            emit(plan, dst_op, src_op);
+        } else if (do_pre_conv && do_post_conv) {
+            auto tmp_op = init_operand(up_layout, from_temp);
+            emit(plan, tmp_op, src_op);
+            if (up_layout != down_layout) {
+                // Integer swizzle
+                auto tmp2_op = init_operand(down_layout, from_temp);
+                emit(plan, tmp2_op, tmp_op);
+                std::swap(tmp_op, tmp2_op);
+            }
+            emit(plan, dst_op, tmp_op);
+        } else if (do_pre_conv) {
+            auto tmp_op = init_operand(up_layout, from_temp);
+            emit(plan, tmp_op, src_op);
+            emit(plan, dst_op, tmp_op);
+        } else if (do_post_conv) {
+            auto tmp_op = init_operand(down_layout, from_temp);
+            emit(plan, tmp_op, src_op);
+            emit(plan, dst_op, tmp_op);
+        }
+
+        plan.transform();
+        plan.execute(*host);
     }
 
 private:
-    template <typename GeneratorT>
-    void emit_1d(GeneratorT *host, ngen_register_scope_t &scope,
-            const reg_buf_data_t &src_rd, const reg_buf_data_t &dst_rd) {
-        int src_stride;
-        int dst_stride;
+    using op_init_t = std::function<copy_operand_t(dim_t, ngen::DataType)>;
+
+    void emit(copy_plan_t &plan, const reorder_operand_t &dst,
+            const reorder_operand_t &src) {
+        if (try_emit_2d(plan, dst, src)) return;
+        emit_1d(plan, dst, src);
+    }
+
+    bool layouts_compatible(const layout_t &a, const layout_t &b) {
+        // Test to see if all of the non-size-1 blocks of the two layouts are
+        // listed in the same order, ignoring strides.
+        using iterator_t = decltype(a.blocks().begin());
+        iterator_t a_block_it = a.blocks().begin();
+        iterator_t b_block_it = b.blocks().begin();
+        const iterator_t a_block_end = a.blocks().end();
+        const iterator_t b_block_end = b.blocks().end();
+
+        auto skip_size_1_blocks = [](iterator_t &it, const iterator_t &end) {
+            while (it != end && it->block == 1)
+                it++;
+        };
+
+        while (true) {
+            skip_size_1_blocks(a_block_it, a_block_end);
+            skip_size_1_blocks(b_block_it, b_block_end);
+            if (a_block_it == a_block_end || b_block_it == b_block_end) break;
+
+            if (a_block_it->dim_idx != b_block_it->dim_idx) return false;
+            if (a_block_it->block != b_block_it->block) return false;
+            a_block_it++;
+            b_block_it++;
+        }
+
+        return a_block_it == a_block_end && b_block_it == b_block_end;
+    }
+
+    reorder_operand_t init_operand(layout_t layout, const op_init_t &init) {
+        if (layout.type().is_tf32()) layout = layout.retype(type_t::f32());
+        auto elems = size_in_elems(layout);
+        auto dt = to_ngen(layout.type());
+        auto buffer = init(elems, dt);
+        buffer.stride = (uint8_t)1;
+        return {layout, buffer};
+    }
+
+    layout_t make_compact_layout(const layout_t &layout, const type_t &type,
+            bool is_source = false) const {
+        const auto grf_size = ngen::GRF::bytes(hw_);
+        const auto grf_elems = grf_size * type.packing() / type.size();
+        const auto align_offset = is_source && layout.type().is_hf8();
+
+        std::vector<block_t> blocks;
+        dim_t dense_input_stride = 1;
+        dim_t dense_output_stride = 1;
+        if (layout.type().size() == 1 && needs_saturate(layout.type(), type))
+            // For byte intermediate (only s8<->u8 reorder), use stride-2
+            // to avoid using too many temporaries
+            dense_output_stride = 2;
+        for (auto &block : layout.blocks()) {
+            dim_t input_stride = block.stride;
+            blocks.push_back(block);
+            auto &stride = blocks.back().stride;
+            if (blocks.size() == 1 || input_stride == dense_input_stride)
+                stride = dense_output_stride;
+            else if (hw_ <= ngen::HW::XeLP && align_offset) {
+                // XeLP-specific path; conversion sequence contains
+                //   shl x:uw y:ub n
+                // which seems to require offset alignment.
+                const auto align = grf_size >> 1;
+                auto offset = input_stride % align;
+                stride = utils::rnd_up(dense_output_stride - offset, align)
+                        + offset;
+            } else
+                stride = utils::rnd_up(dense_output_stride, grf_elems >> 1);
+            dense_output_stride = blocks.back().stride * block.block;
+            dense_input_stride = input_stride * block.block;
+        }
+        return {type, layout.ndims(), 0, blocks, /*do_normalize=*/false};
+    }
+
+    dim_t size_in_elems(const layout_t &layout) {
+        const auto &type = layout.type();
+        return layout.size() * type.packing() / type.size();
+    }
+
+    type_t intermediate_data_type(const type_t &s, const type_t &d) {
+        // Force up-/down-convert of small types
+        if (s.is_fp4() || d.is_fp4()) return type_t::f16();
+        if (s.is_u4() || d.is_u4()) return type_t::u16();
+        if (s.is_s4() || d.is_s4()) return type_t::s16();
+
+        if (s == d) return d; // Swizzle only
+        if (s.is_fp8() && d.is_fp()) return type_t::f16();
+        if (s.is_fp() && d.is_fp8()) return type_t::f16();
+        if (s.size() > 4) return d;
+        if (d.size() > 4) return s;
+        return s.bitsize() > d.bitsize() ? s : d;
+    }
+
+    bool needs_saturate(const type_t &ddt, const type_t &sdt) const {
+        if (!ddt.is_int() || !sdt.is_int()) return false;
+        if (ddt.bitsize() >= sdt.bitsize()
+                && ddt.is_signed() == sdt.is_signed())
+            return false;
+        return true;
+    }
+
+    void emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,
+            const reorder_operand_t &src) {
+        int src_stride, dst_stride;
         auto tile = find_max_tile_with_fixed_stride(
-                src_layout_, dst_layout_, src_stride, dst_stride);
-
+                src.layout, dst.layout, src_stride, dst_stride);
         int tile_elems = int(tile.elems());
-        auto &src_type = src_layout_.type();
-        auto &dst_type = dst_layout_.type();
-        dst_layout_.for_each_tile(tile, [&](const icoord_t &start) {
-            int src_off = src_layout_.offset<int>(start);
-            int dst_off = dst_layout_.offset<int>(start);
-            auto sub_src = src_rd.format(src_off, to_ngen(src_type));
-            auto sub_dst = dst_rd.format(dst_off, to_ngen(dst_type));
 
-            ngen_register_scope_t tile_scope(scope.register_allocator());
-            emit_reorder_1d_tile(hw_, host, tile_scope, tile_elems, sub_src,
-                    src_stride, sub_dst, dst_stride);
+        const auto sat = ngen::InstructionModifier::createSaturate();
+        ngen::InstructionModifier mod;
+        if (needs_saturate(dst.type(), src.type())) mod |= sat;
+
+        dst.layout.for_each_tile(tile, [&](const icoord_t &start) {
+            // Tile operands
+            auto tile_src = src.buffer, tile_dst = dst.buffer;
+            tile_src.stride = (uint8_t)src_stride;
+            tile_dst.stride = (uint8_t)dst_stride;
+            tile_src.advance(hw_, src.layout.offset<int>(start));
+            tile_dst.advance(hw_, dst.layout.offset<int>(start));
+            plan.mov(tile_elems, mod, tile_dst, tile_src);
         });
+        ++plan.phase;
     }
 
     static std::vector<tile_t> find_2d_dense_tiles(
@@ -2242,38 +2398,37 @@ private:
         return ret;
     }
 
-    template <typename GeneratorT>
-    bool try_emit_2d(GeneratorT *host, ngen_register_scope_t &scope,
-            const reg_buf_data_t &src_rd, const reg_buf_data_t &dst_rd) {
+    bool try_emit_2d(copy_plan_t &plan, const reorder_operand_t &dst,
+            const reorder_operand_t &src) {
         const int grf_size = ngen::GRF::bytes(hw_);
 
-        if (src_layout_.type() != dst_layout_.type()) return false;
-        // long / f64 swizzle emits scalar instructions
-        if (src_layout_.type().scalar().size() >= 8) return false;
-        if (!src_layout_.is_dense()) return false;
-        if (!dst_layout_.is_dense()) return false;
+        if (src.layout.type() != dst.layout.type()) return false;
+        if (!src.layout.is_dense()) return false;
+        if (!dst.layout.is_dense()) return false;
 
-        const auto type = to_ngen(src_layout_.type());
-        for (const auto &tile : find_2d_dense_tiles(src_layout_, dst_layout_)) {
+        auto tiles = find_2d_dense_tiles(src.layout, dst.layout);
+        const auto base_phase = plan.phase;
+        for (const auto &tile : tiles) {
             if (tile.size() < 2) continue;
             if (tile.elems() < 4) break;
-            auto src_tile_layout = src_layout_.map(tile);
-            auto dst_tile_layout = dst_layout_.map(tile);
+            auto src_tile_layout = src.layout.map(tile);
+            auto dst_tile_layout = dst.layout.map(tile);
             if (!dst_tile_layout.is_dense()) continue;
 
             // Set layout offset to 0 since the offset is handled by fixing up
-            // the register input to try_emit_2d_impl
+            // the register input to reorder_2d_impl_t
             src_tile_layout.set_offset(0);
             dst_tile_layout.set_offset(0);
 
             // Try to allocate/release a temporary buffer to avoid
             // out_of_registers exception.
-            auto dummy = scope.try_alloc_range(
-                    utils::div_up(dst_tile_layout.size(), grf_size));
+            auto tile_grfs = utils::div_up(dst_tile_layout.size(), grf_size);
+            ngen::GRFRange dummy;
+            plan.alloc_grf(tile_grfs, dummy);
             if (dummy.isInvalid()) continue;
 
             // Allocation succeeded, can proceed further.
-            scope.safeRelease(dummy);
+            plan.alloc_grf(0, dummy);
 
             reorder_2d_impl_t r(hw_, tile, src_tile_layout, dst_tile_layout);
             bool tile_ok = true;
@@ -2285,15 +2440,15 @@ private:
             // Skip any 2d reorder that attempts scalar moves
             if (!tile_ok) continue;
 
-            src_layout_.for_each_tile(tile, [&](const icoord_t &start) {
-                auto src_off = src_layout_.offset<dim_t>(start);
-                auto dst_off = dst_layout_.offset<dim_t>(start);
-                auto src_tile_rd = src_rd.format(int(src_off), type);
-                auto dst_tile_rd = dst_rd.format(int(dst_off), type);
+            auto emit_2d_tile = [&](const icoord_t &start) {
+                auto tile_src = src.buffer, tile_dst = dst.buffer;
+                tile_src.advance(hw_, src.layout.offset<int>(start));
+                tile_dst.advance(hw_, dst.layout.offset<int>(start));
+                plan.phase = base_phase;
+                r.emit(plan, tile_src, tile_dst);
+            };
 
-                ngen_register_scope_t tile_scope(scope.register_allocator());
-                r.emit(host, tile_scope, src_tile_rd, dst_tile_rd);
-            });
+            src.layout.for_each_tile(tile, emit_2d_tile);
             return true;
         }
         return false;

@@ -536,6 +536,20 @@ private:
     object_map_t<expr_t, int> buf_cur_refs_;
 };
 
+class alloc_remover_t : public ir_mutator_t {
+public:
+    alloc_remover_t(std::vector<stmt_t> &allocs) : allocs_(allocs) {}
+
+    object_t _mutate(const alloc_t &obj) override {
+        allocs_.push_back(
+                alloc_t::make(obj.buf, obj.size, obj.kind, obj.attrs));
+        return mutate(obj.body);
+    }
+
+private:
+    std::vector<stmt_t> &allocs_;
+};
+
 } // namespace
 
 std::string object_impl_t::str() const {
@@ -572,7 +586,10 @@ std::vector<stmt_t> flatten_statements(const stmt_t &root) {
 }
 
 stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
-        bool put_innermost) {
+        bool put_innermost, bool update_existing) {
+    if (update_existing)
+        gpu_assert(put_innermost)
+                << "update_existing can be used only with put_innermost.";
     if (!put_innermost) {
         auto ret = stmt;
         for (auto &_a : allocs) {
@@ -580,6 +597,13 @@ stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
             ret = alloc_t::make(a.buf, a.size, a.kind, a.attrs, ret);
         }
         return ret;
+    }
+    if (update_existing) {
+        std::vector<stmt_t> _allocs;
+        alloc_remover_t remover(_allocs);
+        auto _stmt = remover.mutate(stmt);
+        _allocs.insert(_allocs.end(), allocs.begin(), allocs.end());
+        return inject_alloc_stmts(_stmt, _allocs, put_innermost);
     }
     alloc_injector_t injector(stmt, allocs);
     return injector.mutate(stmt);

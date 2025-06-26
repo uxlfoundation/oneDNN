@@ -289,8 +289,11 @@ private:
 // - If put_innermost is false, then `stmt` is nested to all allocations
 // - If put_innermost is true, then every allocation is injected as innermost
 //   as possible
+// - If update_existing is true, then all existing alloc statements are removed
+//   and reinserted in the innermost position. This flag requires put_innermost
+//   to be set to true.
 stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
-        bool put_innermost = false);
+        bool put_innermost = false, bool update_existing = false);
 
 // Similar to the previous function but allocations are taken from the buffer
 // manager, allocations are injected at innermost possible scope.

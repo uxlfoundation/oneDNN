@@ -1792,7 +1792,7 @@ private:
             auto &last = ab_layout.blocks().back();
             int max_stride = int(last.stride * last.block);
             if (last.stride > 4) return false;
-            if ((int)last.stride == 4 && type.size() <= 2) return false;
+            if ((int)last.stride == 4 && type.size() != 4) return false;
             if (!math::is_pow2(last.stride)) return false;
             int max_stride_bytes = max_stride * type.size();
             int grf_size = ngen::GRF::bytes(hw);
@@ -2254,6 +2254,8 @@ private:
         std::vector<dim_t> tile_dims(a.ndims(), 1);
         src_stride = (a_blocks.empty() ? 1 : int(a_blocks[0].stride));
         dst_stride = (b_blocks.empty() ? 1 : int(b_blocks[0].stride));
+        if (src_stride & (src_stride - 1) || src_stride > 4) src_stride = 1;
+        if (dst_stride & (dst_stride - 1) || dst_stride > 4) dst_stride = 1;
         int src_cur_stride = src_stride;
         int dst_cur_stride = dst_stride;
 

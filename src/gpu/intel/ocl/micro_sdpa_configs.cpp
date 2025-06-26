@@ -44,8 +44,8 @@ inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
 
 std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len
-      << " props:" << (int)(q.property & sdpa_property::second_token) << " "
+      << " seq:" << q.seq_len << " thinq,qnt,int,fma?:"
+      << (int)(q.property & sdpa_property::second_token) << " "
       << (int)(q.property & sdpa_property::quantized) << " "
       << (int)(q.property & sdpa_property::integrated) << " "
       << (int)(q.property & sdpa_property::fma);
@@ -53,8 +53,8 @@ std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
 }
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len
-      << " props:" << (int)(c.property & sdpa_property::second_token) << " "
+      << " seq:" << c.seq_len << " thinq,qnt,int,fma?:"
+      << (int)(c.property & sdpa_property::second_token) << " "
       << (int)(c.property & sdpa_property::quantized) << " "
       << (int)(c.property & sdpa_property::integrated) << " "
       << (int)(c.property & sdpa_property::fma);
@@ -68,24 +68,31 @@ std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
 }
 
 bool operator==(const config_record_t &key, const config_query_t &query) {
-    bool result
-            = ((query.arch == key.criteria.arch)
-                      && (query.head_size <= key.criteria.head_size)
-                      && ((query.seq_len == -1 && key.criteria.seq_len == -1)
-                              || (query.seq_len != -1
-                                      && query.seq_len <= key.criteria.seq_len))
-                      && ((query.property & sdpa_property::second_token)
-                              == (key.criteria.property
-                                      & sdpa_property::second_token)))
-            && ((query.property & sdpa_property::quantized)
-                    == (key.criteria.property & sdpa_property::quantized))
-            && ((query.property & sdpa_property::fma)
-                    == (key.criteria.property & sdpa_property::fma))
-            && (((query.property & sdpa_property::integrated)
-                        == sdpa_property::none)
-                    || ((query.property & sdpa_property::integrated)
-                            == (key.criteria.property
-                                    & sdpa_property::integrated)));
+    bool result = ((query.arch == key.criteria.arch)
+            && (query.head_size <= key.criteria.head_size)
+            && ((key.criteria.seq_len == -1)
+                    || (key.criteria.seq_len != -1
+                            && query.seq_len <= key.criteria.seq_len))
+            && (((key.criteria.property & sdpa_property::second_token)
+                                == sdpa_property::none
+                        || (query.property & sdpa_property::second_token)
+                                == (key.criteria.property
+                                        & sdpa_property::second_token))
+                    && ((key.criteria.property & sdpa_property::quantized)
+                                    == sdpa_property::none
+                            || (query.property & sdpa_property::quantized)
+                                    == (key.criteria.property
+                                            & sdpa_property::quantized))
+                    && ((key.criteria.property & sdpa_property::fma)
+                                    == sdpa_property::none
+                            || (query.property & sdpa_property::fma)
+                                    == (key.criteria.property
+                                            & sdpa_property::fma))
+                    && ((key.criteria.property & sdpa_property::integrated)
+                                    == sdpa_property::none
+                            || (query.property & sdpa_property::integrated)
+                                    == (key.criteria.property
+                                            & sdpa_property::integrated))));
     return result;
 }
 
@@ -94,7 +101,6 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
         int set_fields = 0;
         if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
         if (crit.head_size != -1) { set_fields++; }
-        if (crit.seq_len != -1) { set_fields++; }
         if ((int)(crit.property & sdpa_property::second_token)) {
             set_fields++;
         }
@@ -102,6 +108,13 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
         if ((int)(crit.property & sdpa_property::integrated)) { set_fields++; }
         if ((int)(crit.property & sdpa_property::fma)) { set_fields++; }
         return set_fields;
+    };
+
+    auto noprops = [](const config_criteria_t &crit) {
+        return !(((bool)(crit.property & sdpa_property::second_token))
+                || ((bool)(crit.property & sdpa_property::quantized))
+                || ((bool)(crit.property & sdpa_property::integrated))
+                || ((bool)(crit.property & sdpa_property::fma)));
     };
 
     int l_set_fields = num_set_fields(lhs);
@@ -112,6 +125,11 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     // then by head size
     else if (lhs.head_size != rhs.head_size)
         return lhs.head_size < rhs.head_size;
+    else if (noprops(lhs) != noprops(rhs))
+        return noprops(rhs);
+    // then by most->least set properties (ignores seq len)
+    else if (l_set_fields != r_set_fields)
+        return (l_set_fields > r_set_fields);
     // then by sequence length (if both defined)
     else if (lhs.seq_len != rhs.seq_len && lhs.seq_len != -1
             && rhs.seq_len != -1)
@@ -119,9 +137,19 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     // then if single seq_len == -1 prefer defined seq_len
     else if (lhs.seq_len != rhs.seq_len)
         return lhs.seq_len != -1;
-    // then by most->least set properties
-    else if (l_set_fields != r_set_fields)
-        return (l_set_fields > r_set_fields);
+    // ensure consistent order if # fields identical
+    else if ((lhs.property & sdpa_property::fma)
+            != (rhs.property & sdpa_property::fma))
+        return static_cast<bool>(lhs.property & sdpa_property::fma);
+    else if ((lhs.property & sdpa_property::quantized)
+            != (rhs.property & sdpa_property::quantized))
+        return static_cast<bool>(lhs.property & sdpa_property::quantized);
+    else if ((lhs.property & sdpa_property::second_token)
+            != (rhs.property & sdpa_property::second_token))
+        return static_cast<bool>(lhs.property & sdpa_property::second_token);
+    else if ((lhs.property & sdpa_property::integrated)
+            != (rhs.property & sdpa_property::integrated))
+        return static_cast<bool>(lhs.property & sdpa_property::integrated);
     return false;
 }
 
@@ -216,8 +244,9 @@ static std::vector<config_record_t> configs = {
 
         // xe_hpc
         {{compute::gpu_arch_t::xe_hpc, 32},               {16, 64, 32, 16, 4, 2, 1, 8}},
-        {{compute::gpu_arch_t::xe_hpc, 32, 32},           {16, 16, 16, 16, 2, 4, 2, 4}},
         {{compute::gpu_arch_t::xe_hpc, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 32, 32},           {16, 16, 16, 16, 2, 4, 2, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 32, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
 
         {{compute::gpu_arch_t::xe_hpc, 64},                   {16, 64, 32, 16, 8, 2, 2, 8}},
         {{compute::gpu_arch_t::xe_hpc, 64, 64},               {32, 32, 32, 16, 4, 2, 2, 4}},
@@ -272,12 +301,44 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe_hpc, 512, second_token | quantized}, {16, 16, 32, 16, 16, 2, 16, 2}},
 
         // xe2
-        {{compute::gpu_arch_t::xe2, 64,      quantized}, {16, 64, 16, 32, 16, 1, 8, 2}},
-        {{compute::gpu_arch_t::xe2, 64, 512, quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
-        {{compute::gpu_arch_t::xe2, 64, 384, quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
-        {{compute::gpu_arch_t::xe2, 64, 128, quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
-        {{compute::gpu_arch_t::xe2, 64, 32,  quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 32},               {16, 64, 32, 16, 4, 2, 1, 8}},
+        {{compute::gpu_arch_t::xe2, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
+        {{compute::gpu_arch_t::xe2, 32, 32},           {16, 16, 16, 16, 2, 4, 2, 4}},
+        {{compute::gpu_arch_t::xe2, 32, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
+
+        {{compute::gpu_arch_t::xe2, 32,       quantized}, {16, 64, 16, 32, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 32, 512,  quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 32, 384,  quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 32, 128,  quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
+        {{compute::gpu_arch_t::xe2, 32, 32,   quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 32, 1024, integrated | quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 32, 384,  integrated | quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 32, 128,  integrated | quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+
+        {{compute::gpu_arch_t::xe2, 32,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 768, second_token | quantized}, {64, 16, 16, 16, 16, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 512, second_token | quantized}, {64, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 384, second_token | quantized}, {16, 16, 16, 16, 16, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 128, second_token | quantized}, {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 32, 64,  second_token | quantized}, {16, 16, 16, 16, 4, 2, 4, 2}},
+
+        {{compute::gpu_arch_t::xe2, 32,      integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 384, integrated | second_token | quantized}, {64, 16, 16, 16, 4, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 32, 96,  integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 4, 1}},
+
+        {{compute::gpu_arch_t::xe2, 64},                   {16, 64, 32, 16, 8, 2, 2, 8}},
+        {{compute::gpu_arch_t::xe2, 64, 64},               {32, 32, 32, 16, 4, 2, 2, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 32},               {16, 16, 16, 16, 4, 2, 4, 2}},
+        {{compute::gpu_arch_t::xe2, 64,     second_token}, {32, 32, 32, 16, 4, 1, 2, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 64, second_token}, {16, 16, 16, 16, 4, 1, 4, 1}},
+
+        {{compute::gpu_arch_t::xe2, 64,       quantized}, {16, 64, 16, 32, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 512,  quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 64, 384,  quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 128,  quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 32,   quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
         {{compute::gpu_arch_t::xe2, 64, 1024, integrated | quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 64, 384,  integrated | quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
         {{compute::gpu_arch_t::xe2, 64, 128,  integrated | quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
 
         {{compute::gpu_arch_t::xe2, 64,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 8, 1}},
@@ -291,6 +352,39 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe2, 64, 384, integrated | second_token | quantized}, {64, 16, 16, 16, 4, 1, 4, 1}},
         {{compute::gpu_arch_t::xe2, 64, 96,  integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 4, 1}},
 
+        {{compute::gpu_arch_t::xe2, 128},               {16, 64, 32, 16, 16, 2, 4, 8}},
+        {{compute::gpu_arch_t::xe2, 128, 64},           {16, 32, 32, 32, 4, 2, 4, 2}},
+        {{compute::gpu_arch_t::xe2, 128, 32},           {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 128, second_token}, {32, 32, 32, 16, 8, 1, 4, 2}},
+
+        {{compute::gpu_arch_t::xe2, 128,      quantized},              {16, 64, 16, 32, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 128, 128, quantized},              {16, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 128, 32,  quantized},              {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 128, 128, integrated | quantized}, {16, 16, 16, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 128,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 128, 512, second_token | quantized}, {16, 16, 16, 16, 16, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256},     {32, 16, 64, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 256, 64}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 256, 1024, second_token}, {64, 16, 32, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 512,  second_token}, {32, 16, 64, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 128,  second_token}, {16, 16, 64, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 256,       second_token}, {32, 16, 64, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256,     second_token | quantized}, {16, 16, 64, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 64, second_token | quantized}, {16, 16, 64, 16, 8, 1, 8, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256,      integrated}, {16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 128, integrated}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
+        {{compute::gpu_arch_t::xe2, 256,       integrated | second_token}, {16, 16, 64, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 256,  integrated | second_token}, {16, 16, 64, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 1024, integrated | second_token}, {16, 16, 64, 16, 8, 2, 8, 2}},
+
         {{compute::gpu_arch_t::xe2, 256,      quantized}, {16, 64, 16, 32, 32, 1, 16, 2}},
         {{compute::gpu_arch_t::xe2, 256, 384, quantized}, {16, 32, 32, 32, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe2, 256, 128, quantized}, {16, 32, 32, 32, 8, 1, 8, 1}},
@@ -300,10 +394,15 @@ static std::vector<config_record_t> configs = {
         {{compute::gpu_arch_t::xe2, 256, 64,  integrated | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
 
         {{compute::gpu_arch_t::xe2, 256,       integrated | second_token | quantized}, {32, 16, 64, 16, 4, 1, 4, 1}},
-        {{compute::gpu_arch_t::xe2, 256, 1152, integrated | second_token | quantized}, {16, 16, 64, 16, 4, 1, 4, 1}},
-        {{compute::gpu_arch_t::xe2, 256, 768,  integrated | second_token | quantized}, {64, 16, 16, 16, 16, 1, 16, 1}},
-        {{compute::gpu_arch_t::xe2, 256, 512,  integrated | second_token | quantized}, {32, 32, 32, 16, 16, 1, 8, 2}},
-        {{compute::gpu_arch_t::xe2, 256, 384,  integrated | second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        // TODO: restore to seq <= 1152 instead of seq < 1152?
+        {{compute::gpu_arch_t::xe2, 256, 1151, integrated | second_token | quantized}, {16, 16, 64, 16, 4, 1, 4, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 767,  integrated | second_token | quantized}, {64, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe2, 256, 511,  integrated | second_token | quantized}, {32, 32, 32, 16, 16, 1, 8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, 383,  integrated | second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
+
+        {{compute::gpu_arch_t::xe2, 256},               {16, 32, 32, 32, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe2, 256, 64},           {16, 32, 32, 32, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 256, second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
 
         {{compute::gpu_arch_t::xe2, 512},     {32, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe2, 512, 64}, {16, 16, 64, 16, 8, 2, 8, 2}},
@@ -341,6 +440,9 @@ static std::vector<config_record_t> configs = {
 
 sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma) {
+    if (fma && quantized) return nullptr;
+
+    // ensures configs appear in order of most to least defined/desirable
     std::sort(std::begin(configs), std::end(configs));
 
     sdpa_property query_properties = sdpa_property::none;
@@ -349,16 +451,13 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     if (integrated) { query_properties |= sdpa_property::integrated; }
     if (fma) { query_properties |= sdpa_property::fma; }
 
-    config_query_t query(arch, static_cast<int>(head_size),
+    compute::gpu_arch_t arch_query = (arch == compute::gpu_arch_t::xe3)
+            ? compute::gpu_arch_t::xe2
+            : arch;
+    config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
     auto it = find(begin(configs), end(configs), query);
-    if (it != end(configs)) {
-        return &it->config;
-    } else {
-        query.seq_len = -1;
-        it = find(begin(configs), end(configs), query);
-        if (it != end(configs)) { return &it->config; }
-    }
+    if (it != end(configs)) { return &it->config; }
     return nullptr;
 }
 

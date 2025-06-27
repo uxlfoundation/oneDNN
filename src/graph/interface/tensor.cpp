@@ -150,6 +150,25 @@ status_t DNNL_API dnnl_graph_tensor_create(tensor_t **tensor,
     return status::success;
 }
 
+status_t DNNL_API dnnl_graph_tensor_create_host_scalar(tensor_t **tensor,
+        const logical_tensor_t *logical_tensor, void *handle) {
+    if (utils::any_null(tensor, logical_tensor))
+        return status::invalid_arguments;
+
+    if (logical_tensor->property != property_type::host_scalar)
+        return status::invalid_arguments;
+
+    // TODO(xxx): extend for library allocated host scalar?
+    if (nullptr == handle || DNNL_MEMORY_ALLOCATE == handle) {
+        return status::invalid_arguments;
+    }
+
+    *tensor = new tensor_t {*logical_tensor, nullptr, handle};
+    if (*tensor == nullptr) return status::out_of_memory;
+
+    return status::success;
+}
+
 status_t DNNL_API dnnl_graph_tensor_destroy(tensor_t *tensor) {
     delete tensor;
     return status::success;

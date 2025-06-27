@@ -935,7 +935,8 @@ private:
             auto t_allocs = t.allocs();
             allocs.insert(allocs.end(), t_allocs.begin(), t_allocs.end());
         }
-        stmt_ = jit::inject_alloc_stmts(stmt_, allocs, /*put_innermost=*/true);
+        stmt_ = jit::inject_alloc_stmts(stmt_, allocs, /*put_innermost=*/true,
+                /*update_existing=*/true);
     }
 
     // Builds statements for a tile iterating through all post-ops.

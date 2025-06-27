@@ -278,15 +278,6 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     // Create dnnl::stream.
     dnnl::stream strm(eng);
 
-// Create host engine for the host-side scale data. If oneDNN is built
-// without CPU runtime, we will not be able to create host engine and have
-// to use device-side scale on GPU.
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    const allocator host_alloc = create_allocator(engine::kind::cpu);
-    dnnl::engine host_eng
-            = make_engine_with_allocator(engine::kind::cpu, 0, host_alloc);
-#endif
-
     // Prepare input and output shapes to construct the sdpa graph.
     const dims qv_sz = {p.mb, p.head_num, p.query_num, p.head_size};
     const dims k_sz = {p.mb, p.head_num, p.seq_len, p.head_size};
@@ -311,12 +302,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
 
     // scaled_score = score / scale
     const logical_tensor::data_type dt_scale = logical_tensor::data_type::f32;
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     auto scale = logical_tensor(id++, dt_scale, scale_sz, layout_type::strided,
             property_type::host_scalar);
-#else
-    auto scale = logical_tensor(id++, dt_scale, scale_sz, layout_type::strided);
-#endif
     auto scaled_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto scale_div = op(id++, op::kind::Divide, "scale_div");
@@ -392,16 +379,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     write_to_dnnl_tensor(mask_data.data(), ts_mask);
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     float scale_data = std::sqrt(p.head_size);
-    auto ts_scale = ekind == engine::kind::cpu
-            ? tensor(scale, eng, &scale_data)
-            : tensor(scale, host_eng, &scale_data);
-#else
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
-    auto ts_scale = tensor(scale, eng);
-    write_to_dnnl_tensor(scale_data.data(), ts_scale);
-#endif
+    auto ts_scale = make_scalar_tensor(scale, &scale_data);
 
     // Warmup run.
     // Execute the compiled partition of sdpa.

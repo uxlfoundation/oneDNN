@@ -81,6 +81,8 @@ dims group_dims(const dims &adims, dim groups);
 
 engine make_dnnl_engine(const engine_t &g_engine);
 
+engine make_host_engine();
+
 stream make_dnnl_stream(const engine &p_engine, const stream_t &g_stream);
 
 memory::desc make_dnnl_memory_desc(const logical_tensor_t &lt);

@@ -451,6 +451,17 @@ struct host_scalar_executable_t : public op_executable_t {
 
         auto prim = dnnl::reorder(src_mem, dst_mem);
 
+        // TODO(xxx): workaround reorder execution which requires the primitive
+        // to have the same engine as stream has.
+        const engine &src_eng = src_mem.get_engine();
+        const engine &dst_eng = dst_mem.get_engine();
+        if (src_eng.get_kind() == engine::kind::cpu
+                && dst_eng.get_kind() == engine::kind::cpu) {
+            auto src_temp = memory(
+                    src_mem.get_desc(), dst_eng, src_mem.get_data_handle());
+            prim = dnnl::reorder(src_temp, dst_mem);
+        }
+
         auto e = dnnl::sycl_interop::execute(prim, stream, args, deps);
         if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;

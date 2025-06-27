@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/conv/gen_convolution.hpp"
-#include "gpu/intel/ocl/gen9_wino_convolution.hpp"
 #include "gpu/intel/ocl/ref_convolution.hpp"
+#include "gpu/intel/ocl/xe_wino_convolution.hpp"
 
 #ifdef DNNL_EXPERIMENTAL
 #include "common/experimental.hpp"
@@ -55,7 +55,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_CONV_P({
     {{forward}, {
         GPU_INSTANCE_INTEL(intel::jit::gen_convolution_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_wino_convolution_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_wino_convolution_fwd_t)
         GPU_INSTANCE_INTEL_REF(intel::ocl::ref_convolution_fwd_t)
         GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::jit::v2::conv::gen_convolution_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_convolution_fwd_t)

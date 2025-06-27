@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -192,6 +192,17 @@ dnnl_status_t DNNL_API dnnl_graph_logical_tensor_is_equal(
 dnnl_status_t DNNL_API dnnl_graph_tensor_create(dnnl_graph_tensor_t *tensor,
         const dnnl_graph_logical_tensor_t *logical_tensor, dnnl_engine_t engine,
         void *handle);
+
+/// Creates a scalar tensor with logical tensor and scalar data handle.
+///
+/// @param tensor Output scalar tensor.
+/// @param logical_tensor Description for this tensor.
+/// @param handle Handle of the memory buffer to use as an underlying storage.
+/// @returns #dnnl_success on success or a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_graph_tensor_create_scalar(
+        dnnl_graph_tensor_t *tensor,
+        const dnnl_graph_logical_tensor_t *logical_tensor, void *handle);
 
 /// Destroys a tensor.
 ///

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -82,6 +82,10 @@ struct logical_tensor_wrapper_t {
     bool is_strided() const { return lt->layout_type == layout_type::strided; }
     bool is_opaque() const { return lt->layout_type == layout_type::opaque; }
     bool is_constant() const { return lt->property == property_type::constant; }
+    bool is_host_scalar() const {
+        return lt->property == property_type::host_scalar;
+    }
+
     bool is_layout_type_undef() const {
         return lt->layout_type == layout_type::undef;
     }

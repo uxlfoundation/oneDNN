@@ -1357,8 +1357,6 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 // Emulation sequence for fp8 e8m0->hf conversion.
 void CopyPlan::planEmulatedFP8E8M0ToHF(CopyInstruction &i) {
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
-    if (hw < HW::XeHP) stub("Unsupported HW");
-
 
     // Emulation sequence for mov y:hf y:e8m0
     // mov                 y:uw   x:u8                    /* emulated separately

@@ -689,9 +689,23 @@ bool check_md_consistency_with_tag(
     return dnnl_memory_desc_equal(md_new_tag, md);
 }
 
+void skip_unimplemented_generic_f64(
+        const std::vector<dnnl_data_type_t> &v_dt, res_t *res) {
+    if (is_generic_gpu()) {
+        for (const auto &i_dt : v_dt) {
+            if (i_dt == dnnl_f64) {
+                res->state = SKIPPED;
+                res->reason = skip_reason::data_type_not_supported;
+                return;
+            }
+        }
+    }
+}
+
 void skip_unimplemented_data_type(
         const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res) {
     const bool has_f64_support = is_f64_supported();
+    skip_unimplemented_generic_f64(v_dt, res);
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     using namespace dnnl::impl::cpu::platform;
     // bf16 is supported on AVX512-CORE+

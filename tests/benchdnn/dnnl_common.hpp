@@ -257,6 +257,8 @@ inline bool should_stop(const timer::timer_t &t) {
     return stop;
 }
 
+void skip_unimplemented_generic_f64(
+        const std::vector<dnnl_data_type_t> &v_dt, res_t *res);
 void skip_unimplemented_data_type(
         const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res);
 void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,

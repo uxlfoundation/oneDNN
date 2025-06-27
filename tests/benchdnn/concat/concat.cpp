@@ -119,6 +119,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_concat);
     skip_unimplemented_arg_scale(prb->attr, res);
+    for (const auto &tag : prb->stag) {
+        skip_unsupported_block_format(tag, res);
+    }
+    skip_unsupported_block_format(prb->dtag, res);
 
     // ref concat is reorder-based, hence, inherits some reorder limitations.
     // bf16, f16 reorders on cpu supports only [bf16, f16]<->f32

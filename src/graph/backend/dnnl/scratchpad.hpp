@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2021-2024 Intel Corporation
+ * Copyright 2021-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,10 @@ public:
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
             dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
 #else
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_);
+            // TODO: this is the only way to enable Graph API as there's no
+            // mechanism to preserve temporary allocated scratchpad memory in
+            // execute_impl.
+            // dnnl_allocator_t::free(buffer_, *eng_, alloc_);
 #endif
         } else if (eng_->get_kind() == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL

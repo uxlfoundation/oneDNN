@@ -127,6 +127,12 @@ add_definitions_with_host_compiler(-DPRERELEASE_HW)
 add_definitions_with_host_compiler(-DXE3P)
 endif()
 
+if(DNNL_WITH_XE4)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE4)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE4)
+endif()
+
 add_subdirectory(common)
 
 if(NOT DNNL_CPU_RUNTIME STREQUAL "NONE")

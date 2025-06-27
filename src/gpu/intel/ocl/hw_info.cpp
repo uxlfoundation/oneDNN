@@ -67,6 +67,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     using namespace ngen;
     Product product = ngen::OpenCLCodeGenerator<HW::Unknown>::detectHWInfo(
             context, device);
+    HW hw = getCore(product.family);
     bool is_xelpg = (product.family == ngen::ProductFamily::ARL
             || product.family == ngen::ProductFamily::MTL);
 
@@ -96,7 +97,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         mayiuse_ngen_kernels = true;
 
 #if XE3P
-    is_efficient_64bit = jit::generator_t<HW::Unknown>::detectEfficient64Bit(
+    is_efficient_64bit = OpenCLCodeGenerator<HW::Unknown>::detectEfficient64Bit(
             context, device, hw);
 #endif
 

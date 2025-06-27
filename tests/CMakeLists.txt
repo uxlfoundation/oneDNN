@@ -103,6 +103,18 @@ if(DNNL_WITH_SYCL AND DNNL_CPU_RUNTIME STREQUAL "NONE")
     handle_tbb_target()
 endif()
 
+if(DNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE3P)
+endif()
+
+if(DNNL_WITH_XE4)
+add_definitions_with_host_compiler(-DDNNL_WITH_XE4)
+add_definitions_with_host_compiler(-DPRERELEASE_HW)
+add_definitions_with_host_compiler(-DXE4)
+endif()
+
 add_subdirectory(gtests)
 add_subdirectory(benchdnn)
 

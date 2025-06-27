@@ -28,7 +28,7 @@
 # GPU Engine
 #/src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
 /src/gpu/intel/ @uxlfoundation/onednn-gpu-intel
-/src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
+#/src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
 #/src/gpu/generic/ @uxlfoundation/onednn-arch
 #/src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
 

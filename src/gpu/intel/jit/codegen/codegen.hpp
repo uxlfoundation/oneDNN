@@ -61,7 +61,8 @@ REG_XE3P_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
 #endif
 #if XE4
 REG_XE4_ISA(extern template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe4> *host, const expr_binding_t &expr_binding));
+        ir_kernel_t<ngen::HW::Xe4> *host,
+        const walk_order_t *kernel_grid_walk_order));
 #endif
 
 } // namespace jit

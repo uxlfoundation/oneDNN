@@ -181,6 +181,8 @@ public:
     status_t check_alignment(const void *ptr, int arg_idx) const {
         const int min_alignment = 64;
         auto addr = reinterpret_cast<uint64_t>(ptr);
+        printf("check alignment for buffer %p in kernel %s at index %d\n", ptr,
+                name().c_str(), arg_idx);
         if (addr % min_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;

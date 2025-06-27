@@ -84,7 +84,7 @@ bn_impl_t to_impl(const std::string &s) {
     CASE(ref)
     CASE(simple)
     CASE(reusable)
-    CASE(gen9)
+    CASE(xe)
     CASE(nhwc_opt)
     CASE(nhwc_reusable)
 #undef CASE

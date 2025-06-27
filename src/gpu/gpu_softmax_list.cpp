@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/gen9_softmax.hpp"
 #include "gpu/intel/ocl/reusable_softmax.hpp"
 #include "gpu/intel/ocl/simple_softmax.hpp"
+#include "gpu/intel/ocl/xe_softmax.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -46,7 +46,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_SOFTMAX_P({
     {{forward}, {
         GPU_INSTANCE_INTEL(intel::ocl::reusable_softmax_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_softmax_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_softmax_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::simple_softmax_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_softmax_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_softmax_fwd_t)
@@ -54,7 +54,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_softmax_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_softmax_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::simple_softmax_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_softmax_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_softmax_bwd_t)

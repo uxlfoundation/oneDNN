@@ -108,7 +108,7 @@
 --sdt=bf16:bf16
 --batch=option_set_all
 
-# tests for gen9_binary kernel that cares about formats
+# tests for xe_binary kernel that cares about formats
 --reset
 --inplace=false
 --attr-post-ops=,sum:0.25+relu:-0.01+add:f32
@@ -123,7 +123,7 @@
 1x16x16x16:1x16x1x16
 1x16x16x16:1x1x16x16
 
-# tests for src0 bcast that normally would be run by gen9 kernel
+# tests for src0 bcast that normally would be run by xe kernel
 --reset
 --inplace=false
 --alg=ADD,SUB

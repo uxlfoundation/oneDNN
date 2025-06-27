@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_BNORM_NHWC_BATCH_NORMALIZATION_HPP
-#define GPU_INTEL_OCL_BNORM_NHWC_BATCH_NORMALIZATION_HPP
+#ifndef GPU_INTEL_OCL_BNORM_XE_BATCH_NORMALIZATION_HPP
+#define GPU_INTEL_OCL_BNORM_XE_BATCH_NORMALIZATION_HPP
 
 #include "common/primitive.hpp"
 #include "gpu/gpu_batch_normalization_pd.hpp"
@@ -29,41 +29,16 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-enum kernel_kind_t {
-    default_fwd_ker,
-    calc_mean_ker,
-    calc_var_ker,
-    calc_mean_var_ker,
-    reduce_stats_fwd_ker,
-    reduce_mean_var_ker,
-    reduce_aux_init_ker,
-    reduce_aux_finalize_ker,
-    default_bwd_ker,
-    calc_stats_ker,
-    reduce_stats_bwd_ker,
-    reusable_reduce_stats_fwd_ker
-};
-
-struct nhwc_bnorm_params_t : public bn_lookup_table::params_t {
-    bool use_workaround = false;
-    float expected_time_ms;
-    compute::range_t calc_adj_lws;
-};
-
-status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
-        nhwc_bnorm_params_t &conf, impl::engine_t *engine,
-        compute::dispatch_t &dispatch);
-
-struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
+struct xe_batch_normalization_fwd_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), nhwc_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), xe_batch_normalization_fwd_t);
 
         const char *impl_name() const {
-            return conf.use_stats_one_pass ? "ocl:nhwc:onepass" : "ocl:nhwc";
+            return conf.use_stats_one_pass ? "ocl:xe:onepass" : "ocl:xe";
         }
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -109,7 +84,8 @@ struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
                 VDISPATCH_BNORM_SC(init_default_ws(8), VERBOSE_WS_INIT);
             }
 
-            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
+            status_t status = init_conf(engine);
+            if (status != status::success) return status;
             init_scratchpad();
 
             return status::success;
@@ -119,7 +95,7 @@ struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        nhwc_bnorm_params_t conf;
+        bn_lookup_table::params_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -136,11 +112,11 @@ struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
         std::vector<const char *> kernel_names
                 = {nullptr, nullptr, nullptr, nullptr, nullptr};
 
-        kernel_names[0] = "xe_bnorm_fwd_nhwc";
+        kernel_names[0] = "xe_bnorm_fwd";
 
         if (pd()->conf.calculate_stats) {
             if (pd()->conf.use_stats_one_pass) {
-                kernel_names[1] = "xe_calc_mean_var_nhwc";
+                kernel_names[1] = "xe_calc_mean_var";
                 if (!pd()->conf.use_fused_atomics_reduction()) {
                     kernel_names[2] = "xe_reduce_mean_var";
                 } else {
@@ -148,8 +124,8 @@ struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
                     kernel_names[3] = "xe_fused_reduce_final";
                 }
             } else { // regular algorithm
-                kernel_names[1] = "xe_calc_mean_nhwc";
-                kernel_names[2] = "xe_calc_variance_nhwc";
+                kernel_names[1] = "xe_calc_mean";
+                kernel_names[2] = "xe_calc_variance";
                 if (!pd()->conf.use_fused_atomics_reduction()) {
                     kernel_names[3] = "xe_reduce_mean";
                     kernel_names[4] = "xe_reduce_variance";
@@ -206,15 +182,15 @@ private:
     compute::kernel_t reduce_final_kernel_;
 };
 
-struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
+struct xe_batch_normalization_bwd_t : public gpu_primitive_t {
     using gpu_primitive_t::gpu_primitive_t;
     struct pd_t : public gpu_batch_normalization_bwd_pd_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), nhwc_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), xe_batch_normalization_bwd_t);
 
-        const char *impl_name() const { return "ocl:nhwc"; }
+        const char *impl_name() const { return "ocl:xe"; }
 
         status_t init(impl::engine_t *engine) {
             auto *compute_engine
@@ -253,8 +229,7 @@ struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
 
-            status_t status = init_conf(engine);
-            if (status != status::success) return status;
+            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
             init_scratchpad();
 
             return status::success;
@@ -264,7 +239,7 @@ struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        nhwc_bnorm_params_t conf;
+        bn_lookup_table::params_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -280,8 +255,8 @@ struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
         std::vector<const char *> kernel_names
                 = {nullptr, nullptr, nullptr, nullptr};
 
-        kernel_names[0] = "xe_bnorm_bwd_nhwc";
-        kernel_names[1] = "xe_calculate_stats_nhwc";
+        kernel_names[0] = "xe_bnorm_bwd";
+        kernel_names[1] = "xe_calculate_stats";
         if (pd()->conf.use_fused_atomics_reduction()) {
             kernel_names[2] = "xe_fused_reduce_init";
             kernel_names[3] = "xe_fused_reduce_final";
@@ -324,4 +299,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_OCL_BNORM_NHWC_BATCH_NORMALIZATION_HPP
+#endif // GPU_INTEL_OCL_BNORM_XE_BATCH_NORMALIZATION_HPP

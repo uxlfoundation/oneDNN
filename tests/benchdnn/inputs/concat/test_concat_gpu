@@ -55,9 +55,9 @@
 --reset
 --batch=option_set_fwks_ext_gpu
 
-# additional tests for gen9 concat kernel
+# additional tests for xe concat kernel
 --reset
---batch=option_set_gen9_gpu
+--batch=option_set_xe_gpu
 
 # multiple arguments tests
 --reset

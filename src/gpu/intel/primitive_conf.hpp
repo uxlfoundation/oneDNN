@@ -327,7 +327,7 @@ enum bn_impl_t {
     ref,
     simple,
     reusable,
-    gen9,
+    xe,
     nhwc_opt,
     nhwc_reusable
 };

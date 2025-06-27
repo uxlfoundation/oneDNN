@@ -161,7 +161,7 @@ mb128ic3ih230oc64oh112kh7sh2ph0
 --reset
 --batch=test_conv_fp4
 
-# dw gen9 fwd conv
+# dw xe fwd conv
 --reset
 --dt=f16,f16:f16:s8
 --mb=48,64

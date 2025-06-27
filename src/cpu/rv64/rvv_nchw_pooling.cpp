@@ -99,86 +99,74 @@ void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
         const dim_t kerD, const dim_t kerH, const dim_t kerW,
         const dim_t strideD, const dim_t strideH, const dim_t strideW,
         const dim_t padFront, const dim_t padTop, const dim_t padLeft) {
-    float arr_zero[riscv_nchw_pooling_fwd_t<data_type::f32>::max_kernel_width];
-    for (int i = 0;
-            i < riscv_nchw_pooling_fwd_t<data_type::f32>::max_kernel_width; i++)
-        arr_zero[i] = 0.0f;
 
     const float kernel_volume = (float)(kerD * kerH * kerW);
 
-    for (int mb = 0; mb < batch; mb++)
-        for (int c = 0; c < channels; c++)
-            for (int od = 0; od < outD; od++)
-                for (int oh = 0; oh < outH; oh++)
-                    for (int ow = 0; ow < outW; ow++) {
-                        const size_t dst_offset
-                                = (size_t)outW * outH * outD * channels * mb
-                                + (size_t)outW * outH * outD * c
-                                + (size_t)outW * outH * od + (size_t)outW * oh
-                                + (size_t)ow;
-                        const auto src_offset = ((size_t)inW * inH * inD)
-                                * ((size_t)channels * mb + c);
-                        const auto local_src = &src[src_offset];
-                        const auto IWH = (size_t)inW * inH;
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                const size_t dst_offset
+                        = (size_t)outW * outH * outD * channels * mb
+                        + (size_t)outW * outH * outD * c
+                        + (size_t)outW * outH * od + (size_t)outW * oh
+                        + (size_t)ow;
+                const auto src_offset = ((size_t)inW * inH * inD)
+                        * ((size_t)channels * mb + c);
+                const auto local_src = &src[src_offset];
+                const auto IWH = (size_t)inW * inH;
 
-                        int od_offset = od * strideD - padFront;
-                        int oh_offset = oh * strideH - padTop;
-                        int ow_offset = ow * strideW - padLeft;
-                        int iw_start = std::max(ow_offset, 0);
-                        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+                int od_offset = od * strideD - padFront;
+                int oh_offset = oh * strideH - padTop;
+                int ow_offset = ow * strideW - padLeft;
+                int iw_start = std::max(ow_offset, 0);
+                int iw_end = std::min(ow_offset + kerW, inW);
 
-                        if (iw_start >= iw_end) {
-                            dst[dst_offset] = 0.0f;
-                            continue;
+                if (iw_start >= iw_end) {
+                    dst[dst_offset] = 0.0f;
+                    return;
+                }
+
+                size_t size = iw_end - iw_start;
+                size_t cycleLength = __riscv_vsetvl_e32m1(size);
+                vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+
+                for (int id = std::max(od_offset, 0);
+                        id < std::min(od_offset + kerD, inD); id++)
+                    for (int ih = std::max(oh_offset, 0);
+                            ih < std::min(oh_offset + kerH, inH); ih++) {
+                        const size_t local_src_offset
+                                = IWH * id + (size_t)inW * ih + iw_start;
+
+                        size_t iw = 0;
+                        for (; iw + cycleLength <= size; iw += cycleLength) {
+                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                                    &local_src[local_src_offset + iw],
+                                    cycleLength);
+                            vsum = __riscv_vfadd_vv_f32m1(
+                                    vsum, vsrc, cycleLength);
                         }
 
-                        size_t size = iw_end - iw_start;
-                        size_t cycleLength = __riscv_vsetvl_e32m8(size);
-                        vfloat32m8_t vsum = __riscv_vle32_v_f32m8(
-                                &arr_zero[0], cycleLength);
-
-                        for (int id = std::max(od_offset, 0);
-                                id < std::min(od_offset + kerD, inD); id++)
-                            for (int ih = std::max(oh_offset, 0);
-                                    ih < std::min(oh_offset + kerH, inH);
-                                    ih++) {
-                                size_t local_src_offset = IWH * id
-                                        + (size_t)inW * ih + iw_start;
-
-                                size_t iw = 0;
-                                for (; iw + cycleLength <= size;
-                                        iw += cycleLength) {
-                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
-                                            &local_src[local_src_offset + iw],
-                                            cycleLength);
-                                    vsum = __riscv_vfadd_vv_f32m8(
-                                            vsum, vsrc, cycleLength);
-                                }
-
-                                size_t tailLength
-                                        = __riscv_vsetvl_e32m8(size - iw);
-                                {
-                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
-                                            &local_src[local_src_offset + iw],
-                                            tailLength);
-                                    vsum = __riscv_vfadd_vv_f32m8(
-                                            vsum, vsrc, tailLength);
-                                }
-                            }
-
-                        float zero = 0.0f;
-                        vfloat32m1_t zero_scalar
-                                = __riscv_vle32_v_f32m1(&zero, 1);
-
-                        cycleLength = __riscv_vsetvl_e32m8(size);
-                        vfloat32m1_t vred_res;
-                        vred_res = __riscv_vfredusum_vs_f32m8_f32m1(
-                                vsum, zero_scalar, cycleLength);
-
-                        float red_res;
-                        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                        dst[dst_offset] = red_res / kernel_volume;
+                        size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                        {
+                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                                    &local_src[local_src_offset + iw],
+                                    tailLength);
+                            vsum = __riscv_vfadd_vv_f32m1(
+                                    vsum, vsrc, tailLength);
+                        }
                     }
+
+                float zero = 0.0f;
+                vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(zero, 1);
+
+                cycleLength = __riscv_vsetvl_e32m1(size);
+                vfloat32m1_t vred_res;
+                vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                        vsum, zero_scalar, cycleLength);
+
+                float red_res;
+                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+                dst[dst_offset] = red_res / kernel_volume;
+            });
 }
 
 void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
@@ -187,97 +175,84 @@ void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
         const dim_t kerD, const dim_t kerH, const dim_t kerW,
         const dim_t strideD, const dim_t strideH, const dim_t strideW,
         const dim_t padFront, const dim_t padTop, const dim_t padLeft) {
-    float arr_zero[riscv_nchw_pooling_fwd_t<data_type::f32>::max_kernel_width];
-    for (int i = 0;
-            i < riscv_nchw_pooling_fwd_t<data_type::f32>::max_kernel_width; i++)
-        arr_zero[i] = 0.0f;
 
-    for (int mb = 0; mb < batch; mb++)
-        for (int c = 0; c < channels; c++)
-            for (int od = 0; od < outD; od++)
-                for (int oh = 0; oh < outH; oh++)
-                    for (int ow = 0; ow < outW; ow++) {
-                        const size_t dst_offset
-                                = (size_t)outW * outH * outD * channels * mb
-                                + (size_t)outW * outH * outD * c
-                                + (size_t)outW * outH * od + (size_t)outW * oh
-                                + (size_t)ow;
-                        const auto src_offset = ((size_t)inW * inH * inD)
-                                * ((size_t)channels * mb + c);
-                        const auto local_src = &src[src_offset];
-                        const auto IWH = (size_t)inW * inH;
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                const size_t dst_offset
+                        = (size_t)outW * outH * outD * channels * mb
+                        + (size_t)outW * outH * outD * c
+                        + (size_t)outW * outH * od + (size_t)outW * oh
+                        + (size_t)ow;
+                const auto src_offset = ((size_t)inW * inH * inD)
+                        * ((size_t)channels * mb + c);
+                const auto local_src = &src[src_offset];
+                const auto IWH = (size_t)inW * inH;
 
-                        int od_offset = od * strideD - padFront;
-                        int oh_offset = oh * strideH - padTop;
-                        int ow_offset = ow * strideW - padLeft;
-                        int iw_start = std::max(ow_offset, 0);
-                        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+                int od_offset = od * strideD - padFront;
+                int oh_offset = oh * strideH - padTop;
+                int ow_offset = ow * strideW - padLeft;
+                int iw_start = std::max(ow_offset, 0);
+                int iw_end = std::min(ow_offset + kerW, inW);
 
-                        if (iw_start >= iw_end) {
-                            dst[dst_offset] = 0.0f;
-                            continue;
+                if (iw_start >= iw_end) {
+                    dst[dst_offset] = 0.0f;
+                    return;
+                }
+
+                size_t size = iw_end - iw_start;
+                size_t cycleLength = __riscv_vsetvl_e32m1(size);
+                vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+
+                size_t count = 0;
+
+                for (int id = od_offset; id < od_offset + kerD; id++) {
+                    if (id < 0 || id >= inD) continue;
+                    for (int ih = oh_offset; ih < oh_offset + kerH; ih++) {
+                        if (ih < 0 || ih >= inH) continue;
+
+                        if (iw_start >= iw_end) continue;
+
+                        const size_t local_src_offset
+                                = IWH * id + (size_t)inW * ih + iw_start;
+                        size_t iw = 0;
+
+                        for (; iw + cycleLength <= size; iw += cycleLength) {
+                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                                    &local_src[local_src_offset + iw],
+                                    cycleLength);
+                            vsum = __riscv_vfadd_vv_f32m1(
+                                    vsum, vsrc, cycleLength);
                         }
 
-                        size_t size = iw_end - iw_start;
-                        size_t cycleLength = __riscv_vsetvl_e32m8(size);
-                        vfloat32m8_t vsum = __riscv_vle32_v_f32m8(
-                                &arr_zero[0], cycleLength);
-
-                        size_t count = 0;
-
-                        for (int id = od_offset; id < od_offset + kerD; id++) {
-                            if (id < 0 || id >= inD) continue;
-                            for (int ih = oh_offset; ih < oh_offset + kerH;
-                                    ih++) {
-                                if (ih < 0 || ih >= inH) continue;
-
-                                if (iw_start >= iw_end) continue;
-
-                                size_t local_src_offset = IWH * id
-                                        + (size_t)inW * ih + iw_start;
-                                size_t iw = 0;
-
-                                for (; iw + cycleLength <= size;
-                                        iw += cycleLength) {
-                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
-                                            &local_src[local_src_offset + iw],
-                                            cycleLength);
-                                    vsum = __riscv_vfadd_vv_f32m8(
-                                            vsum, vsrc, cycleLength);
-                                }
-
-                                size_t tailLength
-                                        = __riscv_vsetvl_e32m8(size - iw);
-                                {
-                                    vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(
-                                            &local_src[local_src_offset + iw],
-                                            tailLength);
-                                    vsum = __riscv_vfadd_vv_f32m8(
-                                            vsum, vsrc, tailLength);
-                                }
-
-                                count += size;
-                            }
+                        size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                        {
+                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                                    &local_src[local_src_offset + iw],
+                                    tailLength);
+                            vsum = __riscv_vfadd_vv_f32m1(
+                                    vsum, vsrc, tailLength);
                         }
 
-                        if (count == 0) {
-                            dst[dst_offset] = 0.0f;
-                            continue;
-                        }
-
-                        float zero = 0.0f;
-                        vfloat32m1_t zero_scalar
-                                = __riscv_vle32_v_f32m1(&zero, 1);
-
-                        cycleLength = __riscv_vsetvl_e32m8(size);
-                        vfloat32m1_t vred_res;
-                        vred_res = __riscv_vfredusum_vs_f32m8_f32m1(
-                                vsum, zero_scalar, cycleLength);
-
-                        float red_res;
-                        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                        dst[dst_offset] = red_res / (float)count;
+                        count += size;
                     }
+                }
+
+                if (count == 0) {
+                    dst[dst_offset] = 0.0f;
+                    return;
+                }
+
+                vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+
+                cycleLength = __riscv_vsetvl_e32m1(size);
+                vfloat32m1_t vred_res;
+                vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                        vsum, zero_scalar, cycleLength);
+
+                float red_res;
+                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+                dst[dst_offset] = red_res / (float)count;
+            });
 }
 } // namespace
 

@@ -1032,8 +1032,18 @@ private:
 
 // Helper functions.
 inline bool is_const(const expr_t &e);
+inline bool is_const(const expr_t &e, int value);
 inline bool is_var(const expr_t &e);
 inline bool all_of(const expr_t &e, const expr_t &value);
+inline bool is_zero(const expr_t &e) {
+    return is_const(e, 0);
+}
+inline bool is_one(const expr_t &e) {
+    return is_const(e, 1);
+}
+inline bool is_minus_one(const expr_t &e) {
+    return is_const(e, -1);
+}
 
 // Unary and binary operators.
 enum class op_kind_t {
@@ -1855,6 +1865,11 @@ inline bool is_binary_cmp_op(const expr_t &e) {
 
 inline bool is_const(const expr_t &e) {
     return e.is<bool_imm_t>() || e.is<int_imm_t>() || e.is<float_imm_t>();
+}
+
+inline bool is_const(const expr_t &e, int value) {
+    if (!is_const(e)) return false;
+    return e.is_equal(to_expr(value, e.type()));
 }
 
 inline bool all_of(const expr_t &e, const expr_t &value) {

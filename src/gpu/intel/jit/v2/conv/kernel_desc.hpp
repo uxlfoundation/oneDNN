@@ -81,9 +81,9 @@ GPU_DEFINE_PARSE_ENUM(specialization_mode_t, specialization_mode_names)
 struct specialization_t {
     specialization_mode_t mode = specialization_mode_t::none;
     // Dimension values to specialize (e.g. kw1).
-    pvar_tile_t dim_values;
+    tile_t dim_values;
     // Dimension modulus to specialize (e.g. oc@64)
-    pvar_tile_t dim_mods;
+    tile_t dim_mods;
 
     // Whether the specialization depends on the problem dimensions, meaning
     // that specialize() must be called.
@@ -283,9 +283,9 @@ public:
     fma_kind_t fma = fma_kind_t::undef;
     int simd = 0;
     int regs = 0;
-    pvar_tile_t iter_tile;
-    pvar_tile_t iter_outer_tile;
-    pvar_tile_t thread_group_tile;
+    tile_t iter_tile;
+    tile_t iter_outer_tile;
+    tile_t thread_group_tile;
     loop_desc_t loop_desc;
 
     bool use_stream_k = false;
@@ -455,7 +455,7 @@ public:
         return ret;
     }
 
-    size_t size(size_t idx, const pvar_tile_t &tile) const {
+    size_t size(size_t idx, const tile_t &tile) const {
         gpu_assert(idx < N);
         size_t ret = 1;
         for (auto &d : entries_[idx].dims) {

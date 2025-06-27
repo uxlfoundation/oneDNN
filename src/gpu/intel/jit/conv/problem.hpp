@@ -290,12 +290,11 @@ private:
 };
 
 pvar_t to_gemm(const pvar_t &d, prop_kind_t prop, bool is_transpose = false);
-pvar_tile_t to_gemm(
-        const pvar_tile_t &t, prop_kind_t prop, bool is_transpose = false);
+tile_t to_gemm(const tile_t &t, prop_kind_t prop, bool is_transpose = false);
 inline pvar_t to_gemm(const pvar_t &d, const conv_problem_t &prb) {
     return to_gemm(d, prb.prop_kind(), prb.ab_swap_transpose);
 }
-inline pvar_tile_t to_gemm(const pvar_tile_t &t, const conv_problem_t &prb) {
+inline tile_t to_gemm(const tile_t &t, const conv_problem_t &prb) {
     return to_gemm(t, prb.prop_kind(), prb.ab_swap_transpose);
 }
 

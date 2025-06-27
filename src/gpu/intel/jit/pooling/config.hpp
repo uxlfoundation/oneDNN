@@ -127,14 +127,14 @@ public:
         set_exec_cfg(ec);
     }
 
-    pvar_tile_t shape(bool pad) const override {
+    tile_t shape(bool pad) const override {
 #define SET(g_name, l_name) \
     ret[pvars::g_name] = (pad) \
             ? utils::rnd_up(prb.l_name, pad_block(pvars::g_name)) \
             : prb.l_name
 
         const auto &prb = pooling_problem();
-        pvar_tile_t ret;
+        tile_t ret;
         SET(mb, mb);
         SET(oc, c);
         if (is_fwd()) {

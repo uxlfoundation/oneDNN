@@ -88,7 +88,7 @@ struct slm_plan_t : public base_plan_t {
     layout_t b_layout;
     send_plan_t a_g2s_load;
     send_plan_t b_g2s_load;
-    tensor_t x_reduce_tile;
+    tile_coord_t x_reduce_tile_coord;
     reduce_plan_t x_reduce;
     reorder_plan_t a_reorder;
     reorder_plan_t b_reorder;
@@ -131,7 +131,7 @@ struct prefetch_plan_t : public base_plan_t {
 struct x2r_plan_t : public base_plan_t {
     send_plan_t a_load;
     send_plan_t b_load;
-    tensor_t x_reduce_tile;
+    tile_coord_t x_reduce_tile_coord;
     reduce_plan_t x_reduce;
     reorder_plan_t a_reorder;
     reorder_plan_t b_reorder;
@@ -233,11 +233,11 @@ struct conv_plan_t : public base_plan_t {
     conv_plan_t(const hw_t &hw)
         : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}
 
-    const tensor_t &x_reduce_tile() const {
-        if (!x2r.x_reduce_tile.is_empty()) return x2r.x_reduce_tile;
-        if (!slm.x_reduce_tile.is_empty()) return slm.x_reduce_tile;
+    const tile_coord_t &x_reduce_tile_coord() const {
+        if (!x2r.x_reduce_tile_coord.is_empty()) return x2r.x_reduce_tile_coord;
+        if (!slm.x_reduce_tile_coord.is_empty()) return slm.x_reduce_tile_coord;
         gpu_error_not_expected();
-        return x2r.x_reduce_tile;
+        return x2r.x_reduce_tile_coord;
     }
 
     bool can_split(abc_kind_t abc, int factor) const;

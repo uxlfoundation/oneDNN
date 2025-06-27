@@ -180,7 +180,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     cfg->set_zp_cfg(zp_cfg);
 
     auto count_inner_elems = [&](const layout_t &layout) {
-        auto dims = cfg->tiles().front().dims();
+        auto dims = cfg->tiles().front().values();
         dim_t contiguous_inner_elems = 1;
         for (auto &b : layout.blocks()) {
             if (b.block == 1) continue;

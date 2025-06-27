@@ -434,8 +434,8 @@ pvar_t to_gemm(const pvar_t &d, prop_kind_t prop, bool is_transpose) {
     return pvar_t();
 }
 
-pvar_tile_t to_gemm(const pvar_tile_t &t, prop_kind_t prop, bool is_transpose) {
-    pvar_tile_t ret;
+tile_t to_gemm(const tile_t &t, prop_kind_t prop, bool is_transpose) {
+    tile_t ret;
     ret[pvars::b] = 1;
     ret[pvars::m] = 1;
     ret[pvars::n] = 1;

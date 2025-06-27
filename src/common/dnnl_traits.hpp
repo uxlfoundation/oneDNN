@@ -79,6 +79,14 @@ struct prec_traits_t<data_type::s32> {
     using type = int32_t;
 };
 template <>
+struct prec_traits_t<data_type::s16> {
+    using type = int16_t;
+};
+template <>
+struct prec_traits_t<data_type::u16> {
+    using type = uint16_t;
+};
+template <>
 struct prec_traits_t<data_type::s8> {
     using type = int8_t;
 };
@@ -134,6 +142,14 @@ struct data_traits_t<float> {
 template <>
 struct data_traits_t<int32_t> {
     static constexpr data_type_t data_type = data_type::s32;
+};
+template <>
+struct data_traits_t<int16_t> {
+    static constexpr data_type_t data_type = data_type::s16;
+};
+template <>
+struct data_traits_t<uint16_t> {
+    static constexpr data_type_t data_type = data_type::u16;
 };
 template <>
 struct data_traits_t<int8_t> {

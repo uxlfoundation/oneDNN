@@ -136,8 +136,17 @@ dnnl_graph_tensor::dnnl_graph_tensor(
 
 status_t DNNL_API dnnl_graph_tensor_create(tensor_t **tensor,
         const logical_tensor_t *logical_tensor, engine_t *eng, void *handle) {
-    if (utils::any_null(tensor, logical_tensor, eng))
+    if (utils::any_null(tensor, logical_tensor))
         return status::invalid_arguments;
+
+    if (nullptr == eng) {
+        // engine is not needed only when creating host scalar tensor.
+        if (logical_tensor->property != property_type::host_scalar)
+            return status::invalid_arguments;
+
+        // for host scalar tensor, handle is always needed.
+        if (nullptr == handle) { return status::invalid_arguments; }
+    }
 
     *tensor = new tensor_t {*logical_tensor, eng, handle};
     if (*tensor == nullptr) return status::out_of_memory;

@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
-* Copyright 2023-2024 FUJITSU LIMITED
+* Copyright 2023-2025 FUJITSU LIMITED
 * Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -325,7 +325,8 @@ status_t init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa,
     brg->has_int8_vnni = true;
 
     set_brg_vmm(brg); // TODO: Investigate if it is really needed here.
-    brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8;
+    brg->req_s8s8_compensation = (brg->is_int8 && (brg->dt_a == data_type::s8)
+            && !isa_has_s8s8(brg->isa_impl));
 
     brg->LDA = (brg->is_row_major()) ? static_cast<int>(LDA)
                                      : static_cast<int>(LDB);
@@ -344,9 +345,7 @@ status_t init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa,
     brg->bdb2 = 0;
     brg->bdb2_tail = 0;
 
-    const bool is_b_in_vnni_format = false;
-    brg->ld_step
-            = is_b_in_vnni_format ? data_type_vnni_granularity(brg->dt_b) : 1;
+    brg->ld_step = data_type_vnni_granularity(brg->dt_b);
 
     const bool has_no_vnni_compute_instruction = false;
     brg->rd_step = has_no_vnni_compute_instruction

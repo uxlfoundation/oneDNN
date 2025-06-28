@@ -100,7 +100,7 @@ private:
 // Function representing DPAS instruction.
 class dpas_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(dpas_t, func_impl_t)
+    IR_DECL_TYPE(dpas_t)
 
     static func_t make(bool is_dpasw, int exec_size, uint8_t sdepth,
             uint8_t rcount, const type_t &dst_type, const type_t &src1_type,
@@ -206,7 +206,7 @@ private:
 // Function representing MAD instruction.
 class mad_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(mad_t, func_impl_t)
+    IR_DECL_TYPE(mad_t)
 
     static func_t make(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t src2_type,

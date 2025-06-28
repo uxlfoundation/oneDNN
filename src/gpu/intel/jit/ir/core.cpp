@@ -424,7 +424,6 @@ void object_impl_t::_visit(ir_visitor_t &visitor) const {}
 DECL_TRAVERSE_LEAF(bool_imm_t)
 DECL_TRAVERSE_LEAF(const_var_t)
 DECL_TRAVERSE_LEAF(float_imm_t)
-DECL_TRAVERSE_LEAF(func_impl_t)
 DECL_TRAVERSE_LEAF(int_imm_t)
 DECL_TRAVERSE_LEAF(var_t)
 
@@ -492,16 +491,14 @@ void ir_visitor_t::_visit(const for_t &obj) {
 }
 
 object_t ir_mutator_t::_mutate(const func_call_t &obj) {
-    auto func = mutate(obj.func);
     auto args = mutate(obj.args);
 
-    if (func.is_same(obj.func) && ir_utils::is_same(args, obj.args)) return obj;
+    if (ir_utils::is_same(args, obj.args)) return obj;
 
-    return func_call_t::make(func, args, obj.attr);
+    return func_call_t::make(obj.func, args, obj.attr);
 }
 
 void ir_visitor_t::_visit(const func_call_t &obj) {
-    visit(obj.func);
     visit(obj.args);
 }
 
@@ -690,6 +687,7 @@ void ir_visitor_t::_visit(const while_t &obj) {
     visit(obj.body);
 }
 
+#if 0
 // Catch missing mutates that are not expected to dispatch to the base
 // mutator
 object_t ir_mutator_t::_mutate(const nary_op_t &obj) {
@@ -706,6 +704,7 @@ object_t ir_mutator_t::_mutate(const pexpr_t &obj) {
 void ir_visitor_t::_visit(const pexpr_t &obj) {
     gpu_error_not_expected() << "Can't handle type: pexpr_t";
 }
+#endif
 
 } // namespace jit
 } // namespace intel

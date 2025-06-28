@@ -31,7 +31,7 @@ namespace jit {
 
 class eltwise_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(eltwise_t, func_impl_t)
+    IR_DECL_TYPE(eltwise_t)
 
     static func_t make(alg_kind_t alg_kind, float scale, float alpha,
             float beta, expr_t &seed, ngen::DataType dst_dt) {

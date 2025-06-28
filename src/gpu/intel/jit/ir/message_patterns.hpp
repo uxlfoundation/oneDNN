@@ -522,10 +522,10 @@ public:
         return matcher.is_match_;
     };
 
-    void _visit(const func_impl_t &obj) override {
-        if (!obj.is<send_t>()) return;
+    void _visit(const func_call_t &obj) override {
+        if (!is_func_call<send_t>(obj)) return;
 
-        auto &s = obj.as<send_t>();
+        auto &s = obj.func.as<send_t>();
 
         if (pattern.is_uniform_blocked()) {
             // Larger blocked or 2D messages are a strict improvement

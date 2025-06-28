@@ -131,7 +131,7 @@ struct block_2d_info_t {
 // Function representing send messages.
 class send_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(send_t, func_impl_t)
+    IR_DECL_TYPE(send_t)
 
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,

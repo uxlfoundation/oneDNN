@@ -30,7 +30,7 @@ namespace jit {
 // Implements reduction of GRF buffer for given layout.
 class reduce_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(reduce_t, func_impl_t)
+    IR_DECL_TYPE(reduce_t)
 
     static func_t make(const layout_t &src_layout, const layout_t &dst_layout) {
         return func_t(new reduce_t(src_layout, dst_layout));

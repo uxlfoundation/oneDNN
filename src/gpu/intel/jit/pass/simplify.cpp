@@ -41,7 +41,7 @@ using namespace ir_utils;
 // match any expression.
 class pexpr_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(pexpr_t)
+    IR_DECL_TYPE(pexpr_t)
 
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
@@ -73,7 +73,10 @@ public:
         return z;
     }
 
-    IR_DECLARE_TRAVERSERS()
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override {
+        gpu_error_not_expected();
+    }
 
     int id;
 
@@ -85,7 +88,7 @@ private:
 // matching. Can match any int_imm_t with the given value.
 class pint_imm_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(pint_imm_t)
+    IR_DECL_TYPE(pint_imm_t)
 
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
@@ -161,9 +164,20 @@ private:
     object_eq_map_t<expr_t, expr_t> expr_matched_;
 };
 
-class pexpr_substitute_t : public ir_mutator_t {
+class pexpr_mutator_t : public ir_mutator_t {
 public:
     using ir_mutator_t::_mutate;
+
+    virtual object_t _mutate(const pexpr_t &obj) { return obj; }
+};
+
+inline object_t pexpr_t::_mutate(ir_mutator_t &mutator) const {
+    return utils::downcast<pexpr_mutator_t *>(&mutator)->_mutate(*this);
+}
+
+class pexpr_substitute_t : public pexpr_mutator_t {
+public:
+    using pexpr_mutator_t::_mutate;
 
     pexpr_substitute_t(const match_context_t *ctx) : ctx_(ctx) {}
 
@@ -668,6 +682,52 @@ public:
     const constraint_set_t &cset;
 };
 
+// N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
+// where <op> is either addition or multiplication.
+class nary_op_t : public expr_impl_t {
+public:
+    IR_DECL_TYPE(nary_op_t)
+
+    static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
+        return expr_t(new nary_op_t(op_kind, args));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+
+        return (op_kind == other.op_kind)
+                && ir_utils::is_equal(args, other.args);
+    }
+
+    size_t get_hash() const override {
+        return ir_utils::get_hash(op_kind, args);
+    }
+
+    std::string str() const override {
+        std::ostringstream oss;
+        oss << "(";
+        for (size_t i = 0; i < args.size(); i++) {
+            oss << (i != 0 ? " " + to_string(op_kind) + " " : "") << args[i];
+        }
+
+        oss << ")";
+        return oss.str();
+    }
+
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override;
+
+    op_kind_t op_kind;
+    std::vector<expr_t> args;
+
+private:
+    nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
+        : expr_impl_t(_type_info(), nary_op_type(op_kind, args))
+        , op_kind(op_kind)
+        , args(args) {}
+};
+
 // Finds all constant operands on an N-ary operation, returns the folded
 // constant in `const_arg` and the remaining operands in `other_args`.
 void split_const_nary_op_arg(op_kind_t op_kind, const std::vector<expr_t> &args,
@@ -725,19 +785,27 @@ class nary_op_visitor_t : public ir_visitor_t {
 public:
     using ir_visitor_t::_visit;
 
-    void _visit(const nary_op_t &obj) override { visit(obj.args); }
+    virtual void _visit(const nary_op_t &obj) { visit(obj.args); }
 };
+
+inline void nary_op_t::_visit(ir_visitor_t &visitor) const {
+    utils::downcast<nary_op_visitor_t *>(&visitor)->_visit(*this);
+}
 
 class nary_op_mutator_t : public ir_mutator_t {
 public:
     using ir_mutator_t::_mutate;
 
-    object_t _mutate(const nary_op_t &obj) override {
+    virtual object_t _mutate(const nary_op_t &obj) {
         auto args = mutate(obj.args);
         if (ir_utils::is_equal(args, obj.args)) return obj;
         return make_nary_op(obj.op_kind, args);
     }
 };
+
+inline object_t nary_op_t::_mutate(ir_mutator_t &mutator) const {
+    return utils::downcast<nary_op_mutator_t *>(&mutator)->_mutate(*this);
+}
 
 class nary_op_transformer_t : public nary_op_mutator_t {
 public:
@@ -926,7 +994,7 @@ public:
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
 class factored_expr_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(factored_expr_t);
+    IR_DECL_TYPE(factored_expr_t);
 
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));

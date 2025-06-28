@@ -100,8 +100,6 @@ public:
         out_ << obj.line_str() << "\n";
     }
 
-    void _visit(const func_impl_t &obj) override { out_ << obj.str(); }
-
     void _visit(const if_t &obj) override {
         print_indent();
         out_ << obj.line_str() << " {\n";
@@ -284,7 +282,7 @@ public:
         return ir_mutator_t::_mutate(obj); \
     };
 
-    HANDLE_TRAVERSE_TARGETS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -346,7 +344,7 @@ public:
         return _mutate_after(obj); \
     };
 
-    HANDLE_ALL_IR_OBJECTS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -366,7 +364,7 @@ public:
         if (obj.is_stmt()) stmts.emplace_back(obj); \
     }
 
-    HANDLE_ALL_IR_OBJECTS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -405,7 +403,7 @@ private:
     template <typename T>
     object_t mutate_stmt(const T &obj) {
         if (in_ctor_) return ir_mutator_t::_mutate(obj);
-        if (T::_type_id() == ir_type_id_t::stmt_seq_t) {
+        if (T::_type_info().type_id == stmt_seq_t::_type_info().type_id) {
             return mutate_stmt_seq(obj);
         }
         auto undef_bufs = get_undef_bufs();
@@ -768,12 +766,12 @@ int count_object(const object_t &root, const object_t &obj) {
     std::vector<object_t> found;
     do {
 #define HANDLE_IR_OBJECT(type) \
-    if (obj.dispatch_type_id() == type::_dispatch_type_id()) { \
+    if (obj.type_info() == type::_type_info()) { \
         found = find_objects<type>(root); \
         break; \
     }
 
-        HANDLE_ALL_IR_OBJECTS()
+        HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 

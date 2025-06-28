@@ -31,7 +31,7 @@ namespace jit {
 // data types is supported.
 class reorder_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(reorder_t, func_impl_t)
+    IR_DECL_TYPE(reorder_t)
 
     static func_t make(layout_t src_layout, layout_t dst_layout) {
         reorder::normalize(src_layout, dst_layout);

@@ -60,7 +60,7 @@ struct CopyOperand
     ngen::Immediate ngenImmediate() const;
     ngen::FlagRegister ngenFlag() const;
 
-    CopyOperand() {}
+    CopyOperand() = default;
     CopyOperand(ngen::RegData rd);
     CopyOperand(ngen::Immediate imm) : type(imm.getType()), kind(Immediate), value(imm) {}
     CopyOperand(int imm) : CopyOperand(ngen::Immediate(imm)) {}
@@ -200,6 +200,8 @@ protected:
     void planEmulatedHFToHF8(CopyInstruction &i);
     void planFP8SIMD1Mov(CopyInstruction &i);
     void planEmulatedFP8E8M0ToHF(CopyInstruction &i);
+    void planIntegerMove(CopyInstruction &i);
+    void emulateBooleanFunction();
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();

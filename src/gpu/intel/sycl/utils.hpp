@@ -32,6 +32,7 @@ class engine_t;
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range);
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev);
 
 status_t create_ocl_engine(
@@ -39,12 +40,13 @@ status_t create_ocl_engine(
                 *ocl_engine,
         const gpu::intel::sycl::engine_t *engine);
 
-status_t get_kernel_binary(const ::sycl::kernel &kernel, xpu::binary_t &binary);
-
 status_t create_ocl_engine(
         std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
                 *ocl_engine,
         const gpu::intel::sycl::engine_t *engine);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+
+status_t get_kernel_binary(const ::sycl::kernel &kernel, xpu::binary_t &binary);
 
 gpu_utils::device_id_t device_id(const ::sycl::device &dev);
 

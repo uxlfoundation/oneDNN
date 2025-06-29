@@ -208,6 +208,17 @@ status_t func_zeKernelCreate(ze_module_handle_t hModule,
     return status::success;
 }
 
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+status_t func_zeGetKernelBinary(
+        ze_kernel_handle_t hKernel, size_t *pSize, uint8_t *pKernelBinary) {
+    static auto f = find_ze_symbol<decltype(&zeKernelGetBinaryExp)>(
+            "zeKernelGetBinaryExp");
+
+    if (!f) return status::runtime_error;
+    ZE_CHECK(f(hKernel, pSize, pKernelBinary));
+    return status::success;
+}
+#else
 status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
         uint8_t *pModuleNativeBinary) {
     static auto f = find_ze_symbol<decltype(&zeModuleGetNativeBinary)>(
@@ -217,6 +228,7 @@ status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
     ZE_CHECK(f(hModule, pSize, pModuleNativeBinary));
     return status::success;
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 // FIXME: Currently SYCL doesn't provide any API to get device UUID so
 // we query it directly from Level0 with the zeDeviceGetProperties function.

@@ -287,7 +287,9 @@ cl_platform_id get_platform(engine_t *engine);
 status_t create_program(ocl::wrapper_t<cl_program> &ocl_program,
         cl_device_id dev, cl_context ctx, const xpu::binary_t &binary);
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 // Check for three conditions:
 // 1. Device and context are compatible, i.e. the device belongs to

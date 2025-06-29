@@ -438,7 +438,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     };
 
     dim_t n_block = nstl::min(rnn.N, rnn.n_block);
-    dim_t n_tail = nstl::min(rnn.N, rnn.nproj_tail);
+    dim_t n_tail = nstl::min(rnn.N, rnn.n_tail);
     if (rnn.LDA1[0] < rnn.k1_block && rnn.LDA1[1] < rnn.k1_block
             && rnn.LDA1[2] < rnn.k1_block)
         return status::unimplemented;
@@ -508,7 +508,9 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
 
     // enable merged across n_iter dimension layer part of the cell computation
     // TODO: extend coverage for other problem types
-    const bool mlc_cell_type_ok = cell_kind == alg_kind::vanilla_lstm
+    const bool mlc_cell_type_ok
+            = utils::one_of(
+                      cell_kind, alg_kind::vanilla_lstm, alg_kind::lbr_gru)
             && !rnn.is_lstm_projection && !rnn.is_lstm_peephole;
     const int mlc_mb_max_threshold = 1;
     const int mlc_n_iter_min_threshold = 2;

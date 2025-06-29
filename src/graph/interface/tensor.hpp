@@ -27,23 +27,7 @@ public:
     dnnl_graph_tensor(const dnnl::impl::graph::logical_tensor_t &lt,
             const dnnl::impl::graph::engine_t *eng, void *handle);
 
-    bool is(dnnl::impl::graph::data_type_t dtype) const {
-        return dtype == lt_.data_type;
-    }
-
-    template <typename Value>
-    typename std::add_pointer<Value>::type get_data_handle() const {
-        return is(get_data_type<Value>())
-                ? reinterpret_cast<typename std::add_pointer<Value>::type>(
-                        handle_.get())
-                : nullptr;
-    }
-
     void *get_data_handle() const { return handle_.get(); }
-
-    void *get_data_handle_if_is(dnnl::impl::graph::data_type_t type) const {
-        return is(type) ? handle_.get() : nullptr;
-    }
 
     void set_data_handle(void *handle) {
         if (lt_.property == dnnl::impl::graph::property_type::host_scalar) {
@@ -69,18 +53,6 @@ public:
 private:
     static dnnl::impl::graph::status_t dummy_destructor(void *) {
         return dnnl::impl::graph::status::success;
-    }
-
-    template <typename T>
-    dnnl::impl::graph::data_type_t get_data_type() const {
-        if (std::is_same<T, float>::value)
-            return dnnl::impl::graph::data_type::f32;
-        else if (std::is_same<T, int8_t>::value)
-            return dnnl::impl::graph::data_type::s8;
-        else if (std::is_same<T, uint8_t>::value)
-            return dnnl::impl::graph::data_type::u8;
-        else
-            return dnnl::impl::graph::data_type::undef;
     }
 
     dnnl::impl::graph::logical_tensor_t lt_

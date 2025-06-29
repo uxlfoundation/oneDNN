@@ -848,32 +848,24 @@ float brg_blocking_t::est_eff() {
     const auto work_amount = sp_amount * mb * ngroups * nb_oc;
     const auto sp_eff = (static_cast<float>(sp) / rnd_up(sp, sp_block));
 
-    const auto thr_eff = static_cast<float>(work_amount)
-            / utils::rnd_up(work_amount, nthr);
-
     const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
 
     const auto job = div_up(work_amount, static_cast<dim_t>(nthr));
 
-    auto job_eff = 1.f;
-    if (job < nthr) {
-        // the thread #0 is one of the most loaded threads
-        // so we use it to estimate the max_job
-        dim_t start {0}, end {0};
-        balance211(work_amount, nthr, 0, start, end);
-        const auto thread_job = end - start;
-        dim_t max_job {0}, sum_job {0};
-        max_job = (loop_order == loop_ndhwgc)
-                ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
-                : grid_coverage(
-                        thread_job, sp, nb_od * nb_oh, sp_block, oc, oc_block);
-        sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
+    // the thread #0 is one of the most loaded threads
+    // so we use it to estimate the max_job
+    dim_t start {0}, end {0};
+    balance211(work_amount, nthr, 0, start, end);
+    const auto thread_job = end - start;
+    const dim_t max_job = (loop_order == loop_ndhwgc)
+            ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
+            : grid_coverage(
+                    thread_job, sp, nb_od * nb_oh, sp_block, oc, oc_block);
+    const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
-        job_eff = max_job == 0 ? 1
-                               : static_cast<float>(sum_job) / (max_job * nthr);
-    } else {
-        job_eff = thr_eff;
-    }
+    const float job_eff = max_job == 0
+            ? 1.f
+            : static_cast<float>(sum_job) / (max_job * nthr);
 
     const auto ic_blocking_size = ic_block * nb_ic_blocking;
     const auto oc_blocking_size = oc_block * ic_blocking_size;
@@ -1315,8 +1307,6 @@ float brg_blocking_t::est_eff_1x1() {
             = static_cast<dim_t>(mb) * ngroups * nb_oc * sp_amount;
 
     const auto sp_eff = static_cast<float>(sp) / rnd_up(sp, sp_block);
-    const auto thr_eff = static_cast<float>(work_amount)
-            / utils::rnd_up(work_amount, nthr);
     const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
 
     const auto job = div_up(work_amount, nthr);
@@ -1343,35 +1333,29 @@ float brg_blocking_t::est_eff_1x1() {
         od_thr = nstl::min(static_cast<dim_t>(od), nb_od_thr * od_block);
     }
 
-    auto job_eff = 1.f;
-    if (job < nthr) {
-        // the thread #0 is one of the most loaded threads
-        // so we use it to estimate the max_job
-        dim_t start {0}, end {0};
-        balance211(work_amount, nthr, 0, start, end);
-        const auto thread_job = end - start;
-        dim_t max_job {0}, sum_job {0};
-        if (is_os_blocking) {
-            max_job = (loop_order == loop_ndhwgc)
-                    ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
-                            nb_os_blocking * sp_block)
-                    : grid_coverage(thread_job, os, 1,
-                            nb_os_blocking * sp_block, oc, oc_block);
-        } else {
-            max_job = (loop_order == loop_ndhwgc)
-                    ? grid_coverage(
-                            thread_job, oc, ngroups, oc_block, sp, sp_block)
-                    : grid_coverage(
-                            thread_job, sp, od * oh, sp_block, oc, oc_block);
-        }
-
-        sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
-
-        job_eff = max_job == 0 ? 1
-                               : static_cast<float>(sum_job) / (max_job * nthr);
+    // the thread #0 is one of the most loaded threads
+    // so we use it to estimate the max_job
+    dim_t start {0}, end {0};
+    balance211(work_amount, nthr, 0, start, end);
+    const auto thread_job = end - start;
+    dim_t max_job {0};
+    if (is_os_blocking) {
+        max_job = (loop_order == loop_ndhwgc)
+                ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
+                        nb_os_blocking * sp_block)
+                : grid_coverage(thread_job, os, 1, nb_os_blocking * sp_block,
+                        oc, oc_block);
     } else {
-        job_eff = thr_eff;
+        max_job = (loop_order == loop_ndhwgc)
+                ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
+                : grid_coverage(
+                        thread_job, sp, od * oh, sp_block, oc, oc_block);
     }
+
+    const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
+
+    const float job_eff
+            = max_job == 0 ? 1 : static_cast<float>(sum_job) / (max_job * nthr);
 
     const auto ic_blocking_size = ic_block * nb_ic_blocking;
     const auto oc_blocking_size = oc_block * ic_blocking_size;

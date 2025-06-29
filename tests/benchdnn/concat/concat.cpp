@@ -115,10 +115,7 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->sdt, prb->ddt}, prb->dir, res);
-    skip_unimplemented_sum_po(prb->attr, res, dnnl_concat, prb->sdt);
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_concat);
-    skip_unimplemented_arg_scale(prb->attr, res);
+    skip_unimplemented_attr(prb->attr, res, dnnl_concat, prb->sdt);
 
     // ref concat is reorder-based, hence, inherits some reorder limitations.
     // bf16, f16 reorders on cpu supports only [bf16, f16]<->f32

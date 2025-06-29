@@ -181,6 +181,67 @@ float s8s8_weights_scale_factor() {
     return 1.0f;
 #endif
 }
+uint32_t get_num_sets_in_cache(int level) {
+    // if level 1 is requested we map it to the closest cache which is level 0
+    // level 1 is actually instruction cache
+    if (level <= 1) { level = level - 1; }
+
+    auto guess = [](int level) {
+        switch (level) {
+            case 1: return 64u;
+            case 2: return 2U * 1024;
+            case 3: return 114688u;
+            default: return 0U;
+        }
+    };
+
+#if DNNL_X64
+    using namespace x64;
+
+    if (cpu().getDataCacheLevels() == 0) return guess(level);
+
+    if (level >= 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
+        uint32_t data[4] = {0};
+        Xbyak::util::Cpu::getCpuidEx(4, level, data);
+        uint32_t num_sets = data[2] + 1;
+        return num_sets;
+    } else
+        return 0;
+#else
+    return guess(level);
+#endif
+}
+uint32_t get_num_ways_in_cache(int level) {
+    // if level 1 is requested we map it to the closest cache which is level 0
+    // level 1 is actually instruction cache
+    if (level <= 1) { level = level - 1; }
+
+    auto guess = [](int level) {
+        switch (level) {
+            case 1: return 12u;
+            case 2: return 16u;
+            case 3: return 15u;
+            default: return 0U;
+        }
+    };
+
+#if DNNL_X64
+
+    using namespace x64;
+    if (cpu().getDataCacheLevels() == 0) return guess(level);
+
+    if (level >= 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
+        uint32_t data[4] = {0};
+        Xbyak::util::Cpu::getCpuidEx(4, level, data);
+        uint32_t num_ways = ((data[1] & 0xFFC00000) >> 22) + 1;
+        return num_ways;
+    } else
+        return 0;
+
+#else
+    return guess(level);
+#endif
+}
 
 unsigned get_per_core_cache_size(int level) {
     auto guess = [](int level) {

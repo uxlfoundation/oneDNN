@@ -50,6 +50,9 @@ public:
             if (lt_.data_type == dnnl::impl::graph::data_type::s32) {
                 scalar_.s32_value = *static_cast<int32_t *>(handle);
                 handle_.reset(&scalar_.s32_value, dummy_destructor);
+            } else if (lt_.data_type == dnnl::impl::graph::data_type::f32) {
+                scalar_.f32_value = *static_cast<float *>(handle);
+                handle_.reset(&scalar_.f32_value, dummy_destructor);
             } else {
                 assertm(false, "Unsupported data type for host scalar");
             }
@@ -93,6 +96,7 @@ private:
         // this field is valid when logical tensor's
         // property is host_scalar
         int32_t s32_value = 0;
+        float f32_value;
         // TODO: add more dtype support
     } scalar_;
 };

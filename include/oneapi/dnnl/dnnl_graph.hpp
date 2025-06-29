@@ -209,6 +209,9 @@ inline engine make_engine_with_allocator(
 
 /// @} dnnl_graph_api_engine
 
+// forward declaration
+class tensor;
+
 /// @addtogroup dnnl_graph_api_logical_tensor Logical Tensor
 ///
 /// Logical tensor describes the meta-data of the input or output tensor, like
@@ -546,6 +549,9 @@ public:
         return equal != 0;
     }
 
+    // declare a friend function to access the private data.
+    friend tensor make_scalar_tensor(const logical_tensor &lt, void *scalar);
+
 private:
     static dnnl_data_type_t convert_to_c(data_type dtype) {
         return static_cast<dnnl_data_type_t>(dtype);
@@ -575,6 +581,8 @@ private:
 /// A tensor object
 class tensor : public tensor_handle {
 public:
+    using tensor_handle::handle;
+
     /// Default constructor. Constructs an empty object.
     tensor() = default;
 
@@ -646,6 +654,21 @@ public:
         return logical_tensor(lt);
     }
 };
+
+/// Creates a tensor object for host-side scalar value. The data type contained
+/// in the logical tensor parameter will be used to interpret the scalar
+/// pointer. The property type in the logical tensor must be `host_scalar`.
+///
+/// @param lt The logical tensor describing the host scalar
+/// @param scalar The pointer to scalar value
+/// @returns Created tensor object
+inline tensor make_scalar_tensor(const logical_tensor &lt, void *scalar) {
+    dnnl_graph_tensor_t t = nullptr;
+    error::wrap_c_api(dnnl_graph_tensor_create(&t, &(lt.data), nullptr, scalar),
+            "could not create a scalar tensor object");
+
+    return tensor(t);
+}
 
 /// @} dnnl_graph_api_tensor
 

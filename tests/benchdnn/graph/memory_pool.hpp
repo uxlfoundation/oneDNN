@@ -77,12 +77,28 @@ static void ocl_free(
 }
 #endif
 
+static void *host_malloc(size_t size, size_t alignment) {
+    void *ptr = nullptr;
+#ifdef _WIN32
+    ptr = _aligned_malloc(size, alignment);
+    int rc = ((ptr) ? 0 : errno);
+#else
+    int rc = ::posix_memalign(&ptr, alignment, size);
+#endif /* _WIN32 */
+    return (rc == 0) ? ptr : nullptr;
+}
+
+static void host_free(void *ptr) {
+#ifdef _WIN32
+    _aligned_free((void *)ptr);
+#else
+    ::free((void *)ptr);
+#endif /* _WIN32 */
+}
 // This memory pool is for benchdnn graph performance validation. `clear` and
 // `set_capacity` functions aren't thread safe.
 // Note: memory pool for GPU backend currently.
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 class simple_memory_pool_t {
 public:
     bool check_allocated_mem(void *&ptr, size_t size) {
@@ -102,6 +118,26 @@ public:
         return true;
     }
 
+    // for host memory
+    void *allocate(size_t size, size_t alignment) {
+        std::lock_guard<std::mutex> pool_guard(pool_lock);
+        // fake malloc for 0 size
+        if (size == 0) return nullptr;
+        void *ptr {nullptr};
+        bool need_alloc_new_mm = check_allocated_mem(ptr, size);
+        if (need_alloc_new_mm) {
+            auto sh_ptr = std::shared_ptr<void> {
+                    host_malloc(size, alignment), host_free};
+            ptr = sh_ptr.get();
+            // record the map of mm size and its ptr for reuse
+            map_size_ptr_.emplace(size, sh_ptr);
+            is_free_ptr_[ptr] = false;
+        }
+        return ptr;
+    }
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
     void *allocate(
             size_t size, size_t alignment, const void *dev, const void *ctx)
@@ -134,18 +170,12 @@ public:
         }
         return ptr;
     }
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-    void deallocate(void *ptr) {
-        std::lock_guard<std::mutex> pool_guard(pool_lock);
-        is_free_ptr_[ptr] = true;
-    }
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void deallocate(void *ptr) {
-        std::lock_guard<std::mutex> pool_guard(pool_lock);
-        is_free_ptr_[ptr] = true;
-    }
 #endif
+
+    void deallocate(void *ptr) {
+        std::lock_guard<std::mutex> pool_guard(pool_lock);
+        is_free_ptr_[ptr] = true;
+    }
 
     void clear() {
         map_size_ptr_.clear();
@@ -183,7 +213,5 @@ private:
     };
 #endif
 };
-
-#endif
 
 #endif

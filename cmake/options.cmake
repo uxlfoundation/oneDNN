@@ -388,6 +388,8 @@ option(DNNL_ENABLE_STACK_CHECKER "enables stack checker that can be used to get
 option(DNNL_DISABLE_GPU_REF_KERNELS
         "builds oneDNN with only optimized kernels for GPU compute
         primitives" OFF)
+option(DNNL_DISABLE_MICRO_SDPA_KERNEL
+        "builds oneDNN without micro kernel for sdpa for perf collection" OFF)
 
 # =============================
 # External BLAS library options

@@ -181,6 +181,9 @@
 // When defined, it disables GPU compute reference kernels.
 #cmakedefine DNNL_DISABLE_GPU_REF_KERNELS
 
+// When defined, it disables GPU micro_sdpa kernel.
+#cmakedefine DNNL_DISABLE_GPU_MICRO_SDPA_KERNEL
+
 // List of configurating build controls
 // Workload controls
 #cmakedefine01 BUILD_TRAINING

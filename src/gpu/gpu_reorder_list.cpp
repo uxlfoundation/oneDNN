@@ -20,11 +20,11 @@
 #include "gpu/generic/direct_copy.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/custom_reorder.hpp"
+#include "gpu/intel/generic_reorder.hpp"
 #include "gpu/intel/jit/reorder/gen_reorder.hpp"
-#include "gpu/intel/ocl/custom_reorder.hpp"
-#include "gpu/intel/ocl/generic_reorder.hpp"
-#include "gpu/intel/ocl/ref_reorder.hpp"
-#include "gpu/intel/ocl/rnn/reorders.hpp"
+#include "gpu/intel/ref_reorder.hpp"
+#include "gpu/intel/rnn/reorders.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -49,12 +49,12 @@ using namespace dnnl::impl::data_type;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
-        GPU_REORDER_INSTANCE_INTEL(intel::ocl::rnn_weights_reorder_t::pd_t)
+        GPU_REORDER_INSTANCE_INTEL(intel::rnn_weights_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_GENERIC(generic::direct_copy_t::pd_t)
         GPU_REORDER_INSTANCE_INTEL(intel::jit::gen_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_INTEL(intel::ocl::custom_reorder_t::pd_t) // for specific tensor shapes
-        GPU_REORDER_INSTANCE_INTEL(intel::ocl::generic_reorder_t::pd_t)// fast and quite generic
-        GPU_REORDER_INSTANCE_INTEL(intel::ocl::ref_reorder_t::pd_t)    // slow but fits every use case
+        GPU_REORDER_INSTANCE_INTEL(intel::custom_reorder_t::pd_t) // for specific tensor shapes
+        GPU_REORDER_INSTANCE_INTEL(intel::generic_reorder_t::pd_t)// fast and quite generic
+        GPU_REORDER_INSTANCE_INTEL(intel::ref_reorder_t::pd_t)    // slow but fits every use case
         GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_lt_t::pd_t)
         GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_AMD(amd::miopen_reorder_t::pd_t)

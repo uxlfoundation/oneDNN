@@ -18,7 +18,6 @@
 #define GPU_INTEL_JIT_V2_CONV_DEBUG_HPP
 
 #include "gpu/intel/jit/v2/conv/kernel_desc.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

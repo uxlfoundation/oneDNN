@@ -20,7 +20,6 @@
 #include "common/primitive_attr.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

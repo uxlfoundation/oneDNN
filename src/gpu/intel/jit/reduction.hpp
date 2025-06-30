@@ -30,9 +30,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/reduction_generator.hpp"
-#include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -29,7 +29,6 @@
 #include "gpu/intel/jit/v2/conv/plan.hpp"
 #include "gpu/intel/jit/v2/conv/problem.hpp"
 #include "gpu/intel/jit/v2/conv/tensor_utils.hpp"
-#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -1063,7 +1062,7 @@ status_t kernel_desc_t::init_primitive_plan(primitive_init_plan_t &plan,
             scratchpad_key++;
             pd->scratchpad_registry().registrar().book(
                     into<uint32_t>(scratchpad_key), compute_layout.size(), 1,
-                    ocl::OCL_BUFFER_ALIGNMENT);
+                    OCL_BUFFER_ALIGNMENT);
             plan.add_internal_buffer(t.name, compute_layout, user_name,
                     scratchpad_key, zero_out);
             zero_out = false;

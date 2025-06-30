@@ -17,7 +17,6 @@
 #include <type_traits>
 
 #include "gpu/intel/sycl/utils.hpp"
-#include "gpu/intel/utils.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
 #include "level_zero/ze_api.h"

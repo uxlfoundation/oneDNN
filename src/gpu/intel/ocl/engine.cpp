@@ -38,8 +38,6 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-const char *get_kernel_header(const std::string &name);
-
 status_t preprocess_headers(std::stringstream &pp_code, const char *code,
         const compute::kernel_ctx_t &kernel_ctx) {
     std::stringstream code_stream(code);
@@ -310,7 +308,7 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
 
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
-        source = ocl::get_kernel_source(kernel_names[i]);
+        source = get_kernel_source(kernel_names[i]);
     gpu_assert(source)
             << "No kernel source file was found for the kernels: " <<
             [&]() {
@@ -329,7 +327,7 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
 
     gpu_assert([&]() {
         for (auto &name : kernel_names) {
-            if (!utils::one_of(ocl::get_kernel_source(name), source, nullptr))
+            if (!utils::one_of(get_kernel_source(name), source, nullptr))
                 return false;
         }
         return true;

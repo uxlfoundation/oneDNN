@@ -23,9 +23,9 @@
 #include "common/type_helpers.hpp"
 #include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/gemm/xe_systolic_gemm_copy_kernel.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/ocl/gemm/xe_systolic_gemm_copy_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -526,7 +526,7 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
             if (clear_sum && !pd()->with_ab_zero_points()) continue;
             if (!copy_b ? pd()->packed_a() : pd()->packed_b()) continue;
 
-            using copy_kernel_params_t = ocl::xe_systolic_gemm_copy_kernel_t;
+            using copy_kernel_params_t = xe_systolic_gemm_copy_kernel_t;
             compute::kernel_ctx_t kernel_ctx;
 
             auto trans
@@ -712,7 +712,7 @@ status_t xe_hp_systolic_gemm_t::launch_copy(const gemm_exec_ctx_t &ctx,
         int64_t ld_src, const memory_storage_t &dst, int32_t offset_dst,
         int32_t ld_dst, bool copyb) const {
 
-    using copy_kernel_t = ocl::xe_systolic_gemm_copy_kernel_t;
+    using copy_kernel_t = xe_systolic_gemm_copy_kernel_t;
 
     if (pd()->with_ab_zero_points()) {
         auto status
@@ -793,8 +793,7 @@ status_t xe_hp_systolic_gemm_t::launch_clear_sum(const gemm_exec_ctx_t &ctx,
 
     size_t threads = !copyb ? utils::div_up(r, pd()->unroll_m())
                             : utils::div_up(c, pd()->unroll_n());
-    size_t sg = ocl::xe_systolic_gemm_copy_kernel_t::subgroup_size_clear_sum(
-            arch_);
+    size_t sg = xe_systolic_gemm_copy_kernel_t::subgroup_size_clear_sum(arch_);
 
     compute::range_t gws(threads * sg);
     compute::range_t lws(sg);

@@ -27,7 +27,6 @@
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/microkernels/package.hpp"
-#include "gpu/intel/utils.hpp"
 #include "ngen_register_allocator.hpp"
 
 // TODO: Work with upstream to prefix defines with GEMMSTONE

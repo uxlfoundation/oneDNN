@@ -19,7 +19,6 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
-#include "gpu/intel/utils.hpp"
 
 #include <set>
 

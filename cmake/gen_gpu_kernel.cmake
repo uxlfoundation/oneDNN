@@ -54,7 +54,6 @@ else()
     message(FATAL_ERROR "Unknown file extensions: ${cl_file_ext}")
 endif()
 
-set(cl_file_contents "namespace ocl {\n${cl_file_contents}\n}")
 set(cl_file_contents "namespace intel {\n${cl_file_contents}\n}")
 set(cl_file_contents "namespace gpu {\n${cl_file_contents}\n}")
 set(cl_file_contents "namespace impl {\n${cl_file_contents}\n}")

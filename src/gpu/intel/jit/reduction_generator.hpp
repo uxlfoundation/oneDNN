@@ -24,7 +24,6 @@
 #include "gpu/intel/jit/emulated_generator.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/reduction_injector.hpp"
-#include "gpu/intel/utils.hpp"
 #include "ngen_core.hpp"
 #include "ngen_interface.hpp"
 

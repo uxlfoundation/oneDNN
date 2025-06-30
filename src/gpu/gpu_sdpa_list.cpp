@@ -19,8 +19,8 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/micro_sdpa.hpp"
-#include "gpu/intel/ocl/ref_sdpa.hpp"
+#include "gpu/intel/micro_sdpa.hpp"
+#include "gpu/intel/ref_sdpa.hpp"
 #endif
 
 namespace dnnl {
@@ -31,8 +31,8 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_SDPA_P({
-        GPU_INSTANCE_INTEL(intel::ocl::micro_sdpa_t)
-        GPU_INSTANCE_INTEL_DEVMODE(intel::ocl::ref_sdpa_t)
+        GPU_INSTANCE_INTEL(intel::micro_sdpa_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::ref_sdpa_t)
         nullptr,
 });
 // clang-format on

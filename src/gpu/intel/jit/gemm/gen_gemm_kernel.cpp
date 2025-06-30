@@ -21,7 +21,6 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

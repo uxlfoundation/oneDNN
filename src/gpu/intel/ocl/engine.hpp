@@ -31,8 +31,6 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-const char *get_kernel_source(const char *name);
-
 status_t preprocess_headers(std::stringstream &pp_code, const char *code,
         const compute::kernel_ctx_t &kernel_ctx);
 

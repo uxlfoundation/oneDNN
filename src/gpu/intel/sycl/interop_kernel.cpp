@@ -18,12 +18,11 @@
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"
 #include "gpu/intel/sycl/stream.hpp"
 #include "gpu/intel/sycl/utils.hpp"
-#include "gpu/intel/utils.hpp"
+#include "gpu/intel/types_interop.hpp"
 #include "xpu/sycl/c_types_map.hpp"
 #include "xpu/utils.hpp"
 

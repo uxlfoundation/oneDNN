@@ -33,6 +33,11 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
+enum { OCL_BUFFER_ALIGNMENT = 128 };
+
+const char *get_kernel_header(const std::string &name);
+const char *get_kernel_source(const char *name);
+
 #define MAX_NDIMS 6
 #define MAX_POST_OPS_SUPPORTED 32
 

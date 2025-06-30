@@ -7,8 +7,8 @@
 --reset --op-attrs=0:auto_pad:SAME_LOWER*kernel:2x2 --case=op/f32/avgpool.json
 --reset --op-attrs=0:auto_pad:VALID*kernel:2x2 --case=op/f32/avgpool.json
 --reset --in-shapes=0:1x300x300x32 --op-attrs=0:data_format:NXC --case=op/f32/avgpool.json
---reset --in-shapes=0:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0 --case=op/f32/avgpool.json
---reset --in-shapes=0:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1 --case=op/f32/avgpool.json
+--reset --in-shapes=0:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0 --case=op/f32/avgpool.json
+--reset --in-shapes=0:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1 --case=op/f32/avgpool.json
 --reset --in-shapes=0:1x64x600x600 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1 --case=op/f32/avgpool.json
 --reset --in-shapes=0:1x64x600x600 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0 --case=op/f32/avgpool.json
 --reset --case=op/f32/avgpool_bwd.json
@@ -110,13 +110,13 @@
 --reset --in-shapes=0:1x600x600x64 --op-attrs=0:data_format:NXC --case=op/f32/maxpool.json
 --reset --in-shapes=0:1x64x600x600 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool.json
 --reset --in-shapes=0:64x64x112x112 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool.json
---reset --in-shapes=0:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool.json
+--reset --in-shapes=0:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool.json
 --reset --case=op/f32/maxpool_bwd.json
 --reset --op-attrs=0:auto_pad:SAME_UPPER --case=op/f32/maxpool_bwd.json
 --reset --op-attrs=0:auto_pad:SAME_LOWER --case=op/f32/maxpool_bwd.json
 --reset --op-attrs=0:auto_pad:VALID*kernel:2x2 --case=op/f32/maxpool_bwd.json
 --reset --in-shapes=0:1x600x600x64+1:1x300x300x64+2:1x300x300x64 --op-attrs=0:data_format:NXC --case=op/f32/maxpool_bwd.json
---reset --in-shapes=0:acdb+1:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool_bwd.json
+--reset --in-shapes=0:*acdb+1:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool_bwd.json
 --reset --case=op/f32/prelu.json
 --reset --op-attrs=0:per_channel_broadcast:1 --case=op/f32/prelu.json
 --reset --op-attrs=0:data_format:NXC --case=op/f32/prelu.json
@@ -268,9 +268,9 @@
 --reset --in-shapes=0:2x64x3x3*abcd --case=op/f32/reorder.json
 --reset --in-shapes=0:2x64x3x3*acdb --case=op/f32/reorder.json
 # pool
---reset --in-shapes=0:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
+--reset --in-shapes=0:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
 --reset --in-shapes=0:1x64x300x300 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:0*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
---reset --in-shapes=0:acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
+--reset --in-shapes=0:*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
 --reset --in-shapes=0:1x64x300x300 --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*exclude_pad:1*src_shape:1x64x600x600 --case=op/f32/avgpool_bwd.json
 --reset --in-shapes=0:1x64x600x600*acdb+1:1x64x300x300*acdb+2:1x64x300x300*acdb --op-attrs=0:strides:2x2*pads_begin:1x1*pads_end:0x0*kernel:3x3*dilations:1x1 --case=op/f32/maxpool_bwd.json
 # eltwise
@@ -297,9 +297,9 @@
 --reset --case=op/f32/dynamicq.json
 --reset --case=op/f32/dynamicdq.json
 # case from large scope
---reset --in-shapes=0:abcd --case=op/f32/reorder.json
---reset --in-shapes=0:cdba --case=op/f32/reorder.json
---reset --in-shapes=0:acdb --case=op/f32/reorder.json
+--reset --in-shapes=0:*abcd --case=op/f32/reorder.json
+--reset --in-shapes=0:*cdba --case=op/f32/reorder.json
+--reset --in-shapes=0:*acdb --case=op/f32/reorder.json
 --reset --in-shapes=0:64x2048x7x7 --case=op/f32/relu.json
 --reset --in-shapes=0:16x1024 --case=op/f32/relu.json
 --reset --in-shapes=0:16x128 --case=op/f32/relu.json

@@ -348,6 +348,143 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
     return attr;
 }
 
+dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+        const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+        const attr_type_t attr_type) {
+    dnnl::primitive_attr attr;
+    std::vector<int64_t> default_groups;
+
+    const static std::unordered_map<size_t, size_t> arg_map = {
+            {DNNL_ARG_QUERIES, DNNL_ARG_SRC},
+            {DNNL_ARG_KEYS, DNNL_ARG_WEIGHTS},
+            {DNNL_ARG_VALUES, DNNL_ARG_WEIGHTS},
+    };
+
+    // convert input scales
+    if (!fusion_info.input_scales_.empty()) {
+
+        for (const auto &in_scales : fusion_info.input_scales_) {
+            size_t in_scales_indices = in_scales.first;
+            if (attr_type == attr_type_t::QK) {
+                if (in_scales_indices != DNNL_ARG_QUERIES
+                        && in_scales_indices != DNNL_ARG_KEYS) {
+                    continue;
+                }
+            } else if (attr_type == attr_type_t::VS) {
+                if (in_scales_indices != DNNL_ARG_VALUES) { continue; }
+            }
+            const op_t *in_scales_op = in_scales.second->get_op();
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_scales(true, in_scales_indices),
+                    attr,
+                    "failed to set scales for %s since primitive only supports "
+                    "runtime src scales",
+                    op->get_name().c_str());
+            int mask = 0;
+            if (in_scales_op->has_attr(op_attr::qtype)) {
+                std::string qtype
+                        = in_scales_op->get_attr<std::string>(op_attr::qtype);
+                const auto scales_data_type
+                        = in_scales_op->has_attr(op_attr::data_type)
+                        ? in_scales_op->get_attr<int64_t>(op_attr::data_type)
+                        : dnnl_f32;
+                if (qtype == "per_tensor") {
+                    mask = 0;
+                    attr.set_scales(
+                            static_cast<int>(arg_map.at(in_scales_indices)),
+                            mask, default_groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    scales_data_type));
+                } else if (qtype == "per_channel") { // per-channel quantization
+                    int64_t axis = in_scales_op->has_attr(op_attr::axis)
+                            ? in_scales_op->get_attr<int64_t>(op_attr::axis)
+                            : 1;
+                    mask = 1 << axis;
+                    attr.set_scales(
+                            static_cast<int>(arg_map.at(in_scales_indices)),
+                            mask, default_groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    scales_data_type));
+                } else { // per-group quantization
+                    // oneDNN only supports weights-decompressed matmul
+                    if (arg_map.at(in_scales_indices) != DNNL_ARG_WEIGHTS)
+                        continue;
+                    const auto &group_shape
+                            = in_scales_op->get_attr<std::vector<int64_t>>(
+                                    op_attr::group_shape);
+
+                    // Currently oneDNN only supports grouped scales and zps on
+                    // last two dimensions.
+                    std::vector<int64_t> groups(
+                            group_shape.end() - 2, group_shape.end());
+                    int mask = (1 << group_shape.size()) - 1;
+
+                    attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    scales_data_type));
+                }
+            }
+        }
+    }
+
+    // convert input zps
+    if (!fusion_info.input_zps_.empty()) {
+        for (const auto &in_zps : fusion_info.input_zps_) {
+            size_t in_zps_indices = in_zps.first;
+            if (attr_type == attr_type_t::QK) {
+                if (in_zps_indices != DNNL_ARG_QUERIES
+                        && in_zps_indices != DNNL_ARG_KEYS) {
+                    continue;
+                }
+            } else if (attr_type == attr_type_t::VS) {
+                if (in_zps_indices != DNNL_ARG_VALUES) { continue; }
+            }
+            const op_t *in_zps_op = in_zps.second->get_op();
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_zero_points(true, in_zps_indices),
+                    attr,
+                    "failed to set zero points for %s since primitive only "
+                    "supports runtime src zero points",
+                    op->get_name().c_str());
+
+            if (in_zps_op->has_attr(op_attr::qtype)) {
+                std::string qtype
+                        = in_zps_op->get_attr<std::string>(op_attr::qtype);
+                const auto zps_data_type
+                        = in_zps_op->has_attr(op_attr::data_type)
+                        ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
+                        : dnnl_s32;
+                if (qtype == "per_group") {
+                    // oneDNN only supports weights-decompressed matmul
+                    if (arg_map.at(in_zps_indices) != DNNL_ARG_WEIGHTS) break;
+                    const auto &group_shape
+                            = in_zps_op->get_attr<std::vector<int64_t>>(
+                                    op_attr::group_shape);
+
+                    // Currently oneDNN only supports grouped scales and zps on
+                    // last two dimensions.
+                    std::vector<int64_t> groups(
+                            group_shape.end() - 2, group_shape.end());
+                    int mask = (1 << group_shape.size()) - 1;
+
+                    // Currently oneDNN only supports grouped zps on last two dimensions.
+                    attr.set_zero_points(DNNL_ARG_WEIGHTS, mask, groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    zps_data_type));
+
+                } else {
+                    int mask = 0;
+                    attr.set_zero_points(arg_map.at(in_zps_indices), mask,
+                            default_groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    zps_data_type));
+                }
+            }
+        }
+    }
+    return attr;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

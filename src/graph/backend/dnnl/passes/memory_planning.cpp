@@ -52,7 +52,7 @@ struct op_inplace_pair_t {
 };
 
 std::vector<op_inplace_pair_t> get_op_inplace_pairs(
-        op_t &op, fusion_info_mgr_t &mgr) {
+        op_t &op, subgraph_info_mgr_t &mgr) {
     // TODO(xxx) extend the set
     const static std::set<op_kind_t> ops {op_kind::dnnl_mul_scales,
             op_kind::dnnl_add_zps, op_kind::dnnl_reorder, op_kind::dnnl_binary,
@@ -63,11 +63,11 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(
 
     // Make post-sum inplace has higher priority since it affects both
     // performance and memory footprint
-    if (op.has_attr(op_attr::fusion_info_key)
-            && op.get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
+    if (op.has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op.get_attr<fusion_info_t>(op_attr::fusion_info);
         // sum post ops support inplace
-        int64_t key = op.get_attr<int64_t>(op_attr::fusion_info_key);
-        const auto &pops = mgr.get_info(key).get_post_ops();
+        const auto &pops = fusion_info.get_post_ops();
 
         // the post-ops input offset
         size_t index = 1;
@@ -78,14 +78,10 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(
                             && op.get_attr<bool>(op_attr::with_bias)
                     ? 3 // src, wei, bias
                     : 2; // src, wei
-            if (mgr.get_info(key).with_runtime_scales(true, 0)) { index += 1; }
-            if (mgr.get_info(key).with_runtime_scales(true, 1)) { index += 1; }
-            if (mgr.get_info(key).with_runtime_zero_points(true, 0)) {
-                index += 1;
-            }
-            if (mgr.get_info(key).with_runtime_zero_points(true, 1)) {
-                index += 1;
-            }
+            if (fusion_info.with_runtime_scales(true, 0)) { index += 1; }
+            if (fusion_info.with_runtime_scales(true, 1)) { index += 1; }
+            if (fusion_info.with_runtime_zero_points(true, 0)) { index += 1; }
+            if (fusion_info.with_runtime_zero_points(true, 1)) { index += 1; }
         } else if (op.get_kind() == op_kind::dnnl_binary) {
             index = 2;
         } else {
@@ -391,7 +387,8 @@ status_t memory_planner_t::assign_external_inputs_buffer(
 // to them.
 status_t memory_planner_t::assign_external_outputs_buffer(
         std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &outputs, fusion_info_mgr_t &mgr) {
+        const std::vector<logical_tensor_t> &outputs,
+        subgraph_info_mgr_t &mgr) {
     for (auto &val : sg->get_output_values()) {
         for (size_t i = 0; i < outputs.size(); i++) {
             if (val->get_logical_tensor().id == outputs[i].id) {
@@ -447,7 +444,7 @@ status_t memory_planner_t::assign_external_outputs_buffer(
 // the same buffers and assign the same buffer to them. This can be regarded as
 // a kind of constant folding, with which the cached buffer can be reduced.
 status_t memory_planner_t::assign_internal_persistent_buffer(
-        std::shared_ptr<subgraph_t> &sg, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<subgraph_t> &sg, subgraph_info_mgr_t &mgr) {
     for (auto &val : get_constant_block_output_values(sg)) {
         assign_info_t orig_info = buffer_assignments_.at(val);
         if (orig_info.kind_ != internal_temporary) continue;
@@ -501,7 +498,7 @@ status_t memory_planner_t::assign_internal_persistent_buffer(
 status_t memory_planner_t::assign_internal_temporary_buffer(
         std::shared_ptr<subgraph_t> &sg,
         const std::unordered_map<value_t *, size_t> &edge_ref_count,
-        fusion_info_mgr_t &mgr, bool enable_standard_sharing) {
+        subgraph_info_mgr_t &mgr, bool enable_standard_sharing) {
     std::unordered_map<size_t, size_t> temporary_buffer_ref_count;
 
     auto func = [&](op_t *op) {
@@ -601,7 +598,7 @@ status_t memory_planner_t::prepare_subgraph_inplace_pairs(
             // check if can inplaced sharing external input buffer
             bool inplace_shared = false;
             auto op_inplace_pairs
-                    = get_op_inplace_pairs(*cur_op, sg->fusion_info_mgr_);
+                    = get_op_inplace_pairs(*cur_op, sg->subgraph_info_mgr_);
             for (const auto &pair : op_inplace_pairs) {
                 if (pair.out_idx_ != out_val->get_offset()) continue;
 
@@ -739,7 +736,7 @@ status_t memory_planner_t::book_buffers(std::shared_ptr<subgraph_t> &sg) {
 
 status_t memory_planner_t::prepare_execution_args_set(
         std::shared_ptr<subgraph_t> &sg, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr) {
+        subgraph_info_mgr_t &mgr) {
     status_t ret;
 
     auto classify_mem = [&, this](const dnnl::memory &mem, const value_t *val) {
@@ -858,7 +855,7 @@ status_t memory_planner_t::prepare_execution_args_set(
 // - Assign internal allocated persistent buffer to corresponding edges.
 // - Prepare the memory objects which will be used in execution.
 status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
     const auto &p_engine = *(sg->p_engine_);
     const auto &inputs = sg->ins_;
     const auto &outputs = sg->outs_;

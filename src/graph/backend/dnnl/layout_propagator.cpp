@@ -47,7 +47,7 @@ using ltw = logical_tensor_wrapper_t;
 
 status_t insert_reorder_before(op_ptr &op, size_t offset,
         const dnnl::memory::desc &opt_mdesc, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr in_val = op->get_input_value(offset);
@@ -80,7 +80,7 @@ status_t insert_reorder_before(op_ptr &op, size_t offset,
 
 status_t insert_reorder_after(op_ptr &op, size_t offset,
         const dnnl::memory::desc &opt_mdesc, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr out_val = op->get_output_value(offset);
@@ -112,7 +112,7 @@ status_t insert_reorder_after(op_ptr &op, size_t offset,
 }
 
 status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     // always create pd using any format
@@ -143,12 +143,12 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
                 "failed to fill layout info for reorder before conv bias");
     }
 
-    fusion_info_t fusion_info;
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        fusion_info = mgr.get_info(key);
+    if (!op->has_attr(op_attr::fusion_info)) {
+        fusion_info_t fusion_info;
+        op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
     }
+    const fusion_info_t &fusion_info
+            = op->get_attr<fusion_info_t>(op_attr::fusion_info);
 
     if (fusion_info.has_post_dw_conv()) {
         const auto &dw_conv = fusion_info.get_post_dw_conv();
@@ -221,7 +221,7 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -269,7 +269,7 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     // always create pd using any format
@@ -313,7 +313,7 @@ status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
 }
 
 status_t layout_propagator_for_deconv_bwd_weights(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = deconv_bwd_weights_executable_t::create_desc(
@@ -351,7 +351,7 @@ status_t layout_propagator_for_deconv_bwd_weights(op_ptr &op,
 }
 
 status_t layout_propagator_for_eltwise(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     // When input's layout is specified (opaque or strided),
@@ -372,7 +372,7 @@ status_t layout_propagator_for_eltwise(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_eltwise_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = eltwise_bwd_executable_t::create_desc(
@@ -414,7 +414,7 @@ status_t layout_propagator_for_eltwise_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_binary(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     using ltw = logical_tensor_wrapper_t;
     status_t status = status::success;
@@ -451,7 +451,7 @@ status_t layout_propagator_for_binary(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_concat(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -480,7 +480,7 @@ status_t layout_propagator_for_concat(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_shuffle(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -504,7 +504,7 @@ status_t layout_propagator_for_shuffle(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     using ltw = logical_tensor_wrapper_t;
     status_t status = status::success;
@@ -569,7 +569,7 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_pool(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -601,7 +601,7 @@ status_t layout_propagator_for_pool(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_pool_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -629,7 +629,7 @@ status_t layout_propagator_for_pool_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_batchnorm(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
 
@@ -690,7 +690,7 @@ status_t layout_propagator_for_batchnorm(op_ptr &op,
 }
 
 status_t layout_propagator_for_batchnorm_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = batchnorm_bwd_executable_t::create_desc(
@@ -754,7 +754,7 @@ status_t layout_propagator_for_batchnorm_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_prelu(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -788,7 +788,7 @@ status_t layout_propagator_for_prelu(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_prelu_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -836,7 +836,7 @@ status_t layout_propagator_for_prelu_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_layernorm(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -875,7 +875,7 @@ status_t layout_propagator_for_layernorm(op_ptr &op,
 }
 
 status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = layernorm_bwd_executable_t::create_desc(
@@ -951,7 +951,7 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_permute(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     std::shared_ptr<value_t> src, dst;
@@ -998,7 +998,7 @@ status_t layout_propagator_for_permute(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_to_group(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(p_engine);
     UNUSED(mgr);
@@ -1032,7 +1032,7 @@ status_t layout_propagator_for_to_group(op_ptr &op,
 }
 
 status_t layout_propagator_for_from_group(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto get_dst_md
@@ -1095,7 +1095,7 @@ status_t layout_propagator_for_from_group(op_ptr &op,
 }
 
 static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter,
         const dnnl::memory::dims &target_dims) {
     status_t status = status::success;
@@ -1176,7 +1176,7 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
 }
 
 status_t layout_propagator_for_reshape(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     auto out_lt = op->get_output_value(0)->get_logical_tensor();
     auto target_dims = ltw(out_lt).vdims();
@@ -1186,7 +1186,7 @@ status_t layout_propagator_for_reshape(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_transpose(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     std::shared_ptr<value_t> src, dst;
@@ -1246,7 +1246,7 @@ status_t layout_propagator_for_transpose(op_ptr &op,
 }
 
 status_t layout_propagator_for_unsqueeze(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(rewriter);
 
@@ -1265,7 +1265,7 @@ status_t layout_propagator_for_unsqueeze(op_ptr &op,
 }
 
 status_t layout_propagator_for_squeeze(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     auto out_lt = op->get_output_value(0)->get_logical_tensor();
     auto target_dims = ltw(out_lt).vdims();
@@ -1275,7 +1275,7 @@ status_t layout_propagator_for_squeeze(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_reorder(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     UNUSED(rewriter);
 
@@ -1338,13 +1338,13 @@ status_t layout_propagator_for_reorder(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_mul_scales(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     return layout_propagator_for_reorder(op, p_engine, mgr, pd_cache, rewriter);
 }
 
 status_t layout_propagator_for_bn_folding(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(rewriter);
 
@@ -1370,7 +1370,7 @@ status_t layout_propagator_for_bn_folding(op_ptr &op,
 }
 
 status_t layout_propagator_for_conv_bwd_data(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = conv_bwd_data_executable_t::create_desc(
@@ -1408,7 +1408,7 @@ status_t layout_propagator_for_conv_bwd_data(op_ptr &op,
 }
 
 status_t layout_propagator_for_conv_bwd_weights(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = conv_bwd_weights_executable_t::create_desc(
@@ -1446,7 +1446,7 @@ status_t layout_propagator_for_conv_bwd_weights(op_ptr &op,
 }
 
 status_t layout_propagator_for_resampling(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd
@@ -1467,7 +1467,7 @@ status_t layout_propagator_for_resampling(op_ptr &op,
 }
 
 status_t layout_propagator_for_resampling_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     const auto &pd = resampling_bwd_executable_t::create_desc(
@@ -1487,7 +1487,7 @@ status_t layout_propagator_for_resampling_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr dst = op->get_output_value(0);
@@ -1523,7 +1523,7 @@ status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache,
+        subgraph_info_mgr_t &mgr, pd_cache_t &pd_cache,
         subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr src = op->get_input_value(0);
@@ -1547,7 +1547,7 @@ status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
 }
 
 status_t layout_propagator_for_softmax_bwd(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr dst = op->get_input_value(1);
@@ -1581,7 +1581,7 @@ status_t layout_propagator_for_softmax_bwd(op_ptr &op,
 }
 
 status_t layout_propagator_for_reduction(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
     value_ptr src = op->get_input_value(0);
@@ -1603,7 +1603,7 @@ status_t layout_propagator_for_reduction(op_ptr &op,
 }
 
 status_t layout_propagator_for_constant_filler(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(op);
     UNUSED(p_engine);
@@ -1614,7 +1614,7 @@ status_t layout_propagator_for_constant_filler(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_sub_zps(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(op);
     UNUSED(p_engine);
@@ -1628,7 +1628,7 @@ status_t layout_propagator_for_sub_zps(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_add_zps(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(op);
     UNUSED(p_engine);
@@ -1642,7 +1642,7 @@ status_t layout_propagator_for_add_zps(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(p_engine);
     UNUSED(mgr);
@@ -1663,7 +1663,7 @@ status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_groupnorm(op_ptr &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     status_t status = status::success;
 
@@ -1696,7 +1696,7 @@ status_t layout_propagator_for_groupnorm(op_ptr &op,
 }
 
 status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(p_engine);
     UNUSED(mgr);
@@ -1710,7 +1710,7 @@ status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     UNUSED(p_engine);
     UNUSED(mgr);
@@ -1765,7 +1765,7 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
 }
 
 status_t layout_propagator_for_host_scalar(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
+        const dnnl::engine &p_engine, subgraph_info_mgr_t &mgr,
         pd_cache_t &pd_cache, subgraph_rewriter_t &rewriter) {
     // no need to do layout propagation for host scalar
     // as its output is always strided

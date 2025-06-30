@@ -58,7 +58,7 @@ bool need_prop_once_more(const std::shared_ptr<subgraph_t> &sg) {
 
 void force_partition_output_plain_layout(std::shared_ptr<subgraph_t> &sg) {
     const auto &p_engine = *(sg->p_engine_);
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
     auto &pd_cache = sg->pd_cache_;
 
     subgraph_rewriter_t rewriter(sg);
@@ -104,7 +104,7 @@ void force_partition_output_plain_layout(std::shared_ptr<subgraph_t> &sg) {
 /// inputs.
 status_t layout_propagation(std::shared_ptr<subgraph_t> &sg) {
     const auto &p_engine = *(sg->p_engine_);
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
     auto &pd_cache = sg->pd_cache_;
 
     status_t ret;

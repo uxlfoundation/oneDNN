@@ -129,7 +129,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
 
-    auto &mgr = sg->fusion_info_mgr_;
+    auto &mgr = sg->subgraph_info_mgr_;
 
     // per-head: reorder wei1 to dense, first matmul
     // create reorder1 primitive attr
@@ -445,12 +445,11 @@ void mqa_decomp_config_t::memory_planning(registry_t &mqa_registry) {
 }
 
 dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
-        std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr) {
+        std::shared_ptr<op_t> &op, subgraph_info_mgr_t &mgr) {
     dnnl::primitive_attr attr;
-    if (op && op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+    if (op && op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     if (op && op->get_kind() == op_kind::dnnl_reorder) {

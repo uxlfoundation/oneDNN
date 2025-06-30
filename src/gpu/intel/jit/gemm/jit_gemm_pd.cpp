@@ -16,6 +16,7 @@
 
 #include "gpu/intel/jit/gemm/jit_gemm_pd.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -169,21 +170,37 @@ status_t jit_gemm_pd_t::init_post_ops() {
 }
 
 // Obtain dimension count for gemmstone (common scales give count 0).
-int jit_gemm_pd_t::quant_entry_ndims(
-        const quant_entry_t &entry, const memory_desc_t &md) const {
+int jit_gemm_pd_t::quant_entry_ndims(const quant_entry_t &entry,
+        const memory_desc_t &md, const int arg) const {
     if (entry.has_default_values()) return -1;
     int mask = entry.get_mask();
     if (mask == 0) return 0;
     if (entry.has_default_groups()) return mask > 0;
     int count = 0;
-    for (int i = md.ndims - 1; i >= 0; --i) {
-        if (!(mask & (1 << i))) continue;
-        bool batch_dim = i < batch_dims();
-        if ((batch_dim && md.dims[i] > 1)
-                || (!batch_dim
-                        && (md.dims[i] / entry.get_group(i - batch_dims()) > 1
-                                || count)))
-            ++count;
+    if (DNNL_ARG_A == arg) {
+        for (int i = 0; i < md.ndims; ++i) {
+            if (!(mask & (1 << i))) continue;
+            bool batch_dim = i < batch_dims();
+            if ((batch_dim && md.dims[i] > 1)
+                    || (!batch_dim
+                            && (md.dims[i] / entry.get_group(i - batch_dims())
+                                            > 1
+                                    || count)))
+                ++count;
+        }
+    } else if (DNNL_ARG_B == arg) {
+        for (int i = md.ndims - 1; i >= 0; --i) {
+            if (!(mask & (1 << i))) continue;
+            bool batch_dim = i < batch_dims();
+            if ((batch_dim && md.dims[i] > 1)
+                    || (!batch_dim
+                            && (md.dims[i] / entry.get_group(i - batch_dims())
+                                            > 1
+                                    || count)))
+                ++count;
+        }
+    } else {
+        gpu_error_not_expected();
     }
     return count;
 }
@@ -237,16 +254,20 @@ void jit_gemm_pd_t::init_attrs() {
     cmask_c_ = attr_zps.get(DNNL_ARG_C).get_mask();
 
     // Swap descriptors to follow column major format.
-    ao_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
-    bo_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
+    ao_dims_ = quant_entry_ndims(
+            attr_zps.get(DNNL_ARG_A), d->b_desc, DNNL_ARG_A);
+    bo_dims_ = quant_entry_ndims(
+            attr_zps.get(DNNL_ARG_B), d->a_desc, DNNL_ARG_B);
     if (wei_zp_2d()) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
     if (src_zp_2d()) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
 
     const auto &scales = attr()->scales_;
     const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
     const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
-    asc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_A), d->b_desc);
-    bsc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_B), d->a_desc);
+    asc_dims_
+            = quant_entry_ndims(scales.get(DNNL_ARG_A), d->b_desc, DNNL_ARG_A);
+    bsc_dims_
+            = quant_entry_ndims(scales.get(DNNL_ARG_B), d->a_desc, DNNL_ARG_B);
     wei_scales_group_k_ = wei_scales->get_group(0);
     src_scales_group_k_ = src_scales->get_group(1);
 
@@ -303,8 +324,8 @@ bool jit_gemm_pd_t::zp_ok() {
                     && src_zp_2d())
                 return false;
         } else {
-            if (!utils::one_of(
-                        cmask_b_, 0, mask_scalar, mask_per_oc | mask_per_ic))
+            if (!utils::one_of(cmask_b_, 0, mask_scalar, mask_per_oc,
+                        mask_per_oc | mask_per_ic))
                 return false;
         }
     }

@@ -600,6 +600,7 @@ public:
 	XBYAK_DEFINE_TYPE(93, tAMX_AVX512);
 	XBYAK_DEFINE_TYPE(94, tAMX_MOVRS);
 	XBYAK_DEFINE_TYPE(95, tAMX_FP8);
+	XBYAK_DEFINE_TYPE(94, tMOVRS);
 
 #undef XBYAK_SPLIT_ID
 #undef XBYAK_DEFINE_TYPE
@@ -755,6 +756,7 @@ public:
 				if (EAX & (1U << 7)) type_ |= tCMPCCXADD;
 				if (EAX & (1U << 21)) type_ |= tAMX_FP16;
 				if (EAX & (1U << 23)) type_ |= tAVX_IFMA;
+				if (EAX & (1U << 31)) type_ |= tMOVRS;
 				if (EDX & (1U << 4)) type_ |= tAVX_VNNI_INT8;
 				if (EDX & (1U << 5)) type_ |= tAVX_NE_CONVERT;
 				if (EDX & (1U << 10)) type_ |= tAVX_VNNI_INT16;

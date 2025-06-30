@@ -842,8 +842,6 @@ public:
         Wildcard = dnnl_graph_op_wildcard,
         GenIndex = dnnl_graph_op_gen_index,
         GreaterEqual = dnnl_graph_op_greater_equal,
-        // Sentinel
-        LastSymbol = dnnl_graph_op_last_symbol,
     };
 
     /// Attributes of operations. Different operations support different

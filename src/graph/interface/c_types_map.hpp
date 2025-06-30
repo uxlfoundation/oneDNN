@@ -213,7 +213,8 @@ const op_kind_t Tanh = dnnl_graph_op_tanh;
 const op_kind_t TanhBackward = dnnl_graph_op_tanh_backward;
 const op_kind_t TypeCast = dnnl_graph_op_type_cast;
 const op_kind_t Wildcard = dnnl_graph_op_wildcard;
-const op_kind_t LastSymbol = dnnl_graph_op_last_symbol;
+// Increase it once a new op is added.
+const op_kind_t LastSymbol = static_cast<op_kind_t>(87);
 } // namespace op_kind
 
 using op_attr_t = typename std::underlying_type<dnnl_graph_op_attr_t>::type;

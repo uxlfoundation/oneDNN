@@ -15,8 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/codegen/reorder.hpp"
-#include "gpu/intel/jit/utils/iterator.hpp"
-#include "gpu/intel/jit/utils/range.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -704,48 +702,44 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
 
 std::vector<tile_t> reorder_impl_t::find_2d_dense_tiles(
         const layout_t &a, const layout_t &b) {
-    using tile_pair_t = std::array<tile_t, 2>;
     static constexpr int max_tile_blocks = reorder_2d_impl_t::max_tile_blocks;
-    auto dense_2d_blocks = []() {
+
+    auto tiles = [](const layout_t &l, uint32_t &dim_mask) {
+        int ndims = 0, count = 0;
         dim_t stride = 1;
-        int non_one_dims = 0;
-        int count = 0;
-        std::unordered_set<int> seen;
-        return [=](const block_t &b) mutable {
-            if ((dim_t)b.stride != stride) return false;
-            if (b.block != 1) {
-                count++;
-                stride *= b.block;
-                auto ret = seen.insert(b.dim_idx);
-                if (ret.second) non_one_dims++;
+        std::vector<dim_t> dims(l.ndims(), 1);
+        std::vector<tile_t> tiles;
+        for (auto &b : l.blocks()) {
+            if (b.block == 1) continue;
+            if (count >= max_tile_blocks) break;
+            uint32_t dim_bit = 1u << b.dim_idx;
+            if ((dim_t)b.stride != stride) break;
+            if (!(dim_mask & dim_bit)) {
+                if (ndims >= 2) break;
+                ndims += 1;
+                dim_mask |= dim_bit;
             }
-            return non_one_dims <= 2 && count <= max_tile_blocks;
-        };
+            auto pow2_block = b.block & ~(b.block - 1);
+            for (dim_t d = 1; d < pow2_block; d *= 2) {
+                dims[b.dim_idx] *= 2;
+                tiles.emplace_back(dims);
+            }
+            if (b.block != pow2_block) break;
+            stride *= b.block;
+            count++;
+        }
+        return tiles;
     };
 
-    auto take_smaller = [](const tile_t &a, const tile_t &b) {
-        return a.elems() <= b.elems();
-    };
+    uint32_t a_dim_mask = 0, b_dim_mask = 0;
+    auto a_tiles = tiles(a, a_dim_mask);
+    auto b_tiles = tiles(b, b_dim_mask);
+    if (a_dim_mask != b_dim_mask) return {};
 
-    auto equal_tiles = [](const tile_pair_t &p) { return p[0] == p[1]; };
-
-    auto to_single_tile = [](const tile_pair_t &p) { return p[0]; };
-
-    auto all_dims_pow2 = [](const tile_t &tile) {
-        for (auto d : tile.values())
-            if (!math::is_pow2(d)) return false;
-        return true;
-    };
-
-    auto a_tiles
-            = inner_tiles(a.blocks() | filter(dense_2d_blocks()), a.ndims());
-    auto b_tiles
-            = inner_tiles(b.blocks() | filter(dense_2d_blocks()), b.ndims());
-    auto tiles = merge(a_tiles, b_tiles, take_smaller) | filter(equal_tiles)
-            | transform(to_single_tile) | filter(all_dims_pow2);
     std::vector<tile_t> ret;
-    for (const auto &tile : tiles)
-        ret.insert(ret.begin(), tile);
+    for (auto a_it = a_tiles.begin(), b_it = b_tiles.begin();
+            a_it != a_tiles.end() && b_it != b_tiles.end(); ++a_it, ++b_it)
+        if (a_it->operator==(*b_it)) ret.insert(ret.begin(), *b_it);
     return ret;
 }
 

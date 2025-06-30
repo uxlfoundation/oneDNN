@@ -123,6 +123,9 @@ endif()
 
 if (DNNL_TARGET_ARCH STREQUAL "RV64")
     # Check if the RVV Intrinsics can be compiled with the current toolchain and flags
+    set(ARCH_SIMD_TEST_FLAGS "-march=rv64gcv")
+    set(CMAKE_REQUIRED_FLAGS_SAVE ${CMAKE_REQUIRED_FLAGS})
+    set(CMAKE_REQUIRED_FLAGS "${ARCH_SIMD_TEST_FLAGS}")
     include(CheckCXXSourceCompiles)
     check_cxx_source_compiles("#if !defined(__riscv) || !defined(__riscv_v)
                                #error \"RISC-V or vector extension(RVV) is not supported by the compiler\"
@@ -139,6 +142,7 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
                                CAN_COMPILE_RVV_INTRINSICS
     )
     
+    set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
     # Set CAN_COMPILE_RVV_INTRINSICS to TRUE / FALSE instead of 1 / "" (Undefined)
     if (CAN_COMPILE_RVV_INTRINSICS)
         set(CAN_COMPILE_RVV_INTRINSICS TRUE)
@@ -327,7 +331,6 @@ elseif(UNIX OR MINGW)
                  append(DEF_ARCH_OPT_FLAGS "-march=native")
              endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "RV64")
-             # G = General-purpose extensions, C = Compression extension (very common).
              append(DEF_ARCH_OPT_FLAGS "${RV64_MARCH_FLAG}")
         elseif(DNNL_TARGET_ARCH STREQUAL "X64")
              platform_clang_x64_arch_ccxx_flags(DEF_ARCH_OPT_FLAGS)
@@ -439,7 +442,6 @@ elseif(UNIX OR MINGW)
                 append(DEF_ARCH_OPT_FLAGS "-march=native")
             endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "RV64")
-            # G = General-purpose extensions, C = Compression extension (very common).
             append(DEF_ARCH_OPT_FLAGS "${RV64_MARCH_FLAG}")
         elseif(DNNL_TARGET_ARCH STREQUAL "X64")
             platform_gnu_x64_arch_ccxx_flags(DEF_ARCH_OPT_FLAGS)

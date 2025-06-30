@@ -1960,6 +1960,17 @@ void CopyPlan::collapseCNums()
         for (auto cnum = i.cnumMin; cnum <= i.cnumMax; cnum++)
             snapDown[cnum] = std::max(snapDown[cnum], i.cnumMin);
 
+    // remap cnums to be as small as possible
+    int16_t cnumMin = 0;
+    int16_t cnumMax = 0;
+    for (auto &cnum: snapDown) {
+        if (cnum > cnumMax) {
+            cnumMax = cnum;
+            cnumMin = cnumMin + 1;
+        }
+        if (cnum > cnumMin) cnum = cnumMin;
+    }
+
     for (auto &i: insns) {
         i.cnumMin = snapDown[i.cnumMin];
         i.cnumMax = snapDown[i.cnumMax];
@@ -1973,7 +1984,6 @@ void CopyPlan::legalizeSIMD(bool initial)
 {
     int grf = GRF::bytes(hw);
     bool splitting = false;
-    int16_t maxCNumSub = 1;
 
     if (!initial)
         checkNoSubbytes();
@@ -1983,6 +1993,7 @@ void CopyPlan::legalizeSIMD(bool initial)
         i.cnumSub = 0;
 
     auto ninsn = insns.size();
+    std::vector<std::pair<int16_t, int16_t>> cnumOffsets;
     for (size_t n = 0; n < ninsn; ) {
         auto &i = insns[n];
 
@@ -2045,7 +2056,6 @@ void CopyPlan::legalizeSIMD(bool initial)
             };
 
             i.cnumSub++;
-            maxCNumSub = std::max(maxCNumSub, i.cnumSub);
 
             i.simd -= simd0;
             advance(i.dst, simd0);
@@ -2054,16 +2064,30 @@ void CopyPlan::legalizeSIMD(bool initial)
             advance(i.src2, simd0);
             advance(i.flag, simd0);
             splitting = (i.simd > 0);
-        } else
+        } else {
+            if (i.cnumSub > 0)
+                cnumOffsets.emplace_back(i.cnumMax, i.cnumSub - 1);
             n++;    /* done with this instruction */
+        }
     }
 
     mergeChanges();
 
     /* Split apart cnums */
-    for (auto &i: insns) {
-        i.cnumMin *= maxCNumSub;
-        i.cnumMax *= maxCNumSub;
+    int16_t offset = 0;
+    std::sort(cnumOffsets.begin(), cnumOffsets.end());
+    for (auto &cnumOffset : cnumOffsets)
+        cnumOffset.second = offset += cnumOffset.second;
+
+    for (auto &i : insns) {
+        int16_t offset = 0;
+        for (auto &cnumOffset : cnumOffsets) {
+             if (i.cnumMax <= cnumOffset.first)
+                 break;
+            offset = cnumOffset.second;
+        }
+        i.cnumMin += offset;
+        i.cnumMax += offset;
         if (i.cnumMin == i.cnumMax)
             i.cnumMin = i.cnumMax += i.cnumSub;
     }

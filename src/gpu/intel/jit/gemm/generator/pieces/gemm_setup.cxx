@@ -2061,7 +2061,6 @@ void BLASKernelGenerator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMM
     safeReleaseRanges(state.B_scaleRegs, state);
     safeReleaseRanges(state.Br_offsetRegs, state);
     safeReleaseRanges(state.Br_scaleRegs, state);
-    state.ra.safeRelease(state.broadcast_regs);
     safeReleaseRanges(state.tempMul_regs, state);
     clearTokenAllocations(hw, state);
     releaseCoopRemainders(state);
@@ -2320,8 +2319,6 @@ void BLASKernelGenerator<hw>::gemmABPrefetchAddrSetup(const GEMMProblem &problem
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmAllocateTokens(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (hw < HW::Gen12LP) return;
-
     bool success = true;
     for (int q = 0; q < strategy.A_copies; q++)
         success &= allocateTokens(state.A_layout, state.A_regs[q], state);
@@ -2836,7 +2833,7 @@ void BLASKernelGenerator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrate
 template <HW hw>
 void BLASKernelGenerator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
-    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc;
+    auto Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
     state.useTempC = strategy.needsTempC(problem);
@@ -2883,11 +2880,6 @@ void BLASKernelGenerator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &
                || (!strategy.altCRemainder && (Tc.size() < 4))
                || strategy.forceCopyC
                || (strategy.C.base.getModel() == ModelInvalid);
-
-    state.broadcast = strategy.doubleWA;
-
-    bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
-    state.broadcast |= (Tc == Type::f32 && (cColMajor ? Tb : Ta) == Type::bf16);
 
     state.Cext_strategy = strategy.C;
     state.Cext_strategy.tileR = state.Cext_strategy.tileC = 0;

@@ -248,13 +248,8 @@ status_t gemm_with_post_ops_t::execute(const gemm_exec_ctx_t &ctx) const {
     exec_status = gpu_gemm(gemm_prim_)->execute(gemm_ex_ctx);
     CHECK(exec_status);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
-            ctx.stream()->engine());
     const bool subbyte_pack = pd()->subbyte_pack_;
 
-    auto arch = compute_engine->device_info()->gpu_arch();
-    // Workaround correctness issue on Gen9
-    if (arch == compute::gpu_arch_t::gen9) CHECK(ctx.stream()->wait());
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);
     compute::kernel_arg_list_t arg_list;

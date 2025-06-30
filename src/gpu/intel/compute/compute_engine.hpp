@@ -113,8 +113,6 @@ public:
     bool mayiuse_f16_accumulator_with_f16() const override {
         // XeHPC+ must use f32 accumulation with f16 operations as documented.
         switch (device_info_->gpu_arch()) {
-            case gpu_arch_t::gen9:
-            case gpu_arch_t::gen11:
             case gpu_arch_t::xe_lp:
             case gpu_arch_t::xe_hp:
             case gpu_arch_t::xe_hpg: return true;
@@ -124,12 +122,6 @@ public:
 
     bool mayiuse(device_ext_t ext) const { return device_info_->has(ext); }
 
-    bool is_gen9() const {
-        return device_info_->gpu_arch() == gpu_arch_t::gen9;
-    }
-    bool is_gen11() const {
-        return device_info_->gpu_arch() == gpu_arch_t::gen11;
-    }
     bool is_xe_lp() const {
         return device_info_->gpu_arch() == gpu_arch_t::xe_lp;
     }

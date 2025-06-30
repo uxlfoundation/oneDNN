@@ -69,8 +69,6 @@ inline data_type_t convert_ngen_type_to_dnnl(ngen::DataType dt) {
 
 inline ngen::HW convert_dnnl_arch_to_ngen(compute::gpu_arch_t gpu_arch) {
     switch (gpu_arch) {
-        case compute::gpu_arch_t::gen9: return ngen::HW::Gen9;
-        case compute::gpu_arch_t::gen11: return ngen::HW::Gen11;
         case compute::gpu_arch_t::xe_lp: return ngen::HW::XeLP;
         case compute::gpu_arch_t::xe_hp: return ngen::HW::XeHP;
         case compute::gpu_arch_t::xe_hpg: return ngen::HW::XeHPG;
@@ -84,17 +82,18 @@ inline ngen::HW convert_dnnl_arch_to_ngen(compute::gpu_arch_t gpu_arch) {
 
 inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
     switch (gpu_arch) {
-        case ngen::HW::Gen9: return compute::gpu_arch_t::gen9;
-        case ngen::HW::Gen11: return compute::gpu_arch_t::gen11;
         case ngen::HW::XeLP: return compute::gpu_arch_t::xe_lp;
         case ngen::HW::XeHP: return compute::gpu_arch_t::xe_hp;
         case ngen::HW::XeHPG: return compute::gpu_arch_t::xe_hpg;
         case ngen::HW::XeHPC: return compute::gpu_arch_t::xe_hpc;
         case ngen::HW::Xe2: return compute::gpu_arch_t::xe2;
         case ngen::HW::Xe3: return compute::gpu_arch_t::xe3;
+        case ngen::HW::Gen9:
         case ngen::HW::Gen10:
-            // Gen10 is not supported. Included here instead of default so
-            // warnings are emitted when new architectures are added.
+        case ngen::HW::Gen11:
+            // Gen9, Gen10, Gen11 are not supported anymore. Included
+            // here instead of default to emit warnings at this spot
+            // when new architectures are added.
         case ngen::HW::Unknown: return compute::gpu_arch_t::unknown;
     }
     return compute::gpu_arch_t::unknown;

@@ -302,10 +302,10 @@ bool BLASKernelGenerator<hw>::getBlockInfo(Type T, const MatrixAddressing &atype
         case AccessType::PseudoBlock:
         {
             // Three types of block messages:
-            //    block_oword: 16 byte align, BLK masking (= dw except ow channel on R Gen9 only -- silently ignore, can't fault)
+            //    block_oword: 16 byte align, BLK masking (= dw)
             //  aligned_oword:  4 byte align, no masking, read only
-            //    block_hword: [Gen9-12LP] A64; 4 byte align R, BLKCM masking (= dw but can do ow channel on Gen9 only)
-            //                             A64; 16 byte align W
+            //    block_hword: [12LP] A64; 4 byte align R, BLKCM masking (= dw)
+            //                        A64; 16 byte align W
             //                 [XeHP]   A64/BTS; 32 byte align R/W
             // New dataport messages support {DW, QW}x{1...64} with DW/QW alignment, no masking.
             //

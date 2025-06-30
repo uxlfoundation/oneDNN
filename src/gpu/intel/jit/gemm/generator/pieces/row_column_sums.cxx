@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ void BLASKernelGenerator<hw>::makeSumLayout(bool column,
                                             Type Tdst, vector<RegisterBlock> &dstLayout,
                                             const CommonStrategy &strategy, CommonState &state)
 {
-    bool canDP4A = (hw >= HW::Gen12LP) && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
+    bool canDP4A = one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
     bool cm = isLayoutColMajor(srcLayout);
     bool hReduce = (column == cm);
     bool needAll1s = false;
@@ -79,7 +79,7 @@ void BLASKernelGenerator<hw>::accumulateSum(bool column,
                                             const CommonStrategy &strategy, CommonState &state,
                                             int q0, int q1)
 {
-    bool canDP4A = (hw >= HW::Gen12LP) && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
+    bool canDP4A = one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
 
     bool cm = isLayoutColMajor(srcLayout);
     if (cm != isLayoutColMajor(dstLayout)) stub();
@@ -155,7 +155,7 @@ void BLASKernelGenerator<hw>::accumulateSum(bool column,
                 srcBase = tmpBase;
             }
 
-            if (Tsrc == Type::f16 && Tdst == Type::f32 && hw >= HW::Gen12LP) {
+            if (Tsrc == Type::f16 && Tdst == Type::f32) {
                 if (temp.isInvalid()) temp = state.ra.alloc_range(2);
                 if (src.getHS() < 2) stub();
                 auto tmpF = temp[0].sub(src.getByteOffset() / Type::f32, DataType::f)(src.getHS() / 2);
@@ -355,10 +355,8 @@ bool BLASKernelGenerator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const
     // In the meantime, finish sum reduction if necessary.
     status << "Finalize A/B sums" << status_stream::endl;
 
-    if (hw >= HW::Gen11) {
-        slmfence(temp, r0_info);
-        fencewait();
-    }
+    slmfence(temp, r0_info);
+    fencewait();
     MOCK_BARRIERS activeThreadBarrierSignal(temp, r0_info, strategy);
 
     if (doASLM && A_coopSplitM)

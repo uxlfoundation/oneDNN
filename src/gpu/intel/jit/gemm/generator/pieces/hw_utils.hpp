@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -88,8 +88,6 @@ static inline size_t slmCapacity(ngen::HW hw)
 {
     using namespace ngen;
     switch (hw) {
-        case HW::Gen9:
-        case HW::Gen11:     return 65536;
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG:
@@ -121,8 +119,6 @@ static inline int eusPerSubslice(ngen::HW hw)
 {
     using namespace ngen;
     switch (hw) {
-        case HW::Gen9:
-        case HW::Gen11:
         case HW::XeHPC:
         case HW::Xe2:
         case HW::Xe3:

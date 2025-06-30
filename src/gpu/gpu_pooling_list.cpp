@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/jit/pooling/gen_pooling.hpp"
-#include "gpu/intel/ocl/gen9_global_pooling.hpp"
-#include "gpu/intel/ocl/gen9_pooling.hpp"
 #include "gpu/intel/ocl/ref_pooling.hpp"
+#include "gpu/intel/ocl/xe_global_pooling.hpp"
+#include "gpu/intel/ocl/xe_pooling.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -49,8 +49,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_POOLING_P({
     {{forward}, {
         GPU_INSTANCE_INTEL(intel::jit::gen_pooling_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_global_pooling_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_global_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_pooling_fwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::ref_pooling_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_pooling_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_pooling_fwd_t)
@@ -58,8 +58,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_global_pooling_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ocl::gen9_pooling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_global_pooling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::ocl::xe_pooling_bwd_t)
         GPU_INSTANCE_INTEL(intel::ocl::ref_pooling_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_pooling_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_pooling_bwd_t)

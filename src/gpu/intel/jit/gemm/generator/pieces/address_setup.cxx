@@ -278,9 +278,6 @@ void BLASKernelGenerator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &
         case AccessType::Block:
             if (astrategy.base.getModel() == ModelA64) {
                 emov(1, addr[0].uq(0), ptr, strategy, state);
-                // Disable OWord channel mode on SKL.
-                if (block.ebytes == 32 && hw < HW::Gen10)
-                    mov(1, addr[0].ud(5), uint32_t(0x80000000));
             } else if (astrategy.newDP) {
                 mov(1, addr[0].ud(0), ptr);
             } else if (block.addrShift > 0)
@@ -678,8 +675,6 @@ void BLASKernelGenerator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFR
         case AccessType::Block:
             if (astrategy.base.getModel() == ModelA64) {
                 eadd(1, addrDst[0].uq(0), addrSrc[0].uq(0), cinc, strategy, state);
-                if (addrDst != addrSrc && layoutDst.ebytes == 32 && hw < HW::Gen10)
-                    mov(1, addrDst[0].ud(5), uint32_t(0x80000000));                // Disable OWord channel mode on SKL.
             } else if (astrategy.newDP) {
                 add(1, addrDst[0].ud(0), addrSrc[0].ud(0), cinc);
             } else

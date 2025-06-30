@@ -327,7 +327,7 @@ enum bn_impl_t {
     ref,
     simple,
     reusable,
-    gen9,
+    xe,
     nhwc_opt,
     nhwc_reusable
 };
@@ -472,8 +472,6 @@ enum reorder_kernel_t {
     plain_xFxE_to_abcdef,
     transpose8x8,
     transpose16x16,
-    local8x8,
-    local16x16,
     reorder_nchw,
     unaligned_sizes,
     reorder_alt,

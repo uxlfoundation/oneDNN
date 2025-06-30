@@ -2223,6 +2223,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 * (jcp.is_relo_whi() ? jcp.kh : 1);
         jcp.is_rd_padded_to_block
                 = one_of(jcp.wei_dt, bf16, f16, s8, f8_e5m2, f8_e4m3)
+                && IMPLICATION(jcp.wei_dt == f16, isa != avx10_1_512)
                 && jcp.ic * rd_ksize > rd_padded_block;
 
         jcp.is_os_blocking = jcp.f_pad < jcp.kd && jcp.back_pad < jcp.kd

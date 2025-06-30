@@ -2063,6 +2063,126 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Zmm>;
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
+struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
+                                         public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_base_t)
+
+    jit_brgemm_matmul_copy_b_base_t(const brgemm_matmul_conf_t *conf)
+        : jit_brgemm_matmul_copy_b_t(conf), jit_generator_t(jit_name()) {}
+
+    template <typename Vmm>
+    void apply_shift(const Vmm &input, const Vmm &zp, data_type_t src_dt) {
+
+        if (!conf_->has_zero_point_b || !conf_->with_wei_decompression) return;
+
+        switch (src_dt) {
+            case data_type::s8:
+            case data_type::u8:
+            case data_type::s4:
+            case data_type::u4: uni_vpsubd(input, input, zp); break;
+            case data_type::bf16:
+            case data_type::f16:
+            case data_type::f32: uni_vsubps(input, input, zp); break;
+            default: assert(!"Unable to shift input for zero-point");
+        }
+    }
+
+    template <typename Vmm>
+    void upconvert_to_f32(const Vmm &input, data_type_t src_dt) {
+        switch (src_dt) {
+            case data_type::s8:
+            case data_type::u8:
+            case data_type::s4:
+            case data_type::u4: uni_vcvtdq2ps(input, input); break;
+            case data_type::bf16:
+            case data_type::f16:
+            case data_type::f32:
+                // bf16 and f16 already converted into f32 while loading
+                break;
+            default: assert(!"Unsupported source data type for decompression");
+        }
+    }
+
+    template <typename Vmm>
+    void apply_scales(const Vmm &input, const Xbyak::Operand &scale_op) {
+        if (conf_->apply_scales_in_buffer_b) { vmulps(input, input, scale_op); }
+    }
+
+    template <typename Vmm>
+    void downconvert_to_dst_dt(const Vmm &input, data_type_t dst_dt) {
+        using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
+        switch (dst_dt) {
+            case data_type::bf16:
+                vcvtneps2bf16(Ymm(input.getIdx()), input);
+                break;
+            case data_type::f16:
+                vcvtps2phx(Vmm_lower_t(input.getIdx()), input);
+                break;
+            case data_type::f32:
+                // f32 is already in the correct format
+                break;
+            default:
+                assert(!"Unsupported destination data type for decompression");
+        }
+    }
+
+    template <typename Vmm>
+    void downconvert_to_dst_dt(
+            const Vmm &reg1, const Vmm &reg2, data_type_t dst_dt) {
+        using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
+        switch (dst_dt) {
+            case data_type::bf16: vcvtne2ps2bf16(reg1, reg2, reg1); break;
+            case data_type::f16: {
+                const auto src_vmm_lower0 = Vmm_lower_t(reg1.getIdx());
+                const auto src_vmm_lower1 = Vmm_lower_t(reg2.getIdx());
+                vcvtps2phx(src_vmm_lower0, reg1);
+                vcvtps2phx(src_vmm_lower1, reg2);
+                vinsertf64x4(reg1, reg1, src_vmm_lower1, 1);
+                break;
+            }
+            case data_type::f32:
+                // f32 is already in the correct format
+                break;
+            default:
+                assert(!"Unsupported destination data type for decompression");
+        }
+    }
+
+    /**
+    * @brief Decompresses values by applying zero point shift, data type conversion, and scaling.
+    * @tparam Vmm Vector register type used for computation
+    * @param input Vector register containing input values to be decompressed
+    * @param zp Vector register containing zero point values
+    * @param scale_op Operand containing scales to be applied
+    * @param src_dt Source data type of the values being decompressed
+    * @param dst_dt Destination data type for the decompressed values
+    */
+    template <typename Vmm>
+    void decompress_value(const Vmm &input, const Vmm &zp,
+            const Xbyak::Operand &scale_op, data_type_t src_dt) {
+        apply_shift(input, zp, src_dt);
+        upconvert_to_f32(input, src_dt);
+        apply_scales(input, scale_op);
+    }
+
+    template <typename Vmm>
+    void decompress_value(const Vmm &input, const Vmm &zp,
+            const Xbyak::Operand &scale_op, data_type_t src_dt,
+            data_type_t dst_dt) {
+        decompress_value(input, zp, scale_op, src_dt);
+        downconvert_to_dst_dt(input, dst_dt);
+    }
+
+    template <typename Vmm>
+    void decompress_value(const Vmm &input1, const Vmm &input2, const Vmm &zp,
+            const Xbyak::Operand &scale_op1, const Xbyak::Operand &scale_op2,
+            data_type_t src_dt, data_type_t dst_dt) {
+        decompress_value(input1, zp, scale_op1, src_dt);
+        decompress_value(input2, zp, scale_op2, src_dt);
+        downconvert_to_dst_dt(input1, input2, dst_dt);
+    }
+};
+
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                                          public jit_generator_t {
@@ -2892,13 +3012,12 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 }
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_bf16_t
+    : public jit_brgemm_matmul_copy_b_base_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_bf16_t)
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_base_t(conf)
         , typesize(conf->b_dt_sz)
         , tr_typesize(conf->tr_b_dt_sz)
         , wei_scales_typesize(conf->wei_scales_dt_sz)
@@ -3111,37 +3230,12 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
             load_data(src_reg, load_addr, is_tail);
         }
 
-        if (utils::one_of(conf_->orig_wei_dt, data_type::s8, data_type::u8,
-                    data_type::s4, data_type::u4)) {
-            if (req_zp_b_shift) uni_vpsubd(src_load, src_load, vmm_zp_b_shift);
-            uni_vcvtdq2ps(src_load, src_load);
-            if (req_apply_wei_scales) {
-                const auto wei_scales_offset
-                        = (is_dynamic_stride ? 0 : k * wei_scales_N_stride)
-                        + n * wei_scales_typesize;
-                const auto wei_scales_addr = maybe_EVEX_compress_addr(
-                        reg_wei_scales, wei_scales_offset);
-                const auto vmm_wei_scales_masked
-                        = maybe_mask(vmm_wei_scales, is_tail);
-                switch (conf_->wei_scales_dt) {
-                    case data_type::f32:
-                        uni_vmovups(vmm_wei_scales_masked, wei_scales_addr);
-                        break;
-                    case data_type::bf16:
-                        uni_vpmovzxwd(vmm_wei_scales_masked, wei_scales_addr);
-                        uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                        break;
-                    case data_type::f16:
-                        vcvtph2ps(vmm_wei_scales_masked, wei_scales_addr);
-                        break;
-                    default: assert(!"unsupported wei_scales data type");
-                }
-                uni_vmulps(src_load, src_load, vmm_wei_scales);
-            }
-
-            if (conf_->wei_dt == data_type::f16)
-                vcvtps2phx(Vmm_lower_t(src_reg.getIdx()), src_reg);
-        }
+        const auto scales_offset = (is_dynamic_stride ? 0 : k * scales_N_stride)
+                + n * scales_typesize;
+        const auto scales_addr
+                = maybe_EVEX_compress_addr(reg_scales, scales_offset);
+        decompress_value(
+                src_load, vmm_zp_b_shift, scales_addr, conf_->orig_wei_dt);
     };
 
     int iter = 0;
@@ -3433,13 +3527,11 @@ template struct jit_brgemm_matmul_copy_b_bf16_t<Zmm>;
 template struct jit_brgemm_matmul_copy_b_bf16_t<Ymm>;
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
-                                        public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_base_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_base_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
@@ -3570,9 +3662,9 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_data(
         default: assert(!"unsupported data type");
     }
 
-    if (one_of(dt_in_, data_type::s8, data_type::u8, data_type::s4,
-                data_type::u4))
-        uni_vcvtdq2ps(vmm_in, vmm_in);
+    // if (one_of(dt_in_, data_type::s8, data_type::u8, data_type::s4,
+    //             data_type::u4))
+    //     uni_vcvtdq2ps(vmm_in, vmm_in);
 }
 
 template <typename Vmm>
@@ -3599,29 +3691,10 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         else
             load_data(src_vmm, addr, is_tail);
 
-        if (req_zp_b_shift_)
-            uni_vsubps(maybe_mask(src_vmm, is_tail), src_vmm, vmm_zp_b_shift);
-        if (req_apply_wei_scales_) {
-            const auto wei_scales_addr = maybe_EVEX_compress_addr(
-                    reg_wei_scales,
-                    k * wei_scales_N_stride_ + n * wei_scales_typesize_);
-            const auto vmm_wei_scales_masked
-                    = maybe_mask(vmm_wei_scales, is_tail);
-            switch (conf_->wei_scales_dt) {
-                case data_type::f32:
-                    uni_vmovups(vmm_wei_scales_masked, wei_scales_addr);
-                    break;
-                case data_type::bf16:
-                    uni_vpmovzxwd(vmm_wei_scales_masked, wei_scales_addr);
-                    uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                    break;
-                case data_type::f16:
-                    vcvtph2ps(vmm_wei_scales_masked, wei_scales_addr);
-                    break;
-                default: assert(!"unsupported wei_scales data type");
-            }
-            vmulps(src_vmm, src_vmm, vmm_wei_scales);
-        }
+        const auto scales_addr = maybe_EVEX_compress_addr(
+                reg_scales, k * scales_N_stride_ + n * scales_typesize_);
+        decompress_value(maybe_mask(src_vmm, is_tail), vmm_zp_b_shift,
+                scales_addr, conf_->orig_wei_dt);
     };
 
     const int columns_tail = ncolumns % simd_w_;
@@ -3711,7 +3784,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
     if (req_zp_b_shift_) {
         mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
         uni_vpbroadcastd(vmm_zp_b_shift, ptr[reg_tmp]);
-        uni_vcvtdq2ps(vmm_zp_b_shift, vmm_zp_b_shift);
+        // uni_vcvtdq2ps(vmm_zp_b_shift, vmm_zp_b_shift);
     }
 
     Label done;
@@ -3736,13 +3809,11 @@ template struct jit_brgemm_matmul_copy_b_f32_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_transposed_t
-    : public jit_brgemm_matmul_copy_b_t,
-      public jit_generator_t {
+    : public jit_brgemm_matmul_copy_b_base_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_transposed_t)
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_base_t(conf)
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
@@ -4161,9 +4232,11 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             const bool is_tail
                     = columns_tail > 0 && ncolumns < req_cvt_bf16_k_blk_step_;
             load_int(src_reg, src_offset, i, columns_tail, is_tail);
-            maybe_apply_zp_b_shift(src_reg, is_tail);
-            vcvtdq2ps(zmm_src, zmm_src);
-            maybe_apply_wei_scales(src_reg, i * wei_scales_K_stride_, is_tail);
+
+            const auto scales_addr
+                    = EVEX_compress_addr(reg_scales, i * scales_K_stride_);
+            decompress_value(maybe_mask(src_reg, is_tail), vmm_zp_b_val,
+                    scales_addr, conf_->orig_wei_dt);
         } else
             assert(!"Unsupported data type in loading");
 
@@ -4182,27 +4255,16 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                 const auto is_tail = columns_tail > 0;
                 load_int(src_reg_next, next_src_offset, i, columns_tail,
                         columns_tail > 0);
-                maybe_apply_zp_b_shift(src_reg_next, is_tail);
-                vcvtdq2ps(zmm_src_next, zmm_src_next);
-                maybe_apply_wei_scales(src_reg_next,
-                        i * wei_scales_K_stride_
-                                + !single_wei_scales_value_
-                                        * req_cvt_bf16_k_blk_step_
-                                        * wei_scales_typesize_,
-                        is_tail);
+
+                const auto scales_addr = EVEX_compress_addr(reg_scales,
+                        i * scales_K_stride_
+                                + req_cvt_bf16_k_blk_step_ * scales_typesize_);
+                decompress_value(maybe_mask(src_reg_next, is_tail),
+                        vmm_zp_b_val, scales_addr, conf_->orig_wei_dt);
             } else
                 assert(!"Unsupported data type in loading");
         }
-
-        if (conf_->wei_dt == data_type::bf16) {
-            vcvtne2ps2bf16(src_reg, src_reg_next, src_reg);
-        } else {
-            const auto src_vmm_lower0 = Vmm_lower_t(src_reg.getIdx());
-            const auto src_vmm_lower1 = Vmm_lower_t(src_reg_next.getIdx());
-            vcvtps2phx(src_vmm_lower0, src_reg);
-            vcvtps2phx(src_vmm_lower1, src_reg_next);
-            vinsertf64x4(src_reg, src_reg, src_vmm_lower1, 1);
-        }
+        downconvert_to_dst_dt(src_reg, src_reg_next, conf_->wei_dt);
         L(load_done);
     };
 
@@ -4231,9 +4293,13 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
             load_int(src_reg, src_offset, i, columns_tail, is_tail);
-            maybe_apply_zp_b_shift(src_reg, is_tail);
-            vcvtdq2ps(src_load, src_load);
-            maybe_apply_wei_scales(src_reg, i * wei_scales_K_stride_, is_tail);
+            // maybe_apply_zp_b_shift(src_reg, is_tail);
+            // vcvtdq2ps(src_load, src_load);
+            // maybe_apply_scales(src_reg, i * scales_K_stride_, is_tail);
+            const auto scales_addr
+                    = EVEX_compress_addr(reg_scales, i * scales_K_stride_);
+            decompress_value(maybe_mask(src_reg, is_tail), vmm_zp_b_val,
+                    scales_addr, conf_->orig_wei_dt);
         } else if (use_fp16_instructions_) {
             if (conf_->isa == avx512_core_fp16) {
                 vcvtph2psx(src_load, addr);
@@ -4763,13 +4829,12 @@ template struct jit_brgemm_matmul_copy_b_transposed_t<Zmm>;
 template struct jit_brgemm_matmul_copy_b_transposed_t<Ymm>;
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
-                                             public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_cvt_bf16_t
+    : public jit_brgemm_matmul_copy_b_base_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_cvt_bf16_t)
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_base_t(conf)
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
@@ -4920,7 +4985,10 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::load_int(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(const int blk,
         const int k, const int n, const bool is_n_tail, const bool is_k_tail) {
-    const auto zmm_wei_scales1 = maybe_mask(vmm_wei_scales1, is_n_tail);
+
+    if (!req_apply_scales_) return;
+
+    const auto zmm_scales1 = maybe_mask(vmm_scales1, is_n_tail);
     const auto zmm_tmp = maybe_mask(vmm_tmp, is_n_tail);
     const auto base_offset = [&](int k) {
         return k * wei_scales_N_stride_ + n * wei_scales_typesize_;
@@ -4982,29 +5050,12 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         auto load_addr1 = maybe_EVEX_compress_addr(reg_src, offset + stride);
         load_int(src_vmm0, load_addr0);
         load_int(src_vmm1, load_addr1);
-        if (req_zp_b_shift_) {
-            vpsubd(src_vmm0, src_vmm0, vmm_zp_b_val);
-            vpsubd(src_vmm1, src_vmm1, vmm_zp_b_val);
-        }
-        vcvtdq2ps(src_vmm0, src_vmm0);
-        vcvtdq2ps(src_vmm1, src_vmm1);
-        if (req_apply_wei_scales_) {
-            const bool is_n_tail = ncolumns - n < n_blk_step;
-            const bool is_k_tail = nrows - k < k_blk_step;
-            get_wei_scales(blk, k, n, is_n_tail, is_k_tail);
-            vmulps(src_vmm0, src_vmm0, vmm_wei_scales0);
-            vmulps(src_vmm1, src_vmm1, vmm_wei_scales1);
-        }
 
-        if (conf_->wei_dt == data_type::bf16) {
-            vcvtne2ps2bf16(src_vmm0, src_vmm1, src_vmm0);
-        } else {
-            const auto src_vmm_lower0 = Vmm_lower_t(src_vmm0.getIdx());
-            const auto src_vmm_lower1 = Vmm_lower_t(src_vmm1.getIdx());
-            vcvtps2phx(src_vmm_lower0, src_vmm0);
-            vcvtps2phx(src_vmm_lower1, src_vmm1);
-            vinsertf64x4(src_vmm0, src_vmm0, src_vmm_lower1, 1);
-        }
+        const bool is_n_tail = ncolumns - n < n_blk_step;
+        const bool is_k_tail = nrows - k < k_blk_step;
+        get_scales(blk, k, n, is_n_tail, is_k_tail);
+        decompress_value(src_vmm0, src_vmm1, vmm_zp_b_val, vmm_scales0,
+                vmm_scales1, conf_->orig_wei_dt, conf_->wei_dt);
     };
 
     int iter = 0;

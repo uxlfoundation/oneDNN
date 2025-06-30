@@ -1985,6 +1985,17 @@ void CopyPlan::legalizeSIMD(bool initial)
     int grf = GRF::bytes(hw);
     bool splitting = false;
 
+    auto forceSIMD1 = [&](const CopyInstruction &i) {
+        // Workaround for packed byte mov to odd-offset dst.
+        // Limiting SIMD avoids using a temporary to re-align data.
+        if (hw < HW::XeHPC) return false;
+        if (i.op != Opcode::mov) return false;
+        if (!isB(i.dst.type) || !isB(i.src0.type)) return false;
+        if (i.dst.stride != 1) return false;
+        if ((i.dst.offset & 1) == 0) return false;
+        return true;
+    };
+
     if (!initial)
         checkNoSubbytes();
 
@@ -2035,6 +2046,10 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
+
+        if (!initial && forceSIMD1(i))
+            simd0 = 1;
+
         if (simd0 < i.simd || splitting) {
             if (i.dst.offset >= i.dst.stride && i.dst.stride > 0) {   /* align dst to GRF boundary */
                 int remaining = div_up(bytesToElements(grf, i.dst.type) - i.dst.offset, i.dst.stride);

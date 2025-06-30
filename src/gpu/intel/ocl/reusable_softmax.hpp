@@ -201,6 +201,13 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                 }
             }
 
+            // subgroup block read/write requires the tensor to be
+            // 4/16-byte aligned, respectively
+            const bool is_read_aligned
+                    = (axis_size() * types::data_type_size(src_dt)) % 4 == 0;
+            const bool is_write_aligned
+                    = (axis_size() * types::data_type_size(dst_dt)) % 16 == 0;
+
             const auto nelems = src_mdw.nelems();
 
             conf.algorithm_number = [&]() { // -> int
@@ -211,7 +218,8 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                             && dnnl::impl::utils::div_up(
                                        rt_conf.softmax_axis_size,
                                        conf.subgroup_size)
-                                    <= 1024)
+                                    <= 1024
+                            && is_read_aligned && is_write_aligned)
                         return vectorized;
                     if (rt_conf.softmax_axis_stride == 1
                             && rt_conf.softmax_axis_size <= conf.subgroup_size

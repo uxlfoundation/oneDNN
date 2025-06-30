@@ -2954,6 +2954,22 @@ struct memory : public handle<dnnl_memory_t> {
             return desc {md};
         }
 
+        /// Creates a memory descriptor for a scalar value that resides on the host.
+        /// This descriptor is intended for passing a scalar directly as an argument
+        /// to device-side kernels, helping to avoid unnecessary memory transfers
+        /// during primitive execution.
+        ///
+        /// @param adata_type Data type of the scalar.
+        /// @returns A memory descriptor for host-side scalar input.
+        static desc host_scalar(data_type adata_type) {
+            dnnl_memory_desc_t md = nullptr;
+            error::wrap_c_api(dnnl_memory_desc_create_host_scalar(
+                                      &md, convert_to_c(adata_type)),
+                    "could not create a memory descriptor describing host side "
+                    "scalar");
+            return desc {md};
+        }
+
         /// Construct a memory descriptor from a C API ::dnnl_memory_desc_t
         /// handle. The resulting handle is not weak and the C handle will be
         /// destroyed during the destruction of the C++ object.
@@ -3384,6 +3400,24 @@ struct memory : public handle<dnnl_memory_t> {
 
         error::wrap_c_api(status, "could not create a memory object");
         reset(result);
+    }
+
+    /// Constructs a memory object that wraps a host scalar value.
+    /// @note The scalar value is copied from the provided pointer into the
+    ///     newly allocated memory storage, so the user does not need to
+    ///     manage the lifetime of the original scalar data.
+    ///
+    /// @param md The memory descriptor that defines data type.
+    /// @param value_ptr Pointer to the host memory to be wrapped by the
+    ///     memory object.
+    ///
+    /// @throws error if the memory object could not be created.
+    memory(const desc &md, void *value_ptr) { // todo: probably use templates?
+        dnnl_memory_t result;
+        dnnl_status_t status
+                = dnnl_memory_create_host_scalar(&result, md.get(), value_ptr);
+        error::wrap_c_api(status, "could not create a memory object");
+        reset(result); // ???
     }
 
     /// Returns the associated memory descriptor.

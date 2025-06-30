@@ -248,6 +248,13 @@ public:
             return it->second.get<value_type>();
     }
 
+    template <typename value_type>
+    value_type &get_mutable_attr(op_attr_t name) {
+        auto it = attributes_.find(name);
+        assertm(it != attributes_.end(), "don't have such attribute");
+        return it->second.get<value_type>();
+    }
+
     template <typename Attr>
     status_t get_attr(op_attr_t name, const Attr **attr) const {
         const auto &found = attributes_.find(name);

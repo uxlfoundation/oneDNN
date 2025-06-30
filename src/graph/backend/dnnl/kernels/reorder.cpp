@@ -27,6 +27,11 @@
 
 #include "graph/backend/dnnl/op_executable.hpp"
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#include "cpu/cpu_stream.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.h"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -143,13 +148,13 @@ status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
+    assertm(scratchpad->size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
@@ -195,6 +200,16 @@ status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto *tp_stream
+            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
+                    const_cast<stream_t *>(g_stream));
+    tp_stream->before_exec_hook();
+    parallel_nd_ext(
+            1, 1, [=](int tid, int nthr, int bo) { UNUSED(scratchpad); });
+
+    tp_stream->after_exec_hook();
+#endif
     return status::success;
 }
 

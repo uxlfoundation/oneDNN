@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <vector>
 #include <unordered_map>
 
@@ -478,6 +479,48 @@ bool is_single_end_op_partition(const dnnl::graph::partition &parti,
     return false;
 }
 
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+struct stream_staller_t {
+    // Enqueue tasks to stall a primitive execution tasks.
+    stream_staller_t(cpp_stream_t &stream) {
+        auto tp = dnnl::threadpool_interop::get_threadpool(stream);
+
+        // Only relevant for asynchronous threadpool, synchronous will
+        // deadlock.
+        if (tp->get_flags()
+                != dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS)
+            return;
+
+        // Each thread from the threadpool should get the task to be stalled.
+        const int num_tasks = tp->get_num_threads();
+
+        // The main thread must be let through, otherwise it deadlocks as
+        // task submission won't happen.
+        std::thread::id main_thr_id = std::this_thread::get_id();
+
+        // Shared future allows to pass all waiting threads at once inside the
+        // palallel call.
+        std::shared_future<void> fut(prom_.get_future());
+
+        tp->parallel_for(num_tasks, [=](int, int) {
+            std::thread::id id_thr = std::this_thread::get_id();
+            if (id_thr != main_thr_id) fut.wait();
+        });
+    }
+
+    // A signal the submission has completed and ready for execution.
+    void release() { prom_.set_value(); }
+
+private:
+    std::promise<void> prom_;
+};
+#else
+struct stream_staller_t {
+    stream_staller_t(cpp_stream_t &stream) {}
+    void release() {}
+};
+#endif
+
 int doit(const prb_t *prb, res_t *res) {
     if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
 
@@ -710,11 +753,15 @@ int doit(const prb_t *prb, res_t *res) {
         auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
         graph_mem_mgr.start_graph_mem_check();
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
+
+        stream_staller_t staller(strm);
         // Need following clean-up steps as the memories have been mappped to
         // device. Otherwise the deconstruction will fail.
         DNN_GRAPH_SAFE(
                 c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
                 (WARN | NEED_CLEANUP), res);
+        staller.release();
+
         DNN_GRAPH_SAFE(strm.wait(), WARN, res);
         graph_mem_mgr.stop_graph_mem_check();
 

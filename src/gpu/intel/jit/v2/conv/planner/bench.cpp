@@ -22,7 +22,7 @@
 #include "gpu/intel/jit/v2/conv/plan_registry.hpp"
 #include "gpu/intel/jit/v2/conv/planner/model_fit.hpp"
 #include "gpu/intel/jit/v2/conv/tensor_utils.hpp"
-#include "gpu/intel/ocl/usm_utils.hpp"
+#include "xpu/ocl/usm_utils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -61,8 +61,8 @@ static void fill_mem(stream &strm, const memory &mem) {
     auto md = mem.get_desc();
     size_t size = md.get_size();
     uint8_t pattern = 0;
-    status_t status = impl::gpu::intel::ocl::usm::fill(strm.get(), ptr,
-            &pattern, sizeof(pattern), size, 0, nullptr, nullptr);
+    status_t status = impl::xpu::ocl::usm::fill(strm.get(), ptr, &pattern,
+            sizeof(pattern), size, 0, nullptr, nullptr);
     if (status != status::success) throw std::runtime_error("Fill failed");
 }
 

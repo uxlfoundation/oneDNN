@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/convolution_deconvolution.hpp"
+#include "gpu/intel/convolution_deconvolution.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -53,7 +53,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::ocl::convolution_deconvolution_bwd_weights_t)
+        GPU_INSTANCE_INTEL(intel::convolution_deconvolution_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_deconvolution_bwd_data_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_deconvolution_bwd_weights_t)
         GPU_INSTANCE_AMD(amd::miopen_deconvolution_bwd_data_t)

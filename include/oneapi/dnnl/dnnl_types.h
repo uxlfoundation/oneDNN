@@ -55,6 +55,8 @@ typedef enum {
     dnnl_format_kind_opaque,
     /// Format kind for sparse tensors.
     dnnl_format_kind_sparse,
+    /// Format kind for host scalars.
+    dnnl_format_kind_host_scalar,
     /// Parameter to allow internal only format kinds without undefined
     /// behavior. This parameter is chosen to be valid for so long as
     /// sizeof(int) >= 2.

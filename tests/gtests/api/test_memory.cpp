@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -129,5 +129,43 @@ INSTANTIATE_TEST_SUITE_P(AllEngineKinds, memory_test_c_t, all_engine_kinds,
         print_to_string_param_name_t());
 INSTANTIATE_TEST_SUITE_P(AllEngineKinds, memory_test_cpp_t, all_engine_kinds,
         print_to_string_param_name_t());
+
+TEST(c_api_host_scalar_mem, TestHostScalarF32) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    float scalar_value = 42.0f;
+    dnnl_memory_t scalar_mem = nullptr;
+    DNNL_CHECK(dnnl_memory_create_host_scalar(
+            &scalar_mem, scalar_md, &scalar_value));
+
+    DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
+    DNNL_CHECK(dnnl_memory_destroy(scalar_mem));
+}
+
+TEST(c_api_host_scalar_mem, TestHostScalarNullPtr) {
+    dnnl_memory_t scalar_mem = nullptr;
+    float scalar_value = 42.0f;
+
+    EXPECT_EQ(
+            dnnl_memory_create_host_scalar(&scalar_mem, nullptr, &scalar_value),
+            dnnl_invalid_arguments);
+
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    EXPECT_EQ(dnnl_memory_create_host_scalar(&scalar_mem, scalar_md, nullptr),
+            dnnl_invalid_arguments);
+
+    DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
+}
+
+TEST(cpp_api_host_scalar_mem, TestHostScalarF32) {
+    using namespace dnnl;
+
+    float scalar_value = 42.0f;
+    memory scalar_mem(
+            memory::desc::host_scalar(memory::data_type::f32), &scalar_value);
+}
 
 } // namespace dnnl

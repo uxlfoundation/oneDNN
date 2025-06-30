@@ -28,6 +28,7 @@
 #include "engine.hpp"
 #include "memory.hpp"
 #include "memory_desc_wrapper.hpp"
+#include "scalar_memory_storage.hpp"
 #include "stream.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
@@ -208,6 +209,39 @@ status_t dnnl_memory_create_v2(memory_t **memory, const memory_desc_t *md,
         }
     }
     *memory = _memory;
+    return success;
+}
+
+status_t dnnl_memory_create_host_scalar(
+        memory_t **memory, const memory_desc_t *md, void *scalar_ptr) {
+    if (any_null(memory, scalar_ptr, md)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(md);
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    std::unique_ptr<dnnl::impl::memory_storage_t> memory_storage_ptr(
+            new dnnl::impl::host_scalar_memory_storage_t());
+
+    size_t scalar_size = mdw.size(0);
+    status_t status = memory_storage_ptr->init(
+            memory_flags_t::alloc, scalar_size, nullptr /* handle */);
+    if (status != success) { return out_of_memory; }
+
+    void *h = nullptr;
+    memory_storage_ptr->get_data_handle(
+            &h); // todo: handle (non-existent) errors?
+    std::memcpy(h, scalar_ptr, scalar_size);
+
+    memory_t *mem_obj
+            = new memory_t(nullptr, md, std::move(memory_storage_ptr));
+    if (mem_obj == nullptr) return out_of_memory;
+    if (mem_obj->memory_storage() == nullptr) {
+        mem_obj->release();
+        return out_of_memory;
+    }
+    *memory = mem_obj;
+
     return success;
 }
 

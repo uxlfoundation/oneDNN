@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -92,6 +92,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(sum_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sum_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

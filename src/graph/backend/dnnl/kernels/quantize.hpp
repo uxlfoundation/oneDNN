@@ -93,6 +93,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(quantize_dequantize_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(quantize_dequantize_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 } // namespace dnnl_impl

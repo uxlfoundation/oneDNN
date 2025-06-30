@@ -114,7 +114,7 @@ private:
     // keep the memory for each logical tensor
     // before the execution of each reference primitive,
     // replace the args with the memory from this map.
-    std::unordered_map<size_t, const dnn_mem_t &> lt_id_2_mems_;
+    std::map<size_t, const dnn_mem_t &> lt_id_2_mems_;
     // keep the lt id for fake output which is not supported by primitive
     std::unordered_set<size_t> fake_lt_ids_;
 

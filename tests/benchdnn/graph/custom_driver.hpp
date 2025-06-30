@@ -31,6 +31,7 @@ enum alg_t {
     GENINDEX,
     TRANSPOSE,
     RESHAPE,
+    SOFTMAX,
     ALG_UNKNOWN,
 };
 
@@ -42,8 +43,12 @@ struct settings_t {
 
     ::std::unordered_map<int, arg_md_t> arg_mds_;
     ::std::vector<int64_t> order;
-    int64_t axis = -1;
+    int axis = -1;
     alg_t alg = ALG_UNKNOWN;
+    prb_dims_t prb_dims;
+    std::vector<dir_t> dir {FWD_D};
+    std::vector<dnnl_data_type_t> sdt {dnnl_f32}, ddt {dnnl_f32};
+    std::vector<std::string> stag {tag::abx}, dtag {tag::any};
 
     // A stub to be compliant with `base_settings_t`.
     void finalize() {};
@@ -54,6 +59,15 @@ struct prb_t {
         switch (alg) {
             case GENINDEX: axis = s.axis; break;
             case TRANSPOSE: order = s.order; break;
+            case SOFTMAX:
+                axis = s.axis;
+                prb_dims = s.prb_dims;
+                dir = s.dir;
+                sdt = s.sdt;
+                ddt = s.ddt;
+                stag = s.stag;
+                dtag = s.dtag;
+                break;
             default: break;
         }
     }
@@ -63,6 +77,10 @@ struct prb_t {
     int64_t axis = -1;
     attr_t attr;
     alg_t alg = ALG_UNKNOWN;
+    prb_dims_t prb_dims;
+    std::vector<dir_t> dir {FWD_D};
+    std::vector<dnnl_data_type_t> sdt {dnnl_f32}, ddt {dnnl_f32};
+    std::vector<std::string> stag {tag::abx}, dtag {tag::any};
 };
 
 dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args);

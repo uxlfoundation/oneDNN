@@ -95,6 +95,7 @@ status_t sdp_primitive_v1_kernel_t<quantized>::compile_impl(
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_sdpa);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa_gpu);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_reshape_for_sdpa);
     BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
 

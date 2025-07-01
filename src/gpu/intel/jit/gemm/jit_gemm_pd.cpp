@@ -23,6 +23,20 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace {
+void quant_dims(
+        const memory_desc_t &md, const quant_entry_t &entry, dims_t &out) {
+    auto mask = entry.get_mask();
+    for (int i = 0; i < md.ndims; i++)
+        out[i] = md.dims[i] * ((mask >> i) & 1);
+    // Groups apply to the last 2 dims
+    if (!entry.has_default_groups()) {
+        out[md.ndims - 2] /= entry.get_group(0);
+        out[md.ndims - 1] /= entry.get_group(1);
+    }
+}
+} // anonymous namespace
+
 status_t jit_gemm_pd_t::init_post_ops() {
     using namespace primitive_kind;
     using namespace alg_kind;
@@ -172,27 +186,29 @@ status_t jit_gemm_pd_t::init_post_ops() {
 int jit_gemm_pd_t::quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &md) const {
     if (entry.has_default_values()) return -1;
-    int mask = entry.get_mask();
-    if (mask == 0) return 0;
-    if (entry.has_default_groups()) return mask > 0;
-    int count = 0;
-    for (int i = md.ndims - 1; i >= 0; --i) {
-        if (!(mask & (1 << i))) continue;
-        bool batch_dim = i < batch_dims();
-        if ((batch_dim && md.dims[i] > 1)
-                || (!batch_dim
-                        && (md.dims[i] / entry.get_group(i - batch_dims())
-                                > 1)))
-            ++count;
+
+    dims_t qdims;
+    quant_dims(md, entry, qdims);
+
+    // If quantization is batched (any batch dim > 1), we need to tell gemmstone
+    // it's 3D - so it knows to change the offset as the batch index changes.
+    for(int i = 0; i < md.ndims - 2; i++) {
+        if (qdims[i] > 1) return 3;
     }
 
-    // Workaround for cases with non-trivial group only affecting one dim.
-    if (count < md.ndims
-            && ((md.dims[batch_dims()] == 1
-                        && md.dims[batch_dims() + 1] > entry.get_group(1))
-                    || (md.dims[batch_dims() + 1] == 1
-                            && md.dims[batch_dims()] > entry.get_group(0))))
-        ++count;
+    // Count the number of nontrivial (dim > 1) dimensions present
+    int count = 0;
+    bool full_dim = false;
+    for (int i = 0; i < md.ndims; ++i) {
+        if (qdims[i] > 1) {
+            count++;
+            full_dim = (qdims[i] == md.dims[i]);
+        }
+    }
+
+    // gemmstone doesn't support 1D grouped scales, these have to be sent as 2D
+    if (count == 1 && !full_dim) return 2;
+
     return count;
 }
 
@@ -239,32 +255,41 @@ void jit_gemm_pd_t::init_attrs() {
     quant_enabled_ = quant_enabled();
     const auto &d = desc();
 
-    auto &attr_zps = attr()->zero_points_;
-    cmask_a_ = attr_zps.get(DNNL_ARG_A).get_mask();
-    cmask_b_ = attr_zps.get(DNNL_ARG_B).get_mask();
-    cmask_c_ = attr_zps.get(DNNL_ARG_C).get_mask();
-
-    // Swap descriptors to follow column major format.
-    ao_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_A), d->b_desc);
-    bo_dims_ = quant_entry_ndims(attr_zps.get(DNNL_ARG_B), d->a_desc);
-    if (wei_zp_2d()) { wei_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_A, 0); }
-    if (src_zp_2d()) { src_q2d_group_k_ = attr_zps.get_group(DNNL_ARG_B, 0); }
+    const auto &attr_zps = attr()->zero_points_;
+    const auto a_zps = attr_zps.get(DNNL_ARG_A);
+    const auto b_zps = attr_zps.get(DNNL_ARG_B);
+    const auto c_zps = attr_zps.get(DNNL_ARG_C);
 
     const auto &scales = attr()->scales_;
-    const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
-    asc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_A), d->b_desc);
-    bsc_dims_ = quant_entry_ndims(scales.get(DNNL_ARG_B), d->a_desc);
-    wei_scales_group_k_ = wei_scales->get_group(0);
-    src_scales_group_k_ = src_scales->get_group(1);
+    const auto a_scales = scales.get(DNNL_ARG_A);
+    const auto b_scales = scales.get(DNNL_ARG_B);
 
-    wei_scales_type_ = wei_scales->get_data_type();
-    if (wei_scales_2d()) {
-        if (!wei_zp_2d()) wei_q2d_group_k_ = wei_scales->get_group(0);
+    cmask_a_ = a_zps.get_mask();
+    cmask_b_ = b_zps.get_mask();
+    cmask_c_ = c_zps.get_mask();
+
+    // Swap descriptors to follow column major format.
+    ao_dims_ = quant_entry_ndims(a_zps, d->b_desc);
+    bo_dims_ = quant_entry_ndims(b_zps, d->a_desc);
+    asc_dims_ = quant_entry_ndims(a_scales, d->b_desc);
+    bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc);
+
+    wei_scales_group_k_ = a_scales.get_group(0);
+    src_scales_group_k_ = b_scales.get_group(1);
+
+    wei_scales_type_ = a_scales.get_data_type();
+    if (wei_zp_2d()) {
+        wei_q2d_group_k_ = a_zps.get_group(0);
+    } else if (wei_scales_2d()) {
+        wei_q2d_group_k_ = a_scales.get_group(0);
     }
 
-    src_scales_type_ = src_scales->get_data_type();
-    if (src_scales_2d()) { src_q2d_group_k_ = src_scales->get_group(1); }
+    src_scales_type_ = b_scales.get_data_type();
+    if (src_zp_2d()) {
+        src_q2d_group_k_ = b_zps.get_group(1);
+    } else if (src_scales_2d()) {
+        src_q2d_group_k_ = b_scales.get_group(1);
+    }
 }
 
 bool jit_gemm_pd_t::zp_ok() {

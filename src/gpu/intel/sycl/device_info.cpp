@@ -129,7 +129,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             cl_device_id ocl_dev
                     = xpu::sycl::compat::get_native<cl_device_id>(device);
             CHECK(gpu::intel::ocl::get_ocl_device_eu_count(
-                    ocl_dev, gpu_arch_, &eu_count_));
+                    ocl_dev, &eu_count_));
         } else {
             auto slices = device.get_info<
                     xpu::sycl::compat::ext_intel_gpu_slices>();

@@ -2046,15 +2046,17 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
+        auto opSimdMax = [&] (const CopyOperand &op) {
+            if (op.kind != CopyOperand::GRF || op.stride == 0) return simdMax;
+            int remaining = (bytesToElements(grf, op.type) - (op.offset + 1)) / op.stride + 1;
+            return rounddown_pow2(remaining);
+        };
 
         if (!initial && forceSIMD1(i))
             simd0 = 1;
 
         if (simd0 < i.simd || splitting) {
-            if (i.dst.offset >= i.dst.stride && i.dst.stride > 0) {   /* align dst to GRF boundary */
-                int remaining = div_up(bytesToElements(grf, i.dst.type) - i.dst.offset, i.dst.stride);
-                simd0 = std::min(simd0, rounddown_pow2(remaining));
-            }
+            simd0 = std::min({simd0, opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2)});
 
             auto &isplit = split(i, false);
             isplit.simd = simd0;

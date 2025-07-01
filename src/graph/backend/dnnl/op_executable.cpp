@@ -2368,17 +2368,38 @@ arg_indices_t genindex_executable_t::get_arg_indices(const op_t *op) {
 
 arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
     arg_indices_t arg_indices;
-    // add input args
+    // Required input args: query, key, value
     size_t index = 0;
     arg_indices.insert({DNNL_ARG_QUERIES, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_KEYS, indices_t {input, index++}});
     arg_indices.insert({DNNL_ARG_VALUES, indices_t {input, index++}});
+    // Optional args: scale, mask
     if (op->get_attr<bool>(op_attr::with_scale)) {
         arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, index++}});
     }
     if (op->get_attr<int64_t>(op_attr::mask_type)
             == static_cast<int64_t>(attn_mask_type::buffer)) {
         arg_indices.insert({DNNL_ARG_ATTN_MASK, indices_t {input, index++}});
+    }
+
+    const auto &sdpa_fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
+            : fusion_info_t();
+    if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_KEYS)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                indices_t {input, index++}});
+    }
+    if (sdpa_fusion_info.with_runtime_zero_points(true, DNNL_ARG_KEYS)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+                indices_t {input, index++}});
+    }
+    if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_VALUES)) {
+        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+                indices_t {input, index++}});
+    }
+    if (sdpa_fusion_info.with_runtime_zero_points(true, DNNL_ARG_VALUES)) {
+        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
+                indices_t {input, index++}});
     }
 
     // add output args

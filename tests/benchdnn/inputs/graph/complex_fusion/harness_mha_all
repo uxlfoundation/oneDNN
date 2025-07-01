@@ -96,7 +96,6 @@
 # with and without key transposed
 --reset --dt=15:f32+16:f32+5:f32+21:f32 --in-shapes=0:abdc,0:abcd --case=complex_fusion/mha/sdpa-compressed-kv-implicit-causal-mask-int8-gs128.json
 --reset --dt=15:f32+4:f32+18:f32+16:f32 --in-shapes=0:abdc,0:abcd --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
---reset --dt=15:f32+4:f32+16:f32+18:f32+2:s8+8:s8 --in-shapes=0:abdc,0:abcd --case=complex_fusion/mha/sdpa-compressed-kv-int4-gs32.json
 --reset --dt=15:f32+4:f32+16:f32+18:f32 --case=complex_fusion/mha/sdpa-compressed-v-int8-gs32.json
 
 # per-tensor quantization

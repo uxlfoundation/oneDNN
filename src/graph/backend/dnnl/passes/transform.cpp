@@ -4375,6 +4375,52 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
+    // Handle quantization parameters from both matmuls
+    for (const auto &matmul : {candidates[0], candidates.back()}) {
+        auto inputs = matmul->get_input_values();
+        for (size_t idx = 2; idx < inputs.size(); ++idx) {
+            const auto &qparam_val = inputs[idx];
+            qparam_val->remove_consumer(*matmul, idx);
+            sdpa_op->connect_input(input_idx++, qparam_val);
+        }
+    }
+
+    fusion_info_t sdpa_fusion_info;
+    if (candidates[0]->has_attr(op_attr::fusion_info)) {
+        auto mm1_fusion_info
+                = candidates[0]->get_attr<fusion_info_t>(op_attr::fusion_info);
+        if (mm1_fusion_info.get_mutable_scales(true, 1)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm1_fusion_info.get_mutable_scales(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_KEYS);
+        }
+        if (mm1_fusion_info.with_runtime_zero_points(true, 1)) {
+            sdpa_fusion_info.set_zero_points(
+                    mm1_fusion_info.get_mutable_zero_points(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_KEYS);
+        }
+    }
+
+    if (candidates.back()->has_attr(op_attr::fusion_info)) {
+        auto mm2_fusion_info = candidates.back()->get_attr<fusion_info_t>(
+                op_attr::fusion_info);
+        if (mm2_fusion_info.get_mutable_scales(true, 1)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm2_fusion_info.get_mutable_scales(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_VALUES);
+        }
+        if (mm2_fusion_info.with_runtime_zero_points(true, 1)) {
+            sdpa_fusion_info.set_zero_points(
+                    mm2_fusion_info.get_mutable_zero_points(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_VALUES);
+        }
+    }
+    sdpa_op->set_attr<fusion_info_t>(op_attr::fusion_info, sdpa_fusion_info);
+
     auto final_output = candidates.back()->get_output_value(0);
     final_output->set_producer(*sdpa_op);
     sdpa_op->add_output(final_output);

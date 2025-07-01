@@ -45,6 +45,8 @@ namespace dnnl_impl {
     VCONDCHECK(graph, create, check, fusion_info, (cond), status, msg, \
             ##__VA_ARGS__);
 
+enum class attr_type_t { QK, VS };
+
 // This class is used to represent an op's fusion information, such as the post
 // ops, the zero points or scales.
 class fusion_info_t {
@@ -112,6 +114,10 @@ class fusion_info_t {
 public:
     friend dnnl::primitive_attr make_dnnl_primitive_attr(
             const op_ptr &op, const fusion_info_t &fusion_info);
+
+    friend dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+            const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+            const attr_type_t attr_type);
 
     fusion_info_t() = default;
 
@@ -329,6 +335,13 @@ private:
 // info make sense only when it belongs to a specific op.
 dnnl::primitive_attr make_dnnl_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info);
+
+// This function is used to make a dnnl::primitive_attr(QK and VS) for sdpa.
+// The attr creation is similar to matmul attr, but fusion info of sdpa has
+// different semantics, so we need to handle it differently.
+dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+        const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+        const attr_type_t attr_type);
 
 } // namespace dnnl_impl
 } // namespace graph

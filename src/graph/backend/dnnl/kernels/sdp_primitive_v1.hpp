@@ -40,6 +40,7 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+template <bool quantized>
 struct sdp_primitive_v1_kernel_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;

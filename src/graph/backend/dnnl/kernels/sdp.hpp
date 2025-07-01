@@ -69,8 +69,8 @@ public:
         // SDPA Ukernel v1 with fused internal sdpa solution. Support fload sdpa
         // only.
         // TODO(GX): Support quantized sdpa and merge with sdp_primitive_kernel_t.
-        if (enable_ukernel && !quantized) {
-            kernel = std::make_shared<sdp_primitive_v1_kernel_t>();
+        if (enable_ukernel) {
+            kernel = std::make_shared<sdp_primitive_v1_kernel_t<quantized>>();
             ret = kernel->compile_impl(part, g_engine, inputs, outputs);
         }
 

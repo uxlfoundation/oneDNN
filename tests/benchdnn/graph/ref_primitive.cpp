@@ -22,8 +22,7 @@ namespace graph {
 ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
     : op_(op)
     , kind_(opstr2kind(op_.kind_))
-    , driver_(opkind2driver(kind_, /*check_num_outputs*/ true,
-              /*num_outputs*/ op_.out_lts_.size()))
+    , driver_(op_.get_driver())
     , is_special_backward_op_(false) {
 
     static const ::std::unordered_set<::std::string> special_backward_op = {

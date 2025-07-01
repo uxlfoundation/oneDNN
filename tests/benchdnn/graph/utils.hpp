@@ -154,9 +154,6 @@ inline bool is_plain(dnnl_format_tag_t fmt_tag) {
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
 
-dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind,
-        bool check_num_outputs = false, size_t num_outputs = 1);
-
 // permute md based on permutation
 void permute_md(dnn_mem_t &mem, std::vector<int64_t> permutation);
 

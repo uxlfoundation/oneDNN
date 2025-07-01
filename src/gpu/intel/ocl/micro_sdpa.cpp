@@ -115,14 +115,15 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
     bool is_integrated = compute_engine->device_info()->is_integrated();
+    bool is_f32 = (qry_md()->data_type == data_type::f32);
     use_systolic_ukernel_
             = compute_engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)
-            && (qry_md()->data_type != data_type::f32); // f32 non-systolic only
+            && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config);
+            is_integrated, use_fma_config, is_f32);
 
     if (!config) return status::unimplemented;
 
@@ -266,8 +267,9 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
-            d->keys(), thin_q, quantized, is_integrated, use_fma_config);
+    heuristic_sizes.m
+            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
+                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (d->queries() <= thin_q_threshold)
             ? thin_q_threshold

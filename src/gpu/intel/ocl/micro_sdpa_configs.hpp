@@ -39,7 +39,8 @@ enum class sdpa_property : int {
     second_token = 0x1,
     quantized = 0x2,
     integrated = 0x4,
-    fma = 0x8
+    fma = 0x8,
+    f32 = 0x10,
 };
 
 sdpa_property operator|(sdpa_property a, sdpa_property b);
@@ -94,11 +95,13 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs);
 bool operator<(const config_record_t &lhs, const config_record_t &rhs);
 
 sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma);
+        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool thin_q, bool quantized, bool integrated, bool fma);
+        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32);
 
 // serializable options for microkernel configuration
 // follows reduced subset of structs from gemmstone that

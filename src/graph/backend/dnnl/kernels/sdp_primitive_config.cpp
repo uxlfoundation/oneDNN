@@ -179,19 +179,6 @@ status_t sdp_primitive_config_t::initial_check(
             status::invalid_arguments,
             "SDPA ukernel doesn't support f32 datatype now");
 
-    // Note: sdpa_primitive_v1 kernel currently don't support legacy GQA pattern.
-    if (v1_kernel) {
-        for (auto &cur_op : sg->get_ops()) {
-            if (cur_op->get_kind() == graph::op_kind::StaticReshape) {
-                auto in = cur_op->get_input_value(0)->get_logical_tensor();
-                auto out = cur_op->get_output_value(0)->get_logical_tensor();
-                if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
-                    return status::unimplemented;
-                }
-            }
-        }
-    }
-
     // step1(pattern check): Not support sdpa variants with select as mask
     // We already have a pattern matcher to ensure that the sdpa patterns
     // dispatch to here are knows ones, and we have quant check in sdpa base

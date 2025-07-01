@@ -387,7 +387,7 @@ int ref_partition_t::check_partition_correctness(
         // Currently, both cases use set_has_eltwise_post_op flag in benchdnn
         // compare function.
         // The flag name is not very accurate, add this note to avoid confusion
-        const auto op_driver = opkind2driver(ref_prim->get_kind());
+        const auto op_driver = op.get().opkind2driver();
         has_eltwise = has_eltwise
                 || (op_driver == dnnl_driver_t::eltwise
                         || ((opstr2kind(op_kind)

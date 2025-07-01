@@ -52,6 +52,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
             v_acc += CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
                     (const __global BLOCK_DATA_T *)&src[src_off])));
         }
+        float total_sum = 0;
 #if !SKIP_MEAN
 #if VECT_DT_N == 1
         v_mean = v_acc;
@@ -61,7 +62,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
             v_mean += v_acc[i];
         }
 #endif // VECT_DT_N == 1
-        float total_sum = sub_group_reduce_add(v_mean);
+        total_sum = sub_group_reduce_add(v_mean);
         v_mean = total_sum / C;
 #endif // SKIP_MEAN
         v_acc = 0;

@@ -43,6 +43,14 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+// gcc4.8.5 can 't support enum class as key
+struct enum_hash_t {
+    template <typename T>
+    size_t operator()(const T &t) const {
+        return static_cast<size_t>(t);
+    }
+};
+
 class dnnl_backend_t : public backend_t {
     friend class dnnl_partition_impl_t;
 
@@ -70,16 +78,17 @@ public:
             const logical_tensor_t &rhs) const override;
 
     bool support_engine_kind(engine_kind_t kind) const override {
-        static const std::unordered_set<engine_kind_t> supported_kind = {
+        static const std::unordered_set<engine_kind_t, enum_hash_t>
+                supported_kind = {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-            engine_kind::cpu,
+                    engine_kind::cpu,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            engine_kind::gpu,
+                    engine_kind::gpu,
 #endif
-        };
+                };
         return supported_kind.count(kind);
     }
 

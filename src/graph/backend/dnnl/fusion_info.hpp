@@ -45,6 +45,8 @@ namespace dnnl_impl {
     VCONDCHECK(graph, create, check, fusion_info, (cond), status, msg, \
             ##__VA_ARGS__);
 
+enum class attr_type_t { QK, VS };
+
 // This class is used to represent an op's fusion information, such as the post
 // ops, the zero points or scales.
 class fusion_info_t {
@@ -113,6 +115,10 @@ public:
     friend dnnl::primitive_attr make_dnnl_primitive_attr(
             const op_ptr &op, const fusion_info_t &fusion_info);
 
+    friend dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+            const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+            const attr_type_t attr_type);
+
     fusion_info_t() = default;
 
     bool operator==(const fusion_info_t &other) const {
@@ -177,6 +183,31 @@ public:
                     index == 0, nullptr, "index for output scales must be 0");
             if (!dst_scales_) return nullptr;
             return const_cast<op_t *>(dst_scales_->get_op());
+        }
+    }
+
+    const op_t *get_runtime_scales(bool is_input, size_t index) const {
+        if (is_input) {
+            if (input_scales_.find(index) == input_scales_.end())
+                return nullptr;
+            return input_scales_.at(index)->get_op();
+        } else {
+            VCHECK_FUSION_INFO(
+                    index == 0, nullptr, "index for output scales must be 0");
+            if (!dst_scales_) return nullptr;
+            return dst_scales_->get_op();
+        }
+    }
+
+    const op_t *get_runtime_zps(bool is_input, size_t index) const {
+        if (is_input) {
+            if (input_zps_.find(index) == input_zps_.end()) return nullptr;
+            return input_zps_.at(index)->get_op();
+        } else {
+            VCHECK_FUSION_INFO(
+                    index == 0, nullptr, "index for output zps must be 0");
+            if (!output_zps_) return nullptr;
+            return output_zps_->get_op();
         }
     }
 
@@ -329,6 +360,13 @@ private:
 // info make sense only when it belongs to a specific op.
 dnnl::primitive_attr make_dnnl_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info);
+
+// This function is used to make a dnnl::primitive_attr(QK and VS) for sdpa.
+// The attr creation is similar to matmul attr, but fusion info of sdpa has
+// different semantics, so we need to handle it differently.
+dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+        const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+        const attr_type_t attr_type);
 
 } // namespace dnnl_impl
 } // namespace graph

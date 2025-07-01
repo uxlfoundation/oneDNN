@@ -101,7 +101,7 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
     if (bgmmc.is_thread_chunks_exec_order_horizontal) {
         bgmmc.mem_advice
                 = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_B;
-        if (nchunks_per_thread % bgmmc.N_chunks)
+        if (nchunks_per_thread % bgmmc.N_chunks && bgmmc.is_amx)
             bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
                     brgemm_hint_mem_advice_A_B;
     } else {
@@ -1613,7 +1613,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order
-    if (is_superset(isa, avx10_2_512_amx_2)) mem_advice_init(bgmmc);
+    if (is_superset(isa, avx10_2_512)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims

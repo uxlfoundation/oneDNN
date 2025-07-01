@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
 #if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
     return status::unimplemented;
 #endif
+
     p_engine_ = make_dnnl_engine(*g_engine);
     g_alloc_
             = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
@@ -68,7 +69,6 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_implicit_causal_mask);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     if (quantized) {
         BACKEND_DNNL_ADD_PASS(pipeline, lift_up_typecast);
         BACKEND_DNNL_ADD_PASS(pipeline, lift_up_quantize);
@@ -92,43 +92,38 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
 
     pipeline.reset_visualize_arg(true, false);
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_transpose_to_matmul);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_sdpa);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_transpose_to_predecessor);
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_reshape_for_sdpa);
     BACKEND_DNNL_ADD_PASS(pipeline, layout_propagation);
 
-    // bind the memory for each op
+    // bind the memory for each op`
     auto memory_plan = [&](std::shared_ptr<subgraph_t> &sg) {
         return memory_planner_.run(sg);
     };
     pipeline.reset_visualize_arg(true, true);
     BACKEND_DNNL_ADD_PASS(pipeline, memory_plan);
+    BACKEND_DNNL_ADD_PASS(pipeline, compile_ops);
 
-    auto modify_subgraph = [&] {
-        // Run the added passes
-        CHECK(pipeline.run(subgraph_));
+    // Run the added passes
+    BACKEND_DNNL_CHECK(pipeline.run(subgraph_));
 
-        // fill information for inputs logical tensors
-        for (size_t i = 0; i < inputs.size(); i++) {
-            auto &in = const_cast<logical_tensor_t &>(inputs[i]);
-            in = subgraph_->ins_[i];
-        }
+    // fill information for inputs logical tensors
+    for (size_t i = 0; i < inputs.size(); i++) {
+        auto &in = const_cast<logical_tensor_t &>(inputs[i]);
+        in = subgraph_->ins_[i];
+    }
 
-        // fill information for outputs logical tensors
-        for (size_t i = 0; i < outputs.size(); i++) {
-            auto &out = const_cast<logical_tensor_t &>(outputs[i]);
-            out = subgraph_->outs_[i];
-        }
-
-        return status::success;
-    };
+    // fill information for outputs logical tensors
+    for (size_t i = 0; i < outputs.size(); i++) {
+        auto &out = const_cast<logical_tensor_t &>(outputs[i]);
+        out = subgraph_->outs_[i];
+    }
 
     resource_ctor_ = [this]() {
         return this->memory_planner_.get_exec_args_set().clone();
     };
-
-    CHECK(modify_subgraph());
-
-    cfg_.quantized_ = quantized;
-    CHECK(cfg_.init(subgraph_, p_engine_, inputs, outputs));
 
     return status::success;
 }
@@ -145,67 +140,13 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
         mem_idx.first.set_data_handle(
                 outputs[mem_idx.second].get_data_handle());
     }
-}
 
-template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::get_prim_exec_args(
-        exec_args_t &args, memory (&mem_storage)[10],
-        const execution_args_set_t *res) const {
-    bool ok = res->find_value_mem_map(cfg_.q_.get(), mem_storage[0])
-            && res->find_value_mem_map(cfg_.k_.get(), mem_storage[1])
-            && res->find_value_mem_map(cfg_.v_.get(), mem_storage[2])
-            && res->find_value_mem_map(cfg_.dst_.get(), mem_storage[3]);
+    grantor_t var_grantor = memory_planner_.internal_temporary_grantor(
+            scratchpad.get_buffer());
 
-    if (cfg_.scale_)
-        ok = ok && res->find_value_mem_map(cfg_.scale_.get(), mem_storage[4]);
-    if (cfg_.attn_mask_)
-        ok = ok
-                && res->find_value_mem_map(
-                        cfg_.attn_mask_.get(), mem_storage[5]);
-    if (quantized && !(cfg_.k_scale_ || cfg_.v_scale_))
-        return status::invalid_arguments;
-    if (cfg_.k_scale_)
-        ok = ok && res->find_value_mem_map(cfg_.k_scale_.get(), mem_storage[6]);
-    if (cfg_.v_scale_)
-        ok = ok && res->find_value_mem_map(cfg_.v_scale_.get(), mem_storage[7]);
-
-    if (cfg_.k_zero_points_)
-        ok = ok
-                && res->find_value_mem_map(
-                        cfg_.k_zero_points_.get(), mem_storage[8]);
-    if (cfg_.v_zero_points_)
-        ok = ok
-                && res->find_value_mem_map(
-                        cfg_.v_zero_points_.get(), mem_storage[9]);
-
-    VCONDCHECK(graph, exec, check, sdp_primitive_kernel, ok,
-            status::runtime_error,
-            "sdp_primitive_kernel get_prim_exec_args failed");
-
-    memory_arg_t mem_arg_q = {mem_storage[0].get(), true};
-    memory_arg_t mem_arg_k = {mem_storage[1].get(), true};
-    memory_arg_t mem_arg_v = {mem_storage[2].get(), true};
-    memory_arg_t mem_arg_dst = {mem_storage[3].get(), false};
-    memory_arg_t mem_arg_scale = {mem_storage[4].get(true), true};
-    memory_arg_t mem_arg_mask = {mem_storage[5].get(true), true};
-    memory_arg_t mem_arg_k_scale = {mem_storage[6].get(true), true};
-    memory_arg_t mem_arg_v_scale = {mem_storage[7].get(true), true};
-    memory_arg_t mem_arg_k_zero_points = {mem_storage[8].get(true), true};
-    memory_arg_t mem_arg_v_zero_points = {mem_storage[9].get(true), true};
-
-    args.clear();
-    args[DNNL_ARG_QUERIES] = mem_arg_q;
-    args[DNNL_ARG_KEYS] = mem_arg_k;
-    args[DNNL_ARG_VALUES] = mem_arg_v;
-    args[DNNL_ARG_DST] = mem_arg_dst;
-    args[DNNL_ARG_SCALE] = mem_arg_scale;
-    args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
-    args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
-    args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
-    args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS] = mem_arg_k_zero_points;
-    args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES] = mem_arg_v_zero_points;
-
-    return status::success;
+    for (auto &mem_offkey : res->get_mems_use_internal_temporary()) {
+        mem_offkey.first.set_data_handle(var_grantor.get(mem_offkey.second));
+    }
 }
 
 template <bool quantized>
@@ -218,17 +159,16 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    // Micro kernel doesn't use scratchpad memory, here we force-set size as
-    // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(
+            memory_planner_.total_internal_temporary_size(), p_engine_,
+            *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    memory mem_storage[10];
-    exec_args_t args;
-    CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
+    for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
+        subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
+    }
 
-    return cfg_.sdpa_prim_->execute(ctx);
+    return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
@@ -242,42 +182,31 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 #if DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
     return status::unimplemented;
 #endif
+    auto deps = sycl_deps;
+    ::sycl::event returned_event;
+
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    // Micro kernel doesn't use scratchpad memory, here we force-set size as
-    // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(
+            memory_planner_.total_internal_temporary_size(), p_engine_,
+            *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    memory mem_storage[10];
-    exec_args_t args;
-    CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
+    for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
+        if (subgraph_->is_constant_[i]) continue;
+        returned_event = subgraph_->execs_[i]->execute_sycl(
+                p_stream, res->get_exec_args()[i], deps);
+        deps = {returned_event};
+    }
 
-    // Relying on the library's internals here. Since graph API is currently
-    // enabled only for the Intel vendor it is fine to cast stream to
-    // gpu::intel::sycl::stream_t unconditionally.
-    auto *sycl_stream = dnnl::impl::utils::downcast<
-            dnnl::impl::gpu::intel::sycl::stream_t *>(p_stream.get());
+    scratchpad.set_deps(returned_event);
+    if (sycl_event) *sycl_event = returned_event;
 
-    sycl_stream->before_exec_hook();
-
-    if (!sycl_deps.empty()) sycl_stream->sycl_ctx().set_deps(sycl_deps);
-
-    auto status = cfg_.sdpa_prim_->execute(ctx);
-
-    auto return_event = sycl_stream->get_output_event();
-
-    scratchpad.set_deps(return_event);
-    if (sycl_event) *sycl_event = return_event;
-
-    sycl_stream->after_exec_hook();
-
-    return status;
+    return status::success;
 }
 #endif
 
@@ -287,6 +216,8 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
+    auto deps = cl_deps;
+    cl_event returned_event {};
 
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
@@ -294,43 +225,22 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    // Micro kernel doesn't use scratchpad memory, here we force-set size as
-    // zero to avoid redundant memory allocation and deallocation.
-    temporary_scratchpad_t scratchpad(0, p_engine_, *g_alloc_);
+    temporary_scratchpad_t scratchpad(
+            memory_planner_.total_internal_temporary_size(), p_engine_,
+            *g_alloc_);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
-    memory mem_storage[10];
-    exec_args_t args;
-    CHECK(get_prim_exec_args(args, mem_storage, res));
-    exec_ctx_t ctx(p_stream.get(), std::move(args));
-
-    // TODO (pc): refactor
-    auto *ocl_stream = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(
-            p_stream.get());
-
-    ocl_stream->before_exec_hook();
-
-    if (!cl_deps.empty()) {
-        std::vector<xpu::ocl::wrapper_t<cl_event>> events(cl_deps.size());
-        for (size_t i = 0; i < cl_deps.size(); i++)
-            events[i] = xpu::ocl::wrapper_t<cl_event>(cl_deps[i], true);
-        ocl_stream->ocl_ctx().set_deps(events);
+    for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
+        if (subgraph_->is_constant_[i]) continue;
+        returned_event = subgraph_->execs_[i]->execute_ocl(
+                p_stream, res->get_exec_args()[i], deps);
+        deps = {returned_event};
     }
 
-    auto status = cfg_.sdpa_prim_->execute(ctx);
+    scratchpad.set_deps(returned_event);
+    if (ret_event) *ret_event = returned_event;
 
-    cl_event return_event = nullptr;
-    if ((ocl_stream->flags() & stream_flags::in_order) == 0) {
-        auto last = ocl_stream->get_output_event();
-        return_event = last.release();
-    }
-
-    scratchpad.set_deps(return_event);
-    if (ret_event) *ret_event = return_event;
-
-    ocl_stream->after_exec_hook();
-
-    return status;
+    return status::success;
 }
 #endif
 

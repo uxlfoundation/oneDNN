@@ -3999,6 +3999,58 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+// TODO: This pass is similar to the one above, and the ultimate goal is to
+// merge them by using dnnl_sdpa for cpu.
+impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg) {
+    if (sg->get_engine_kind() == graph::engine_kind::cpu)
+        return impl::status::success;
+    std::vector<op_ptr> reshape_ops;
+    for (auto &cur_op : sg->get_ops()) {
+        auto in = cur_op->get_input_value(0)->get_logical_tensor();
+        auto out = cur_op->get_output_value(0)->get_logical_tensor();
+        if (cur_op->get_kind() == op_kind::dnnl_reshape) {
+            if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
+                reshape_ops.emplace_back(cur_op);
+            }
+        }
+    }
+    if (reshape_ops.empty()) { return impl::status::success; }
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &reshape_op : reshape_ops) {
+        auto in = reshape_op->get_input_value(0)->get_logical_tensor();
+        auto out = reshape_op->get_output_value(0)->get_logical_tensor();
+        if (ltw(in).ndims() == 5)
+            rewriter.fuse_op_to_predecessor(reshape_op->shared_from_this());
+        if (ltw(out).ndims() == 5) {
+            auto in_val = reshape_op->get_input_value(0);
+            auto out_val = reshape_op->get_output_value(0);
+            if (out_val->get_consumers()[0].get_op().get_kind()
+                    == op_kind::dnnl_permute) {
+                in_val->remove_consumer(*reshape_op, 0);
+                auto &permute_op = out_val->get_consumers()[0].get_op();
+                in_val->add_consumer(permute_op, 0);
+                permute_op.connect_input(0, in_val);
+                auto perm = permute_op.get_attr<std::vector<int64_t>>(
+                        op_attr::permutation);
+                // GQA specific scenario
+                permute_op.set_attr<std::vector<int64_t>>(
+                        op_attr::permutation, {0, 1, 3, 2});
+                rewriter.to_remove(reshape_op);
+            } else {
+                rewriter.fuse_op_to_successor(reshape_op->shared_from_this());
+            }
+        }
+    }
+    rewriter.run();
+    //rewrite the subgraph internal logical_tensor's shape
+    for (auto &cur_op : sg->get_ops()) {
+        auto out_val = cur_op->get_output_value(0);
+        //the subgraph output logical tensor doesn't change shape.
+        if (!out_val->get_consumers().empty()) out_val->set_ndims(-1);
+    }
+    return infer_shape(sg);
+}
+
 impl::status_t swap_relu_mul_scales(std::shared_ptr<subgraph_t> &sg) {
     while (true) {
         std::vector<std::pair<graph::op_t *, graph::op_t *>> to_be_swapped;

@@ -190,19 +190,10 @@ status_t sdp_primitive_config_t::initial_check(
     const bool is_f32 = inputs[0].data_type == data_type::f32;
     bool has_genindex = false;
 
-    // Note: sdpa_primitive_v1 kernel currently don't support legacy GQA pattern.
     if (v1_kernel) {
         for (auto &cur_op : sg->get_ops()) {
             const auto opk = cur_op->get_kind();
-            if (opk == graph::op_kind::StaticReshape) {
-                auto in = cur_op->get_input_value(0)->get_logical_tensor();
-                auto out = cur_op->get_output_value(0)->get_logical_tensor();
-                if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
-                    return status::unimplemented;
-                }
-            } else if (opk == graph::op_kind::GenIndex) {
-                has_genindex = true;
-            }
+            if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
         }
     }
     // Dispatch f32 implicit causal mask cases into the f32 ukernel impl.

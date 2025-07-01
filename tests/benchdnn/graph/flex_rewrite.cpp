@@ -1412,51 +1412,50 @@ void flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
 }
 
 void flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
-    // Step 1: check the op kind in the map and whether the given ids are in
-    // the graph.
-    for (const auto &v : op_kind_map_) {
-        if (v.second == "default") return;
 
-        auto target_kind = opstr2kind(v.second);
-        if (target_kind == dnnl::graph::op::kind::LastSymbol) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: invalid target op kind %s is provided\n",
-                    v.second.c_str());
-            SAFE_V(FAIL);
-        }
+    for (auto &aop : dgraph.ops_) {
+        for (const auto &v : op_kind_map_) {
+            if (v.second == "default") return;
+            if (aop.id_ != v.first) continue;
 
-        // Only support op kind rewrite for binary and eltwise ops.
-        auto target_driver = opkind2driver(target_kind);
-        if (target_driver != dnnl_driver_t::binary
-                && target_driver != dnnl_driver_t::eltwise) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: target op kind %s for id `%zd` is not "
-                    "supported\n",
-                    v.second.c_str(), v.first);
-            SAFE_V(FAIL);
-        }
+            if (aop.empty()) {
+                BENCHDNN_PRINT(0,
+                        "graph: rewrite: ID `%zd` is not found in the graph\n",
+                        v.first);
+                SAFE_V(FAIL);
+            }
+            auto op_driver = aop.get_driver();
 
-        auto &aop = dgraph.get_op(v.first);
-        if (aop.empty()) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: ID `%zd` is not found in the graph\n",
-                    v.first);
-            SAFE_V(FAIL);
-        }
-        auto op_driver = opkind2driver(opstr2kind(aop.kind_));
-        if (op_driver != target_driver) {
-            BENCHDNN_PRINT(0,
-                    "graph: rewrite: target op kind `%s` does not "
-                    "match the op kind `%s` in the graph\n",
-                    v.second.c_str(), aop.kind_.c_str());
-            SAFE_V(FAIL);
-        }
-    }
+            auto target_kind = opstr2kind(v.second);
+            if (target_kind == dnnl::graph::op::kind::LastSymbol) {
+                BENCHDNN_PRINT(0,
+                        "graph: rewrite: invalid target op kind %s is "
+                        "provided\n",
+                        v.second.c_str());
+                SAFE_V(FAIL);
+            }
 
-    // Step 2: rewrite the op kinds.
-    for (const auto &v : op_kind_map_) {
-        for (auto &aop : dgraph.ops_) {
-            if (aop.id_ == v.first) { aop.kind_ = v.second; }
+            // rewrite the op kind
+            aop.kind_ = v.second;
+            // Only support op kind rewrite for binary and eltwise ops.
+            auto target_driver = aop.get_driver();
+            if (target_driver != dnnl_driver_t::binary
+                    && target_driver != dnnl_driver_t::eltwise) {
+                BENCHDNN_PRINT(0,
+                        "graph: rewrite: target op kind %s for id `%zd` is not "
+                        "supported\n",
+                        v.second.c_str(), v.first);
+                SAFE_V(FAIL);
+            }
+
+            // check if the target driver aligns with original driver
+            if (op_driver != target_driver) {
+                BENCHDNN_PRINT(0,
+                        "graph: rewrite: target op kind `%s` does not "
+                        "match the op kind `%s` in the graph\n",
+                        v.second.c_str(), aop.kind_.c_str());
+                SAFE_V(FAIL);
+            }
         }
     }
 }

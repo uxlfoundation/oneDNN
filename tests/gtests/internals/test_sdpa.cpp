@@ -706,10 +706,30 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
     return out;
 }
 
+static std::unique_ptr<dnnl::engine> sdpa_eng;
+
+dnnl::engine get_sdpa_test_engine() {
+    return *sdpa_eng;
+}
+
 class sdpa_test_t : public ::testing::TestWithParam<sdpa_dims_t> {
 public:
     // Testing reusable functionality requires shared engine between tests.
     static void SetUpTestSuite() {
+#ifdef DNNL_SYCL_CUDA
+        GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
+#endif
+#ifdef DNNL_SYCL_HIP
+        GTEST_SKIP() << "SDPA primitive tests do not support HIP";
+#endif
+#ifndef DNNL_TEST_WITH_ENGINE_PARAM
+        SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
+                "SDPA tests require gpus.");
+        sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
+#endif
+    }
+
+    void SetUp() override {
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -723,25 +743,9 @@ public:
 #else
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "SDPA tests require gpus.");
-        eng = dnnl::engine(engine::kind::gpu, 0);
+        eng = get_sdpa_test_engine();
 #endif
         strm = dnnl::stream(eng);
-    }
-
-    void SetUp() override {
-#ifdef DNNL_SYCL_CUDA
-        GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
-#endif
-#ifdef DNNL_SYCL_HIP
-        GTEST_SKIP() << "SDPA primitive tests do not support HIP";
-#endif
-#ifdef DNNL_TEST_WITH_ENGINE_PARAM
-        SKIP_IF(get_test_engine_kind() != dnnl::engine::kind::gpu,
-                "This test requires GPU engine");
-#else
-        SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
-                "SDPA tests require gpus.");
-#endif
         p = GetParam();
         doubled_memory.reserve(30);
         t = get_descriptors(eng, p, doubled_memory);
@@ -753,17 +757,19 @@ public:
         }
     }
 
-protected:
-    static dnnl::engine eng;
-    static dnnl::stream strm;
+    static void TearDownTestSuite() {
+#ifndef DNNL_TEST_WITH_ENGINE_PARAM
+        sdpa_eng.reset();
+#endif
+    }
 
+protected:
+    dnnl::engine eng;
+    dnnl::stream strm;
     sdpa_dims_t p;
     sdpa_tensors_t t;
     std::vector<dnnl_memory_t> doubled_memory;
 };
-
-dnnl::engine sdpa_test_t::eng;
-dnnl::stream sdpa_test_t::strm;
 
 bool with_key_transposed = true;
 bool no_key_transposed = false;

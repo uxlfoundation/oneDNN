@@ -107,7 +107,7 @@ int execute(const ::softmax::prb_t *prb, const args_t &args, res_t *res) {
 } // namespace softmax
 
 ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
-    : op_(op), kind_(opstr2kind(op_.kind_)), driver_(opkind2driver(kind_)) {
+    : op_(op), kind_(opstr2kind(op_.kind_)), driver_(op_.opkind2driver()) {
 
     static const ::std::unordered_set<::std::string> special_backward_op = {
             // bnorm backward

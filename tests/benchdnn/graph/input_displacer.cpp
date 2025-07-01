@@ -528,7 +528,7 @@ int partition_data_displacer_t::gen_quantize_filling(
         const ::std::string &dt, res_t *res) {
     // clone a deserialized op object and modify to specified data type
     ::graph::deserialized_op_t op = main_op;
-    auto driver = opkind2driver(opstr2kind(op.kind_));
+    auto driver = op.opkind2driver();
     bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
 
     op.in_lts_[0].data_type_ = dt;

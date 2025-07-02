@@ -62,6 +62,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
 
     dim_t ld_binary(int idx) const;
     dim_t stride_binary(int idx, int stride = 0) const;
+    dim_t stride_scale(int idx, int arg) const;
 
     const post_ops_t *post_ops() const { return &post_ops_; }
     const std::vector<binary_src_t> &binary_srcs() const {

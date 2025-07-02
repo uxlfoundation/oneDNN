@@ -394,6 +394,15 @@ dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
     }
 }
 
+dim_t jit_gemm_pd_t::stride_scale(int idx, int arg) const {
+    const auto md = arg == DNNL_ARG_A ? desc()->b_desc : desc()->a_desc;
+    dim_t stride = 1;
+    for (int i = idx; i < md.ndims; ++i) {
+        stride *= md.dims[i];
+    }
+    return stride;
+}
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

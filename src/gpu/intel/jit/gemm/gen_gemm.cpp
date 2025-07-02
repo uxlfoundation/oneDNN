@@ -143,13 +143,15 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
             if (problem->asPtrDims > 2) {
-                auto scale_stride_a = int32_t(stride_a
+                dim_t scale_stride = pd()->stride_scale(i, DNNL_ARG_A);
+                auto scale_stride_a = int32_t(scale_stride
                         / pd()->quant_entry_group_prod(
                                 pd()->attr()->scales_.get(DNNL_ARG_A)));
                 arg_list.set(argn++, scale_stride_a);
             }
             if (problem->bsPtrDims > 2) {
-                auto scale_stride_b = int32_t(stride_b
+                dim_t scale_stride = pd()->stride_scale(i, DNNL_ARG_B);
+                auto scale_stride_b = int32_t(scale_stride
                         / pd()->quant_entry_group_prod(
                                 pd()->attr()->scales_.get(DNNL_ARG_B)));
                 arg_list.set(argn++, scale_stride_b);

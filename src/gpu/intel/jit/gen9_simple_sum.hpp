@@ -38,6 +38,10 @@ struct gen9_simple_sum_t : public gpu_primitive_t {
                     = utils::downcast<compute::compute_engine_t *>(engine);
             VDISPATCH_SUM(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
+#if XE4
+            VDISPATCH_SUM(compute::gpu_arch(engine) < compute::gpu_arch_t::xe4,
+                    VERBOSE_UNSUPPORTED_ARCH, "gpu");
+#endif
 
             const int n = n_inputs();
 

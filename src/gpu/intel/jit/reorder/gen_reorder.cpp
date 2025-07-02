@@ -77,6 +77,10 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
                         || utils::one_of(src_dt, bf16, f16, f32)
                         || utils::one_of(dst_dt, bf16, f16, f32));
     };
+#if XE4
+    VDISPATCH_REORDER(compute::gpu_arch(engine) < compute::gpu_arch_t::xe4,
+            VERBOSE_UNSUPPORTED_ARCH, "gpu");
+#endif
     VDISPATCH_REORDER(
             src_engine == dst_engine && src_engine->kind() == engine_kind::gpu,
             VERBOSE_BAD_ENGINE_KIND);

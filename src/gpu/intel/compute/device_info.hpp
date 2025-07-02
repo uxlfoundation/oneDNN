@@ -338,6 +338,8 @@ private:
     serialization_stream_t serialized_device_info_;
 };
 
+gpu_arch_t gpu_arch(impl::engine_t *engine);
+
 } // namespace compute
 }} // namespace gpu
 } // namespace impl

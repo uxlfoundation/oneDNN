@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "common/type_helpers.hpp"
+#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
@@ -420,6 +421,12 @@ void device_info_t::fixup_l3_cache_size() {
     if (gpu_arch() == gpu_arch_t::xe2 && eu_count() <= 64) {
         l3_cache_size_ = (1 << 23);
     }
+}
+
+gpu_arch_t gpu_arch(impl::engine_t *engine) {
+    return utils::downcast<compute_engine_t *>(engine)
+            ->device_info()
+            ->gpu_arch();
 }
 
 } // namespace compute

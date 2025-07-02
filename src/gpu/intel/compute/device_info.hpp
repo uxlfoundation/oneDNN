@@ -36,15 +36,7 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
-enum class gpu_arch_t {
-    unknown,
-    xe_lp,
-    xe_hp,
-    xe_hpg,
-    xe_hpc,
-    xe2,
-    xe3
-};
+enum class gpu_arch_t { unknown, xe_lp, xe_hp, xe_hpg, xe_hpc, xe2, xe3 };
 
 static inline std::string to_string(gpu_arch_t arch) {
 #define CASE(_case) \

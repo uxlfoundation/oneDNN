@@ -181,10 +181,18 @@ int jit_gemm_pd_t::quant_entry_ndims(
         bool batch_dim = i < batch_dims();
         if ((batch_dim && md.dims[i] > 1)
                 || (!batch_dim
-                        && (md.dims[i] / entry.get_group(i - batch_dims()) > 1
-                                || count)))
+                        && (md.dims[i] / entry.get_group(i - batch_dims())
+                                > 1)))
             ++count;
     }
+
+    // Workaround for cases with non-trivial group only affecting one dim.
+    if (count < md.ndims
+            && ((md.dims[batch_dims()] == 1
+                        && md.dims[batch_dims() + 1] > entry.get_group(1))
+                    || (md.dims[batch_dims() + 1] == 1
+                            && md.dims[batch_dims()] > entry.get_group(0))))
+        ++count;
     return count;
 }
 
@@ -397,7 +405,8 @@ dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
 dim_t jit_gemm_pd_t::stride_scale(int idx, int arg) const {
     const auto md = arg == DNNL_ARG_A ? desc()->b_desc : desc()->a_desc;
     dim_t stride = 1;
-    for (int i = idx; i < md.ndims; ++i) {
+    if (md.dims[idx] == 1) return 0;
+    for (int i = idx + 1; i < md.ndims; ++i) {
         stride *= md.dims[i];
     }
     return stride;

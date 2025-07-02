@@ -116,6 +116,8 @@ struct ukernel_serialized_opts_t
     uint8_t padding[4] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_opts_t);
+static_assert(sizeof(ukernel_serialized_opts_t) == 8,
+        "Expected sizeof(ukernel_serialized_opts_t) == 8");
 
 struct ukernel_serialized_hwinfo_t
     : trivially_serializable_t<ukernel_serialized_hwinfo_t> {
@@ -132,6 +134,8 @@ struct ukernel_serialized_hwinfo_t
     uint8_t padding[7] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_hwinfo_t);
+static_assert(sizeof(ukernel_serialized_hwinfo_t) == 16,
+        "Expected sizeof(ukernel_serialized_hwinfo_t) == 16");
 
 struct ukernel_serialized_sizes_t
     : trivially_serializable_t<ukernel_serialized_sizes_t> {
@@ -191,6 +195,9 @@ struct ukernel_serialized_problem_t
     uint8_t A_scale_alignment;
     uint8_t AO_alignment;
     uint8_t B_alignment;
+    // trivially serializable classes require alignment to 8-byte boundaries
+    // padding0 bumps class size from 49->56 bytes so uint8_t arguments
+    // related to alignment can be grouped together rather than placed at the end of the struct
     uint8_t padding0[7] = {0};
 
     int asPtrDims;
@@ -209,6 +216,8 @@ struct ukernel_serialized_problem_t
     uint8_t padding1[1] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
+static_assert(sizeof(ukernel_serialized_problem_t) == 96,
+        "Expected sizeof(ukernel_serialized_problem_t) == 96");
 
 struct micro_sdpa_ukernel_params_t
     : trivially_serializable_t<micro_sdpa_ukernel_params_t> {

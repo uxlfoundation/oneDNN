@@ -226,11 +226,8 @@ struct micro_sdpa_t : public gpu_primitive_t {
                         vgs, static_cast<long int>(val_md()->dims[3]));
             }
 
-            VDISPATCH_SDPA_SC(init_conf_microkernels(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL,
-                    "micro_sdpa init_conf_microkernels");
-            VDISPATCH_SDPA_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "micro_sdpa init_conf");
+            CHECK(init_conf_microkernels(engine));
+            CHECK(init_conf(engine));
 
             return status::success;
         }

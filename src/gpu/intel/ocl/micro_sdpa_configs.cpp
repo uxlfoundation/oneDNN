@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "micro_sdpa_configs.hpp"
+#include <sstream>
 #include "common/c_types_map.hpp"
 
 namespace dnnl {
@@ -44,20 +45,20 @@ inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
 
 std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len << " thinq,qnt,int,fma?:"
-      << (int)(q.property & sdpa_property::second_token) << " "
-      << (int)(q.property & sdpa_property::quantized) << " "
-      << (int)(q.property & sdpa_property::integrated) << " "
-      << (int)(q.property & sdpa_property::fma);
+      << " seq:" << q.seq_len << " thinq,qnt,int,fma,f32?: "
+      << (bool)(q.property & sdpa_property::second_token) << " "
+      << (bool)(q.property & sdpa_property::quantized) << " "
+      << (bool)(q.property & sdpa_property::integrated) << " "
+      << (bool)(q.property & sdpa_property::fma);
     return s;
 }
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len << " thinq,qnt,int,fma?:"
-      << (int)(c.property & sdpa_property::second_token) << " "
-      << (int)(c.property & sdpa_property::quantized) << " "
-      << (int)(c.property & sdpa_property::integrated) << " "
-      << (int)(c.property & sdpa_property::fma);
+      << " seq:" << c.seq_len << " thinq,qnt,int,fma,f32?: "
+      << (bool)(c.property & sdpa_property::second_token) << " "
+      << (bool)(c.property & sdpa_property::quantized) << " "
+      << (bool)(c.property & sdpa_property::integrated) << " "
+      << (bool)(c.property & sdpa_property::fma);
     return s;
 }
 std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
@@ -473,7 +474,13 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_configs), end(sorted_configs), query);
-    if (it != end(sorted_configs)) { return &it->config; }
+    if (it != end(sorted_configs)) {
+        std::stringstream ss;
+        ss << " {query " << query << "} -> {config " << it->criteria << ":"
+           << it->config << " }";
+        VDEBUGINFO(4, primitive, sdpa, "config search: %s,", ss.str().c_str());
+        return &it->config;
+    }
     return nullptr;
 }
 

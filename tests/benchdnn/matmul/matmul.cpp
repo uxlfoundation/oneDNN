@@ -489,6 +489,9 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             prb->attr, res, dnnl_matmul, prb->src_dt(), prb->dst_dt());
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_matmul);
+    skip_unsupported_block_format(prb->stag, res);
+    skip_unsupported_block_format(prb->wtag, res);
+    skip_unsupported_block_format(prb->dtag, res);
 
     if ((is_nvidia_gpu() || is_amd_gpu()) && !prb->sparse_options.is_def()) {
         BENCHDNN_PRINT(2,

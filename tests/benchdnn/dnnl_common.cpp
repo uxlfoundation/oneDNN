@@ -849,6 +849,20 @@ void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res) {
     }
 }
 
+void skip_unsupported_block_format(const std::string &format_tag, res_t *res) {
+    if (is_generic_gpu()) {
+        // if the user provided tag has a capital letter,
+        // that indicates it's a blocked format, otherwise it's plain
+        for (const auto &c : format_tag) {
+            if (std::isupper(c)) {
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+        }
+    }
+}
+
 void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
         dnnl_data_type_t ddt, const std::string &stag,
         const std::string &dtag) {

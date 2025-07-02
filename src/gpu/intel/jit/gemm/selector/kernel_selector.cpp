@@ -269,10 +269,14 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
                     return true;
                 };
 
-                if (match("FO"))
+                bool bf16A = iequal(p.selector.precisions[0], 'B');
+                bool bf16B = iequal(p.selector.precisions[1], 'B');
+
+                if (bf16A || bf16B) {
+                    if (bf16A) p.selector.precisions[0] = "H";
+                    if (bf16B) p.selector.precisions[1] = "H";
+                } else if (match("FO"))
                     p.selector.precisions[0] = "[FO]";
-                else if (match("BB"))
-                    p.selector.precisions[0] = p.selector.precisions[1] = "H";
                 else continue;
 
                 changed = true;

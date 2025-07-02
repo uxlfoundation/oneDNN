@@ -181,10 +181,18 @@ int jit_gemm_pd_t::quant_entry_ndims(
         bool batch_dim = i < batch_dims();
         if ((batch_dim && md.dims[i] > 1)
                 || (!batch_dim
-                        && (md.dims[i] / entry.get_group(i - batch_dims()) > 1
-                                || count)))
+                        && (md.dims[i] / entry.get_group(i - batch_dims())
+                                > 1)))
             ++count;
     }
+
+    // Workaround for cases with non-trivial group only affecting one dim.
+    if (count < md.ndims
+            && ((md.dims[batch_dims()] == 1
+                        && md.dims[batch_dims() + 1] > entry.get_group(1))
+                    || (md.dims[batch_dims() + 1] == 1
+                            && md.dims[batch_dims()] > entry.get_group(0))))
+        ++count;
     return count;
 }
 

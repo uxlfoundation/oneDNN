@@ -639,7 +639,7 @@ static inline constexpr14 TernaryOperand12 encodeTernaryOperand12(const Extended
     return op;
 }
 
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag)
+inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag)
 {
     Instruction12 i2;   /* separate variable to avoid gcc13 bug */
     i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
@@ -658,7 +658,7 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
     i.common = i2.common;
 }
 
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag)
+inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag)
 {
     Instruction12 i2;   /* separate variable to avoid gcc13 bug */
     i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);

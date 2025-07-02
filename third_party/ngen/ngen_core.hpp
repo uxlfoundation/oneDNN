@@ -108,9 +108,7 @@ struct Instruction12;
 enum class Opcode;
 
 struct EncodingTag12;
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag);
 struct EncodingTagXeHPC;
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag);
 
 // Exceptions, used when NGEN_SAFE is defined.
 

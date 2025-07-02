@@ -245,12 +245,11 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             // Wrangle data types.
             auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(DNNL_ARG_A)
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
                     : data_type::s32;
             auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(DNNL_ARG_B)
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            if (swap_ab_) std::swap(ao_type, bo_type);
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
             int_acc &= !wei_scales_2d();
             auto co_type = with_bias() ? d->bias_type()

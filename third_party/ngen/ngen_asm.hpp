@@ -427,6 +427,7 @@ class AsmCodeGenerator {
 private:
 #include "ngen_compiler_fix.hpp"
 public:
+    using RootCodeGenerator = AsmCodeGenerator;
     explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr},
                                                   sync{this}, load{this}, store{this}, atomic{this}
     {
@@ -593,7 +594,7 @@ private:
     inline void outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, ModPlacementType location);
     inline void outSync(std::ostream &out, const autoswsb::SyncInsertion &si);
 
-protected:
+public:
     // Configuration.
     void setDefaultNoMask(bool def = true)          { defaultModifier.setWrEn(def); }
     void setDefaultAutoSWSB(bool def = true)        { defaultModifier.setAutoSWSB(def); }
@@ -613,9 +614,10 @@ protected:
 
     void discardStream()                            { delete popStream(); }
 
-    void comment(const std::string &str)            { streamStack.back()->appendComment(str); }
-
     void requireGRF(int grfs)                       { declaredGRFs = grfs; }
+
+public:
+    void comment(const std::string &str)            { streamStack.back()->appendComment(str); }
 
     // Instructions.
     template <typename DT = void>

@@ -86,6 +86,7 @@ class BinaryCodeGenerator
     friend class ELFCodeGenerator<hw>;
 
 public:
+    using RootCodeGenerator = BinaryCodeGenerator;
     static constexpr HW hardware = hw;
     static constexpr HW getHardware() { return hardware; }
 
@@ -334,10 +335,11 @@ protected:
 
     void discardStream()                            { delete popStream(); }
 
+    void requireGRF(int grfs)                       { declaredGRFs = grfs; }
+
+public:
     template <typename String>
     void comment(String)                            {}
-
-    void requireGRF(int grfs)                       { declaredGRFs = grfs; }
 
     // Registers.
 #ifndef NGEN_GLOBAL_REGS

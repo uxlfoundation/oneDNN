@@ -37,8 +37,7 @@ public:
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
-protected:
-    NEOInterfaceHandler interface_{hw};
+    const NEOInterfaceHandler &interface() {return interface_;}
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }
 
@@ -108,6 +107,9 @@ protected:
         bool hasSLM = (interface_.getSLMSize() > 0);
         BinaryCodeGenerator<hw>::epilogue(GRFCount, hasSLM, r0_info);
     }
+
+protected:
+    NEOInterfaceHandler interface_{hw};
 
     inline std::vector<uint8_t> getBinary(const std::vector<uint8_t> &code);
 

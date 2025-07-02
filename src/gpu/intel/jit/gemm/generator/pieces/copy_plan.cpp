@@ -2031,9 +2031,13 @@ void CopyPlan::legalizeSIMD(bool initial)
             bool dstHF = (i.dst.type == DataType::hf);
             bool bfException = (i.op == Opcode::mov && i.dst.type == DataType::bf && i.dst.stride == 2);
             bool mathHF = (i.op == Opcode::math && i.dst.type == DataType::hf);
+            bool hfByteConvert = i.op == Opcode::mov && hasHF && (isB(i.dst.type) || isB(i.src0.type));
 
             if ((hasF && ((hasBF && !bfException) || (hasHF && hw <= HW::XeLP) || dstHF)) || mathHF)
                 simdMax = std::min(simdMax, grf >> 2);
+            if (hfByteConvert)
+                // Uses a stride-4 byte intermediate => 4 * (grf >> 1) = 2 * grf limit
+                simdMax = std::min(simdMax, grf >> 1);
         }
 
         if (initial) {

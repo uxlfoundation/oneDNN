@@ -1400,14 +1400,17 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
 
     const bool dt_requires_saturation
             = one_of(brg.dt_d, data_type::u8, data_type::s8, data_type::s32);
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
     assert(vmm_lbound().getIdx() != vmm_ubound().getIdx());
     if (dt_requires_saturation) {
         init_saturate_f32(vmm_lbound(), vmm_ubound(), reg_tmp_gpr,
-                data_type::f32, brg.dt_d);
+                data_type::f32, brg.dt_d, false, use_sat_cvt);
         for (dim_t bd = 0; bd < bd_block; bd++) {
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 auto vmm = accm(ld_block2, bd, ld);
-                saturate_cvt_f32(vmm, vmm_lbound(), vmm_ubound(), brg.dt_d);
+                saturate_cvt_f32(vmm, vmm_lbound(), vmm_ubound(), brg.dt_d,
+                        false, use_sat_cvt);
             }
         }
         // below call is not required as s32 doesn't use vmm_lbound
@@ -1432,7 +1435,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                     = vmm_mask(vmm_lower, is_tail, true, k_mask);
             const Xmm xmm = Xmm(vmm.getIdx());
             const Xmm r_xmm = vmm_mask(xmm, is_tail, true, k_mask);
-            if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+            if (use_sat_cvt) {
                 assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
                 auto vmm_perm = vmm_ubound();
                 vpermb(vmm, vmm_perm, vmm);
@@ -1578,14 +1581,17 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dt_requires_saturation = brg.is_int8
             && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
 
     if (dt_requires_saturation) {
         init_saturate_f32(vmm_lbound(), vmm_ubound(), reg_tmp_gpr,
-                data_type::f32, brg.dt_d);
+                data_type::f32, brg.dt_d, false, use_sat_cvt);
         for (dim_t bd = 0; bd < bd_block; bd++) {
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 auto vmm = accm(ld_block2, bd, ld);
-                saturate_cvt_f32(vmm, vmm_lbound(), vmm_ubound(), brg.dt_d);
+                saturate_cvt_f32(vmm, vmm_lbound(), vmm_ubound(), brg.dt_d,
+                        false, use_sat_cvt);
             }
         }
         // below call is not required as s32 doesn't use vmm_lbound

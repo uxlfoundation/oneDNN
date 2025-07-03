@@ -377,7 +377,7 @@ private:
         if (s.is_fp() && d.is_fp8()) return type_t::f16();
         if (s.size() > 4) return d;
         if (d.size() > 4) return s;
-        return s.bitsize() > d.bitsize() ? s : d;
+        return s.bitsize() >= d.bitsize() ? s : d;
     }
 
     bool needs_saturate(const type_t &ddt, const type_t &sdt) const {

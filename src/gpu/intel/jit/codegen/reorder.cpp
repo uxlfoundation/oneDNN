@@ -467,6 +467,17 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
             return rd.format(0, elems, 1, dt);
         };
     };
+
+    auto from_op = [](const reorder_operand_t &op) -> op_init_t {
+        return [&](int elems, ngen::DataType dt) {
+            auto buffer = op.buffer;
+            buffer.stride = (uint8_t)(buffer.stride
+                    * ngen::getBytes(buffer.type) / ngen::getBytes(dt));
+            buffer.type = dt;
+            return buffer;
+        };
+    };
+
     op_init_t from_temp = [&](int elems, ngen::DataType dt) {
         return plan.newTemp(dt, elems, 1);
     };
@@ -478,11 +489,15 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
     const auto &src_dt = src_op.layout.type();
     const auto &dst_dt = dst_op.layout.type();
     type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
-    layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
-    layout_t down_layout = make_compact_layout(dst_op.layout, tmp_dt);
 
     const bool do_pre_conv = src_dt != tmp_dt;
     const bool do_post_conv = dst_dt != tmp_dt;
+    const bool in_place = dst_dt.size() >= tmp_dt.size();
+    layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
+    layout_t down_layout = in_place
+            ? dst_op.layout.retype(tmp_dt).make_strided(
+                    dst_dt.size() / tmp_dt.size())
+            : make_compact_layout(dst_op.layout, tmp_dt);
 
     if (direct_copy || !(do_pre_conv || do_post_conv)) {
         // Pure conversion or pure swizzle
@@ -492,7 +507,8 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         emit(plan, tmp_op, src_op);
         if (up_layout != down_layout) {
             // Integer swizzle
-            auto tmp2_op = init_operand(down_layout, from_temp);
+            auto tmp2_op = in_place ? init_operand(down_layout, from_op(dst_op))
+                                    : init_operand(down_layout, from_temp);
             emit(plan, tmp2_op, tmp_op);
             std::swap(tmp_op, tmp2_op);
         }
@@ -502,7 +518,8 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         emit(plan, tmp_op, src_op);
         emit(plan, dst_op, tmp_op);
     } else if (do_post_conv) {
-        auto tmp_op = init_operand(down_layout, from_temp);
+        auto tmp_op = in_place ? init_operand(down_layout, from_op(dst_op))
+                               : init_operand(down_layout, from_temp);
         emit(plan, tmp_op, src_op);
         emit(plan, dst_op, tmp_op);
     }

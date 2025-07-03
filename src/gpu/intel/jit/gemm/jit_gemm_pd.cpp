@@ -15,6 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/gemm/jit_gemm_pd.hpp"
+#include "common/c_types_map.hpp"
+#include "common/tag_traits.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 
 namespace dnnl {
@@ -120,94 +122,75 @@ status_t jit_gemm_pd_t::init_post_ops() {
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
     // Also convert bias to binary post-op if dst zp are present.
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_WEIGHTS);
-    const auto *src_scales = &attr()->scales_.get(DNNL_ARG_SRC);
-    const auto *c_scales = &attr()->scales_.get(DNNL_ARG_DST);
+    const auto &a_scales = attr()->scales_.get(DNNL_ARG_A);
+    const auto &b_scales = attr()->scales_.get(DNNL_ARG_B);
+    const auto &c_scales = attr()->scales_.get(DNNL_ARG_C);
 
     bias_via_binary_ = (desc()->bias_type() != data_type::undef)
-            && (d->bias_desc.ndims >= 1 || !wei_scales->has_default_values()
-                    || !src_scales->has_default_values()
-                    || !attr()->zero_points_.has_default_values(DNNL_ARG_DST));
+            && (d->bias_desc.ndims >= 1 || !a_scales.has_default_values()
+                    || !b_scales.has_default_values()
+                    || !attr()->zero_points_.has_default_values(DNNL_ARG_C));
     if (bias_via_binary_) {
-        auto status = post_ops_.prepend_binary(binary_add, &d->bias_desc);
-        if (status != status::success) return status;
+        CHECK(post_ops_.prepend_binary(binary_add, &d->bias_desc));
         binary_srcs_.insert(
                 binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
     }
 
-    if (!wei_scales->has_default_values()) {
-        const auto &mask = wei_scales->get_mask();
-        bool convert = (mask == 0 || math::is_pow2(mask));
-        if (!wei_scales->has_default_groups())
-            convert |= (wei_scales->get_group(0) >= d->k());
+    auto maybe_convert_scales_to_postop
+            = [this](const dims_t &scales_dims, int arg, data_type_t dt,
+                      bool &converted) -> status_t {
+        auto ndims = desc()->c_desc.ndims;
+        // Scales can be converted to postops if the innermost dimension
+        // (K for A/B and M for C) has dim=1 in the scales md
+        converted = false;
+        int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
+        bool convert = (scales_dims[inner_dim] <= 1);
         if (convert) {
-            dim_t dims = {(mask > 0) ? d->m() : 1};
-            CHECK(memory_desc_init_by_tag(wei_scales_md, 1, &dims,
-                    wei_scales->get_data_type(), format_tag::a));
+            memory_desc_t postop_md;
+            CHECK(memory_desc_init_by_tag(
+                    postop_md, ndims, scales_dims, dt, get_abx_tag(ndims)));
 
-            CHECK(post_ops_.prepend_binary(binary_mul, &wei_scales_md));
-
-            binary_srcs_.insert(binary_srcs_.begin(),
-                    binary_src_t {binary_src_t::scales, DNNL_ARG_WEIGHTS});
-            asc_dims_ = -1;
-        }
-    }
-    if (!src_scales->has_default_values()) {
-        const auto &mask = src_scales->get_mask();
-        bool convert = (mask == 0);
-        if (!src_scales->has_default_groups()) {
-            convert |= (src_scales->get_group(1) >= d->k());
-        }
-        if (convert) {
-            if (mask == 0) {
-                dim_t dims = 1;
-                CHECK(memory_desc_init_by_tag(src_scales_md, 1, &dims,
-                        src_scales->get_data_type(), format_tag::a));
-            } else if (!src_scales->has_default_groups()) {
-                // TODO: is it inverted?
-                int n_group = src_scales->get_group(0);
-                int k_group = src_scales->get_group(1);
-                int ndims = d->c_desc.ndims;
-                std::vector<dim_t> dims;
-                for (int i = ndims - 3; i >= 0; --i) {
-                    if (mask & (i + 1)) dims.push_back(d->c_desc.dims[i]);
-                }
-                dims.push_back((mask & (d->batch() > 1 ? 2 : 1))
-                                ? d->n() / n_group
-                                : 1);
-                dims.push_back(d->k() / k_group);
-                CHECK(memory_desc_init_by_tag(src_scales_md, (int)dims.size(),
-                        dims.data(), src_scales->get_data_type(),
-                        get_abx_tag((int)dims.size())));
+            if (arg == DNNL_ARG_C) {
+                CHECK(post_ops_.append_binary(binary_div, &postop_md));
+                binary_srcs_.push_back(
+                        binary_src_t {binary_src_t::scales, arg});
             } else {
-                dim_t dims[] = {d->n(), 1};
-                CHECK(memory_desc_init_by_tag(src_scales_md, 2, dims,
-                        src_scales->get_data_type(), format_tag::ab));
+                CHECK(post_ops_.prepend_binary(binary_mul, &postop_md));
+                binary_srcs_.insert(binary_srcs_.begin(),
+                        binary_src_t {binary_src_t::scales, arg});
             }
-
-            CHECK(post_ops_.prepend_binary(binary_mul, &src_scales_md));
-
-            binary_srcs_.insert(binary_srcs_.begin(),
-                    binary_src_t {binary_src_t::scales, DNNL_ARG_SRC});
-            bsc_dims_ = -1;
+            converted = true;
         }
+        return status::success;
+    };
+
+    if (!a_scales.has_default_values()) {
+        dims_t dims;
+        // Swap descriptors to follow column-major format
+        quant_dims(desc_.b_desc, a_scales, dims);
+        bool converted;
+        CHECK(maybe_convert_scales_to_postop(
+                dims, DNNL_ARG_A, a_scales.get_data_type(), converted));
+        if (converted) asc_dims_ = -1;
     }
-    if (!c_scales->has_default_values()) {
-        const auto &mask = c_scales->get_mask();
-        bool convert = (mask == 0 || math::is_pow2(mask));
-        if (!c_scales->has_default_groups())
-            convert |= (c_scales->get_group(0) >= d->m());
-        if (convert) {
-            ok = ok && (mask == 0 || mask == (1 << (d->c_desc.ndims - 1)));
-            dim_t dims = {(mask > 0) ? d->m() : 1};
-            CHECK(memory_desc_init_by_tag(c_scales_md, 1, &dims,
-                    c_scales->get_data_type(), format_tag::a));
 
-            CHECK(post_ops_.append_binary(binary_div, &c_scales_md));
+    if (!b_scales.has_default_values()) {
+        dims_t dims;
+        // Swap descriptors to follow column-major format
+        quant_dims(desc_.a_desc, b_scales, dims);
+        bool converted;
+        CHECK(maybe_convert_scales_to_postop(
+                dims, DNNL_ARG_B, b_scales.get_data_type(), converted));
+        if (converted) bsc_dims_ = -1;
+    }
 
-            binary_srcs_.push_back(
-                    binary_src_t {binary_src_t::scales, DNNL_ARG_DST});
-        }
+    if (!c_scales.has_default_values()) {
+        dims_t dims;
+        quant_dims(desc_.c_desc, c_scales, dims);
+        bool converted;
+        CHECK(maybe_convert_scales_to_postop(
+                dims, DNNL_ARG_C, c_scales.get_data_type(), converted));
+        gpu_assert(converted) << "Unable to convert dst scales to a post op";
     }
 
     return status::success;

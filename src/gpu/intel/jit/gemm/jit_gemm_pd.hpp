@@ -105,7 +105,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     const int mask_per_ic = 1 << 2;
 
     const int idx_a = DNNL_ARG_WEIGHTS;
-    memory_desc_t wei_scales_md, src_scales_md, c_scales_md, prelu_wei_md;
+    memory_desc_t prelu_wei_md;
     bool swap_ab_ = false;
     bool a_zp_ = false, b_zp_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;

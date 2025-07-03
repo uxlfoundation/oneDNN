@@ -574,8 +574,9 @@ private:
                 x_reduce_dummy_buf,
                 use_atomic ? send_op_t::atomic_fadd : send_op_t::store,
                 send_address_t::a64);
-        auto x_reduce_type = (plan_.slm ? plan_.slm.x_reduce.dst.type()
-                                        : plan_.x2r.x_reduce.dst.type());
+        auto x_reduce_type = plan_.slm.x_reduce.dst.type();
+        if (x_reduce_type.is_undef())
+            x_reduce_type = plan_.x2r.x_reduce.dst.type();
         layout_t x_reduce_reg_layout
                 = r2g.reg_layout().retype(x_reduce_type).make_dense();
         stmt_t stmt = r2g.stmt();

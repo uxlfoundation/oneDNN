@@ -164,10 +164,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool wei_scales_2d() const { return asc_dims_ > 1; }
     bool src_scales_2d() const { return bsc_dims_ > 1; }
 
-    bool quant_entry_2d(int arg, const quant_entries_t &entry) const;
-    int quant_entry_ndims(
-            const quant_entry_t &entry, const memory_desc_t &md) const;
-
     bool dy_quant_enabled();
     bool wei_decomp();
     bool quant_enabled();

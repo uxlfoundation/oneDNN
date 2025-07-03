@@ -24,6 +24,8 @@ namespace intel {
 namespace jit {
 
 namespace {
+// convert a quant_entry_t and the base memory_desc_t into the dims_t for
+// the required quantization md.
 void quant_dims(
         const memory_desc_t &md, const quant_entry_t &entry, dims_t &out) {
     auto mask = entry.get_mask();
@@ -34,6 +36,35 @@ void quant_dims(
         out[md.ndims - 2] /= entry.get_group(0);
         out[md.ndims - 1] /= entry.get_group(1);
     }
+}
+
+// Obtain dimension count for gemmstone (common scales give count 0).
+int quant_entry_ndims(const quant_entry_t &entry, const memory_desc_t &md) {
+    if (entry.has_default_values()) return -1;
+
+    dims_t qdims;
+    quant_dims(md, entry, qdims);
+
+    // If quantization is batched (any batch dim > 1), we need to tell gemmstone
+    // it's 3D - so it knows to change the offset as the batch index changes.
+    for (int i = 0; i < md.ndims - 2; i++) {
+        if (qdims[i] > 1) return 3;
+    }
+
+    // Count the number of nontrivial (dim > 1) dimensions present
+    int count = 0;
+    bool full_dim = false;
+    for (int i = 0; i < md.ndims; ++i) {
+        if (qdims[i] > 1) {
+            count++;
+            full_dim = (qdims[i] == md.dims[i]);
+        }
+    }
+
+    // gemmstone doesn't support 1D grouped scales, these have to be sent as 2D
+    if (count == 1 && !full_dim) return 2;
+
+    return count;
 }
 } // anonymous namespace
 
@@ -180,36 +211,6 @@ status_t jit_gemm_pd_t::init_post_ops() {
     }
 
     return status::success;
-}
-
-// Obtain dimension count for gemmstone (common scales give count 0).
-int jit_gemm_pd_t::quant_entry_ndims(
-        const quant_entry_t &entry, const memory_desc_t &md) const {
-    if (entry.has_default_values()) return -1;
-
-    dims_t qdims;
-    quant_dims(md, entry, qdims);
-
-    // If quantization is batched (any batch dim > 1), we need to tell gemmstone
-    // it's 3D - so it knows to change the offset as the batch index changes.
-    for(int i = 0; i < md.ndims - 2; i++) {
-        if (qdims[i] > 1) return 3;
-    }
-
-    // Count the number of nontrivial (dim > 1) dimensions present
-    int count = 0;
-    bool full_dim = false;
-    for (int i = 0; i < md.ndims; ++i) {
-        if (qdims[i] > 1) {
-            count++;
-            full_dim = (qdims[i] == md.dims[i]);
-        }
-    }
-
-    // gemmstone doesn't support 1D grouped scales, these have to be sent as 2D
-    if (count == 1 && !full_dim) return 2;
-
-    return count;
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() {

@@ -44,7 +44,7 @@
         } \
     } while (0)
 
-static void *ocl_malloc_device(
+inline void *ocl_malloc_device(
         size_t size, size_t alignment, cl_device_id dev, cl_context ctx) {
     using F = void *(*)(cl_context, cl_device_id, cl_ulong *, size_t, cl_uint,
             cl_int *);
@@ -62,7 +62,7 @@ static void *ocl_malloc_device(
     return p;
 }
 
-static void ocl_free(
+inline void ocl_free(
         void *ptr, cl_device_id dev, cl_context ctx, cl_event event) {
     if (nullptr == ptr) return;
     using F = cl_int (*)(cl_context, void *);

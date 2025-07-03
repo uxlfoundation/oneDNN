@@ -909,9 +909,11 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
     const reg64_t reg_tmp_gpr = reg_tmp;
     auto vmm_lbound = vmm_tmp(0);
     auto vmm_ubound = vmm_tmp(1);
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg_.isa_impl, out_dt_);
     if (dt_requires_saturation) {
-        init_saturate_f32(
-                vmm_lbound, vmm_ubound, reg_tmp_gpr, data_type::f32, out_dt_);
+        init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp_gpr, data_type::f32,
+                out_dt_, false, use_sat_cvt);
     }
 
     if (brg_.is_bf16_emu) bf16_emu_->init_vcvtneps2bf16();
@@ -927,9 +929,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         const auto addr = ptr[aux_reg_out + offset];
 
         if (dt_requires_saturation) {
-            saturate_cvt_f32(vmm, vmm_lbound, vmm_ubound, out_dt_);
+            saturate_cvt_f32(
+                    vmm, vmm_lbound, vmm_ubound, out_dt_, false, use_sat_cvt);
         }
-        if (isa_has_sat_cvt(brg_.isa_impl, out_dt_)) {
+        if (use_sat_cvt) {
             auto xmm = Xbyak::Xmm(vmm.getIdx());
             auto r_xmm = maybe_mask(xmm, tail > 0, true, k_mask);
             assert(utils::one_of(out_dt_, data_type::s8, data_type::u8));

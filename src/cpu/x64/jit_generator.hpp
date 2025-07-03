@@ -2081,10 +2081,13 @@ public:
 
     template <typename Vmm>
     void init_saturate_f32(Vmm vmm_lbound, Vmm vmm_ubound, Xbyak::Reg64 reg_tmp,
-            data_type_t idt, data_type_t odt, bool force_lbound = false) {
+            data_type_t idt, data_type_t odt, bool force_lbound = false,
+            bool use_sat_cvt = false) {
+        //printf("use sat cvt: %d, odt: %d\n", use_sat_cvt, odt);
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
-        if (!force_lbound && isa_has_sat_cvt(max_cpu_isa(), odt)) {
+        if (!force_lbound && use_sat_cvt
+                && isa_has_sat_cvt(max_cpu_isa(), odt)) {
             // Initialize xmm_permb for ISA that has saturating conversion
             // using vpermb+vmovups is more efficient than vpmovusdb
             static constexpr char perm_data[] = {0, 4, 8, 12, 16, 20, 24, 28,
@@ -2150,8 +2153,9 @@ public:
 
     template <typename Vmm>
     void saturate_cvt_f32(const Vmm &vmm, const Vmm &vmm_lbound,
-            const Vmm &vmm_ubound, data_type_t odt, bool force_lbound = false) {
-        if (isa_has_sat_cvt(max_cpu_isa(), odt)) {
+            const Vmm &vmm_ubound, data_type_t odt, bool force_lbound = false,
+            bool maybe_use_sat_cvt = false) {
+        if (maybe_use_sat_cvt && isa_has_sat_cvt(max_cpu_isa(), odt)) {
             switch (odt) {
                 case data_type::s8: vcvtps2ibs(vmm, vmm); break;
                 case data_type::u8: vcvtps2iubs(vmm, vmm); break;

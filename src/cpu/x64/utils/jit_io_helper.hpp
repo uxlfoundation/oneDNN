@@ -224,7 +224,7 @@ private:
     void load_f16(const Xbyak::Address &src_addr, const Vmm &dst_vmm);
     void load_f8(const Xbyak::Address &src_addr, const Vmm &dst_vmm);
     void load_i8(const Xbyak::Address &src_addr, const Vmm &dst_vmm);
-    void saturate(const Vmm &vmm);
+    void saturate(const Vmm &vmm, const bool use_sat_cvt);
     void store_byte_by_byte(const Vmm &src_vmm, const Xbyak::Address &dst_addr,
             const int store_size);
     void store_f32(const Vmm &src_vmm, const Xbyak::Address &dst_addr,

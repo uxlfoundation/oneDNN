@@ -70,7 +70,7 @@ void Generator<hw>::outerProductFMA(int h, int ha, int hb, int opCount, bool rem
     Subregister Clast;
     int nec = elementsPerGRF(hw, Tc);
     bool globalCM = state.C_layout.colMajor();
-    int fmaSIMD = strategy.fmaSIMD;
+    int fmaSIMD =  8; //strategy.fmaSIMD;
 
     bool repackC = !state.Cr_layout.empty();
     bool startRepackC = false, endRepackC = false;

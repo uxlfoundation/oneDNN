@@ -51,7 +51,7 @@ dnnl_memory_desc_create_host_scalar(
 
 // Create a memory object for the scalar
 dnnl_memory_t scalar_mem;
-dnnl_status_t status = dnnl_memory_create_host_scalar(&scalar_mem, dnnl_f32, &value);
+dnnl_status_t status = dnnl_memory_create_host_scalar(&scalar_mem, scalar_md, &value);
 
 // Use as regular memory object in execute function...
 ```
@@ -77,7 +77,6 @@ Pros:
 - Allows passing scalars as kernel arguments, minimizing performance overhead.
 
 Cons:
-- Ties memory descriptor to a host.
 - Requires explicit support in each non-host implementation to handle host-side scalars
     correctly.
 
@@ -184,8 +183,8 @@ Cons:
 
 | Option                                    | Pros                                                                                   | Cons                                                                                                                        |
 |:-------------------------------------------|:-------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------- |
-| **New memory descriptor kind**          | - Avoids recreating primitives when scalars change                                     | - Ties memory descriptor to host                                          |
-|                                         | - Allows passing scalar as a kernel argument with minimal performance overhead         | - Requires explicit support in each implementation                        |
+| **New memory descriptor kind**          | - Avoids recreating primitives when scalars change                                     | - Requires explicit support in each implementation                                          |
+|                                         | - Allows passing scalar as a kernel argument with minimal performance overhead         |                         |
 |                                         | - User does not have to worry about the lifetime of the scalar value                       |                                                                          |
 | **User relies on USM `malloc_host`**    | - Allows passing host-side scalars without API or internal changes to oneDNN           | - Requires user to keep USM memory alive until computations finish                                                          |
 |                                            |                                                                                        | - Latency overhead when GPU fetches host USM data (initial access may introduce delay)                                      |

@@ -913,8 +913,7 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , C_(scratch_gates)
     , LDAl_(rnn_.src_layer_ld(cell_position))
     , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
-    , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
-                                           : rnn_.N_blocks)
+    , n_blocking_(rnn_.N_blocks * rnn_.n_gates)
     , m_blocking_(rnn_.Mlayermerged_blocks)
     , work_amount_(n_blocking_ * m_blocking_)
     , Bl_n_offset_(rnn_.K1padded * rnn_.n_block)
@@ -922,7 +921,6 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , Al_k_tail_offset_(rnn_.KB1_blocks * rnn_.k1_block)
     , Bl_kb_offset_(rnn_.k1_block * rnn_.n_block)
     , Bl_k_tail_offset_(rnn_.KB1_blocks * rnn_.k1_block * rnn_.n_block)
-    , n_gates_(rnn.unfused_post_gemm ? 1 : rnn.n_gates)
     , brgemm_kernel_layer_main_(
               rnn_brgemm_.kernel_layermerged_b0_[layer_desc_idx_].get())
     , brgemm_kernel_layer_n_tail_(
@@ -985,10 +983,9 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
     while (start < end) {
         const auto m = mb * m_block;
-        const auto nb = (rnn_.unfused_post_gemm) ? nb_i / rnn_.n_gates : nb_i;
+        const auto nb = nb_i / rnn_.n_gates;
         const auto n = nb * rnn_.n_block;
-        const auto g_unfused
-                = (rnn_.unfused_post_gemm) ? nb_i % rnn_.n_gates : 0;
+        const auto g = nb_i % rnn_.n_gates;
 
         const auto *const Al_m = Al_ + m * LDAl_;
         const auto *const Bl_n = Bl_ + nb * Bl_n_offset_;
@@ -1015,33 +1012,27 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             }
         }
 
-        for (int g = 0; g < n_gates_; g++) {
-            const int lg = g + g_unfused;
-            const auto *const Bl_g = Bl_n + lg * Bl_g_offset_;
-            auto *const C_g = C_n + lg * rnn_.N;
+        const auto *const Bl_g = Bl_n + g * Bl_g_offset_;
+        auto *const C_g = C_n + g * rnn_.N;
 
-            if (is_amx) load_cfg_if_needed(pallete_buff_layer);
-            for (int i = 0; i < rnn_.KB1_blocks; i++) {
-                addr_batch[i].ptr.A = Al_m + i * rnn_.k1_block;
-                addr_batch[i].ptr.B = Bl_g + i * Bl_kb_offset_;
-            }
-            brgemm_kernel_execute(brgemm_kernel_layer_b0, rnn_.KB1_blocks,
-                    addr_batch, reinterpret_cast<void *>(C_g), amx_buffer);
+        if (is_amx) load_cfg_if_needed(pallete_buff_layer);
+        for (int i = 0; i < rnn_.KB1_blocks; i++) {
+            addr_batch[i].ptr.A = Al_m + i * rnn_.k1_block;
+            addr_batch[i].ptr.B = Bl_g + i * Bl_kb_offset_;
         }
+        brgemm_kernel_execute(brgemm_kernel_layer_b0, rnn_.KB1_blocks,
+                addr_batch, reinterpret_cast<void *>(C_g), amx_buffer);
 
         if (rnn_.k1_tail) {
             if (is_amx) load_cfg_if_needed(pallete_buff_layer_k_tail);
 
-            for (int g = 0; g < n_gates_; g++) {
-                const int lg = g + g_unfused;
-                const auto *const Bl_g = Bl_n + lg * Bl_g_offset_;
-                auto *const C_g = C_n + lg * rnn_.N;
+            const auto *const Bl_g = Bl_n + g * Bl_g_offset_;
+            auto *const C_g = C_n + g * rnn_.N;
 
-                addr_batch[0].ptr.A = Al_m + Al_k_tail_offset_;
-                addr_batch[0].ptr.B = Bl_g + Bl_k_tail_offset_;
-                brgemm_kernel_execute(brgemm_kernel_layer_k_tail, 1, addr_batch,
-                        reinterpret_cast<void *>(C_g), amx_buffer);
-            }
+            addr_batch[0].ptr.A = Al_m + Al_k_tail_offset_;
+            addr_batch[0].ptr.B = Bl_g + Bl_k_tail_offset_;
+            brgemm_kernel_execute(brgemm_kernel_layer_k_tail, 1, addr_batch,
+                    reinterpret_cast<void *>(C_g), amx_buffer);
         }
 
         ++start;

@@ -160,6 +160,27 @@ TEST(c_api_host_scalar_mem, TestHostScalarNullPtr) {
     DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
 }
 
+TEST(c_api_host_scalar_mem, UseIncorrectCreate) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    float scalar_value = 42.0f;
+    dnnl_memory_t scalar_mem = nullptr;
+
+    dnnl_engine_t engine;
+    dnnl_engine_create(&engine, dnnl_cpu, 0);
+
+    EXPECT_EQ(dnnl_memory_create(&scalar_mem, scalar_md, engine, &scalar_value),
+            dnnl_invalid_arguments);
+
+    std::vector<void *> handles(1, &scalar_value);
+    EXPECT_EQ(dnnl_memory_create_v2(
+                      &scalar_mem, scalar_md, engine, 1, handles.data()),
+            dnnl_invalid_arguments);
+
+    dnnl_engine_destroy(engine);
+}
+
 TEST(cpp_api_host_scalar_mem, TestHostScalarF32) {
     using namespace dnnl;
 

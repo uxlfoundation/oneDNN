@@ -25,6 +25,7 @@
 #endif
 
 #include "c_types_map.hpp"
+// #include "cpu/cpu_engine.hpp"
 #include "engine.hpp"
 #include "memory.hpp"
 #include "memory_desc_wrapper.hpp"
@@ -237,6 +238,9 @@ status_t dnnl_memory_create_host_scalar(
             &h); // todo: handle (non-existent) errors?
     std::memcpy(h, scalar_ptr, scalar_size);
 
+    // todo: should we use service cpu engine or nullptr?
+    // memory_t *mem_obj = new memory_t(dnnl::impl::cpu::get_service_engine(), md,
+    //        std::move(memory_storage_ptr));
     memory_t *mem_obj
             = new memory_t(nullptr, md, std::move(memory_storage_ptr));
     if (mem_obj == nullptr) return out_of_memory;

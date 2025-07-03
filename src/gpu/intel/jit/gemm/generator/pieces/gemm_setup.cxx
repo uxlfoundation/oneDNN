@@ -580,11 +580,11 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
 
 	if(problem.asPtrDims > 2 && state.offsetAs.isInvalid()){
 	    state.offsetAs = state.ra.alloc_sub(state.offsetA.getType());
-	    mov(1, state.offsetAs, 0);
+	    emov(1, state.offsetAs, 0, strategy, state);
 	}
 	if(problem.bsPtrDims > 2 && state.offsetBs.isInvalid()){
 	    state.offsetBs = state.ra.alloc_sub(state.offsetB.getType());
-	    mov(1, state.offsetBs, 0);
+	    emov(1, state.offsetBs, 0, strategy, state);
 	}
 
         for (int b = 0; b < problem.batchDims; b++) {

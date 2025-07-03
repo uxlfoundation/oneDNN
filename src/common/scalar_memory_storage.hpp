@@ -25,9 +25,6 @@
 #include "common/stream.hpp"
 #include "common/utils.hpp"
 
-// todo: remove
-#include <iostream>
-
 /**
  * @class host_scalar_memory_storage_t
  * @brief Scalar memory storage implementation for data that is always accessible on the host.
@@ -42,15 +39,11 @@ public:
     ~host_scalar_memory_storage_t() override = default;
 
     status_t get_data_handle(void **handle) const override {
-        std::cout << "[DEBUG] Getting scalar memory storage data handle"
-                  << std::endl;
         *handle = data_.get();
         return status::success;
     }
 
     status_t set_data_handle(void *handle) override {
-        std::cout << "[DEBUG] Setting scalar memory storage data handle"
-                  << std::endl;
         data_ = decltype(data_)(handle, release);
         return status::success;
     }
@@ -78,7 +71,6 @@ public:
     }
 
     std::unique_ptr<memory_storage_t> clone() const override {
-        std::cout << "[DEBUG] Cloning scalar memory storage" << std::endl;
         auto storage = new host_scalar_memory_storage_t();
         if (storage)
             storage->init(memory_flags_t::use_runtime_ptr,
@@ -89,8 +81,6 @@ public:
 
 protected:
     status_t init_allocate(size_t size) override {
-        std::cout << "[DEBUG] Initializing scalar memory storage with size: "
-                  << size << std::endl;
         void *ptr = malloc(size, 64); // todo: choose better alignment?
         if (!ptr) return status::out_of_memory;
         data_ = decltype(data_)(ptr, destroy);
@@ -102,13 +92,8 @@ private:
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(host_scalar_memory_storage_t);
 
-    static void release(void *ptr) {
-        std::cout << "[DEBUG] Releasing scalar memory storage" << std::endl;
-    }
-    static void destroy(void *ptr) {
-        free(ptr);
-        std::cout << "[DEBUG] Destroying scalar memory storage" << std::endl;
-    }
+    static void release(void *ptr) {}
+    static void destroy(void *ptr) { free(ptr); }
 };
 
 } // namespace impl

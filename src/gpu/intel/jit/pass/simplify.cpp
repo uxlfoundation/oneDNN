@@ -679,6 +679,51 @@ public:
         return obj;
     }
 
+    object_t _mutate(const binary_op_t &obj) override {
+        auto a = ir_mutator_t::mutate(obj.a);
+        auto b = ir_mutator_t::mutate(obj.b);
+
+        if (obj.op_kind == op_kind_t::_or) {
+            if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
+        } else if (obj.op_kind == op_kind_t::_and) {
+            auto not_a = try_not(a);
+            if (!not_a.is_empty() && cset.can_prove(not_a))
+                return expr_t(false);
+            auto not_b = try_not(b);
+            if (!not_b.is_empty() && cset.can_prove(not_b))
+                return expr_t(false);
+        }
+
+        if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
+        return const_fold_non_recursive(binary_op_t::make(obj.op_kind, a, b));
+    }
+
+    expr_t try_not(const expr_t &e) {
+        if (e.is<bool_imm_t>()) {
+            return bool_imm_t::make(!to_cpp<bool>(e));
+        } else if (e.is<binary_op_t>()) {
+            auto op_kind = e.as<binary_op_t>().op_kind;
+            auto a = e.as<binary_op_t>().a;
+            auto b = e.as<binary_op_t>().b;
+            switch (op_kind) {
+                case op_kind_t::_lt:
+                    return binary_op_t::make(op_kind_t::_ge, a, b);
+                case op_kind_t::_le:
+                    return binary_op_t::make(op_kind_t::_gt, a, b);
+                case op_kind_t::_gt:
+                    return binary_op_t::make(op_kind_t::_le, a, b);
+                case op_kind_t::_ge:
+                    return binary_op_t::make(op_kind_t::_lt, a, b);
+                case op_kind_t::_ne:
+                    return binary_op_t::make(op_kind_t::_eq, a, b);
+                case op_kind_t::_eq:
+                    return binary_op_t::make(op_kind_t::_ne, a, b);
+                default: return expr_t();
+            }
+        }
+        return expr_t();
+    }
+
     const constraint_set_t &cset;
 };
 

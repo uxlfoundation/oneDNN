@@ -745,6 +745,7 @@ reduce_plan_t create_reduce_plan(const hw_t &hw, const layout_t &src,
 }
 
 dim_t reduce_plan_t::dst_buf_size() const {
+    if (!*this) return 0;
     dim_t dst_size = utils::div_up(dst.size(), split_factor);
     return utils::rnd_up(dst_size, grf_size());
 }

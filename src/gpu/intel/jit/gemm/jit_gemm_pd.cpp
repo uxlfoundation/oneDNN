@@ -212,14 +212,6 @@ int jit_gemm_pd_t::quant_entry_ndims(
     return count;
 }
 
-int jit_gemm_pd_t::quant_entry_group_prod(const quant_entry_t &attr) const {
-    int ret = 1;
-    if (attr.has_default_groups()) return ret;
-    for (int i = 0; i < 2; ++i)
-        ret *= attr.get_group(i);
-    return ret;
-}
-
 bool jit_gemm_pd_t::dy_quant_enabled() {
     const auto d = desc();
     using namespace data_type;

@@ -167,7 +167,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool quant_entry_2d(int arg, const quant_entries_t &entry) const;
     int quant_entry_ndims(
             const quant_entry_t &entry, const memory_desc_t &md) const;
-    int quant_entry_group_prod(const quant_entry_t &attr) const;
 
     bool dy_quant_enabled();
     bool wei_decomp();

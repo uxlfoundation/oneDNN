@@ -208,7 +208,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!attr()->zero_points_.has_default_values()) {
-
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
             }
@@ -578,7 +577,8 @@ private:
             const memory_storage_t &a, const memory_storage_t &b,
             const memory_storage_t &c, const memory_storage_t *ao,
             const memory_storage_t *bo, const memory_storage_t *a_scales,
-            const memory_storage_t *b_scales, const memory_storage_t &co,
+            const memory_storage_t *b_scales, const memory_storage_t *ag,
+            const memory_storage_t *bg, const memory_storage_t &co,
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,
             int64_t offset_b, int64_t offset_c, int64_t offset_aq,

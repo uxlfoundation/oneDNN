@@ -1661,7 +1661,7 @@ public:
     }
 
     object_t _mutate(const if_t &obj) override {
-        auto cond = simplify(obj.cond);
+        auto cond = simplify(obj.cond, cset_);
 
         if (all_of(cond, expr_t(true))) return mutate(obj.body);
         if (all_of(cond, expr_t(false))) return mutate(obj.else_body);
@@ -1698,7 +1698,7 @@ public:
         if (obj.value.is_empty()) return ir_mutator_t::_mutate(obj);
 
         // Substitute constants.
-        value = simplify(obj.value);
+        value = simplify(obj.value, cset_);
         if (is_const(value)) {
             // Constants are not necessarily the same type as the assigned
             // variable
@@ -1752,6 +1752,15 @@ public:
 
         // This is a load/store of the same value which is a no-op.
         return stmt_t();
+    }
+
+    object_t _mutate(const while_t &obj) override {
+        auto cond = simplify(obj.cond, cset_);
+        if (is_const(cond) && !to_cpp<bool>(cond)) return stmt_t();
+        auto body = mutate(obj.body);
+        if (body.is_empty()) return stmt_t();
+        if (obj.cond.is_same(cond) && obj.body.is_same(body)) return obj;
+        return while_t::make(cond, body);
     }
 
 private:

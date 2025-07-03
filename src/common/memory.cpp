@@ -234,8 +234,10 @@ status_t dnnl_memory_create_host_scalar(
     if (status != success) { return out_of_memory; }
 
     void *h = nullptr;
-    memory_storage_ptr->get_data_handle(
-            &h); // todo: handle (non-existent) errors?
+    status = memory_storage_ptr->get_data_handle(&h);
+    if (status != success || h == nullptr) {
+        return out_of_memory; // todo: is there a better status?
+    }
     std::memcpy(h, scalar_ptr, scalar_size);
 
     // todo: should we use service cpu engine or nullptr?

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
-#define COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
+#ifndef COMMON_SCALAR_MEMORY_STORAGE_HPP
+#define COMMON_SCALAR_MEMORY_STORAGE_HPP
 
 #include <memory>
 
@@ -114,4 +114,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
+#endif // COMMON_SCALAR_MEMORY_STORAGE_HPP

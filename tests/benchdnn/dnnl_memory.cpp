@@ -1093,6 +1093,8 @@ int check_zero_padding(
             CASE(dnnl_f32, float);
             CASE(dnnl_f64, double);
             CASE(dnnl_s32, int32_t);
+            CASE(dnnl_s16, int16_t);
+            CASE(dnnl_u16, uint16_t);
             CASE(dnnl_s8, int8_t);
             CASE(dnnl_u8, uint8_t);
             CASE(dnnl_s4, dnnl::impl::int4_t);

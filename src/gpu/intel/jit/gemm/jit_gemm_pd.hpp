@@ -62,7 +62,6 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
 
     dim_t ld_binary(int idx) const;
     dim_t stride_binary(int idx, int stride = 0) const;
-    dim_t stride_scale(int idx, int arg) const;
 
     const post_ops_t *post_ops() const { return &post_ops_; }
     const std::vector<binary_src_t> &binary_srcs() const {
@@ -101,7 +100,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     const int mask_per_ic = 1 << 2;
 
     const int idx_a = DNNL_ARG_WEIGHTS;
-    memory_desc_t prelu_wei_md;
+    memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
     bool swap_ab_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
@@ -188,6 +187,9 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     data_type_t eff_b_type() const {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
+    dim_t eff_scale_stride(int idx, int arg) const;
+    void quant_entry_init(const quant_entry_t &entry, const memory_desc_t &md,
+            memory_desc_t &quant_md);
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

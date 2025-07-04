@@ -19,7 +19,34 @@ name: "Performance AArch64"
 
 on:
   workflow_dispatch:
+    inputs:
+      onednn_base_hash:
+        required: false
+        type: string
+        description: 'Baseline oneDNN commit'
+      onednn_new_hash:
+        required: false
+        type: string
+        description: 'New oneDNN commit'
+      acl_base_hash:
+        required: false
+        type: string
+        description: 'Baseline ACL commit'
+      acl_new_hash: 
+        required: false
+        type: string
+        description: 'New ACL commit'
+      num_threads:
+        required: false
+        type: string
+        description: 'Number of threads to use'
+      benchdnn_command:
+        required: false
+        type: string
+        description: 'benchdnn command to run'
+        
   workflow_call:
+      
 
 #* Stop stale workflows
 concurrency:
@@ -75,6 +102,11 @@ jobs:
           sudo apt update -y
           sudo apt install -y g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
 
+      - name: Install scons
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y scons
+
       - name: setup python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -84,16 +116,57 @@ jobs:
         if: ${{ matrix.config.build == 'Release' }}
         run: pip install scipy statistics
 
-      - name: Clone ACL
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+      - name: Clone and Build ACL New 
+        if: ${{ inputs.acl_new_hash != '' }}
+        run: |
+          ACL_ACTION=clone ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+          ACL_ACTION=build ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
         env:
-          ACL_ACTION: clone
+          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary_New
+          ACL_VERSION: ${{ inputs.acl_new_hash }}
+          ACL_BUILD_TYPE: ${{ matrix.config.build }}
+          ACL_THREADING: ${{ matrix.config.threading }}
+
+      - name: Clone and Build ACL (nightly fallback)
+        if: ${{ inputs.acl_new_hash == '' }}
+        run: |
+            ACL_ACTION=clone ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+            ACL_ACTION=build ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+        env:
           ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
           ACL_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
+          ACL_BUILD_TYPE: ${{ matrix.config.build }}
+          ACL_THREADING: ${{ matrix.config.threading }}
+
+      - name: Clone and Build ACL Base
+        run: |
+          ACL_ACTION=clone ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+          ACL_ACTION=build ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
+        env:
+          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary_Base
+          ACL_VERSION: ${{ inputs.acl_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
+          ACL_BUILD_TYPE: ${{ matrix.config.build }}
+          ACL_THREADING: ${{ matrix.config.threading }}
+        
 
       - name: Get ACL commit hash for cache key
         id: get_acl_commit_hash
-        run: (cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)") >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.acl_new_hash }}" ]]; then
+            cd "${{ github.workspace }}/ComputeLibrary_New"
+          else
+            cd "${{ github.workspace }}/ComputeLibrary"
+          fi
+          echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set ACL cache path
+        id: set_acl_path
+        run: |
+          if [[ -n "${{ inputs.acl_new_hash }}" ]]; then
+            echo "ACL_CACHE_PATH=${{ github.workspace }}/ComputeLibrary_New/build" >> $GITHUB_ENV
+          else
+            echo "ACL_CACHE_PATH=${{ github.workspace }}/ComputeLibrary/build" >> $GITHUB_ENV
+          fi
 
       - name: Get system name
         id: get_system_name
@@ -104,13 +177,13 @@ jobs:
         uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
-          path: ${{ github.workspace }}/ComputeLibrary/build
+          path: ${{ env.ACL_CACHE_PATH }}
 
-      - name: Configure oneDNN
+      - name: Configure oneDNN  (comparison or nightly)
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN
         env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
+          ACL_ROOT_DIR: ${{ inputs.acl_new_hash != '' && format('{0}/ComputeLibrary_New', github.workspace) || format('{0}/ComputeLibrary', github.workspace) }}
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
           CMAKE_GENERATOR: Ninja
@@ -125,17 +198,42 @@ jobs:
         env:
           ONEDNN_ACTION: build
 
-      - name: Checkout oneDNN base
+      - name: Checkout oneDNN base   
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
+          ref: ${{inputs.onednn_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
           path: oneDNN_base
 
-      - name: Configure oneDNN base
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
+      - name: Checkout oneDNN new
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{inputs.onednn_new_hash || fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
+          path: oneDNN_new
+
+      - name: Configure oneDNN new
+        run: .github/automation/aarch64/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN_new
+        env:
+          ACL_ROOT_DIR: ${{ inputs.acl_new_hash != '' && format('{0}/ComputeLibrary_New', github.workspace) || format('{0}/ComputeLibrary', github.workspace) }}
+          BUILD_TOOLSET: ${{ matrix.config.toolset }}
+          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
+          CMAKE_GENERATOR: Ninja
+          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+          ONEDNN_ACTION: configure
+          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
+          ONEDNN_THREADING: ${{ matrix.config.threading }}
+
+      - name: Build oneDNN new
+        run: .github/automation/aarch64/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN_new
+        env:
+          ONEDNN_ACTION: build
+
+      - name: Configure oneDNN base (comparison only or fallback)
+        run: .github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN_base
         env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
+          ACL_ROOT_DIR: ${{ inputs.acl_base_hash != '' && format('{0}/ComputeLibrary_Base', github.workspace) || format('{0}/ComputeLibrary', github.workspace) }}
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
           CMAKE_GENERATOR: Ninja
@@ -145,7 +243,7 @@ jobs:
           ONEDNN_THREADING: ${{ matrix.config.threading }}
 
       - name: Build oneDNN base
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
+        run: .github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN_base
         env:
           ONEDNN_ACTION: build
@@ -155,11 +253,69 @@ jobs:
         run: |
           OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base.txt new.txt
         env:
-          DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
+          DYLD_LIBRARY_PATH: ${{ env.ACL_CACHE_PATH }}
 
       - name: Compare 16 threads performance test results
         run: |
           python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+
+      - name: Run user-provided benchdnn command on both builds
+        if: ${{ inputs.benchdnn_command != '' }}
+        shell: bash
+        run: |
+          echo "Running benchdnn using user-provided command..."
+          CMD_ORIG="${{ inputs.benchdnn_command }}"
+          PERF="--perf-template=%prb%,%-time%,%-ctime%"
+          REPS=3 
+
+          if [[ "$CMD_ORIG" != *"--mode=P"* ]]; then
+            echo "Error: command must include --mode=P......."
+            exit 1
+          fi  
+          read -ra TOKENS <<< "$CMD_ORIG"  
+          FINAL_ARGS=()
+
+          for tok in "${TOKENS[@]}"; do
+            FINAL_ARGS+=( "$tok" )
+            if [[ "$tok" == "--mode=P" ]]; then
+              FINAL_ARGS+=( "$PERF" )
+            fi
+          done
+
+          echo "Final arguments: ${FINAL_ARGS[*]}"
+
+          BASE_BINARY="${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn"
+          NEW_BINARY="${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn"
+
+          echo "" > base.txt
+          for i in $(seq 1 "$REPS"); do
+            echo "Running base iteration $i..."
+            OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
+          done
+
+          echo "" > new.txt
+          for i in $(seq 1 "$REPS"); do
+            echo "Running new iteration $i..."
+            OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
+          done
+
+          echo "base.txt"
+          cat base.txt || echo "base.txt is empty"
+          echo "new.txt"
+          cat new.txt || echo "new.txt is empty"
+
+      - name: Print speed comparisons
+        if: ${{ inputs.benchdnn_command != '' }}
+        run: |
+          echo "Speed comparison output (CSV format):"
+          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+
+      - name: Check for regressions
+        if: ${{ inputs.benchdnn_command != '' }}
+        run: |
+          echo "Checking for regressions..."
+          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check | tee regression.log
+          cat regression.log
 
   #* This job adds a check named "Nightly Performance AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

@@ -332,6 +332,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgemm_attr_t brgattr;
         brgattr.generate_skip_accumulation
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
+        brgattr.mem_advice = bgmmc_.mem_advice;
         if (is_superset(kernel_isa, avx512_core_amx)) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;
@@ -348,7 +349,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
             brgattr.hint_innermost_loop = brgemm_innermost_undef;
             brgattr.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
-            brgattr.mem_advice = bgmmc_.mem_advice;
             if (bgmmc_.set_nt) {
                 brgattr.hint_load_nt_A = bgmmc_.is_a_nt ? brgemm_hint_nt_true
                                                         : brgemm_hint_nt_false;

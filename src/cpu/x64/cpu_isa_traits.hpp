@@ -433,7 +433,7 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx10_2_512:
             REG_AVX512_ISA(return cpu().getAVX10version() >= 2
                     && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
-                    && cpu().has(Cpu::tAPX_F));
+                    && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS));
         case amx_tile:
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
                     && x64::amx::is_available());

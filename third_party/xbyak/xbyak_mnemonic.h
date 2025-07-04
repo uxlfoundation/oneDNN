@@ -895,6 +895,7 @@ void prefetcht1(const Address& addr) { opMR(addr, Reg32(2), T_0F, 0x18); }
 void prefetcht2(const Address& addr) { opMR(addr, Reg32(3), T_0F, 0x18); }
 void prefetchw(const Address& addr) { opMR(addr, Reg32(1), T_0F, 0x0D); }
 void prefetchwt1(const Address& addr) { opMR(addr, Reg32(2), T_0F, 0x0D); }
+void prefetchrst2(const Address& addr) { opMR(addr, Reg32(11), T_0F, 0x18); }
 void psadbw(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0xF6); }
 void pshufb(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0x00, T_0F38, T_66); }
 void pshufd(const Mmx& mmx, const Operand& op, uint8_t imm8) { opMMX(mmx, op, 0x70, T_0F, T_66, imm8); }
@@ -1370,6 +1371,10 @@ void vminpd(const Xmm& xmm, const Operand& op1, const Operand& op2 = Operand()) 
 void vminps(const Xmm& xmm, const Operand& op1, const Operand& op2 = Operand()) { opAVX_X_X_XM(xmm, op1, op2, T_0F | T_EW0 | T_YMM | T_EVEX | T_SAE_Z | T_B32, 0x5D); }
 void vminsd(const Xmm& xmm, const Operand& op1, const Operand& op2 = Operand()) { opAVX_X_X_XM(xmm, op1, op2, T_0F | T_F2 | T_EW1 | T_EVEX | T_SAE_X | T_N8, 0x5D); }
 void vminss(const Xmm& xmm, const Operand& op1, const Operand& op2 = Operand()) { opAVX_X_X_XM(xmm, op1, op2, T_0F | T_F3 | T_EW0 | T_EVEX | T_SAE_X | T_N4, 0x5D); }
+void vmovrsb(const Xmm& xmm, const Address& addr) { opAVX_X_XM_IMM(xmm, addr, T_F2|T_MAP5|T_W0|T_YMM|T_MUST_EVEX, 0x6F); }
+void vmovrsd(const Xmm& xmm, const Address& addr) { opAVX_X_XM_IMM(xmm, addr, T_F3|T_MAP5|T_W0|T_YMM|T_MUST_EVEX, 0x6F); }
+void vmovrsq(const Xmm& xmm, const Address& addr) { opAVX_X_XM_IMM(xmm, addr, T_F3|T_MAP5|T_W1|T_YMM|T_MUST_EVEX, 0x6F); }
+void vmovrsw(const Xmm& xmm, const Address& addr) { opAVX_X_XM_IMM(xmm, addr, T_F2|T_MAP5|T_W1|T_YMM|T_MUST_EVEX, 0x6F); }
 void vmovapd(const Address& addr, const Xmm& xmm) { opAVX_X_XM_IMM(xmm, addr, T_66|T_0F|T_EW1|T_YMM|T_EVEX|T_M_K, 0x29); }
 void vmovapd(const Xmm& xm, const Operand& op) { opAVX_X_XM_IMM(xm, op, T_66|T_0F|T_EW1|T_YMM|T_EVEX, 0x28); }
 void vmovaps(const Address& addr, const Xmm& xmm) { opAVX_X_XM_IMM(xmm, addr, T_0F|T_EW0|T_YMM|T_EVEX|T_M_K, 0x29); }

@@ -330,6 +330,7 @@ status_t brgemm_t::create_verbose_info() {
 
     const auto &d = brgemm_desc_;
     std::stringstream ss;
+    ss.imbue(std::locale::classic());
 
     memory_desc_t src_md;
     const dims_t src_dims = {M_, K_};

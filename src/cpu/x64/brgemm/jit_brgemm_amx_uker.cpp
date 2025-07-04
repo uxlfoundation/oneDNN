@@ -107,13 +107,15 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
 
             using namespace dnnl::impl::cpu::binary_injector_utils;
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
-                    with_binary_per_mb_bcast_, with_binary_channel_bcast_,
-                    with_binary_per_mb_w_bcast_, with_binary_per_w_bcast_,
-                    with_binary_spatial_bcast_, with_binary_batch_bcast_,
-                    with_binary_spatial_bcast_, with_binary_no_bcast_)
+                    with_binary_per_oc_d_bcast_, with_binary_per_mb_bcast_,
+                    with_binary_channel_bcast_, with_binary_per_mb_w_bcast_,
+                    with_binary_per_w_bcast_, with_binary_spatial_bcast_,
+                    with_binary_batch_bcast_, with_binary_spatial_bcast_,
+                    with_binary_no_bcast_)
                     = bcast_strategies_present_tup(brg.attr()->post_ops_.entry_,
                             dst_md_wrapper, broadcasting_strategy_t::per_oc,
                             broadcasting_strategy_t::per_oc_spatial,
+                            broadcasting_strategy_t::per_oc_d,
                             broadcasting_strategy_t::per_mb,
                             broadcasting_strategy_t::per_mb_spatial,
                             broadcasting_strategy_t::per_mb_w,
@@ -123,7 +125,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
                             broadcasting_strategy_t::spatial,
                             broadcasting_strategy_t::no_broadcast);
             handle_binary_po_offset_ = with_binary_per_oc_bcast_
-                    || with_binary_per_oc_sp_bcast_ || with_binary_per_mb_bcast_
+                    || with_binary_per_oc_sp_bcast_
+                    || with_binary_per_oc_d_bcast_ || with_binary_per_mb_bcast_
                     || with_binary_channel_bcast_ || with_binary_per_mb_w_bcast_
                     || with_binary_per_w_bcast_ || with_binary_per_hw_bcast_
                     || with_binary_batch_bcast_ || with_binary_spatial_bcast_
@@ -205,6 +208,7 @@ private:
     bool handle_binary_po_offset_ = false;
     bool with_binary_per_oc_bcast_ = false;
     bool with_binary_per_oc_sp_bcast_ = false;
+    bool with_binary_per_oc_d_bcast_ = false;
     bool with_binary_channel_bcast_ = false;
     bool with_binary_per_mb_bcast_ = false;
     bool with_binary_per_mb_w_bcast_ = false;

@@ -258,7 +258,6 @@ private:
     const dim_t Al_k_tail_offset_;
     const dim_t Bl_kb_offset_;
     const dim_t Bl_k_tail_offset_;
-    const dim_t n_gates_;
 
     const brgemm_kernel_t *const brgemm_kernel_layer_main_;
     const brgemm_kernel_t *const brgemm_kernel_layer_n_tail_;

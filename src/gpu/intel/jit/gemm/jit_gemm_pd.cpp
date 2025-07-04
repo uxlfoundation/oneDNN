@@ -41,12 +41,9 @@ void quant_dims(
 }
 
 // Obtain dimension count for gemmstone (common scales give count 0).
-int quant_entry_ndims(
-        const quant_entry_t &entry, const memory_desc_t &md, int k_idx) {
+int quant_entry_ndims(const quant_entry_t &entry, const memory_desc_t &md,
+        dims_t &qdims, int k_idx) {
     if (entry.has_default_values()) return -1;
-
-    dims_t qdims;
-    quant_dims(md, entry, qdims);
 
     // If quantization is batched (any batch dim > 1), we need to tell gemmstone
     // it's 3D - so it knows to change the offset as the batch index changes.
@@ -66,6 +63,22 @@ int quant_entry_ndims(
     if (count == 1 && qdims[k_idx] > 1) return 2;
 
     return count;
+}
+
+int quant_entry_ndims(
+        const quant_entry_t &entry, const memory_desc_t &md, int k_idx) {
+    if (entry.has_default_values()) return -1;
+    dims_t qdims;
+    quant_dims(md, entry, qdims);
+    return quant_entry_ndims(entry, md, qdims, k_idx);
+}
+
+dim_t quant_entry_group_prod(const quant_entry_t &attr) {
+    dim_t ret = 1;
+    if (attr.has_default_groups()) return ret;
+    for (int i = 0; i < 2; ++i)
+        ret *= attr.get_group(i);
+    return ret;
 }
 } // anonymous namespace
 
@@ -137,7 +150,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
 
     auto maybe_convert_scales_to_postop
             = [this](const dims_t &scales_dims, int arg, data_type_t dt,
-                      bool &converted) -> status_t {
+                      bool &converted, memory_desc_t &postop_md) -> status_t {
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
         // the scales md has K=1
@@ -145,10 +158,6 @@ status_t jit_gemm_pd_t::init_post_ops() {
         int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
         bool convert = (scales_dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
         if (convert) {
-            memory_desc_t postop_md;
-            CHECK(memory_desc_init_by_tag(
-                    postop_md, ndims, scales_dims, dt, get_abx_tag(ndims)));
-
             if (arg == DNNL_ARG_C) {
                 CHECK(post_ops_.append_binary(binary_div, &postop_md));
                 binary_srcs_.push_back(
@@ -168,8 +177,8 @@ status_t jit_gemm_pd_t::init_post_ops() {
         // Swap descriptors to follow column-major format
         quant_dims(desc_.b_desc, a_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(
-                dims, DNNL_ARG_A, a_scales.get_data_type(), converted));
+        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_A,
+                a_scales.get_data_type(), converted, a_scale_md_));
         if (converted) asc_dims_ = -1;
     }
 
@@ -178,8 +187,8 @@ status_t jit_gemm_pd_t::init_post_ops() {
         // Swap descriptors to follow column-major format
         quant_dims(desc_.a_desc, b_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(
-                dims, DNNL_ARG_B, b_scales.get_data_type(), converted));
+        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_B,
+                b_scales.get_data_type(), converted, b_scale_md_));
         if (converted) bsc_dims_ = -1;
     }
 
@@ -187,8 +196,8 @@ status_t jit_gemm_pd_t::init_post_ops() {
         dims_t dims;
         quant_dims(desc_.c_desc, c_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(
-                dims, DNNL_ARG_C, c_scales.get_data_type(), converted));
+        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_C,
+                c_scales.get_data_type(), converted, c_scale_md_));
         // Conversion of dst scales to post ops is currently supported for all
         // cases supported in the library.
         gpu_assert(converted) << "Unable to convert dst scales to a post op";
@@ -240,6 +249,7 @@ void jit_gemm_pd_t::init_attrs() {
     const auto &scales = attr()->scales_;
     const auto a_scales = scales.get(DNNL_ARG_A);
     const auto b_scales = scales.get(DNNL_ARG_B);
+    const auto c_scales = scales.get(DNNL_ARG_C);
 
     cmask_a_ = a_zps.get_mask();
     cmask_b_ = b_zps.get_mask();
@@ -249,6 +259,11 @@ void jit_gemm_pd_t::init_attrs() {
     auto ndims = d->c_desc.ndims;
     ao_dims_ = quant_entry_ndims(a_zps, d->b_desc, ndims - 2);
     bo_dims_ = quant_entry_ndims(b_zps, d->a_desc, ndims - 1);
+
+    quant_entry_init(a_scales, d->b_desc, a_scale_md_, ndims - 2);
+    quant_entry_init(b_scales, d->a_desc, b_scale_md_, ndims - 1);
+    quant_entry_init(c_scales, d->c_desc, c_scale_md_, ndims - 1);
+
     asc_dims_ = quant_entry_ndims(a_scales, d->b_desc, ndims - 2);
     bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc, ndims - 1);
 
@@ -387,14 +402,37 @@ dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
     }
 }
 
-dim_t jit_gemm_pd_t::stride_scale(int idx, int arg) const {
-    const auto md = arg == DNNL_ARG_A ? desc()->b_desc : desc()->a_desc;
+dim_t jit_gemm_pd_t::stride_scale(int idx, const memory_desc_t &md) const {
     dim_t stride = 1;
     if (md.dims[idx] == 1) return 0;
     for (int i = idx + 1; i < md.ndims; ++i) {
         stride *= md.dims[i];
     }
     return stride;
+}
+
+dim_t jit_gemm_pd_t::eff_a_scale_stride(int idx) const {
+    auto scale = attr()->scales_.get(swap_ab() ? DNNL_ARG_B : DNNL_ARG_A);
+    dim_t group_prod = quant_entry_group_prod(scale);
+    return stride_scale(idx, swap_ab() ? desc()->a_desc : desc()->b_desc)
+            / group_prod;
+}
+
+dim_t jit_gemm_pd_t::eff_b_scale_stride(int idx) const {
+    auto scale = attr()->scales_.get(swap_ab() ? DNNL_ARG_A : DNNL_ARG_B);
+    dim_t group_prod = quant_entry_group_prod(scale);
+    return stride_scale(idx, swap_ab() ? desc()->b_desc : desc()->a_desc)
+            / group_prod;
+}
+
+void jit_gemm_pd_t::quant_entry_init(const quant_entry_t &entry,
+        const memory_desc_t &md, memory_desc_t &quant_md, int k_idx) {
+    dims_t qdims;
+    quant_dims(md, entry, qdims);
+    int ndims = desc()->c_desc.ndims;
+    if (ndims > 0)
+        memory_desc_init_by_tag(quant_md, ndims, qdims, entry.get_data_type(),
+                get_abx_tag(ndims));
 }
 
 } // namespace jit

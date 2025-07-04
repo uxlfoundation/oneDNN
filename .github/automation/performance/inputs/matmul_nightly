@@ -24,7 +24,7 @@
 --bia_mask=2
 --batch=shapes_2d_ci
 --bia_mask=4
---batch=shapes_3d
+--batch=shapes_3d_perf
 
 --reset
 --dt=f32
@@ -33,7 +33,7 @@
 --attr-fpmath=bf16
 --batch=shapes_2d_ci
 --bia_mask=4
---batch=shapes_3d
+--batch=shapes_3d_perf
 
 #f16
 --reset
@@ -42,4 +42,4 @@
 --bia_mask=2
 --batch=shapes_2d_ci
 --bia_mask=4
---batch=shapes_3d
+--batch=shapes_3d_perf

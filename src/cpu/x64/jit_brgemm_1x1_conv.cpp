@@ -407,9 +407,10 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         brgemm_batch_element_t *const __restrict brg_batch,
         char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
         int od, int oh, int ow, int icc, int *last_brg_idx,
-        const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-        int32_t *dst_zp_vals, int32_t *s8s8_compensation,
-        const float *dst_scales, const bool is_last_os) const {
+        const float *oscales, const int32_t *src_zero_points,
+        int32_t *src_zp_comp, const int32_t *dst_zero_points,
+        int32_t *s8s8_compensation, const float *dst_scales,
+        const bool is_last_os) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper weights_d(pd()->weights_md());
@@ -530,14 +531,15 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 
         const auto brg_ker = brg_kernels_[brg_idx];
         if (do_postops) {
+            const int32_t src_zp_val = src_zero_points ? src_zero_points[0] : 0;
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(bias_w),
                     &oscales[jcp.is_oc_scale * g_oc],
                     post_ops_binary_rhs_arg_vec.data(),
                     static_cast<size_t>(g_oc), 0, dst, 0,
                     static_cast<void *>(src_zp_comp_ptr), nullptr,
-                    static_cast<void *>(dst_zp_vals), false, src_zp_vals, false,
-                    false, dst_scales};
+                    dst_zero_points, false, src_zp_val, false, false,
+                    dst_scales};
 
             void *scratch = is_amx ? static_cast<void *>(wsp_tile)
                                    : static_cast<void *>(s8s8_comp_ptr);
@@ -577,10 +579,10 @@ template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         const brgemm_exec_ctx_t &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
-        const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-        int32_t *dst_zp_vals, int32_t *s8s8_compensation,
-        char *const c_buffer_global, char *inp_buffer_base,
-        uint8_t *inp_buffer_mask_base) const {
+        const float *oscales, const int32_t *src_zero_points,
+        int32_t *src_zp_comp, const int32_t *dst_zero_points,
+        int32_t *s8s8_compensation, char *const c_buffer_global,
+        char *inp_buffer_base, uint8_t *inp_buffer_mask_base) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -639,9 +641,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                     const bool is_last_os = (osb_start + osb) == jcp.nb_os - 1;
                     exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer,
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
-                            &last_brg_idx, oscales, src_zp_vals, src_zp_comp,
-                            dst_zp_vals, s8s8_compensation, dst_scales,
-                            is_last_os);
+                            &last_brg_idx, oscales, src_zero_points,
+                            src_zp_comp, dst_zero_points, s8s8_compensation,
+                            dst_scales, is_last_os);
                 }
             }
             last_n = n;
@@ -663,9 +665,9 @@ template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         const brgemm_exec_ctx_t &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
-        const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-        int32_t *dst_zp_vals, int32_t *s8s8_compensation,
-        char *const c_buffer_global) const {
+        const float *oscales, const int32_t *src_zero_points,
+        int32_t *src_zp_comp, const int32_t *dst_zero_points,
+        int32_t *s8s8_compensation, char *const c_buffer_global) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -697,7 +699,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
                 const int ow = owb * jcp.ow_block;
                 exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
                         ocb, od, oh, ow, icc, &last_brg_idx, oscales,
-                        src_zp_vals, src_zp_comp, dst_zp_vals,
+                        src_zero_points, src_zp_comp, dst_zero_points,
                         s8s8_compensation, dst_scales);
             }
             if (jcp.loop_order == loop_ndhwgc)
@@ -734,8 +736,10 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
             wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
             jcp.scale_adjust_factor);
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
@@ -749,7 +753,6 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
                                     ? jcp.s8s8_comp_buffer_size
                                     : 0)
             : nullptr;
-    int32_t *dst_zp_vals = jcp.dst_zero_point ? &dst_zero_point : nullptr;
 
     brgemm_batch_element_t *const brg_batch_global
             = (jcp.brg_type != brgemm_strd)
@@ -768,12 +771,13 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
 
     if (jcp.is_os_blocking) {
         execute_os_blocking(brgemm_ctx, brg_batch_global, dst_scales, oscales,
-                src_zero_point, zp_compensation, dst_zp_vals, s8s8_compensation,
-                c_buffer_global, inp_buffer_base, inp_buffer_mask_base);
+                src_zero_points, zp_compensation, dst_zero_points,
+                s8s8_compensation, c_buffer_global, inp_buffer_base,
+                inp_buffer_mask_base);
     } else {
         execute_full_spatial(brgemm_ctx, brg_batch_global, dst_scales, oscales,
-                src_zero_point, zp_compensation, dst_zp_vals, s8s8_compensation,
-                c_buffer_global);
+                src_zero_points, zp_compensation, dst_zero_points,
+                s8s8_compensation, c_buffer_global);
     }
 
     return status::success;

@@ -590,8 +590,10 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
     const float *oscales = scale_utils::precompute_scales(
@@ -763,10 +765,9 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                         = pd()->attr()->zero_points_.get_mask(DNNL_ARG_SRC)
                         == 0;
                 post_ops_data.a_zp_values = jcp.src_zero_point
-                        ? src_zero_point + ch * !is_bcast_zp
+                        ? src_zero_points + ch * !is_bcast_zp
                         : nullptr;
-                post_ops_data.c_zp_values
-                        = jcp.dst_zero_point ? dst_zero_point : nullptr;
+                post_ops_data.c_zp_values = dst_zero_points;
                 post_ops_data.a_zp_compensations
                         = jcp.src_zero_point ? zp_compensation + ch : nullptr;
 

@@ -1828,18 +1828,7 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
 
         Label tail_processing;
 
-        const auto load_zp = [&](const Ymm ymm_zp, const Reg64 reg_zp) {
-            const Xmm xmm_zp = Xmm(ymm_zp.getIdx());
-            uni_vmovq(xmm_zp, reg_zp);
-            uni_vpbroadcastd(ymm_zp, xmm_zp);
-            uni_vcvtdq2ps(ymm_zp, ymm_zp);
-        };
-
         preamble();
-
-        if (prb_.req_src_zp) load_zp(ymm_src_zp, reg_src_zp);
-
-        if (prb_.req_dst_zp) load_zp(ymm_dst_zp, reg_dst_zp);
 
         cmp(reg_ptr_tail, true);
         je(tail_processing, T_NEAR);
@@ -1981,13 +1970,11 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
                         ptr[reg_ptr_in_ + i_off + i * input_stride * itype_sz_],
                         lane * itype_sz_);
             }
-            if (prb_.req_src_zp) { vsubps(Ymm(i), Ymm(i), ymm_src_zp); }
         }
 
         gen_transpose_8x8();
 
         for (int i = 0; i < in_tail; ++i) {
-            if (prb_.req_dst_zp) { vaddps(Ymm(i), Ymm(i), ymm_dst_zp); }
             if (out_tail == lane) {
                 gen_storeu(ptr[reg_ptr_out_ + o_off
                                    + i * output_stride * otype_sz_],
@@ -2061,9 +2048,6 @@ private:
 
     void preamble() {
         if (is_windows) {
-            // retrieve 5th function call argument from call stack
-            static constexpr int param5 = 0x8;
-            mov(reg_dst_zp, ptr[rsp + param5]);
             sub(rsp, xmm_save_for_windows * xmm_width);
             for (int i = 0; i < xmm_save_for_windows; ++i) {
                 uni_vmovdqu(ptr[rsp + i * xmm_width],
@@ -2093,13 +2077,9 @@ private:
     Reg64 reg_ptr_out_ = abi_param2;
     // Windows bool is 1-byte in register
     Reg8 reg_ptr_tail = is_windows ? r8b : dl;
-    Reg64 reg_src_zp = abi_param4;
-    Reg64 reg_dst_zp = is_windows ? r10 : r8;
 
     Ymm ymm_mask = ymm12;
     Ymm ymm_tmp = ymm0;
-    Ymm ymm_src_zp = ymm14;
-    Ymm ymm_dst_zp = ymm15;
 };
 
 status_t kernel_t::desc_init(
@@ -2612,8 +2592,9 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
 }
 
 void jit_uni_reorder_t::omp_driver(const char *in, char *out,
-        const float *src_scales, const float *dst_scales, int src_zp,
-        int dst_zp, const memory_tracking::grantor_t &scratchpad) const {
+        const float *src_scales, const float *dst_scales,
+        const int32_t *src_zero_points, const int32_t *dst_zero_points,
+        const memory_tracking::grantor_t &scratchpad) const {
     in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
     out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
 
@@ -2633,6 +2614,8 @@ void jit_uni_reorder_t::omp_driver(const char *in, char *out,
     const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
     assert(ndims - ndims_ker <= ndims_driver_max);
 
+    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
     int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
             memory_tracking::names::key_reorder_space);
 
@@ -2794,10 +2777,13 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
             scratchpad, pd()->attr(), pd()->D_mask_, dst_scales_);
     assert(dst_scales);
 
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    omp_driver(in, out, src_scales, dst_scales, src_zp, dst_zp, scratchpad);
+    omp_driver(in, out, src_scales, dst_scales, src_zero_points,
+            dst_zero_points, scratchpad);
 
     return status::success;
 }
@@ -2855,8 +2841,6 @@ status_t jit_blk_reorder_t::init(engine_t *engine) {
 status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
 
     // kernel handle 2-dimension tiles, a tail is possible
     auto &prb = this->pd()->prb_;
@@ -2880,7 +2864,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;
         auto *o = out + (bh_b + fl_b * o1) * otype_sz_;
-        (*kernel_)(i, o, n1 - fl_b < block_sz, src_zp, dst_zp);
+        (*kernel_)(i, o, n1 - fl_b < block_sz);
     });
 
     return status::success;

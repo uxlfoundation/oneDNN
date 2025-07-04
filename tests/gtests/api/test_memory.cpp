@@ -160,7 +160,7 @@ TEST(c_api_host_scalar_mem, TestHostScalarNullPtr) {
     DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
 }
 
-TEST(c_api_host_scalar_mem, UseIncorrectCreate) {
+TEST(c_api_host_scalar_mem, UseUnsupportedFunctions) {
     dnnl_memory_desc_t scalar_md = nullptr;
     DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
 
@@ -170,12 +170,32 @@ TEST(c_api_host_scalar_mem, UseIncorrectCreate) {
     dnnl_engine_t engine;
     dnnl_engine_create(&engine, dnnl_cpu, 0);
 
+    // Ensure that dnnl_memory_create is not allowed with host scalar memory
     EXPECT_EQ(dnnl_memory_create(&scalar_mem, scalar_md, engine, &scalar_value),
             dnnl_invalid_arguments);
 
+    // Ensure that dnnl_memory_create_v2 is not allowed with host scalar memory
     std::vector<void *> handles(1, &scalar_value);
     EXPECT_EQ(dnnl_memory_create_v2(
                       &scalar_mem, scalar_md, engine, 1, handles.data()),
+            dnnl_invalid_arguments);
+
+    DNNL_CHECK(dnnl_memory_create_host_scalar(
+            &scalar_mem, scalar_md, &scalar_value));
+
+    // Ensure that dnnl_memory_{set,get}_data_handle is not allowed with host scalar memory
+    void *handle = nullptr;
+    EXPECT_EQ(dnnl_memory_get_data_handle(scalar_mem, &handle),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(handle, nullptr);
+    EXPECT_EQ(dnnl_memory_get_data_handle_v2(scalar_mem, handles.data(), 1),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(handles[0], nullptr);
+
+    float new_value = 84.0f;
+    EXPECT_EQ(dnnl_memory_set_data_handle(scalar_mem, &new_value),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(dnnl_memory_set_data_handle_v2(scalar_mem, &new_value, 1),
             dnnl_invalid_arguments);
 
     dnnl_engine_destroy(engine);

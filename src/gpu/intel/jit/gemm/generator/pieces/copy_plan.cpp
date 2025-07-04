@@ -156,7 +156,7 @@ bool CopyOperand::operator==(const CopyOperand &op) const {
 RegData CopyOperand::ngen() const
 {
     if (kind == Null)
-        return ngen::NullRegister().retype(type);
+        return ngen::NullRegister().sub(0, type)(stride);
     if (kind != GRF || temp) stub("Invalid operation");
 
     auto sub = ngen::GRF(grf).sub(offset, type);
@@ -633,7 +633,8 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
     auto bytes = getBytes(type);
     auto abs = (i.*src).abs;
 
-    bool inplaceDst = stride * bytes == i.dst.byteStride()
+    bool inplaceDst = i.dst
+                   && stride * bytes == i.dst.byteStride()
                    && offset * bytes == i.dst.byteOffset()
                    && (bytes <= getBytes(i.dst.type) || i.dst.overwriteStride);
 
@@ -1784,6 +1785,7 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     ie[3]->op = Opcode::cmp;
     ie[3]->dst = CopyOperand();
     ie[3]->dst.type = DataType::hf;
+    ie[3]->dst.stride = x.stride;
     ie[3]->src0 = abs(x);
     ie[3]->src1 = Immediate::hf(0x5FC0);
     ie[3]->cmod = ConditionModifier::lt;
@@ -2149,7 +2151,7 @@ void CopyPlan::legalizeRegions()
         auto s2t = i.src2.type;
         auto dt = i.dst.type;
 
-        if (!i.dst) continue;
+        if (!i.dst && i.op != Opcode::cmp) continue;
 
         /* Check for special packed conversion cases */
         if (i.op == Opcode::mov && ((s0t == DataType::hf && isFP8(dt))

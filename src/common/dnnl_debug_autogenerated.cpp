@@ -957,6 +957,12 @@ const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_abDC24d8c) return "abDC24d8c";
     if (v == dnnl_decbA4a) return "decbA4a";
     if (v == dnnl_defcbA4a) return "defcbA4a";
+    if (v == dnnl_abDC8d8c) return "abDC8d8c";
+    if (v == dnnl_abDC16d8c) return "abDC16d8c";
+    if (v == dnnl_aCB8c8b) return "aCB8c8b";
+    if (v == dnnl_aCB16c8b) return "aCB16c8b";
+    if (v == dnnl_BA8b8a) return "BA8b8a";
+    if (v == dnnl_BA16b8a) return "BA16b8a";
     if (v == dnnl_format_tag_last) return "format_tag_last";
     if (v == dnnl_x) return "x";
     if (v == dnnl_nc) return "nc";

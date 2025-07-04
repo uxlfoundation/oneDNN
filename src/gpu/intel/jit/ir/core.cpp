@@ -277,7 +277,7 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
 }
 
 void ptr_t::normalize(expr_t &base, expr_t &off, op_kind_t op_kind) {
-    gpu_assert(base.type().is_ptr()) << "base is not a pointer: " << base;
+    // Normalize (base + off1) + off2 -> base + (off1 + off2)
     gpu_assert(off.type().is_int()) << "off is not an integer: " << off;
     gpu_assert(utils::one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
             << "Can't apply this operation to pointer: " << to_string(op_kind);
@@ -347,6 +347,8 @@ expr_t expr_t::operator[](const expr_t &off) const {
         int idx = shuffle.idx[to_cpp<int>(off)];
         return shuffle.vec[idx];
     }
+    gpu_assert(type().is_ptr()
+            || (is_const(off) && to_cpp<int>(off) < type().size()));
     return shift_ptr(op_kind_t::_add, *this, off);
 }
 

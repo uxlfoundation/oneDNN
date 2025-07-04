@@ -679,6 +679,49 @@ public:
         return obj;
     }
 
+    object_t _mutate(const binary_op_t &obj) override {
+        auto a = ir_mutator_t::mutate(obj.a);
+        auto b = ir_mutator_t::mutate(obj.b);
+
+        if (obj.op_kind == op_kind_t::_or) {
+            if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
+        } else if (obj.op_kind == op_kind_t::_and) {
+            auto not_a = try_not(a);
+            if (!a.is_empty() && cset.can_prove(not_a)) return expr_t(false);
+            auto not_b = try_not(b);
+            if (!b.is_empty() && cset.can_prove(not_b)) return expr_t(false);
+        }
+
+        if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
+        return binary_op_t::make(obj.op_kind, a, b);
+    }
+
+    expr_t try_not(const expr_t &e) {
+        if (e.is<bool_imm_t>()) {
+            return !e.as<bool_imm_t>().value;
+        } else if (e.is<binary_op_t>()) {
+            auto op_kind = e.as<binary_op_t>().op_kind;
+            auto a = e.as<binary_op_t>().a;
+            auto b = e.as<binary_op_t>().b;
+            switch (op_kind) {
+                case op_kind_t::_lt:
+                    return binary_op_t::make(op_kind_t::_ge, a, b);
+                case op_kind_t::_le:
+                    return binary_op_t::make(op_kind_t::_gt, a, b);
+                case op_kind_t::_gt:
+                    return binary_op_t::make(op_kind_t::_le, a, b);
+                case op_kind_t::_ge:
+                    return binary_op_t::make(op_kind_t::_lt, a, b);
+                case op_kind_t::_ne:
+                    return binary_op_t::make(op_kind_t::_eq, a, b);
+                case op_kind_t::_eq:
+                    return binary_op_t::make(op_kind_t::_ne, a, b);
+                default: return expr_t();
+            }
+        }
+        return expr_t();
+    }
+
     const constraint_set_t &cset;
 };
 
@@ -1661,7 +1704,7 @@ public:
     }
 
     object_t _mutate(const if_t &obj) override {
-        auto cond = simplify(obj.cond);
+        auto cond = simplify(obj.cond, cset_);
 
         if (all_of(cond, expr_t(true))) return mutate(obj.body);
         if (all_of(cond, expr_t(false))) return mutate(obj.else_body);
@@ -1698,7 +1741,7 @@ public:
         if (obj.value.is_empty()) return ir_mutator_t::_mutate(obj);
 
         // Substitute constants.
-        value = simplify(obj.value);
+        value = simplify(obj.value, cset_);
         if (is_const(value)) {
             // Constants are not necessarily the same type as the assigned
             // variable
@@ -1752,6 +1795,15 @@ public:
 
         // This is a load/store of the same value which is a no-op.
         return stmt_t();
+    }
+
+    object_t _mutate(const while_t &obj) override {
+        auto cond = simplify(obj.cond, cset_);
+        if (is_const(cond) && !to_cpp<bool>(cond)) return stmt_t();
+        auto body = mutate(obj.body);
+        if (body.is_empty()) return stmt_t();
+        if (obj.cond.is_same(cond) && obj.body.is_same(body)) return obj;
+        return while_t::make(cond, body);
     }
 
 private:

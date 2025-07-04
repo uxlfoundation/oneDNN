@@ -137,7 +137,6 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
                 + "\n".join(ctime_failures)
                 + "\n"
             )
-            print(message)
 
         if not exec_failures:
             print_to_github_out(f"message={message}")

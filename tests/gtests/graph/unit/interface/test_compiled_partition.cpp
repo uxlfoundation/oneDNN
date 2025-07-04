@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -200,6 +200,80 @@ TEST(test_interface_compiled_partition, CacheEngine) {
 #endif
 }
 
+TEST(test_interface_compiled_partition, CacheFpmath) {
+    dnnl::engine::kind ekind;
+    if (get_test_engine_kind() == impl::graph::engine_kind::cpu) {
+        ekind = dnnl::engine::kind::cpu;
+    } else {
+        ekind = dnnl::engine::kind::gpu;
+    }
+
+    impl::graph::op_kind_t kind = impl::graph::op_kind::MatMul;
+
+    const std::vector<impl::graph::fpmath_t> fp_math_vec
+            = {{impl::graph::fpmath_mode::strict, false},
+                    {impl::graph::fpmath_mode::strict, false},
+                    {impl::graph::fpmath_mode::bf16, false},
+                    {impl::graph::fpmath_mode::bf16, false}};
+
+    // Flush the cache
+    set_compiled_partition_cache_capacity(0);
+    set_compiled_partition_cache_capacity(1024);
+
+    dnnl::engine engine = dnnl::engine(ekind, 0);
+    impl::engine_t *eng = engine.get();
+    impl::graph::logical_tensor_t src = utils::logical_tensor_init(0,
+            {1, 1, 1, 1}, impl::graph::data_type::f32,
+            impl::graph::layout_type::strided);
+    impl::graph::logical_tensor_t weight = utils::logical_tensor_init(1,
+            {1, 1, 1, 1}, impl::graph::data_type::f32,
+            impl::graph::layout_type::strided);
+    impl::graph::logical_tensor_t dst = utils::logical_tensor_init(2,
+            {1, 1, 1, 1}, impl::graph::data_type::f32,
+            impl::graph::layout_type::strided);
+    impl::graph::op_t matmul {0, kind, "matmul"};
+    matmul.add_input(src);
+    matmul.add_input(weight);
+    matmul.add_output(dst);
+
+    for (size_t idx = 0; idx < fp_math_vec.size(); ++idx) {
+        // Create graph
+        impl::graph::graph_t g {eng->kind()};
+        g.set_fpmath_mode(
+                fp_math_vec[idx].mode_, fp_math_vec[idx].apply_to_int_);
+        g.add_op(&matmul);
+        g.finalize();
+        // Create single-op partition
+        std::vector<const impl::graph::backend_t *> &backends
+                = impl::graph::backend_registry_t::get_singleton()
+                          .get_registered_backends();
+        for (const auto &cbkd : backends) {
+            impl::graph::backend_t *bkd
+                    = const_cast<impl::graph::backend_t *>(cbkd);
+            bkd->get_partitions(g, impl::graph::partition_policy::fusion);
+        }
+        // wrap into the partition
+        impl::graph::partition_t par = impl::graph::partition_t();
+        std::vector<impl::graph::partition_t *> parts {&par};
+        g.get_ordered_partitions(parts);
+
+        impl::graph::compiled_partition_t cp(par);
+        std::pair<impl::graph::compiled_partition_t *, cache_state_t> cpcache {
+                &cp, cache_state_t::miss};
+        std::vector<const impl::graph::logical_tensor_t *> inputs {
+                &src, &weight};
+        std::vector<const impl::graph::logical_tensor_t *> outputs {&dst};
+        // Partition compilation
+        par.compile(cpcache, inputs, outputs, eng);
+    }
+
+#ifdef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
+    ASSERT_EQ(get_compiled_partition_cache_size(), 0);
+#else
+    ASSERT_EQ(get_compiled_partition_cache_size(), fp_math_vec.size() / 2);
+#endif
+}
+
 TEST(test_interface_compiled_partition, CacheMethod) {
     namespace graph = dnnl::impl::graph;
 
@@ -244,7 +318,8 @@ TEST(test_interface_compiled_partition, CacheMethod) {
     par.compile(cpcache, inputs, outputs, &eng);
 
 #ifndef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
-    graph::partition_hashing::key_t key {&eng, {elt}, inputs, outputs};
+    graph::partition_hashing::key_t key(
+            &eng, {elt}, inputs, outputs, par.get_fpmath_mode());
     auto &cache_mapper = graph::compiled_partition_cache();
     ASSERT_NO_THROW(cache_mapper.get_partition(key));
 

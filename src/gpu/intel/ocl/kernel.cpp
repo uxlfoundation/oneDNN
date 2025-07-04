@@ -219,12 +219,13 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
-        bool save_event = save_events_ || stream.is_profiling_enabled();
         cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
                 range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
-                nullptr, save_event ? &event.unwrap() : nullptr);
+                nullptr, &event.unwrap());
         OCL_CHECK(err);
+
+        ocl_stream->register_async_tracker(event);
     }
 
     if (stream.is_profiling_enabled()) {

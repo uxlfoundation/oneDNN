@@ -116,6 +116,11 @@ struct stream_t : public gpu::intel::compute::compute_stream_t {
         return impl()->register_deps(cgh);
     }
 
+    status_t init_async_tracking(std::string &vinfo, double *start_ms) override;
+    status_t register_async_tracker(const sycl::event &event);
+    status_t check_async_exec_times(
+            std::string &vinfo, double *start_ms) override;
+
     bool recording() const;
     using weak_graph_t = ::sycl::ext::oneapi::weak_object<
             ::sycl::ext::oneapi::experimental::command_graph<::sycl::ext::
@@ -145,6 +150,9 @@ private:
             ::sycl::ext::oneapi::experimental::graph_state::modifiable>>
             paused_graph_;
     xpu::sycl::event_t paused_dep_;
+
+    cl_event async_tracked_event_ = nullptr;
+    std::shared_ptr<async_timing_data_t> stream_timing_data_;
 };
 
 } // namespace sycl

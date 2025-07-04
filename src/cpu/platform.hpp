@@ -169,6 +169,8 @@ bool DNNL_API has_training_support(data_type_t data_type);
 float DNNL_API s8s8_weights_scale_factor();
 
 unsigned DNNL_API get_per_core_cache_size(int level);
+uint32_t get_num_ways_in_cache(int level);
+uint32_t get_num_sets_in_cache(int level);
 unsigned DNNL_API get_num_cores();
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 unsigned DNNL_API get_max_threads_to_use();

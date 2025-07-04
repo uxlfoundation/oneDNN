@@ -989,6 +989,18 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+/// Creates a memory descriptor for a scalar value that resides on the host.
+/// This descriptor is intended for passing a scalar directly as an argument
+/// to device-side kernels, helping to avoid unnecessary memory transfers
+/// during primitive execution.
+///
+/// @param memory_desc Output memory descriptor.
+/// @param data_type Elements data type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_host_scalar(
+        dnnl_memory_desc_t *memory_desc, dnnl_data_type_t data_type);
+
 /// Creates a memory descriptor for a region inside an area
 /// described by an existing memory descriptor.
 ///
@@ -1290,6 +1302,20 @@ dnnl_status_t DNNL_API dnnl_memory_create(dnnl_memory_t *memory,
 dnnl_status_t DNNL_API dnnl_memory_create_v2(dnnl_memory_t *memory,
         const_dnnl_memory_desc_t memory_desc, dnnl_engine_t engine,
         int nhandles, void **handles);
+
+/// Creates a memory object for a scalar value located on the host.
+/// @note The scalar value is copied from the provided pointer into the newly
+///     allocated memory storage, so the user does not need to manage the
+///     lifetime of the original scalar data.
+///
+/// @param memory Output parameter that will receive the created memory object.
+/// @param memory_desc Descriptor of the memory to be created.
+/// @param scalar_ptr Pointer to the scalar value to be copied into the memory
+///     object. This should be a host pointer to the scalar data.
+/// @returns #dnnl_success on success; otherwise, returns a status code
+///     describing the error.
+dnnl_status_t DNNL_API dnnl_memory_create_host_scalar(dnnl_memory_t *memory,
+        const_dnnl_memory_desc_t memory_desc, void *scalar_ptr);
 
 /// Returns the memory descriptor for a memory object.
 ///

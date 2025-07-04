@@ -29,6 +29,18 @@
 namespace dnnl {
 namespace impl {
 namespace graph {
+namespace dnnl_impl {
+
+class fusion_info_t; // Forward declaration of fusion_info_t
+
+} // namespace dnnl_impl
+} // namespace graph
+} // namespace impl
+} // namespace dnnl
+
+namespace dnnl {
+namespace impl {
+namespace graph {
 namespace utils {
 // Add new attribute types by specializing on the C++ type and
 // defining an enum value below
@@ -65,9 +77,9 @@ struct attribute_value_traits_t<bool> {
     static attribute_kind_t constexpr kind = attribute_kind::b;
 };
 
-template <typename value_type>
-struct attribute_value_traits_t {
-    static attribute_kind_t constexpr kind = attribute_kind::c;
+template <>
+struct attribute_value_traits_t<dnnl::impl::graph::dnnl_impl::fusion_info_t> {
+    static attribute_kind_t constexpr kind = attribute_kind::fusion_info;
 };
 
 template <typename value_type>
@@ -82,9 +94,8 @@ constexpr attribute_kind_t get_attribute_kind() {
                     || std::is_same<std::vector<int64_t>, value_type>::value
                     || std::is_same<std::string, value_type>::value
                     || std::is_same<bool, value_type>::value
-                    || (attribute_value_traits_t<
-                                base_value_type<value_type>>::kind
-                            == attribute_kind::c),
+                    || std::is_same<dnnl::impl::graph::dnnl_impl::fusion_info_t,
+                            value_type>::value,
             "value_type should be one of int64_t, float, string, "
             "bool, vector<float>, vector<int64_t> or custom type.");
 

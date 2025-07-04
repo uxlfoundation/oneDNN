@@ -92,6 +92,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(layer_norm_fwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(layer_norm_fwd_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 #if BUILD_TRAINING
@@ -152,6 +153,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(layer_norm_bwd_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(layer_norm_bwd_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 #endif
 

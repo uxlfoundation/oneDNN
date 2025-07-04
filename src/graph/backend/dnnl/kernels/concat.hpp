@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -91,6 +91,7 @@ public:
 
     DEF_KERNEL_METHOD_STR(concat_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(concat_t)
+    DEF_KERNEL_METHOD_RESET_ENGINE
 };
 
 using float_concat = concat_t</* quantized */ false>;

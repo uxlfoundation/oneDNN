@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2024 Intel Corporation
+ * Copyright 2024-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ status_t dnnl_partition_impl_t::compile(
         compiled_partition_t *compiled_partition,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs,
-        const engine_t *g_engine) const {
+        engine_t *g_engine) const {
     // compile will transform the subgraph in partition, so we make
     // a copy
     auto part = std::dynamic_pointer_cast<dnnl_partition_impl_t>(this->clone());
@@ -164,7 +164,7 @@ status_t dnnl_partition_impl_t::compile(
 
     // wrapper kernel to dnnl_compiled_partition_impl_t
     auto pimpl = std::make_shared<dnnl_compiled_partition_impl_t>(
-            *g_engine, ordered_inputs, ordered_outputs, kernel);
+            g_engine, ordered_inputs, ordered_outputs, kernel);
     compiled_partition->init(pimpl);
 
     return status::success;

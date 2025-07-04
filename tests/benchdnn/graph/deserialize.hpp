@@ -79,6 +79,8 @@ struct deserialized_op_t {
 
     op create() const;
 
+    dnnl_driver_t get_driver() const;
+
     void load(utils::json::json_reader_t *reader);
     // Outputs the information about op from operator<< into a string.
     std::string get_string() const;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,8 @@ namespace partition_hashing {
 key_t::key_t(const impl::engine_t *engine,
         const std::vector<std::shared_ptr<op_t>> &ops,
         const std::vector<const logical_tensor_t *> &ins,
-        const std::vector<const logical_tensor_t *> &outs)
+        const std::vector<const logical_tensor_t *> &outs,
+        const impl::graph::fpmath_t &fpmath)
     : ops_(get_raw_ptrs(ops))
     , nthread_(dnnl_get_max_threads())
     // Here we use engine as a member of partition_hashing key_t, because for
@@ -40,6 +41,7 @@ key_t::key_t(const impl::engine_t *engine,
     // engine 2(fail). So we need to use engine as a member of key_t to avoid
     // execution crash.
     , engine_(engine)
+    , fpmath_(fpmath)
     , thread_id_(std::this_thread::get_id()) {
     ins_.reserve(ins.size());
     outs_.reserve(outs.size());
@@ -54,7 +56,8 @@ key_t::key_t(const impl::engine_t *engine,
 key_t::key_t(const partition_t *partition, const impl::engine_t *engine,
         const std::vector<const logical_tensor_t *> &ins,
         const std::vector<const logical_tensor_t *> &outs)
-    : key_t(engine, partition->get_ops(), ins, outs) {}
+    : key_t(engine, partition->get_ops(), ins, outs,
+            partition->get_fpmath_mode()) {}
 
 bool key_t::operator==(const key_t &rhs) const {
     if (this == &rhs) return true;
@@ -68,7 +71,7 @@ bool key_t::operator==(const key_t &rhs) const {
 
     bool ret = true && lhs_num_ops == rhs_num_ops && lhs_num_ins == rhs_num_ins
             && lhs_num_outs == rhs_num_outs && nthread_ == rhs.nthread_
-            && engine_ == rhs.engine_;
+            && engine_ == rhs.engine_ && fpmath_ == rhs.fpmath_;
     if (!ret) return false;
 
     for (size_t i = 0; i < lhs_num_ops; ++i) {

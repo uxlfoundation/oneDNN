@@ -34,16 +34,6 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-namespace {
-dim_t quant_entry_group_prod(const quant_entry_t &attr) {
-    dim_t ret = 1;
-    if (attr.has_default_groups()) return ret;
-    for (int i = 0; i < 2; ++i)
-        ret *= attr.get_group(i);
-    return ret;
-}
-} // anonymous namespace
-
 status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         compute::compute_stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
@@ -151,18 +141,10 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
             if (problem->asPtrDims > 2) {
-                dim_t scale_stride = pd()->stride_scale(i, DNNL_ARG_A);
-                auto scale_stride_a = int32_t(scale_stride
-                        / quant_entry_group_prod(
-                                pd()->attr()->scales_.get(DNNL_ARG_A)));
-                arg_list.set(argn++, scale_stride_a);
+                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
             }
             if (problem->bsPtrDims > 2) {
-                dim_t scale_stride = pd()->stride_scale(i, DNNL_ARG_B);
-                auto scale_stride_b = int32_t(scale_stride
-                        / quant_entry_group_prod(
-                                pd()->attr()->scales_.get(DNNL_ARG_B)));
-                arg_list.set(argn++, scale_stride_b);
+                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
             }
         }
         for (int i = 0; i < po_count; i++) {

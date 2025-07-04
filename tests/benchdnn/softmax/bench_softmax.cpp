@@ -34,6 +34,7 @@ void check_correctness(
     for_(const auto &i_ddt : s.ddt)
     for_(const auto &i_stag : s.stag)
     for_(const auto &i_dtag : s.dtag)
+    for_(const auto &i_stat_tag : s.stat_tag)
     for_(const auto &i_alg : s.alg)
     for_(const auto &i_axis : s.axis)
     for_(const auto &i_mb : s.mb)
@@ -41,9 +42,9 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_inplace : s.inplace) {
-        const prb_t prb(s.prb_dims, i_dir, i_sdt, i_ddt, i_stag, i_dtag, i_alg,
-                i_axis, i_mb, i_inplace, i_attr, i_ctx_init, i_ctx_exe,
-                s.impl_filter);
+        const prb_t prb(s.prb_dims, i_dir, i_sdt, i_ddt, i_stag, i_dtag,
+                i_stat_tag, i_alg, i_axis, i_mb, i_inplace, i_attr, i_ctx_init,
+                i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);

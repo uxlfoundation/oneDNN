@@ -49,7 +49,8 @@ struct settings_t : public base_settings_t {
 
     std::vector<dir_t> dir {FWD_D};
     std::vector<dnnl_data_type_t> sdt {dnnl_f32}, ddt {dnnl_f32};
-    std::vector<std::string> stag {tag::abx}, dtag {tag::any};
+    std::vector<std::string> stag {tag::abx}, dtag {tag::any},
+            stat_tag {tag::undef};
     std::vector<alg_t> alg {SOFTMAX};
     std::vector<int> axis {1};
 
@@ -63,8 +64,9 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && sdt.size() == 1 && ddt.size() == 1
-                && stag.size() == 1 && dtag.size() == 1 && alg.size() == 1
-                && axis.size() == 1 && base_settings_t::has_single_setup();
+                && stag.size() == 1 && dtag.size() == 1 && stat_tag.size() == 1
+                && alg.size() == 1 && axis.size() == 1
+                && base_settings_t::has_single_setup();
     }
 };
 
@@ -72,7 +74,7 @@ struct prb_t : public prb_dims_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_dims, s.dir[0], s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
-                s.alg[0], s.axis[0], s.mb[0], s.inplace[0],
+                s.stat_tag[0], s.alg[0], s.axis[0], s.mb[0], s.inplace[0],
                 s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
                 s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
@@ -80,15 +82,17 @@ struct prb_t : public prb_dims_t {
 
     prb_t(const prb_dims_t &prb_dims, dir_t dir, dnnl_data_type_t sdt,
             dnnl_data_type_t ddt, const std::string &stag,
-            const std::string &dtag, alg_t alg, int axis, int64_t mb,
-            bool inplace, const attr_t &attr, const thr_ctx_t &ctx_init,
-            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
+            const std::string &dtag, const std::string &stat_tag, alg_t alg,
+            int axis, int64_t mb, bool inplace, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
+            const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
         , dir(dir)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
+        , stat_tag(stat_tag)
         , alg(alg)
         , axis(axis)
         , user_mb(mb)
@@ -103,7 +107,7 @@ struct prb_t : public prb_dims_t {
 
     dir_t dir;
     dnnl_data_type_t sdt, ddt;
-    std::string stag, dtag;
+    std::string stag, dtag, stat_tag;
     alg_t alg;
     int axis;
     int64_t user_mb;
@@ -134,7 +138,8 @@ struct perf_report_t : public base_perf_report_t {
         , sdt_({p_->sdt})
         , ddt_(p_->ddt)
         , stag_({normalize_tag(p_->stag, p_->ndims)})
-        , dtag_(normalize_tag(p_->dtag, p_->ndims)) {}
+        , dtag_(normalize_tag(p_->dtag, p_->ndims))
+        , stat_tag_(normalize_tag(p_->stat_tag, p_->ndims)) {}
 
     void dump_alg(std::ostream &s) const override { s << alg2str(p_->alg); }
 
@@ -155,6 +160,7 @@ struct perf_report_t : public base_perf_report_t {
     const int64_t *user_mb() const override { return &p_->user_mb; }
     const std::vector<std::string> *stag() const override { return &stag_; }
     const std::string *dtag() const override { return &dtag_; }
+    const std::string *stat_tag() const override { return &stat_tag_; }
 
 private:
     const prb_t *p_;
@@ -162,6 +168,7 @@ private:
     dnnl_data_type_t ddt_;
     std::vector<std::string> stag_;
     std::string dtag_;
+    std::string stat_tag_;
 };
 
 inline void map_off_to_mb_ic(

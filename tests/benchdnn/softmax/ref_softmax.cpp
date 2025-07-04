@@ -28,6 +28,10 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     float *dst_ptr = (float *)dst;
 
+    const dnn_mem_t &stats = args.find(DNNL_ARG_DST_1);
+    const bool has_stats = prb->stat_tag != tag::undef;
+    float *stats_ptr = has_stats ? (float *)stats : nullptr;
+
     const auto alg = prb->alg;
     int64_t outer_size {0}, inner_size {0}, axis_size {0};
     get_sizes(prb, outer_size, inner_size, axis_size);
@@ -66,6 +70,11 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         }
 
         if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
+            if (has_stats) {
+                int64_t stats_idx = ou * inner_size + in;
+                stats_ptr[stats_idx]
+                        = space_denom ? space_max + logf(space_denom) : 0;
+            }
             space_denom = space_denom ? (1.f / space_denom) : 1.f;
         } else if (alg == LOGSOFTMAX) {
             space_denom = logf(space_denom);

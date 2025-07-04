@@ -301,6 +301,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
     static const std::vector<int> exec_fwd_args = {
             DNNL_ARG_SRC,
             DNNL_ARG_DST,
+            DNNL_ARG_DST_1,
     };
     static const std::vector<int> exec_bwd_args = {
             DNNL_ARG_DST,

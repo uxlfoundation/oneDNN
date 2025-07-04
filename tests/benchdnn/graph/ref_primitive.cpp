@@ -161,6 +161,19 @@ void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
     }
 
     SWITCH_DRIVER(CASE_INIT_MEMORY_ARGS, CASE_INIT_CUSTOM_MEMORY_ARGS);
+    if (driver_ == dnnl_driver_t::softmax) {
+        if (prb_wrapper_) {
+            const ::softmax::prb_t *prb = prb_wrapper_->get<::softmax::prb_t>();
+            if (prb->stat_tag != tag::undef) {
+                mems_.erase(DNNL_ARG_DST_1);
+                dims_t stats_dims = prb->dims;
+                stats_dims[prb->axis] = 1;
+                mems_.emplace(DNNL_ARG_DST_1,
+                        dnn_mem_t(prb->ndims, stats_dims.data(), dnnl_f32,
+                                prb->stat_tag, ref_eng, /* prefill = */ true));
+            }
+        }
+    }
 }
 
 int ref_primitive_t::init_ref_memory_args(const engine_t &ref_eng, res_t *res) {
@@ -197,9 +210,18 @@ int ref_primitive_t::execute_prim(res_t *res) const {
     if (driver_ == dnnl_driver_t::custom) {
         const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>();
         SAFE(::custom::execute(prb, args_, res), WARN);
-    } else {
-        SAFE(execute_and_wait(prim_, args_, res), WARN);
+        return OK;
+    } else if (driver_ == dnnl_driver_t::softmax) {
+        if (prb_wrapper_) {
+            const ::softmax::prb_t *prb = prb_wrapper_->get<::softmax::prb_t>();
+            if (prb->stat_tag != tag::undef) {
+                ::softmax::compute_ref(prb, prb->dir, args_);
+                return OK;
+            }
+        }
     }
+
+    SAFE(execute_and_wait(prim_, args_, res), WARN);
     return OK;
 }
 
@@ -214,6 +236,7 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_BIAS, BIA},
                     {DNNL_ARG_DIFF_BIAS, BIA},
                     {DNNL_ARG_DST, DST},
+                    {DNNL_ARG_DST_1, DST_1},
                     {DNNL_ARG_DIFF_SRC_0, DST},
                     {DNNL_ARG_SRC_1, SRC_1},
                     {DNNL_ARG_MEAN, MEAN},
@@ -254,6 +277,12 @@ void ref_primitive_t::check_correctness(
         compare::compare_t cmp;
         attr_t attr;
         SWITCH_DRIVER(CASE_CHECK_CORRECTNESS, CASE_CUSTOM_CHECK_CORRECTNESS);
+        if (driver_ == dnnl_driver_t::softmax) {
+            // as the computation of softmax stats uses eltwise-log,
+            // so we relax the threshold with eltwise-log's threashold
+            cmp.set_threshold(::eltwise::get_eltwise_threshold(
+                    dnnl_f32, ::eltwise::alg_t::LOG));
+        }
 
         cmp.set_has_eltwise_post_op(has_eltwise);
         cmp.set_op_output_has_nans(has_nans);

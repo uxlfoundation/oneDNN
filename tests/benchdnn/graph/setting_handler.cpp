@@ -1964,9 +1964,25 @@ bool get_softmax_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
 
 bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
-    const auto &dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
-    op_setting.sdt.front() = dt;
-    op_setting.ddt.front() = dt;
+    const auto &sdt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    op_setting.sdt.front() = sdt;
+    const auto &ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    op_setting.ddt.front() = ddt;
+
+    return true;
+}
+
+bool get_softmax_stag_and_dtag(const deserialized_op_t &base_op_ref,
+        ::softmax::settings_t &op_setting) {
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.stag.front(), 0, /*from_output*/ false);
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.dtag.front(), 0, /*from_output*/ true);
+    if (base_op_ref.out_lts_.size() > 1) {
+        get_driver_tag_by_idx(base_op_ref, op_setting.stat_tag.front(), 1,
+                /*from_output*/ true);
+    }
+
     return true;
 }
 
@@ -2002,9 +2018,7 @@ bool get_softmax_alg(
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front()),
-            res);
+            softmax::get_softmax_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_alg(base_op_ref, op_setting.alg.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(

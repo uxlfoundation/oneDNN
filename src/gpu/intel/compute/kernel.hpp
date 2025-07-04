@@ -240,6 +240,20 @@ public:
         return impl_->dump();
     }
 
+    uint32_t get_hash(impl::engine_t *engine) const {
+        xpu::binary_t binary;
+        status_t status = get_binary(engine, binary);
+        if (status != status::success) return 0;
+        size_t h = 0;
+        for (auto &v : binary)
+            h = hash_combine(h, v);
+        return (uint32_t)(h % (1ULL << 32));
+    }
+
+    void dbg_dump(impl::engine_t *engine, const char *tag) const {
+        printf("[%s] %s -> %u\n", tag, name().c_str(), get_hash(engine));
+    }
+
     std::string name() const { return impl_->name(); }
 
 private:

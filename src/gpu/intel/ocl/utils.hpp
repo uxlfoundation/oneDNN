@@ -38,8 +38,6 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-enum { OCL_BUFFER_ALIGNMENT = 128 };
-
 bool try_building(
         cl_context context, cl_device_id device, const char *kernel_code);
 

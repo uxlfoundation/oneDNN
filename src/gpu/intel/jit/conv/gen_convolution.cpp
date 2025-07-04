@@ -29,7 +29,7 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/reorder/reorder_kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 #include "gpu/intel/jit/conv/config.hpp"
 #include "gpu/intel/jit/conv/conv_kernel.hpp"
@@ -382,7 +382,7 @@ private:
             };
             auto scratchpad_book = [&](int key) {
                 pd->scratchpad_registry().registrar().book(into<uint32_t>(key),
-                        compute_size, 1, ocl::OCL_BUFFER_ALIGNMENT);
+                        compute_size, 1, OCL_BUFFER_ALIGNMENT);
             };
             auto create_zero_out_info = [&]() -> kernel_info_t & {
                 auto &zero_out_info

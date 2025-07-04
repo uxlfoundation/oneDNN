@@ -31,7 +31,7 @@
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/ocl/types_interop.h"
+#include "gpu/intel/types_interop.h"
 
 namespace dnnl {
 namespace impl {

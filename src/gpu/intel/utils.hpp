@@ -33,6 +33,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
+enum { OCL_BUFFER_ALIGNMENT = 128 };
+
 #define MAX_NDIMS 6
 #define MAX_POST_OPS_SUPPORTED 32
 

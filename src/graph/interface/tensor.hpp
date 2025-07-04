@@ -29,16 +29,14 @@ public:
 
     void *get_data_handle() const { return handle_.get(); }
 
-    void set_data_handle(void *handle) {
-        if (lt_.property == dnnl::impl::graph::property_type::host_scalar) {
-            if (lt_.data_type == dnnl::impl::graph::data_type::s32) {
-                scalar_.s32_value = *static_cast<int32_t *>(handle);
-                handle_.reset(&scalar_.s32_value, dummy_destructor);
-            } else {
-                assertm(false, "Unsupported data type for host scalar");
-            }
+    dnnl::impl::graph::status_t set_data_handle(void *handle) {
+        auto ltw = dnnl::impl::graph::logical_tensor_wrapper_t(lt_);
+
+        if (ltw.is_host_scalar()) {
+            return dnnl::impl::graph::status::invalid_arguments;
         } else {
             handle_.reset(handle, dummy_destructor);
+            return dnnl::impl::graph::status::success;
         }
     }
 

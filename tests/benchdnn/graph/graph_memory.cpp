@@ -148,12 +148,13 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
     dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,
             str2layout(lt.layout_type_), lt.get_property_type());
-    const auto &g_eng = lt.is_host_scalar()
-            ? get_graph_host_engine().operator const dnnl::engine &()
-            : get_graph_engine().operator const dnnl::engine &();
-    dnnl::graph::tensor ret(graph_lt, g_eng, data_handle);
+    const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
 
-    return ret;
+    if (lt.is_host_scalar()) {
+        return dnnl::graph::tensor::make_scalar_tensor(graph_lt, data_handle);
+    } else {
+        return dnnl::graph::tensor(graph_lt, g_eng, data_handle);
+    }
 }
 
 void flush_temp_memory() {

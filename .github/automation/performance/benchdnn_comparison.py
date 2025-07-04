@@ -69,7 +69,12 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
         r2_exec[key].append(float(exec_time))
         r2_ctime[key].append(float(ctime))
 
-    exec_failures, ctime_failures, comparison_rows = [], [], []
+    exec_failures, ctime_failures = [], []
+    if not check:
+        print(
+            "primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff"
+        )
+
     for prb in r1_exec:
         if prb not in r2_exec:
             raise Exception(f"{prb} exists in {file1} but not {file2}")
@@ -118,8 +123,8 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
                     f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
                     f"(p={ctime_ttest.pvalue:.3g})"
                 )
-        else:
-            comparison_rows.append(
+        if not check:
+            print(
                 f"{prb},{r1_med_exec:.5f},{r2_med_exec:.5f},"
                 f"{r1_med_ctime:.5f},{r2_med_ctime:.5f},"
                 f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.3%},"
@@ -127,7 +132,6 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
             )
 
     if check:
-
         print_to_github_out(f"pass={not exec_failures}")
 
         message = ""
@@ -152,15 +156,6 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
             print(message)
             raise Exception("Some regression tests failed")
 
-    else:
-        # Full CSV view
-        print(
-            "primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff"
-        )
-        for row in comparison_rows:
-            print(row)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Compare two benchdnn result files."
@@ -173,3 +168,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     compare_two_benchdnn(args.file1, args.file2, check=args.check)
+     

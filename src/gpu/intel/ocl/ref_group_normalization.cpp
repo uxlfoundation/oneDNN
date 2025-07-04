@@ -92,7 +92,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     const auto *compute_engine
             = utils::downcast<compute::compute_engine_t *>(engine);
-    dispatch = compute_engine->create_dispatch(src_md());
+    dispatch = dispatch_t(compute_engine, src_md());
 
     dispatch.define_dim("BATCH", MB());
     // number of goups provided by the user
@@ -178,7 +178,7 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
 
     const auto *compute_engine
             = utils::downcast<compute::compute_engine_t *>(engine);
-    dispatch = compute_engine->create_dispatch(diff_src_md());
+    dispatch = dispatch_t(compute_engine, diff_src_md());
     // put parallelization dimension
     dispatch.define_dim("CHANNEL", C());
     dispatch.generate();

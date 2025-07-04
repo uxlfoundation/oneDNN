@@ -38,16 +38,8 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
     OCL_CHECK(err);
     if (vendor_id != intel_vendor_id) return status::success;
 
-    cl_context context
-            = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
-    OCL_CHECK(err);
-
-    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
-            gpu_product_family_, stepping_id_, native_extensions_,
-            mayiuse_systolic_, mayiuse_ngen_kernels_));
-
-    err = clReleaseContext(context);
-    OCL_CHECK(err);
+    CHECK(init_gpu_hw_info(engine, device, ip_version_, gpu_arch_, gpu_product_,
+            native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_));
 
     // XXX: temporary WA for different Xe_HP devices
     if (gpu_arch_ == compute::gpu_arch_t::xe_hp) {
@@ -126,7 +118,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     cl_int err = CL_SUCCESS;
     auto device = utils::downcast<const engine_t *>(engine)->device();
 
-    CHECK(get_ocl_device_eu_count(device, gpu_arch_, &eu_count_));
+    CHECK(get_ocl_device_eu_count(device, &eu_count_));
 
     size_t max_wg_size = 0;
     err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,

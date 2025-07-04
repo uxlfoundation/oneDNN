@@ -16,6 +16,7 @@
 #include "gpu/intel/ocl/bnorm/model.hpp"
 #include <cmath>
 #include "common/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
 #include "gpu/intel/ocl/bnorm/utils.hpp"
@@ -734,7 +735,7 @@ status_t get_estimated_hw_utilization(model_params_t &p,
     auto *compute_engine
             = downcast<compute::compute_engine_t *>(hw_params.engine);
     compute::dispatch_t dry_run_dispatch // to get auto-generated lws
-            = compute_engine->create_dispatch();
+            = dispatch_t(compute_engine);
 
     nhwc_bnorm_params_t conf_dry_run {conf};
     conf_dry_run.set_use_fused_atomics_reduction(p.use_fused_atomics_reduction);

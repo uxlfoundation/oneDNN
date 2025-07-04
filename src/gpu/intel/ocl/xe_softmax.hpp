@@ -20,6 +20,7 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_softmax_pd.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"

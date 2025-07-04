@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "gpu/intel/ocl/bnorm/lookup_table.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 
 #include <string>
 #include <vector>

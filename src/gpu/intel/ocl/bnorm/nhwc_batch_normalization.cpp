@@ -16,6 +16,7 @@
 #include "gpu/intel/ocl/bnorm/nhwc_batch_normalization.hpp"
 #include "common/experimental.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/ocl/bnorm/model.hpp"
 #include "gpu/intel/ocl/bnorm/utils.hpp"
@@ -278,18 +279,18 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
     conf.sp_tail = rnd_dn(conf.sp, conf.vect_size);
 
     // Set dispatching
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = dispatch_t(compute_engine);
     CHECK(nhwc_bnorm_kernel_dispatching(
             calc_mean_ker, conf, engine, dispatch_calc_stat));
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = dispatch_t(compute_engine);
     CHECK(nhwc_bnorm_kernel_dispatching(
             reduce_stats_fwd_ker, conf, engine, dispatch_reduce_stat));
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = dispatch_t(compute_engine, data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             default_fwd_ker, conf, engine, dispatch));
 
-    dispatch_reduce_aux = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_reduce_aux = dispatch_t(compute_engine, data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             reduce_aux_init_ker, conf, engine, dispatch_reduce_aux));
 

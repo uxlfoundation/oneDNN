@@ -32,6 +32,7 @@ using namespace dnnl;
 
 using namespace dnnl::graph;
 using layout_type = logical_tensor::layout_type;
+using property_type = logical_tensor::property_type;
 using dim = logical_tensor::dim;
 using dims = logical_tensor::dims;
 
@@ -300,7 +301,9 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     bmm1.add_outputs({score});
 
     // scaled_score = score / scale
-    auto scale = logical_tensor(id++, dt, scale_sz, layout_type::strided);
+    const logical_tensor::data_type dt_scale = logical_tensor::data_type::f32;
+    auto scale = logical_tensor(id++, dt_scale, scale_sz, layout_type::strided,
+            property_type::host_scalar);
     auto scaled_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto scale_div = op(id++, op::kind::Divide, "scale_div");
@@ -351,18 +354,9 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     compiled_partition cp = partitions[0].compile(
             {query, key, scale, mask, value}, {output}, eng);
 
-    // Create tensor objects
-    auto ts_query = tensor(query, eng);
-    auto ts_key = tensor(key, eng);
-    auto ts_scale = tensor(scale, eng);
-    auto ts_mask = tensor(mask, eng);
-    auto ts_value = tensor(value, eng);
-    auto ts_output = tensor(output, eng);
-
     // Allocate user data.
     std::vector<float> query_data(product(qv_sz));
     std::vector<float> key_data(product(k_sz));
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
     std::vector<float> mask_data(product(mask_sz));
     std::vector<float> value_data(product(k_sz));
     std::vector<float> output_data(product(qv_sz));
@@ -372,12 +366,21 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     fill_random(value_data);
     fill_mask(mask_data, static_cast<size_t>(p.seq_len));
 
+    // Create tensor objects
+    auto ts_query = tensor(query, eng);
+    auto ts_key = tensor(key, eng);
+    auto ts_mask = tensor(mask, eng);
+    auto ts_value = tensor(value, eng);
+    auto ts_output = tensor(output, eng);
+
     // Write data to tensor object's handle.
     write_to_dnnl_tensor(query_data.data(), ts_query);
     write_to_dnnl_tensor(key_data.data(), ts_key);
-    write_to_dnnl_tensor(scale_data.data(), ts_scale);
     write_to_dnnl_tensor(mask_data.data(), ts_mask);
     write_to_dnnl_tensor(value_data.data(), ts_value);
+
+    float scale_data = std::sqrt(p.head_size);
+    auto ts_scale = tensor::make_scalar_tensor(scale, &scale_data);
 
     // Warmup run.
     // Execute the compiled partition of sdpa.

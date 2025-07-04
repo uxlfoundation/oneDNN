@@ -51,7 +51,6 @@ const op_attr_t mask_type = 0x10012;
 
 // int64_t
 const op_attr_t alg_kind = 0x10100;
-const op_attr_t fusion_info_key = 0x10103;
 const op_attr_t group_mask = 0x10104;
 const op_attr_t data_type = 0x10105;
 const op_attr_t axis_row = 0x10106;
@@ -68,6 +67,9 @@ const op_attr_t p = 0x10300;
 const op_attr_t dst_zps = 0x10400;
 const op_attr_t src_zps = 0x10401;
 const op_attr_t permutation = 0x10402;
+
+// backend specific attribute to store op's fusion info
+const op_attr_t fusion_info = 0x10500;
 
 static inline std::string internal_attr2str(op_attr_t attr) {
 #define CASE(a) \
@@ -93,7 +95,6 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(is_invert_scale);
         CASE(mask_type);
         CASE(alg_kind);
-        CASE(fusion_info_key);
         CASE(axis_row);
         CASE(axis_col);
         CASE(dw_type);
@@ -102,6 +103,7 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(dst_zps);
         CASE(src_zps);
         CASE(permutation);
+        CASE(fusion_info);
         default: return "undefined_attr";
     }
 #undef CASE

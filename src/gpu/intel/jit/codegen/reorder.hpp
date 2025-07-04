@@ -373,8 +373,7 @@ private:
         if (s.is_s4() || d.is_s4()) return type_t::s16();
 
         if (s == d) return d; // Swizzle only
-        if (s.is_fp8() && d.is_fp()) return type_t::f16();
-        if (s.is_fp() && d.is_fp8()) return type_t::f16();
+        if (s.is_fp8() || d.is_fp8()) return type_t::f16();
         if (s.size() > 4) return d;
         if (d.size() > 4) return s;
         return s.bitsize() >= d.bitsize() ? s : d;

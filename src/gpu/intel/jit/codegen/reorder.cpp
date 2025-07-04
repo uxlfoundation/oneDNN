@@ -563,7 +563,7 @@ layout_t reorder_impl_t::make_compact_layout(
     std::vector<block_t> blocks;
     dim_t dense_input_stride = 1;
     dim_t dense_output_stride = 1;
-    if (layout.type().size() == 1 && needs_saturate(layout.type(), type))
+    if (layout.type().is_x8() && type.is_x8() && layout.type() != type)
         // For byte intermediate (only s8<->u8 reorder), use stride-2
         // to avoid using too many temporaries.
         dense_output_stride = 2;

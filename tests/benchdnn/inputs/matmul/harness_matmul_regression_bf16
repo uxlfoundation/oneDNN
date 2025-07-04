@@ -13,6 +13,13 @@
 --attr-post-ops=add:bf16:13:abcd
 2x2x32x16:2x2x16x64_n"small_shape_with_binary_po_and_mask_13"
 
+# Binary post-op with mask 6 to test broadcasting strategy per_oc_d for non-f32.
+--reset
+--dt=bf16:bf16:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--attr-post-ops=binary_sub:f32:6
+1x16x384x64:1x16x64x384_n"binary_po_and_mask_6_and_bf16"
+
 # Shape to reach parallel reduction.
 --reset
 --dt=bf16:bf16:bf16

@@ -56,6 +56,8 @@ struct CopyOperand
     bool isNull() const { return kind == Null; }
     operator bool() const { return !isNull(); }
     bool operator!() const { return isNull(); }
+    bool operator==(const CopyOperand &op) const;
+    bool operator!=(const CopyOperand &op) const { return !operator==(op); }
 
     int byteOffset() const { return offset * getBytes(type); }
     int absByteOffset(ngen::HW hw) const { return byteOffset() + ngen::GRF::bytes(hw) * grf; }

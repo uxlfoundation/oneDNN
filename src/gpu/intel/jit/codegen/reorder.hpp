@@ -199,6 +199,9 @@ struct reorder_operand_t {
     copy_operand_t buffer;
 
     const type_t &type() const { return layout.type(); }
+    bool operator==(const reorder_operand_t &other) const {
+        return layout == other.layout && buffer == other.buffer;
+    }
 };
 
 // Implementation of GRF reorder between 2D dense layouts.
@@ -343,6 +346,7 @@ private:
 
     void emit(copy_plan_t &plan, const reorder_operand_t &dst,
             const reorder_operand_t &src) {
+        if (src == dst) return;
         if (try_emit_2d(plan, dst, src)) return;
         emit_1d(plan, dst, src);
     }

@@ -133,6 +133,25 @@ CopyOperand CopyOperand::operator-() const
     return clone;
 }
 
+bool CopyOperand::operator==(const CopyOperand &op) const {
+    bool ok = true;
+    if (kind != op.kind) return false;
+    if (kind == Null) return true;
+    ok &= type == op.type
+       && (!temp || value == op.value);
+    if (kind == Immediate) return ok;
+    ok &= temp   == op.temp
+       && grf    == op.grf
+       && offset == op.offset
+       && neg    == op.neg;
+    if (kind == Flag) return ok;
+    ok &= stride == op.stride
+       && vs     == op.vs
+       && width  == op.width
+       && abs    == op.abs;
+    return ok;
+}
+
 // Convert a GRF CopyOperand to an nGEN object.
 RegData CopyOperand::ngen() const
 {

@@ -56,6 +56,8 @@ struct CopyOperand
     bool isNull() const { return kind == Null; }
     operator bool() const { return !isNull(); }
     bool operator!() const { return isNull(); }
+    bool operator==(const CopyOperand &op) const;
+    bool operator!=(const CopyOperand &op) const { return !operator==(op); }
 
     int byteOffset() const { return offset * getBytes(type); }
     int absByteOffset(ngen::HW hw) const { return byteOffset() + ngen::GRF::bytes(hw) * grf; }
@@ -66,7 +68,7 @@ struct CopyOperand
     ngen::Immediate ngenImmediate() const;
     ngen::FlagRegister ngenFlag() const;
 
-    CopyOperand() {}
+    CopyOperand() = default;
     CopyOperand(ngen::RegData rd);
     CopyOperand(ngen::Immediate imm) : type(imm.getType()), kind(Immediate), value(imm) {}
     CopyOperand(int imm) : CopyOperand(ngen::Immediate(imm)) {}
@@ -221,6 +223,7 @@ protected:
     void planEmulatedNF4ToHF(CopyInstruction &i);
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
+    void emulateBooleanFunction();
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();

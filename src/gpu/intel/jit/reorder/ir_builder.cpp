@@ -37,7 +37,6 @@
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/reorder/tiler.hpp"
-#include "gpu/intel/jit/utils/range.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {

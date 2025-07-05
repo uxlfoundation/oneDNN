@@ -567,19 +567,38 @@ struct EmulationImplementation {
 
         bool emulate64 = strategy.emulate64_mul;
 
-        if (s0Q && !s1Q) {
+        if (s0Q) {
             if (!dstQ) stub();
-            auto temp = s1Signed ? state.temp[0].d() : state.temp[0].ud();
-            auto &src1Reg = [&]() -> RegData & {
-                if (s1Immed || !s1D) {
-                    g.mov(mod, temp, src1, loc);
-                    return temp;
-                } else {
-                    return *reinterpret_cast<RegData *>(&src1);
-                }
-            }();
-            return emulInternal(g, mod, dst, src1Reg, src0, strategy, state, loc);
+
+            auto dstDWType = s1Signed ? DataType::d : DataType::ud;
+            RegData dstLo, dstHi;
+            RegData s0Hi, s0Lo;
+            splitToDW(dst, dstLo, dstHi);
+            splitToDW(src0, s0Lo, s0Hi);
+            dstLo.setType(dstDWType);
+            dstHi.setType(dstDWType);
+            auto accLo
+                = g.acc0.retype(dstDWType)[dstLo.getOffset()](dstLo.getHS());
+            auto accHi
+                = g.acc0.retype(dstDWType)[dstHi.getOffset()](dstHi.getHS());
+
+            if(s1W) {
+                g.mul(mod, accLo, s0Lo, src1, loc);
+                g.mach(mod, dstLo, s0Lo, 0, loc);
+                g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            } else if(s1D) {
+                auto s1Lo = lowWord(src1);
+                g.mul(mod, accLo, s0Lo, s1Lo, loc);
+                g.mach(mod, dstLo, s0Lo, src1, loc);
+                g.mul(mod, accHi, s0Hi, s1Lo, loc);
+                g.macl(mod, dstHi, s0Hi, src1, loc);
+                g.add(mod, dstHi, dstHi, dstLo, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            } else stub();
         } else if (s1Q) {
+            if(!s1Immed) return emulInternal(g, mod, dst, *reinterpret_cast<RegData *>(&src1), src0, strategy, state, loc);
+
             if (!s0D || !dstQ) stub();
             auto s0Type = src0.getType();
             RegData dstLo, dstHi;

@@ -55,11 +55,16 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
 
-            // LIMITATIONS:
-            // - runtime dims are not supported
-            auto attr_skip_mask = smask_t::scales_data_type | smask_t::post_ops
-                    | smask_t::fpmath_mode | smask_t::accumulation_mode
-                    | smask_t::rounding_mode;
+            // Basic implementation attr support:
+            auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
+                    | smask_t::accumulation_mode | smask_t::rounding_mode
+                    | smask_t::scales | smask_t::scales_data_type
+                    | smask_t::scales_groups | smask_t::zero_points
+                    | smask_t::zero_points_data_type
+                    | smask_t::zero_points_groups;
+            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
             auto &attr_zps = attr()->zero_points_;
 
             dev_info_ = compute_engine->device_info();
@@ -113,20 +118,12 @@ struct gen_gemm_t : public gpu_gemm_t {
                 eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
             }
 
-            if (quant_enabled_) {
-                attr_skip_mask |= smask_t::fpmath_mode
-                        | smask_t::scales_data_type | smask_t::scales_groups
-                        | smask_t::zero_points_data_type
-                        | smask_t::zero_points_groups;
-            }
-
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
                         (utils::one_of(d->b_type(), u8, s8) || wei_decomp_),
                         VERBOSE_UNSUPPORTED_DT);
-                attr_skip_mask |= smask_t::zero_points;
 
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->c_type(), f32, s8,
                                                    u8, f16, bf16),
@@ -185,8 +182,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
-            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
-                    VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
                                    !with_bias()
                                            && (attr_zps.has_default_values(

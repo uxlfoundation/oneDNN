@@ -105,8 +105,12 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &regs
             int regOff = curOff & (GRF::bytes(hw) - 1);
             if (regOff != 0)
                 maxBytes = GRF::bytes(hw) - regOff;
-            else
-                maxBytes = (canDualGRF(hw, dt, strategy) ? 2 : 1) * GRF::bytes(hw);
+            else {
+                int nr = 1;
+                if (canDualGRF(hw, dt, strategy) && regs.contiguous(curOff >> GRF::log2Bytes(hw), 2))
+                    nr = 2;
+                maxBytes = nr * GRF::bytes(hw);
+            }
 
             auto nbytes = ngen::utils::rounddown_pow2(std::min(maxBytes, curBytes));
             auto ne = std::min<int>(32, nbytes / ebytes);

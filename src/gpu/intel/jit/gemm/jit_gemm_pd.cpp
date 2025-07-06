@@ -250,41 +250,43 @@ void jit_gemm_pd_t::init_attrs() {
     asc_dims_ = quant_entry_ndims(a_scales, d->b_desc);
     bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc);
 
-    wei_scales_group_k_ = a_scales.get_group(0);
-    src_scales_group_k_ = b_scales.get_group(1);
+    a_scales_group_k_ = a_scales.get_group(0);
+    b_scales_group_k_ = b_scales.get_group(1);
 
-    wei_scales_type_ = a_scales.get_data_type();
-    if (wei_zp_2d()) {
-        wei_q2d_group_k_ = a_zps.get_group(0);
-    } else if (wei_scales_2d()) {
-        wei_q2d_group_k_ = a_scales.get_group(0);
+    a_scales_type_ = a_scales.get_data_type();
+    if (a_zp_2d()) {
+        a_q2d_group_k_ = a_zps.get_group(0);
+    } else if (a_scales_2d()) {
+        a_q2d_group_k_ = a_scales.get_group(0);
     }
 
-    src_scales_type_ = b_scales.get_data_type();
-    if (src_zp_2d()) {
-        src_q2d_group_k_ = b_zps.get_group(1);
-    } else if (src_scales_2d()) {
-        src_q2d_group_k_ = b_scales.get_group(1);
+    b_scales_type_ = b_scales.get_data_type();
+    if (b_zp_2d()) {
+        b_q2d_group_k_ = b_zps.get_group(1);
+    } else if (b_scales_2d()) {
+        b_q2d_group_k_ = b_scales.get_group(1);
     }
 }
 
 bool jit_gemm_pd_t::zp_ok() {
     auto &attr_zps = attr()->zero_points_;
+    auto &a_zps = attr_zps.get(DNNL_ARG_A);
+    auto &b_zps = attr_zps.get(DNNL_ARG_B);
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
 
-    if (!attr_zps.has_default_values(DNNL_ARG_A)) {
+    if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
-        if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
+        if (!a_zps.has_default_groups()) {
             if (!valid_2d_mask(cmask_a_, ndims, false)) return false;
-            const auto wei_q2d_group_n = attr_zps.get_group(DNNL_ARG_A, 1);
+            const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
-            if (wei_q2d_group_n != 1) return false;
+            if (a_q2d_group_n != 1) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_zp_2d())
+                    && a_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
@@ -292,24 +294,23 @@ bool jit_gemm_pd_t::zp_ok() {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && wei_scales_2d())
+                    && a_scales_2d())
                 return false;
         }
     }
 
-    if (!attr_zps.has_default_values(DNNL_ARG_B)) {
+    if (!b_zps.has_default_values()) {
         // Groups determine supported masks.
-        if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
+        if (!b_zps.has_default_groups()) {
             if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
 
-            const auto src_q2d_group_n = attr_zps.get_group(DNNL_ARG_B, 0);
-            zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_B, 1);
+            const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
-            if (!utils::one_of(src_q2d_group_n, 1, desc()->n())) return false;
+            if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)
-                    && src_zp_2d())
+                    && b_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(
@@ -326,8 +327,8 @@ bool jit_gemm_pd_t::zp_ok() {
 }
 
 bool jit_gemm_pd_t::scales_ok() {
-    const auto *wei_scales = &attr()->scales_.get(DNNL_ARG_A);
-    const auto *src_scales = &attr()->scales_.get(DNNL_ARG_B);
+    const auto &a_scales = attr()->scales_.get(DNNL_ARG_A);
+    const auto &b_scales = attr()->scales_.get(DNNL_ARG_B);
     int ndims = desc()->a_desc.ndims;
     using namespace data_type;
 
@@ -336,20 +337,20 @@ bool jit_gemm_pd_t::scales_ok() {
 
         auto mask = attr()->scales_.get_mask(s);
         if (!(utils::one_of(mask, 0, mask_scalar, mask_per_oc, mask_per_ic)
-                    || (s == DNNL_ARG_A && !wei_scales->has_default_groups()
+                    || (s == DNNL_ARG_A && !a_scales.has_default_groups()
                             && valid_2d_mask(mask, ndims))
-                    || (s == DNNL_ARG_B && !src_scales->has_default_groups()
+                    || (s == DNNL_ARG_B && !b_scales.has_default_groups()
                             && valid_2d_mask(mask, ndims))))
             return false;
     }
 
-    if (wei_scales_2d()) {
-        if (wei_q2d_group_k_ != wei_scales_group_k_) return false;
+    if (a_scales_2d()) {
+        if (a_q2d_group_k_ != a_scales_group_k_) return false;
         // Non-trivial N group unsupported.
-        if (wei_scales->get_group(1) != 1) return false;
+        if (a_scales.get_group(1) != 1) return false;
     }
 
-    if (src_scales_2d()) {
+    if (b_scales_2d()) {
         int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
         if (!dy_quant_enabled_
                 || (!utils::one_of(eff_a_type(), s4, u4)
@@ -357,8 +358,8 @@ bool jit_gemm_pd_t::scales_ok() {
                                 || bsc_dims_ > 2)))
             return false;
     } else {
-        if (!src_scales->has_default_values() && src_scales->get_mask() != 0
-                && wei_scales_group_k_ > desc()->k())
+        if (!b_scales.has_default_values() && b_scales.get_mask() != 0
+                && a_scales_group_k_ > desc()->k())
             return false;
     }
 

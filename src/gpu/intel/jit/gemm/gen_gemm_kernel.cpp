@@ -359,11 +359,11 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         int stepping, int eu_count, bool has_systolic, bool is_integrated,
         compute_mode mode, int batch_dims, bool trans_a, bool trans_b,
         bool trans_co, bool swap_ab, int ao_dims, int bo_dims, int asc_dims,
-        int bsc_dims, bool dst_sround, int wei_q2d_group_k, int src_q2d_group_k,
+        int bsc_dims, bool dst_sround, int a_q2d_group_k, int b_q2d_group_k,
         bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha, float beta,
         data_type_t a_type, data_type_t b_type, data_type_t c_type,
-        data_type_t ao_type, data_type_t bo_type, data_type_t wei_scales_type,
-        data_type_t src_scales_type, data_type_t co_type, data_type_t acc_type,
+        data_type_t ao_type, data_type_t bo_type, data_type_t a_scales_type,
+        data_type_t b_scales_type, data_type_t co_type, data_type_t acc_type,
         int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
         dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
@@ -438,34 +438,34 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (!swap_ab) {
         problem_.asPtrDims = asc_dims;
         problem_.bsPtrDims = bsc_dims;
-        problem_.aqGroupK = wei_q2d_group_k;
-        problem_.bqGroupK = src_q2d_group_k;
-        if (wei_scales_type != data_type::undef) {
-            problem_.Ta_scale = convert_dnnl_to_kernel_type(wei_scales_type);
+        problem_.aqGroupK = a_q2d_group_k;
+        problem_.bqGroupK = b_q2d_group_k;
+        if (a_scales_type != data_type::undef) {
+            problem_.Ta_scale = convert_dnnl_to_kernel_type(a_scales_type);
             problem_.A_scale.setAlignment(
-                    int(types::data_type_size(wei_scales_type)));
+                    int(types::data_type_size(a_scales_type)));
         }
-        if (src_scales_type != data_type::undef) {
-            problem_.Tb_scale = convert_dnnl_to_kernel_type(src_scales_type);
+        if (b_scales_type != data_type::undef) {
+            problem_.Tb_scale = convert_dnnl_to_kernel_type(b_scales_type);
             problem_.B_scale.layout = MatrixLayout::N;
             problem_.B_scale.setAlignment(
-                    int(types::data_type_size(src_scales_type)));
+                    int(types::data_type_size(b_scales_type)));
         }
     } else {
         problem_.bsPtrDims = asc_dims;
         problem_.asPtrDims = bsc_dims;
-        problem_.bqGroupK = wei_q2d_group_k;
-        problem_.aqGroupK = src_q2d_group_k;
-        if (wei_scales_type != data_type::undef) {
-            problem_.Tb_scale = convert_dnnl_to_kernel_type(wei_scales_type);
+        problem_.bqGroupK = a_q2d_group_k;
+        problem_.aqGroupK = b_q2d_group_k;
+        if (a_scales_type != data_type::undef) {
+            problem_.Tb_scale = convert_dnnl_to_kernel_type(a_scales_type);
             problem_.B_scale.setAlignment(
-                    int(types::data_type_size(wei_scales_type)));
+                    int(types::data_type_size(a_scales_type)));
         }
-        if (src_scales_type != data_type::undef) {
-            problem_.Ta_scale = convert_dnnl_to_kernel_type(src_scales_type);
+        if (b_scales_type != data_type::undef) {
+            problem_.Ta_scale = convert_dnnl_to_kernel_type(b_scales_type);
             problem_.A_scale.layout = MatrixLayout::T;
             problem_.A_scale.setAlignment(
-                    int(types::data_type_size(src_scales_type)));
+                    int(types::data_type_size(b_scales_type)));
         }
     }
 

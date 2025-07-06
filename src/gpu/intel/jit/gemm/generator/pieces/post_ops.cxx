@@ -272,8 +272,6 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 
-    auto CO_regs = state.ra.allocRange(CO_layout.regs());
-
     allocAddrRegs(CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, base, CO_layout, ld, strategy, state);
 
@@ -363,6 +361,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         mark(lDone);
         if (simtCF) join(16);
     } else {
+        auto CO_regs = state.ra.allocRange(CO_layout.regs());
         loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
@@ -372,10 +371,10 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             gemmScalarBinaryOpC(op, Tco, CO_regs, problem, strategy, state);
         else
             gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout);
+        state.ra.safeRelease(CO_regs);
     }
 
     safeReleaseMaskAssignments(masks, state);
-    state.ra.safeRelease(CO_regs);
     safeReleaseRanges(CO_addrs, state);
 
     return true;

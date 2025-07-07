@@ -66,11 +66,28 @@ struct gen_gemm_t : public gpu_gemm_t {
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto &attr_zps = attr()->zero_points_;
+            auto &attr_scales = attr()->scales_;
 
             dev_info_ = compute_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
             init_attrs();
+
+            // If we have both grouped scales and grouped zero-points, they must
+            // have the same group size
+            if (a_scales_2d() && a_zp_2d()) {
+                auto asc_group_k = attr_scales.get_group(DNNL_ARG_A, 0);
+                auto azp_group_k = attr_zps.get_group(DNNL_ARG_A, 0);
+                VDISPATCH_GEMM(
+                        asc_group_k == azp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+            }
+            if (b_scales_2d() && b_zp_2d()) {
+                auto bsc_group_k = attr_scales.get_group(DNNL_ARG_B, 1);
+                auto bzp_group_k = attr_zps.get_group(DNNL_ARG_B, 1);
+                VDISPATCH_GEMM(
+                        bsc_group_k == bzp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+            }
+
             const auto d = desc();
 
             VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->a_type(), f8_e5m2,

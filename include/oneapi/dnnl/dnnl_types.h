@@ -2469,6 +2469,7 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 
 /// Undefined argument.
 #define DNNL_ARG_UNDEF 0
+
 /// Source argument #0.
 #define DNNL_ARG_SRC_0 1
 /// A special mnemonic for source argument for primitives that have a
@@ -2670,9 +2671,9 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 /// Dropout RNG seed value passed via a buffer.
 #define DNNL_ARG_ATTR_DROPOUT_SEED 511
 
-/// Output scaling factors provided at execution time.
-/// Deprecated value.
-#define DNNL_ARG_ATTR_OUTPUT_SCALES 513
+/// The argument marked with this attribute is user-precomputed.
+/// Used exclusively for zero points at the time of writing.
+#define DNNL_ARG_ATTR_USER_PRECOMP 512
 
 /// Starting index for source arguments for primitives that take a variable
 /// number of source arguments.

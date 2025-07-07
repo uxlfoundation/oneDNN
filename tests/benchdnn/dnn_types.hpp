@@ -41,6 +41,13 @@ extern const char *any;
 extern const char *undef;
 } // namespace tag
 
+using precomputed_reduction_t = unsigned;
+const precomputed_reduction_t PR_NONE = 0u;
+const precomputed_reduction_t PR_SRC = (1u << 0);
+const precomputed_reduction_t PR_WEI = (1u << 1);
+precomputed_reduction_t str2pr(const char *str);
+std::string pr2str(precomputed_reduction_t pr);
+
 /* TODO: merge prop and dir_t (in favor of prop) */
 const char *prop2str(dnnl_prop_kind_t prop);
 dnnl_prop_kind_t prop2prop_kind(dir_t dir);
@@ -425,7 +432,9 @@ struct attr_t {
     void insert(const deterministic_t &d) { this->deterministic = d; }
     void insert(const dropout_t &d) { this->dropout = d; }
     void insert(const rounding_mode_t &rm) { this->rounding_mode = rm; }
-
+    void insert(const precomputed_reduction_t &pr) {
+        this->precomputed_reduction = pr;
+    }
     // When parallel creation modifier is enabled, the library scratchpad mode
     // can't be used unless "-DDNNL_ENABLE_CONCURRENT_EXEC=ON" is enabled at the
     // build time, otherwise scratchpad pointers are invalidated (as were
@@ -444,6 +453,7 @@ struct attr_t {
     fpmath_mode_t fpmath_mode;
     dnnl_accumulation_mode_t acc_mode;
     deterministic_t deterministic;
+    precomputed_reduction_t precomputed_reduction;
     dropout_t dropout;
     rounding_mode_t rounding_mode;
 

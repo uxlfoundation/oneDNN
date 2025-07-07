@@ -94,6 +94,10 @@ std::string prb_t::set_repro_line() {
             s << "--bia_mask=" << bia_mask << " ";
     }
 
+    if (canonical || precomputed_reduction != def.precomputed_reduction[0])
+        s << "--use-precomputed-reduction=" << pr2str(precomputed_reduction)
+          << " ";
+
     s << attr;
     if (canonical || ctx_init != def.ctx_init[0])
         s << "--ctx-init=" << ctx_init << " ";

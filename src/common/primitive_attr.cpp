@@ -120,6 +120,8 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
                     dnnl::impl::accumulation_mode::any)));
     CHECK_ARG(IMPLICATION(
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::precomputed_reduction),
+            precomputed_reduction_.has_default_values()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
             rounding_mode_.has_default_values()));
     CHECK_ARG(this->defined(smask_t::none));
@@ -563,6 +565,21 @@ status_t dnnl_primitive_attr_set_scratchpad_mode(
     if (any_null(attr)) return invalid_arguments;
 
     return attr->set_scratchpad_mode(scratchpad_mode);
+}
+
+status_t dnnl_primitive_attr_get_precomputed_reduction(
+        const primitive_attr_t *attr,
+        precomputed_reduction_t *precomputed_reduction) {
+    if (any_null(attr, precomputed_reduction)) return invalid_arguments;
+    *precomputed_reduction = attr->precomputed_reduction_;
+    return success;
+}
+
+status_t dnnl_primitive_attr_set_precomputed_reduction(
+        primitive_attr_t *attr, precomputed_reduction_t precomputed_reduction) {
+    if (any_null(attr)) return invalid_arguments;
+    attr->precomputed_reduction_ = precomputed_reduction;
+    return success;
 }
 
 status_t dnnl_primitive_attr_set_scales_mask(

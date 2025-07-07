@@ -48,6 +48,7 @@ struct settings_t : public base_settings_t {
     std::vector<dnnl_data_type_t> bia_dt {dnnl_data_type_undef};
     std::vector<int> bia_mask {2};
     std::vector<std::vector<dims_mask_t>> rt_dims_masks {{}};
+    std::vector<precomputed_reduction_t> precomputed_reduction {PR_NONE};
 
     const char *perf_template_csv() const {
         static const std::string args = "%sdt%,%stag%,%wtag%,%dtag%";
@@ -60,6 +61,7 @@ struct settings_t : public base_settings_t {
         return dt.size() == 1 && stag.size() == 1 && wtag.size() == 1
                 && dtag.size() == 1 && strides.size() == 1 && bia_dt.size() == 1
                 && bia_mask.size() == 1 && rt_dims_masks.size() == 1
+                && precomputed_reduction.size() == 1
                 && base_settings_t::has_single_setup();
     }
 };
@@ -69,8 +71,9 @@ struct prb_t : public prb_vdims_t {
     prb_t(const settings_t &s)
         : prb_t(s.prb_vdims, s.dt[0], s.stag[0], s.wtag[0], s.dtag[0],
                 s.strides[0], s.bia_dt[0], s.bia_mask[0], s.rt_dims_masks[0],
-                s.sparse_options[0], s.attributes.front(), s.ctx_init[0],
-                s.ctx_exe[0], s.impl_filter) {
+                s.precomputed_reduction[0], s.sparse_options[0],
+                s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
+                s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
@@ -79,6 +82,7 @@ struct prb_t : public prb_vdims_t {
             const std::string &dtag, const vdims_t &strides,
             dnnl_data_type_t bia_dt, int bia_mask,
             const std::vector<dims_mask_t> &rt_dims_masks,
+            const precomputed_reduction_t &precomputed_reduction,
             const sparse_options_t &sparse_options, const attr_t &attr,
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
@@ -91,6 +95,7 @@ struct prb_t : public prb_vdims_t {
         , bia_dt(bia_dt)
         , bia_mask(bia_mask)
         , rt_dims_masks(rt_dims_masks)
+        , precomputed_reduction(precomputed_reduction)
         , sparse_options(sparse_options)
         , attr(attr)
         , ctx_init(ctx_init)
@@ -130,6 +135,7 @@ struct prb_t : public prb_vdims_t {
     dnnl_data_type_t bia_dt;
     int bia_mask;
     std::vector<dims_mask_t> rt_dims_masks;
+    precomputed_reduction_t precomputed_reduction;
     sparse_options_t sparse_options;
 
     bool inplace = false; // Lacks placement, always considered `false`.
@@ -171,6 +177,14 @@ struct prb_t : public prb_vdims_t {
                 && (wei_dt() == dnnl_s8 || wei_dt() == dnnl_u8
                         || wei_dt() == dnnl_s4 || wei_dt() == dnnl_u4)
                 && attr.fpmath_mode.apply_to_int;
+    }
+
+    bool needs_precomputed_reduction(int arg) const {
+        switch (arg) {
+            case DNNL_ARG_SRC: return precomputed_reduction & PR_SRC;
+            case DNNL_ARG_WEIGHTS: return precomputed_reduction & PR_WEI;
+            default: return false;
+        }
     }
 
     dnnl_data_type_t src_dt() const { return dt[0]; }

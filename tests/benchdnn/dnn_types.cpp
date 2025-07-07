@@ -74,6 +74,32 @@ std::ostream &operator<<(std::ostream &s, dnnl_engine_kind_t ek) {
     return s;
 }
 
+precomputed_reduction_t str2pr(const char *str) {
+    precomputed_reduction_t pr = PR_NONE;
+    while (str && *str) {
+        if (*str == 'S') {
+            pr |= PR_SRC;
+        } else if (*str == 'W') {
+            pr |= PR_WEI;
+        } else {
+            BENCHDNN_PRINT(0, "%s \'%c\'\n",
+                    "Error: "
+                    "--use-precomputed-reduction option doesn't support value",
+                    *str);
+            SAFE_V(FAIL);
+        }
+        str++;
+    }
+    return pr;
+}
+
+std::string pr2str(precomputed_reduction_t pr) {
+    std::string str;
+    if (pr & PR_SRC) str += "S";
+    if (pr & PR_WEI) str += "W";
+    return str;
+}
+
 dnnl_prop_kind_t prop2prop_kind(const dir_t dir) {
     if (dir == FWD_I) return dnnl_forward_inference;
     if (dir & FLAG_FWD) return dnnl_forward_training;

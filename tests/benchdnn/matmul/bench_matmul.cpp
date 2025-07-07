@@ -43,6 +43,7 @@ void check_correctness(
     for_(const auto &i_stag : s.stag)
     for_(const auto &i_wtag : s.wtag)
     for_(const auto &i_dtag : s.dtag)
+    for_(const auto &i_precomputed_reduction : s.precomputed_reduction)
     for_(const auto &i_sparse_options : s.sparse_options)
     for_(const auto &i_strides : s.strides)
     for_(const auto &i_rt_dims_masks : s.rt_dims_masks)
@@ -52,7 +53,8 @@ void check_correctness(
     for (const auto &i_bia_cfg : bia_cfg) {
         const prb_t prb(s.prb_vdims, i_dt, i_stag, i_wtag, i_dtag, i_strides,
                 i_bia_cfg.first, i_bia_cfg.second, i_rt_dims_masks,
-                i_sparse_options, i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+                i_precomputed_reduction, i_sparse_options, i_attr, i_ctx_init,
+                i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
@@ -138,6 +140,12 @@ static const std::string help_runtime_dims_masks
           "For tensors with runtime dimensions specified a correspondent "
           "memory format must be specified, too.\n";
 
+static const std::string help_pr
+        = "FLAGS    (Default: not specified)\n    Specifies precomputed "
+          "reduction flags. `FLAGS` values are:\n    * `S` to use precomputed "
+          "reductions on SRC.\n    * `W` to use precomputed reductions on WEI."
+          "\n";
+
 bool parse_legacy_dt(std::vector<dnnl_data_type_t> &dt,
         const std::vector<dnnl_data_type_t> &def_dt, const char *str,
         const std::string &option_name /* = "dt"*/) {
@@ -170,6 +178,9 @@ int bench(int argc, char **argv) {
                 || parse_multivector_option(s.rt_dims_masks, def.rt_dims_masks,
                         atoi, argv[0], "runtime_dims_masks",
                         help_runtime_dims_masks)
+                || parse_vector_option(s.precomputed_reduction,
+                        def.precomputed_reduction, str2pr, argv[0],
+                        "use-precomputed-reduction", help_pr)
                 || parse_driver_shared_settings(s, def, argv[0]);
         if (!parsed_options) {
             catch_unknown_options(argv[0]);

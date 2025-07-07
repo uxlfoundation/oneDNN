@@ -202,7 +202,7 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
         // modifying prb in place.
         prb_t prb_cpu {*prb, prim_ref_dt_i, tag::any, tag::any, tag::any,
                 {vdims_t(STRIDES_SIZE)}, prim_ref_bia_dt_i, prb->bia_mask,
-                {0, 0, 0}, sparse_options_t(), cpu_attr, prb->ctx_init,
+                {0, 0, 0}, PR_NONE, sparse_options_t(), cpu_attr, prb->ctx_init,
                 prb->ctx_exe, prb->impl_filter};
 
         auto st = init_prim_ref_common(prim_ref, &prb_cpu, res);

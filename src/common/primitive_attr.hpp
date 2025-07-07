@@ -184,6 +184,35 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(rnn_create_time_scales_t);
 };
 
+struct precomputed_reduction_t : public c_compatible {
+    precomputed_reduction_t() = default;
+
+    dnnl_status_t set(int arg, bool value) {
+        switch (arg) {
+            case DNNL_ARG_SRC: src_ = value; return status::success;
+            case DNNL_ARG_WEIGHTS: wei_ = value; return status::success;
+            default: return status::invalid_arguments;
+        }
+    }
+    bool get(int arg) const {
+        switch (arg) {
+            case DNNL_ARG_SRC: return src_;
+            case DNNL_ARG_WEIGHTS: return wei_;
+            default: return false;
+        }
+    }
+    bool has_default_values(int arg) const { return !get(arg); }
+    bool has_default_values() const {
+        return has_default_values(DNNL_ARG_SRC)
+                && has_default_values(DNNL_ARG_WEIGHTS);
+    }
+    bool operator==(const precomputed_reduction_t &rhs) const {
+        return (src_ == rhs.src_) && (wei_ == rhs.wei_);
+    }
+    bool src_ = false;
+    bool wei_ = false;
+};
+
 struct dropout_t : public c_compatible {
     dropout_t() = default;
 
@@ -567,6 +596,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         CHECK(rnn_tparams_.copy_from(other.rnn_tparams_));
         if (other.gpu_attr_) gpu_attr_ = other.gpu_attr_->clone();
         dropout_ = other.dropout_;
+        precomputed_reduction_ = other.precomputed_reduction_;
 
         return status::success;
     }
@@ -592,6 +622,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         fpmath_mode = 1u << 15,
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
+        precomputed_reduction = 1u << 18,
     };
 
     /** Returns true if the attributes have default values.
@@ -618,6 +649,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
                             && gpu_attr_->is_equal(*rhs.gpu_attr_))
                         || (!gpu_attr_ && !rhs.gpu_attr_))
                 && dropout_ == rhs.dropout_
+                && precomputed_reduction_ == rhs.precomputed_reduction_
                 && rounding_mode_ == rhs.rounding_mode_;
         return ret;
     }
@@ -693,6 +725,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     dnnl::impl::rnn_create_time_scales_t rnn_weights_projection_qparams_;
     dnnl::impl::rnn_tparams_t rnn_tparams_;
     dnnl::impl::dropout_t dropout_;
+    dnnl::impl::precomputed_reduction_t precomputed_reduction_;
     dnnl::impl::rnd_mode_t rounding_mode_;
 
     std::unique_ptr<dnnl::impl::primitive_attr_item_t> gpu_attr_;

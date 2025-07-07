@@ -174,11 +174,6 @@ status_t sdp_primitive_config_t::initial_check(
     VCHECK_SDP_PRIMITIVE(inputs.size() >= 3, status::invalid_arguments,
             "At least 3 inputs are required");
 
-    // Ukernel doesn't support f32 datatype now
-    VCHECK_SDP_PRIMITIVE(inputs[0].data_type != dnnl_data_type_t::dnnl_f32,
-            status::invalid_arguments,
-            "SDPA ukernel doesn't support f32 datatype now");
-
     // Note: sdpa_primitive_v1 kernel currently don't support legacy GQA pattern.
     if (v1_kernel) {
         for (auto &cur_op : sg->get_ops()) {

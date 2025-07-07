@@ -224,3 +224,6 @@
 
 # fp4
 --batch=test_matmul_fp4
+
+# test batch reshape with attributes
+--batch=harness_matmul_3d_bcast

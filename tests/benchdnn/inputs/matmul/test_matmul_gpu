@@ -60,9 +60,6 @@
 --attr-post-ops=sum+add:f32+add:u8:per_dim_01+mul:f32:per_dim_0+add:s8:per_tensor+add:f32:per_dim_01+linear:2:-1
 3x30x1:3x1x20
 
-# test batch reshape with attributes
---batch=harness_matmul_3d_bcast
-
 # test regressions
 --batch=harness_matmul_regression_f32
 

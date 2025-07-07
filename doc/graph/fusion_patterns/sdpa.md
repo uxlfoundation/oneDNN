@@ -150,6 +150,11 @@ demonstrating how to construct a floating-point MQA pattern with the same
 pattern structure as in the SDPA example but different head number in Key and
 Value tensors. In MQA, the head number of Key and Value is always one.
 
+oneDNN also proides an [SDPA with bottom-right implicit causal mask
+example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/sdpa_bottom_right_causal_mask.cpp)
+demonstrating how to construct a floating-point SDPA pattern with implicit
+library-generated attention masks.
+
 ## References
 
 [1] Attention is all you need, https://arxiv.org/abs/1706.03762v7

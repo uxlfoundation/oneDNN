@@ -190,7 +190,6 @@ status_t jit_gemm_pd_t::init_post_ops() {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 dims, DNNL_ARG_C, c_scales.get_data_type(), converted));
-        gpu_assert(converted) << "Unable to convert dst scales to a post op";
     }
 
     return status::success;

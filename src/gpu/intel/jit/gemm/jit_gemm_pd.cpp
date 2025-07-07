@@ -41,7 +41,8 @@ void quant_dims(
 }
 
 // Obtain dimension count for gemmstone (common scales give count 0).
-int quant_entry_ndims(const quant_entry_t &entry, const memory_desc_t &md) {
+int quant_entry_ndims(
+        const quant_entry_t &entry, const memory_desc_t &md, int k_idx) {
     if (entry.has_default_values()) return -1;
 
     dims_t qdims;
@@ -55,16 +56,14 @@ int quant_entry_ndims(const quant_entry_t &entry, const memory_desc_t &md) {
 
     // Count the number of nontrivial (dim > 1) dimensions present
     int count = 0;
-    bool full_dim = false;
     for (int i = 0; i < md.ndims; ++i) {
-        if (qdims[i] > 1) {
-            count++;
-            full_dim = (qdims[i] == md.dims[i]);
-        }
+        if (qdims[i] > 1) { count++; }
     }
 
-    // gemmstone doesn't support 1D grouped scales, these have to be sent as 2D
-    if (count == 1 && !full_dim) return 2;
+    // for gemmstone, 1D quantization implies a full column vector
+    // (i.e. not on the K dimension). If quantization varies over K,
+    // we have to send these as 2D
+    if (count == 1 && qdims[k_idx] > 1) return 2;
 
     return count;
 }
@@ -246,11 +245,12 @@ void jit_gemm_pd_t::init_attrs() {
     cmask_b_ = b_zps.get_mask();
     cmask_c_ = c_zps.get_mask();
 
-    // Swap descriptors to follow column major format.
-    ao_dims_ = quant_entry_ndims(a_zps, d->b_desc);
-    bo_dims_ = quant_entry_ndims(b_zps, d->a_desc);
-    asc_dims_ = quant_entry_ndims(a_scales, d->b_desc);
-    bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc);
+    // Swap descriptors to follow column major format
+    auto ndims = d->c_desc.ndims;
+    ao_dims_ = quant_entry_ndims(a_zps, d->b_desc, ndims - 2);
+    bo_dims_ = quant_entry_ndims(b_zps, d->a_desc, ndims - 1);
+    asc_dims_ = quant_entry_ndims(a_scales, d->b_desc, ndims - 2);
+    bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc, ndims - 1);
 
     a_scales_group_k_ = a_scales.get_group(0);
     b_scales_group_k_ = b_scales.get_group(1);

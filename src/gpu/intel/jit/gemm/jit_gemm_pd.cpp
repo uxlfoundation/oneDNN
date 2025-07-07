@@ -140,11 +140,11 @@ status_t jit_gemm_pd_t::init_post_ops() {
             = [this](const dims_t &scales_dims, int arg, data_type_t dt,
                       bool &converted) -> status_t {
         auto ndims = desc()->c_desc.ndims;
-        // Scales can be converted to postops if the innermost dimension
-        // (K for A/B and M for C) has dim=1 in the scales md
+        // Scales on A/B can be converted to postops if
+        // the scales md has K=1
         converted = false;
         int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
-        bool convert = (scales_dims[inner_dim] <= 1);
+        bool convert = (scales_dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
         if (convert) {
             memory_desc_t postop_md;
             CHECK(memory_desc_init_by_tag(
@@ -190,6 +190,8 @@ status_t jit_gemm_pd_t::init_post_ops() {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 dims, DNNL_ARG_C, c_scales.get_data_type(), converted));
+        // Conversion of dst scales to post ops is currently supported for all
+        // cases supported in the library.
         gpu_assert(converted) << "Unable to convert dst scales to a post op";
     }
 

@@ -77,7 +77,7 @@ struct ctx_t {
     }
 
     // TODO: Remove IR restriction which requires force_alloc
-    expr_t def(type_t _type, const std::string &name, expr_t value = {},
+    lval_t def(type_t _type, const std::string &name, const expr_t &value = {},
             bool force_alloc = false) {
         auto type = type_t(
                 _type.kind(), _type.elems(), _type.attr() | type_attr_t::mut);
@@ -92,10 +92,10 @@ struct ctx_t {
         } else {
             append(let_t::make(alloc_var, value, {}));
         }
-        return alloc_var;
+        return lval_t(alloc_var.as<var_t>());
     }
 
-    expr_t def(const std::string &name, expr_t value) {
+    lval_t def(const std::string &name, const expr_t &value) {
         return def(value.type(), name, value);
     }
 
@@ -261,18 +261,23 @@ expr_t arg(const std::string &name) {
     return default_ctx().arg(name);
 }
 
-expr_t def(type_t type, const std::string &name, const expr_t &value,
+lval_t def(type_t type, const std::string &name, const expr_t &value,
         bool force_alloc) {
     return default_ctx().def(type, name, value, force_alloc);
 }
 
-expr_t def(const std::string &name, const expr_t &value) {
+lval_t def(const std::string &name, const expr_t &value) {
     return def(value.type(), name, value);
 }
 
 tensor_t def(const v2::layout_t &layout, const std::string &name,
         const expr_t &value) {
     return default_ctx().def(layout, name, value);
+}
+
+lval_t &lval_t::operator=(const expr_t &obj) {
+    assign(this->var, obj);
+    return *this;
 }
 
 expr_t let(type_t type, const std::string &name, const expr_t &value) {

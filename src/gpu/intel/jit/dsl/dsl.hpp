@@ -211,10 +211,50 @@ const expr_t &local_id(int idx);
 const std::array<expr_t, 3> &local_sizes();
 const expr_t &local_size(int idx);
 
+class lval_t {
+
+public:
+    lval_t(const expr_t &v) : var(v) {}
+
+    lval_t &operator=(const expr_t &obj);
+
+    lval_t sub(int off, int elems) const {
+        assert(var.is<var_t>());
+        return lval_t(ref_t::make(var, off, elems));
+    }
+    lval_t operator[](int off) const { return sub(off, 1); }
+    operator expr_t() const { return var; }
+
+#define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
+    lval_t &operator op##=(const expr_t &rhs) { \
+        (*this) = (*this)op rhs; \
+        return *this; \
+    }
+
+    DEFINE_BINARY_ASSIGN_OPERATOR(+)
+    DEFINE_BINARY_ASSIGN_OPERATOR(-)
+    DEFINE_BINARY_ASSIGN_OPERATOR(*)
+    DEFINE_BINARY_ASSIGN_OPERATOR(/)
+    DEFINE_BINARY_ASSIGN_OPERATOR(%)
+    DEFINE_BINARY_ASSIGN_OPERATOR(&)
+
+#undef DEFINE_BINARY_ASSIGN_OPERATOR
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "lval->var: " << var.str();
+        return oss.str();
+    }
+
+    IR_DEFINE_DUMP()
+    expr_t var;
+};
+
 expr_t arg(const std::string &name);
-expr_t def(type_t type, const std::string &name, const expr_t &value = {},
+lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
+
 tensor_t def(const v2::layout_t &layout, const std::string &name,
         const expr_t &value = {});
 expr_t let(type_t type, const std::string &name, const expr_t &value);

@@ -722,6 +722,10 @@ public:
 #ifdef DNNL_SYCL_HIP
         GTEST_SKIP() << "SDPA primitive tests do not support HIP";
 #endif
+#ifdef DNNL_SYCL_GENERIC
+        GTEST_SKIP() << "no supported generic implementations for SDPA "
+                        "primitive tests";
+#endif
 #ifndef DNNL_TEST_WITH_ENGINE_PARAM
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "SDPA tests require gpus.");
@@ -735,6 +739,10 @@ public:
 #endif
 #ifdef DNNL_SYCL_HIP
         GTEST_SKIP() << "SDPA primitive tests do not support HIP";
+#endif
+#ifdef DNNL_SYCL_GENERIC
+        GTEST_SKIP() << "no supported generic implementations for SDPA "
+                        "primitive tests";
 #endif
 #ifdef DNNL_TEST_WITH_ENGINE_PARAM
         SKIP_IF(get_test_engine_kind() != dnnl::engine::kind::gpu,

@@ -18,8 +18,10 @@
 
 #include "gpu/gpu_impl_list.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ocl/micro_sdpa.hpp"
 #include "gpu/intel/ocl/ref_sdpa.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {

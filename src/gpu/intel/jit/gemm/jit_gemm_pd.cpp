@@ -349,14 +349,7 @@ bool jit_gemm_pd_t::scales_ok() {
         if (wei_scales->get_group(1) != 1) return false;
     }
 
-    if (src_scales_2d()) {
-        int cmask_b_sc_ = attr()->scales_.get_mask(DNNL_ARG_B);
-        if (!dy_quant_enabled_
-                || (!utils::one_of(eff_a_type(), s4, u4)
-                        && ((cmask_b_sc_ != full_tensor_mask())
-                                || bsc_dims_ > 2)))
-            return false;
-    } else {
+    if (!src_scales_2d()) {
         if (!src_scales->has_default_values() && src_scales->get_mask() != 0
                 && wei_scales_group_k_ > desc()->k())
             return false;

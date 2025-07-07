@@ -439,6 +439,7 @@ void flex_rewrite_t::infer_output_shape(
             case dnnl::graph::op::kind::Round:
             case dnnl::graph::op::kind::Sigmoid:
             case dnnl::graph::op::kind::SigmoidBackward:
+            case dnnl::graph::op::kind::SoftMax:
             case dnnl::graph::op::kind::SoftMaxBackward:
             case dnnl::graph::op::kind::SoftPlus:
             case dnnl::graph::op::kind::SoftPlusBackward:
@@ -904,26 +905,6 @@ void flex_rewrite_t::infer_output_shape(
                                 % gi[in0].size()]);
                     }
                 }
-                break;
-            // infer_softmax_output_shape
-            case dnnl::graph::op::kind::SoftMax:
-                in0 = aop.in_lts_[0].id_;
-                out0 = aop.out_lts_[0].id_;
-                gi[out0] = gi[in0];
-                if (aop.out_lts_.size() > 1) {
-                    // infer softmax stats shape
-                    size_t out1 = aop.out_lts_[1].id_;
-                    // the axis attribute is optional, default is 1
-                    int64_t axis = 1;
-                    if (aop.attrs_.find("axis") != aop.attrs_.end()) {
-                        axis = aop.attrs_["axis"].s64_value_;
-                    }
-                    axis = axis >= 0 ? axis : gi[out0].size() + axis;
-                    logical_tensor::dims out1_dims = gi[out0];
-                    out1_dims[axis] = 1;
-                    gi[out1] = out1_dims;
-                }
-
                 break;
             // infer_unsupported_output_shape
             case dnnl::graph::op::kind::Wildcard:

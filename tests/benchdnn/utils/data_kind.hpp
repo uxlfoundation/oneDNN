@@ -44,8 +44,6 @@ enum data_kind_t {
     DROPOUT_MASK,
 
     DAT_TOTAL,
-    // softmax stats
-    DST_1,
 };
 const char *data_kind2str(data_kind_t kind);
 

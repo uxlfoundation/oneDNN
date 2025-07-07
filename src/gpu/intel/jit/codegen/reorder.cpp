@@ -24,17 +24,20 @@ namespace jit {
 
 copy_operand_t::copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
     if (!rbd.is_empty()) {
-        const auto base = rbd.base();
         const auto &rd = rbd.reg_buf();
-        block_size = rd.block_regs();
-        if (rd.blocks() <= 1) return;
-        block_bases.reserve(rd.blocks());
-        for (int i = 0, j = 0; i < rd.blocks(); ++i, j += block_size) {
+        if (!rd.with_permute() && rd.blocks() <= 1) return;
+        const auto base = rbd.base();
+        block_size = rd.with_permute() ? 1 : rd.block_regs();
+        const auto blocks = rd.regs() / block_size;
+        block_bases.reserve(blocks);
+        // TODO: join contiguous registers into blocks
+        for (int i = 0, j = 0; i < blocks; ++i, j += block_size) {
             auto block_base = rd.base(j);
             block_bases.push_back(block_base);
             if (block_base <= base && base < block_base + block_size)
                 block_off = i;
         }
+        advance(rbd.hw(), 0, 1);
     }
 }
 
@@ -44,7 +47,7 @@ copy_operand_t &copy_operand_t::advance(
     const auto type_bit_size = ngen::getBits(type);
     const auto bit_off = (offset + elems * stride) * type_bit_size;
     const auto grf_shift = bit_off / grf_bits;
-    if (temp || block_bases.empty() || !block_size)
+    if (temp || block_bases.empty())
         grf += grf_shift;
     else {
         const auto orig_block_base = block_bases[block_off];

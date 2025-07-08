@@ -198,8 +198,9 @@ jobs:
 
       - name: Run user-provided benchdnn command on both builds
         if: ${{ inputs.benchdnn_command != '' }}
+        shell: bash
         run: |
-          .github/automation/performance/run_benchdnn_compare.sh \
+          bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
             "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn"  \
             "${{ inputs.benchdnn_command }}"                                    \

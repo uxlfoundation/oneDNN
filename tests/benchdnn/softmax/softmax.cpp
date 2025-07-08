@@ -31,6 +31,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
 
+#include "eltwise/eltwise.hpp"
 #include "softmax/softmax.hpp"
 
 // Here only for internal `softmax_accurate_inf_as_zero` alg_kind. Must be
@@ -41,6 +42,11 @@ namespace softmax {
 
 dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     const prb_t *prb = init_pd_args.prb;
+    if (prb->has_stats) {
+        // softmax primitive doesn't support stats output
+        return dnnl_unimplemented;
+    }
+
     res_t *res = init_pd_args.res;
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
@@ -230,6 +236,16 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         res->reason = skip_reason::case_not_supported;
         return;
     }
+    // Softmax with stats is not supported in the primitive implementation
+    // so skip it. It is supported in the graph driver, we will handle it
+    // separately.
+    // TODO: Change it to a dedicated status so that graph driver knows
+    // where the skipped case is coming from.
+    if (prb->has_stats) {
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return;
+    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
@@ -266,6 +282,13 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float trh = is_flt_or_dbl || is_relaxed_xf16 ? trh_f32 : 0.f;
 #endif
     cmp.set_threshold(trh);
+    if (driver_name == "graph" && kind == DST_1) {
+        // softmax stats is computed with eltwise-log, which has a different
+        // and larger threshold than softmax. So we need to adjust the threshold
+        // for this case.
+        cmp.set_threshold(::eltwise::get_eltwise_threshold(
+                dnnl_f32, ::eltwise::alg_t::LOG));
+    }
 
     const int64_t axis_size = prb->dims[prb->axis];
     const int64_t n_zeros = (prb->ddt == dnnl_s8 || prb->ddt == dnnl_u8)
@@ -302,12 +325,18 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_SRC,
             DNNL_ARG_DST,
     };
+    static const std::vector<int> exec_fwd_args_graph = {
+            DNNL_ARG_SRC, DNNL_ARG_DST,
+            DNNL_ARG_DST_1, // For Graph to compute softmax stats
+    };
     static const std::vector<int> exec_bwd_args = {
             DNNL_ARG_DST,
             DNNL_ARG_DIFF_SRC,
             DNNL_ARG_DIFF_DST,
     };
-    return (dir & FLAG_FWD) ? exec_fwd_args : exec_bwd_args;
+    return (dir & FLAG_FWD)
+            ? (driver_name == "graph" ? exec_fwd_args_graph : exec_fwd_args)
+            : exec_bwd_args;
 };
 
 void binary_po_fill_cfg(std::unordered_map<int, fill_cfg_t> &fill_cfg_map,

@@ -2169,7 +2169,7 @@ void CopyPlan::legalizeRegions()
             } else if (i.dst.offset != 0 || i.dst.stride != 1)
                 repositionDst(i, 1, 0);
             continue;
-	    }
+        }
 
         if (dt == DataType::bf || s0t == DataType::bf || s1t == DataType::bf) {
             // bf/f mixed mode: src/dst may be packed unit stride
@@ -2255,7 +2255,7 @@ void CopyPlan::legalizeRegions()
                     splitQWMov = true;
                 else
                     canSwizzle = false;
-	    }
+            }
             if (isFP(dt))
                 canSwizzle = false;
         }

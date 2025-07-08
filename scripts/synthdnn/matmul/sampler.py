@@ -89,7 +89,7 @@ class Dequantization:
             for p in Dequantization.supported_scale_policy(is_wei):
                 if p == "common":
                     out.append(f"{p}:0.25:{t}")
-                if is_wei and (p == "per_ocic" or p == "per_tensor") :
+                elif is_wei and (p == "per_ocic" or p == "per_tensor") :
                     out.append(f"{p}:{t}:{k_group}x1")
                 elif p == "per_ocic" or p == "per_tensor" :
                     out.append(f"{p}:{t}:1x{k_group}")

@@ -60,6 +60,8 @@
 //   DT_S8    char      char    int             convert_char_sat_rte(v)             convert_float
 //   DT_U8    uchar     uchar   int             convert_uchar_sat_rte(v)            convert_float
 //   DT_S32   int       int     int             convert_int_sat_rte                 convert_float
+//   DT_S16   short     short   int             convert_short_sat_rte               convert_float
+//   DT_U16   ushort    ushort  int             convert_ushort_sat_rte              convert_float
 //
 // Similar mechanisms for source and destination data types are controlled by
 // SRC_DT_ and DST_DT_ prefixed macros. Critically, these mechanisms define
@@ -788,6 +790,120 @@
 #define AS_BLOCK_DATA2_T as_uint2
 #define AS_BLOCK_DATA4_T as_uint4
 #define AS_BLOCK_DATA8_T as_uint8
+
+#define FLT_ACC_DATA_T float
+#define TO_FLT_ACC_DATA_T convert_float
+
+#elif DT_S16 == 1
+#define DATA_T short
+#define DATA2_T short2
+#define DATA4_T short4
+#define DATA8_T short8
+#define DATA16_T short16
+#define DATA_MAX SHORT_MAX
+#define DATA_MIN SHORT_MIN
+#define DATA_ZERO (short)0
+#define DATA_ONE (short)1
+#define DATA_TO_REF convert_float
+#define TO_DATA_T(v) convert_short_sat_rte
+#define TO_DATA8_T(v) convert_short8_sat_rte
+#define CONVERT_DATA_T convert_short_sat_rte
+#define CONVERT_DATA2_T convert_short2_sat_rte
+#define CONVERT_DATA4_T convert_short4_sat_rte
+#define CONVERT_DATA8_T convert_short8_sat_rte
+#define CONVERT_FLOAT_T convert_float
+#define CONVERT_FLOAT2_T convert_float2
+#define CONVERT_FLOAT4_T convert_float4
+#define CONVERT_FLOAT8_T convert_float8
+#define DEF_ACC_DATA_T int
+#define DEF_ACC_DATA2_T int2
+#define DEF_ACC_DATA4_T int4
+#define DEF_ACC_DATA8_T int8
+#define TO_DEF_ACC_DATA_T convert_short_sat_rte
+#define TO_DEF_ACC_DATA2_T convert_short2_sat_rte
+#define TO_DEF_ACC_DATA4_T convert_short4_sat_rte
+#define TO_DEF_ACC_DATA8_T convert_short8_sat_rte
+#define POST_OP_DATA_T float
+
+#define BLOCK_READ intel_sub_group_block_read_us
+#define BLOCK_WRITE intel_sub_group_block_write_us
+#define BLOCK_READ2 intel_sub_group_block_read_us2
+#define BLOCK_READ4 intel_sub_group_block_read_us4
+#define BLOCK_READ8 intel_sub_group_block_read_us8
+#define BLOCK_WRITE2 intel_sub_group_block_write_us2
+#define BLOCK_WRITE4 intel_sub_group_block_write_us4
+#define BLOCK_WRITE8 intel_sub_group_block_write_us8
+
+#define AS_DATA_T as_short
+#define AS_DATA2_T as_short2
+#define AS_DATA4_T as_short4
+#define AS_DATA8_T as_short8
+
+#define BLOCK_DATA_T ushort
+#define BLOCK_DATA2_T ushort2
+#define BLOCK_DATA4_T ushort4
+#define BLOCK_DATA8_T ushort8
+#define AS_BLOCK_DATA_T as_ushort
+#define AS_BLOCK_DATA2_T as_ushort2
+#define AS_BLOCK_DATA4_T as_ushort4
+#define AS_BLOCK_DATA8_T as_ushort8
+
+#define FLT_ACC_DATA_T float
+#define TO_FLT_ACC_DATA_T convert_float
+
+#elif DT_U16 == 1
+#define DATA_T ushort
+#define DATA2_T ushort2
+#define DATA4_T ushort4
+#define DATA8_T ushort8
+#define DATA16_T ushort16
+#define DATA_MAX USHORT_MAX
+#define DATA_MIN USHORT_MIN
+#define DATA_ZERO (ushort)0
+#define DATA_ONE (ushort)1
+#define DATA_TO_REF convert_float
+#define TO_DATA_T(v) convert_ushort_sat_rte
+#define TO_DATA8_T(v) convert_ushort8_sat_rte
+#define CONVERT_DATA_T convert_ushort_sat_rte
+#define CONVERT_DATA2_T convert_ushort2_sat_rte
+#define CONVERT_DATA4_T convert_ushort4_sat_rte
+#define CONVERT_DATA8_T convert_ushort8_sat_rte
+#define CONVERT_FLOAT_T convert_float
+#define CONVERT_FLOAT2_T convert_float2
+#define CONVERT_FLOAT4_T convert_float4
+#define CONVERT_FLOAT8_T convert_float8
+#define DEF_ACC_DATA_T int
+#define DEF_ACC_DATA2_T int2
+#define DEF_ACC_DATA4_T int4
+#define DEF_ACC_DATA8_T int8
+#define TO_DEF_ACC_DATA_T convert_ushort_sat_rte
+#define TO_DEF_ACC_DATA2_T convert_ushort2_sat_rte
+#define TO_DEF_ACC_DATA4_T convert_ushort4_sat_rte
+#define TO_DEF_ACC_DATA8_T convert_ushort8_sat_rte
+#define POST_OP_DATA_T float
+
+#define BLOCK_READ intel_sub_group_block_read_us
+#define BLOCK_WRITE intel_sub_group_block_write_us
+#define BLOCK_READ2 intel_sub_group_block_read_us2
+#define BLOCK_READ4 intel_sub_group_block_read_us4
+#define BLOCK_READ8 intel_sub_group_block_read_us8
+#define BLOCK_WRITE2 intel_sub_group_block_write_us2
+#define BLOCK_WRITE4 intel_sub_group_block_write_us4
+#define BLOCK_WRITE8 intel_sub_group_block_write_us8
+
+#define AS_DATA_T as_ushort
+#define AS_DATA2_T as_ushort2
+#define AS_DATA4_T as_ushort4
+#define AS_DATA8_T as_ushort8
+
+#define BLOCK_DATA_T ushort
+#define BLOCK_DATA2_T ushort2
+#define BLOCK_DATA4_T ushort4
+#define BLOCK_DATA8_T ushort8
+#define AS_BLOCK_DATA_T as_ushort
+#define AS_BLOCK_DATA2_T as_ushort2
+#define AS_BLOCK_DATA4_T as_ushort4
+#define AS_BLOCK_DATA8_T as_ushort8
 
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T convert_float

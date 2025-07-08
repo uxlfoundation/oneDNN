@@ -34,6 +34,8 @@
 def_identity_into(float);
 def_identity_into(char);
 def_identity_into(uchar);
+def_identity_into(short);
+def_identity_into(ushort);
 def_identity_into(int);
 def_identity_into(bf16);
 IF_DOUBLE_SUPPORTED(def_identity_into(double));
@@ -73,6 +75,8 @@ def_std_into_sat(uchar, int);
 IF_DOUBLE_SUPPORTED(def_std_into_sat(uchar, double));
 IF_HALF_SUPPORTED(def_std_into_sat(uchar, half));
 
+def_std_into_sat(short, float);
+def_std_into_sat(ushort, float);
 def_std_into_sat(int, float);
 
 IF_HALF_SUPPORTED(def_std_into(half, char));

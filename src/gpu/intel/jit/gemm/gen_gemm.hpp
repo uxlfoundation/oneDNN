@@ -256,7 +256,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            bool int_acc = utils::one_of(eff_a_type(), s8, u8);
+            bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
+                    && !wei_decomp_;
             int_acc &= (!a_scales_2d() && !b_scales_2d());
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
@@ -301,10 +302,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (attr()->acc_mode_ == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp_) {
-                acc_type = data_type::f32;
-                set_mode(mode, kernel_desc_t::mode_w_decomp);
-            }
+            if (wei_decomp_) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t

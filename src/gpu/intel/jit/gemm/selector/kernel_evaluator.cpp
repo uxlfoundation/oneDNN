@@ -61,7 +61,7 @@ double evaluateW(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
     static constexpr double maxPriority = 10000.;
     double priority = e.model.params[kcatalog::ParamWPriority];
 
-    if (dp.deterministic && e.driverInfo.kParallel())
+    if ((dp.deterministic || dp.noCAtomics) && e.driverInfo.kParallel())
         return std::numeric_limits<double>::infinity();
 
     aux.wgK = 1;
@@ -166,7 +166,7 @@ double evaluateS(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
         int wgCountK1 = std::max(1, int(dp.hwThreadCapacity / dp.threadCount));
         int wgCountK2 = std::max(1, int(2 * dp.hwThreadCapacity / dp.threadCount));
 
-        if (dp.deterministic) wgCountK1 = wgCountK2 = 1;
+        if (dp.deterministic || dp.noCAtomics) wgCountK1 = wgCountK2 = 1;
 
         auto k0_1 = int(alignUp(divUp(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
         auto k0_2 = int(alignUp(divUp(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
@@ -340,7 +340,7 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
         int wgCountK1 = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
         int wgCountK2 = std::max(1, int(2 * dp.hwThreadCapacity / dp.threadCount) - padWGs);
 
-        if (dp.deterministic) wgCountK1 = wgCountK2 = 1;    /* k-parallelization is not deterministic */
+        if (dp.deterministic || dp.noCAtomics) wgCountK1 = wgCountK2 = 1;    /* k-parallelization is not deterministic */
 
         auto k0_1 = int(alignUp(divUp(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
         auto k0_2 = int(alignUp(divUp(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
@@ -405,6 +405,8 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
         auto tcount = int64_t(dp.threadCount);
         bool tryKV = (tcount != dp.threadCount) || (tcount % dp.hwThreadCapacity != 0);
 
+        if (dp.noCAtomics)
+            tryKV &= dp.cConvert;   /* atomics will be on temporary C */
         if (dp.deterministic)
             tryKV &= (dp.threadCount > dp.hwThreadCapacity);
 

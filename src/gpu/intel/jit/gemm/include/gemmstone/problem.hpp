@@ -320,6 +320,15 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
         if (Ta == Type::bf16) Ta = Type::f32;
         if (Tb == Type::bf16) Tb = Type::f32;
     }
+
+    if (Ta.isInt16() || Tb.isInt16()) {
+        if (!(Ta.isInt16() && Tb.isInt16() && !systolicAvailable)) {
+            if (Ta == Type::s16) Ta = Type::s8x2;
+            if (Ta == Type::u16) Ta = Type::u8x2;
+            if (Tb == Type::s16) Tb = Type::s8x2;
+            if (Tb == Type::u16) Tb = Type::u8x2;
+        }
+    }
 }
 
 GEMMSTONE_NAMESPACE_END

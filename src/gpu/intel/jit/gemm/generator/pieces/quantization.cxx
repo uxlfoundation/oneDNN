@@ -314,7 +314,9 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         int nx = colMajor ? block.nr : block.nc;
         int ny = colMajor ? block.nc : block.nr;
 
-        for (int y0 = 0; y0 < ny; y0 += (mnGrouped ? 1 : crosspack)) {
+        bool broadcastQ = (colMajor ^ doA ^ mnGrouped);
+
+        for (int y0 = 0; y0 < ny; y0 += (broadcastQ ? 1 : crosspack)) {
         for (int x0 = 0; x0 < nx; ) {
             auto ii0 = colMajor ? x0 : y0;
             auto jj0 = colMajor ? y0 : x0;
@@ -322,7 +324,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             auto jo0 = jj0 + block.offsetC;
             auto &ho0 = doA ? jo0 : io0;
             auto &lo0 = doA ? io0 : jo0;
-            auto l0 = lo0;
+            auto h0 = ho0, l0 = lo0;
             ho0 += hq;
             ho0 /= xqGroupK;
             if (mnGrouped) lo0 /= xqGroupMN;
@@ -337,16 +339,14 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             int strided = 1;
             if (broadcast)
                 strideq = 0;
-            else if (mnGrouped) {
+            else if (broadcastQ) {
                 strided = crosspack;
                 strideq = 0;
-                ne = std::min(ne, xqGroupMN - (l0 % xqGroupMN));
-            } else if (colMajor == doA) {
+                ne = std::min(ne, mnGrouped ? xqGroupMN - (l0 % xqGroupMN)
+                                            : xqGroupK  - (h0 % xqGroupK));
+            } else {
                 ne = std::min(ne, neq);
                 if (qblock->crosspack * Tq < crosspack * T) stub();
-            } else {
-                ne = std::min(ne, xqGroupK);
-                strideq = 0;
             }
 
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;

@@ -203,6 +203,8 @@ protected:
     void gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
 
+    void combineCMulticomponent(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+
     void setupCAddr0(ngen::GRFRange (&C_addr0)[2], ngen::GRFRange (&C_addr0Unmasked)[2], const RegisterLayout &C_layout, const RegisterLayout &C_layoutUnmasked, int C_count, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, const Address2DParams *params = nullptr);
 
     // common.cxx
@@ -457,6 +459,7 @@ protected:
     void outerProduct(int h, int ha, int hb, int opCount, bool rem, const RegisterLayout &A_layout, const RegisterLayout &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void setupTeardownAccumulateSumSystolic(bool setup, Type Tother, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProductRepackC(int x0, int xr0, int nx, int h, bool rem, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void outerProductFoldC(int x0, int xr0, int nx, int compC, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void applyLateABOffset(bool isA, int h, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int x0 = 0, int xr0 = 0, int nx = -1);
 
     // monolithic_k_loop_dpasw.cxx

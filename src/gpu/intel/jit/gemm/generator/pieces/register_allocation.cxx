@@ -173,6 +173,8 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
     int C_regCount = state.C_buffers * C_regCountPerBuffer;
     GRFMultirange C_regs;
 
+    bool tempC = !state.Ct_layout.empty();
+
     bool globalCM = C_layout.colMajor();
 
     auto hintA0 =  globalCM ? HintType::A0 : HintType::A0Broadcast;
@@ -489,6 +491,12 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
         C_regCountPerBuffer = state.C_layout.regs();
         C_regCount = state.C_buffers * C_regCountPerBuffer;
         C_regs = chunkAlloc(C_regCount, C_chunk, Bundle(), BundleGroup::AllBundles(), state);
+    }
+
+    if (tempC) {
+        state.Ct_regs.resize(componentMultiplyDepth(Ta, Tb) - state.C_buffers);
+        for (auto &r: state.Ct_regs)
+            r = chunkAlloc(state.Ct_layout.regs(), C_chunk, Bundle(), BundleGroup::AllBundles(), state);
     }
 
     // Assign C_regs, adding in GRFs (in place of accumulators) to use later.

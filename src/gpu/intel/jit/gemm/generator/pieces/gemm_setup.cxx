@@ -1610,6 +1610,19 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         state.Cr_layout = RegisterLayout(hw, Tc_compute, Cr_unrollM * mx, Cr_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
     }
 
+    // Prepare for temporary C memory.
+    if (state.C_buffers < componentMultiplyDepth(Ta, Tb) && (Ta.isInteger() || Tb.isInteger())) {
+        int Ct_unrollM = unrollM, Ct_unrollN = unrollN;
+        auto &Ct_unrollX = globalCM ? Ct_unrollM : Ct_unrollN;
+
+        int panel = strategy.cRepackPanel;
+        if (panel == 0)
+            panel = 2 * elementsPerGRF(hw, Tc);
+        Ct_unrollX = std::min(Ct_unrollX, panel);
+
+        state.Ct_layout = RegisterLayout(hw, Tc, Ct_unrollM * mx, Ct_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
+    }
+
     // Prepare layouts for row/column sum calculation.
     if (problem.needsASums()) {
         state.systolicSumA = strategy.systolic && globalCM;
@@ -2108,6 +2121,8 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     safeReleaseRanges(state.Br_offsetRegs, state);
     safeReleaseRanges(state.Br_scaleRegs, state);
     safeReleaseRanges(state.Bgr_regs, state);
+    safeReleaseRanges(state.Cr_regs, state);
+    safeReleaseRanges(state.Ct_regs, state);
     safeReleaseRanges(state.tempMul_regs, state);
     clearTokenAllocations(hw, state);
     releaseCoopRemainders(state);

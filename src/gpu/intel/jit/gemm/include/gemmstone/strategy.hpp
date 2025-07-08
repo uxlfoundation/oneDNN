@@ -333,6 +333,8 @@ struct GEMMStrategy : public GEMMStrategyPOD
 
     void trimKChain(ngen::HW hw, int k, const GEMMProblem &problem);
 
+    void disableAtomics()                                   { C.atomic = CO.atomic = autoatomic = false; }
+
     int wgTile(LoopType l)                            const { return unroll[l] * wg[l]; }
 
     bool lateExit()                                   const { return (slmBuffers > 0) || barrierFreq || kParallelLocal || fuseBeta || fusePostOps || cooperativePF; }

@@ -167,9 +167,13 @@ cold_cache_t::cold_cache_t(
         auto orig_cc_mem_md = query_md(orig_mem);
 
         for (size_t i = 0; i < n_buffers_; i++) {
-            // Data will be filled/reordered, no need to prefill it.
-            cc_entry[i] = dnn_mem_t(
-                    orig_cc_mem_md, get_test_engine(), /* prefill = */ false);
+            // If there are multiple buffers, don't rely on reorders because it
+            // takes a long time. Rely on a default initialization in this case.
+            //
+            // Note: despite `gpu_n_buffers_top_limit_` is taken as a limit, it
+            // applies for CPU as well to avoid numerous reorders.
+            const bool prefill = n_mem_pool_buffers > gpu_n_buffers_top_limit_;
+            cc_entry[i] = dnn_mem_t(orig_cc_mem_md, get_test_engine(), prefill);
 
             // Sparse memories require this call to replicate the exact original
             // data distribution because the data structure affects performance
@@ -190,7 +194,7 @@ cold_cache_t::cold_cache_t(
 
             // Reorders are expensive. If there are multiple buffers to
             // fill, simply rely on default memory initialization.
-            if (n_mem_pool_buffers > 100) continue;
+            if (prefill) continue;
 
             if (cc_entry[i].is_mapped()) cc_entry[i].unmap();
             const auto &dst_memory = cc_entry[i].m_;

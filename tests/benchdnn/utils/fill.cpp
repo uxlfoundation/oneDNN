@@ -90,11 +90,38 @@ const fill_cfg_t &get_default_fill_cfg() {
 
 const fill_cfg_t &get_perf_fill_cfg(dnnl_data_type_t dt) {
     assert(has_bench_mode_bit(mode_bit_t::perf));
-    static const fill_cfg_t fill_cfg(dt, MAX2(-1024.f, lowest_dt(dt)),
-            MIN2(1024.f, max_dt(dt)),
-            /* only_int = */ false, attr_t::post_ops_t::kind_t::ADD,
-            "perf_mode_fill");
-    return fill_cfg;
+
+#define CASE(dt, low_end, high_end) \
+    case dt: { \
+        static const fill_cfg_t fill_cfg(dt, MAX2((low_end), lowest_dt(dt)), \
+                MIN2((high_end), max_dt(dt)), /* only_int = */ false, \
+                attr_t::post_ops_t::kind_t::ADD, "perf_mode_fill"); \
+        return fill_cfg; \
+    }
+
+    switch (dt) {
+        CASE(dnnl_f4_e2m1, -2.f, 2.f);
+        CASE(dnnl_f4_e3m0, -2.f, 2.f);
+        CASE(dnnl_e8m0, -2.f, 2.f);
+        CASE(dnnl_f8_e5m2, -2.f, 2.f);
+        CASE(dnnl_f8_e4m3, -2.f, 2.f);
+        CASE(dnnl_bf16, -32.f, 32.f);
+        CASE(dnnl_f16, -8.f, 8.f);
+        CASE(dnnl_f32, -1024.f, 1024.f);
+        CASE(dnnl_f64, -1024.f, 1024.f);
+        CASE(dnnl_s32, -1024.f, 1024.f);
+        CASE(dnnl_s8, -32, 32);
+        CASE(dnnl_u8, 0, 64);
+        CASE(dnnl_s4, -8, 7);
+        CASE(dnnl_u4, 0, 15);
+        default: {
+            assert(!"bad data_type");
+            SAFE_V(FAIL);
+            static const fill_cfg_t dummy;
+            return dummy;
+        }
+    }
+#undef CASE
 }
 
 int fill_scales(

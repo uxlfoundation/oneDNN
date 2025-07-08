@@ -109,9 +109,8 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
             (r2_med_ctime - r1_med_ctime) / r1_med_ctime >= 0.1
             or (min(ctime2) - min(ctime1)) / min(ctime1) >= 0.1
         )
-
+        
         if check:
-
             if exec_regressed:
                 exec_failures.append(
                     f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "

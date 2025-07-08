@@ -473,11 +473,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     const bool dt_requires_saturation
             = one_of(brg.dt_d, data_type::u8, data_type::s8, data_type::s32);
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
     if (dt_requires_saturation) {
         auto vmm_lbound = vmm_tmp(0);
         auto vmm_ubound = vmm_tmp(1);
-        init_saturate_f32(
-                vmm_lbound, vmm_ubound, reg_tmp, data_type::f32, brg.dt_d);
+        init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp, data_type::f32,
+                brg.dt_d, false, use_sat_cvt);
     }
 
     if (brg.is_bf16_emu) bf16_emu_->init_vcvtneps2bf16();
@@ -490,7 +492,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             for (int v_i = 0; v_i < v_substep; ++v_i) {
                 if (get_substep_simd(n, v_i, has_n_tail) <= 0) continue;
                 auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
-                saturate_cvt_f32(vmm, vmm_lbound, vmm_ubound, brg.dt_d);
+                saturate_cvt_f32(vmm, vmm_lbound, vmm_ubound, brg.dt_d, false,
+                        use_sat_cvt);
             }
         }
 
@@ -507,7 +510,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             const Vmm r_vmm = maybe_mask(vmm, mask_flag, true);
             const Vmm_low_t r_vmm_low = maybe_mask(vmm_low, mask_flag, true);
             const Xmm r_xmm = maybe_mask(xmm, mask_flag, true);
-            if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+            if (use_sat_cvt) {
                 assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
                 auto vmm_perm = Vmm(vmm_ubound.getIdx());
                 vpermb(vmm, vmm_perm, vmm);
@@ -561,11 +564,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
 
     const bool dt_requires_saturation
             = brg.is_int8 && brg.dt_c != data_type::s32;
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
     if (dt_requires_saturation) {
         auto vmm_lbound = vmm_tmp(0);
         auto vmm_ubound = vmm_tmp(1);
-        init_saturate_f32(
-                vmm_lbound, vmm_ubound, reg_tmp, data_type::f32, brg.dt_d);
+        init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp, data_type::f32,
+                brg.dt_d, false, use_sat_cvt);
     }
 
     for_(int m = 0; m < m_blocks; m++)
@@ -578,7 +583,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
         if (dt_requires_saturation) {
             auto vmm_lbound = vmm_tmp(0);
             auto vmm_ubound = vmm_tmp(1);
-            saturate_cvt_f32(vmm_acc, vmm_lbound, vmm_ubound, brg.dt_d);
+            saturate_cvt_f32(vmm_acc, vmm_lbound, vmm_ubound, brg.dt_d, false,
+                    use_sat_cvt);
         }
         const auto offset = C_offset(m, n, v_i);
         if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {

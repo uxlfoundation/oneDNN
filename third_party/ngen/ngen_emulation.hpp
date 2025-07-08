@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -54,7 +54,8 @@ struct EmulationStrategy {
                 emulate64_mul = emulate64_logic = true;
         }
 #if XE3P
-        if (hw_ >= HW::Xe3p) emulateDWxDW = emulate64_mul = false;
+        if (hw_ >= HW::Xe3p)
+            emulateDWxDW = emulate64_mul = false;
 #endif
         emulate64_mul |= emulate64;
     }
@@ -280,12 +281,6 @@ struct EmulationImplementation {
             dst.setType(DataType::ud);
             src0.setType(DataType::uw);
             g.shl(mod, dst, src0, 16, loc);
-        } else if (src0.getType() == DataType::bf8
-                && dst.getType() == DataType::f) {
-            RegData hfTmp = src0;
-            hfTmp.setType(DataType::uw);
-            g.shl(mod, hfTmp, src0.setType(DataType::ub), 8, loc);
-            g.mov(mod, dst, hfTmp.setType(DataType::hf), loc);
         } else
             g.mov(mod, dst, src0, loc);
     }
@@ -562,7 +557,7 @@ struct EmulationImplementation {
         bool s1W = isW(src1);
         bool s1D = isDW(src1);
         bool s1Q = isQW(src1);
-        const bool s1Immed = std::is_base_of<Immediate, S1>::value;
+        bool s1Immed = std::is_base_of<Immediate, S1>::value;
 
         bool s0Signed = isSigned(src0.getType());
         bool s1Signed = isSigned(src1.getType());
@@ -625,7 +620,7 @@ struct EmulationImplementation {
             auto acc = g.acc0.d();
             g.mov(mod, acc, src1, loc);
             g.mul(mod, dst, acc, src0, loc);
-        } else if (dstQ && s0D && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
+        } else if (dstQ && s0D && (((s1W && !s1Immed) && emulateDWxDW) || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
@@ -638,6 +633,7 @@ struct EmulationImplementation {
                 g.mach(mod, dstLo, src0, int32_t(0), loc);
             g.mov(mod, dstHi, dstLo, loc);
             g.mov(mod, dstLo, acc, loc);
+
 #if XE3P
         } else if (dstQ && s0D && ((s1W && !s1Immed) && !emulateDWxDW)) {
             RegData dstLo, dstHi;
@@ -670,6 +666,10 @@ struct EmulationImplementation {
                 regionVSAdvance(g.getHardware(), src0, ne1);
                 regionVSAdvance(g.getHardware(), src1, ne1);
             }
+#if XE4
+        } else if (dstQ && s0D && s1D && g.getHardware() >= HW::Xe4) {
+            g.mullh(mod, dst, src0, src1, loc);
+#endif
         } else
             g.mul(mod, dst, src0, src1, loc);
     }
@@ -683,6 +683,21 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emul(Generator &g, const InstructionModifier &mod, const RegData &dst, const RegData &src0, Immediate src1, const EmulationStrategy &strategy, const EmulationState &state, SourceLocation loc = {})
     {
+        DataType t = src1.getType();
+        if(t == DataType::ud || t == DataType::d || t == DataType::uw || t == DataType::w) {
+            int64_t value = static_cast<int64_t>(uint64_t(src1.cast(DataType::q)));
+            if (value == 0) {
+                emov<DT>(g, mod, dst, uint16_t(0), strategy, loc);
+                return;
+            } else if (value == 1) {
+                if (dst != src0) emov<DT>(g, mod, dst, src0, strategy, loc);
+                return;
+            } else if (utils::is_zero_or_pow2(value)) {
+                eshl<DT>(g, mod, dst, src0, uint16_t(utils::log2(value)), strategy, state, loc);
+                return;
+            }
+        }
+
         emulInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
@@ -714,10 +729,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstHi.getOffset())(dstHi.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);
@@ -758,10 +774,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstLo.getOffset())(dstLo.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);
@@ -788,13 +805,7 @@ struct EmulationImplementation {
     template <typename DT = void, typename Generator>
     static void emulConstant(Generator &g, const InstructionModifier &mod, const RegData &dst, const RegData &src0, int32_t src1, const EmulationStrategy &strategy, const EmulationState &state, SourceLocation loc = {})
     {
-        if (src1 == 0)
-            emov<DT>(g, mod, dst, uint16_t(0), strategy, loc);
-        else if (src1 == 1) {
-            if (dst != src0) emov<DT>(g, mod, dst, src0, strategy, loc);
-        } else if (utils::is_zero_or_pow2(src1))
-            eshl<DT>(g, mod, dst, src0, uint16_t(utils::log2(src1)), strategy, state, loc);
-        else if (src1 > 0)
+        if (src1 > 0)
             emul<DT>(g, mod, dst, src0, uint32_t(src1), strategy, state, loc);
         else
             emul<DT>(g, mod, dst, src0, int32_t(src1), strategy, state, loc);

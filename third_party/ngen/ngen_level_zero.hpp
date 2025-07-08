@@ -21,18 +21,14 @@
 
 #include "level_zero/ze_api.h"
 
-#if defined(__linux__)
-#include <dlfcn.h>
-#elif defined(_WIN32)
-#include "windows.h"
-#else
-#error "Level Zero is supported on Linux and Windows only"
-#endif
-
 #include <sstream>
 
 #include "ngen_elf.hpp"
 #include "ngen_interface.hpp"
+
+#ifndef NGEN_LINK_L0
+#include "ngen_dynamic.hpp"
+#endif
 
 namespace NGEN_NAMESPACE {
 
@@ -44,48 +40,44 @@ protected:
     ze_result_t status;
 };
 
-// Dynamically loaded level_zero functions
-namespace {
+// Dynamic loading support.
+// By default L0 is loaded dynamically, but direct linking is also possible
+//   by #defining the NGEN_LINK_L0 macro.
+namespace dynamic {
 
-inline void *find_ze_symbol(const char *symbol) {
-#if defined(__linux__)
-    void *handle = dlopen("libze_loader.so.1", RTLD_NOW | RTLD_LOCAL);
-#elif defined(_WIN32)
-    // Use LOAD_LIBRARY_SEARCH_SYSTEM32 flag to avoid DLL hijacking issue.
-    HMODULE handle = LoadLibraryExA(
-            "ze_loader.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-#endif
-    if (!handle) throw level_zero_error{ZE_RESULT_ERROR_UNINITIALIZED};
-
-#if defined(__linux__)
-    void *f = reinterpret_cast<void *>(dlsym(handle, symbol));
-#elif defined(_WIN32)
-    void *f = reinterpret_cast<void *>(GetProcAddress(handle, symbol));
+#ifdef _WIN32
+#define NGEN_L0_LIB "ze_loader.dll"
+#else
+#define NGEN_L0_LIB "libze_loader.so.1"
 #endif
 
+#ifdef NGEN_LINK_L0
+#define NGEN_L0_INDIRECT_API(f) using ::f;
+#else
+template <typename F>
+F findL0Symbol(const char *symbol) {
+    auto f = (F) findSymbol(NGEN_L0_LIB, symbol);
     if (!f) throw level_zero_error{ZE_RESULT_ERROR_UNINITIALIZED};
     return f;
 }
 
-template <typename F>
-F find_ze_symbol(const char *symbol) {
-    return (F)find_ze_symbol(symbol);
-}
-
-#define ZE_INDIRECT_API(f) \
-    template <typename... Args> ze_result_t call_##f(Args&&... args) { \
-        static auto f_ = find_ze_symbol<decltype(&f)>(#f);              \
-        return f_(std::forward<Args>(args)...);                         \
+#define NGEN_L0_INDIRECT_API(f) \
+    template <typename... Args> ze_result_t f(Args&&... args) { \
+        static auto f_ = findL0Symbol<decltype(&::f)>(#f);      \
+        return f_(std::forward<Args>(args)...);                 \
     }
+#endif
 
-ZE_INDIRECT_API(zeModuleCreate)
-ZE_INDIRECT_API(zeModuleDestroy)
-ZE_INDIRECT_API(zeDeviceGetProperties)
-ZE_INDIRECT_API(zeModuleGetNativeBinary)
-ZE_INDIRECT_API(zeKernelCreate)
+NGEN_L0_INDIRECT_API(zeDeviceGetProperties)
+NGEN_L0_INDIRECT_API(zeModuleCreate)
+NGEN_L0_INDIRECT_API(zeModuleDestroy)
+NGEN_L0_INDIRECT_API(zeModuleGetNativeBinary)
+NGEN_L0_INDIRECT_API(zeKernelCreate)
 
-} // namespace
-    
+#undef NGEN_L0_INDIRECT_API
+
+} // namespace dynamic
+
 // Level Zero program generator class.
 template <HW hw>
 class LevelZeroCodeGenerator : public ELFCodeGenerator<hw>
@@ -102,9 +94,6 @@ public:
     inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);
     static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
-#if XE3P
-    static inline bool detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW);
-#endif
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -137,7 +126,7 @@ ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t con
     };
 
     ze_module_handle_t module;
-    detail::handleL0(call_zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
 
     if (module == nullptr)
         throw level_zero_error{};
@@ -164,7 +153,7 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
     ze_device_ip_version_ext_t vprop = {ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT, nullptr, 0};
     dprop.pNext = &vprop;
 
-    if (call_zeDeviceGetProperties(device, &dprop) == ZE_RESULT_SUCCESS) {
+    if (dynamic::zeDeviceGetProperties(device, &dprop) == ZE_RESULT_SUCCESS) {
         return npack::decodeHWIPVersion(vprop.ipVersion);
     } else
 #endif
@@ -181,7 +170,7 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
         };
 
         ze_module_handle_t module;
-        detail::handleL0(call_zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+        detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
 
         if (module == nullptr)
             throw level_zero_error{};
@@ -189,71 +178,19 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
         std::vector<uint8_t> binary;
         size_t binarySize;
 
-        detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, nullptr));
+        detail::handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, nullptr));
         binary.resize(binarySize);
-        detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, binary.data()));
-        detail::handleL0(call_zeModuleDestroy(module));
+        detail::handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, binary.data()));
+        detail::handleL0(dynamic::zeModuleDestroy(module));
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
-        detail::handleL0(call_zeDeviceGetProperties(device, &dprop));
+        dprop.pNext = nullptr;
+        detail::handleL0(dynamic::zeDeviceGetProperties(device, &dprop));
     }
 
     product.type = (dprop.flags & ZE_DEVICE_PROPERTY_FLAG_INTEGRATED) ? PlatformType::Integrated : PlatformType::Discrete;
 
     return product;
 }
-
-#if XE3P
-template <HW hw>
-bool LevelZeroCodeGenerator<hw>::detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW)
-{
-    //const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
-
-    if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::Xe3p) return false;
-
-    static const uint8_t dummySPV[] = {0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0E, 0x00, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x06, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4F, 0x70, 0x65, 0x6E, 0x43, 0x4C, 0x2E, 0x73, 0x74, 0x64, 0x00, 0x00, 0x0E, 0x00, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x5F, 0x00, 0x00, 0x00, 0x07, 0x00, 0x07, 0x00, 0x06, 0x00, 0x00, 0x00, 0x6B, 0x65, 0x72, 0x6E, 0x65, 0x6C, 0x5F, 0x61, 0x72, 0x67, 0x5F, 0x74, 0x79, 0x70, 0x65, 0x2E, 0x5F, 0x2E, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x70, 0x8E, 0x01, 0x00, 0x05, 0x00, 0x04, 0x00, 0x05, 0x00, 0x00, 0x00, 0x65, 0x6E, 0x74, 0x72, 0x79, 0x00, 0x00, 0x00, 0x13, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x21, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x36, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x02, 0x00, 0x05, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x01, 0x00, 0x38, 0x00, 0x01, 0x00};
-    ze_module_desc_t moduleDesc = {
-        ZE_STRUCTURE_TYPE_MODULE_DESC,
-        nullptr,
-        ZE_MODULE_FORMAT_IL_SPIRV,
-        sizeof(dummySPV),
-        dummySPV,
-        nullptr,
-        nullptr
-    };
-
-    ze_module_handle_t module;
-    detail::handleL0(call_zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
-
-    if (module == nullptr)
-        throw level_zero_error{};
-
-    std::vector<uint8_t> binary;
-    size_t binarySize;
-
-    detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, nullptr));
-    binary.resize(binarySize);
-    detail::handleL0(call_zeModuleGetNativeBinary(module, &binarySize, binary.data()));
-    detail::handleL0(call_zeModuleDestroy(module));
-
-    return npack::isBinaryEfficient64Bit(binary, inHW);
-    /*using namespace sycl;
-    switch (device.get_backend()) {
-        case backend::opencl: {
-            auto contextCL = get_native<backend::opencl>(context);
-            auto deviceCL = get_native<backend::opencl>(device);
-            auto binary = detail::getOpenCLCProgramBinary(contextCL, deviceCL, dummyCL, "");
-            return npack::isBinaryEfficient64Bit(binary, inHW);
-        }
-        case backend::ext_oneapi_level_zero: {
-            return false;
-        }
-        default: throw unsupported_sycl_device();
-    }
-    return false;*/
-}
-#endif
-
 
 } /* namespace NGEN_NAMESPACE */
 

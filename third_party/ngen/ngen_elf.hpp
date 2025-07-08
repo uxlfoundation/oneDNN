@@ -37,13 +37,13 @@ public:
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
-protected:
-    NEOInterfaceHandler interface_{hw};
+    const NEOInterfaceHandler &interface() { return interface_; }
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }
 
     const std::string &getExternalName() const                           { return interface_.getExternalName(); }
     int getSIMD() const                                                  { return interface_.getSIMD(); }
+    int getABarrierCount() const                                         { return interface_.getABarrierCount(); }
     int getGRFCount() const                                              { return interface_.getGRFCount(); }
     size_t getSLMSize() const                                            { return interface_.getSLMSize(); }
 
@@ -51,6 +51,7 @@ protected:
     void requireArbitrationMode(ThreadArbitrationMode mode)              { interface_.requireArbitrationMode(mode); }
     void requireBarrier()                                                { interface_.requireBarrier(); }
     void requireBarriers(int nbarriers)                                  { interface_.requireBarriers(nbarriers); }
+    void requireABarriers(int nbarriers)                                 { interface_.requireABarriers(nbarriers); }
     void requireDPAS()                                                   { interface_.requireDPAS(); }
     void requireGlobalAtomics()                                          { interface_.requireGlobalAtomics(); }
     void requireGRF(int grfs)                                            { BinaryCodeGenerator<hw>::requireGRF(grfs); interface_.requireGRF(grfs); }
@@ -103,6 +104,7 @@ protected:
     GRF getLocalID(int dim) const                                        { return interface_.getLocalID(dim); }
     Subregister getSIMD1LocalID(int dim) const                           { return interface_.getSIMD1LocalID(dim); }
     Subregister getLocalSize(int dim) const                              { return interface_.getLocalSize(dim); }
+    Subregister getGroupID(int dim) const                                { return interface_.getGroupID(dim); }
 
     void prologue()                                                      { interface_.generatePrologue(*this); }
     void epilogue(RegData r0_info = RegData())
@@ -112,6 +114,9 @@ protected:
         bool hasSLM = (interface_.getSLMSize() > 0);
         BinaryCodeGenerator<hw>::epilogue(GRFCount, hasSLM, r0_info);
     }
+
+protected:
+    NEOInterfaceHandler interface_{hw};
 
     inline std::vector<uint8_t> getBinary(const std::vector<uint8_t> &code);
 
@@ -533,12 +538,14 @@ NGEN_FORWARD_SCOPE_ELF_EXTRA(NGEN_NAMESPACE::ELFCodeGenerator<hw>)        \
 template <typename... Targs> void externalName(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::externalName(std::forward<Targs>(args)...); } \
 const std::string &getExternalName() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getExternalName(); } \
 int getSIMD() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD(); } \
+int getABarrierCount() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getABarrierCount(); } \
 int getGRFCount() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getGRFCount(); } \
 size_t getSLMSize() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSLMSize(); } \
 template <typename... Targs> void require32BitBuffers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::require32BitBuffers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireArbitrationMode(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireArbitrationMode(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarrier(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireBarrier(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarriers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireBarriers(std::forward<Targs>(args)...); } \
+template <typename... Targs> void requireABarriers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireABarriers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireDPAS(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireDPAS(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGlobalAtomics(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireGlobalAtomics(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGRF(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireGRF(std::forward<Targs>(args)...); } \
@@ -564,6 +571,7 @@ template <typename... Targs> int getArgumentSurfaceIfExists(Targs&&... args) { r
 template <typename... Targs> NGEN_NAMESPACE::GRF getLocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::Subregister getSIMD1LocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD1LocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::Subregister getLocalSize(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalSize(std::forward<Targs>(args)...); } \
+template <typename... Targs> NGEN_NAMESPACE::Subregister getGroupID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getGroupID(std::forward<Targs>(args)...); } \
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
 

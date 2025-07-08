@@ -31,6 +31,11 @@ template <HW hw> class L0CodeGenerator;
 
 // Exceptions.
 #ifdef NGEN_SAFE
+class illegal_simd_exception : public std::runtime_error {
+public:
+    illegal_simd_exception() : std::runtime_error("Illegal SIMD size (subgroup size)") {}
+};
+
 class unknown_argument_exception : public std::runtime_error {
 public:
     unknown_argument_exception() : std::runtime_error("Argument not found") {}
@@ -57,9 +62,9 @@ public:
 };
 
 #if XE3P
-class option_requires_zebin : public std::runtime_error {
+class zebin_required_exception : public std::runtime_error {
 public:
-    option_requires_zebin() : std::runtime_error("Option requires zebin") {}
+    zebin_required_exception() : std::runtime_error("zebin is required for this operation") {}
 };
 #endif
 #endif
@@ -84,7 +89,7 @@ public:
 #if XE3P
                              , useEfficient64Bit(hw_ >= HW::Xe3p)
 #endif
-                             , requestedInlineGRFs(defaultInlineGRFs(hw))
+                             , requestedInlineBytes(defaultInlineBytes(hw))
     {}
 
     inline void externalName(const std::string &name)   { kernelName = name; }
@@ -104,10 +109,12 @@ public:
     inline GRF getLocalID(int dim) const;
     inline Subregister getSIMD1LocalID(int dim) const;
     inline Subregister getLocalSize(int dim) const;
+    inline Subregister getGroupID(int dim) const;
 
     const std::string &getExternalName() const           { return kernelName; }
     int getSIMD() const                                  { return simd; }
     int getBarrierCount() const                          { return barrierCount; }
+    int getABarrierCount() const                         { return abarrierCount; }
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
 #if XE3P
@@ -118,6 +125,7 @@ public:
     void requireArbitrationMode(ThreadArbitrationMode m) { arbitrationMode = m; }
     void requireBarrier()                                { barrierCount = 1; }
     void requireBarriers(int nBarriers)                  { barrierCount = nBarriers; }
+    void requireABarriers(int nBarriers)                 { abarrierCount = nBarriers; }
     void requireDPAS()                                   { needDPAS = true; }
     void requireGlobalAtomics()                          { needGlobalAtomics = true; }
     void requireGRF(int grfs)                            { needGRF = grfs; }
@@ -130,7 +138,7 @@ public:
     void requireQuantum(int wgs)                         { needQuantum = wgs; }
 #endif
     void requireScratch(size_t bytes = 1)                { scratchSize = bytes; }
-    void requireSIMD(int simd_)                          { simd = simd_; }
+    inline void requireSIMD(int simd_);
     void requireSLM(size_t bytes)                        { slmSize = bytes; }
     void requireStatelessWrites(bool req = true)         { needStatelessWrites = req; }
     inline void requireType(DataType type);
@@ -141,17 +149,15 @@ public:
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
     void setArgumentBase(RegData base)                   { baseOverride = base; }
-    void setInlineGRFCount(int grfs)                     { requestedInlineGRFs = grfs; }
-    void setSkipPerThreadOffset(int32_t offset)          { offsetSkipPerThread = offset; }
-    void setSkipCrossThreadOffset(int32_t offset)        { offsetSkipCrossThread = offset; }
+    void setInlineGRFCount(int grfs)                     { requestedInlineBytes = grfs * GRF::bytes(hw); }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
     std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }
 #if XE3P
     void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
 #endif
 
-    inline GRF getCrossthreadBase(bool effective = true) const;
-    inline GRF getArgLoadBase() const;
+    inline Register getCrossthreadBase(bool effective = true) const;
+    inline Register getArgLoadBase() const;
 
     inline void finalize();
 
@@ -196,6 +202,7 @@ protected:
     bool allow64BitBuffers = false;
     ThreadArbitrationMode arbitrationMode = ThreadArbitrationMode::Default;
     int barrierCount = 0;
+    int abarrierCount = 0;
     RegData baseOverride;
     bool needDPAS = false;
     bool needGlobalAtomics = false;
@@ -224,15 +231,16 @@ protected:
     bool useEfficient64Bit = false;
 #endif
     int crossthreadBytes = 0;
-    int crossthreadGRFs = 0;
-    int requestedInlineGRFs = 0;
-    inline int inlineGRFs() const;
-    inline int getCrossthreadGRFs() const;
+    int crossthreadRegs = 0;
+    int requestedInlineBytes = 0;
+    inline int inlineBytes() const;
+    inline int inlineRegs() const;
+    inline int getCrossthreadRegs() const;
     inline int getCrossthreadBytes() const;
     int grfsPerLID() const { return (simd > 16 && GRF::bytes(hw) < 64) ? 2 : 1; }
 
     static inline GlobalAccessType defaultGlobalAccess(HW hw);
-    static inline int defaultInlineGRFs(HW hw);
+    static inline int defaultInlineBytes(HW hw);
 };
 
 using NEOInterfaceHandler = InterfaceHandler;   /* Deprecated -- do not use in new code. */
@@ -331,10 +339,46 @@ GRF InterfaceHandler::getLocalID(int dim) const
     if (simd == 1) throw use_simd1_local_id_exception();
 #endif
 
+#if XE4
+    if (hw >= HW::Xe4)
+        return GRF(dim).ud();
+#endif
     if (simd == 1)
         return GRF(1).uw();
     else
         return GRF(1 + dim * grfsPerLID()).uw();
+}
+
+Subregister InterfaceHandler::getGroupID(int dim) const
+{
+#if XE4
+    if (hw >= HW::Xe4)
+        return SRF(5 + dim)[0];
+#endif
+
+    switch (dim) {
+        case 0: return GRF(0).ud(1);
+        case 1: return GRF(0).ud(6);
+        case 2: return GRF(0).ud(7);
+    }
+
+    return Subregister();
+}
+
+void InterfaceHandler::requireSIMD(int simd_)
+{
+    simd = simd_;
+
+#ifdef NGEN_SAFE
+    if (simd > 32 || !utils::is_zero_or_pow2(simd))
+        throw illegal_simd_exception();
+    if (simd != 1 && simd < (GRF::bytes(hw) >> 2))
+        throw illegal_simd_exception();
+#if XE4
+    if (simd == 1)
+        throw illegal_simd_exception();
+#endif
+#endif
 }
 
 void InterfaceHandler::requireType(DataType type)
@@ -348,8 +392,12 @@ void InterfaceHandler::requireType(DataType type)
 
 static inline const char *getCLDataType(DataType type)
 {
-    static const char *names[16] = {"uint", "int", "ushort", "short", "uchar", "char", "double", "float", "ulong", "long", "half", "ushort", "INVALID", "INVALID", "INVALID", "INVALID"};
-    return names[static_cast<uint8_t>(type) & 0xF];
+    static const char *_ = "INVALID";
+    static const char *names[32] = {"uint",   "int",    "ushort", "short",  "uchar",  "char",   "double", "float",
+                                    "ulong",  "long",   "half",   "ushort", "uchar",  _,        _,        _,
+                                    "float",  "uchar",  _,        _,        _,        _,        _,        _,
+                                    _,        _,        _,        _,        _,        _,        _,        _};
+    return names[static_cast<uint8_t>(type) & 0x1F];
 }
 
 void InterfaceHandler::generateDummyCL(std::ostream &stream) const
@@ -358,7 +406,10 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
     if (!finalized) throw interface_not_finalized();
     if (hasArgLocOverride || !rearrangeArgs) throw unsupported_argument_location_override();
 #if XE3P
-    if (needQuantum) throw option_requires_zebin();
+    if (needQuantum) throw zebin_required_exception();
+#endif
+#if XE4
+    if (hw >= HW::Xe4) throw zebin_required_exception();
 #endif
 #endif
     const char *dpasDummy = "    int __builtin_IB_sub_group_idpas_s8_s8_8_1(int, int, int8) __attribute__((const));\n"
@@ -431,7 +482,7 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
     stream << "}\n";
 }
 
-inline Subregister InterfaceHandler::getLocalSize(int dim) const
+Subregister InterfaceHandler::getLocalSize(int dim) const
 {
     static const std::string localSizeArgs[3] = {"__local_size0", "__local_size1", "__local_size2"};
     return getArgument(localSizeArgs[dim]);
@@ -456,11 +507,18 @@ void InterfaceHandler::finalize()
     static const std::string localSizeArgs[3] = {"__local_size0", "__local_size1", "__local_size2"};
     static const std::string scratchSizeArg = "__scratch_size";
 
-    GRF base;
+    Register base;
     int offset;
     int nextSurface = 0;
-    const int grfSize = GRF::bytes(hw);
+    int regSize = GRF::bytes(hw);
 
+#if XE4
+    if (hw >= HW::Xe4) {
+        base = SRF(22);
+        offset = 0;
+        regSize = 4;
+    } else
+#endif
     if (baseOverride.isValid()) {
         base = GRF(baseOverride.getBase());
         offset = baseOverride.getByteOffset();
@@ -482,16 +540,16 @@ void InterfaceHandler::finalize()
             if (assignment.reg.isInvalid()) {
                 if (assignment.name == localSizeArgs[0]) {
                     // Move to next GRF if local size arguments won't fit in this one.
-                    if (offset > grfSize - (3 * 4)) {
+                    if (offset > regSize - (3 * 4)) {
                         offset = 0;
                         base++;
                     }
                 }
 
                 offset = (offset + size - 1) & -size;
-                if (offset >= grfSize) {
+                if (offset >= regSize) {
+                    base += offset / regSize;
                     offset = 0;
-                    base++;
                 }
 
                 assignment.reg = base.sub(offset / bytes, assignment.type);
@@ -499,6 +557,11 @@ void InterfaceHandler::finalize()
                 int obase = assignment.reg.getBase();
                 int ooffset = assignment.reg.getByteOffset();
                 if (base.getBase() < obase) {
+#if XE4
+                    if (base.isSRF())
+                        base = SRF(obase);
+                    else
+#endif
                     base = GRF(obase);
                     offset = ooffset;
                 } else if (base.getBase() == obase)
@@ -533,29 +596,47 @@ void InterfaceHandler::finalize()
 
     assignArgsOfType(ExternalArgumentType::Hidden);
 
-    crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * GRF::bytes(hw)
-                     + ((offset + 31) & -32);
-    crossthreadGRFs = GRF::bytesToGRFs(hw, crossthreadBytes);
+    crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * regSize
+                     + ((offset + regSize - 1) & -regSize);
+    crossthreadRegs = (crossthreadBytes + regSize - 1) / regSize;
 
     // Manually add regular local size arguments.
-    if (needLocalSize && !needNonuniformWGs)
-        for (int dim = 0; dim < 3; dim++)
+    if (needLocalSize && !needNonuniformWGs) {
+        for (int dim = 0; dim < 3; dim++) {
+            Subregister loc = GRF(getCrossthreadBase().getBase()).ud(dim + 3);
+#if XE4
+            if (hw >= HW::Xe4) loc = SRF(getCrossthreadBase().getBase() + dim + 3).ud()[0];
+#endif
             assignments.push_back({localSizeArgs[dim], DataType::ud, ExternalArgumentType::Hidden,
-                                   GlobalAccessType::None, GRF(getCrossthreadBase()).ud(dim + 3), noSurface, -1});
-
+                                   GlobalAccessType::None, loc, noSurface, -1});
+        }
+    }
     finalized = true;
 }
 
-int InterfaceHandler::inlineGRFs() const
+int InterfaceHandler::inlineBytes() const
 {
 #if XE3P
-    if (useEfficient64Bit) return 1;
+    if (useEfficient64Bit) return 64;
 #endif
-    return requestedInlineGRFs;
+    return requestedInlineBytes;
 }
 
-GRF InterfaceHandler::getCrossthreadBase(bool effective) const
+int InterfaceHandler::inlineRegs() const
 {
+#if XE4
+    if (hw >= HW::Xe4)
+        return inlineBytes() >> 2;
+#endif
+    return GRF::bytesToGRFs(hw, inlineBytes());
+}
+
+Register InterfaceHandler::getCrossthreadBase(bool effective) const
+{
+#if XE4
+    if (hw >= HW::Xe4)
+        return SRF(16);
+#endif
     if (!needLocalID)
         return GRF((!effective || (hw >= HW::XeHP)) ? 1 : 2);
     else if (simd == 1)
@@ -564,9 +645,9 @@ GRF InterfaceHandler::getCrossthreadBase(bool effective) const
         return GRF(1 + 3 * grfsPerLID());
 }
 
-GRF InterfaceHandler::getArgLoadBase() const
+Register InterfaceHandler::getArgLoadBase() const
 {
-    return getCrossthreadBase().advance(inlineGRFs());
+    return getCrossthreadBase().advance(inlineRegs());
 }
 
 int InterfaceHandler::getCrossthreadBytes() const
@@ -577,12 +658,12 @@ int InterfaceHandler::getCrossthreadBytes() const
     return crossthreadBytes;
 }
 
-int InterfaceHandler::getCrossthreadGRFs() const
+int InterfaceHandler::getCrossthreadRegs() const
 {
 #ifdef NGEN_SAFE
     if (!finalized) throw interface_not_finalized();
 #endif
-    return crossthreadGRFs;
+    return crossthreadRegs;
 }
 
 GlobalAccessType InterfaceHandler::defaultGlobalAccess(HW hw)
@@ -591,10 +672,9 @@ GlobalAccessType InterfaceHandler::defaultGlobalAccess(HW hw)
     return GlobalAccessType::All;
 }
 
-int InterfaceHandler::defaultInlineGRFs(HW hw)
+int InterfaceHandler::defaultInlineBytes(HW hw)
 {
-    if (hw == HW::XeHP) return 1;
-    if (hw == HW::XeHPG) return 1;
+    if (hw == HW::XeHP || hw == HW::XeHPG) return 32;
     return 0;
 }
 
@@ -603,8 +683,7 @@ void InterfaceHandler::generatePrologue(CodeGenerator &generator, const GRF &tem
 {
     if (needLocalID)
         generator.loadlid(getCrossthreadBytes(), needLocalID, simd, temp, -1);
-    if (getCrossthreadGRFs() > inlineGRFs())
-        generator.loadargs(getArgLoadBase(), getCrossthreadGRFs() - inlineGRFs(), temp);
+    generator.loadargs(getArgLoadBase(), getCrossthreadRegs() - inlineRegs(), temp);
 }
 
 void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &man)
@@ -616,6 +695,9 @@ void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &
     };
 
     int immOffset = 0xC;
+#if XE3P
+    if (hw == HW::Xe3p) immOffset = 0x8;
+#endif
 
     setOffset(labels.localIDsLoaded, offsetSkipPerThread);
     setOffset(labels.argsLoaded, offsetSkipCrossThread);
@@ -630,7 +712,6 @@ std::string InterfaceHandler::generateZeInfo() const
 #endif
 
     std::stringstream md;
-    md.imbue(std::locale::classic());
 
     const char *version = "1.8";
 #if XE3P
@@ -662,6 +743,8 @@ std::string InterfaceHandler::generateZeInfo() const
         md << "      offset_to_skip_per_thread_data_load: " << offsetSkipPerThread << '\n';
     if (barrierCount > 0)
         md << "      barrier_count: " << utils::roundup_pow2(barrierCount) << '\n';
+    if (abarrierCount > 0)
+        md << "      abarrier_count: " << abarrierCount << '\n';
     if (allow64BitBuffers)
         md << "      has_4gb_buffers: true\n";
     if (needDPAS)
@@ -683,8 +766,8 @@ std::string InterfaceHandler::generateZeInfo() const
             default: break;
         }
     }
-    if (inlineGRFs() > 0)
-        md << "      inline_data_payload_size: " << inlineGRFs() * GRF::bytes(hw) << "\n";
+    if (inlineBytes() > 0)
+        md << "      inline_data_payload_size: " << inlineBytes() << "\n";
 #if XE3P
     if (needQuantum) {
         int encodedWO = 0;
@@ -762,7 +845,13 @@ std::string InterfaceHandler::generateZeInfo() const
         if (skipArg)
             continue;
 
-        auto offset = (assignment.reg.getBase() - getCrossthreadBase().getBase()) * GRF::bytes(hw) + assignment.reg.getByteOffset();
+        auto offset = assignment.reg.getBase() - getCrossthreadBase().getBase();
+#if XE4
+        if (hw >= HW::Xe4)
+            offset <<= 2;
+        else
+#endif
+        offset = offset * GRF::bytes(hw) + assignment.reg.getByteOffset();
 
 #ifdef NGEN_SAFE
         if (offset < 0) throw unsupported_argument_location_override();
@@ -810,6 +899,9 @@ std::string InterfaceHandler::generateZeInfo() const
                   "  \n";
         } else {
             auto localIDBytes = grfsPerLID() * GRF::bytes(hw);
+#if XE4
+            if (hw >= HW::Xe4) localIDBytes >>= 1; // NEO bug
+#endif
             localIDBytes *= 3; // runtime currently supports 0 or 3 localId channels in per thread data
             md << "      - arg_type: local_id\n"
                   "        offset: 0\n"
@@ -833,7 +925,7 @@ void InterfaceHandler::dumpAssignments(std::ostream &stream) const
     LabelManager manager;
 
     for (auto &assignment : assignments) {
-        stream << "//  ";
+        stream << ' ';
         if (assignment.reg.isValid())
             assignment.reg.outputText(stream, PrintDetail::sub, manager);
         else

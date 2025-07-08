@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,10 @@ inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelMana
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
 #endif
+#if XE4
+    const bool xe4 = (detail <= PrintDetail::xe4);
+#endif
+
     auto vs = getVS();
     if (detail == PrintDetail::vs_hs)
         if (vs > 8 && (getHS() != 0))
@@ -47,23 +51,64 @@ inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelMana
     if (getAbs()) str << "(abs)";
 
     if (isARF()) {
+#if XE4
+        if (xe4 && getARFType() == ARFType::f)
+            str << 'p';
+        else
+#endif
         str << getARFType();
         switch (getARFType()) {
             case ARFType::null:
             case ARFType::sp:
             case ARFType::ip:
+#if XE4
+            case ARFType::lid:
+#endif
                 break;
             default:
                 str << getARFBase();
         }
-    } else if (isIndirect()) {
-        str << "r[";
-        getIndirectReg().outputText(str, PrintDetail::sub_no_type, man);
-        if (getOffset())
-            str << ',' << getOffset();
-        str << ']';
-    } else
-        str << 'r' << base;
+    } else {
+#if XE4
+        char file = isSRF() ? 's' : 'r';
+#else
+        char file = 'r';
+#endif
+        if (isIndirect()) {
+            str << file << '[';
+#if XE4
+            if (xe4) {
+                getIndirectRegXe4().outputText(str, PrintDetail::xe4, man);
+                if (getOffset())
+                    str << " + " << getOffset();
+            } else
+#endif
+            {
+                getIndirectReg().outputText(str, PrintDetail::sub_no_type, man);
+                if (getOffset())
+                    str << ',' << getOffset();
+            }
+            str << ']';
+        } else {
+#if XE4
+            if (xe4 && getBytes() == 8)
+                str << '(' << file << base << ',' << file << (base + 1) << ')';
+            else
+                str << file << base;
+#else
+            str << file << base;
+#endif
+        }
+    }
+
+#if XE4
+    if (detail == PrintDetail::xe4_type)
+        str << '.' << DataTypeXe4{getType()};
+    if (detail == PrintDetail::xe4_dst && isLUOrUC())
+        str << ".uc";
+    else if (detail <= PrintDetail::xe4 && isLUOrUC())
+        str << ".lu";
+#endif
 
     if (detail <= PrintDetail::base) return;
 
@@ -94,6 +139,10 @@ static inline std::ostream& operator<<(std::ostream &str, const RegData &r)
 
 inline void Immediate::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
 {
+#if XE4
+    if (detail == PrintDetail::xe4_hide) return;
+#endif
+
     uint64_t nbytes = getBytes(getType());
     uint64_t val;
 
@@ -113,10 +162,13 @@ inline void ExtendedReg::outputText(std::ostream &str, PrintDetail detail, Label
     if (isInvalid()) throw invalid_object_exception();
 #endif
 
-    if (base.getNeg()) str << '-';
-    if (base.getAbs()) str << "(abs)";
-
-    str << 'r' << base.getBase() << '.';
+#if XE4
+    base.outputText(str, (detail <= PrintDetail::xe4) ? PrintDetail::xe4 : PrintDetail::base, man);
+    if (detail == PrintDetail::xe4_dst) return;
+#else
+    base.outputText(str, PrintDetail::base, man);
+#endif
+    str << '.';
     if (mmeNum == 8)
         str << "nomme";
     else
@@ -138,8 +190,29 @@ inline void Align16Operand::outputText(std::ostream &str, PrintDetail detail, La
 
 inline void GRFRange::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
 {
+#if XE4
+    if (detail <= PrintDetail::xe4)
+#endif
     str << 'r' << int(base) << ':' << int(len);
 }
+
+#if XE4
+inline void RegisterRange::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
+{
+    auto rf = srf ? 's' : 'r';
+    if (detail > PrintDetail::xe4)
+        GRFRange(base, len).outputText(str, detail, man);
+    else if (len > 6)
+        str << '(' << rf << int(base) << ':' << rf << int(base + len - 1) << ')';
+    else if (len > 1) {
+        str << '(' << rf << int(base);
+        for (int i = 1; i < len; i++)
+            str << ',' << rf << int(base + i);
+        str << ')';
+    } else
+        str << rf << int(base);
+}
+#endif
 
 inline void Label::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) {
     str << 'L' << getID(man);
@@ -149,7 +222,7 @@ struct NoOperand {
     static const bool emptyOp = true;
     void fixup(HW hw, int esize, int ewidth, DataType defaultType, int srcN, int arity) const {}
     constexpr DataType getType() const { return DataType::invalid; }
-    constexpr bool isScalar() const { return false; }
+    constexpr bool isScalar() const { return true; }
 
     void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const {}
 };
@@ -160,7 +233,10 @@ struct AsmOperand {
         ExtendedReg ereg;
         Immediate imm;
         Label label;
-        GRFRange range;
+        RegisterRange range;
+#if XE4
+        IndirectARF iarf;
+#endif
     };
     enum class Type : uint8_t {
         none = 0,
@@ -168,19 +244,26 @@ struct AsmOperand {
         ereg = 2,
         imm = 3,
         label = 4,
-        range = 5
+        range = 5,
+#if XE4
+        iarf = 6,
+#endif
     } type;
 
-    AsmOperand()                  : type{Type::none} {}
-    AsmOperand(NoOperand)         : AsmOperand() {}
-    AsmOperand(RegData reg_)      : reg{reg_}, type{Type::reg} {}
-    AsmOperand(ExtendedReg ereg_) : ereg{ereg_}, type{Type::ereg} {}
-    AsmOperand(Immediate imm_)    : imm{imm_}, type{Type::imm} {}
-    AsmOperand(Label label_)      : label{label_}, type{Type::label} {}
-    AsmOperand(GRFRange range_)   : range{range_}, type{Type::range} {}
-    AsmOperand(uint32_t imm_)     : imm{imm_}, type{Type::imm} {}
+    AsmOperand()                     : type{Type::none} {}
+    AsmOperand(NoOperand)            : AsmOperand() {}
+    AsmOperand(RegData reg_)         : reg{reg_}, type{Type::reg} {}
+    AsmOperand(ExtendedReg ereg_)    : ereg{ereg_}, type{Type::ereg} {}
+    AsmOperand(Immediate imm_)       : imm{imm_}, type{Type::imm} {}
+    AsmOperand(Label label_)         : label{label_}, type{Type::label} {}
+    AsmOperand(GRFRange range_)      : range{range_}, type{Type::range} {}
+    AsmOperand(uint32_t imm_)        : imm{imm_}, type{Type::imm} {}
 #if XE3P
-    AsmOperand(uint64_t imm_)     : imm{imm_}, type{Type::imm} {}
+    AsmOperand(uint64_t imm_)        : imm{imm_}, type{Type::imm} {}
+#endif
+#if XE4
+    AsmOperand(RegisterRange range_) : range{range_}, type{Type::range} {}
+    AsmOperand(IndirectARF iarf_)    : iarf{iarf_}, type{Type::iarf} {}
 #endif
 
     void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const {
@@ -195,6 +278,22 @@ struct AsmOperand {
                 break;
             }
             case Type::range:   range.outputText(str, detail, man); break;
+#if XE4
+            case Type::iarf:    str << iarf; break;
+#endif
+        }
+    }
+
+    bool operator!() const { return (type == Type::none); }
+    operator bool() const  { return !!*this; }
+
+    bool isEmptyOrNull() const {
+        switch (type) {
+            case Type::none: return true;
+            case Type::reg: return reg.isNull();
+            case Type::ereg: return ereg.getBase().isNull();
+            case Type::range: return range.isEmpty();
+            default: return false;
         }
     }
 };
@@ -215,7 +314,7 @@ struct AsmInstruction {
 
     explicit AsmInstruction(uint32_t inum_, const std::string &comment_)
             : op(Opcode::illegal), ext(0), inum(inum_), mod{}, dst{}, src{}, labelManager{nullptr}, comment{comment_} {}
-    inline AsmInstruction(const autoswsb::SyncInsertion &si);
+    inline AsmInstruction(HW hw, const autoswsb::SyncInsertion &si);
     inline AsmInstruction(const autoswsb::DummyMovInsertion &mi);
 
     bool isLabel() const   { return (op == Opcode::illegal) && (dst.type == AsmOperand::Type::label); }
@@ -232,6 +331,7 @@ struct AsmInstruction {
     bool eot() const            { return mod.isEOT(); }
     bool predicated() const     { return !mod.isWrEn() || (mod.getPredCtrl() != PredCtrl::None); }
     bool atomic() const         { return mod.isAtomic(); }
+    static bool is64()          { return false; }
 
     inline unsigned dstTypecode()  const { return getTypecode(dst); }
     inline unsigned src0Typecode() const { return getTypecode(src[0]); }
@@ -270,9 +370,13 @@ protected:
     static inline unsigned getTypecode(const AsmOperand &op);
 };
 
-AsmInstruction::AsmInstruction(const autoswsb::SyncInsertion &si)
+AsmInstruction::AsmInstruction(HW hw, const autoswsb::SyncInsertion &si)
 {
+#if XE4
+    op = (hw >= HW::Xe4) ? Opcode::sync_64E : Opcode::sync;
+#else
     op = Opcode::sync;
+#endif
     ext = static_cast<uint8_t>(si.fc);
     mod = InstructionModifier::createMaskCtrl(true);
     mod.setSWSB(si.swsb);
@@ -299,7 +403,6 @@ AsmInstruction::AsmInstruction(const autoswsb::DummyMovInsertion &mi)
     } else
         src[0] = GRF(mi.grf).sub(0, mi.dt);
 }
-
 
 unsigned AsmInstruction::getTypecode(const AsmOperand &op)
 {
@@ -353,7 +456,10 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
     switch (operand.type) {
         case AsmOperand::Type::reg:    rd = operand.reg; break;
         case AsmOperand::Type::ereg:   rd = operand.ereg.getBase(); break;
-        case AsmOperand::Type::range:  region = DependencyRegion(hw, operand.range); return true;
+        case AsmOperand::Type::range:
+            if (!operand.range.isValid()) return false;
+            region = DependencyRegion(hw, operand.range);
+            return true;
         case AsmOperand::Type::none:
             if (hw >= HW::Xe3 && (op == Opcode::send || op == Opcode::sendc) && opNum == 1
                     && src[0].type == AsmOperand::Type::reg && src[0].reg.isIndirect()
@@ -414,7 +520,12 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
         if (opNum == -1 && !rd.isNull() && src[4].type == AsmOperand::Type::imm) {
             SendgMessageDescriptor desc;
             desc.all = static_cast<uint64_t>(src[4].imm);
-            int len = desc.dstLen(hw, mod.getExecSize(), static_cast<SharedFunction>(ext & 0xF));
+            int execSize = mod.getExecSize();
+#if XE4
+            if (dst.type == AsmOperand::Type::reg && dst.reg.isSRF())
+                execSize = 1;
+#endif
+            int len = desc.dstLen(hw, execSize, static_cast<SharedFunction>(ext & 0xF));
             if (len == -1)
                 region = DependencyRegion();
             else
@@ -483,10 +594,15 @@ public:
             delete s;
     }
 
+    using RootCodeGenerator = AsmCodeGenerator;
+
     constexpr HW getHardware() const { return hardware; }
 
     inline void getCode(std::ostream &out);
+    inline void getPartialCode(std::ostream &out);
     void enableLineNumbers(bool enable = true) { lineNumbers = enable; }
+    inline void disableAutoSWSB();
+    void cancelAutoSWSB() { cancelAutoSWSB_ = true; }
 
     Product getProduct() const { return product; }
     ProductFamily getProductFamily() const { return product.family; }
@@ -542,6 +658,7 @@ private:
     InstructionModifier defaultModifier;
     LabelManager labelManager;
     std::vector<InstructionStream*> streamStack;
+    std::atomic<bool> cancelAutoSWSB_ = false;
 
 #if XE3P
     bool useEfficient64Bit = false;
@@ -612,8 +729,36 @@ private:
     template <typename T>
     static inline T uniformizeInd(T r)              { return r; }
     static inline RegData uniformizeInd(RegData r)  { r.setOffset(r.getByteOffset()); r.setType(DataType::ub); return r; }
+    template <typename T>
+    static inline void applyLen(T &r, int len)             {}
+    static inline void applyLen(RegisterRange &r, int len) { if (len > 0 && r.isValid()) r = RegisterRange(r[0], len); }
+
     template <typename S0, typename S1, typename I0, typename I1>
-    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sf, RegData dst, const S0 &src0, const S1 &src1, const I0 &ind0, const I1 &ind1, uint64_t desc) {
+    void opSendg(Opcode op, const InstructionModifier &mod, SharedFunction sf, RegData dst, const S0 &src0, const S1 &src1, I0 ind0, I1 ind1, uint64_t desc) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            switch (op) {
+                case Opcode::sendg:
+                case Opcode::sendgx:  op = Opcode::send_128C;  break;
+                case Opcode::sendgc:
+                case Opcode::sendgxc: op = Opcode::sendc_128C; break;
+                default: unsupported();
+            }
+            canonicalizeSRF(ind0);
+            canonicalizeSRF(ind1);
+            auto mdesc = static_cast<SendgMessageDescriptor>(desc);
+            auto msrc0 = src0;
+            auto msrc1 = src1;
+            auto execSize = dst.isSRF() ? 1 : 32;
+            int dlen = mdesc.dstLen(hardware, execSize, sf);
+            applyLen(msrc0, mdesc.src0Len(hardware, execSize, sf));
+            applyLen(msrc1, mdesc.src1Len(hardware, execSize, sf));
+            if (dst.isValid() && !dst.isNull() && dlen > 0)
+                (void) streamStack.back()->append(op, static_cast<uint8_t>(sf), mod | defaultModifier, &labelManager, RegisterRange(dst, dlen), msrc0, msrc1, ind0, ind1, Immediate::uq(desc));
+            else
+                (void) streamStack.back()->append(op, static_cast<uint8_t>(sf), mod | defaultModifier, &labelManager, dst, msrc0, msrc1, ind0, ind1, Immediate::uq(desc));
+        } else
+#endif
         (void) streamStack.back()->append(op, static_cast<uint8_t>(sf), mod | defaultModifier, &labelManager, dst, src0, src1, uniformizeInd(ind0), uniformizeInd(ind1), desc);
     }
     template <typename I0, typename I1>
@@ -648,17 +793,67 @@ private:
     template <typename S1> void opJmpi(Opcode op, const InstructionModifier &mod, S1 src1) {
         (void) streamStack.back()->append(op, 0, mod | defaultModifier | NoMask, &labelManager, NoOperand(), src1);
     }
-    template <typename S0> void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, S0 src0) {
+    template <typename S0> void opSync(SyncFunction fc, const InstructionModifier &mod, S0 src0) {
+#if XE4
+        auto op = (hardware >= HW::Xe4) ? Opcode::sync_64E : Opcode::sync;
+#else
+        auto op = Opcode::sync;
+#endif
         (void) streamStack.back()->append(op, static_cast<uint8_t>(fc), mod | defaultModifier, &labelManager, NoOperand(), src0);
     }
+    template <typename S0> void opDirective(Directive directive, const S0 &src0) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            streamStack.back()->append(Opcode::directive_xe4, 0, InstructionModifier::createAutoSWSB(), &labelManager, GRF(static_cast<int>(directive)), src0);
+        else
+#endif
+        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(directive)), src0);
+    }
+#if XE4
+    template <typename D, typename S0, typename S1, typename S2> inline void opX(OpcodeClassXe4 op, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1, S2 src2, uint16_t ext = 0);
+    template <typename D, typename S0, typename S1> inline void opX(OpcodeClassXe4 op, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1) {
+        opX(op, defaultType, mod, dst, src0, src1, NoOperand());
+    }
+    template <typename D, typename S0> inline void opX(OpcodeClassXe4 op, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0) {
+        opX(op, defaultType, mod, dst, src0, NoOperand());
+    }
+    void opX(OpcodeClassXe4 op, const InstructionModifier &mod, Label &jip) {
+        (void) jip.getID(labelManager);
+        opX(op, DataType::invalid, mod, NoOperand(), jip);
+    }
+    void opX(OpcodeClassXe4 op) {
+        opX(op, DataType::invalid, InstructionModifier(), NoOperand(), NoOperand());
+    }
+    template <typename S1> void opCvt(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1);
+    template <typename S1, typename S2> void opDP4A(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1, S2 src2);
+    template <typename S0, typename S1, typename S2> void opMullh(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, S0 src0, S1 src1, S2 src2);
+#endif
 
     inline void finalize();
 
-    enum class ModPlacementType {Pre, Mid, Post};
-    inline void outX(std::ostream &out, const AsmInstruction &i, int lineNo);
+    enum class ModPlacementType {
+        Pre, Mid, Post,
+#if XE4
+        PreXe4, MidXe4, PostXe4,
+#endif
+    };
+    inline void outX(std::ostream &out, const AsmInstruction &i, int &lineNo);
     inline void outExt(std::ostream &out, const AsmInstruction &i);
-    inline void outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, ModPlacementType location);
-    inline void outSync(std::ostream &out, const autoswsb::SyncInsertion &si);
+    inline void outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, ModPlacementType location, uint16_t ext = 0, uint32_t ext2 = 0);
+    inline void outComment(std::ostream &out, const AsmInstruction &i);
+
+#if XE4
+    inline void outXe4(std::ostream &out, const AsmInstruction &i, int &lineNo);
+    inline void outExtSendXe4(std::ostream &out, const AsmInstruction &i);
+    inline bool outSpecialOps(std::ostream &out, const AsmInstruction &i);
+#endif
+
+    InstructionModifier defaultMods() const {
+#if XE4
+        if (hardware >= HW::Xe4) return InstructionModifier{};
+#endif
+        return GRF::bytes(hardware) >> 2;
+    }
 
 protected:
     // Configuration.
@@ -685,29 +880,102 @@ protected:
 
     void discardStream()                            { delete popStream(); }
 
-    void comment(const std::string &str)            { streamStack.back()->appendComment(str); }
-
     void requireGRF(int grfs)                       { declaredGRFs = grfs; }
 
+public:
+    void comment(const std::string &str)            { streamStack.back()->appendComment(str); }
+
     // Instructions.
+#if XE4
+    template <typename DT = void>
+    void abs_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::abs, getDataType<DT>(), mod, dst, src0);
+        else
+            mov(mod, dst, abs(src0));
+    }
+#endif
     template <typename DT = void>
     void add(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::add_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+            opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void add(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::add_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+            opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(Opcode::addc, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+            opX(Opcode::addc, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::addc, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
+#if XE4
+    template <typename DT = void>
+    void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const FlagRegister &carryIn, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::addc, getDataType<DT>(), mod, dst, src0, src1, carryIn);
+    }
+    template <typename DT = void>
+    void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::addc, getDataType<DT>(), mod, dst, src0, src1, carryIn);
+    }
+    template <typename DT = void>
+    void addc(const InstructionModifier &mod, const RegData &dst, const FlagRegister &carryOut, const RegData &src0, const RegData &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1, carryIn);
+        else
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void addc(const InstructionModifier &mod, const RegData &dst, const FlagRegister &carryOut, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1, carryIn);
+        else
+            opX(OpcodeClassXe4::addc, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void addc(const RegData &dst, const RegData &src0, const RegData &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            addc<DT>(InstructionModifier(), dst, src0, src1, carryIn);
+        else
+            addc<DT>(InstructionModifier(), dst, src0, src1);
+    }
+    template <typename DT = void>
+    void addc(const RegData &dst, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            addc<DT>(InstructionModifier(), dst, src0, src1, carryIn);
+        else
+            addc<DT>(InstructionModifier(), dst, src0, src1);
+    }
+#endif
     template <typename DT = void>
     void add3(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
+        else
+#endif
         opX(Opcode::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
@@ -716,7 +984,12 @@ protected:
     }
     template <typename DT = void>
     void add3(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
-        opX(Opcode::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
+        else
+#endif
+         opX(Opcode::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void add3(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
@@ -724,40 +997,65 @@ protected:
     }
     template <typename DT = void>
     void and_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0x88, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::and_gen12 : Opcode::and_, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void and_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0x88, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::and_gen12 : Opcode::and_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void and(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        and_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void and(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        and_<DT>(mod, dst, src0, src1);
-    }
-#endif
     template <typename DT = void>
     void asr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::asr, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::asr_gen12 : Opcode::asr, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void asr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::asr, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::asr_gen12 : Opcode::asr, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
-    void avg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        void avg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::avg, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::avg, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void avg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::avg, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::avg, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void bfe(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::bfegen, getDataType<DT>(), mod, dst, src2, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::bfe_gen12 : Opcode::bfe, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
@@ -772,6 +1070,12 @@ protected:
     void bfe(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::bfe_gen12 : Opcode::bfe, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
+#if XE4
+    template <typename DT = uint32_t>
+    void bfe(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfe, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), width | (offset << 8));
+    }
+#endif
     template <typename DT = void>
     void bfi1(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::bfi1_gen12 : Opcode::bfi1, getDataType<DT>(), mod, dst, src0, src1);
@@ -782,6 +1086,11 @@ protected:
     }
     template <typename DT = void>
     void bfi2(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfigen(mod, dst, src2, src1, src0);
+        else
+#endif
         opX(isGen12 ? Opcode::bfi2_gen12 : Opcode::bfi2, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
@@ -796,8 +1105,39 @@ protected:
     void bfi2(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::bfi2_gen12 : Opcode::bfi2, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
+#if XE4
+    template <typename DT = uint32_t>
+    void bfi(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfi, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void bfi(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfi, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void bfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfigen, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = uint32_t>
+    void bfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfigen, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+#endif
     template <typename DT = void>
     void bfn(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn3<DT>(mod, ctrl, dst, src0, src1, src2);
+        else
+#endif
         opX(Opcode::bfn, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
     }
     template <typename DT = void>
@@ -806,18 +1146,46 @@ protected:
     }
     template <typename DT = void>
     void bfn(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn3<DT>(mod, ctrl, dst, src0, src1, src2);
+        else
+#endif
         opX(Opcode::bfn, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
     }
     template <typename DT = void>
     void bfn(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
         opX(Opcode::bfn, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
     }
+#if XE4
     template <typename DT = void>
-    void bfrev(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::bfrev_gen12 : Opcode::bfrev, getDataType<DT>(), mod, dst, src0);
+    void bfn2(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn2, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), ctrl);
     }
     template <typename DT = void>
-    void bfrev(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+    void bfn2(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        bfn3<DT>(mod, ctrl, dst, src0, src1, null, loc);
+    }
+    template <typename DT = void>
+    void bfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn3, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+    template <typename DT = void>
+    void bfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn3, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+    template <typename DT = void>
+    void bfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn3, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+#endif
+    template <typename DT = void>
+    void bfrev(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::bfrev, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(isGen12 ? Opcode::bfrev_gen12 : Opcode::bfrev, getDataType<DT>(), mod, dst, src0);
     }
     void brc(const InstructionModifier &mod, Label &jip, Label &uip, SourceLocation loc = {}) {
@@ -830,11 +1198,32 @@ protected:
     }
     void brd(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::brd, mod, jip);
+        else
+#endif
         opX(Opcode::brd, mod, jip);
     }
     void brd(const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {}) {
         opCall(Opcode::brd, mod, NoOperand(), src0);
     }
+#if XE4
+    void brd(const InstructionModifier &mod, Label &jip, bool branchCtrl, SourceLocation loc = {}) {
+        auto emod = mod;
+        emod.setBranchCtrl(branchCtrl);
+        if (branchCtrl && hardware < HW::Xe4) unsupported();
+        brd(emod, jip);
+    }
+    template <typename DT = void>
+    void brepgen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::brepgen, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void brepgen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::brepgen, getDataType<DT>(), mod, dst, src0, src1);
+    }
+#endif
     void break_(const InstructionModifier &mod, Label &jip, Label &uip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
@@ -842,37 +1231,98 @@ protected:
     }
     void call(const InstructionModifier &mod, const RegData &dst, Label &jip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::call, DataType::invalid, mod, dst, jip);
+        else
+#endif
         opCall(Opcode::call, mod, dst, jip);
     }
     void call(const InstructionModifier &mod, const RegData &dst, const RegData &jip, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::call, DataType::invalid, mod, dst, jip);
+        else
+#endif
         opCall(Opcode::call, mod, dst, jip);
     }
+#if XE4
+    void calla(const InstructionModifier &mod, const RegData &dst, uint64_t jip = 0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::calla, DataType::invalid, mod, dst, Immediate::uq(jip));
+        else
+            opCall(Opcode::calla, mod, dst, Immediate::ud(uint32_t(jip)));
+    }
+#else
     void calla(const InstructionModifier &mod, const RegData &dst, int32_t jip, SourceLocation loc = {}) {
         opCall(Opcode::calla, mod, dst, Immediate::ud(jip));
     }
+#endif
     void calla(const InstructionModifier &mod, const RegData &dst, const RegData &jip, SourceLocation loc = {}) {
         opCall(Opcode::calla, mod, dst, jip);
     }
+#if XE4
+    void callad(const InstructionModifier &mod, const RegData &dst, uint64_t jip = 0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::callad, DataType::invalid, mod, dst, Immediate::uq(jip));
+    }
+    void calld(const InstructionModifier &mod, const RegData &dst, Label &jip, SourceLocation loc = {}) {
+        (void) jip.getID(labelManager);
+        opX(OpcodeClassXe4::calld, DataType::invalid, mod, dst, jip);
+    }
+    void calld(const InstructionModifier &mod, const RegData &dst, const RegData &jip, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::calld, DataType::invalid, mod, dst, jip);
+    }
+#endif
     template <typename DT = void>
     void cbit(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::cbit, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void cbit(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::cbit, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(Opcode::cbit, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void cmpn(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::cmpn_gen12 : Opcode::cmpn, getDataType<DT>(), mod, dst, src0, src1);
     }
+#if XE4
+    void cnvg(const InstructionModifier &mod, uint8_t cid, bool exp, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::cnvg, DataType::invalid, mod, NoOperand(), src0, NoOperand(), NoOperand(), 0x200 | cid | (uint16_t(exp) << 8));
+    }
+    void cnvg(const InstructionModifier &mod, uint8_t cid, bool exp, const Immediate &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::cnvg, DataType::invalid, mod, NoOperand(), src0, NoOperand(), NoOperand(), 0x200 | cid | (uint16_t(exp) << 8));
+    }
+    void cnvg(const InstructionModifier &mod, bool exp, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::cnvg, DataType::invalid, mod, NoOperand(), src0, NoOperand(), NoOperand(), uint16_t(exp) << 8);
+    }
+    void cnvg(const InstructionModifier &mod, bool exp, const Immediate &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::cnvg, DataType::invalid, mod, NoOperand(), src0, NoOperand(), NoOperand(), uint16_t(exp) << 8);
+    }
+#endif
     template <typename DT = void>
     void csel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::csel_gen12 : Opcode::csel, getDataType<DT>(), mod, dst, src0, src1, src2);
@@ -894,6 +1344,19 @@ protected:
         (void) uip.getID(labelManager);
         opX(Opcode::cont, mod, jip, uip);
     }
+#if XE4
+    template <typename DT = void>
+    void cvt(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opCvt(OpcodeClassXe4::cvt, getDataType<DT>(), mod, dst, src0, NoOperand());
+        else
+            mov<DT>(mod, dst, src0, loc);
+    }
+    template <typename DT = void>
+    void cvt2(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opCvt(OpcodeClassXe4::cvt2, getDataType<DT>(), mod, dst, src0, src1);
+    }
+#endif
     template <typename DT = void>
     void dp2(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(Opcode::dp2, getDataType<DT>(), mod, dst, src0, src1);
@@ -920,20 +1383,51 @@ protected:
     }
     template <typename DT = void>
     void dp4a(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
+        } else
+#endif
         opX(Opcode::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void dp4a(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                unsupported();
+        } else
+#endif
         opX(Opcode::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void dp4a(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
+        } else
+#endif
         opX(Opcode::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void dp4a(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
         opX(Opcode::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
+#if XE4
+    template <typename DT = void>
+    void dp4a(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        if (mod.hasExecSize()) unsupported();
+        opDP4A(OpcodeClassXe4::dp4a, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+#endif
     template <typename DT = void>
     void dpas(const InstructionModifier &mod, uint8_t sdepth, uint8_t rcount, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
         opDpas(Opcode::dpas, getDataType<DT>(), mod, sdepth, rcount, dst, src0, src1, src2);
@@ -961,6 +1455,85 @@ protected:
     void else_(InstructionModifier mod, Label &jip, SourceLocation loc = {}) {
         else_(mod, jip, jip, false, loc);
     }
+#if XE4
+    template <typename DT = void>
+    void emcos(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emcos, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::cos, dst, src0);
+    }
+    template <typename DT = void>
+    void emexp2(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emexp2, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::exp, dst, src0);
+    }
+    template <typename DT = void>
+    void eminv(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::eminv, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::inv, dst, src0);
+    }
+    template <typename DT = void>
+    void eminvm(const InstructionModifier &mod, const ExtendedReg &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::eminvm, getDataType<DT>(), mod, dst, src0, src1);
+        else
+            math<DT>(mod, MathFunction::invm, dst, src0 | nomme, src1 | nomme);
+    }
+    template <typename DT = void>
+    void emlog2(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emlog2, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::log, dst, src0);
+    }
+    template <typename DT = void>
+    void emrsqt(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emrsqt, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::rsqt, dst, src0);
+    }
+    template <typename DT = void>
+    void emrsqtm(const InstructionModifier &mod, const ExtendedReg &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emrsqtm, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::rsqtm, dst, src0 | nomme);
+    }
+    template <typename DT = void>
+    void emsin(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emsin, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::sin, dst, src0);
+    }
+    template <typename DT = void>
+    void emsgmd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emsgmd, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::sigm, dst, src0);
+    }
+    template <typename DT = void>
+    void emsqt(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emsqt, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::sqt, dst, src0);
+    }
+    template <typename DT = void>
+    void emtanh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::emtanh, getDataType<DT>(), mod, dst, src0);
+        else
+            math<DT>(mod, MathFunction::tanh, dst, src0);
+    }
+#endif
     void endif(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         opX(Opcode::endif, mod, NoOperand(), jip);
@@ -972,27 +1545,50 @@ protected:
     }
     template <typename DT = void>
     void fbh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::fbh, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void fbh(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::fbh, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(Opcode::fbh, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void fbl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::fbl, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void fbl(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::fbl, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(Opcode::fbl, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void frc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::frc, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(Opcode::frc, getDataType<DT>(), mod, dst, src0);
     }
+    template <typename DT = void> void frc(const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        frc<DT>(defaultMods(), dst, src0);
+    }
+#if XE4
+    template <typename DT = uint32_t>
+    void geta(const InstructionModifier &mod, const RegData &dst, IndirectARF src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::geta, getDataType<DT>(), mod, dst, src0);
+    }
+#endif
     void goto_(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
+#if XE4
+        if (hardware >= HW::Xe4) {
+            auto emod = mod;
+            emod.setBranchCtrl(branchCtrl);
+            opX(OpcodeClassXe4::goto_, DataType::invalid, emod, NoOperand(), jip, uip);
+        } else
+#endif
         opX(Opcode::goto_, DataType::invalid, mod, NoOperand(), jip, uip, NoOperand(), branchCtrl);
     }
     void goto_(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
@@ -1018,22 +1614,43 @@ protected:
         if_(mod, jip, jip, false, loc);
     }
     void illegal(SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::illegal);
+        else
+#endif
         opX(Opcode::illegal);
     }
+    void jmpi(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
+        (void) jip.getID(labelManager);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::jmpi, mod, jip);
+        else
+#endif
+        opJmpi(Opcode::jmpi, mod, jip);
+    }
+    void jmpi(const InstructionModifier &mod, const RegData &jip, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::jmpi, DataType::invalid, mod, NoOperand(), jip);
+        else
+#endif
+        opJmpi(Opcode::jmpi, mod, jip);
+    }
     void join(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
+        (void) jip.getID(labelManager);
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::join, mod, jip);
+        else
+#endif
         opX(Opcode::join, mod, jip);
     }
     void join(const InstructionModifier &mod, SourceLocation loc = {}) {
         Label next;
         join(mod, next);
         mark(next);
-    }
-    void jmpi(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
-        (void) jip.getID(labelManager);
-        opJmpi(Opcode::jmpi, mod, jip);
-    }
-    void jmpi(const InstructionModifier &mod, const RegData &jip, SourceLocation loc = {}) {
-        opJmpi(Opcode::jmpi, mod, jip);
     }
     template <typename DT = void>
     void line(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
@@ -1058,61 +1675,57 @@ protected:
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-#ifdef NGEN_SAFE
         if (hardware >= HW::Xe3p) unsupported();
-#endif
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-#ifdef NGEN_SAFE
         if (hardware >= HW::Xe3p) unsupported();
-#endif
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-#ifdef NGEN_SAFE
         if (hardware >= HW::Xe3p) unsupported();
-#endif
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-#ifdef NGEN_SAFE
         if (hardware >= HW::Xe3p) unsupported();
-#endif
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
 #if XE3P
         if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
-#endif
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
 #if XE3P
         if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
-#endif
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+        } else
+#endif
         opX(Opcode::mad, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
@@ -1121,18 +1734,87 @@ protected:
     }
     template <typename DT = void>
     void mad(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                unsupported();
+        } else
+#endif
         opX(Opcode::mad, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void mad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            if (mod.hasExecSize())
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+        else
+#endif
         opX(Opcode::mad, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void mad(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            if (mod.hasExecSize())
+                opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src1, src2, src0);
+            else
+                unsupported();
+        } else
+#endif
         opX(Opcode::mad, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
+#if XE4
+    template <typename DT = void>
+    void mad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        if (mod.hasExecSize()) unsupported();
+        opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void mad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const Immediate &src2, SourceLocation loc = {}) {
+        if (mod.hasExecSize()) unsupported();
+        opX(OpcodeClassXe4::mad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void madc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            opX(OpcodeClassXe4::madc, getDataType<DT>(), mod, dst, src0, src1, src2, carryIn);
+        else
+            opX(OpcodeClassXe4::madc, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void madc(const InstructionModifier &mod, const RegData &dst, const FlagRegister &carryOut, const RegData &src0, const RegData &src1, const RegData &src2, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        madc<DT>(mod | eo | carryOut, dst, src0, src1, src2, carryIn);
+    }
+    // TODO: further madc overrides with immediates. Make life easier with RegOrImm wrapper.
+    template <typename DT = void>
+    void madlh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::madlh, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void madlh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::madlh, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void madlh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::madlh, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void madlh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::madlh, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+#endif
     template <typename DT = void>
     void madm(const InstructionModifier &mod, const ExtendedReg &dst, const ExtendedReg &src0, const ExtendedReg &src1, const ExtendedReg &src2, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::madm, getDataType<DT>(), mod, dst, src0, src1, src2);
+        else
+#endif
         opX(Opcode::madm, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
@@ -1143,6 +1825,20 @@ protected:
         if (fc == MathFunction::rsqtm)
             math<DT>(mod, fc, dst | nomme, src0 | nomme);
         else
+#if XE4
+        if (hardware >= HW::Xe4) switch (fc) {
+            case MathFunction::cos:  emcos<DT>(mod, dst, src0); break;
+            case MathFunction::exp:  emexp2<DT>(mod, dst, src0); break;
+            case MathFunction::inv:  eminv<DT>(mod, dst, src0); break;
+            case MathFunction::log:  emlog2<DT>(mod, dst, src0); break;
+            case MathFunction::rsqt: emrsqt<DT>(mod, dst, src0); break;
+            case MathFunction::sigm: emsgmd<DT>(mod, dst, src0); break;
+            case MathFunction::sin:  emsin<DT>(mod, dst, src0); break;
+            case MathFunction::sqt:  emsqt<DT>(mod, dst, src0); break;
+            case MathFunction::tanh: emtanh<DT>(mod, dst, src0); break;
+            default: unsupported();
+        } else
+#endif
             opX(Opcode::math, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), static_cast<uint8_t>(fc));
     }
     template <typename DT = void>
@@ -1167,25 +1863,135 @@ protected:
 #ifdef NGEN_SAFE
         if (fc != MathFunction::rsqtm) throw invalid_operand_exception();
 #endif
-        mod.setCMod(ConditionModifier::eo);
-        opX(Opcode::math, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), static_cast<uint8_t>(fc));
+#if XE4
+        if (hardware >= HW::Xe4)
+            emrsqtm<DT>(mod, dst, src0.getBase());
+        else
+#endif
+        {
+            mod.setCMod(ConditionModifier::eo);
+            opX(Opcode::math, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), static_cast<uint8_t>(fc));
+        }
     }
     template <typename DT = void>
     void math(InstructionModifier mod, MathFunction fc, const ExtendedReg &dst, const ExtendedReg &src0, const ExtendedReg &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
         if (fc != MathFunction::invm) throw invalid_operand_exception();
 #endif
-        mod.setCMod(ConditionModifier::eo);
-        opX(Opcode::math, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), static_cast<uint8_t>(fc));
+#if XE4
+        if (hardware >= HW::Xe4)
+            eminvm<DT>(mod, dst, src0.getBase(), src1.getBase());
+        else
+#endif
+        {
+            mod.setCMod(ConditionModifier::eo);
+            opX(Opcode::math, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), static_cast<uint8_t>(fc));
+        }
+    }
+    template <typename DT = void>
+    void max_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::max_, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+        sel<DT>(mod | ge | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void max_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::max_, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+        sel<DT>(mod | ge | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void min_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::min_, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+        sel<DT>(mod | lt | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void min_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::min_, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
+        sel<DT>(mod | lt | f0[0], dst, src0, src1);
     }
     template <typename DT = void>
     void mov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4) {
+            auto dt = dst.getType(), st = src0.getType();
+            if (dt == DataType::invalid) dt = getDataType<DT>();
+            if (st == DataType::invalid) st = getDataType<DT>();
+            if (dt == st || dt == DataType::invalid || st == DataType::invalid)
+                opX(OpcodeClassXe4::mov_128R, getDataType<DT>(), mod, dst, src0);
+            else
+                cvt<DT>(mod, dst, src0);
+        } else
+#endif
         opX(isGen12 ? Opcode::mov_gen12 : Opcode::mov, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void mov(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::mov_128R, getDataType<DT>(), mod, dst, src0);
+        else
+#endif
         opX(isGen12 ? Opcode::mov_gen12 : Opcode::mov, getDataType<DT>(), mod, dst, src0);
     }
+#if XE4
+    template <typename DT = void>
+    void movb(const InstructionModifier &mod, RegData dst, RegData src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        canonicalizeSRF(dst);
+        canonicalizeSRF(src0);
+#ifdef NGEN_SAFE
+        if (dst.isSRF() == src0.isSRF())
+            throw invalid_operand_exception();
+#endif
+        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void movb(const InstructionModifier &mod, RegData dst, RegData src0, RegData lanemask, SourceLocation loc = {}) {
+        canonicalizeSRF(dst);
+        canonicalizeSRF(src0);
+#ifdef NGEN_SAFE
+        if (dst.isSRF() == src0.isSRF())
+            throw invalid_operand_exception();
+#endif
+        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void movb(const InstructionModifier &mod, RegData dst, Immediate src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void movb(const InstructionModifier &mod, RegData dst, Immediate src0, RegData lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void movg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::movg, getDataType<DT>(), mod, dst, src0);
+        else
+            mov(mod, dst, src0);
+    }
+    template <typename DT = void>
+    void movs(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::movs, getDataType<DT>(), mod, dst, src0);
+        else
+            mov(mod, dst, src0);
+    }
+#endif
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
@@ -1198,131 +2004,266 @@ protected:
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        if (hardware < HW::Gen10) unsupported();
 #ifdef NGEN_SAFE
-        if (hardware < HW::Gen10) throw unsupported_instruction();
         if (!src0.isIndirect()) throw invalid_address_mode_exception();
 #endif
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
-        if (hardware < HW::Gen10) throw unsupported_instruction();
-#endif
+        if (hardware < HW::Gen10) unsupported();
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1);
     }
+#if XE4
+    template <typename DT = uint32_t>
+    void msk(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::msk, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = uint32_t>
+    void msk(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::msk, getDataType<DT>(), mod, dst, src0, Immediate::ud(src1));
+    }
+    template <typename DT = uint32_t>
+    void msk(const InstructionModifier &mod, const RegData &dst, uint32_t src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::msk, getDataType<DT>(), mod, dst, Immediate::ud(src0), src1);
+    }
+    template <typename DT = uint32_t>
+    void msk(const InstructionModifier &mod, const RegData &dst, uint32_t src0, uint32_t src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::msk,getDataType<DT>(),  mod, dst, Immediate::ud(src0), Immediate::ud(src1));
+    }
+#endif
     template <typename DT = void>
     void mul(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::mul_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::mul, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mul(const InstructionModifier &mod, const RegData &dst, const RegData &src0, Immediate src1, SourceLocation loc = {}) {
         if (dst.getBytes() == 8)
             src1 = src1.forceInt32();
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::mul_128A, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::mul, getDataType<DT>(), mod, dst, src0, src1);
     }
 #if XE3P
     template <typename DT = void>
     void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opMullh(OpcodeClassXe4::mullh, getDataType<DT>(), mod, dst, src0, src1, NoOperand());
+        else
+#endif
         opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opMullh(OpcodeClassXe4::mullh, getDataType<DT>(), mod, dst, src0, src1, NoOperand());
+        else
+#endif
         opX(Opcode::mullh, getDataType<DT>(), mod, dst, src0, src1);
     }
-#endif
+#endif /* XE3P */
     void nop(SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            nop128();
+        else
+#endif
         opX(isGen12 ? Opcode::nop_gen12 : Opcode::nop);
     }
-    template <typename DT = void>
-    void not_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::not_gen12 : Opcode::not_, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void not_(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::not_gen12 : Opcode::not_, getDataType<DT>(), mod, dst, src0);
-    }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void not(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        not_<DT>(mod, dst, src0);
-    }
-    template <typename DT = void>
-    void not(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        not_<DT>(mod, dst, src0);
-    }
+#if XE4
+    void nop128(SourceLocation loc = {}) { opX(OpcodeClassXe4::nop128); }
+    void nop64(SourceLocation loc = {})  { opX(OpcodeClassXe4::nop64);  }
 #endif
     template <typename DT = void>
+    void not_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0x55, dst, src0, NullRegister());
+        else
+#endif
+        opX(isGen12 ? Opcode::not_gen12 : Opcode::not_, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
     void or_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0xEE, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::or_gen12 : Opcode::or_, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void or_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0xEE, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::or_gen12 : Opcode::or_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void or(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        or_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void or(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        or_<DT>(mod, dst, src0, src1);
-    }
-#endif
     template <typename DT = void>
     void pln(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(Opcode::pln, getDataType<DT>(), mod, dst, src0, src1);
     }
+#if XE4
+    template <typename DT = uint32_t>
+    void redand(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redand, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redand(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redand, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redfirst(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redfirst, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redfirst(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redfirst, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redfirstidx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redfirstidx, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redfirstidx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redfirstidx, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redmax(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redmax, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redmax(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redmax, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redmin(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redmin, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redmin(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redmin, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redor, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redor, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redsum(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redsum, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = void>
+    void redsum(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redsum, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redxor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redxor, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void redxor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::redxor, getDataType<DT>(), mod, dst, src0, lanemask);
+    }
+#endif
     void ret(const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {}) {
         opJmpi(Opcode::ret, mod, src0);
     }
-    template <typename DT = void>
-    void rndd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndd, getDataType<DT>(), mod, dst, src0);
+#if XE4
+    void retd(const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::retd, DataType::invalid, mod, NoOperand(), src0);
     }
     template <typename DT = void>
-    void rndd(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+    void rnd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::rnd, getDataType<DT>(), mod, dst, src0);
+    }
+#endif
+    template <typename DT = void>
+    void rndd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            rnd<DT>(mod | rd, dst, src0);
+        else
+#endif
         opX(Opcode::rndd, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void rnde(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rnde, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void rnde(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            rnd<DT>(mod | rne, dst, src0);
+        else
+#endif
         opX(Opcode::rnde, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void rndu(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndu, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void rndu(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            rnd<DT>(mod | ru, dst, src0);
+        else
+#endif
         opX(Opcode::rndu, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void rndz(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndz, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void rndz(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            rnd<DT>(mod | rtz, dst, src0);
+        else
+#endif
         opX(Opcode::rndz, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void rol(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::rol, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::rol_gen12 : Opcode::rol, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void rol(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::rol, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::rol_gen12 : Opcode::rol, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void ror(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::ror, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::ror_gen12 : Opcode::ror, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void ror(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::ror, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::ror_gen12 : Opcode::ror, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
@@ -1349,6 +2290,22 @@ protected:
     void sel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::sel_gen12 : Opcode::sel, getDataType<DT>(), mod, dst, src0, src1);
     }
+#if XE4
+    template <typename DT = uint32_t>
+    void sel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, FlagRegister predicate, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::sel, getDataType<DT>(), mod, dst, src0, src1, predicate);
+        else
+            sel(mod | predicate, dst, src0, src1);
+    }
+    template <typename DT = uint32_t>
+    void sel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, FlagRegister predicate, SourceLocation loc = {}) {
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::sel, getDataType<DT>(), mod, dst, src0, src1, predicate);
+        else
+            sel(mod | predicate, dst, src0, src1);
+    }
+#endif
 
     /* Gen12-style sends */
     void send(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, const RegData &src1, uint32_t exdesc, uint32_t desc, SourceLocation loc = {}) {
@@ -1479,22 +2436,22 @@ protected:
         sendc(mod, static_cast<SharedFunction>(0), dst, src0, src1, exdesc, desc);
     }
 #if XE3P
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, NullRegister(), ind0, NoOperand(), desc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, NullRegister(), ind0, ind1, desc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, src1, ind0, NoOperand(), desc);
     }
-    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, src1, ind0, ind1, desc);
     }
     void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
@@ -1506,22 +2463,30 @@ protected:
     void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendg, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+#if XE4
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        sendg(mod, sf, dst, src0, RegisterRange(src1), desc);
+    }
+    void sendg(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        sendg(mod, sf, dst, src0, RegisterRange(src1), ind0, desc);
+    }
+#endif
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, NullRegister(), ind0, NoOperand(), desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, NullRegister(), ind0, ind1, desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src1, ind0, NoOperand(), desc);
     }
-    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src1, ind0, ind1, desc);
     }
     void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
@@ -1533,28 +2498,36 @@ protected:
     void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgc, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+#if XE4
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        sendgc(mod, sf, dst, src0, RegisterRange(src1), desc);
+    }
+    void sendgc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        sendgc(mod, sf, dst, src0, RegisterRange(src1), ind0, desc);
+    }
+#endif
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         if (ind0.isNull())
             opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
         else
             opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), ind0, NoOperand(), desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, NullRegister(), ind0, ind1, desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         if (ind0.isNull())
             opSendg(Opcode::sendgx, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
         else
             opSendg(Opcode::sendgx, mod, sf, dst, src0, src1, ind0, NoOperand(), desc);
     }
-    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, src1, ind0, ind1, desc);
     }
     void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
@@ -1566,28 +2539,36 @@ protected:
     void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgx, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, uint64_t desc, SourceLocation loc = {}) {
+#if XE4
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        sendgx(mod, sf, dst, src0, RegisterRange(src1), desc);
+    }
+    void sendgx(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        sendgx(mod, sf, dst, src0, RegisterRange(src1), ind0, desc);
+    }
+#endif
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgxc, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         if (ind0.isNull())
             opSendg(Opcode::sendgxc, mod, sf, dst, src0, NullRegister(), NoOperand(), NoOperand(), desc);
         else
             opSendg(Opcode::sendgxc, mod, sf, dst, src0, NullRegister(), ind0, NoOperand(), desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgxc, mod, sf, dst, src0, NullRegister(), ind0, ind1, desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgxc, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
         if (ind0.isNull())
             opSendg(Opcode::sendgxc, mod, sf, dst, src0, src1, NoOperand(), NoOperand(), desc);
         else
             opSendg(Opcode::sendgxc, mod, sf, dst, src0, src1, ind0, NoOperand(), desc);
     }
-    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const GRFRange &src0, const GRFRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const RegisterRange &src1, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgxc, mod, sf, dst, src0, src1, ind0, ind1, desc);
     }
     void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, uint64_t desc, SourceLocation loc = {}) {
@@ -1599,22 +2580,124 @@ protected:
     void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegData &src0, int src0Len, const RegData &ind0, const RegData &ind1, uint64_t desc, SourceLocation loc = {}) {
         opSendg(Opcode::sendgxc, mod, sf, dst, src0, src0Len, ind0, ind1, desc);
     }
+#if XE4
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, uint64_t desc, SourceLocation loc = {}) {
+        sendgxc(mod, sf, dst, src0, RegisterRange(src1), desc);
+    }
+    void sendgxc(const InstructionModifier &mod, SharedFunction sf, const RegData &dst, const RegisterRange &src0, const GRFRange &src1, const RegData &ind0, uint64_t desc, SourceLocation loc = {}) {
+        sendgxc(mod, sf, dst, src0, RegisterRange(src1), ind0, desc);
+    }
 #endif
-
+#endif
+#if XE4
+    template <typename DT = uint32_t>
+    void seta(const InstructionModifier &mod, IndirectARF dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = uint32_t>
+    void seta(const InstructionModifier &mod, IndirectARF dst, const Immediate &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = uint32_t>
+    void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfli(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfli, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfli(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfli, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfli(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfli, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shfli(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shfli, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    // TODO: shflsb
+    template <typename DT = uint32_t>
+    void shflu(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflu, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflu(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflu, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflu(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflu, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflu(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflu, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflx, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &lanemask, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflx, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflx, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+    template <typename DT = uint32_t>
+    void shflx(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::shflx, getDataType<DT>(), mod, dst, src0, src1, lanemask);
+    }
+#endif
     template <typename DT = void>
     void shl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::shl, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::shl_gen12 : Opcode::shl, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void shl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::shl, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::shl_gen12 : Opcode::shl, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::shr, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::shr, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
@@ -1631,12 +2714,63 @@ protected:
     }
     template <typename DT = void>
     void subb(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::subb, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void subb(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod, dst, src0, src1);
+        else
+#endif
         opX(Opcode::subb, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
+#if XE4
+    template <typename DT = void>
+    void subb(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const FlagRegister &carryIn, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::subb, getDataType<DT>(), mod, dst, src0, src1, carryIn);
+    }
+    template <typename DT = void>
+    void subb(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::subb, getDataType<DT>(), mod, dst, src0, src1, carryIn);
+    }
+    template <typename DT = void>
+    void subb(const InstructionModifier &mod, const RegData &dst, const FlagRegister &carryOut, const RegData &src0, const RegData &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1, carryIn);
+        else
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void subb(const InstructionModifier &mod, const RegData &dst, const FlagRegister &carryOut, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1, carryIn);
+        else
+            opX(OpcodeClassXe4::subb, getDataType<DT>(), mod | eo | carryOut, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void subb(const RegData &dst, const RegData &src0, const RegData &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            subb<DT>(InstructionModifier(), dst, src0, src1, carryIn);
+        else
+            subb<DT>(InstructionModifier(), dst, src0, src1);
+    }
+    template <typename DT = void>
+    void subb(const RegData &dst, const RegData &src0, const Immediate &src1, const FlagRegister &carryIn = FlagRegister(), SourceLocation loc = {}) {
+        if (carryIn.isValid())
+            subb<DT>(InstructionModifier(), dst, src0, src1, carryIn);
+        else
+            subb<DT>(InstructionModifier(), dst, src0, src1);
+    }
+    void tarb(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::tarb, DataType::invalid, mod, NoOperand(), NoOperand());
+    }
+#endif
     void wait(const InstructionModifier &mod, const RegData &nreg, SourceLocation loc = {}) {
         opX(Opcode::wait, mod, NoOperand(), nreg);
     }
@@ -1646,20 +2780,25 @@ protected:
     }
     template <typename DT = void>
     void xor_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0x66, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::xor_gen12 : Opcode::xor_, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void xor_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+#if XE4
+        if (hardware >= HW::Xe4)
+            bfn2<DT>(mod, 0x66, dst, src0, src1);
+        else
+#endif
         opX(isGen12 ? Opcode::xor_gen12 : Opcode::xor_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void xor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        xor_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void xor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        xor_<DT>(mod, dst, src0, src1);
+#if XE4
+    void yield(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::yield, DataType::invalid, mod, NoOperand(), NoOperand());
     }
 #endif
 
@@ -1737,6 +2876,198 @@ public:
     Shfl shfl;
 #endif
 
+#if XE4
+    /* Scalar instructions */
+    template <typename DT = void>
+    void sadd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sadd_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sadd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sadd_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sasr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sasr, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sasr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sasr, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sbfn2(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfn2, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), ctrl);
+    }
+    template <typename DT = void>
+    void sbfn2(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfn2, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), ctrl);
+    }
+    template <typename DT = void>
+    void sbfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn2, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+    template <typename DT = void>
+    void sbfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn2, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+    template <typename DT = void>
+    void sbfn3(const InstructionModifier &mod, uint8_t ctrl, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::bfn2, getDataType<DT>(), mod, dst, src0, src1, src2, ctrl);
+    }
+    template <typename DT = uint32_t>
+    void sbfe(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfe, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void sbfegen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfegen, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = uint32_t>
+    void sbfi(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfi, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void sbfi(const InstructionModifier &mod, unsigned width, unsigned offset, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfi, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void sbfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void sbfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
+    }
+    template <typename DT = uint32_t>
+    void sbfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfigen, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = uint32_t>
+    void sbfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfigen, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void sbfrev(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbfrev, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void sbrepgen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbrepgen, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sbrepgen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sbrepgen, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sfbh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sfbh, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void sfbl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sfbl, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = uint32_t>
+    void sgeta(const InstructionModifier &mod, const RegData &dst, IndirectARF src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sgeta, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void smad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void smad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void smad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const RegData &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void smad(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, const Immediate &src2, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smad_128A, getDataType<DT>(), mod, dst, src0, src1, src2);
+    }
+    template <typename DT = void>
+    void smov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smov_128R, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void smov(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smov_128R, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = uint32_t>
+    void smsk(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smsk, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = uint32_t>
+    void smsk(const InstructionModifier &mod, const RegData &dst, const RegData &src0, uint32_t src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smsk, getDataType<DT>(), mod, dst, src0, Immediate::ud(src1));
+    }
+    template <typename DT = uint32_t>
+    void smsk(const InstructionModifier &mod, const RegData &dst, uint32_t src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smsk, getDataType<DT>(), mod, dst, Immediate::ud(src0), src1);
+    }
+    template <typename DT = uint32_t>
+    void smsk(const InstructionModifier &mod, const RegData &dst, uint32_t src0, uint32_t src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smsk,getDataType<DT>(),  mod, dst, Immediate::ud(src0), Immediate::ud(src1));
+    }
+    template <typename DT = void>
+    void smul(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smul_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void smul(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::smul_128A, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void smullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::smullh, getDataType<DT>(), mod, dst, src0, src1, NoOperand());
+    }
+    template <typename DT = void>
+    void smullh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opMullh(OpcodeClassXe4::smullh, getDataType<DT>(), mod, dst, src0, src1, NoOperand());
+    }
+    template <typename DT = uint32_t>
+    void ssel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, FlagRegister predicate, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::ssel, getDataType<DT>(), mod, dst, src0, src1, predicate);
+    }
+    template <typename DT = uint32_t>
+    void ssel(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, FlagRegister predicate, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::ssel, getDataType<DT>(), mod, dst, src0, src1, predicate);
+    }
+    template <typename DT = uint32_t>
+    void sseta(const InstructionModifier &mod, IndirectARF dst, const RegData &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sseta, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = uint32_t>
+    void sseta(const InstructionModifier &mod, IndirectARF dst, const Immediate &src0, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sseta, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void>
+    void sshl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sshl, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sshl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sshl, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sshr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sshr, getDataType<DT>(), mod, dst, src0, src1);
+    }
+    template <typename DT = void>
+    void sshr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        opX(OpcodeClassXe4::sshr, getDataType<DT>(), mod, dst, src0, src1);
+    }
+#endif
+
 private:
     struct Sync {
         AsmCodeGenerator &parent;
@@ -1744,19 +3075,24 @@ private:
         Sync(AsmCodeGenerator *parent_) : parent(*parent_) {}
 
         void operator()(SyncFunction fc, const InstructionModifier &mod = InstructionModifier()) {
-            parent.opSync(Opcode::sync, fc, mod, null);
+#if XE4
+            if (parent.hardware >= HW::Xe4)
+                parent.opSync(fc, mod, NoOperand());
+            else
+#endif
+            parent.opSync(fc, mod, null);
         }
         void operator()(SyncFunction fc, const RegData &src0) {
             this->operator()(fc, InstructionModifier(), src0);
         }
         void operator()(SyncFunction fc, const InstructionModifier &mod, const RegData &src0) {
-            parent.opSync(Opcode::sync, fc, mod, src0);
+            parent.opSync(fc, mod, src0);
         }
         void operator()(SyncFunction fc, int src0) {
             this->operator()(fc, InstructionModifier(), src0);
         }
         void operator()(SyncFunction fc, const InstructionModifier &mod, int src0) {
-            parent.opSync(Opcode::sync, fc, mod, Immediate::ud(src0));
+            parent.opSync(fc, mod, Immediate::ud(src0));
         }
         void allrd() {
             allrd(null);
@@ -1801,18 +3137,23 @@ private:
             this->operator()(SyncFunction::bar, mod, src0);
         }
         void bar(const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+            this->operator()((parent.hardware >= HW::Xe4) ? SyncFunction::barsrc : SyncFunction::bar, mod, src0);
+#else
             this->operator()(SyncFunction::bar, mod, src0);
+#endif
         }
         void bar(uint32_t src0, SourceLocation loc = {}) {
             this->operator()(SyncFunction::bar, InstructionModifier(), src0);
         }
         void bar(const RegData &src0, SourceLocation loc = {}) {
+#if XE4
+            this->operator()((parent.hardware >= HW::Xe4) ? SyncFunction::barsrc : SyncFunction::bar, InstructionModifier(), src0);
+#else
             this->operator()(SyncFunction::bar, InstructionModifier(), src0);
+#endif
         }
-        void flush() {
-            flush(InstructionModifier());
-        }
-        void flush(const InstructionModifier &mod) {
+        void flush(const InstructionModifier &mod = InstructionModifier()) {
             this->operator()(SyncFunction::flush, InstructionModifier(), null);
         }
         void host(const InstructionModifier &mod = InstructionModifier()) {
@@ -1821,20 +3162,48 @@ private:
         void nop(const InstructionModifier &mod = InstructionModifier()) {
             this->operator()(SyncFunction::nop, mod);
         }
+#if XE4
+        void barflush(const InstructionModifier &mod = InstructionModifier()) {
+            flush();
+        }
+        void barid(uint32_t src0, SourceLocation loc = {})                                         { bar(src0); }
+        void barid(const InstructionModifier &mod, uint32_t src0, SourceLocation loc = {})         { bar(mod, src0); }
+        void barsrc(const RegData &src0, SourceLocation loc = {})                                  { bar(src0); }
+        void barsrc(const InstructionModifier &mod, const RegData &src0, SourceLocation loc = {})  { bar(src0); }
+        void dstmsk(uint32_t src0, SourceLocation loc = {})                                        { allwr(src0); }
+        void dstmsk(const InstructionModifier &mod, uint32_t src0, SourceLocation loc = {})        { allwr(src0); }
+        void srcmsk(uint32_t src0, SourceLocation loc = {})                                        { allrd(src0); }
+        void srcmsk(const InstructionModifier &mod, uint32_t src0, SourceLocation loc = {})        { allrd(src0); }
+        void none(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
+            nop(mod);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SourceLocation loc = {}) {
+            none(swsb0, swsb1, {}, {}, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SourceLocation loc = {}) {
+            none(swsb0, swsb1, swsb2, {}, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SWSBItem swsb3, SourceLocation loc = {}) {
+            none(swsb0, swsb1, swsb2, swsb3, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SWSBItem swsb3, SWSBItem swsb4, SourceLocation loc = {}) {
+            this->operator()(SyncFunction::nop, swsb4, SWSBItem::pack4({swsb0, swsb1, swsb2, swsb3}));
+        }
+#endif
     };
 public:
     Sync sync;
 
     void ignoredep(Operand op) {
         if (hardware >= HW::Gen12LP)
-            opX(Opcode::directive, DataType::ud, InstructionModifier(), GRF(static_cast<int>(op)), NoOperand());
+            opDirective(static_cast<Directive>(op), NullRegister());
     }
     void subdep(Operand op, const GRFRange &r) {
         if (op == Operand::dst) {
 #ifdef NGEN_SAFE
             if (r.getLen() > 32) throw invalid_directive_exception();
 #endif
-            opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::subdep_dst)), r);
+            opDirective(Directive::subdep_dst, r);
         } else {
             ignoredep(op);
             wrdep(r);
@@ -1850,18 +3219,19 @@ public:
         int len = r.getLen();
         for (int o = 0; o < len; o += 32) {
             int thisLen = std::min(len - o, 32);
-            opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::wrdep)), r[o] - r[o + thisLen - 1]);
+            opDirective(Directive::wrdep, r[o] - r[o + thisLen - 1]);
         }
     }
     void wrdep(const GRF &r, SourceLocation loc = {}) {
         wrdep(r-r);
     }
     void fencedep(Label &fenceLocation, SourceLocation loc = {}) {
-        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::fencedep)), fenceLocation);
+        (void) fenceLocation.getID(labelManager);
+        opDirective(Directive::fencedep, fenceLocation);
     }
 
     void disablePVCWARWA(SourceLocation loc) {
-        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::pvcwarwa)), NullRegister());
+        opDirective(Directive::pvcwarwa, NullRegister());
     }
 
     void mark(Label &label)            { streamStack.back()->mark(label, labelManager); }
@@ -1869,6 +3239,7 @@ public:
 
     using _self = AsmCodeGenerator;
 
+#include "ngen_shortcuts.hpp"
 #include "ngen_pseudo.hpp"
 #ifndef NGEN_GLOBAL_REGS
 #include "ngen_registers.hpp"
@@ -1909,7 +3280,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 {
     finalize();
 
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer);
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_);
     std::multimap<int32_t, autoswsb::SyncInsertion*> syncs;      // Syncs inserted by auto-SWSB.
     std::multimap<int32_t, autoswsb::DummyMovInsertion*> movs;   // Dummy moves inserted by auto-SWSB.
 
@@ -1926,9 +3297,9 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 
     for (auto &i : streamStack.back()->buffer) {
         while ((nextSync != syncs.end()) && (nextSync->second->inum == i.inum))
-            outX(out, *(nextSync++)->second, lineNo++);
+            outX(out, AsmInstruction(hardware, *(nextSync++)->second), lineNo);
         while ((nextMov != movs.end()) && (nextMov->second->inum == i.inum))
-            outX(out, *(nextMov++)->second, lineNo++);
+            outX(out, *(nextMov++)->second, lineNo);
 
         if (i.isLabel()) {
             i.dst.label.outputText(out, PrintDetail::full, labelManager);
@@ -1936,15 +3307,45 @@ void AsmCodeGenerator::getCode(std::ostream &out)
             if (i.dst.label == _interfaceLabels.localIDsLoaded)
                 lineNo = 0;
         } else if (i.isComment())
-            out << "// " << i.comment << std::endl;
-        else if (i.op != Opcode::directive)
-            outX(out, i, lineNo++);
+            outComment(out, i);
+        else if (i.op != Opcode::directive && i.op != Opcode::directive_xe4)
+            outX(out, i, lineNo);
     }
+}
+
+#define NGEN_ASM_HAS_GET_PARTIAL_CODE
+void AsmCodeGenerator::getPartialCode(std::ostream &out)
+{
+    int nstream = 0;
+    int lineNo = 0;
+    for (auto it = streamStack.rbegin(); it != streamStack.rend(); it++, nstream++) {
+        out << "// Stream " << nstream << std::endl;
+        for (auto &i: (*it)->buffer) {
+            if (i.isLabel()) {
+                i.dst.label.outputText(out, PrintDetail::full, labelManager);
+                out << ':' << std::endl;
+            } else if (i.isComment())
+                outComment(out, i);
+            else if (i.op != Opcode::directive && i.op != Opcode::directive_xe4)
+                outX(out, i, lineNo);
+        }
+    }
+}
+
+#define NGEN_ASM_HAS_DISABLE_AUTOSWSB
+void AsmCodeGenerator::disableAutoSWSB()
+{
+    for (auto &i: streamStack.back()->buffer)
+        i.clearAutoSWSB();
 }
 
 template <typename D, typename S0, typename S1, typename S2>
 void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1, S2 src2, uint16_t ext)
 {
+#if XE4
+    if (hardware >= HW::Xe4) unsupported();
+#endif
+
     bool is2Src = !S1::emptyOp;
     bool is3Src = !S2::emptyOp;
     int arity = 1 + is2Src + is3Src;
@@ -1956,7 +3357,7 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
         esize = std::min<int>(esize, 8);        // WA for IGA Align16 emulation issue
 
 #ifdef NGEN_SAFE
-    if (esize > 1 && dst.isScalar())
+    if (esize > 1 && dst.isScalar() && !std::is_base_of<NoOperand, D>::value)
         throw invalid_execution_size_exception();
 #endif
 
@@ -1971,7 +3372,7 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
 
 static const char *getMnemonic(Opcode op, HW hw)
 {
-    const char *names[0x80] = {
+    static const char *names[0x80] = {
         "illegal", "sync", "sel", "movi", "not", "and", "or", "xor",
         "shr", "shl", "smov", "", "asr", "", "ror", "rol",
         "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
@@ -2000,6 +3401,78 @@ static const char *getMnemonic(Opcode op, HW hw)
         "bfe", "bfi1", "bfi2", "", "", "", "nop", ""
     };
 
+#if XE4
+    static const char *namesXe4[0x200] = {
+        "illegal\0", "nop128\0", "nop64\0", "call\0", "calla\0", "mullh\0u64", "goto\0", "smov\0b64",
+        "jmpi\0", "join\0", "add3\0u32", "ret\0", "sync\0", "add3\0u64", "sbfegen\0b32", "send\0",
+        "sendc\0", "mov\0b32", "mov\0b64", "mov\0b32", "mov\0b64", "mov\0b64", "movg\0b32", "movs\0b32",
+        "emrsqt\0f32", "movb\0b32", "asr\0s32", "asr\0s64", "bfe\0b32", "bfi\0b32", "bfia\0b32", "bfrev\0b32",
+        "tarb\0", "bfn2\0b32", "cbit\0b32", "fbh\0b32", "fbl\0b32", "rol\0b32", "rol\0b64", "ror\0b32",
+        "ror\0b64", "shl\0b32", "shl\0b64", "shr\0b32", "shr\0b64", "add\0u16v2", "add\0u16v2", "cmp\0u16v2",
+        "cmp\0u16v2", "mad\0u16v2", "mad\0u16v2", "max\0u16v2", "min\0u16v2", "mul\0u16v2", "mul\0u16v2", "smov\0b64",
+        "yield\0", "brd\0", "callad\0", "calld\0", "retd\0", "", "smov\0b64", "",
+        "", "sbrepgen\0b32", "sbfrev\0b32", "abs\0s32", "abs\0f32", "abs\0f64", "abs\0f16v2", "abs\0bf16v2",
+        "sendg\0", "sendcg\0", "add\0u32", "add\0s32", "add\0u64", "add\0s64", "add\0s16v2", "add\0s8v4",
+        "add\0f32", "add\0f16v2", "add\0bf16v2", "abs\0s64", "movb\0b64", "add\0u32", "add\0s32", "add\0u64",
+        "add\0s64", "add\0s16v2", "add\0s8v4", "add\0f32", "add\0f16v2", "add\0bf16v2", "cvt\0u8", "cvt\0s8",
+        "add\0u64", "add\0s64", "addc\0u32", "avg\0s32", "cmp\0u32", "cmp\0s32", "cmp\0u64", "cmp\0s64",
+        "cmp\0s16v2", "cmp\0s8v4", "cmp\0f32", "cmp\0f64", "cmp\0f16v2", "cmp\0bf16v2", "smsk\0b32", "sbfigen\0b32",
+        "cmp\0u32", "cmp\0s32", "cmp\0u64", "cmp\0s64", "cmp\0s16v2", "cmp\0s8v4", "cmp\0f32", "cmp\0f64",
+        "cmp\0f16v2", "cmp\0bf16v2", "abs\0f16", "abs\0bf16", "add\0f16", "add\0bf16", "add\0f16", "add\0bf16",
+        "", "", "", "", "", "", "emcos\0f32", "emexp2\0f32",
+        "eminv\0f32", "eminvm\0f32", "emlog2\0f32", "emrsqtm\0f32", "emsgmd\0f32", "emsin\0f32", "emsqt\0f32", "emtanh\0f32",
+        "frc\0f32", "max\0u32", "max\0s32", "max\0u64", "max\0s64", "max\0s16v2", "max\0s8v4", "max\0f32",
+        "max\0f16v2", "max\0bf16v2", "cvt\0u16", "cvt\0s16", "min\0u32", "min\0s32", "min\0u64", "min\0s64",
+        "min\0s16v2", "min\0s8v4", "min\0f32", "min\0f16v2", "min\0bf16v2", "cvt\0u32", "cvt\0s32", "mul\0u32",
+        "mul\0s32", "madm\0f64", "madlh\0u64", "mul\0s16v2", "mul\0s8v4", "mul\0f32", "mul\0f16v2", "mul\0bf16v2",
+        "cvt\0u64", "cvt\0s64", "mul\0u32", "mul\0s32", "madlh\0s64", "madc\0u64", "mul\0s16v2", "mul\0s8v4",
+        "mul\0f32", "mul\0f16v2", "mul\0bf16v2", "dp4a\0u32", "cvt\0u16v2", "cvt\0s16v2", "dp4a\0s32", "mad\0u32",
+        "mad\0s32", "cvt\0f32", "cvt\0tf32", "mad\0s16v2", "mad\0s8v4", "mad\0f32", "mad\0f16v2", "mad\0bf16v2",
+        "cnvg\0", "cvt\0f64", "mad\0u32", "mad\0s32", "cvt\0f16", "cvt\0bf16", "mad\0s16v2", "mad\0s8v4",
+        "mad\0f32", "mad\0f16v2", "mad\0bf16v2", "cvt\0f16v2", "cvt\0bf16v2", "emcos\0f16v2", "emcos\0bf16v2", "mad\0f32",
+        "madm\0f32", "mullh\0s64", "sel\0b32", "emexp2\0f16v2", "emexp2\0bf16v2", "mad\0f16", "mad\0bf16", "mad\0f16",
+        "mad\0bf16", "max\0f16", "max\0bf16", "min\0f16", "min\0bf16", "mul\0f16", "mul\0bf16", "mul\0f16",
+        "mul\0bf16", "cmp\0f16", "cmp\0bf16", "cmp\0f16", "cmp\0bf16", "eminv\0f16v2", "eminv\0bf16v2", "emlog2\0f16v2",
+        "subb\0u32", "add3\0s32", "add3\0s64", "sadd\0u32", "sadd\0s32", "rnd\0f32", "sadd\0u32", "sadd\0s32",
+        "rnd\0f64", "sasr\0s32", "sasr\0s64", "sbfia\0b32", "sbfn2\0b32", "sbfn3\0b32", "scmp\0u32", "scmp\0s32",
+        "scmp\0u64", "scmp\0s64", "sadd\0u64", "sadd\0s64", "scmp\0u32", "scmp\0s32", "scmp\0u64", "scmp\0s64",
+        "sadd\0u64", "sadd\0s64", "smov\0b32", "smov\0b32", "add\0f64", "smul\0u32", "smul\0s32", "rnd\0f16",
+        "smul\0u32", "smul\0s32", "rnd\0bf16", "smullh\0u64", "smullh\0s64", "smad\0u32", "smad\0s32", "emlog2\0bf16v2",
+        "smad\0u32", "smad\0s32", "msk\0b32", "emrsqt\0f16v2", "sshl\0b32", "sshr\0b32", "shflu\0b32", "shfli\0b32",
+        "shflx\0b32", "emrsqt\0bf16v2", "redmax\0f32", "redmax\0u32", "redmax\0s32", "shfld\0b32", "shflsb\0b32", "redfirst\0b32",
+        "redmin\0f32", "redsum\0u32", "redsum\0s32", "redfirstidx\0u32", "redmin\0u32", "redmin\0s32", "redand\0b32", "redor\0b32",
+        "redxor\0b32", "bfigen\0b32", "bfn3\0b32", "geta\0b32", "emsgmd\0f16v2", "seta\0b32", "emsgmd\0bf16v2", "sseta\0b32",
+        "sshl\0b64", "sgeta\0b32", "sshr\0b64", "add\0f64", "add\0f64", "mad\0f64", "mad\0f64", "mad\0f64",
+        "max\0f64", "min\0f64", "mul\0f64", "mul\0f64", "mul\0f64", "brepgen\0b32", "bfegen\0b32", "eminvm\0f64",
+        "emrsqtm\0f64", "emcos\0f16", "emexp2\0f16", "eminv\0f16", "emlog2\0f16", "emrsqt\0f16", "emsgmd\0f16", "emsin\0f16",
+        "emsqt\0f16", "emtanh\0f16", "emcos\0bf16", "emexp2\0bf16", "eminv\0bf16", "emlog2\0bf16", "emrsqt\0bf16", "emsgmd\0bf16",
+        "emsin\0bf16", "emsqt\0bf16", "emtanh\0bf16", "asr\0s16v2", "asr\0s8v4", "shl\0b16v2", "shl\0b8v4", "shr\0b16v2",
+        "shr\0b8v4", "rol\0b16v2", "rol\0b8v4", "ror\0b16v2", "ror\0b8v4", "sbfi\0b32", "sbfe\0b32", "sfbh\0b32",
+        "sfbl\0b32", "ssel\0b32", "emsin\0f16v2", "emsin\0bf16v2", "emsqt\0f16v2", "emsqt\0bf16v2", "emtanh\0f16v2", "redmax\0f16",
+        "redmax\0bf16", "redmax\0f16v2", "redmax\0bf16v2", "redmin\0f16", "redmin\0bf16", "redmin\0f16v2", "redmin\0bf16v2", "emtanh\0bf16v2",
+        "cvt2\0f16v2", "cvt2\0bf16v2", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "tmm\0s32", "tmm\0f32", "tmm\0f16", "tmm\0bf16", "", "tmmamx\0f32", "", "",
+        "tmmd\0f16", "tmmd\0bf16", "", "", "", "", "", "",
+        "trng\0b32", "trng\0b16v2", "trng\0b8v4", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "tcvdmx\0f16", "tcvdmx\0bf16", "", "", "", "", "", "",
+        "tcvd\0f16", "tcvd\0bf16", "", "", "", "", "", "",
+        "tcvumx\0f16", "tcvumx\0bf16", "", "", "tred\0f16", "tred\0bf16", "", "",
+        "tcvu\0f16", "tcvu\0bf16", "tcvu\0e5m2", "tcvu\0e4m3", "", "", "tmov\0", ""
+    };
+
+    if (hw >= HW::Xe4)
+        return namesXe4[static_cast<int>(op) & 0x1FF];
+#endif
+
     const char *mnemonic = names[static_cast<int>(op) & 0x7F];
 
     if (hw < HW::Gen12LP) switch (op) {
@@ -2020,8 +3493,101 @@ static const char *getMnemonic(Opcode op, HW hw)
     return mnemonic;
 }
 
-void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int lineNo)
+#if XE4
+static inline void validateXe4(NoOperand) {}
+template <> inline void processTypesXe4(DataType &type, NoOperand &o) {}
+
+template <typename D, typename S0, typename S1, typename S2>
+void AsmCodeGenerator::opX(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1, S2 src2, uint16_t ext)
 {
+    auto emod = mod | defaultModifier;
+    if (allowScalarization(dst) && allowScalarization(src0) && allowScalarization(src1) && allowScalarization(src2))
+        opclass = toScalar(opclass);
+    validateXe4(emod, opclass);
+    (opclass == OpcodeClassXe4::movs) ? validateIndXe4(dst)  : validateXe4(dst);
+    (opclass == OpcodeClassXe4::movg) ? validateIndXe4(src0) : validateXe4(src0);
+    validateXe4(src1);
+    validateXe4(src2);
+    processTypesXe4(defaultType, dst, src0, src1, src2);
+    validateBaseXe4(dst, src0, src1, src2);
+    if (hardware < HW::Xe4) unsupported();
+    streamStack.back()->append(opcodeXe4(opclass, defaultType), ext, emod, &labelManager, dst, src0, src1, src2);
+}
+
+template <typename S1>
+void AsmCodeGenerator::opCvt(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1)
+{
+    auto emod = mod | defaultModifier;
+    auto srcType = DataType::invalid;
+    validateXe4(emod, opclass);
+    validateXe4(dst);
+    validateXe4(src0);
+    validateXe4(src1);
+    processTypesXe4(srcType, src0, src1);
+    processTypesXe4(defaultType, dst);
+    validateBaseXe4(dst, src0, src1);
+    if (hardware < HW::Xe4) unsupported();
+    streamStack.back()->append(opcodeXe4(opclass, defaultType), 0, emod, &labelManager, dst, src0, src1);
+}
+
+template <typename S1, typename S2>
+void AsmCodeGenerator::opDP4A(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1, S2 src2)
+{
+    auto emod = mod | defaultModifier;
+    validateXe4(emod, opclass);
+    validateXe4(dst);
+    validateXe4(src0);
+    validateXe4(src1);
+    validateXe4(src2);
+    processTypesXe4(defaultType, dst, src2);
+    validateBaseXe4(dst, src0, src1, src2);
+    if (hardware < HW::Xe4) unsupported();
+    streamStack.back()->append(opcodeXe4(opclass, defaultType), 0, emod, &labelManager, dst, src0, src1, src2);
+}
+
+template <typename S0, typename S1, typename S2>
+void AsmCodeGenerator::opMullh(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, S0 src0, S1 src1, S2 src2)
+{
+    auto emod = mod | defaultModifier;
+    if (dst.isScalar() && src0.isScalar() && src1.isScalar() && src2.isScalar())
+        opclass = toScalar(opclass);
+    validateXe4(emod, opclass);
+    validateXe4(dst);
+    validateXe4(src0);
+    validateXe4(src1);
+    validateXe4(src2);
+    processTypesXe4(defaultType, dst, src2);
+    auto srcType = DataType::invalid;
+    switch (defaultType) {
+        case DataType::u64: srcType = DataType::u32; break;
+        case DataType::s64: srcType = DataType::s32; break;
+        default: break;
+    }
+    processTypesXe4(srcType, src0, src1);
+    validateBaseXe4(dst, src0, src1, src2);
+    if (hardware < HW::Xe4) unsupported();
+    streamStack.back()->append(opcodeXe4(opclass, defaultType), 0, emod, &labelManager, dst, src0, src1, src2);
+}
+
+#endif
+
+void AsmCodeGenerator::outComment(std::ostream &out, const AsmInstruction &i)
+{
+    bool newLine = true;
+    for (auto c: i.comment) {
+        if (newLine) out << "// ";
+        out << c;
+        newLine = (c == '\n');
+    }
+    if (!newLine) out << '\n';
+}
+
+void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int &lineNo)
+{
+#if XE4
+    if (hardware >= HW::Xe4) return outXe4(out, i, lineNo);
+#endif
+
     bool ternary = (i.src[2].type != AsmOperand::Type::none);
     PrintDetail ddst = PrintDetail::hs;
     PrintDetail dsrc01 = ternary ? PrintDetail::vs_hs : PrintDetail::full;
@@ -2095,10 +3661,71 @@ void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int line
     }
 
     outMods(out, i.mod, i.op, ModPlacementType::Post);
-    if (lineNumbers)
+    if (lineNumbers) {
         out << "\t// " << lineNo * 2;
+        lineNo++;
+    }
     out << std::endl;
 }
+
+#if XE4
+void AsmCodeGenerator::outXe4(std::ostream &out, const AsmInstruction &i, int &lineNo)
+{
+    bool withCMod = (i.mod.getCMod() != ConditionModifier::none);
+
+    std::array<PrintDetail, 5> dsrc;
+    dsrc.fill(PrintDetail::xe4);
+
+    if (isCvt(i.op))
+        dsrc[0] = PrintDetail::xe4_type;
+    else if (i.op == Opcode::dp4a_128Q_u32 || i.op == Opcode::dp4a_128Q_s32)
+        dsrc[0] = dsrc[1] = PrintDetail::xe4_type;
+    else if (i.op == Opcode::sync_64E && static_cast<SyncFunction>(i.ext) == SyncFunction::none)
+        dsrc[0] = PrintDetail::xe4_hide;
+
+    auto haveDst = !i.dst.isEmptyOrNull();
+    if (haveDst || withCMod) {
+        if (haveDst)
+            i.dst.outputText(out, PrintDetail::xe4_dst, labelManager);
+        if (withCMod) {
+            if (haveDst) out << ", ";
+            out << 'p' << i.mod.getCFlag().getARFBase();
+        }
+        out << " = ";
+    }
+
+    outMods(out, i.mod, i.op, ModPlacementType::PreXe4);
+
+    auto mnemonic = getMnemonic(i.op, hardware);
+    out << mnemonic;
+
+    outExt(out, i);
+
+    auto type = mnemonic + strlen(mnemonic) + 1;
+    if (*type)
+        out << '.' << type;
+
+    outMods(out, i.mod, i.op, ModPlacementType::MidXe4, i.ext);
+    if (i.dst.type == AsmOperand::Type::ereg)
+        out << "::mme" << int(i.dst.ereg.getMMENum());
+
+    out << ' ';
+
+    if (!outSpecialOps(out, i)) for (int n = 0; n <= 4; n++) if (i.src[n]) {
+        if (n > 0) out << ", ";
+        i.src[n].outputText(out, dsrc[n], labelManager);
+    }
+
+    uint32_t ext2 = static_cast<uint64_t>(i.src[0].imm);    /* sync.nop extra SWSB */
+    outMods(out, i.mod, i.op, ModPlacementType::PostXe4, i.ext, ext2);
+
+    if (lineNumbers) {
+        out << "\t// " << lineNo;
+        lineNo += isEncoding64(getEncodingXe4(i.op)) ? 1 : 2;
+    }
+    out << std::endl;
+}
+#endif
 
 void AsmCodeGenerator::outExt(std::ostream &out, const AsmInstruction &i)
 {
@@ -2143,6 +3770,40 @@ void AsmCodeGenerator::outExt(std::ostream &out, const AsmInstruction &i)
         }
         default: break;
     }
+
+#if XE4
+    if (hardware >= HW::Xe4) switch (i.opcode()) {
+        case Opcode::bfe_128G_b32:
+        case Opcode::bfi_128G_b32:
+        case Opcode::bfia_128G_b32:
+        case Opcode::sbfia_128G_b32: {
+            unsigned width = i.ext & 0xFF, offset = i.ext >> 8;
+            out << ".(" << width << ',' << offset << ')';
+            break;
+        }
+        case Opcode::bfn2_64D_b32:
+        case Opcode::bfn3_128E_b32:
+        case Opcode::sbfn2_64D_b32:
+        case Opcode::sbfn3_128E_b32:
+            if (i.ext == 0x55)      out << ".(~s0)";
+            else if (i.ext == 0xEE) out << ".(s0|s1)";
+            else if (i.ext == 0x88) out << ".(s0&s1)";
+            else if (i.ext == 0x66) out << ".(s0^s1)";
+            else
+                out << ".(0x" << std::hex << i.ext << std::dec << ')';
+            break;
+        case Opcode::sync_64E:
+            out << '.' << SyncFunctionXe4{static_cast<SyncFunction>(i.ext)};
+            break;
+        case Opcode::send_128C:
+        case Opcode::sendc_128C:
+        case Opcode::sendg_128C:
+        case Opcode::sendcg_128C:
+            outExtSendXe4(out, i);
+            break;
+        default: break;
+    }
+#endif
 }
 
 static const char *toText(PredCtrl ctrl, bool align16) {
@@ -2151,12 +3812,22 @@ static const char *toText(PredCtrl ctrl, bool align16) {
     return names[align16][static_cast<int>(ctrl) & 0xF];
 }
 
-void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod, Opcode op, AsmCodeGenerator::ModPlacementType location)
+void AsmCodeGenerator::outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, AsmCodeGenerator::ModPlacementType location, uint16_t ext, uint32_t ext2)
 {
     ConditionModifier cmod = mod.getCMod();
     PredCtrl ctrl = mod.getPredCtrl();
     bool wrEn = mod.isWrEn();
     bool havePred = (ctrl != PredCtrl::None) && (cmod != ConditionModifier::eo);
+
+    bool havePostMod = false;
+    auto startPostMod = [&](bool space = false) {
+        out << (havePostMod ? "," :
+                      space ? " {" : "{");
+        havePostMod = true;
+    };
+    auto printPostMod = [&](const char *name) {
+        startPostMod(); out << name;
+    };
 
     switch (location) {
         case ModPlacementType::Pre:
@@ -2177,8 +3848,7 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             out << '\t';
             break;
         case ModPlacementType::Mid:
-            if (mod.getExecSize() > 0)
-                out << '(' << mod.getExecSize() << "|M" << mod.getChannelOffset() << ')' << '\t';
+            out << '(' << mod.getExecSize() << "|M" << mod.getChannelOffset() << ')' << '\t';
 
             if (cmod != ConditionModifier::none) {
                 out << '(' << cmod << ')';
@@ -2190,31 +3860,29 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             break;
         case ModPlacementType::Post:
         {
-            bool havePostMod = false;
-            auto startPostMod = [&]() {
-                out << (havePostMod ? ',' : '{');
-                havePostMod = true;
-            };
-            auto printPostMod = [&](const char *name) {
-                startPostMod(); out << name;
-            };
-
-            SWSBInfo swsb = mod.getSWSB();
-            if (swsb.hasToken()) {
-                startPostMod(); out << '$' << swsb.parts.token;
-                if (swsb.parts.src && !swsb.parts.dst) out << ".src";
-                if (swsb.parts.dst && !swsb.parts.src) out << ".dst";
-            }
-            if (swsb.hasDist()) {
+            auto swsb = mod.getSWSB();
+            if (swsb[0] && swsb[1].isToken())
+                std::swap(swsb[0], swsb[1]);
+            for (auto item: swsb) {
+                if (item.empty()) continue;
                 startPostMod();
-                if (hardware > HW::Gen12LP && (op == Opcode::send || op == Opcode::sendc) && swsb.getPipe() == Pipe::Default)
-                    out << Pipe::A;
-                else if (hardware > HW::Gen12LP || !swsb.hasToken())
-                    out << swsb.getPipe();
-                out << '@' << swsb.parts.dist;
+                if (item.isNoAccSBSet())
+                    out << "NoAccSBSet";
+                else if (item.isToken()) {
+                    out << '$' << item.getToken();
+                    if (item.token.src && !item.token.dst) out << ".src";
+                    if (item.token.dst && !item.token.src) out << ".dst";
+                } else {
+                    if (hardware > HW::Gen12LP) {
+                        if ((op == Opcode::send || op == Opcode::sendc) && item.getPipe() == Pipe::Default)
+                            out << Pipe::A;
+                        else
+                            out << item.getPipe();
+                    }
+                    out << '@' << int(item.pipe.dist);
+                }
             }
 
-            if (swsb.parts.noacc)                                         printPostMod("NoAccSBSet");
             if (mod.isAlign16())                                          printPostMod("Align16");
             if (mod.isNoDDClr())                                          printPostMod("NoDDClr");
             if (mod.isNoDDChk())                                          printPostMod("NoDDChk");
@@ -2232,10 +3900,419 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             if (mod.isExBSO())                                            printPostMod("ExBSO");
 
             if (havePostMod) out << '}';
+            break;
         }
-        break;
+#if XE4
+        case ModPlacementType::PreXe4:
+            if (wrEn || havePred) {
+                out << '(';
+                if (wrEn)
+                    out << 'W';
+                if (havePred) {
+                    if (wrEn) out << '&';
+                    if (mod.isPredInv()) out << '!';
+                    out << 'p' << mod.getFlagReg().getARFBase();
+                }
+                out << ") ";
+            }
+            break;
+        case ModPlacementType::MidXe4: {
+            auto rmod = mod.getRounding();
+            bool first = true;
+            auto separate = [&] {
+                out << (first ? "::" : ".");
+                first = false;
+            };
+            switch (op) {
+                case Opcode::brd_128B:
+                case Opcode::goto__128B:
+                    if (mod.getBranchCtrl()) { separate(); out << 'b'; }
+                    break;
+                case Opcode::cnvg_128L:
+                    if (ext & 0x200) { separate(); out << (ext & 0xFF); }
+                    if (ext & 0x100) { separate(); out << "exp"; }
+                    break;
+                default: break;
+            }
+            if (mod.isSaturate()) { separate(); out << (isCvt(op) ? "clmp" : "sat"); }
+            if (rmod != RoundingOverride::none) {
+                separate(); out << rmod;
+            }
+            if (cmod != ConditionModifier::none && cmod != ConditionModifier::eo) {
+                separate(); out << ConditionModifierXe4{cmod};
+            }
+            break;
+        }
+        case ModPlacementType::PostXe4: {
+            auto swsb = mod.getSWSB();
+            std::array<SWSBItem, 4> extSWSB = {};
+            if (op == Opcode::sync_64E && static_cast<SyncFunction>(ext) == SyncFunction::nop)
+            extSWSB = SWSBItem::unpack4(ext2);
+            std::array<SWSBItem, 6> allSWSB = {extSWSB[0], extSWSB[1], extSWSB[2], extSWSB[3], swsb[0], swsb[1]};
+
+            for (auto item: allSWSB) {
+                if (item.empty()) continue;
+                startPostMod(true);
+                if (item.isToken()) {
+                    out << '$' << item.getToken();
+                    if (item.token.src && !item.token.dst) out << ".src";
+                    if (item.token.dst && !item.token.src) out << ".dst";
+                } else {
+                    out << PipeXe4{item.getPipe()};
+                    if (item.getPipe() != Pipe::A)
+                        out << '@' << int(item.pipe.dist);
+                }
+            }
+#if NGEN_ASM_SHOW_FORMATS
+            startPostMod(true);
+            out << getEncodingXe4(op);
+#endif
+            if (havePostMod) out << '}';
+            break;
+        }
+#endif
     }
 }
+
+#if XE4
+void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
+{
+    auto desc = static_cast<SendgMessageDescriptor>(uint64_t(i.src[4].imm));
+
+    bool first = true;
+    auto separateOpt = [&] {
+        out << (first ? "::" : ".");
+        first = false;
+    };
+
+    auto asm_unsupported = [] {
+#ifdef NGEN_SAFE
+        throw asm_unsupported_message();
+#endif
+    };
+
+    auto sfid = static_cast<SharedFunction>(i.ext);
+
+    out << '.' << getMnemonic(sfid, hardware);
+
+    switch (sfid) {
+        case SharedFunction::gtwy:
+            switch (desc.common.opcode) {
+                case GatewayOpcode::eot:  out << ".eot"; break;
+                case GatewayOpcode::eotr: out << ".eotr"; break;
+                case GatewayOpcode::bar:  out << ".bar"; break;
+                case GatewayOpcode::cbar: out << ".cbar"; break;
+                case GatewayOpcode::abar_init: out << ".abar_init"; break;
+                case GatewayOpcode::abar_expect: out << ".abar_expect"; break;
+                case GatewayOpcode::abar_complete: out << ".abar_complete"; break;
+                case GatewayOpcode::abar_arrive: out << ".abar_arrive"; break;
+                case GatewayOpcode::abar_arrive_expect: out << ".abar_arrive_expect"; break;
+                case GatewayOpcode::abar_try: out << ".abar_try"; break;
+                case GatewayOpcode::abar_test_poll: out << ".abar_test_poll"; break;
+                case GatewayOpcode::abar_inval: out << ".abar_inval"; break;
+                /* The following opcodes are not yet supported by IGC, and asm syntax
+                   is not defined for them: */
+                case GatewayOpcode::save_bar: out << ".save_bar"; break;
+                case GatewayOpcode::restore_bar: out << ".restore_bar"; break;
+                case GatewayOpcode::sip_bar: out << ".sip_bar"; break;
+                case GatewayOpcode::abar_save: out << ".abar_save"; break;
+                case GatewayOpcode::abar_restore: out << ".abar_restore"; break;
+                case GatewayOpcode::abar_query: out << ".abar_query"; break;
+                case GatewayOpcode::async_mtp_fence: out << ".async_mtp_fence"; break;
+                case GatewayOpcode::cbar_remote: out << ".cbar_remote"; break;
+                case GatewayOpcode::cbar_wg_eot: out << ".cbar_wg_eot"; break;
+                default: asm_unsupported();
+            }
+            switch (desc.common.opcode) {
+                case GatewayOpcode::abar_init:
+                    if (desc.abarInit.cfn) { separateOpt(); out << "cfn"; }
+                    break;
+                case GatewayOpcode::abar_expect:
+                case GatewayOpcode::abar_complete:
+                case GatewayOpcode::abar_arrive:
+                case GatewayOpcode::abar_arrive_expect: {
+                    const char *scopes[2] = {"wg", "cl"};
+                    out << '.' << scopes[desc.abar.scope];
+                    if (desc.abar.drop) { separateOpt(); out << "drop"; }
+                    if (desc.abar.lmc)  { separateOpt(); out << "lmc"; }
+                    break;
+                }
+                case GatewayOpcode::abar_try:
+                    out << ".n" << desc.abarTest.nreg; break;
+                default: break;
+            }
+            break;
+        case SharedFunction::ugm:
+        case SharedFunction::slm: {
+            auto op = static_cast<LSCOpcode>(desc.common.opcode);
+            bool write = true;
+            switch (op) {
+                case LSCOpcode::load: out << ".ld"; write = false; break;
+                case LSCOpcode::store: out << ".st"; break;
+                case LSCOpcode::load_cmask: out << ".ldcm"; write = false; break;
+                case LSCOpcode::store_cmask: out << ".stcm"; break;
+                case LSCOpcode::load_status: out << ".ldst"; write = false; break;
+                case LSCOpcode::atomic_inc: out << ".ainc"; break;
+                case LSCOpcode::atomic_dec: out << ".adec"; break;
+                case LSCOpcode::atomic_add: out << ".aadd"; break;
+                case LSCOpcode::atomic_sub: out << ".asub"; break;
+                case LSCOpcode::atomic_and: out << ".aand"; break;
+                case LSCOpcode::atomic_load: out << ".ald"; break;
+                case LSCOpcode::atomic_max: out << ".asmax"; break;
+                case LSCOpcode::atomic_min: out << ".asmin"; break;
+                case LSCOpcode::atomic_or: out << ".aor"; break;
+                case LSCOpcode::atomic_store: out << ".ast"; break;
+                case LSCOpcode::atomic_umax: out << ".aumax"; break;
+                case LSCOpcode::atomic_umin: out << ".aumin"; break;
+                case LSCOpcode::atomic_xor: out << ".axor"; break;
+                case LSCOpcode::atomic_cmpxchg: out << ".acxg"; break;
+                case LSCOpcode::atomic_fadd: out << ".afadd"; break;
+                case LSCOpcode::atomic_fsub: out << ".afsub"; break;
+                case LSCOpcode::atomic_fmax: out << ".afmax"; break;
+                case LSCOpcode::atomic_fmin: out << ".afmin"; break;
+                case LSCOpcode::atomic_fcmpxchg: out << ".afcxg"; break;
+                case LSCOpcode::atomic_bfadd: out << ".abfadd"; break;
+                case LSCOpcode::atomic_bfsub: out << ".abfsub"; break;
+                case LSCOpcode::atomic_bfmax: out << ".abfmax"; break;
+                case LSCOpcode::atomic_bfmin: out << ".abfmin"; break;
+                case LSCOpcode::atomic_bfcmpxchg: out << ".abfcxg"; break;
+                case LSCOpcode::fence: {
+                    out << ".fence.";
+                    const char *scopes[8] = {"tg", "local", "tile", "gpu", "all", "sysrel", "sysacq", ""};
+                    auto scope = scopes[desc.fence.fenceScope];
+                    if (!*scope) asm_unsupported();
+                    out << scope;
+                    if (desc.fence.flushType) {
+                        separateOpt();
+                        const char *flushes[8] = {"", "evict", "inval", "discard", "clean", "", "", ""};
+                        auto flush = flushes[desc.fence.flushType];
+                        if (!*flush) asm_unsupported();
+                        out << flush;
+                    }
+                    return;
+                }
+                // TODO: ldp, stp, ac{add,st,sub}, a{dec,inc}w, ldcmst, ecc
+                default: asm_unsupported();
+            }
+
+            if (op == LSCOpcode::load_cmask || op == LSCOpcode::store_cmask) {
+                out << '.';
+                if (desc.cmask.cmask & 0x1) out << 'x';
+                if (desc.cmask.cmask & 0x2) out << 'y';
+                if (desc.cmask.cmask & 0x4) out << 'z';
+                if (desc.cmask.cmask & 0x8) out << 'w';
+            }
+
+            const char *dataSizes[8] = {"8", "16", "32", "64", "8u32", "16u32", "", ""};
+            auto ds = dataSizes[desc.mem.dataSize];
+            if (!*ds) asm_unsupported();
+            out << ".d" << ds;
+
+            if (op == LSCOpcode::load || op == LSCOpcode::store) {
+                int vlen = desc.vectorLength();
+                if (vlen > 1) out << 'v' << vlen;
+            }
+
+            if (sfid != SharedFunction::slm) {
+                const char *addrSizes[4] = {"a32u", "a32s", "a64", "sa32"};
+                out << '.' << addrSizes[desc.mem.addrSize];
+            }
+
+            if (desc.mem.cacheMode) {
+                const char *cacheModes[2][16] = {{
+                    "", "", "l1uc_l2uc_l3uc", "l1uc_l2uc_l3c",
+                    "l1uc_l2c_l3uc", "l1uc_l2c_l3c", "l1c_l2uc_l3uc", "l1c_l2uc_l3c",
+                    "l1c_l2c_l3uc", "l1c_l2c_l3c", "l1s_l2uc_l3uc", "l1s_l2uc_l3c",
+                    "l1s_l2c_l3uc", "l1s_l2c_l3c", "l1i_l2i_l3i", ""
+                }, {
+                    "", "", "l1uc_l2uc_l3uc", "l1uc_l2uc_l3wb",
+                    "l1uc_l2wb_l3uc", "l1uc_l2wb_l3wb", "l1wt_l2uc_l3uc", "l1wt_l2uc_l3wb",
+                    "l1wt_l2wb_l3uc", "l1wt_l2wb_l3wb", "l1s_l2uc_l3uc", "l1s_l2uc_l3wb",
+                    "l1s_l2wb_l3uc", "l1s_l2wb_l3wb", "l1wb_l2wb_l3uc", "l1wb_l2uc_l3wb"
+                }};
+                auto cacheMode = cacheModes[write][desc.mem.cacheMode];
+                if (!*cacheMode) asm_unsupported();
+                separateOpt(); out << cacheMode;
+            }
+
+            if (op == LSCOpcode::load || op == LSCOpcode::store) {
+                if (desc.mem.overfetch) { separateOpt(); out << "of"; }
+                if (desc.mem.transpose) { separateOpt(); out << 't'; }
+            }
+            break;
+        }
+        case SharedFunction::dma: {
+            bool l2r = false, reduce = false, tensor = false, row = false;
+            switch (desc.common.opcode) {
+                case ADMAOpcode::linear_l2r:        out << ".linear.copy_l2r"; l2r = true; break;
+                case ADMAOpcode::linear_l2g:        out << ".linear.copy_l2g"; break;
+                case ADMAOpcode::linear_prefetch:   out << ".linear.prefetch"; break;
+                case ADMAOpcode::linear_g2l:        out << ".linear.copy_g2l"; break;
+                case ADMAOpcode::linear_reduce_l2r: out << ".linear.red_l2r"; l2r = reduce = true; break;
+                case ADMAOpcode::linear_reduce_l2g: out << ".linear.red_l2g"; reduce = true; break;
+                case ADMAOpcode::tensor_l2g:        out << ".tensor.copy_l2g"; tensor = true; break;
+                case ADMAOpcode::tensor_prefetch:   out << ".tensor.prefetch"; tensor = true; break;
+                case ADMAOpcode::tensor_g2l:        out << ".tensor.copy_g2l"; tensor = true; break;
+                case ADMAOpcode::tensor_reduce_l2g: out << ".tensor.red_l2g"; reduce = tensor = true; break;
+                case ADMAOpcode::row_l2g:           out << ".row.copy_l2g"; row = true; break;
+                case ADMAOpcode::row_prefetch:      out << ".row.prefetch"; row = true; break;
+                case ADMAOpcode::row_g2l:           out << ".row.copy_g2l"; row = true; break;
+                case ADMAOpcode::row_reduce_l2g:    out << ".row.red_l2g"; reduce = row = true; break;
+                default: asm_unsupported();
+            }
+
+            if (tensor) out << '.' << desc.adma.dims + 1 << 'd';
+
+            if (row) {
+                const char *addrs[4] = {"a32s", "a32u", "a64", ""};
+                auto addr = addrs[desc.adma.addrType];
+                if (!*addr) asm_unsupported();
+                out << '.' << addr;
+                if (desc.common.opcode == ADMAOpcode::row_l2g || desc.common.opcode == ADMAOpcode::row_g2l) {
+                    const char *sizes[8] = {"d8", "d16", "d32", "d64", "d4", "d6", "", ""};
+                    auto ds = sizes[desc.adma.dataSize];
+                    if (!*ds) asm_unsupported();
+                    out << ".mt" << (desc.adma.coreLayout + 1) << '.' << ds;
+                }
+            }
+
+            if (reduce) {
+                const char *rops[8] = {"incw", "decw", "add", "min", "max", "and", "or", "xor"};
+                out << '.' << rops[desc.adma.reduction];
+                const char *rtypes[4][8] = {{"", "f16",  "f32", "f64", "", "", "", ""},
+                                            {"", "bf16", "",    "",    "", "", "", ""},
+                                            {"", "u16",  "u32", "u64", "", "", "", ""},
+                                            {"", "s16",  "s32", "s64", "", "", "", ""}};
+                auto rt = rtypes[desc.adma.dataType][desc.adma.dataSize];
+                if (!*rt) asm_unsupported();
+                out << '.' << rt;
+            }
+
+            if (desc.adma.useCopySize) { separateOpt(); out << "cs"; }
+            if (desc.adma.multicast)   { separateOpt(); out << "mc"; }
+            if (!l2r) {
+                const char *cacheModes[4] = {"l2c_l3c", "l2c_l3uc", "l2uc_l3c", "l2uc_l3uc"};
+                separateOpt();
+                out << cacheModes[desc.adma.cache];
+            }
+            if (desc.adma.abar) { separateOpt(); out << "abar"; }
+            break;
+        }
+        case SharedFunction::mma: {
+            switch (desc.common.opcode) {
+                case AMMAOpcode::dense_mma:      out << ".ns"; break;
+                case AMMAOpcode::sparse_mma:     out << ".s";  break;
+                case AMMAOpcode::fp_error_query: out << ".fp_error_query"; return;
+                case AMMAOpcode::fp_error_clear: out << ".fp_error_clear"; return;
+                default: asm_unsupported();
+            }
+            out << ".m" << (desc.amma.m + 1) * 32
+                <<  "n" << (desc.amma.n + 1) * 32
+                <<  "k" << (desc.amma.k + 1) * 32;
+            const char *mtypes[16] = {"", "tf32", "f16",  "bf16", "e4m3", "e5m2", "e2m1", "e3m0",
+                                      "", "",     "e2m3", "e3m2", "u4",   "s4",   "u8",   "s8"};
+            const char *atypes[8]  = {"f32", "f16", "bf16", "", "", "", "", "s32"};
+            out << '.' << atypes[desc.amma.dtype]
+                << '_' << mtypes[desc.amma.atype]
+                << '_' << mtypes[desc.amma.btype]
+                << '_' << atypes[desc.amma.ctype];
+            if (desc.amma.ascale)  { separateOpt(); out << "ascale"; }
+            if (desc.amma.bscale)  { separateOpt(); out << "bscale"; }
+            if (desc.amma.alayout) { separateOpt(); out << "at"; }
+            if (desc.amma.blayout) { separateOpt(); out << "bt"; }
+            if (desc.amma.atm)     { separateOpt(); out << "atm"; }
+            if (desc.amma.btm)     { separateOpt(); out << "btm"; }
+            if (desc.amma.dtm)     { separateOpt(); out << "dtm"; }
+            if (desc.amma.areuse)  { separateOpt(); out << "a_reuse"; }
+            break;
+        }
+        default: asm_unsupported();
+    }
+}
+
+bool AsmCodeGenerator::outSpecialOps(std::ostream &out, const AsmInstruction &i)
+{
+    switch (i.op) {
+        case Opcode::send_128C:
+        case Opcode::sendc_128C:
+        case Opcode::sendg_128C:
+        case Opcode::sendcg_128C: break;
+        default: return false;
+    }
+
+    auto defaultSend = [&] {
+        if (!i.src[0].isEmptyOrNull())
+            i.src[0].outputText(out, PrintDetail::xe4, labelManager);
+        for (int n = 1; n <= 3; n++) if (!i.src[n].isEmptyOrNull()) {
+            out << ", ";
+            i.src[n].outputText(out, PrintDetail::xe4, labelManager);
+        }
+    };
+
+    auto sfid = static_cast<SharedFunction>(i.ext);
+    switch (sfid) {
+        case SharedFunction::ugm:
+        case SharedFunction::slm: break;
+        default:                  defaultSend(); return true;
+    }
+
+    auto desc = static_cast<SendgMessageDescriptor>(uint64_t(i.src[4].imm));
+    auto op = static_cast<LSCOpcode>(desc.common.opcode);
+
+    if (op == LSCOpcode::fence) { defaultSend(); return true; }
+
+    auto &offset = i.src[0];
+    RegisterRange roffset;
+    if (offset.type == AsmOperand::Type::reg && offset.reg.isValid())
+        roffset = GRFRange(offset.reg.getBase(), 1);
+    else if (offset.type == AsmOperand::Type::range)
+        roffset = offset.range;
+    auto &base = i.src[2];
+    bool surface = (desc.mem.addrSize == 0b11);
+    auto immOffset = surface ? desc.surface.offset : desc.flat.offset;
+    immOffset *= desc.elementBytesMem();
+
+    int scale = 1;
+    if (desc.mem.scale)
+        scale = desc.vectorLength() * desc.elementBytesMem() << (desc.mem.scale - 1);
+
+    bool haveBase = !base.isEmptyOrNull();
+    bool haveOffset = roffset.isValid();
+
+    if (surface) {
+        out << '[' << base;
+        if (desc.surface.ssIdx)
+            out << '[' << desc.surface.ssIdx << ']';
+        out << ']';
+    }
+    out << '[';
+    bool first = false;
+    if (!surface) {
+        if (haveBase)
+            base.outputText(out, PrintDetail::xe4, labelManager);
+        else if (!haveOffset)
+            out << "null";
+        else
+            first = true;
+    }
+    if (haveOffset) {
+        if (!first) out << " + ";
+        AsmOperand(roffset).outputText(out, PrintDetail::xe4, labelManager);
+        out << '*' << scale;
+    }
+    if (immOffset) {
+        out << ' ' << "+-"[immOffset < 0] << " 0x"
+            << std::hex << std::abs(immOffset) << std::dec;
+    }
+    out << ']';
+
+    if (!i.src[1].isEmptyOrNull()) {
+        out << ", ";
+        i.src[1].outputText(out, PrintDetail::xe4, labelManager);
+    }
+    return true;
+}
+#endif
 
 } /* namespace NGEN_NAMESPACE */
 

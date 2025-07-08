@@ -17,8 +17,12 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
-#include <algorithm>
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
+#endif
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
@@ -102,6 +106,9 @@ class NullRegister;
 class InstructionModifier;
 struct Instruction12;
 enum class Opcode;
+#if XE4
+enum class IndirectARF : uint16_t;
+#endif
 
 struct EncodingTag12;
 static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag);
@@ -113,124 +120,144 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
 #ifdef NGEN_SAFE
 class invalid_type_exception : public std::runtime_error {
 public:
-    invalid_type_exception() : std::runtime_error("Instruction does not support this type or combination of types") {}
+    invalid_type_exception(SourceLocation loc = {}) : std::runtime_error("Instruction does not support this type or combination of types" + loc.str(" at ")) {}
 };
 class invalid_object_exception : public std::runtime_error {
 public:
-    invalid_object_exception() : std::runtime_error("Object is invalid") {}
+    invalid_object_exception(SourceLocation loc = {}) : std::runtime_error("Object is invalid" + loc.str(" at ")) {}
 };
 class invalid_immediate_exception : public std::runtime_error {
 public:
-    invalid_immediate_exception() : std::runtime_error("Invalid immediate value") {}
+    invalid_immediate_exception(SourceLocation loc = {}) : std::runtime_error("Invalid immediate value" + loc.str(" at ")) {}
 };
 class invalid_modifiers_exception : public std::runtime_error {
 public:
-    invalid_modifiers_exception() : std::runtime_error("Invalid or conflicting modifiers") {}
+    invalid_modifiers_exception(SourceLocation loc = {}) : std::runtime_error("Invalid or conflicting modifiers" + loc.str(" at ")) {}
 };
 class invalid_operand_exception : public std::runtime_error {
 public:
-    invalid_operand_exception() : std::runtime_error("Invalid operand to instruction") {}
+    invalid_operand_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operand to instruction" + loc.str(" at ")) {}
 };
 class invalid_operand_count_exception : public std::runtime_error {
 public:
-    invalid_operand_count_exception() : std::runtime_error("Invalid operand count") {}
+    invalid_operand_count_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operand count" + loc.str(" at ")) {}
 };
+#if XE4
+class unsupported_scalar_operation_exception : public std::runtime_error {
+public:
+    unsupported_scalar_operation_exception() : std::runtime_error("Instruction does not support scalar operation") {}
+};
+#endif
 class invalid_directive_exception : public std::runtime_error {
 public:
-    invalid_directive_exception() : std::runtime_error("Invalid directive") {}
+    invalid_directive_exception(SourceLocation loc = {}) : std::runtime_error("Invalid directive" + loc.str(" at ")) {}
 };
 class invalid_arf_exception : public std::runtime_error {
 public:
-    invalid_arf_exception() : std::runtime_error("Invalid ARF specified") {}
+    invalid_arf_exception(SourceLocation loc = {}) : std::runtime_error("Invalid ARF specified" + loc.str(" at ")) {}
+};
+class invalid_register_file_exception : public std::runtime_error {
+public:
+    invalid_register_file_exception() : std::runtime_error("Invalid register file specified") {}
 };
 class grf_expected_exception : public std::runtime_error {
 public:
-    grf_expected_exception() : std::runtime_error("GRF expected, but found an ARF") {}
+    grf_expected_exception(SourceLocation loc = {}) : std::runtime_error("GRF expected, but found an ARF" + loc.str(" at ")) {}
 };
 class invalid_model_exception : public std::runtime_error {
 public:
-    invalid_model_exception() : std::runtime_error("Invalid addressing model specified") {}
+    invalid_model_exception(SourceLocation loc = {}) : std::runtime_error("Invalid addressing model specified" + loc.str(" at ")) {}
 };
 class invalid_load_store_exception : public std::runtime_error {
 public:
-    invalid_load_store_exception() : std::runtime_error("Invalid operands for load/store/atomic") {}
+    invalid_load_store_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operands for load/store/atomic" + loc.str(" at ")) {}
 };
 class invalid_range_exception : public std::runtime_error {
 public:
-    invalid_range_exception() : std::runtime_error("Invalid register range") {}
+    invalid_range_exception(SourceLocation loc = {}) : std::runtime_error("Invalid register range" + loc.str(" at ")) {}
 };
 class invalid_region_exception : public std::runtime_error {
 public:
-    invalid_region_exception() : std::runtime_error("Unsupported register region") {}
+    invalid_region_exception(SourceLocation loc = {}) : std::runtime_error("Unsupported register region" + loc.str(" at ")) {}
 };
 class missing_type_exception : public std::runtime_error {
 public:
-    missing_type_exception() : std::runtime_error("Operand is missing its type") {}
+    missing_type_exception(SourceLocation loc = {}) : std::runtime_error("Operand or instruction is missing its type" + loc.str(" at ")) {}
 };
 class missing_src1_length_exception : public std::runtime_error {
 public:
-    missing_src1_length_exception() : std::runtime_error("src1 length must be specified") {}
+    missing_src1_length_exception(SourceLocation loc = {}) : std::runtime_error("src1 length must be specified" + loc.str(" at ")) {}
 };
 class read_only_exception : public std::runtime_error {
 public:
-    read_only_exception() : std::runtime_error("Memory model is read-only") {}
+    read_only_exception(SourceLocation loc = {}) : std::runtime_error("Memory model is read-only" + loc.str(" at ")) {}
 };
 class stream_stack_underflow : public std::runtime_error {
 public:
-    stream_stack_underflow() : std::runtime_error("Stream stack underflow occurred") {}
+    stream_stack_underflow(SourceLocation loc = {}) : std::runtime_error("Stream stack underflow occurred" + loc.str(" at ")) {}
 };
 class unfinished_stream_exception : public std::runtime_error {
 public:
-    unfinished_stream_exception() : std::runtime_error("An unfinished instruction stream is still active") {}
+    unfinished_stream_exception(SourceLocation loc = {}) : std::runtime_error("An unfinished instruction stream is still active" + loc.str(" at ")) {}
 };
 class dangling_label_exception : public std::runtime_error {
 public:
-    dangling_label_exception() : std::runtime_error("A label was referenced, but its location was not defined") {}
+    dangling_label_exception(SourceLocation loc = {}) : std::runtime_error("A label was referenced, but its location was not defined" + loc.str(" at ")) {}
 };
 class multiple_label_exception : public std::runtime_error {
 public:
-    multiple_label_exception() : std::runtime_error("Label already has a location") {}
+    multiple_label_exception(SourceLocation loc = {}) : std::runtime_error("Label already has a location" + loc.str(" at ")) {}
 };
 class unsupported_instruction : public std::runtime_error {
 public:
-    unsupported_instruction() : std::runtime_error("Instruction is not supported by the chosen hardware") {}
+    unsupported_instruction(SourceLocation loc = {}) : std::runtime_error("Instruction is not supported by the chosen hardware" + loc.str(" at ")) {}
 };
 class unsupported_message : public std::runtime_error {
 public:
-    unsupported_message() : std::runtime_error("Message is not supported by the chosen hardware") {}
+    unsupported_message(SourceLocation loc = {}) : std::runtime_error("Message is not supported by the chosen hardware" + loc.str(" at ")) {}
+};
+class asm_unsupported_message : public std::runtime_error {
+public:
+    asm_unsupported_message() : std::runtime_error("Cannot format this message as assembly text") {}
 };
 class iga_align16_exception : public std::runtime_error {
 public:
-    iga_align16_exception() : std::runtime_error("Align16 not supported by the IGA assembler; use binary output") {}
+    iga_align16_exception(SourceLocation loc = {}) : std::runtime_error("Align16 not supported by the IGA assembler; use binary output" + loc.str(" at ")) {}
 };
 class sfid_needed_exception : public std::runtime_error {
 public:
-    sfid_needed_exception() : std::runtime_error("SFID must be specified on Gen12+") {}
+    sfid_needed_exception(SourceLocation loc = {}) : std::runtime_error("SFID must be specified on Gen12+" + loc.str(" at ")) {}
 };
 class invalid_execution_size_exception : public std::runtime_error {
 public:
-    invalid_execution_size_exception() : std::runtime_error("Invalid execution size") {}
+    invalid_execution_size_exception(SourceLocation loc = {}) : std::runtime_error("Invalid execution size" + loc.str(" at ")) {}
 };
 class invalid_address_mode_exception : public std::runtime_error {
 public:
-    invalid_address_mode_exception() : std::runtime_error("Invalid address mode") {}
+    invalid_address_mode_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address mode" + loc.str(" at ")) {}
 };
 class invalid_address_modifier_exception : public std::runtime_error {
 public:
 #if XE3P
-    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset or scaling factor") {}
+    invalid_address_modifier_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address offset or scaling factor" + loc.str(" at ")) {}
 #else
-    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset") {}
+    invalid_address_modifier_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address offset" + loc.str(" at ")) {}
 #endif
 };
 #if XE3P
 class limited_to_256_grf_exception : public std::runtime_error {
 public:
-    limited_to_256_grf_exception() : std::runtime_error("This instruction only supports r0-r255") {}
+    limited_to_256_grf_exception(SourceLocation loc = {}) : std::runtime_error("This instruction only supports r0-r255" + loc.str(" at ")) {}
 };
 class r511_not_allowed_exception : public std::runtime_error {
 public:
-    r511_not_allowed_exception() : std::runtime_error("r511 cannot be used here") {}
+    r511_not_allowed_exception(SourceLocation loc = {}) : std::runtime_error("r511 cannot be used here" + loc.str(" at ")) {}
+};
+#endif
+#if XE4
+class invalid_64_bit_register_exception : public std::runtime_error {
+public:
+    invalid_64_bit_register_exception() : std::runtime_error("64-bit data types must start on an even register") {}
 };
 #endif
 #endif
@@ -426,6 +453,32 @@ enum class DataType : uint8_t {
     e2m1 = 0x5A,
     e3m0 = 0x5B,
 #endif
+#if XE4
+    e5m2 = bf8,
+    e4m3 = hf8,
+    s8 = b,
+    u8 = ub,
+    s16 = w,
+    u16 = uw,
+    f16 = hf,
+    bf16 = bf,
+    s32 = d,
+    u32 = ud,
+    b32 = ud,
+    f32 = f,
+    s64 = q,
+    u64 = uq,
+    b64 = uq,
+    f64 = df,
+    u16v2 = 0xB2,
+    s16v2 = 0xB3,
+    b16v2 = u16v2,
+    u8v4 = 0xB4,
+    b8v4 = u8v4,
+    s8v4 = 0xB5,
+    f16v2 = 0xB6,
+    bf16v2 = 0xB7,
+#endif
     invalid = 0x60
 };
 
@@ -437,11 +490,25 @@ static inline std::ostream &operator<<(std::ostream &str, DataType type)
                                     "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "e2m1", "e3m0", "u4",  "s4", "u2", "s2"};
 #else
     static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "e2m1",   "",   "u4",  "s4", "u2", "s2"};
+                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
 #endif
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
+
+#if XE4
+struct DataTypeXe4 {
+    DataType dt;
+};
+
+static inline std::ostream &operator<<(std::ostream &str, DataTypeXe4 type)
+{
+    static const char *names[32] = {"u32",  "s32", "u16",   "s16",   "u8",   "s8",   "f64",   "f32",    "u64", "s64", "f16",  "bf16", "bf8", "", "", "",
+                                    "tf32", "hf8", "u16v2", "s16v2", "u8v4", "s8v4", "f16v2", "bf16v2", "",    "",    "e2m1", "e3m0", "",    "", "", ""};
+    str << names[static_cast<uint8_t>(type.dt) & 0x1F];
+    return str;
+}
+#endif
 #endif
 
 static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
@@ -505,6 +572,18 @@ template <> inline DataType getDataType<e2m1>() { return DataType::e2m1; }
 #ifdef NGEN_E3M0_TYPE
 template <> inline DataType getDataType<e3m0>() { return DataType::e3m0; }
 #endif
+#endif
+
+#if XE4
+static inline constexpr14 DataType rawType(DataType dt) {
+    switch (getLog2Bits(dt)) {
+        case 6:  return DataType::u64;
+        case 5:  return DataType::u32;
+        case 4:  return DataType::u16;
+        case 3:  return DataType::u8;
+        default: return dt;
+    }
+}
 #endif
 
 // Math function codes.
@@ -571,7 +650,15 @@ enum class SyncFunction : uint8_t {
     allwr = 3,
     flush = 12,
     bar   = 14,
-    host  = 15
+    host  = 15,
+#if XE4
+    none     = nop,
+    srcmsk   = allrd,
+    dstmsk   = allwr,
+    barid    = bar,
+    barsrc   = 4,
+    barflush = flush,
+#endif
 };
 
 #ifdef NGEN_ASM
@@ -579,6 +666,15 @@ static inline std::ostream &operator<<(std::ostream &str, SyncFunction func)
 {
     static const char *names[16] = {"nop", "", "allrd", "allwr", "", "", "", "", "", "", "", "", "flush", "", "bar", "host"};
     str << names[static_cast<uint8_t>(func) & 0xF];
+    return str;
+}
+
+struct SyncFunctionXe4 { SyncFunction fc; };
+
+static inline std::ostream &operator<<(std::ostream &str, SyncFunctionXe4 func)
+{
+    static const char *names[16] = {"none", "", "srcmsk", "dstmsk", "barsrc", "", "", "", "", "", "", "", "barflush", "", "barid", "host"};
+    str << names[static_cast<uint8_t>(func.fc) & 0xF];
     return str;
 }
 #endif
@@ -642,6 +738,10 @@ enum class SharedFunction : uint8_t {
     tgm = 0xD,
     slm = 0xE,
     ugm = 0xF,
+#if XE4
+    mma = 0xA,
+    dma = 0xB,
+#endif
     automatic = 0xFF,
 
     // alias
@@ -653,6 +753,13 @@ enum class SharedFunction : uint8_t {
 #ifdef NGEN_ASM
 static inline const char *getMnemonic(SharedFunction sfid, HW hw)
 {
+#if XE4
+    static const char *namesXe4[16] = {
+        "null", "ugml", "smpl", "gtwy", "dc2", "rc" , "urb", "btd",
+        "rta" , "dcro", "mma" , "dma",  "dc1", "tgm", "slm", "ugm",
+    };
+    if (hw >= HW::Xe4) return namesXe4[static_cast<uint8_t>(sfid) & 0xF];
+#endif
     static const char *names[16] = {
         "null", ""    , "smpl", "gtwy", "dc2", "rc" , "urb", "ts" ,
         "vme" , "dcro", "dc0" , "pixi", "dc1", "cre", ""   , ""   ,
@@ -684,18 +791,31 @@ enum class ARFType : uint8_t {
     tm   = 12,
     fc   = 13,
     dbg  = 15,
+#if XE4
+    lid  = 0x12,
+    alm  = 0x13,
+#endif
 };
 
 #ifdef NGEN_ASM
 static inline std::ostream &operator<<(std::ostream &str, ARFType type)
 {
     static const char *names[32] = {"null", "a", "acc", "f", "ce", "msg", "sp", "sr", "cr", "n", "ip", "tdr", "tm", "fc", "", "dbg",
-                                    ""    , "" , "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
+#if XE4
+                                    "",   "",    "lid", "alm", "", "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
+#else
+                                    "",    "" ,  "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
+#endif
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
 
-enum class PrintDetail {base = 0, sub_no_type = 1, sub = 2, hs = 3, vs_hs = 4, full = 5};
+enum class PrintDetail {
+    base = 0, sub_no_type = 1, sub = 2, hs = 3, vs_hs = 4, full = 5,
+#if XE4
+    xe4 = -1, xe4_dst = -2, xe4_type = -3, xe4_hide = -4
+#endif
+};
 #endif
 
 // Invalid singleton class. Can be assigned to nGEN objects to invalidate them.
@@ -791,12 +911,26 @@ struct InterfaceLabels {
     Label crossThreadPatches[2];
 };
 
+enum RegFile : unsigned {
+    RegFileARF = 0,
+    RegFileGRF = 1,
+#if XE4
+    RegFileSRF = 2,
+#endif
+    RegFileIMM = 3,
+};
+
+enum RegFile8 : unsigned {
+    RegFile8ARF = RegFileARF,
+    RegFile8GRF = RegFileGRF,
+};
+
 // Superclass for registers, subregisters, and register regions, possibly
 // with source modifiers.
 class RegData {
 protected:
     unsigned base : 9;
-    unsigned arf : 1;
+    unsigned rf : 2;
       signed off : 11;
     unsigned mods : 2;
     unsigned type : 8;
@@ -804,11 +938,11 @@ protected:
     unsigned vs : 7;
     unsigned width : 5;
     unsigned hs : 6;
-    unsigned _pad2 : 13;
+    unsigned _pad2 : 12;
     unsigned invalid : 1;
 
-    constexpr RegData(int base_, bool arf_, int off_, bool indirect_, DataType type_, int vs_, int width_, int hs_)
-        : base(base_), arf(arf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
+    constexpr RegData(int base_, int rf_, int off_, bool indirect_, DataType type_, int vs_, int width_, int hs_)
+        : base(base_), rf(rf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
 
 public:
 #ifdef NGEN_ASM
@@ -816,10 +950,20 @@ public:
 #endif
 
     constexpr RegData()
-        : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
+        : base(0), rf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
     constexpr int getBase()            const { return base; }
-    constexpr bool isARF()             const { return arf; }
+    constexpr RegFile getRegFile()     const { return static_cast<RegFile>(rf); }
+    constexpr RegFile8 getRegFile8()   const {
+#ifdef NGEN_SAFE
+        if (rf > 1) throw invalid_register_file_exception();
+#endif
+        return static_cast<RegFile8>(rf);
+    }
+    constexpr bool isARF()             const { return rf == RegFileARF; }
+#if XE4
+    constexpr bool isSRF()             const { return rf == RegFileSRF; }
+#endif
     constexpr int getARFBase()         const { return base & 0xF; }
     constexpr ARFType getARFType()     const { return static_cast<ARFType>(base >> 4); }
     constexpr bool isIndirect()        const { return indirect; }
@@ -841,16 +985,28 @@ public:
     constexpr14 int getBits()          const { return NGEN_NAMESPACE::getBits(getType()); }
     constexpr14 int getBytes()         const { return NGEN_NAMESPACE::getBytes(getType()); }
     constexpr14 int getDwords()        const { return NGEN_NAMESPACE::getDwords(getType()); }
+#if XE4
+    constexpr bool isScalar()          const { return (hs == 0 && vs == 0 && width == 1) || (rf == RegFileSRF); }
+#else
     constexpr bool isScalar()          const { return hs == 0 && vs == 0 && width == 1; }
+#endif
 
     inline constexpr14 RegData getIndirectReg() const;
+#if XE4
+    inline constexpr14 RegData getIndirectRegXe4() const;
+    inline constexpr14 RegData getIndirectBaseRegXe4() const;
+    constexpr bool isLUOrUC()          const { return off & 0x200; }
+    constexpr14 int getScalarIndex()   const { return isARF() ? getOffset() : getBase(); }
+#else
+    constexpr14 int getScalarIndex()   const { return getOffset(); }
+#endif
 
     constexpr14 RegData &setBase(int base_)                      { base = base_; return *this; }
     constexpr14 RegData &setOffset(int off_)                     { off = off_; return *this; }
     constexpr14 RegData &setType(DataType newType)               { type = static_cast<unsigned>(newType); return *this; }
     constexpr14 RegData &setMods(int mods_)                      { mods = mods_; return *this; }
     constexpr14 RegData &setRegion(int vs_, int width_, int hs_) { vs = vs_; width = width_; hs = hs_; return *this; }
-    constexpr14 RegData &setARF(bool arf_)                       { arf = arf_; return *this; }
+    constexpr14 RegData &setRegFile(int rf_)                     { rf = rf_; return *this; }
 
     void invalidate()                     { invalid = true; }
     RegData &operator=(const Invalid &i)  { this->invalidate(); return *this; }
@@ -970,6 +1126,7 @@ public:
     constexpr DataType getType()          const { return rd.getType(); }
     constexpr int getOffset()             const { return rd.getOffset(); }
     constexpr int getMods()               const { return rd.getMods(); }
+    constexpr RegFile getRegFile()        const { return rd.getRegFile(); }
     constexpr bool isARF()                const { return rd.isARF(); }
 
     void invalidate() { rd.invalidate(); }
@@ -1050,6 +1207,9 @@ public:
     }
     constexpr14 Subregister operator~() const { return -*this; }
 
+    inline GRFDisp operator+(int offset) const;
+    inline GRFDisp operator-(int offset) const;
+
     Align16Operand swizzle(int s0, int s1, int s2, int s3)    const { checkGRF(); return Align16Operand(*this, s0, s1, s2, s3); }
     Align16Operand broadcast()                                const { checkGRF(); return Align16Operand::createBroadcast(*this); }
     Align16Operand enable(bool c0, bool c1, bool c2, bool c3) const { checkGRF(); return Align16Operand(*this, (int(c3) << 3) | (int(c2) << 2) | (int(c1) << 1) | int(c0)); }
@@ -1091,8 +1251,8 @@ class Register : public RegData
 {
 public:
     constexpr Register() : RegData() {}
-    constexpr Register(int reg_, bool arf_, DataType defaultType = DataType::invalid, int off_ = 0)
-        : RegData(reg_, arf_, off_, false, defaultType, 0, 0, 1) {}
+    constexpr Register(int reg_, RegFile rf_, DataType defaultType = DataType::invalid, int off_ = 0)
+        : RegData(reg_, rf_, off_, false, defaultType, 0, 0, 1) {}
 
     constexpr Register operator+() const { return *this; }
     constexpr14 Register operator-() const {
@@ -1101,6 +1261,28 @@ public:
         return result;
     }
     constexpr14 Register operator~() const { return -*this; }
+
+    Register &operator+=(const int &inc) {
+        base += inc;
+        return *this;
+    }
+
+    Register operator++(int i) {
+        auto old = *this;
+        ++*this;
+        return old;
+    }
+
+    Register &operator++() {
+        *this += 1;
+        return *this;
+    }
+
+    Register advance(int inc) {
+        auto result = *this;
+        result += inc;
+        return result;
+    }
 
     constexpr14 Subregister sub(int offset, DataType type_)        const { return Subregister(*this, offset, type_); }
     template <typename T> constexpr14 Subregister sub(int offset)  const { return sub(offset, getDataType<T>()); }
@@ -1165,7 +1347,7 @@ class GRF : public Register
 {
 public:
     GRF() : Register() {}
-    explicit constexpr GRF(int reg_) : Register(reg_, false) {}
+    explicit constexpr GRF(int reg_) : Register(reg_, RegFileGRF) {}
 
     constexpr GRF operator+() const { return *this; }
     constexpr14 GRF operator-() const {
@@ -1225,11 +1407,40 @@ public:
     constexpr14 GRF e2m1() const { return retype(DataType::e2m1); }
     constexpr14 GRF e3m0() const { return retype(DataType::e3m0); }
 #endif
+#if XE4
+    constexpr14 GRF    b64() const { return retype(DataType::b64);    }
+    constexpr14 GRF    s64() const { return retype(DataType::s64);    }
+    constexpr14 GRF    u64() const { return retype(DataType::u64);    }
+    constexpr14 GRF    f64() const { return retype(DataType::f64);    }
+    constexpr14 GRF    b32() const { return retype(DataType::b32);    }
+    constexpr14 GRF    s32() const { return retype(DataType::s32);    }
+    constexpr14 GRF    u32() const { return retype(DataType::u32);    }
+    constexpr14 GRF    f32() const { return retype(DataType::f32);    }
+    constexpr14 GRF    f16() const { return retype(DataType::f16);    }
+    constexpr14 GRF   bf16() const { return retype(DataType::bf16);   }
+    constexpr14 GRF    s16() const { return retype(DataType::s16);    }
+    constexpr14 GRF    u16() const { return retype(DataType::u16);    }
+    constexpr14 GRF  b16v2() const { return retype(DataType::b16v2);  }
+    constexpr14 GRF  s16v2() const { return retype(DataType::s16v2);  }
+    constexpr14 GRF  u16v2() const { return retype(DataType::u16v2);  }
+    constexpr14 GRF  f16v2() const { return retype(DataType::f16v2);  }
+    constexpr14 GRF bf16v2() const { return retype(DataType::bf16v2); }
+    constexpr14 GRF     s8() const { return retype(DataType::s8);     }
+    constexpr14 GRF     u8() const { return retype(DataType::u8);     }
+    constexpr14 GRF   b8v4() const { return retype(DataType::b8v4);   }
+    constexpr14 GRF   u8v4() const { return retype(DataType::u8v4);   }
+    constexpr14 GRF   s8v4() const { return retype(DataType::s8v4);   }
+#endif
 
     Align16Operand swizzle(int s0, int s1, int s2, int s3)    const { return Align16Operand(*this, s0, s1, s2, s3); }
     Align16Operand enable(bool c0, bool c1, bool c2, bool c3) const { return Align16Operand(*this, (int(c3) << 3) | (int(c2) << 2) | (int(c1) << 1) | int(c0)); }
     Align16Operand noSwizzle()                                const { return swizzle(0, 1, 2, 3); }
     Align16Operand enableAll()                                const { return enable(true, true, true, true); }
+
+#if XE4
+    constexpr14 GRF lu() const { auto clone = *this; clone.off |= 0x200; return clone; }
+    constexpr14 GRF uc() const { return lu(); }
+#endif
 
     GRF &operator=(const Invalid &i) { this->invalidate(); return *this; }
 
@@ -1264,7 +1475,12 @@ public:
     inline GRFDisp operator*(int scale) const;
 #endif
 
+#if XE4
+    static constexpr int log2Bytes(HW hw)                  { return (hw >= HW::Xe4)   ? 7 :
+                                                                    (hw >= HW::XeHPC) ? 6 : 5;  }
+#else
     static constexpr int log2Bytes(HW hw)                  { return (hw >= HW::XeHPC) ? 6 : 5;  }
+#endif
     static constexpr int bytes(HW hw)                      { return (1 << log2Bytes(hw)); }
     static constexpr int bytesToGRFs(HW hw, unsigned x)    { return (x + bytes(hw) - 1) >> log2Bytes(hw); }
 
@@ -1275,12 +1491,113 @@ public:
 #endif
 };
 
+#if XE4
+class SRF : public Register
+{
+public:
+    SRF() : Register() {}
+    explicit constexpr SRF(int reg_) : Register(reg_, RegFileSRF) {}
+
+    constexpr SRF operator+() const { return *this; }
+    constexpr14 SRF operator-() const {
+        auto result = *this;
+        result.negate();
+        return result;
+    }
+    constexpr14 SRF operator~() const { return -*this; }
+
+    constexpr14 SRF retype(DataType type_)              const { auto clone = *this; clone.setType(type_); return clone; }
+    template <typename T> constexpr14 Register retype() const { return retype(getDataType<T>()); }
+
+    constexpr14 SRF    b64() const { return retype(DataType::b64);    }
+    constexpr14 SRF    s64() const { return retype(DataType::s64);    }
+    constexpr14 SRF    u64() const { return retype(DataType::u64);    }
+    constexpr14 SRF    f64() const { return retype(DataType::f64);    }
+    constexpr14 SRF    b32() const { return retype(DataType::b32);    }
+    constexpr14 SRF    s32() const { return retype(DataType::s32);    }
+    constexpr14 SRF    u32() const { return retype(DataType::u32);    }
+    constexpr14 SRF    f32() const { return retype(DataType::f32);    }
+    constexpr14 SRF   tf32() const { return retype(DataType::tf32);   }
+    constexpr14 SRF    f16() const { return retype(DataType::f16);    }
+    constexpr14 SRF   bf16() const { return retype(DataType::bf16);   }
+    constexpr14 SRF    s16() const { return retype(DataType::s16);    }
+    constexpr14 SRF    u16() const { return retype(DataType::u16);    }
+    constexpr14 SRF  b16v2() const { return retype(DataType::b16v2);  }
+    constexpr14 SRF  s16v2() const { return retype(DataType::s16v2);  }
+    constexpr14 SRF  u16v2() const { return retype(DataType::u16v2);  }
+    constexpr14 SRF  f16v2() const { return retype(DataType::f16v2);  }
+    constexpr14 SRF bf16v2() const { return retype(DataType::bf16v2); }
+    constexpr14 SRF     s8() const { return retype(DataType::s8);     }
+    constexpr14 SRF     u8() const { return retype(DataType::u8);     }
+    constexpr14 SRF   b8v4() const { return retype(DataType::b8v4);   }
+    constexpr14 SRF   u8v4() const { return retype(DataType::u8v4);   }
+    constexpr14 SRF   s8v4() const { return retype(DataType::s8v4);   }
+    constexpr14 SRF   e2m1() const { return retype(DataType::e2m1);   }
+    constexpr14 SRF   e3m0() const { return retype(DataType::e3m0);   }
+
+    /* Xe3-style names */
+    constexpr14 SRF     uq() const { return retype(DataType::uq); }
+    constexpr14 SRF      q() const { return retype(DataType::q);  }
+    constexpr14 SRF     ud() const { return retype(DataType::ud); }
+    constexpr14 SRF      d() const { return retype(DataType::d);  }
+    constexpr14 SRF     uw() const { return retype(DataType::uw); }
+    constexpr14 SRF      w() const { return retype(DataType::w);  }
+    constexpr14 SRF     ub() const { return retype(DataType::ub); }
+    constexpr14 SRF      b() const { return retype(DataType::b);  }
+    constexpr14 SRF     df() const { return retype(DataType::df); }
+    constexpr14 SRF      f() const { return retype(DataType::f);  }
+    constexpr14 SRF     hf() const { return retype(DataType::hf); }
+    constexpr14 SRF     bf() const { return retype(DataType::bf); }
+    constexpr14 SRF    bf8() const { return retype(DataType::bf8); }
+    constexpr14 SRF    hf8() const { return retype(DataType::hf8); }
+
+    SRF &operator=(const Invalid &i) { this->invalidate(); return *this; }
+
+    SRF &operator+=(const int &inc) {
+        base += inc;
+        return *this;
+    }
+
+    SRF operator++(int i) {
+        SRF old = *this;
+        ++*this;
+        return old;
+    }
+
+    SRF &operator++() {
+        *this += 1;
+        return *this;
+    }
+
+    SRF advance(int inc) {
+        auto result = *this;
+        result += inc;
+        return result;
+    }
+
+    inline GRFDisp operator+(int offset) const;
+    inline GRFDisp operator-(int offset) const;
+
+    static constexpr unsigned bytesToSRFs(unsigned bytes) { return (bytes + 3) >> 2; }
+    static constexpr int maxRegs()                        { return 512; }
+};
+
+template <typename T>
+static inline void canonicalizeSRF(T&) {}
+
+inline void canonicalizeSRF(RegData &rd)
+{
+    if (rd.isARF() && rd.getARFType() == ARFType::s)
+        rd = SRF{rd.getOffset()};
+}
+#endif
+
 class ARF : public Register
 {
 public:
     constexpr ARF() : Register() {}
     constexpr ARF(ARFType type_, int reg_, DataType defaultType = DataType::invalid, int off_ = 0)
-        : Register((static_cast<int>(type_) << 4) | (reg_ & 0xF), true, defaultType, off_) {}
+        : Register((static_cast<int>(type_) << 4) | (reg_ & 0xF), RegFileARF, defaultType, off_) {}
 
     ARF &operator=(const Invalid &i) { this->invalidate(); return *this; }
 };
@@ -1309,6 +1626,9 @@ public:
     AccumulatorRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 
     static constexpr14 int count(HW hw, DataType dt = DataType::invalid) {
+#if XE4
+        if (hw >= HW::Xe4) return 0;
+#endif
         if (dt == DataType::df) {
             if (hw == HW::Gen9)  return 0;
             if (hw == HW::XeHPG) return 0;
@@ -1343,6 +1663,16 @@ constexpr14 RegData RegData::getIndirectReg() const {
     return ARF(type, 0)[getIndirectOff()];
 }
 
+#if XE4
+constexpr14 RegData RegData::getIndirectRegXe4() const {
+    return _pad2 ? RegData(SRF(base)) : RegData(GRF(base));
+}
+
+constexpr14 RegData RegData::getIndirectBaseRegXe4() const {
+    return isSRF() ? RegData(SRF(off)) : RegData(GRF(off));
+}
+#endif
+
 // An "extended register" is a combination of a regular GRF and some extra accumulator bits, used for math macro operations.
 class ExtendedReg {
     RegData base;
@@ -1363,12 +1693,21 @@ public:
     constexpr bool isInvalid()      const { return base.isInvalid(); }
     constexpr bool isValid()        const { return !base.isInvalid(); }
     constexpr bool isScalar()       const { return base.isScalar(); }
+    constexpr RegFile getRegFile()  const { return base.getRegFile(); }
     constexpr bool isARF()          const { return base.isARF(); }
-    constexpr bool isNull()          const { return base.isNull(); }
+    constexpr bool isNull()         const { return base.isNull(); }
 
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
+
+    constexpr14 ExtendedReg &setType(DataType newType) { base.setType(newType); return *this; }
+
+    ExtendedReg operator-() const {
+        auto clone = *this;
+        clone.base.negate();
+        return clone;
+    }
 
 #ifdef NGEN_ASM
     inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
@@ -1397,17 +1736,29 @@ public:
         result.mods = result.mods ^ 2;
         return result;
     }
+    FlagRegister operator!() const { return ~*this; }
 
     FlagRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 
-    constexpr FlagRegister operator[](int offset) const { return FlagRegister(getARFBase(), getOffset() + offset); }
+    constexpr FlagRegister operator[](int offset) const {
+        FlagRegister sub(getARFBase(), getOffset() + offset);
+        sub.mods = mods;
+        return sub;
+    }
 
     int index() const { return (getARFBase() << 1) + getOffset(); }
 
     static inline constexpr int count(HW hw) {
+#if XE4
+        if (hw >= HW::Xe4) return 15;
+#endif
         return (hw >= HW::XeHPC) ? 4 : 2;
     }
     static inline constexpr int subcount(HW hw) { return count(hw) * 2; }
+
+#if XE4
+    inline operator IndirectARF() const;
+#endif
 };
 
 class ChannelEnableRegister : public ARF
@@ -1434,6 +1785,10 @@ public:
     RegisterRegion operator()(int vs, int width, int hs) const { return reinterpret_cast<const Subregister &>(*this)(vs, width, hs); }
     RegisterRegion operator()(int vs, int hs) const            { return reinterpret_cast<const Subregister &>(*this)(vs, hs); }
     RegisterRegion operator()(int hs) const                    { return reinterpret_cast<const Subregister &>(*this)(vs); }
+
+#if XE4
+    operator SRF() const { return SRF{getARFBase()}; }      /* allow s0 to transparently convert to an SRF type */
+#endif
 };
 
 class StateRegister : public ARF
@@ -1484,6 +1839,146 @@ public:
     explicit constexpr FlowControlRegister(int reg_ = 0) : ARF(ARFType::fc, reg_, DataType::ud) {}
 };
 
+#if XE4
+// Indirect ARF registers.
+enum class IndirectARF : uint16_t {
+    ts0 = 0, ts1 = 1,
+    dmsk = 4, vmsk = 5,
+    vrt = 8,
+    tpst = 12,
+    gctrl = 20, exctrl = 21, tpctrl = 22,
+    tarb = 23,
+    cctrl = 24, msgctrl = 28, sbctrl = 29, apctrl = 30,
+    abar = 31,
+    fs0 = 40, fs1 = 41, fs2 = 42, fs3 = 43,
+    fs4 = 44, fs5 = 45, fs6 = 46, fs7 = 47,
+    fs8 = 48, fs9 = 49, fs10 = 50, fs11 = 51,
+    fs12 = 52, fs13 = 53, fs14 = 54,
+    nbar = 64, nhost = 65, nflsh = 66,
+    tsl = 72, tsh = 73,
+    tme = 76,
+    pse = 80,
+    ctl = 84, cth = 85,
+    fc00 = 96, fc01 = 97, fc02 = 98, fc03 = 99,
+    fc04 = 100, fc05 = 101, fc06 = 102, fc07 = 103,
+    fc08 = 104, fc09 = 105, fc010 = 106, fc011 = 107,
+    fc012 = 108, fc013 = 109, fc014 = 110, fc015 = 111,
+    fc016 = 112, fc017 = 113, fc018 = 114, fc019 = 115,
+    fc020 = 116, fc021 = 117, fc022 = 118, fc023 = 119,
+    fc024 = 120, fc025 = 121, fc026 = 122, fc027 = 123,
+    fc028 = 124, fc029 = 125, fc030 = 126, fc031 = 127,
+    cvid00 = 128, cvid01 = 129, cvid02 = 130, cvid03 = 131,
+    cvid04 = 132, cvid05 = 133, cvid06 = 134, cvid07 = 135,
+    cvid08 = 136, cvid09 = 137, cvid010 = 138, cvid011 = 139,
+    cvid012 = 140, cvid013 = 141, cvid014 = 142, cvid015 = 143,
+    cvid016 = 144, cvid017 = 145, cvid018 = 146, cvid019 = 147,
+    cvid020 = 148, cvid021 = 149, cvid022 = 150, cvid023 = 151,
+    cvid024 = 152, cvid025 = 153, cvid026 = 154, cvid027 = 155,
+    cvid028 = 156, cvid029 = 157, cvid030 = 158, cvid031 = 159,
+    enmsk = 160, sumsk = 161, camsk = 162, scmsk = 163, hcmsk = 164,
+    rngs = 176, rngc = 177,
+    euhst0 = 184, euhst1 = 185,
+    dtmp0 = 192, dtmp1 = 193, dtmp2 = 194, dtmp3 = 195,
+    dtmp4 = 196, dtmp5 = 197,
+    kipl = 208, kipu = 209, aipl = 210, aipu = 211,
+    exipl = 212, exipu = 213, sipl = 214, sipu = 215,
+    iiem = 216, oobem = 217,
+    fpel = 224, fpeu = 225, fpem = 226, fpdzm = 227,
+    fpum = 228, fpom = 229, fpxm = 230, fpim = 231,
+    sfet = 232, sfel = 233, sfeu = 234, sfem = 235,
+    sfed = 236, sfedex = 237,
+    tpel = 240, tpeu = 241, tpem = 242, tpee = 243,
+    mme0 = 256, mme1 = 257, mme2 = 258, mme3 = 259,
+    mme4 = 260, mme5 = 261, mme6 = 262, mme7 = 263,
+    mme8 = 264, mme9 = 265, mme10 = 266, mme11 = 267,
+    mme12 = 268, mme13 = 269, mme14 = 270, mme15 = 271,
+};
+
+static constexpr inline IndirectARF fs(int n)       { return static_cast<IndirectARF>(static_cast<int>(IndirectARF::fs0) + n); }
+static constexpr inline IndirectARF fc0(int lane)   { return static_cast<IndirectARF>(static_cast<int>(IndirectARF::fc00) + lane); }
+static constexpr inline IndirectARF cvid(int lane)  { return static_cast<IndirectARF>(static_cast<int>(IndirectARF::cvid00) + lane); }
+static constexpr inline IndirectARF dtmp(int n)     { return static_cast<IndirectARF>(static_cast<int>(IndirectARF::dtmp0) + n); }
+static constexpr inline IndirectARF mme(int n)      { return static_cast<IndirectARF>(static_cast<int>(IndirectARF::mme0) + n); }
+
+static constexpr inline IndirectARF fs(FlagRegister f) { return fs(f.getARFBase()); }
+
+FlagRegister::operator IndirectARF() const { return fs(*this); }
+
+#ifdef NGEN_ASM
+static inline std::ostream &operator<<(std::ostream &str, IndirectARF iarf)
+{
+    static const char *names[512] = {
+        "ts0", "ts1", "", "", "dmsk", "vmsk", "", "",
+        "vrt", "", "", "", "tpst", "", "", "",
+        "", "", "", "", "gctrl", "exctrl", "tpctrl", "tarb",
+        "cctrl", "", "", "", "msgctrl", "sbctrl", "apctrl", "abar",
+        "", "", "", "", "", "", "", "",
+        "fs0", "fs1", "fs2", "fs3", "fs4", "fs5", "fs6", "fs7",
+        "fs8", "fs9", "fs10", "fs11", "fs12", "fs13", "fs14", "",
+        "", "", "", "", "", "", "", "",
+        "nbar", "nhost", "nflsh", "", "", "", "", "",
+        "tsl", "tsh", "", "", "tme", "", "", "",
+        "pse", "", "", "", "ctl", "cth", "", "",
+        "", "", "", "", "", "", "", "",
+        "fc00", "fc01", "fc02", "fc03", "fc04", "fc05", "fc06", "fc07",
+        "fc08", "fc09", "fc010", "fc011", "fc012", "fc013", "fc014", "fc015",
+        "fc016", "fc017", "fc018", "fc019", "fc020", "fc021", "fc022", "fc023",
+        "fc024", "fc025", "fc026", "fc027", "fc028", "fc029", "fc030", "fc031",
+        "cvid00", "cvid01", "cvid02", "cvid03", "cvid04", "cvid05", "cvid06", "cvid07",
+        "cvid08", "cvid09", "cvid010", "cvid011", "cvid012", "cvid013", "cvid014", "cvid015",
+        "cvid016", "cvid017", "cvid018", "cvid019", "cvid020", "cvid021", "cvid022", "cvid023",
+        "cvid024", "cvid025", "cvid026", "cvid027", "cvid028", "cvid029", "cvid030", "cvid031",
+        "enmsk", "sumsk", "camsk", "scmsk", "hcmsk", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "rngs", "rngc", "", "", "", "", "", "",
+        "euhst0", "euhst1", "", "", "", "", "", "",
+        "dtmp0", "dtmp1", "dtmp2", "dtmp3", "dtmp4", "dtmp5", "", "",
+        "", "", "", "", "", "", "", "",
+        "kipl", "kipu", "aipl", "aipu", "exipl", "exipu", "sipl", "sipu",
+        "iiem", "oobem", "", "", "", "", "", "",
+        "fpel", "fpeu", "fpem", "fpdzm", "fpum", "fpom", "fpxm", "fpim",
+        "sfet", "sfel", "sfeu", "sfem", "sfed", "sfedex", "", "",
+        "tpel", "tpeu", "tpem", "tpee", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "mme0", "mme1", "mme2", "mme3", "mme4", "mme5", "mme6", "mme7",
+        "mme8", "mme9", "mme10", "mme11", "mme12", "mme13", "mme14", "mme15",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
+    };
+    str << names[static_cast<uint8_t>(iarf) & 0x1FF];
+    return str;
+}
+#endif
+#endif
+
 class Offset2D {
 public:
     int16_t x, y;
@@ -1503,13 +1998,38 @@ protected:
 
 public:
     GRFDisp(const GRF &base_, int32_t disp_) : base(base_), disp(disp_) {}
-    /* implicit */ GRFDisp(const RegData &rd) : base(reinterpret_cast<const GRF &>(rd)), disp(0) {}
+
+    /* implicit */ GRFDisp(const RegData &rd) : disp(0) {
+        switch (rd.getRegFile()) {
+            case RegFileGRF: base = reinterpret_cast<const GRF &>(rd); return;
+#if XE3P
+            case RegFileARF:
+                if (rd.getARFType() == ARFType::s) {
+                    ind0SubReg = rd.getByteOffset();
+                    return;
+                }
+#endif
+#if XE4
+            case RegFileSRF:
+                ind0SubReg = rd.getBase();
+                return;
+#endif
+            default: break;
+        }
+#ifdef NGEN_SAFE
+        throw invalid_operand_exception();
+#endif
+    }
 
     GRFDisp(const GRF &base_, Offset2D offset) : base(base_), disp((uint32_t(uint16_t(offset.y)) << 16) | uint16_t(offset.x)) {}
 
 #if XE3P
     GRFDisp(const GRF &base_, int32_t disp_, int scale_, int ind0SubReg_ = -1) : base(base_), disp(disp_), scale(scale_), ind0SubReg(ind0SubReg_) {}
     GRFDisp(const GRF &base_, int32_t disp_, int scale_, ScalarRegister ind0) : base(base_), disp(disp_), scale(scale_), ind0SubReg(ind0.getByteOffset()) {}
+#endif
+
+#if XE4
+    GRFDisp(const GRF &base_, int32_t disp_, int scale_, SRF ind0) : base(base_), disp(disp_), scale(scale_), ind0SubReg(ind0.getBase()) {}
 #endif
 
     constexpr GRF     getBase()  const { return base; }
@@ -1556,6 +2076,61 @@ inline GRFDisp operator+(ScalarRegister s, GRFDisp addr) {
 inline GRFDisp operator+(GRF base,     ScalarRegister s) { return s + base; }
 inline GRFDisp operator+(GRFDisp addr, ScalarRegister s) { return s + addr; }
 #endif
+
+#if XE4
+GRFDisp SRF::operator+(int offset)      const { return GRFDisp(GRF(), offset, 0, *this); }
+GRFDisp SRF::operator-(int offset)      const { return *this + (-offset); }
+
+inline GRFDisp operator+(SRF s, GRF base) {
+    return GRFDisp(base, 0, 0, s);
+}
+inline GRFDisp operator+(SRF s, GRFDisp addr) {
+    return GRFDisp(addr.getBase(), addr.getDisp(), addr.getScale(), s);
+}
+inline GRFDisp operator+(GRF base,     SRF s) { return s + base; }
+inline GRFDisp operator+(GRFDisp addr, SRF s) { return s + addr; }
+#endif
+
+GRFDisp Subregister::operator+(int offset) const
+{
+#if XE4
+    if (isSRF())
+        return reinterpret_cast<const SRF*>(this)->operator+(offset);
+#endif
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+GRFDisp Subregister::operator-(int offset) const { return *this + (-offset); }
+
+inline GRFDisp operator+(RegData s, GRF base)
+{
+#if XE4
+    if (s.isSRF())
+        return reinterpret_cast<SRF&>(s) + base;
+#endif
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+
+inline GRFDisp operator+(RegData s, GRFDisp addr)
+{
+#if XE4
+    if (s.isSRF())
+        return reinterpret_cast<SRF&>(s) + addr;
+#endif
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+
+inline GRFDisp operator+(GRF base,     RegData s) { return s + base; }
+inline GRFDisp operator+(GRFDisp addr, RegData s) { return s + addr; }
+
 
 inline RegisterRegion Subregister::operator()(int vs, int width, int hs) const
 {
@@ -1604,26 +2179,30 @@ inline Subregister Subregister::reinterpret(int offset, DataType type_) const
 // Indirect register and frames for making them.
 class IndirectRegister : public Register {
 protected:
-    explicit constexpr14 IndirectRegister(const RegData &reg) : Register(reg.getOffset(), false) {
+    explicit constexpr14 IndirectRegister(const RegData &reg, RegFile rf, int offset = 0)
+            : Register(reg.getScalarIndex(), rf)
+    {
         if (reg.getARFType() == ARFType::s)
             base |= 0x100;
         indirect = true;
+        off = offset;
+#if XE4
+        if (reg.isSRF()) _pad2 = 1;
+#endif
     }
-    friend class IndirectRegisterFrame;
+    template <RegFile rf> friend class IndirectRegisterFrame;
 
     IndirectRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 };
 
+template <RegFile rf>
 class IndirectRegisterFrame {
 public:
     IndirectRegister operator[](const RegData &reg) const {
-#ifdef NGEN_SAFE
-        if (!reg.isARF())
-            throw invalid_arf_exception();
-        if (reg.getARFType() != ARFType::a && reg.getARFType() != ARFType::s)
-            throw invalid_arf_exception();
-#endif
-        return IndirectRegister(reg);
+        return IndirectRegister(reg, rf);
+    }
+    IndirectRegister operator[](const GRFDisp &disp) const {
+        return IndirectRegister(disp.getBase(), rf, disp.getDisp());
     }
 };
 
@@ -1645,7 +2224,8 @@ protected:
 public:
     GRFRange() : GRFRange(0, invalidLen) {}
     GRFRange(int base_, int len_) : base(base_), len(len_) {}
-    GRFRange(GRF base_, int len_) : GRFRange(base_.getBase(), len_) {}
+    GRFRange(RegData base_, int len_) : base(base_.getBase())
+                                      , len(base_.isValid() ? len_ : invalidLen) {}
 
     int getBase()    const { return base; }
     int getLen()     const { return len; }
@@ -1705,6 +2285,82 @@ Subregister GRFRange::sub(HW hw, int offset, DataType type) const {
     return (*this)[offset >> lg2Len].sub(offset - ((offset >> lg2Len) << lg2Len), type);
 }
 
+#if XE4
+// Contiguous range of GRF or SRF registers.
+class RegisterRange {
+protected:
+    uint32_t base : 16;
+    uint32_t len : 15;
+    uint32_t srf : 1;
+
+    static constexpr uint32_t invalidLen = 0x7FFF;
+
+public:
+    RegisterRange() : RegisterRange(0, invalidLen, false) {}
+    RegisterRange(int base_, int len_, bool srf_) : base(base_), len(len_), srf(srf_) {}
+    RegisterRange(RegData base_, int len_ = 1) {
+        canonicalizeSRF(base_);
+        base = base_.getBase();
+        len = base_.isValid() ? len_ : invalidLen;
+        srf = base_.isSRF();
+    }
+    RegisterRange(GRFRange range) : base(range.getBase()), len(range.getLen()), srf(false) {}
+
+    int getBase()    const { return base; }
+    int getLen()     const { return len; }
+    bool isEmpty()   const { return len == 0; }
+    bool isNull()    const { return false; }
+    bool isSRF()     const { return srf; }
+
+    void invalidate()      { len = invalidLen; }
+    bool isInvalid() const { return len == invalidLen; }
+    bool isValid()   const { return !isInvalid(); }
+
+    RegisterRange &operator=(const Invalid &i) { this->invalidate(); return *this; }
+
+    Register operator[](int i) const {
+#ifdef NGEN_SAFE
+        if (isInvalid()) throw invalid_object_exception();
+#endif
+        return srf ? Register(SRF(base + i)) : Register(GRF(base + i));
+    }
+
+    operator Register() const {
+        if (isInvalid()) return Register();
+        return (*this)[0];
+    }
+
+    void fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity) {}
+    constexpr DataType getType() const { return DataType::invalid; }
+
+    GRFRange asGRFRange() const {
+#ifdef NGEN_SAFE
+        if (srf) throw invalid_register_file_exception();
+#endif
+        return GRFRange(base, len);
+    }
+
+#ifdef NGEN_ASM
+    static const bool emptyOp = false;
+    inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
+#endif
+};
+
+static inline RegisterRange operator-(const SRF &reg1, const SRF &reg2)
+{
+    auto b1 = reg1.getBase(), b2 = reg2.getBase();
+    int len = b2 + 1 - b1;
+
+#ifdef NGEN_SAFE
+    if (len < 0) throw invalid_range_exception();
+#endif
+
+    return RegisterRange(reg1, len);
+}
+#else
+using RegisterRange = GRFRange;
+#endif
+
 enum class ConditionModifier {
     none = 0,
     ze = 1,
@@ -1727,6 +2383,19 @@ static inline std::ostream &operator<<(std::ostream &str, ConditionModifier cmod
     str << names[static_cast<uint8_t>(cmod) & 0xF];
     return str;
 }
+
+#if XE4
+struct ConditionModifierXe4 {
+    ConditionModifier cmod;
+};
+
+static inline std::ostream &operator<<(std::ostream &str, ConditionModifierXe4 cmod)
+{
+    static const char *names[16] = {"", "eq", "ne", "gt", "ge", "lt", "le", "", "ov", "nan", "", "", "", "", "", ""};
+    str << names[static_cast<uint8_t>(cmod.cmod) & 0xF];
+    return str;
+}
+#endif
 #endif
 
 enum class ChannelMask {
@@ -1776,6 +2445,627 @@ enum class ThreadCtrl {
     Switch = 2,
     NoPreempt = 3
 };
+
+#if XE4
+enum class RoundingOverride {
+    none = 0,
+    rne = 1,
+    ru = 2,
+    rd = 3,
+    rtz = 4,
+    rna = 5,
+};
+
+#ifdef NGEN_ASM
+static inline std::ostream &operator<<(std::ostream &str, RoundingOverride rmo)
+{
+    static const char *names[8] = {"", "rne", "ru", "rd", "rtz", "rna", "", ""};
+    str << names[static_cast<uint8_t>(rmo) & 0x7];
+    return str;
+}
+#endif
+
+/* Xe4 opcodes and type dispatching */
+enum class OpcodeClassXe4 {
+    abs, add_128A, add_64A, add_128D, add3, addc, asr, avg,
+    bfe, bfegen, bfi, bfia, bfigen, bfn2, bfn3, bfrev, brepgen, brd,
+    call, calla, callad, calld, cbit, cmp_128A, cmp_64B, cnvg, cvt, cvt2, dp4a,
+    emcos, emexp2, eminv, eminvm, emlog2, emrsqt, emrsqtm, emsgmd, emsin, emsqt, emtanh,
+    fbh, fbl, frc, geta, goto_, illegal, jmpi, join,
+    mad_128A, mad_64C, mad_128D, madm, madlh, madc, max_, min_,
+    mov_128R, mov_64I, movb, movg, movs, msk,
+    mul_128A, mul_64A, mul_128D, mullh, nop128, nop64,
+    redand, redfirst, redfirstidx, redmax, redmin, redor, redsum, redxor,
+    ret, retd, rnd, rol, ror,
+    sadd_128A, sadd_64A, sasr, sbfia, sbfn2, sbfn3, sbfrev, sbrepgen,
+    scmp_128A, scmp_64B, sel, send, sendc, sendcg, sendg,
+    seta, sgeta, shfld, shfli, shflsb, shflu, shflx, shl, shr, smad_128A, smad_64C,
+    smov_128R, smov_64I, smul_128A, smul_64A, smullh, ssel, sseta,
+    sshl, sshr, sbfi, sbfe, sfbh, sfbl, sbfegen, smsk, sbfigen,
+    subb, sync, tarb, tmm, tmmd, tmmamx, tcvd, tcvdmx, tcvu, tcvumx, trng, tred, tmov,
+    yield,
+
+    abs_128A = abs,
+    add3_128A = add3,
+    addc_128K = addc,
+    asr_128A = asr,
+    avg_128A = avg,
+    bfe_128G = bfe,
+    bfegen_128A = bfegen,
+    bfi_128G = bfi,
+    bfia_128G = bfia,
+    bfigen_128A = bfigen,
+    bfn2_64D = bfn2,
+    bfn3_128E = bfn3,
+    bfrev_128G = bfrev,
+    brd_128B = brd,
+    brepgen_128A = brepgen,
+    call_128B = call,
+    calla_128P = calla,
+    callad_128P = callad,
+    calld_128B = calld,
+    cbit_128A = cbit,
+    cnvg_128L = cnvg,
+    cvt_128O = cvt,
+    cvt2_128O = cvt2,
+    dp4a_128Q = dp4a,
+    emcos_128A = emcos,
+    emexp2_128A = emexp2,
+    eminv_128A = eminv,
+    eminvm_128H = eminvm,
+    emlog2_128A = emlog2,
+    emrsqt_128A = emrsqt,
+    emrsqtm_128H = emrsqtm,
+    emsgmd_128A = emsgmd,
+    emsin_128A = emsin,
+    emsqt_128A = emsqt,
+    emtanh_128A = emtanh,
+    fbh_128A = fbh,
+    fbl_128A = fbl,
+    frc_128A = frc,
+    geta_128R = geta,
+    goto__128B = goto_,
+    illegal_128A = illegal,
+    jmpi_128B = jmpi,
+    join_128B = join,
+    madc_128K = madc,
+    madlh_128A = madlh,
+    madm_128H = madm,
+    max_128A = max_,
+    min_128A = min_,
+    movb_128I = movb,
+    movg_128A = movg,
+    movs_128A = movs,
+    msk_64F = msk,
+    mullh_128A = mullh,
+    nop128_128A = nop128,
+    nop64_64A = nop64,
+    redand_128F = redand,
+    redfirst_128F = redfirst,
+    redfirstidx_128F = redfirstidx,
+    redmax_128F = redmax,
+    redmin_128F = redmin,
+    redor_128F = redor,
+    redsum_128F = redsum,
+    redxor_128F = redxor,
+    ret_128B = ret,
+    retd_128B = retd,
+    rnd_128A = rnd,
+    rol_128A = rol,
+    ror_128A = ror,
+    sasr_128A = sasr,
+    sbfe_128G = sbfe,
+    sbfegen_128A = sbfegen,
+    sbfi_128G = sbfi,
+    sbfia_128G = sbfia,
+    sbfigen_128A = sbfigen,
+    sbfn2_64D = sbfn2,
+    sbfn3_128E = sbfn3,
+    sbfrev_128G = sbfrev,
+    sbrepgen_128A = sbrepgen,
+    sel_128J = sel,
+    send_128C = send,
+    sendc_128C = sendc,
+    sendcg_128C = sendcg,
+    sendg_128C = sendg,
+    seta_128R = seta,
+    sfbh_128A = sfbh,
+    sfbl_128A = sfbl,
+    sgeta_128R = sgeta,
+    shfld_128F = shfld,
+    shfli_128F = shfli,
+    shflsb_128F = shflsb,
+    shflu_128F = shflu,
+    shflx_128F = shflx,
+    shl_128A = shl,
+    shr_128A = shr,
+    smsk_64F = smsk,
+    smullh_128A = smullh,
+    ssel_128J = ssel,
+    sseta_128R = sseta,
+    sshl_128A = sshl,
+    sshr_128A = sshr,
+    subb_128K = subb,
+    sync_64E = sync,
+    tarb_64H = tarb,
+    tcvd_128N = tcvd,
+    tcvdmx_128N = tcvdmx,
+    tcvu_128N = tcvu,
+    tcvumx_128N = tcvumx,
+    tmm_128M = tmm,
+    tmmamx_128M = tmmamx,
+    tmmd_128M = tmmd,
+    tmov_128N = tmov,
+    tred_128N = tred,
+    trng_128N = trng,
+    yield_64G = yield,
+};
+
+#define NGEN_DEF_XE4_SCALAR_OPCLASSES \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(add_128A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(add_64A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(asr) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfia) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfn2) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfn3) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfrev) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(brepgen) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(cmp_128A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(cmp_64B) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(geta) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mad_128A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mad_64C) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mov_128R) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mov_64I) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mul_128A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mul_64A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(mullh) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(sel) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(seta) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(shl) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(shr) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfi) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfe) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(fbh) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(fbl) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfegen) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(msk) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(bfigen)
+
+static inline bool isScalar(OpcodeClassXe4 opclass)
+{
+#define NGEN_DEF_XE4_SCALAR_OPCLASS(op) case OpcodeClassXe4::s##op:
+    switch (opclass) {
+        NGEN_DEF_XE4_SCALAR_OPCLASSES return true;
+        case OpcodeClassXe4::jmpi_128B: return true;
+        default: return false;
+    }
+#undef NGEN_DEF_XE4_SCALAR_OPCLASS
+}
+
+static inline OpcodeClassXe4 toScalar(OpcodeClassXe4 opclass)
+{
+#define NGEN_DEF_XE4_SCALAR_OPCLASS(op)                            \
+        case OpcodeClassXe4::op:                                   \
+        case OpcodeClassXe4::s##op: return OpcodeClassXe4::s##op;
+
+    switch (opclass) {
+        NGEN_DEF_XE4_SCALAR_OPCLASSES
+        case OpcodeClassXe4::call:
+        case OpcodeClassXe4::calla:
+        case OpcodeClassXe4::calld:
+        case OpcodeClassXe4::callad:
+        case OpcodeClassXe4::cnvg:
+        case OpcodeClassXe4::goto_:
+        case OpcodeClassXe4::join:
+        case OpcodeClassXe4::jmpi:
+        case OpcodeClassXe4::nop64:
+        case OpcodeClassXe4::nop128:
+        case OpcodeClassXe4::tarb:
+        case OpcodeClassXe4::yield:
+            return opclass;
+        default:
+#ifdef NGEN_SAFE
+            throw unsupported_scalar_operation_exception();
+#endif
+            return opclass;
+    }
+#undef NGEN_DEF_XE4_SCALAR_OPCLASS
+}
+
+#define NGEN_DEF_XE4_OPS \
+NGEN_XE4_OP(abs, 128A, s32, 67) \
+NGEN_XE4_OP(abs, 128A, s64, 83) \
+NGEN_XE4_OP(abs, 128A, f32, 68) \
+NGEN_XE4_OP(abs, 128A, f64, 69) \
+NGEN_XE4_OP(abs, 128A, f16, 122) \
+NGEN_XE4_OP(abs, 128A, bf16, 123) \
+NGEN_XE4_OP(abs, 128A, f16v2, 70) \
+NGEN_XE4_OP(abs, 128A, bf16v2, 71) \
+NGEN_XE4_OP(add, 128A, u32, 74) \
+NGEN_XE4_OP(add, 128A, s32, 75) \
+NGEN_XE4_OP(add, 128A, u64, 76) \
+NGEN_XE4_OP(add, 128A, s64, 77) \
+NGEN_XE4_OP(add, 128A, u16v2, 45) \
+NGEN_XE4_OP(add, 128A, s16v2, 78) \
+NGEN_XE4_OP(add, 128A, s8v4, 79) \
+NGEN_XE4_OP(add, 128A, f32, 80) \
+NGEN_XE4_OP(add, 128A, f64, 268) \
+NGEN_XE4_OP(add, 128A, f16, 124) \
+NGEN_XE4_OP(add, 128A, bf16, 125) \
+NGEN_XE4_OP(add, 128A, f16v2, 81) \
+NGEN_XE4_OP(add, 128A, bf16v2, 82) \
+NGEN_XE4_OP(add, 64A, u32, 85) \
+NGEN_XE4_OP(add, 64A, s32, 86) \
+NGEN_XE4_OP(add, 64A, u64, 87) \
+NGEN_XE4_OP(add, 64A, s64, 88) \
+NGEN_XE4_OP(add, 64A, u16v2, 46) \
+NGEN_XE4_OP(add, 64A, s16v2, 89) \
+NGEN_XE4_OP(add, 64A, s8v4, 90) \
+NGEN_XE4_OP(add, 64A, f32, 91) \
+NGEN_XE4_OP(add, 64A, f64, 315) \
+NGEN_XE4_OP(add, 64A, f16, 126) \
+NGEN_XE4_OP(add, 64A, bf16, 127) \
+NGEN_XE4_OP(add, 64A, f16v2, 92) \
+NGEN_XE4_OP(add, 64A, bf16v2, 93) \
+NGEN_XE4_OP(add, 128D, u64, 96) \
+NGEN_XE4_OP(add, 128D, s64, 97) \
+NGEN_XE4_OP(add, 128D, f64, 316) \
+NGEN_XE4_OP(add3, 128A, u32, 10) \
+NGEN_XE4_OP(add3, 128A, s32, 241) \
+NGEN_XE4_OP(add3, 128A, u64, 13) \
+NGEN_XE4_OP(add3, 128A, s64, 242) \
+NGEN_XE4_OP(addc, 128K, u32, 98) \
+NGEN_XE4_OP(asr, 128A, s32, 26) \
+NGEN_XE4_OP(asr, 128A, s64, 27) \
+NGEN_XE4_OP(asr, 128A, s16v2, 347) \
+NGEN_XE4_OP(asr, 128A, s8v4, 348) \
+NGEN_XE4_OP(avg, 128A, s32, 99) \
+NGEN_XE4_RAW_OP(bfe, 128G, b32, 28) \
+NGEN_XE4_RAW_OP(bfegen, 128A, b32, 326) \
+NGEN_XE4_RAW_OP(bfi, 128G, b32, 29) \
+NGEN_XE4_RAW_OP(bfia, 128G, b32, 30) \
+NGEN_XE4_RAW_OP(bfigen, 128A, b32, 305) \
+NGEN_XE4_RAW_OP(bfn2, 64D, b32, 33) \
+NGEN_XE4_RAW_OP(bfn3, 128E, b32, 306) \
+NGEN_XE4_RAW_OP(bfrev, 128G, b32, 31) \
+NGEN_XE4_RAW_OP(brepgen, 128A, b32, 325) \
+NGEN_XE4_UNTYPED_OP(brd, 128B, 57) \
+NGEN_XE4_UNTYPED_OP(call, 128B, 3) \
+NGEN_XE4_UNTYPED_OP(calla, 128P, 4) \
+NGEN_XE4_UNTYPED_OP(callad, 128P, 58) \
+NGEN_XE4_UNTYPED_OP(calld, 128B, 59) \
+NGEN_XE4_RAW_OP(cbit, 128A, b32, 34) \
+NGEN_XE4_OP(cmp, 128A, u32, 100) \
+NGEN_XE4_OP(cmp, 128A, s32, 101) \
+NGEN_XE4_OP(cmp, 128A, u64, 102) \
+NGEN_XE4_OP(cmp, 128A, s64, 103) \
+NGEN_XE4_OP(cmp, 128A, u16v2, 47) \
+NGEN_XE4_OP(cmp, 128A, s16v2, 104) \
+NGEN_XE4_OP(cmp, 128A, s8v4, 105) \
+NGEN_XE4_OP(cmp, 128A, f32, 106) \
+NGEN_XE4_OP(cmp, 128A, f64, 107) \
+NGEN_XE4_OP(cmp, 128A, f16, 233) \
+NGEN_XE4_OP(cmp, 128A, bf16, 234) \
+NGEN_XE4_OP(cmp, 128A, f16v2, 108) \
+NGEN_XE4_OP(cmp, 128A, bf16v2, 109) \
+NGEN_XE4_OP(cmp, 64B, u32, 112) \
+NGEN_XE4_OP(cmp, 64B, s32, 113) \
+NGEN_XE4_OP(cmp, 64B, u64, 114) \
+NGEN_XE4_OP(cmp, 64B, s64, 115) \
+NGEN_XE4_OP(cmp, 64B, u16v2, 48) \
+NGEN_XE4_OP(cmp, 64B, s16v2, 116) \
+NGEN_XE4_OP(cmp, 64B, s8v4, 117) \
+NGEN_XE4_OP(cmp, 64B, f32, 118) \
+NGEN_XE4_OP(cmp, 64B, f64, 119) \
+NGEN_XE4_OP(cmp, 64B, f16, 235) \
+NGEN_XE4_OP(cmp, 64B, bf16, 236) \
+NGEN_XE4_OP(cmp, 64B, f16v2, 120) \
+NGEN_XE4_OP(cmp, 64B, bf16v2, 121) \
+NGEN_XE4_UNTYPED_OP(cnvg, 128L, 200) \
+NGEN_XE4_OP(cvt, 128O, u8, 94) \
+NGEN_XE4_OP(cvt, 128O, s8, 95) \
+NGEN_XE4_OP(cvt, 128O, u16, 154) \
+NGEN_XE4_OP(cvt, 128O, s16, 155) \
+NGEN_XE4_OP(cvt, 128O, u32, 165) \
+NGEN_XE4_OP(cvt, 128O, s32, 166) \
+NGEN_XE4_OP(cvt, 128O, u64, 176) \
+NGEN_XE4_OP(cvt, 128O, s64, 177) \
+NGEN_XE4_OP(cvt, 128O, u16v2, 188) \
+NGEN_XE4_OP(cvt, 128O, s16v2, 189) \
+NGEN_XE4_OP(cvt, 128O, f32, 193) \
+NGEN_XE4_OP(cvt, 128O, tf32, 194) \
+NGEN_XE4_OP(cvt, 128O, f64, 201) \
+NGEN_XE4_OP(cvt, 128O, f16, 204) \
+NGEN_XE4_OP(cvt, 128O, bf16, 205) \
+NGEN_XE4_OP(cvt, 128O, f16v2, 211) \
+NGEN_XE4_OP(cvt, 128O, bf16v2, 212) \
+NGEN_XE4_OP(cvt2, 128O, f16v2, 376) \
+NGEN_XE4_OP(cvt2, 128O, bf16v2, 377) \
+NGEN_XE4_OP(dp4a, 128Q, u32, 187) \
+NGEN_XE4_OP(dp4a, 128Q, s32, 190) \
+NGEN_XE4_OP(emcos, 128A, f32, 134) \
+NGEN_XE4_OP(emcos, 128A, f16, 329) \
+NGEN_XE4_OP(emcos, 128A, bf16, 338) \
+NGEN_XE4_OP(emcos, 128A, f16v2, 213) \
+NGEN_XE4_OP(emcos, 128A, bf16v2, 214) \
+NGEN_XE4_OP(emexp2, 128A, f32, 135) \
+NGEN_XE4_OP(emexp2, 128A, f16, 330) \
+NGEN_XE4_OP(emexp2, 128A, bf16, 339) \
+NGEN_XE4_OP(emexp2, 128A, f16v2, 219) \
+NGEN_XE4_OP(emexp2, 128A, bf16v2, 220) \
+NGEN_XE4_OP(eminv, 128A, f32, 136) \
+NGEN_XE4_OP(eminv, 128A, f16, 331) \
+NGEN_XE4_OP(eminv, 128A, bf16, 340) \
+NGEN_XE4_OP(eminv, 128A, f16v2, 237) \
+NGEN_XE4_OP(eminv, 128A, bf16v2, 238) \
+NGEN_XE4_OP(eminvm, 128H, f32, 137) \
+NGEN_XE4_OP(eminvm, 128H, f64, 327) \
+NGEN_XE4_OP(emlog2, 128A, f32, 138) \
+NGEN_XE4_OP(emlog2, 128A, f16, 332) \
+NGEN_XE4_OP(emlog2, 128A, bf16, 341) \
+NGEN_XE4_OP(emlog2, 128A, f16v2, 239) \
+NGEN_XE4_OP(emlog2, 128A, bf16v2, 279) \
+NGEN_XE4_OP(emrsqt, 128A, f32, 24) \
+NGEN_XE4_OP(emrsqt, 128A, f16, 333) \
+NGEN_XE4_OP(emrsqt, 128A, bf16, 342) \
+NGEN_XE4_OP(emrsqt, 128A, f16v2, 283) \
+NGEN_XE4_OP(emrsqt, 128A, bf16v2, 289) \
+NGEN_XE4_OP(emrsqtm, 128H, f32, 139) \
+NGEN_XE4_OP(emrsqtm, 128H, f64, 328) \
+NGEN_XE4_OP(emsgmd, 128A, f32, 140) \
+NGEN_XE4_OP(emsgmd, 128A, f16, 334) \
+NGEN_XE4_OP(emsgmd, 128A, bf16, 343) \
+NGEN_XE4_OP(emsgmd, 128A, f16v2, 308) \
+NGEN_XE4_OP(emsgmd, 128A, bf16v2, 310) \
+NGEN_XE4_OP(emsin, 128A, f32, 141) \
+NGEN_XE4_OP(emsin, 128A, f16, 335) \
+NGEN_XE4_OP(emsin, 128A, bf16, 344) \
+NGEN_XE4_OP(emsin, 128A, f16v2, 362) \
+NGEN_XE4_OP(emsin, 128A, bf16v2, 363) \
+NGEN_XE4_OP(emsqt, 128A, f32, 142) \
+NGEN_XE4_OP(emsqt, 128A, f16, 336) \
+NGEN_XE4_OP(emsqt, 128A, bf16, 345) \
+NGEN_XE4_OP(emsqt, 128A, f16v2, 364) \
+NGEN_XE4_OP(emsqt, 128A, bf16v2, 365) \
+NGEN_XE4_OP(emtanh, 128A, f32, 143) \
+NGEN_XE4_OP(emtanh, 128A, f16, 337) \
+NGEN_XE4_OP(emtanh, 128A, bf16, 346) \
+NGEN_XE4_OP(emtanh, 128A, f16v2, 366) \
+NGEN_XE4_OP(emtanh, 128A, bf16v2, 375) \
+NGEN_XE4_RAW_OP(fbh, 128A, b32, 35) \
+NGEN_XE4_RAW_OP(fbl, 128A, b32, 36) \
+NGEN_XE4_OP(frc, 128A, f32, 144) \
+NGEN_XE4_RAW_OP(geta, 128R, b32, 307) \
+NGEN_XE4_UNTYPED_OP(goto_, 128B, 6) \
+NGEN_XE4_UNTYPED_OP(illegal, 128A, 0) \
+NGEN_XE4_UNTYPED_OP(jmpi, 128B, 8) \
+NGEN_XE4_UNTYPED_OP(join, 128B, 9) \
+NGEN_XE4_OP(mad, 128A, u32, 191) \
+NGEN_XE4_OP(mad, 128A, s32, 192) \
+NGEN_XE4_OP(mad, 128A, u16v2, 49) \
+NGEN_XE4_OP(mad, 128A, s16v2, 195) \
+NGEN_XE4_OP(mad, 128A, s8v4, 196) \
+NGEN_XE4_OP(mad, 128A, f32, 197) \
+NGEN_XE4_OP(mad, 128A, f64, 317) \
+NGEN_XE4_OP(mad, 128A, f16, 221) \
+NGEN_XE4_OP(mad, 128A, bf16, 222) \
+NGEN_XE4_OP(mad, 128A, f16v2, 198) \
+NGEN_XE4_OP(mad, 128A, bf16v2, 199) \
+NGEN_XE4_OP(mad, 64C, u32, 202) \
+NGEN_XE4_OP(mad, 64C, s32, 203) \
+NGEN_XE4_OP(mad, 64C, u16v2, 50) \
+NGEN_XE4_OP(mad, 64C, s16v2, 206) \
+NGEN_XE4_OP(mad, 64C, s8v4, 207) \
+NGEN_XE4_OP(mad, 64C, f32, 208) \
+NGEN_XE4_OP(mad, 64C, f64, 318) \
+NGEN_XE4_OP(mad, 64C, f16, 223) \
+NGEN_XE4_OP(mad, 64C, bf16, 224) \
+NGEN_XE4_OP(mad, 64C, f16v2, 209) \
+NGEN_XE4_OP(mad, 64C, bf16v2, 210) \
+NGEN_XE4_OP(mad, 128D, f32, 215) \
+NGEN_XE4_OP(mad, 128D, f64, 319) \
+NGEN_XE4_OP(madm, 128H, f32, 216) \
+NGEN_XE4_OP(madm, 128H, f64, 169) \
+NGEN_XE4_OP(madlh, 128A, u64, 170) \
+NGEN_XE4_OP(madlh, 128A, s64, 180) \
+NGEN_XE4_OP(madc, 128K, u64, 181) \
+NGEN_XE4_OP(max, 128A, u32, 145) \
+NGEN_XE4_OP(max, 128A, s32, 146) \
+NGEN_XE4_OP(max, 128A, u64, 147) \
+NGEN_XE4_OP(max, 128A, s64, 148) \
+NGEN_XE4_OP(max, 128A, u16v2, 51) \
+NGEN_XE4_OP(max, 128A, s16v2, 149) \
+NGEN_XE4_OP(max, 128A, s8v4, 150) \
+NGEN_XE4_OP(max, 128A, f32, 151) \
+NGEN_XE4_OP(max, 128A, f64, 320) \
+NGEN_XE4_OP(max, 128A, f16, 225) \
+NGEN_XE4_OP(max, 128A, bf16, 226) \
+NGEN_XE4_OP(max, 128A, f16v2, 152) \
+NGEN_XE4_OP(max, 128A, bf16v2, 153) \
+NGEN_XE4_OP(min, 128A, u32, 156) \
+NGEN_XE4_OP(min, 128A, s32, 157) \
+NGEN_XE4_OP(min, 128A, u64, 158) \
+NGEN_XE4_OP(min, 128A, s64, 159) \
+NGEN_XE4_OP(min, 128A, u16v2, 52) \
+NGEN_XE4_OP(min, 128A, s16v2, 160) \
+NGEN_XE4_OP(min, 128A, s8v4, 161) \
+NGEN_XE4_OP(min, 128A, f32, 162) \
+NGEN_XE4_OP(min, 128A, f64, 321) \
+NGEN_XE4_OP(min, 128A, f16, 227) \
+NGEN_XE4_OP(min, 128A, bf16, 228) \
+NGEN_XE4_OP(min, 128A, f16v2, 163) \
+NGEN_XE4_OP(min, 128A, bf16v2, 164) \
+NGEN_XE4_RAW_OP(mov, 128R, b32, 17) \
+NGEN_XE4_RAW_OP(mov, 128R, b64, 18) \
+NGEN_XE4_RAW_OP(mov, 64I, b32, 19) \
+NGEN_XE4_RAW_OP(mov, 64I, b64, 20) \
+NGEN_XE4_RAW_OP(movb, 128I, b32, 25) \
+NGEN_XE4_RAW_OP(movb, 128I, b64, 84) \
+NGEN_XE4_RAW_OP(movg, 128A, b32, 22) \
+NGEN_XE4_RAW_OP(movs, 128A, b32, 23) \
+NGEN_XE4_RAW_OP(msk, 64F, b32, 282) \
+NGEN_XE4_OP(mul, 128A, u32, 167) \
+NGEN_XE4_OP(mul, 128A, s32, 168) \
+NGEN_XE4_OP(mul, 128A, u16v2, 53) \
+NGEN_XE4_OP(mul, 128A, s16v2, 171) \
+NGEN_XE4_OP(mul, 128A, s8v4, 172) \
+NGEN_XE4_OP(mul, 128A, f32, 173) \
+NGEN_XE4_OP(mul, 128A, f64, 322) \
+NGEN_XE4_OP(mul, 128A, f16, 229) \
+NGEN_XE4_OP(mul, 128A, bf16, 230) \
+NGEN_XE4_OP(mul, 128A, f16v2, 174) \
+NGEN_XE4_OP(mul, 128A, bf16v2, 175) \
+NGEN_XE4_OP(mul, 64A, u32, 178) \
+NGEN_XE4_OP(mul, 64A, s32, 179) \
+NGEN_XE4_OP(mul, 64A, u16v2, 54) \
+NGEN_XE4_OP(mul, 64A, s16v2, 182) \
+NGEN_XE4_OP(mul, 64A, s8v4, 183) \
+NGEN_XE4_OP(mul, 64A, f32, 184) \
+NGEN_XE4_OP(mul, 64A, f64, 323) \
+NGEN_XE4_OP(mul, 64A, f16, 231) \
+NGEN_XE4_OP(mul, 64A, bf16, 232) \
+NGEN_XE4_OP(mul, 64A, f16v2, 185) \
+NGEN_XE4_OP(mul, 64A, bf16v2, 186) \
+NGEN_XE4_OP(mul, 128D, f64, 324) \
+NGEN_XE4_OP(mullh, 128A, u64, 5) \
+NGEN_XE4_OP(mullh, 128A, s64, 217) \
+NGEN_XE4_UNTYPED_OP(nop128, 128A, 1) \
+NGEN_XE4_UNTYPED_OP(nop64, 64A, 2) \
+NGEN_XE4_RAW_OP(redand, 128F, b32, 302) \
+NGEN_XE4_RAW_OP(redfirst, 128F, b32, 295) \
+NGEN_XE4_OP(redfirstidx, 128F, u32, 299) \
+NGEN_XE4_OP(redmax, 128F, u32, 291) \
+NGEN_XE4_OP(redmax, 128F, s32, 292) \
+NGEN_XE4_OP(redmax, 128F, f32, 290) \
+NGEN_XE4_OP(redmax, 128F, f16, 367) \
+NGEN_XE4_OP(redmax, 128F, bf16, 368) \
+NGEN_XE4_OP(redmax, 128F, f16v2, 369) \
+NGEN_XE4_OP(redmax, 128F, bf16v2, 370) \
+NGEN_XE4_OP(redmin, 128F, u32, 300) \
+NGEN_XE4_OP(redmin, 128F, s32, 301) \
+NGEN_XE4_OP(redmin, 128F, f32, 296) \
+NGEN_XE4_OP(redmin, 128F, f16, 371) \
+NGEN_XE4_OP(redmin, 128F, bf16, 372) \
+NGEN_XE4_OP(redmin, 128F, f16v2, 373) \
+NGEN_XE4_OP(redmin, 128F, bf16v2, 374) \
+NGEN_XE4_RAW_OP(redor, 128F, b32, 303) \
+NGEN_XE4_OP(redsum, 128F, u32, 297) \
+NGEN_XE4_OP(redsum, 128F, s32, 298) \
+NGEN_XE4_RAW_OP(redxor, 128F, b32, 304) \
+NGEN_XE4_UNTYPED_OP(ret, 128B, 11) \
+NGEN_XE4_UNTYPED_OP(retd, 128B, 60) \
+NGEN_XE4_OP(rnd, 128A, f32, 245) \
+NGEN_XE4_OP(rnd, 128A, f64, 248) \
+NGEN_XE4_OP(rnd, 128A, f16, 271) \
+NGEN_XE4_OP(rnd, 128A, bf16, 274) \
+NGEN_XE4_RAW_OP(rol, 128A, b32, 37) \
+NGEN_XE4_RAW_OP(rol, 128A, b64, 38) \
+NGEN_XE4_RAW_OP(rol, 128A, b16v2, 353) \
+NGEN_XE4_RAW_OP(rol, 128A, b8v4, 354) \
+NGEN_XE4_RAW_OP(ror, 128A, b32, 39) \
+NGEN_XE4_RAW_OP(ror, 128A, b64, 40) \
+NGEN_XE4_RAW_OP(ror, 128A, b16v2, 355) \
+NGEN_XE4_RAW_OP(ror, 128A, b8v4, 356) \
+NGEN_XE4_OP(sadd, 128A, u32, 243) \
+NGEN_XE4_OP(sadd, 128A, s32, 244) \
+NGEN_XE4_OP(sadd, 128A, u64, 258) \
+NGEN_XE4_OP(sadd, 128A, s64, 259) \
+NGEN_XE4_OP(sadd, 64A, u32, 246) \
+NGEN_XE4_OP(sadd, 64A, s32, 247) \
+NGEN_XE4_OP(sadd, 64A, u64, 264) \
+NGEN_XE4_OP(sadd, 64A, s64, 265) \
+NGEN_XE4_OP(sasr, 128A, s32, 249) \
+NGEN_XE4_OP(sasr, 128A, s64, 250) \
+NGEN_XE4_RAW_OP(sbfe, 128G, b32, 358) \
+NGEN_XE4_RAW_OP(sbfegen, 128A, b32, 14) \
+NGEN_XE4_RAW_OP(sbfi, 128G, b32, 357) \
+NGEN_XE4_RAW_OP(sbfia, 128G, b32, 251) \
+NGEN_XE4_RAW_OP(sbfigen, 128A, b32, 111) \
+NGEN_XE4_RAW_OP(sbfn2, 64D, b32, 252) \
+NGEN_XE4_RAW_OP(sbfn3, 128E, b32, 253) \
+NGEN_XE4_RAW_OP(sbfrev, 128G, b32, 66) \
+NGEN_XE4_RAW_OP(sbrepgen, 128A, b32, 65) \
+NGEN_XE4_OP(scmp, 128A, u32, 254) \
+NGEN_XE4_OP(scmp, 128A, s32, 255) \
+NGEN_XE4_OP(scmp, 128A, u64, 256) \
+NGEN_XE4_OP(scmp, 128A, s64, 257) \
+NGEN_XE4_OP(scmp, 64B, u32, 260) \
+NGEN_XE4_OP(scmp, 64B, s32, 261) \
+NGEN_XE4_OP(scmp, 64B, u64, 262) \
+NGEN_XE4_OP(scmp, 64B, s64, 263) \
+NGEN_XE4_RAW_OP(sel, 128J, b32, 218) \
+NGEN_XE4_UNTYPED_OP(send, 128C, 15) \
+NGEN_XE4_UNTYPED_OP(sendc, 128C, 16) \
+NGEN_XE4_UNTYPED_OP(sendcg, 128C, 73) \
+NGEN_XE4_UNTYPED_OP(sendg, 128C, 72) \
+NGEN_XE4_RAW_OP(seta, 128R, b32, 309) \
+NGEN_XE4_RAW_OP(sfbh, 128A, b32, 359) \
+NGEN_XE4_RAW_OP(sfbl, 128A, b32, 360) \
+NGEN_XE4_RAW_OP(sgeta, 128R, b32, 313) \
+NGEN_XE4_RAW_OP(shfld, 128F, b32, 293) \
+NGEN_XE4_RAW_OP(shfli, 128F, b32, 287) \
+NGEN_XE4_RAW_OP(shflsb, 128F, b32, 294) \
+NGEN_XE4_RAW_OP(shflu, 128F, b32, 286) \
+NGEN_XE4_RAW_OP(shflx, 128F, b32, 288) \
+NGEN_XE4_RAW_OP(shl, 128A, b32, 41) \
+NGEN_XE4_RAW_OP(shl, 128A, b64, 42) \
+NGEN_XE4_RAW_OP(shl, 128A, b16v2, 349) \
+NGEN_XE4_RAW_OP(shl, 128A, b8v4, 350) \
+NGEN_XE4_RAW_OP(shr, 128A, b32, 43) \
+NGEN_XE4_RAW_OP(shr, 128A, b64, 44) \
+NGEN_XE4_RAW_OP(shr, 128A, b16v2, 351) \
+NGEN_XE4_RAW_OP(shr, 128A, b8v4, 352) \
+NGEN_XE4_OP(smad, 128A, u32, 277) \
+NGEN_XE4_OP(smad, 128A, s32, 278) \
+NGEN_XE4_OP(smad, 64C, u32, 280) \
+NGEN_XE4_OP(smad, 64C, s32, 281) \
+NGEN_XE4_RAW_OP(smov, 128R, b32, 266) \
+NGEN_XE4_RAW_OP(smov, 128R, b64, 7) \
+NGEN_XE4_RAW_OP(smov, 64I, b32, 267) \
+NGEN_XE4_RAW_OP(smov, 64I, b64, 62) \
+NGEN_XE4_RAW_OP(smsk, 64F, b32, 110) \
+NGEN_XE4_OP(smul, 128A, u32, 269) \
+NGEN_XE4_OP(smul, 128A, s32, 270) \
+NGEN_XE4_OP(smul, 64A, u32, 272) \
+NGEN_XE4_OP(smul, 64A, s32, 273) \
+NGEN_XE4_OP(smullh, 128A, u64, 275) \
+NGEN_XE4_OP(smullh, 128A, s64, 276) \
+NGEN_XE4_RAW_OP(ssel, 128J, b32, 361) \
+NGEN_XE4_RAW_OP(sseta, 128R, b32, 311) \
+NGEN_XE4_RAW_OP(sshl, 128A, b32, 284) \
+NGEN_XE4_RAW_OP(sshl, 128A, b64, 312) \
+NGEN_XE4_RAW_OP(sshr, 128A, b32, 285) \
+NGEN_XE4_RAW_OP(sshr, 128A, b64, 314) \
+NGEN_XE4_OP(subb, 128K, u32, 240) \
+NGEN_XE4_UNTYPED_OP(sync, 64E, 12) \
+NGEN_XE4_UNTYPED_OP(tarb, 64H, 32) \
+NGEN_XE4_OP(tmm, 128M, s32, 448) \
+NGEN_XE4_OP(tmm, 128M, f32, 449) \
+NGEN_XE4_OP(tmm, 128M, f16, 450) \
+NGEN_XE4_OP(tmm, 128M, bf16, 451) \
+NGEN_XE4_OP(tmmd, 128M, f16, 456) \
+NGEN_XE4_OP(tmmd, 128M, bf16, 457) \
+NGEN_XE4_OP(tmmamx, 128M, f32, 453) \
+NGEN_XE4_OP(tcvd, 128N, f16, 488) \
+NGEN_XE4_OP(tcvd, 128N, bf16, 489) \
+NGEN_XE4_OP(tcvdmx, 128N, f16, 480) \
+NGEN_XE4_OP(tcvdmx, 128N, bf16, 481) \
+NGEN_XE4_OP(tcvu, 128N, f16, 504) \
+NGEN_XE4_OP(tcvu, 128N, bf16, 505) \
+NGEN_XE4_OP(tcvu, 128N, e5m2, 506) \
+NGEN_XE4_OP(tcvu, 128N, e4m3, 507) \
+NGEN_XE4_OP(tcvumx, 128N, f16, 496) \
+NGEN_XE4_OP(tcvumx, 128N, bf16, 497) \
+NGEN_XE4_RAW_OP(trng, 128N, b32, 464) \
+NGEN_XE4_RAW_OP(trng, 128N, b16v2, 465) \
+NGEN_XE4_RAW_OP(trng, 128N, b8v4, 466) \
+NGEN_XE4_OP(tred, 128N, f16, 500) \
+NGEN_XE4_OP(tred, 128N, bf16, 501) \
+NGEN_XE4_UNTYPED_OP(tmov, 128N, 510) \
+NGEN_XE4_UNTYPED_OP(yield, 64G, 56) \
+
+#endif
 
 enum class Opcode {
     illegal = 0x00,
@@ -1899,7 +3189,21 @@ enum class Opcode {
     bfi2_gen12 = 0x7A,
     nop = 0x7E,
     directive = 0x7F,   /* not a valid opcode; used internally by nGEN */
+#if XE4
+    directive_xe4 = 0x81FF,
+#define NGEN_XE4_UNTYPED_OP(cls, enc, opcode) cls##_##enc = 0x8000 | opcode,
+#define NGEN_XE4_RAW_OP NGEN_XE4_OP
+#define NGEN_XE4_OP(cls, enc, dt, opcode) cls##_##enc##_##dt = 0x8000 | opcode,
+    NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
+#endif
 };
+
+#if XE4
+static inline bool isXe4(Opcode op) { return (static_cast<int>(op) & 0x8000); }
+#endif
 
 enum class Operand {dst = 0, src0 = 1, src1 = 2, src2 = 3};
 
@@ -1924,6 +3228,12 @@ static inline bool isSend(Opcode op)
 #if XE3P
         case Opcode::sendgx:
         case Opcode::sendgxc:
+#endif
+#if XE4
+        case Opcode::send_128C:
+        case Opcode::sendc_128C:
+        case Opcode::sendg_128C:
+        case Opcode::sendcg_128C:
 #endif
             return true;
         default:
@@ -1953,8 +3263,231 @@ static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
 
 static inline bool isBranch(Opcode op)
 {
+#if XE4
+    if (isXe4(op)) switch (op) {
+        case Opcode::brd_128B:
+        case Opcode::call_128B:
+        case Opcode::calla_128P:
+        case Opcode::calld_128B:
+        case Opcode::callad_128P:
+        case Opcode::goto__128B:
+        case Opcode::jmpi_128B:
+        case Opcode::join_128B:
+        case Opcode::ret_128B:
+        case Opcode::retd_128B:
+            return true;
+        default: return false;
+    } else
+#endif
     return (static_cast<int>(op) >> 4) == 2;
 }
+
+#if XE4
+static inline bool isCvt(Opcode op)
+{
+    switch (op) {
+        case Opcode::cvt_128O_u8:
+        case Opcode::cvt_128O_s8:
+        case Opcode::cvt_128O_u16:
+        case Opcode::cvt_128O_s16:
+        case Opcode::cvt_128O_u32:
+        case Opcode::cvt_128O_s32:
+        case Opcode::cvt_128O_u64:
+        case Opcode::cvt_128O_s64:
+        case Opcode::cvt_128O_u16v2:
+        case Opcode::cvt_128O_s16v2:
+        case Opcode::cvt_128O_f32:
+        case Opcode::cvt_128O_tf32:
+        case Opcode::cvt_128O_f64:
+        case Opcode::cvt_128O_f16:
+        case Opcode::cvt_128O_bf16:
+        case Opcode::cvt_128O_f16v2:
+        case Opcode::cvt_128O_bf16v2:
+        case Opcode::cvt2_128O_f16v2:
+        case Opcode::cvt2_128O_bf16v2: return true;
+        default:                       return false;
+    }
+}
+
+static constexpr14 inline Opcode opcodeXe4(OpcodeClassXe4 cls, DataType dt)
+{
+    auto rawDT = rawType(dt);
+
+    // TODO: make this faster.
+#define NGEN_XE4_UNTYPED_OP(cls_, enc_, opcode) \
+    if (cls == OpcodeClassXe4::cls_##_##enc_) return Opcode::cls_##_##enc_;
+#define NGEN_XE4_RAW_OP(cls_, enc_, dt_, opcode) \
+    if (cls == OpcodeClassXe4::cls_##_##enc_ && rawDT == DataType::dt_) return Opcode::cls_##_##enc_##_##dt_;
+#define NGEN_XE4_OP(cls_, enc_, dt_, opcode) \
+    if (cls == OpcodeClassXe4::cls_##_##enc_ && dt == DataType::dt_) return Opcode::cls_##_##enc_##_##dt_;
+NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
+
+#ifdef NGEN_SAFE
+    if (dt == DataType::invalid)
+        throw missing_type_exception();
+    else
+        throw invalid_type_exception();
+#endif
+    return Opcode::illegal;
+}
+
+enum class EncodingXe4 {
+    _128A, _128B, _128C, _128D, _128E, _128F, _128G, _128H, _128I, _128J, _128K, _128L, _128M, _128N, _128O, _128P, _128Q, _128R, _128S,
+    _64A, _64B, _64C, _64D, _64E, _64F, _64G, _64H, _64I,
+};
+
+
+#ifdef NGEN_ASM
+static inline std::ostream &operator<<(std::ostream &str, EncodingXe4 enc)
+{
+    if (enc >= EncodingXe4::_64A)
+        str << "64" << char('A' + (int(enc) - int(EncodingXe4::_64A)));
+    else
+        str << "128" << char('A' + (int(enc) - int(EncodingXe4::_128A)));
+    return str;
+}
+#endif
+
+static inline EncodingXe4 getEncodingXe4(Opcode op)
+{
+#define NGEN_XE4_UNTYPED_OP(cls_, enc_, opcode) \
+    if (op == Opcode::cls_##_##enc_) return EncodingXe4::_##enc_;
+#define NGEN_XE4_RAW_OP(cls_, enc_, dt_, opcode) \
+    if (op == Opcode::cls_##_##enc_##_##dt_) return EncodingXe4::_##enc_;
+#define NGEN_XE4_OP(cls_, enc_, dt_, opcode) NGEN_XE4_RAW_OP(cls_, enc_, dt_, opcode)
+NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
+    return EncodingXe4::_128A;
+}
+
+static inline bool isEncoding64(EncodingXe4 enc)
+{
+    return (enc >= EncodingXe4::_64A);
+}
+
+static inline int swsbItems(EncodingXe4 enc)
+{
+    switch (enc) {
+        case EncodingXe4::_128A:
+        case EncodingXe4::_128B:
+        case EncodingXe4::_128E:
+        case EncodingXe4::_128F:
+        case EncodingXe4::_128I:
+        case EncodingXe4::_128J:
+        case EncodingXe4::_128K:
+        case EncodingXe4::_128L:
+        case EncodingXe4::_128O:
+        case EncodingXe4::_128P:
+        case EncodingXe4::_128Q:
+        case EncodingXe4::_128R:
+        case EncodingXe4::_64E:
+            return 2;
+        case EncodingXe4::_128C:
+        case EncodingXe4::_128D:
+        case EncodingXe4::_128G:
+        case EncodingXe4::_128H:
+        case EncodingXe4::_64A:
+        case EncodingXe4::_64B:
+        case EncodingXe4::_64C:
+        case EncodingXe4::_64D:
+        case EncodingXe4::_64F:
+        case EncodingXe4::_64G:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static inline DataType dstDataType(Opcode op)
+{
+    if (!isXe4(op))
+        return DataType::invalid;
+
+    using DT = DataType;
+    auto _ = DT::invalid;
+    auto f64 = DT::f64, f32 = DT::f32;
+    auto f16 = DT::f16, bf16 = DT::bf16, f16v2 = DT::f16v2, bf16v2 = DT::bf16v2;
+    auto e4m3 = DT::e4m3, e5m2 = DT::e5m2;
+    auto b64 = DT::b64, b32 = DT::b32, b16v2 = DT::b16v2, b8v4 = DT::b8v4;
+    auto s64 = DT::s64, s32 = DT::s32, s16 = DT::s16, s16v2 = DT::s16v2, s8 = DT::s8, s8v4 = DT::s8v4;
+    auto u64 = DT::u64, u32 = DT::u32, u16 = DT::u16, u16v2 = DT::u16v2, u8 = DT::u8;
+    auto tf32 = DT::tf32;
+
+    static const DataType dt[512] = {
+        _, _, _, _, _, u64, _, b64,
+        _, _, u32, _, _, u64, b32, _,
+        _, b32, b64, b32, b64, b64, b32, b32,
+        f32, b32, s32, s64, b32, b32, b32, b32,
+        _, b32, b32, b32, b32, b32, b64, b32,
+        b64, b32, b64, b32, b64, u16v2, u16v2, u16v2,
+        u16v2, u16v2, u16v2, u16v2, u16v2, u16v2, u16v2, b64,
+        _, _, _, _, _, _, b64, _,
+        _, b32, b32, s32, f32, f64, f16v2, bf16v2,
+        _, _, u32, s32, u64, s64, s16v2, s8v4,
+        f32, f16v2, bf16v2, s64, b64, u32, s32, u64,
+        s64, s16v2, s8v4, f32, f16v2, bf16v2, u8, s8,
+        u64, s64, u32, s32, u32, s32, u64, s64,
+        s16v2, s8v4, f32, f64, f16v2, bf16v2, b32, b32,
+        u32, s32, u64, s64, s16v2, s8v4, f32, f64,
+        f16v2, bf16v2, f16, bf16, f16, bf16, f16, bf16,
+        _, _, _, _, _, _, f32, f32,
+        f32, f32, f32, f32, f32, f32, f32, f32,
+        f32, u32, s32, u64, s64, s16v2, s8v4, f32,
+        f16v2, bf16v2, u16, s16, u32, s32, u64, s64,
+        s16v2, s8v4, f32, f16v2, bf16v2, u32, s32, u32,
+        s32, f64, u64, s16v2, s8v4, f32, f16v2, bf16v2,
+        u64, s64, u32, s32, s64, u64, s16v2, s8v4,
+        f32, f16v2, bf16v2, u32, u16v2, s16v2, s32, u32,
+        s32, f32, tf32, s16v2, s8v4, f32, f16v2, bf16v2,
+        _, f64, u32, s32, f16, bf16, s16v2, s8v4,
+        f32, f16v2, bf16v2, f16v2, bf16v2, f16v2, bf16v2, f32,
+        f32, s64, b32, f16v2, bf16v2, f16, bf16, f16,
+        bf16, f16, bf16, f16, bf16, f16, bf16, f16,
+        bf16, f16, bf16, f16, bf16, f16v2, bf16v2, f16v2,
+        u32, s32, s64, u32, s32, f32, u32, s32,
+        f64, s32, s64, b32, b32, b32, u32, s32,
+        u64, s64, u64, s64, u32, s32, u64, s64,
+        u64, s64, b32, b32, f64, u32, s32, f16,
+        u32, s32, bf16, u64, s64, u32, s32, bf16v2,
+        u32, s32, b32, f16v2, b32, b32, b32, b32,
+        b32, bf16v2, f32, u32, s32, b32, b32, b32,
+        f32, u32, s32, u32, u32, s32, b32, b32,
+        b32, b32, b32, b32, f16v2, b32, bf16v2, b32,
+        b64, b32, b64, f64, f64, f64, f64, f64,
+        f64, f64, f64, f64, f64, b32, b32, f64,
+        f64, f16, f16, f16, f16, f16, f16, f16,
+        f16, f16, bf16, bf16, bf16, bf16, bf16, bf16,
+        bf16, bf16, bf16, s16v2, s8v4, b16v2, b8v4, b16v2,
+        b8v4, b16v2, b8v4, b16v2, b8v4, b32, b32, b32,
+        b32, b32, f16v2, bf16v2, f16v2, bf16v2, f16v2, f16,
+        bf16, f16v2, bf16v2, f16, bf16, f16v2, bf16v2, bf16v2,
+        f16v2, bf16v2, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        s32, f32, f16, bf16, _, f32, _, _,
+        f16, bf16, _, _, _, _, _, _,
+        b32, b16v2, b8v4, _, _, _, _, _,
+        _, _, _, _, _, _, _, _,
+        f16, bf16, _, _, _, _, _, _,
+        f16, bf16, _, _, _, _, _, _,
+        f16, bf16, _, _, f16, bf16, _, _,
+        f16, bf16, e5m2, e4m3, _, _, _, _,
+    };
+
+    return dt[static_cast<int>(op) & 0x1FF];
+}
+#endif
 
 class AllPipes {};
 enum class Pipe : uint8_t {
@@ -1965,6 +3498,14 @@ enum class Pipe : uint8_t {
     L = 4, Long = L,
     M = 5, Math = M,
     S = 6, Scalar = S,
+#if XE4
+    X = 7, Shuffle = X, shfl = X,
+    int_ = I,
+    float_ = F,
+    float64 = L,
+    ext = M,
+    scl = S,
+#endif
 };
 
 #ifdef NGEN_ASM
@@ -1974,46 +3515,98 @@ static inline std::ostream &operator<<(std::ostream &str, Pipe pipe)
     str << names[static_cast<uint8_t>(pipe) & 7];
     return str;
 }
+
+#if XE4
+struct PipeXe4 {
+    Pipe p;
+};
+
+static inline std::ostream &operator<<(std::ostream &str, PipeXe4 pipe)
+{
+    static const char *names[8] = {"", "all", "f32", "int", "f64", "em", "scl", "shfl"};
+    str << names[static_cast<uint8_t>(pipe.p) & 7];
+    return str;
+}
+#endif
 #endif
 
-class SWSBInfo
+class SWSBItem
 {
     friend class InstructionModifier;
 
 public:
     union {
         struct {
-            unsigned token : 5;
-            unsigned noacc : 1;
-            unsigned src : 1;
-            unsigned dst : 1;
-            unsigned dist : 4;
-            unsigned pipe : 4;
-        } parts;
-        uint16_t all;
+            uint8_t dist : 3;
+            uint8_t pipe : 4;
+            uint8_t isToken : 1;
+        } pipe;
+        struct {
+            uint8_t token : 5;
+            uint8_t dst : 1;
+            uint8_t src : 1;
+            uint8_t isToken : 1;
+        } token;
+        uint8_t all;
     };
 
-    constexpr bool hasDist() const       { return parts.dist > 0; }
-    constexpr bool hasToken() const      { return parts.src || parts.dst; }
-    constexpr bool hasTokenSet() const   { return parts.src && parts.dst; }
-    constexpr int getToken() const       { return hasToken() ? parts.token : 0; }
-    constexpr unsigned tokenMode() const { return (parts.src << 1) | parts.dst; }
-    constexpr Pipe getPipe() const       { return static_cast<Pipe>(parts.pipe); }
-    void setPipe(Pipe pipe)              { parts.pipe = static_cast<unsigned>(pipe); }
+    constexpr bool isToken() const       { return token.isToken; }
+    constexpr bool hasTokenSet() const   { return token.isToken && token.src && token.dst; }
+    constexpr int getToken() const       { return token.token; }
+    constexpr unsigned tokenMode() const { return ((token.src << 1) | token.dst); }
+
+    constexpr bool isPipe() const        { return !empty() && !pipe.isToken; }
+    constexpr Pipe getPipe() const       { return static_cast<Pipe>(pipe.pipe); }
+    void setPipe(Pipe pipe_)             { pipe.pipe = static_cast<unsigned>(pipe_); }
+
     constexpr bool empty() const         { return (all == 0); }
 
+    explicit operator bool() const       { return !empty(); }
+    bool operator!() const               { return empty(); }
+
 protected:
-    explicit constexpr SWSBInfo(uint16_t all_) : all(all_) {}
+    explicit constexpr SWSBItem(uint8_t all_) : all(all_) {}
 
 public:
-    constexpr SWSBInfo() : all(0) {}
-    constexpr SWSBInfo(Pipe pipe_, int dist_) : all(((dist_ & 0xF) << 8) | (static_cast<unsigned>(pipe_) << 12)) {}
-    constexpr SWSBInfo(int id_, bool src_, bool dst_) : all(id_ | (uint16_t(src_) << 6) | (uint16_t(dst_) << 7)) {}
+    constexpr SWSBItem() : all(0) {}
+    constexpr SWSBItem(Pipe pipe_, int dist_) : all((dist_ & 0x7) | (static_cast<unsigned>(pipe_) << 3)) {}
+    constexpr SWSBItem(int token_, bool src_, bool dst_) : all((token_ & 0x1F) | (uint16_t(src_) << 6) | (uint16_t(dst_) << 5) | 0x80) {}
 
-    static constexpr SWSBInfo createNoAccSBSet() { return SWSBInfo(0x20); }
+    static constexpr SWSBItem createNoAccSBSet() { return SWSBItem(0x08); }
+    constexpr bool isNoAccSBSet()                { return (all == 0x08); }
 
-    friend constexpr SWSBInfo operator|(const SWSBInfo &i1, const SWSBInfo &i2) { return SWSBInfo(i1.all | i2.all); }
+    static uint32_t pack4(std::array<SWSBItem, 4> items) {
+        return items[0].all | (items[1].all << 8) | (items[2].all << 16) | (items[3].all << 24);
+    }
+    static std::array<SWSBItem, 4> unpack4(uint32_t i) {
+        std::array<SWSBItem, 4> result;
+        result[0].all =  i        & 0xFF;
+        result[1].all = (i >> 8)  & 0xFF;
+        result[2].all = (i >> 16) & 0xFF;
+        result[3].all = (i >> 24) & 0xFF;
+        return result;
+    }
 };
+
+static_assert(sizeof(SWSBItem) == 1, "SWSBItem has been padded by the compiler");
+
+using SWSBInfo = std::array<SWSBItem, 2>;
+
+template <typename T> static constexpr Pipe getPipe() { return (sizeof(T) == 8) ? Pipe::L : Pipe::I; }
+template <> constexpr Pipe getPipe<float>()           { return Pipe::F; }
+template <> constexpr Pipe getPipe<void>()            { return Pipe::Default; }
+template <> constexpr Pipe getPipe<AllPipes>()        { return Pipe::A; }
+
+constexpr SWSBItem SWSB(SWSBItem info)                              { return info; }
+constexpr SWSBItem SWSB(Pipe pipe, int dist)                        { return SWSBItem(pipe, dist); }
+template <typename T = void> constexpr SWSBItem SWSB(int dist = 1)  { return SWSB(getPipe<T>(), dist); }
+
+template <typename T = void> constexpr InstructionModifier SWSB(SWSBItem item, int dist);
+
+static inline void normalizeSWSB(SWSBInfo &info) {
+    if (info[0].isPipe() || info[1].isToken())
+        std::swap(info[0], info[1]);
+}
 
 // Token count.
 constexpr inline int tokenCount(HW hw, int grfCount = 128)
@@ -2027,31 +3620,26 @@ constexpr inline int tokenCount(HW hw, int grfCount = 128)
 class SBID
 {
 public:
-    SWSBInfo set;
-    SWSBInfo src;
-    SWSBInfo dst;
+    SWSBItem set;
+    SWSBItem src;
+    SWSBItem dst;
 
-    constexpr SBID(int id) : set(id, true, true), src(id, true, false), dst(id, false, true) {}
-    constexpr operator SWSBInfo() const { return set; }
+    constexpr explicit SBID(int id) : set(id, true, true), src(id, true, false), dst(id, false, true) {}
+    constexpr operator SWSBItem() const { return set; }
 
     constexpr int getID() const { return set.getToken(); }
 };
-
-template <typename T> static constexpr Pipe getPipe() { return (sizeof(T) == 8) ? Pipe::L : Pipe::I; }
-template <> constexpr Pipe getPipe<float>()           { return Pipe::F; }
-template <> constexpr Pipe getPipe<void>()            { return Pipe::Default; }
-template <> constexpr Pipe getPipe<AllPipes>()        { return Pipe::A; }
-
-constexpr SWSBInfo SWSB(SWSBInfo info)                                        { return info; }
-constexpr SWSBInfo SWSB(Pipe pipe, int dist)                                  { return SWSBInfo(pipe, dist); }
-template <typename T = void> constexpr SWSBInfo SWSB(int dist)                { return SWSB(getPipe<T>(), dist); }
-template <typename T = void> constexpr SWSBInfo SWSB(SWSBInfo info, int dist) { return SWSB<T>(dist) | info; }
 
 class InstructionModifier {
 protected:
     union {
         struct {
-            unsigned execSize : 8;          // Execution size as integer (for internal use).
+#if XE4
+            unsigned cflag : 4;
+            unsigned _pad1 : 4;
+#else
+            unsigned _pad1 : 8;
+#endif
             unsigned accessMode : 1;        // From here on matches the low 64-bits of the binary format for Gen8-11
             unsigned noDDClr : 1;
             unsigned noDDChk : 1;
@@ -2059,7 +3647,7 @@ protected:
             unsigned threadCtrl : 2;
             unsigned predCtrl : 4;
             unsigned predInv : 1;
-            unsigned eSizeField : 3;
+            unsigned log2ExecSize : 3;
             unsigned cmod : 4;              // Also stores channel mask temporarily for surface r/w
             unsigned accWrCtrl : 1;         // = noSrcDepSet for send, = branchCtrl for branch instructions
             unsigned cmptCtrl : 1;
@@ -2069,12 +3657,20 @@ protected:
             unsigned flagRegNum : 1;
             unsigned maskCtrl : 1;
             unsigned exBSO : 1;
-            unsigned _zeros_: 8;
+#if XE4
+            unsigned rmo : 3;
+            unsigned _pad2: 2;
+            unsigned esizeSet : 1;
+            unsigned flagRegNum1 : 3;
+#else
+            unsigned _pad2: 8;
             unsigned flagRegNum1 : 1;
+#endif
             unsigned autoSWSB : 1;
             unsigned fusionCtrl : 1;        // Gen12
             unsigned eot : 1;
-            unsigned swsb : 16;
+            unsigned swsb0 : 8;
+            unsigned swsb1 : 8;
         } parts;
         uint64_t all;
     };
@@ -2085,7 +3681,7 @@ protected:
     friend inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag);
 
 public:
-    constexpr int getExecSize()            const { return parts.execSize; }
+    constexpr int getExecSize()            const { return 1 << parts.log2ExecSize; }
     constexpr bool isAlign16()             const { return parts.accessMode; }
     constexpr bool isNoDDClr()             const { return parts.noDDClr; }
     constexpr bool isNoDDChk()             const { return parts.noDDChk; }
@@ -2104,44 +3700,68 @@ public:
     constexpr bool isBreakpoint()          const { return parts.debugCtrl; }
     constexpr bool isSaturate()            const { return parts.saturate; }
     constexpr14 FlagRegister getFlagReg()  const { return FlagRegister((parts.flagRegNum1 << 1) | parts.flagRegNum, parts.flagSubRegNum); }
+#if XE4
+    constexpr14 FlagRegister getCFlag()    const { return FlagRegister(parts.cflag); }
+#endif
     constexpr bool isWrEn()                const { return parts.maskCtrl; }
     constexpr bool isExBSO()               const { return parts.exBSO; }
+#if XE4
+    constexpr RoundingOverride getRounding() const { return static_cast<RoundingOverride>(parts.rmo); }
+    constexpr bool hasExecSize()           const { return parts.esizeSet; }
+#endif
     constexpr bool isAutoSWSB()            const { return parts.autoSWSB; }
     constexpr bool isSerialized()          const { return parts.fusionCtrl; }
     constexpr bool isEOT()                 const { return parts.eot; }
-    constexpr SWSBInfo getSWSB()           const { return SWSBInfo(parts.swsb); }
+    constexpr SWSBInfo getSWSB()           const { return {SWSBItem(parts.swsb0), SWSBItem(parts.swsb1)}; }
     constexpr uint64_t getAll()            const { return all; }
 
-    constexpr14 void setExecSize(int execSize_)              { parts.execSize = execSize_; parts.eSizeField = utils::log2(execSize_); }
+    constexpr14 void setExecSize(int execSize_)              { parts.log2ExecSize = utils::log2(execSize_); }
     constexpr14 void setPredCtrl(PredCtrl predCtrl_)         { parts.predCtrl = static_cast<unsigned>(predCtrl_); }
     constexpr14 void setPredInv(bool predInv_)               { parts.predInv = predInv_; }
     constexpr14 void setCMod(const ConditionModifier &cmod_) { parts.cmod = static_cast<unsigned>(cmod_); }
     constexpr14 void setBranchCtrl(bool branchCtrl)          { parts.accWrCtrl = branchCtrl; }
     constexpr14 void setFlagReg(FlagRegister &flag)          { parts.flagRegNum1 = flag.getBase() >> 1; parts.flagRegNum = flag.getBase() & 1; parts.flagSubRegNum = flag.getOffset(); }
+#if XE4
+    constexpr14 void setCFlag(FlagRegister &flag)            { parts.cflag = flag.getBase(); }
+#endif
     constexpr14 void setWrEn(bool maskCtrl_)                 { parts.maskCtrl = maskCtrl_; }
     constexpr14 void setAutoSWSB(bool autoSWSB_)             { parts.autoSWSB = autoSWSB_; }
-    constexpr14 void setSWSB(SWSBInfo swsb_)                 { parts.swsb = swsb_.all; }
-    constexpr14 void setSWSB(uint16_t swsb_)                 { parts.swsb = swsb_; }
+    constexpr14 void setSWSB(SWSBInfo swsb)                  { parts.swsb0 = swsb[0].all; parts.swsb1 = swsb[1].all; }
 
     constexpr InstructionModifier() : all(0) {}
 
     // Hardcoded shift counts are a workaround for MSVC v140 bug.
-    constexpr /* implicit */ InstructionModifier(const PredCtrl &predCtrl_)
+    constexpr14 /* implicit */ InstructionModifier(FlagRegister flag) : InstructionModifier() {
+        *this |= flag;
+    }
+    constexpr /* implicit */ InstructionModifier(PredCtrl predCtrl_)
         : all{static_cast<uint64_t>(predCtrl_) << 16} {}
 
-    constexpr /* implicit */ InstructionModifier(const ThreadCtrl &threadCtrl_)
+    constexpr /* implicit */ InstructionModifier(ThreadCtrl threadCtrl_)
         : all{static_cast<uint64_t>(threadCtrl_) << 14} {}
 
-    constexpr /* implicit */ InstructionModifier(const ConditionModifier &cmod_)
+    constexpr /* implicit */ InstructionModifier(ConditionModifier cmod_)
         : all{static_cast<uint64_t>(cmod_) << 24} {}
 
-    constexpr14 /* implicit */ InstructionModifier(const int &execSize_) : InstructionModifier() {
+#if XE4
+    constexpr /* implicit */ InstructionModifier(RoundingOverride rmo_)
+        : all{static_cast<uint64_t>(rmo_) << 36} {}
+#endif
+
+    constexpr14 /* implicit */ InstructionModifier(int execSize_) : InstructionModifier() {
         setExecSize(execSize_);
+#if XE4
+        parts.esizeSet = true;
+#endif
     }
-    constexpr14 /* implicit */ InstructionModifier(const SWSBInfo &swsb) : InstructionModifier() {
-        parts.swsb = swsb.all;
+    constexpr14 /* implicit */ InstructionModifier(SWSBInfo swsb) : InstructionModifier() {
+        parts.swsb0 = swsb[0].all;
+        parts.swsb1 = swsb[1].all;
     }
-    constexpr14 /* implicit */ InstructionModifier(const SBID &sb)   : InstructionModifier(SWSB(sb)) {}
+    constexpr14 /* implicit */ InstructionModifier(SWSBItem swsb) : InstructionModifier() {
+        parts.swsb0 = swsb.all;
+    }
+    constexpr14 /* implicit */ InstructionModifier(SBID sb) : InstructionModifier(SWSB(sb)) {}
 
 protected:
     constexpr InstructionModifier(bool accessMode_, bool noDDClr_, bool noDDChk_, unsigned chanOff_, bool accWrCtrl_,
@@ -2196,6 +3816,8 @@ public:
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const InstructionModifier &mod2);
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const FlagRegister &mod2);
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const PredCtrl &mod2);
+    friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SWSBItem &mod2);
+    friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SBID &mod2);
 
     friend constexpr14 InstructionModifier operator^(const InstructionModifier &mod1, const InstructionModifier &mod2);
 
@@ -2206,12 +3828,12 @@ public:
     }
 
     template <typename T>
-    InstructionModifier &operator|=(const T &mod) {
+    constexpr14 InstructionModifier &operator|=(const T &mod) {
         *this = *this | mod;
         return *this;
     }
 
-    InstructionModifier &operator^=(const InstructionModifier &mod) {
+    constexpr14 InstructionModifier &operator^=(const InstructionModifier &mod) {
         *this = *this ^ mod;
         return *this;
     }
@@ -2227,14 +3849,20 @@ inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1
 {
     InstructionModifier mod = mod1;
 
-    mod.parts.flagRegNum1 = flag.getBase() >> 1;
-    mod.parts.flagRegNum = flag.getBase() & 1;
-    mod.parts.flagSubRegNum = flag.getOffset();
+    if (mod.parts.predCtrl == static_cast<int>(PredCtrl::None)) {
+        mod.parts.flagRegNum1 = flag.getBase() >> 1;
+        mod.parts.flagRegNum = flag.getBase() & 1;
+        mod.parts.flagSubRegNum = flag.getOffset();
+    }
 
     if (mod.getCMod() == ConditionModifier::none) {
         mod.parts.predInv = flag.getNeg();
         mod.parts.predCtrl = static_cast<int>(PredCtrl::Normal);
     }
+#if XE4
+    else
+        mod.parts.cflag = flag.getBase();
+#endif
 
     return mod;
 }
@@ -2246,9 +3874,28 @@ inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1
     return mod;
 }
 
+inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SWSBItem &mod2)
+{
+    InstructionModifier mod = mod1;
+    if (mod.parts.swsb0 == 0)
+        mod.parts.swsb0 = mod2.all;
+    else
+        mod.parts.swsb1 = mod2.all;
+    return mod;
+}
+
+inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SBID &mod2)
+{
+    return mod1 | SWSBItem(mod2);
+}
+
 inline constexpr14 InstructionModifier operator^(const InstructionModifier &mod1, const InstructionModifier &mod2)
 {
     return InstructionModifier(mod1.all ^ mod2.all);
+}
+
+template <typename T> constexpr InstructionModifier SWSB(SWSBItem item, int dist) {
+    return InstructionModifier(item) | SWSB<T>(dist);
 }
 
 class Immediate {
@@ -2433,6 +4080,8 @@ public:
 #endif
     }
 
+    constexpr RegFile getRegFile() const { return RegFileIMM; }
+
     constexpr14 bool isScalar() const {
         switch (type) {
             case DataType::uv:
@@ -2451,6 +4100,65 @@ public:
         else if (result.type == DataType::w)
             result.set(int32_t(int16_t(payload)));
         return result;
+    }
+
+    Immediate cast(DataType newType) const {
+        auto clone = *this;
+        if (newType == type)
+            return clone;
+
+        auto isQ = [](DataType dt) { return (dt == DataType::uq) || (dt == DataType::q); };
+        if (isQ(type) && isQ(newType)) {
+            clone.type = newType;
+            return clone;
+        }
+
+        double val = 0.;
+        switch (type) {
+            case DataType::uw: val = uint16_t(payload); break;
+            case DataType::w:  val =  int16_t(payload); break;
+            case DataType::ud: val = uint32_t(payload); break;
+            case DataType::d:  val =  int32_t(payload); break;
+            case DataType::uq: val = uint64_t(payload); break;
+            case DataType::q:  val =  int64_t(payload); break;
+            case DataType::f:  val = utils::bitcast<uint32_t,float>(uint32_t(payload)); break;
+            case DataType::df: val = utils::bitcast<uint64_t,double>(payload); break;
+#ifdef NGEN_HALF_TYPE
+            case DataType::hf: val = float(half(utils::bitcast<uint16_t,half>(uint16_t(payload)))); break;
+#endif
+#ifdef NGEN_BFLOAT16_TYPE
+            case DataType::bf: val = float(bfloat16(utils::bitcast<uint16_t,bfloat16>(uint16_t(payload)))); break;
+#endif
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_type_exception();
+#endif
+                break;
+        }
+
+        switch (newType) {
+            case DataType::uw: return Immediate::uw(uint16_t(val));
+            case DataType::w:  return Immediate::w(int16_t(val));
+            case DataType::ud: return Immediate::ud(uint32_t(val));
+            case DataType::d:  return Immediate::d(int32_t(val));
+            case DataType::uq: return Immediate::uq(uint64_t(val));
+            case DataType::q:  return Immediate::q(int64_t(val));
+            case DataType::f:  return Immediate::f(float(val));
+            case DataType::df: return Immediate::df(val);
+#ifdef NGEN_HALF_TYPE
+            case DataType::hf: return Immediate::hf(utils::bitcast<half,uint16_t>(half(val)));
+#endif
+#ifdef NGEN_BFLOAT16_TYPE
+            case DataType::bf: return Immediate::bf(utils::bitcast<bfloat16,uint16_t>(bfloat16(val)));
+#endif
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_type_exception();
+#endif
+                break;
+        }
+
+        return clone;
     }
 
 #ifdef NGEN_ASM
@@ -3227,6 +4935,10 @@ enum class DataSizeLSC : uint16_t {
     D64 = 0x0803,
     D8U32 = 0x0404,
     D16U32 = 0x0405,
+#if XE4
+    D4 = 0x0004,    /* async DMA only */
+    D6 = 0x0005,    /* async DMA only */
+#endif
 };
 
 static inline constexpr unsigned getRegisterWidth(DataSizeLSC dsize) {
@@ -3260,6 +4972,12 @@ enum class CacheSettingsLSC : uint8_t {
     L1IAR_L2IAR_L3IAR = 14, L1WB_L2WB_L3UC = 14,
                             L1WB_L2UC_L3WB = 15,
 #endif
+#if XE4
+    L2C_L3C = L1UC_L2C_L3C,
+    L2C_L3UC = L1UC_L2C_L3UC,
+    L2UC_L3C = L1UC_L2UC_L3C,
+    L2UC_L3UC = L1UC_L2UC_L3UC,
+#endif
 };
 
 enum FenceScopeLSC : uint8_t {
@@ -3283,7 +5001,7 @@ enum FlushTypeLSC : uint8_t {
 
 struct DataSpecLSC {
     MessageDescriptor desc;
-    uint8_t vcount = 0;
+    uint16_t vcount = 0;
     uint8_t dbytes = 0;
 
     enum { AddrSize16 = 1, AddrSize32 = 2, AddrSize64 = 3 };
@@ -3488,7 +5206,62 @@ enum GatewayOpcode {
     eotr = 10,
     restore_btd_stack = 11,
     sip_bar = 12,
+#if XE4
+    cbar = 13,
+    abar_init = 14,
+    abar_expect = 15,
+    abar_arrive = 16,
+    abar_complete = 17,
+    abar_arrive_expect = 18,
+    abar_try = 19,
+    abar_test_poll = 20,
+    abar_inval = 21,
+    abar_save = 22,
+    abar_restore = 23,
+    abar_query = 24,
+    async_mtp_fence = 25,
+    cbar_remote = 62,
+    cbar_wg_eot = 63,
+#endif
 };
+
+#if XE4
+enum ADMAOpcode {
+    /* l = SLM, r = remote SLM, g = global memory */
+    linear_l2r = 0,
+    linear_l2g = 1,
+    linear_prefetch = 2,
+    linear_g2l = 3,
+    linear_reduce_l2r = 4,
+    linear_reduce_l2g = 5,
+    tensor_l2g = 6,
+    tensor_prefetch = 7,
+    tensor_g2l = 8,
+    tensor_reduce_l2g = 9,
+    row_l2g = 10,
+    row_prefetch = 11,
+    row_g2l = 12,
+    row_reduce_l2g = 13,
+};
+
+enum class ADMAReduction {
+    inc_wrap = 0,
+    dec_wrap = 1,
+    add = 2,
+    min_ = 3,
+    max_ = 4,
+    and_ = 5,
+    or_ = 6,
+    xor_ = 7,
+};
+
+enum AMMAOpcode {
+    dense_mma = 0,
+    sparse_mma = 1,
+    fp_error_query = 2,
+    fp_error_clear = 3,
+};
+#endif
 
 union SendgMessageDescriptor {
     uint64_t all;
@@ -3551,15 +5324,99 @@ union SendgMessageDescriptor {
         uint64_t replay : 2;
         uint64_t : 55;
     } eot;
+#if XE4
+    struct {
+        uint64_t : 9;
+        uint64_t cfn : 1;
+        uint64_t : 54;
+    } abarInit;
+    struct {
+        uint64_t : 7;
+        uint64_t drop : 1;
+        uint64_t lmc : 1;
+        uint64_t scope : 1;
+        uint64_t : 54;
+    } abar;
+    struct {
+        uint64_t : 8;
+        uint64_t nreg : 2;
+        uint64_t : 54;
+    } abarTest;
+    struct {
+        uint64_t : 7;
+        uint64_t dims : 3;
+        uint64_t abar : 1;
+        uint64_t multicast : 1;
+        uint64_t fillMode : 1;
+        uint64_t useCopySize : 1;
+        uint64_t memtype : 2;
+        uint64_t cache : 4;
+        uint64_t reduction : 3;
+        uint64_t : 1;
+        uint64_t dataSize : 3;
+        uint64_t : 1;
+        uint64_t dataType : 3;
+        uint64_t : 1;
+        uint64_t coreLayout : 2;
+        uint64_t slmLayout : 1;
+        uint64_t : 1;
+        uint64_t addrType : 2;
+        uint64_t rowSize : 8;
+        uint64_t : 18;
+    } adma;
+    struct {
+        uint64_t : 6;
+        uint64_t m : 3;
+        uint64_t : 2;
+        uint64_t n : 4;
+        uint64_t : 1;
+        uint64_t k : 4;
+        uint64_t dtype : 3;
+        uint64_t ctype : 3;
+        uint64_t atype : 4;
+        uint64_t : 1;
+        uint64_t btype : 4;
+        uint64_t : 1;
+        uint64_t ascale : 1;
+        uint64_t bscale : 1;
+        uint64_t alayout : 1;
+        uint64_t blayout : 1;
+        uint64_t atm : 1;
+        uint64_t btm : 1;
+        uint64_t dtm : 1;
+        uint64_t areuse : 1;
+        uint64_t : 20;
+    } amma;
+#endif
 
     constexpr SendgMessageDescriptor() : all(0) {}
     explicit constexpr SendgMessageDescriptor(uint64_t all_) : all(all_) {}
 
-    // Return # destination GRFs if known, and -1 if not.
-    inline int dstLen(HW hw, int execSize, SharedFunction sfid) const {
-        int vlDecode[8] = {1, 2, 3, 4, 8, 16, 32, 64};
-        int dsDecode[8] = {1, 2, 4, 8, 4, 4, 0, 0};
+    int vectorLength() const {
+        const int vlDecode[8] = {1, 2, 3, 4, 8, 16, 32, 64};
+        return vlDecode[mem.vlen];
+    }
+
+    int log2ElementBytesMem() const {
+        return mem.dataSize & 0x3;
+    }
+
+    int elementBytesMem() const {
+        return 1 << (mem.dataSize & 0x3);
+    }
+
+    int elementBytesReg() const {
+        const int dsDecode[8] = {1, 2, 4, 8, 4, 4, 0, 0};
+        return dsDecode[mem.dataSize];
+    }
+
+    // Return # destination registers if known, and -1 if not.
+    inline int dstLen(HW hw, int execSize, SharedFunction sfid) const
+    {
         int effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
+#if XE4
+        bool srf = (hw >= HW::Xe4) && (execSize == 1);
+#endif
 
         switch (sfid) {
             case SharedFunction::ugm:
@@ -3568,13 +5425,16 @@ union SendgMessageDescriptor {
             case SharedFunction::urb:
                 switch (static_cast<LSCOpcode>(common.opcode)) {
                     case LSCOpcode::load: {
-                        int vc = vlDecode[mem.vlen];
-                        int dbytes = dsDecode[mem.dataSize];
-                        if (mem.transpose) {
+                        int vc = vectorLength();
+                        int dbytes = elementBytesReg();
+#if XE4
+                        if (srf && mem.transpose)
+                            return SRF::bytesToSRFs(dbytes * vc);
+#endif
+                        if (mem.transpose)
                             return GRF::bytesToGRFs(hw, dbytes * vc);
-                        } else {
+                        else
                             return effSIMDGRFs * vc * (1 + (dbytes >> 3));
-                        }
                         break;
                     }
                     case LSCOpcode::load_cmask: {
@@ -3603,11 +5463,10 @@ union SendgMessageDescriptor {
                     case LSCOpcode::atomic_fcmpxchg:
                     case LSCOpcode::atomic_and:
                     case LSCOpcode::atomic_or:
-                    case LSCOpcode::atomic_xor: {
-                        int dbytes = dsDecode[mem.dataSize];
-                        return effSIMDGRFs * (1 + (dbytes >> 3));
-                    }
-                    default: break;
+                    case LSCOpcode::atomic_xor:
+                        return effSIMDGRFs * (1 + (elementBytesReg() >> 3));
+                    default:
+                        return 0;
                 }
                 break;
             case SharedFunction::gtwy:
@@ -3615,9 +5474,218 @@ union SendgMessageDescriptor {
                     case GatewayOpcode::sip_bar:
                     case GatewayOpcode::save_bar:
                         return 1;
+#if XE4
+                    case GatewayOpcode::abar_arrive:
+                    case GatewayOpcode::abar_arrive_expect:
+                    case GatewayOpcode::abar_test_poll:
+                        return 1;
+                    case GatewayOpcode::abar_query:
+                        return 2;
+#endif
+                    default:
+                        return 0;
+                }
+                break;
+#if XE4
+            case SharedFunction::dma: return 0;
+            case SharedFunction::mma:
+                switch (static_cast<AMMAOpcode>(common.opcode)) {
+                    case AMMAOpcode::fp_error_query: return 1;
+                    default: return 0;
+                }
+                break;
+#endif
+            default: break;
+        }
+
+        return -1;
+    }
+
+    inline int src0Len(HW hw, int execSize, SharedFunction sfid) const
+    {
+        switch (sfid) {
+            case SharedFunction::slm:
+            case SharedFunction::ugm:
+            case SharedFunction::tgm:
+            case SharedFunction::urb:
+                if (static_cast<LSCOpcode>(common.opcode) == LSCOpcode::fence) return 0;
+                if (sfid == SharedFunction::slm) return 1;
+                if (mem.addrSize == 0b10) return GRF::bytesToGRFs(hw, execSize * 8);
+                return 1;
+            case SharedFunction::gtwy:
+                switch (static_cast<GatewayOpcode>(common.opcode)) {
+                    case GatewayOpcode::eot:
+                    case GatewayOpcode::eotr:
+                    case GatewayOpcode::bar:
+                    case GatewayOpcode::sip_bar:
+                    case GatewayOpcode::nbar:
+                    case GatewayOpcode::restore_bar:
+                        return 1;
+#if XE4
+                    case GatewayOpcode::cbar:
+                        return 2;
+                    case GatewayOpcode::abar_init:
+                    case GatewayOpcode::abar_arrive:
+                    case GatewayOpcode::abar_expect:
+                    case GatewayOpcode::abar_arrive_expect:
+                    case GatewayOpcode::abar_complete:
+                    case GatewayOpcode::abar_test_poll:
+                    case GatewayOpcode::abar_try:
+                    case GatewayOpcode::abar_inval:
+                    case GatewayOpcode::abar_query:
+                        return 1;
+#endif
+                    case GatewayOpcode::save_bar:
+#if XE4
+                        return (hw >= HW::Xe4) ? 0 : 1;
+#else
+                        return 1;
+#endif
+                    default: return 0;
+                }
+                break;
+#if XE4
+            case SharedFunction::dma:
+                switch (static_cast<ADMAOpcode>(common.opcode)) {
+                    case ADMAOpcode::linear_l2r:
+                        return 5;
+                    case ADMAOpcode::linear_g2l:
+                    case ADMAOpcode::linear_reduce_l2r:
+                        return 4;
+                    case ADMAOpcode::linear_l2g:
+                    case ADMAOpcode::linear_reduce_l2g:
+                        return 3;
+                    case ADMAOpcode::linear_prefetch:
+                        return 1;
+                    case ADMAOpcode::row_g2l:
+                    case ADMAOpcode::row_l2g:
+                    case ADMAOpcode::row_reduce_l2g:
+                    case ADMAOpcode::row_prefetch:
+                        return ((adma.addrType == 2) ? 2 : 1) + adma.useCopySize;
+                    case ADMAOpcode::tensor_g2l:
+                        return 8;
+                    case ADMAOpcode::tensor_prefetch:
+                        return 5;
+                    case ADMAOpcode::tensor_l2g:
+                    case ADMAOpcode::tensor_reduce_l2g:
+                        return 7;
                     default: break;
                 }
                 break;
+            case SharedFunction::mma:
+                switch (static_cast<AMMAOpcode>(common.opcode)) {
+                    case AMMAOpcode::dense_mma:
+                    case AMMAOpcode::sparse_mma:
+                        return 16;
+                    default: return 0;
+                }
+                break;
+#endif
+            default: break;
+        }
+        return -1;
+    }
+
+    inline int src1Len(HW hw, int execSize, SharedFunction sfid) const
+    {
+        int effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
+#if XE4
+        bool srf = (hw >= HW::Xe4) && (execSize == 1);
+#endif
+
+        switch (sfid) {
+            case SharedFunction::ugm:
+            case SharedFunction::tgm:
+            case SharedFunction::slm:
+            case SharedFunction::urb:
+                switch (static_cast<LSCOpcode>(common.opcode)) {
+                    case LSCOpcode::store: {
+                        int vc = vectorLength();
+                        int dbytes = elementBytesReg();
+#if XE4
+                        if (srf && mem.transpose)
+                            return SRF::bytesToSRFs(dbytes * vc);
+#endif
+                        if (mem.transpose)
+                            return GRF::bytesToGRFs(hw, dbytes * vc);
+                        else
+                            return effSIMDGRFs * vc * (1 + (dbytes >> 3));
+                        break;
+                    }
+                    case LSCOpcode::store_cmask: {
+                        int vc = utils::popcnt(cmask.cmask);
+                        return effSIMDGRFs * vc;
+                        break;
+                    }
+                    case LSCOpcode::store_2dblock:
+                        return -1;      /* cannot determine from descriptor */
+                    case LSCOpcode::atomic_add:
+                    case LSCOpcode::atomic_sub:
+                    case LSCOpcode::atomic_min:
+                    case LSCOpcode::atomic_max:
+                    case LSCOpcode::atomic_umin:
+                    case LSCOpcode::atomic_umax:
+                    case LSCOpcode::atomic_fadd:
+                    case LSCOpcode::atomic_fsub:
+                    case LSCOpcode::atomic_fmin:
+                    case LSCOpcode::atomic_fmax:
+                    case LSCOpcode::atomic_and:
+                    case LSCOpcode::atomic_or:
+                    case LSCOpcode::atomic_xor:
+                        return effSIMDGRFs * (1 + (elementBytesReg() >> 3));
+                    case LSCOpcode::atomic_cmpxchg:
+                    case LSCOpcode::atomic_fcmpxchg:
+                        return 2 * effSIMDGRFs * (1 + (elementBytesReg() >> 3));
+                    default: return 0;
+                }
+                break;
+            case SharedFunction::gtwy:
+#if XE4
+                switch (static_cast<GatewayOpcode>(common.opcode)) {
+                    case GatewayOpcode::abar_init:
+                    case GatewayOpcode::abar_arrive:
+                    case GatewayOpcode::abar_arrive_expect:
+                    case GatewayOpcode::abar_expect:
+                    case GatewayOpcode::abar_complete:
+                    case GatewayOpcode::abar_test_poll:
+                    case GatewayOpcode::abar_try:
+                        return 1;
+                    default: break;
+                }
+#endif
+                return 0;
+#if XE4
+            case SharedFunction::dma:
+                switch (static_cast<ADMAOpcode>(common.opcode)) {
+                    case ADMAOpcode::linear_g2l:
+                    case ADMAOpcode::linear_l2r:
+                    case ADMAOpcode::linear_reduce_l2r:
+                    case ADMAOpcode::linear_l2g:
+                    case ADMAOpcode::linear_reduce_l2g:
+                    case ADMAOpcode::linear_prefetch:
+                        return 0;
+                    case ADMAOpcode::row_g2l:
+                    case ADMAOpcode::row_l2g:
+                    case ADMAOpcode::row_reduce_l2g:
+                    case ADMAOpcode::row_prefetch:
+                        return 3;
+                    case ADMAOpcode::tensor_g2l:
+                    case ADMAOpcode::tensor_prefetch:
+                    case ADMAOpcode::tensor_l2g:
+                    case ADMAOpcode::tensor_reduce_l2g:
+                        return 16;
+                    default: break;
+                }
+                break;
+            case SharedFunction::mma:
+                switch (static_cast<AMMAOpcode>(common.opcode)) {
+                    case AMMAOpcode::dense_mma:
+                    case AMMAOpcode::sparse_mma:
+                        return 10;
+                    default: return 0;
+                }
+                break;
+#endif
             default: break;
         }
 
@@ -3648,11 +5716,23 @@ void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, Addre
     desc.cmask.cmask = this->desc.cmask.cmask;      /* or vlen + transpose */
     desc.mem.dataSize = this->desc.standardLSC.dataSize;
     desc.mem.cacheMode = this->desc.standardLSC.cache;
-    desc.mem.scale = encodeScaleLSC(addr.getScale());
+    desc.mem.scale = encodeScaleLSC(addr.getScale() / (std::max<int>(vcount, 1) * desc.elementBytesMem()));
     desc.mem.overfetch = this->desc.standardLSC.overfetch;
 
     bool flat = true;
-    switch (base.getModel()) {
+
+    auto model = base.getModel();
+    if (model == ModelA64) {
+        auto ind0 = addr.getInd0();
+        auto base = addr.getBase();
+        if (!ind0.isNull() && base.isValid()) switch (base.getType()) {
+            case DataType::ud: model = ModelA64A32U; break;
+            case DataType::d:  model = ModelA64A32S; break;
+            default: break;
+        }
+    }
+
+    switch (model) {
         case ModelA64:          desc.mem.addrSize = 0b10; break;
         case ModelA64A32U:      desc.mem.addrSize = 0b00; break;
         case ModelA64A32S:      desc.mem.addrSize = 0b01; break;
@@ -3673,7 +5753,7 @@ void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, Addre
             break;
     }
 
-    int offsetShift = (desc.mem.dataSize & 0x3);    // log2(bytes per element)
+    int offsetShift = desc.log2ElementBytesMem();
     int sdisp = addr.getDisp() >> offsetShift;
 
     if (flat) {
@@ -3758,9 +5838,245 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
     spec.template getDescriptor<Access::AtomicInteger>(hw, mod.getExecSize(), sfid, base, desc, src0Len, src1Len, addr);
     spec.applyAtomicOp(op, desc);
 }
+#endif /* XE3P */
+
+#if XE4
+/* Async DMA interface */
+struct ADMAOptions
+{
+    SendgMessageDescriptor desc{};
+
+    ADMAOptions() = default;
+    explicit constexpr ADMAOptions(uint64_t raw) : desc(raw) {}
+
+    ADMAOptions(CacheSettingsLSC cs) : ADMAOptions(DataSpecLSC(cs)) {}
+    ADMAOptions(DataSpecLSC ds) {
+        desc.adma.dataSize = ds.desc.standardLSC.dataSize;
+        desc.adma.rowSize = std::max<int>(1, ds.vcount >> 3) - 1;
+        if (ds.desc.standardLSC.cache)
+            desc.adma.cache = (ds.desc.standardLSC.cache & 0x3) ^ 1;
+    }
+    ADMAOptions(DataType dt) {
+        enum { fp = 0, bf = 1, uint = 2, sint = 3 } type = fp;
+        switch (dt) {
+            case DataType::e2m1: case DataType::hf8: case DataType::f16:  case DataType::f32: case DataType::f64: type = fp;   break;
+            case DataType::e3m0: case DataType::bf8: case DataType::bf16: case DataType::tf32:                    type = bf;   break;
+            case DataType::u4:   case DataType::u8:  case DataType::u16:  case DataType::u32: case DataType::u64: type = uint; break;
+            case DataType::s4:   case DataType::s8:  case DataType::s16:  case DataType::s32: case DataType::s64: type = sint; break;
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_type_exception();
+#endif
+                break;
+        }
+        desc.adma.dataType = type;
+        int lg2Bits = getLog2Bits(dt);
+        desc.adma.dataSize = (lg2Bits == 2) ? 4 : lg2Bits - 3;
+    }
+
+    static constexpr ADMAOptions createABarrier()      { return ADMAOptions{1ull << 10}; }
+    static constexpr ADMAOptions createMulticast()     { return ADMAOptions{1ull << 11}; }
+    static constexpr ADMAOptions createNaNFill()       { return ADMAOptions{1ull << 12}; }
+    static constexpr ADMAOptions createCopySize()      { return ADMAOptions{1ull << 13}; }
+    static constexpr ADMAOptions createCoreType(int i) { return ADMAOptions{(uint64_t(i) << 32) | (1ull << 34)}; }
+    static constexpr ADMAOptions createTensorDims(int ndims) { return ADMAOptions{uint64_t(ndims - 1) << 7}; }
+
+    friend inline constexpr ADMAOptions operator|(const ADMAOptions &s1, const ADMAOptions &s2) {
+        return ADMAOptions{s1.desc.all | s2.desc.all};
+    }
+    constexpr14 ADMAOptions &operator|=(const ADMAOptions &other) {
+        *this = *this | other;
+        return *this;
+    }
+
+    constexpr14 void setOpcode(ADMAOpcode op)         { desc.common.opcode  = static_cast<uint8_t>(op); }
+    constexpr14 void setReductionOp(ADMAReduction op) { desc.adma.reduction = static_cast<uint8_t>(op); }
+
+    void setAddressing(AddressBase base) {
+        switch (base.getModel()) {
+            case ModelA64:     desc.adma.addrType = 2; break;
+            case ModelA64A32S: desc.adma.addrType = 0; break;
+            case ModelA64A32U: desc.adma.addrType = 1; break;
+            default:
+#ifdef NGEN_SAFE
+                throw invalid_model_exception();
+#endif
+                break;
+        }
+    }
+};
+
+static inline ADMAOptions operator|(DataType dt, CacheSettingsLSC cs) { return ADMAOptions(dt) | ADMAOptions(cs); }
+static inline ADMAOptions operator|(CacheSettingsLSC cs, DataType dt) { return ADMAOptions(dt) | ADMAOptions(cs); }
+
+/* Async MMA interface */
+struct AMMAOptions
+{
+    SendgMessageDescriptor desc{};
+
+    AMMAOptions() = default;
+    explicit constexpr AMMAOptions(uint64_t raw) : desc(raw) {}
+
+    static constexpr AMMAOptions createAScale()      { return AMMAOptions{1ull << 36}; }
+    static constexpr AMMAOptions createBScale()      { return AMMAOptions{1ull << 37}; }
+    static constexpr AMMAOptions createATranspose()  { return AMMAOptions{1ull << 38}; }
+    static constexpr AMMAOptions createBTranspose()  { return AMMAOptions{1ull << 39}; }
+    static constexpr AMMAOptions createATrack()      { return AMMAOptions{1ull << 40}; }
+    static constexpr AMMAOptions createBTrack()      { return AMMAOptions{1ull << 41}; }
+    static constexpr AMMAOptions createDTrack()      { return AMMAOptions{1ull << 42}; }
+    static constexpr AMMAOptions createAReuse()      { return AMMAOptions{1ull << 43}; }
+
+    friend inline constexpr AMMAOptions operator|(const AMMAOptions &s1, const AMMAOptions &s2) {
+        return AMMAOptions{s1.desc.all | s2.desc.all};
+    }
+    constexpr14 AMMAOptions &operator|=(const AMMAOptions &other) {
+        *this = *this | other;
+        return *this;
+    }
+};
+#endif
+
+#if XE4
+/* Xe4 common code generator logic */
+
+template <typename O0>
+static inline void processTypesXe4(DataType &type, O0 &o)
+{
+    if (type == DataType::invalid)
+        type = o.getType();
+#ifdef NGEN_SAFE
+    else if (o.getType() == DataType::invalid)
+        o.setType(type);
+    else if (!o.isNull() && type != o.getType())
+        throw invalid_type_exception();
+#endif
+}
+
+template <>
+inline void processTypesXe4(DataType &type, Immediate &o)
+{
+    if (type == DataType::invalid)
+        type = o.getType();
+    else if (type != o.getType())
+        o = o.cast(type);
+}
+
+template <> inline void processTypesXe4(DataType &type, Label &o) {}
+template <> inline void processTypesXe4(DataType &type, IndirectARF &o) {}
+template <> inline void processTypesXe4(DataType &type, uint32_t &o) {}
+
+template <typename O0, typename... Os>
+static inline void processTypesXe4(DataType &type, O0 &o, Os &...others)
+{
+    processTypesXe4(type, o);
+    processTypesXe4(type, others...);
+}
+
+static inline void validateXe4(InstructionModifier &mod, OpcodeClassXe4 opclass)
+{
+#ifdef NGEN_SAFE
+    if (mod.isAlign16() || mod.isNoDDClr() || mod.isNoDDChk() || mod.getChannelOffset() || mod.getThreadCtrl() != ThreadCtrl::Normal
+            || mod.isAtomic() || mod.isExBSO() || mod.isSerialized() || mod.isEOT())
+        throw invalid_modifiers_exception();
+    if (mod.hasExecSize()) {
+        auto esize = mod.getExecSize();
+        if (esize != (isScalar(opclass) ? 1 : 32))
+            throw invalid_execution_size_exception();
+    }
+#endif
+}
+
+static inline void validateXe4(RegData &rd)
+{
+    canonicalizeSRF(rd);
+#ifdef NGEN_SAFE
+    if (rd.getAbs())
+        throw invalid_modifiers_exception();
+    if (rd.isARF()) {
+        auto atype = rd.getARFType();
+        if (atype != ARFType::null && atype != ARFType::lid && atype != ARFType::f)
+            throw invalid_arf_exception();
+    }
+    bool regionOK = ((rd.getOffset() & 0xFF) == 0);
+    auto w = rd.getWidth(), hs = rd.getHS(), vs = rd.getVS();
+    if (w) {
+        if (rd.isSRF())
+            regionOK = (w == 1 && hs == 0 && vs == 0);
+        else
+            regionOK = (w == vs) && (hs == (w > 1) ? 1 : 0);
+    }
+    if (!regionOK)
+        throw invalid_region_exception();
+#endif
+}
+
+static inline void validateXe4(const Align16Operand &op)
+{
+#ifdef NGEN_SAFE
+    throw invalid_region_exception();
+#endif
+}
+
+static inline void validateXe4(ExtendedReg &ereg)
+{
+    validateXe4(ereg.getBase());
+}
+
+static inline void validateXe4(const Immediate &i)
+{
+#ifdef NGEN_SAFE
+    switch (i.getType()) {
+        case DataType::uv:
+        case DataType::v:
+        case DataType::vf: throw invalid_type_exception();
+        default: break;
+    }
+#endif
+}
+
+static inline void validateXe4(const Label &) {}
+static inline void validateXe4(IndirectARF) {}
+
+template <typename T>
+static inline void validateIndXe4(const T &t) {
+#ifdef NGEN_SAFE
+    throw invalid_operand_exception();
+#endif
+}
+template <> inline void validateIndXe4(const RegData &rd) {
+#ifdef NGEN_SAFE
+    if (!rd.isIndirect()) throw invalid_operand_exception();
+#endif
+}
+
+template <typename O>
+static inline void validateBaseXe4(const O &o) {}
+template <> inline void validateBaseXe4(const RegData &rd) {
+#ifdef NGEN_SAFE
+    if (rd.getDwords() == 2 && (rd.getBase() & 1))
+        throw invalid_64_bit_register_exception();
+#endif
+}
+
+template <typename O0, typename... Os>
+static inline void validateBaseXe4(const O0 &o, const Os &...others)
+{
+    validateBaseXe4(o);
+    validateBaseXe4(others...);
+}
+
+template <typename O>
+static inline bool allowScalarization(O o)              { return o.isScalar(); }
+static inline bool allowScalarization(RegData rd)       { return rd.isScalar() || rd.isNull(); }
+static inline bool allowScalarization(NullRegister n)   { return true; }
+static inline bool allowScalarization(IndirectARF iarf) { return true; }
+static inline bool allowScalarization(uint32_t i)       { return true; }
 #endif
 
 } /* namespace NGEN_NAMESPACE */
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif /* header guard */

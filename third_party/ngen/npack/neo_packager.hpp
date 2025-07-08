@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -149,7 +149,6 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
     auto new_kheader = (SKernelBinaryHeader *)(((const unsigned char *)kheader - elf_binary) + new_elf);
     size_t new_end_xsum = before_kernel + kernel_padded_size + heap_plus_patches + patches_size;
 
-    new_kheader->CheckSum = neo_hash(new_elf + start_xsum, new_end_xsum - start_xsum);
     new_kheader->KernelHeapSize = uint32_t(kernel_padded_size);
     new_kheader->KernelUnpaddedSize = uint32_t(kernel_size);
     new_kheader->PatchListSize += uint32_t(patches_size);
@@ -240,7 +239,7 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::BMG;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::LNL;
-    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
 #if XE3P
     if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
 #endif
@@ -339,8 +338,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
 #if XE4
         case 40: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe4; break;
 #endif
-
-	default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
+        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
     if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)

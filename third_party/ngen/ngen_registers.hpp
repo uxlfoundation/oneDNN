@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@
 #define constexpr_reg_const constexpr const
 #endif
 
-static constexpr_reg IndirectRegisterFrame indirect{};
+static constexpr_reg IndirectRegisterFrame<RegFileGRF> indirect{};
 #ifdef NGEN_SHORT_NAMES
-static constexpr_reg_const IndirectRegisterFrame &r = indirect;
+static constexpr_reg_const IndirectRegisterFrame<RegFileGRF> &r = indirect;
 #endif
 
 static constexpr_reg GRF r0{0}, r1{1}, r2{2}, r3{3}, r4{4}, r5{5}, r6{6}, r7{7};
@@ -199,7 +199,7 @@ static constexpr_reg SBID sb0{0}, sb1{1}, sb2{2}, sb3{3}, sb4{4}, sb5{5}, sb6{6}
 static constexpr_reg SBID sb8{8}, sb9{9}, sb10{10}, sb11{11}, sb12{12}, sb13{13}, sb14{14}, sb15{15};
 static constexpr_reg SBID sb16{16}, sb17{17}, sb18{18}, sb19{19}, sb20{20}, sb21{21}, sb22{22}, sb23{23};
 static constexpr_reg SBID sb24{24}, sb25{25}, sb26{16}, sb27{27}, sb28{28}, sb29{29}, sb30{30}, sb31{31};
-static constexpr_reg SWSBInfo NoAccSBSet = SWSBInfo::createNoAccSBSet();
+static constexpr_reg SWSBItem NoAccSBSet = SWSBItem::createNoAccSBSet();
 
 static constexpr_reg AddressBase A32 = AddressBase::createA32(true);
 static constexpr_reg AddressBase A32NC = AddressBase::createA32(false);
@@ -226,6 +226,10 @@ static constexpr_reg DataSpecLSC D32{DataSizeLSC::D32};
 static constexpr_reg DataSpecLSC D64{DataSizeLSC::D64};
 static constexpr_reg DataSpecLSC D8U32{DataSizeLSC::D8U32};
 static constexpr_reg DataSpecLSC D16U32{DataSizeLSC::D16U32};
+#if XE4
+static constexpr_reg DataSpecLSC D4{DataSizeLSC::D4};
+static constexpr_reg DataSpecLSC D6{DataSizeLSC::D6};
+#endif
 
 static constexpr_reg DataSpecLSC D8T = DataSpecLSC(DataSizeLSC::D8) | DataSpecLSC::createTranspose();
 static constexpr_reg DataSpecLSC D16T = DataSpecLSC(DataSizeLSC::D16) | DataSpecLSC::createTranspose();
@@ -296,4 +300,109 @@ static constexpr_reg CacheSettingsLSC L1S_L2WB_L3UC     = CacheSettingsLSC::L1S_
 static constexpr_reg CacheSettingsLSC L1S_L2WB_L3WB     = CacheSettingsLSC::L1S_L2WB_L3WB;
 static constexpr_reg CacheSettingsLSC L1WB_L2WB_L3UC    = CacheSettingsLSC::L1WB_L2WB_L3UC;
 static constexpr_reg CacheSettingsLSC L1WB_L2UC_L3WB    = CacheSettingsLSC::L1WB_L2UC_L3WB;
+#endif
+#if XE4
+static constexpr_reg CacheSettingsLSC L2UC_L3UC = CacheSettingsLSC::L2UC_L3UC;
+static constexpr_reg CacheSettingsLSC L2UC_L3C  = CacheSettingsLSC::L2UC_L3C;
+static constexpr_reg CacheSettingsLSC L2C_L3UC  = CacheSettingsLSC::L2C_L3UC;
+static constexpr_reg CacheSettingsLSC L2C_L3C   = CacheSettingsLSC::L2C_L3C;
+#endif
+
+#if XE4
+static constexpr_reg SRF s1{1}, s2{2}, s3{3}, s4{4}, s5{5}, s6{6}, s7{7};
+static constexpr_reg SRF s8{8}, s9{9}, s10{10}, s11{11}, s12{12}, s13{13}, s14{14}, s15{15};
+static constexpr_reg SRF s16{16}, s17{17}, s18{18}, s19{19}, s20{20}, s21{21}, s22{22}, s23{23};
+static constexpr_reg SRF s24{24}, s25{25}, s26{26}, s27{27}, s28{28}, s29{29}, s30{30}, s31{31};
+static constexpr_reg SRF s32{32}, s33{33}, s34{34}, s35{35}, s36{36}, s37{37}, s38{38}, s39{39};
+static constexpr_reg SRF s40{40}, s41{41}, s42{42}, s43{43}, s44{44}, s45{45}, s46{46}, s47{47};
+static constexpr_reg SRF s48{48}, s49{49}, s50{50}, s51{51}, s52{52}, s53{53}, s54{54}, s55{55};
+static constexpr_reg SRF s56{56}, s57{57}, s58{58}, s59{59}, s60{60}, s61{61}, s62{62}, s63{63};
+static constexpr_reg SRF s64{64}, s65{65}, s66{66}, s67{67}, s68{68}, s69{69}, s70{70}, s71{71};
+static constexpr_reg SRF s72{72}, s73{73}, s74{74}, s75{75}, s76{76}, s77{77}, s78{78}, s79{79};
+static constexpr_reg SRF s80{80}, s81{81}, s82{82}, s83{83}, s84{84}, s85{85}, s86{86}, s87{87};
+static constexpr_reg SRF s88{88}, s89{89}, s90{90}, s91{91}, s92{92}, s93{93}, s94{94}, s95{95};
+static constexpr_reg SRF s96{96}, s97{97}, s98{98}, s99{99}, s100{100}, s101{101}, s102{102}, s103{103};
+static constexpr_reg SRF s104{104}, s105{105}, s106{106}, s107{107}, s108{108}, s109{109}, s110{110}, s111{111};
+static constexpr_reg SRF s112{112}, s113{113}, s114{114}, s115{115}, s116{116}, s117{117}, s118{118}, s119{119};
+static constexpr_reg SRF s120{120}, s121{121}, s122{122}, s123{123}, s124{124}, s125{125}, s126{126}, s127{127};
+static constexpr_reg SRF s128{128}, s129{129}, s130{130}, s131{131}, s132{132}, s133{133}, s134{134}, s135{135};
+static constexpr_reg SRF s136{136}, s137{137}, s138{138}, s139{139}, s140{140}, s141{141}, s142{142}, s143{143};
+static constexpr_reg SRF s144{144}, s145{145}, s146{146}, s147{147}, s148{148}, s149{149}, s150{150}, s151{151};
+static constexpr_reg SRF s152{152}, s153{153}, s154{154}, s155{155}, s156{156}, s157{157}, s158{158}, s159{159};
+static constexpr_reg SRF s160{160}, s161{161}, s162{162}, s163{163}, s164{164}, s165{165}, s166{166}, s167{167};
+static constexpr_reg SRF s168{168}, s169{169}, s170{170}, s171{171}, s172{172}, s173{173}, s174{174}, s175{175};
+static constexpr_reg SRF s176{176}, s177{177}, s178{178}, s179{179}, s180{180}, s181{181}, s182{182}, s183{183};
+static constexpr_reg SRF s184{184}, s185{185}, s186{186}, s187{187}, s188{188}, s189{189}, s190{190}, s191{191};
+static constexpr_reg SRF s192{192}, s193{193}, s194{194}, s195{195}, s196{196}, s197{197}, s198{198}, s199{199};
+static constexpr_reg SRF s200{200}, s201{201}, s202{202}, s203{203}, s204{204}, s205{205}, s206{206}, s207{207};
+static constexpr_reg SRF s208{208}, s209{209}, s210{210}, s211{211}, s212{212}, s213{213}, s214{214}, s215{215};
+static constexpr_reg SRF s216{216}, s217{217}, s218{218}, s219{219}, s220{220}, s221{221}, s222{222}, s223{223};
+static constexpr_reg SRF s224{224}, s225{225}, s226{226}, s227{227}, s228{228}, s229{229}, s230{230}, s231{231};
+static constexpr_reg SRF s232{232}, s233{233}, s234{234}, s235{235}, s236{236}, s237{237}, s238{238}, s239{239};
+static constexpr_reg SRF s240{240}, s241{241}, s242{242}, s243{243}, s244{244}, s245{245}, s246{246}, s247{247};
+static constexpr_reg SRF s248{248}, s249{249}, s250{250}, s251{251}, s252{252}, s253{253}, s254{254}, s255{255};
+static constexpr_reg SRF s256{256}, s257{257}, s258{258}, s259{259}, s260{260}, s261{261}, s262{262}, s263{263};
+static constexpr_reg SRF s264{264}, s265{265}, s266{266}, s267{267}, s268{268}, s269{269}, s270{270}, s271{271};
+static constexpr_reg SRF s272{272}, s273{273}, s274{274}, s275{275}, s276{276}, s277{277}, s278{278}, s279{279};
+static constexpr_reg SRF s280{280}, s281{281}, s282{282}, s283{283}, s284{284}, s285{285}, s286{286}, s287{287};
+static constexpr_reg SRF s288{288}, s289{289}, s290{290}, s291{291}, s292{292}, s293{293}, s294{294}, s295{295};
+static constexpr_reg SRF s296{296}, s297{297}, s298{298}, s299{299}, s300{300}, s301{301}, s302{302}, s303{303};
+static constexpr_reg SRF s304{304}, s305{305}, s306{306}, s307{307}, s308{308}, s309{309}, s310{310}, s311{311};
+static constexpr_reg SRF s312{312}, s313{313}, s314{314}, s315{315}, s316{316}, s317{317}, s318{318}, s319{319};
+static constexpr_reg SRF s320{320}, s321{321}, s322{322}, s323{323}, s324{324}, s325{325}, s326{326}, s327{327};
+static constexpr_reg SRF s328{328}, s329{329}, s330{330}, s331{331}, s332{332}, s333{333}, s334{334}, s335{335};
+static constexpr_reg SRF s336{336}, s337{337}, s338{338}, s339{339}, s340{340}, s341{341}, s342{342}, s343{343};
+static constexpr_reg SRF s344{344}, s345{345}, s346{346}, s347{347}, s348{348}, s349{349}, s350{350}, s351{351};
+static constexpr_reg SRF s352{352}, s353{353}, s354{354}, s355{355}, s356{356}, s357{357}, s358{358}, s359{359};
+static constexpr_reg SRF s360{360}, s361{361}, s362{362}, s363{363}, s364{364}, s365{365}, s366{366}, s367{367};
+static constexpr_reg SRF s368{368}, s369{369}, s370{370}, s371{371}, s372{372}, s373{373}, s374{374}, s375{375};
+static constexpr_reg SRF s376{376}, s377{377}, s378{378}, s379{379}, s380{380}, s381{381}, s382{382}, s383{383};
+static constexpr_reg SRF s384{384}, s385{385}, s386{386}, s387{387}, s388{388}, s389{389}, s390{390}, s391{391};
+static constexpr_reg SRF s392{392}, s393{393}, s394{394}, s395{395}, s396{396}, s397{397}, s398{398}, s399{399};
+static constexpr_reg SRF s400{400}, s401{401}, s402{402}, s403{403}, s404{404}, s405{405}, s406{406}, s407{407};
+static constexpr_reg SRF s408{408}, s409{409}, s410{410}, s411{411}, s412{412}, s413{413}, s414{414}, s415{415};
+static constexpr_reg SRF s416{416}, s417{417}, s418{418}, s419{419}, s420{420}, s421{421}, s422{422}, s423{423};
+static constexpr_reg SRF s424{424}, s425{425}, s426{426}, s427{427}, s428{428}, s429{429}, s430{430}, s431{431};
+static constexpr_reg SRF s432{432}, s433{433}, s434{434}, s435{435}, s436{436}, s437{437}, s438{438}, s439{439};
+static constexpr_reg SRF s440{440}, s441{441}, s442{442}, s443{443}, s444{444}, s445{445}, s446{446}, s447{447};
+static constexpr_reg SRF s448{448}, s449{449}, s450{450}, s451{451}, s452{452}, s453{453}, s454{454}, s455{455};
+static constexpr_reg SRF s456{456}, s457{457}, s458{458}, s459{459}, s460{460}, s461{461}, s462{462}, s463{463};
+static constexpr_reg SRF s464{464}, s465{465}, s466{466}, s467{467}, s468{468}, s469{469}, s470{470}, s471{471};
+static constexpr_reg SRF s472{472}, s473{473}, s474{474}, s475{475}, s476{476}, s477{477}, s478{478}, s479{479};
+static constexpr_reg SRF s480{480}, s481{481}, s482{482}, s483{483}, s484{484}, s485{485}, s486{486}, s487{487};
+static constexpr_reg SRF s488{488}, s489{489}, s490{490}, s491{491}, s492{492}, s493{493}, s494{494}, s495{495};
+static constexpr_reg SRF s496{496}, s497{497}, s498{498}, s499{499}, s500{500}, s501{501}, s502{502}, s503{503};
+static constexpr_reg SRF s504{504}, s505{505}, s506{506}, s507{507}, s508{508}, s509{509}, s510{510}, s511{511};
+
+static constexpr_reg IndirectRegisterFrame<RegFileSRF> indirectSRF{};
+
+static constexpr_reg ARF lid{ARFType::lid, 0};
+
+static constexpr_reg FlagRegister p0{0}, p1{1}, p2{2}, p3{3}, p4{4}, p5{5}, p6{6}, p7{7};
+static constexpr_reg FlagRegister p8{8}, p9{9}, p10{10}, p11{11}, p12{12}, p13{13}, p14{14};
+
+static constexpr_reg InstructionModifier rne{RoundingOverride::rne};
+static constexpr_reg InstructionModifier ru{RoundingOverride::ru};
+static constexpr_reg InstructionModifier rd{RoundingOverride::rd};
+static constexpr_reg InstructionModifier rtz{RoundingOverride::rtz};
+static constexpr_reg InstructionModifier rna{RoundingOverride::rna};
+
+static constexpr_reg InstructionModifier clmp = InstructionModifier::createSaturate();
+
+static constexpr_reg ADMAOptions ABarrier = ADMAOptions::createABarrier();
+static constexpr_reg ADMAOptions Multicast = ADMAOptions::createMulticast();
+static constexpr_reg ADMAOptions NaNFill = ADMAOptions::createNaNFill();
+static constexpr_reg ADMAOptions CopySize = ADMAOptions::createCopySize();
+static constexpr_reg ADMAOptions Type1 = ADMAOptions::createCoreType(0);
+static constexpr_reg ADMAOptions Type2 = ADMAOptions::createCoreType(1);
+static constexpr_reg ADMAOptions Type3 = ADMAOptions::createCoreType(2);
+
+static constexpr_reg AMMAOptions AScale = AMMAOptions::createAScale();
+static constexpr_reg AMMAOptions BScale = AMMAOptions::createBScale();
+static constexpr_reg AMMAOptions ATranspose = AMMAOptions::createATranspose();
+static constexpr_reg AMMAOptions BTranspose = AMMAOptions::createBTranspose();
+static constexpr_reg AMMAOptions ATrack = AMMAOptions::createATrack();
+static constexpr_reg AMMAOptions BTrack = AMMAOptions::createBTrack();
+static constexpr_reg AMMAOptions DTrack = AMMAOptions::createDTrack();
+static constexpr_reg AMMAOptions AReuse = AMMAOptions::createAReuse();
 #endif

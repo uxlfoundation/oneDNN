@@ -27,7 +27,7 @@ namespace jit {
 
 status_t gen9_simple_sum_t::init(impl::engine_t *engine) {
     compute::kernel_ctx_t kernel_ctx;
-    auto jitter = gen9_simple_sum_kernel_f32_t();
+    gen9_simple_sum_kernel_f32_t jitter;
     CHECK(create_kernel(engine, &kernel_, &jitter));
 
     return status::success;

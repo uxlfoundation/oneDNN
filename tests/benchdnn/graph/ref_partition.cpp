@@ -88,6 +88,19 @@ int ref_partition_t::init_ref(
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
 
+        // Softmax with stats is a special case, where primitive creation
+        // is failed and returns SKIPPED state, but it still can be executed
+        // with a reference primitive later. So in this case we ignore the
+        // SKIPPED state and continue the rest part.
+        // TODO: try to make a general logic when to reset the state.
+        bool reuse_driver_for_ref_compute = (par_op_ref.get().kind_ == "SoftMax"
+                && par_op_ref.get().out_lts_.size() == 2);
+        if (reuse_driver_for_ref_compute && res->state == SKIPPED) {
+            // reset res to avoid a skipped state from init_prim() to affect the rest part.
+            res->state = UNTESTED;
+            res->reason.clear();
+        }
+
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
         // for correctness check.
@@ -300,7 +313,7 @@ void ref_partition_t::exec_ops(res_t *res) {
             }
         }
 
-        ref_prim->execute_prim(res);
+        SAFE_V(ref_prim->execute_prim(res));
 
         // For an output, because of various graph compositions, there's a more
         // detailed guide when data adjustment should happen. It's covered by
@@ -308,12 +321,12 @@ void ref_partition_t::exec_ops(res_t *res) {
         //
         // A data type to where transform the data will also be provided by the
         // same function since there are corner cases.
-        dnnl_data_type_t dt = dnnl_data_type_undef;
-        if ((is_sdpa_pattern || is_gated_mlp_pattern)
-                && need_unfusable_output_crop(op, dt)) {
+        if (is_sdpa_pattern || is_gated_mlp_pattern) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
+                dnnl_data_type_t dt = dnnl_data_type_undef;
+                bool need_crop = need_unfusable_output_crop(op, i, dt);
                 // There's no need to reorder data for undefined or f32 tensors.
-                if (dt == dnnl_data_type_undef || dt == dnnl_f32) continue;
+                if (!need_crop || dt == dnnl_f32) continue;
 
                 int arg = get_prim_arg_name_from_graph_op_output_offset(
                         ref_prim->get_kind(), i);
@@ -478,15 +491,15 @@ const deserialized_op_t *ref_partition_t::get_parent_op(size_t in_lt_id) const {
 
 // This function decides when unfusable transcendental op output should be
 // reordered to lower data type and back to f32 for a reference path.
-bool ref_partition_t::need_unfusable_output_crop(
-        const deserialized_op_t &op, dnnl_data_type_t &dt) const {
+bool ref_partition_t::need_unfusable_output_crop(const deserialized_op_t &op,
+        size_t output_offset, dnnl_data_type_t &dt) const {
     const deserialized_op_t *child_op = nullptr;
     // First of all, the output should have a child op...
     if (!has_child_op(op, &child_op)) return false;
     // If the child op is not a TypeCast, it's safe to crop.
     if (child_op->kind_ != "TypeCast") {
         // Target dt in this case is the output dt of input `op`.
-        dt = convert_dt(op.out_lts_[0].get_data_type());
+        dt = convert_dt(op.out_lts_[output_offset].get_data_type());
         return true;
     }
     // When it is a TypeCast (it always changes `cur_dt` <-> f32, both ways are
@@ -500,13 +513,13 @@ bool ref_partition_t::need_unfusable_output_crop(
     // * However, a second TypeCast would negate an effect of the previous...
     if (next_child_op->kind_ == "TypeCast") {
         // Target dt in this case is the output dt of the last TypeCast.
-        dt = convert_dt(next_child_op->out_lts_[0].get_data_type());
+        dt = convert_dt(next_child_op->out_lts_[output_offset].get_data_type());
         return true;
     }
 
     // Rest potential outcomes are default to make a crop. The target dt in
     // this case is the output dt of the child op.
-    dt = convert_dt(child_op->out_lts_[0].get_data_type());
+    dt = convert_dt(child_op->out_lts_[output_offset].get_data_type());
     return true;
 }
 

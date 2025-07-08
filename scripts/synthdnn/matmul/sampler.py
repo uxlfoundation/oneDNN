@@ -63,24 +63,36 @@ class Dequantization:
                 "per_ocic",
                 "per_tensor",
             ]
-        return ["common"]
+        return ["common",
+                "per_ocic",
+                "per_tensor",
+            ]
 
     @staticmethod
     def supported_scale_type():
         return ["f32", "f16", "bf16"]
 
     @staticmethod
+    def supported_groups(k_dim):
+        valid_groups = [k_dim]
+        group = 32
+        while group < k_dim and k_dim % group == 0:
+            valid_groups.append(group)
+            group *= 2
+        return valid_groups
+
+    @staticmethod
     def supported_scale(is_wei, k_dim):
         out = [None]
+        k_group = random.choice(Dequantization.supported_groups(k_dim))
         for t in Dequantization.supported_scale_type():
             for p in Dequantization.supported_scale_policy(is_wei):
                 if p == "common":
                     out.append(f"{p}:0.25:{t}")
-                if p == "per_ocic" or p == "per_tensor":
-                    if k_dim > 32 and k_dim % 32 == 0:
-                        out.append(f"{p}:{t}:32x1")
-                    else:
-                        out.append(f"{p}:{t}:{k_dim}x1")
+                if is_wei and (p == "per_ocic" or p == "per_tensor") :
+                    out.append(f"{p}:{t}:{k_group}x1")
+                elif p == "per_ocic" or p == "per_tensor" :
+                    out.append(f"{p}:{t}:1x{k_group}")
                 else:
                     out.append(f"{p}:{t}")
         return out

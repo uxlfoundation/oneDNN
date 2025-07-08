@@ -1167,6 +1167,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
 
     if (brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points)) {
         Label label_store_without_comp;
+        ldr(reg_do_comp, ptr(X_SP, reg_do_comp_offs_));
         cmp_imm(reg_do_comp, 0, X_TMP_0);
         b(EQ, label_store_without_comp);
         apply_compensation(bd_block, ld_block2, is_ld_tail);

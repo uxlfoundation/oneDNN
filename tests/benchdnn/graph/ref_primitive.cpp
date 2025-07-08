@@ -144,8 +144,13 @@ void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
     case dnnl_driver_t::driver: { \
         if (prb_wrapper_) { \
             const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-            ::init_memory_args(mems_, prb, prim_, \
-                    ::driver::supported_exec_args(prb->dir), ref_eng); \
+            if (prim_) { \
+                ::init_memory_args(mems_, prb, prim_, \
+                        ::driver::supported_exec_args(prb->dir), ref_eng); \
+            } else { \
+                /* handle an empty primitive through a driver's reference */ \
+                driver::memory_post_processing(prb, op_, mems_, ref_eng); \
+            } \
         } \
         break; \
     }
@@ -194,12 +199,25 @@ int ref_primitive_t::init_ref_memory_args(const engine_t &ref_eng, res_t *res) {
 }
 
 int ref_primitive_t::execute_prim(res_t *res) const {
-    if (driver_ == dnnl_driver_t::custom) {
-        const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>();
-        SAFE(::custom::execute(prb, args_, res), WARN);
-    } else {
-        SAFE(execute_and_wait(prim_, args_, res), WARN);
+#define CASE_EXECUTE(driver) \
+    case dnnl_driver_t::driver: { \
+        if (prb_wrapper_) { \
+            const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
+            SAFE(driver::execute(prb, prim_, args_, res), WARN); \
+        } \
+        break; \
     }
+
+#define CASE_CUSTOM_EXECUTE \
+    case dnnl_driver_t::custom: { \
+        if (prb_wrapper_) { \
+            const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
+            SAFE(::custom::execute(prb, args_, res), WARN); \
+        } \
+        break; \
+    }
+
+    SWITCH_DRIVER(CASE_EXECUTE, CASE_CUSTOM_EXECUTE);
     return OK;
 }
 
@@ -214,6 +232,7 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_BIAS, BIA},
                     {DNNL_ARG_DIFF_BIAS, BIA},
                     {DNNL_ARG_DST, DST},
+                    {DNNL_ARG_DST_1, DST_1},
                     {DNNL_ARG_DIFF_SRC_0, DST},
                     {DNNL_ARG_SRC_1, SRC_1},
                     {DNNL_ARG_MEAN, MEAN},

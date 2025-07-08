@@ -42,6 +42,11 @@ namespace graph {
     namespace driver { \
     ::driver::settings_t get_setting( \
             const deserialized_op_t &base_op_ref, res_t *res); \
+    void memory_post_processing(const ::driver::prb_t *prb, \
+            const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map, \
+            const engine_t &ref_eng); \
+    int execute(const ::driver::prb_t *prb, dnnl_primitive_t prim, \
+            const args_t &args, res_t *res); \
     }
 
 DECLARE_GET_SETTING(binary);

@@ -158,6 +158,36 @@ void extend_dims(::graph::deserialized_lt_t &lt, size_t ndims) {
     }
 }
 
+#define DECLARE_TEMPLATE_GENERAL_FUNC(driver) \
+    void driver::memory_post_processing(const ::driver::prb_t *prb, \
+            const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map, \
+            const engine_t &ref_eng) {} \
+    int driver::execute(const ::driver::prb_t *prb, dnnl_primitive_t prim, \
+            const args_t &args, res_t *res) { \
+        SAFE(execute_and_wait(prim, args, res), WARN); \
+        return OK; \
+    }
+
+// template to generate empty memory post processing and execute functions
+// This is used for drivers that do not require any memory post processing
+// or specialized execution logic.
+DECLARE_TEMPLATE_GENERAL_FUNC(binary);
+DECLARE_TEMPLATE_GENERAL_FUNC(bnorm);
+DECLARE_TEMPLATE_GENERAL_FUNC(concat);
+DECLARE_TEMPLATE_GENERAL_FUNC(conv);
+DECLARE_TEMPLATE_GENERAL_FUNC(custom);
+DECLARE_TEMPLATE_GENERAL_FUNC(deconv);
+DECLARE_TEMPLATE_GENERAL_FUNC(eltwise);
+DECLARE_TEMPLATE_GENERAL_FUNC(gnorm);
+DECLARE_TEMPLATE_GENERAL_FUNC(lnorm);
+DECLARE_TEMPLATE_GENERAL_FUNC(matmul);
+DECLARE_TEMPLATE_GENERAL_FUNC(pool);
+DECLARE_TEMPLATE_GENERAL_FUNC(prelu);
+DECLARE_TEMPLATE_GENERAL_FUNC(reduction);
+DECLARE_TEMPLATE_GENERAL_FUNC(reorder);
+DECLARE_TEMPLATE_GENERAL_FUNC(resampling);
+// DECLARE_TEMPLATE_GENERAL_FUNC(softmax); // Has defined body below.
+
 namespace custom {
 
 ::custom::settings_t get_setting(
@@ -1974,9 +2004,21 @@ bool get_softmax_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
 
 bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
-    const auto &dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
-    op_setting.sdt.front() = dt;
-    op_setting.ddt.front() = dt;
+    const auto &sdt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    op_setting.sdt.front() = sdt;
+    const auto &ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    op_setting.ddt.front() = ddt;
+
+    return true;
+}
+
+bool get_softmax_stag_and_dtag(const deserialized_op_t &base_op_ref,
+        ::softmax::settings_t &op_setting) {
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.stag.front(), 0, /*from_output*/ false);
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.dtag.front(), 0, /*from_output*/ true);
+
     return true;
 }
 
@@ -2012,17 +2054,77 @@ bool get_softmax_alg(
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front()),
-            res);
+            softmax::get_softmax_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_alg(base_op_ref, op_setting.alg.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_axis(base_op_ref, op_setting.axis.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+    // softmax has stats only when it has more than one output
+    if (base_op_ref.out_lts_.size() > 1) {
+        op_setting.has_stats.front() = true;
+    }
 
     return op_setting;
+}
+
+void memory_post_processing(const ::softmax::prb_t *prb,
+        const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map,
+        const engine_t &ref_eng) {
+    if (base_op_ref.out_lts_.size() != 2) {
+        assert(!"softmax should have two outputs to run into "
+                "memory_post_processing");
+    }
+
+    mem_map.emplace(DNNL_ARG_SRC,
+            dnn_mem_t(prb->ndims, prb->dims.data(), dnnl_f32, prb->stag,
+                    ref_eng, /* prefill = */ true));
+
+    mem_map.emplace(DNNL_ARG_DST,
+            dnn_mem_t(prb->ndims, prb->dims.data(), dnnl_f32, prb->dtag,
+                    ref_eng, /* prefill = */ true));
+
+    dims_t stats_shapes = base_op_ref.out_lts_[1].shape_;
+    dims_t stats_strides = base_op_ref.out_lts_[1].stride_;
+    mem_map.emplace(DNNL_ARG_DST_1,
+            dnn_mem_t(prb->ndims, stats_shapes.data(), dnnl_f32,
+                    stats_strides.data(), ref_eng, /* prefill = */ true));
+}
+
+int execute(const ::softmax::prb_t *prb, dnnl_primitive_t prim,
+        const args_t &args, res_t *res) {
+    if (!prim) {
+        assert(args.find(DNNL_ARG_DST_1).size() != 0);
+        // in order to run with ::softmax::compute_ref, we need to
+        // construct all memory with abx tag and f32 dt
+        args_t ref_args;
+        const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
+        dnn_mem_t src_f32_abx(src, dnnl_f32, "abx", src.engine());
+        SAFE_V(src_f32_abx.reorder(src));
+        ref_args.set(DNNL_ARG_SRC, src_f32_abx);
+
+        dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
+        dnn_mem_t dst_f32_abx(dst, dnnl_f32, "abx", dst.engine());
+        SAFE_V(dst_f32_abx.reorder(dst));
+        ref_args.set(DNNL_ARG_DST, dst_f32_abx);
+
+        dnn_mem_t &stats = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST_1));
+        dnn_mem_t stats_f32_abx(stats, dnnl_f32, "abx", stats.engine());
+        SAFE_V(stats_f32_abx.reorder(stats));
+        ref_args.set(DNNL_ARG_DST_1, stats_f32_abx);
+
+        ::softmax::compute_ref(prb, prb->dir, ref_args);
+
+        // restore original memory format after ::softmax::compute_ref
+        SAFE_V(dst.reorder(dst_f32_abx));
+        SAFE_V(stats.reorder(stats_f32_abx));
+
+        res->state = EXECUTED;
+    } else {
+        SAFE(execute_and_wait(prim, args, res), WARN);
+    }
+    return OK;
 }
 
 } // namespace softmax

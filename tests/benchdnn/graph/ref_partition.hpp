@@ -87,8 +87,8 @@ private:
     // Returns `true` if unfusable transcendental op should have cropped output.
     // `dt` is a target data type for following transform. Updated only when the
     // function returns `true`.
-    bool need_unfusable_output_crop(
-            const deserialized_op_t &op, dnnl_data_type_t &dt) const;
+    bool need_unfusable_output_crop(const deserialized_op_t &op,
+            size_t output_offset, dnnl_data_type_t &dt) const;
 
     bool is_input_op(const deserialized_op_t &op) const;
     bool is_output_op(const deserialized_op_t &op) const;

@@ -1249,7 +1249,7 @@ public:
     std::string str() const {
         std::ostringstream oss;
         oss << expr_;
-        if (!mask_.is_empty()) oss << " mask: " << mask_;
+        if (mask_) oss << " mask: " << mask_;
         return oss.str();
     }
 
@@ -1372,7 +1372,7 @@ public:
         auto &x = placeholder_var();
         for (dim_idx_t i = 0; i < ntdims(); i++) {
             auto &tdim = tdims_[i];
-            if (!tdim.is_identity() || !tdim.mask().is_empty()) continue;
+            if (!tdim.is_identity() || tdim.mask()) continue;
             dim_idx_t vidx = tdim.vidx(0);
             dim_t dim = tlayout_.dim(i);
             auto &dim_name = vvars_[vidx].as<var_t>().name;
@@ -1421,7 +1421,7 @@ public:
 
     bool has_tmask(dim_idx_t tidx) const {
         gpu_assert(tidx != dim_idx::invalid && tidx < ntdims());
-        return !tdims_[tidx].mask().is_empty();
+        return bool(tdims_[tidx].mask());
     }
 
     const type_t &type() const { return tlayout_.type(); }

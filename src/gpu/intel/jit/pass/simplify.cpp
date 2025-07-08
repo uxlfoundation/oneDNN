@@ -687,11 +687,9 @@ public:
             if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
         } else if (obj.op_kind == op_kind_t::_and) {
             auto not_a = try_not(a);
-            if (!not_a.is_empty() && cset.can_prove(not_a))
-                return expr_t(false);
+            if (not_a && cset.can_prove(not_a)) return expr_t(false);
             auto not_b = try_not(b);
-            if (!not_b.is_empty() && cset.can_prove(not_b))
-                return expr_t(false);
+            if (not_b && cset.can_prove(not_b)) return expr_t(false);
         }
 
         if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
@@ -1374,9 +1372,9 @@ public:
 
     expr_t mutate_with_add(const binary_op_t &obj) {
         expr_t ret = reduce_v1(obj);
-        if (!ret.is_empty()) return ret;
+        if (ret) return ret;
         ret = reduce_v2(obj);
-        return (!ret.is_empty()) ? std::move(ret) : obj;
+        return ret ? std::move(ret) : obj;
     }
 
     // Applies the following rules:
@@ -1712,7 +1710,7 @@ public:
         if (all_of(cond, expr_t(false))) return mutate(obj.else_body);
 
         auto body = obj.body;
-        if (!body.is_empty()) {
+        if (body) {
             auto cset_old = cset_;
             cset_.add_constraint(cond);
             body = ir_mutator_t::mutate(body);
@@ -1720,7 +1718,7 @@ public:
         }
 
         auto else_body = obj.else_body;
-        if (!else_body.is_empty()) {
+        if (else_body) {
             auto cset_old = cset_;
             cset_.add_constraint(flip_condition(cond));
             else_body = ir_mutator_t::mutate(else_body);
@@ -2263,12 +2261,12 @@ bool const_to_const_binary(const expr_t &e, op_kind_t op_kind,
     expr_t b1 = to_expr(1, b_type);
     expr_t a_eq = to_expr(0, a_type);
     expr_t b_eq = to_expr(0, b_type);
-    if (!a.is_empty()) {
+    if (a) {
         a0 = a1 = a;
         b0 = a - 1;
         b1 = a + 1;
         a_eq = b_eq = a;
-    } else if (!b.is_empty()) {
+    } else if (b) {
         b0 = b1 = b;
         a0 = b - 1;
         a1 = b + 1;

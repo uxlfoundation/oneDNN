@@ -198,7 +198,7 @@ struct offset_t {
     }
 
     stmt_t init_stmt() const {
-        if (buf.is_empty() || !inline_init.is_empty()) return stmt_t();
+        if (buf.is_empty() || inline_init) return stmt_t();
         auto base_bcast = shuffle_t::make_broadcast(base + shift, type.elems());
         return store(base_bcast + shift_vec);
     }

@@ -211,7 +211,7 @@ public:
         gpu_assert(obj.cond.type().elems() == simd_size_);
         host_->comment(obj.line_str());
 
-        bool has_else = !obj.else_body.is_empty();
+        bool has_else = bool(obj.else_body);
         auto scope = register_scope();
         auto cond_op = eval(obj.cond, scope);
 
@@ -456,8 +456,7 @@ private:
 
     void signal(const func_call_attr_t &attr) {
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         host_->barriermsg(mod, host_->signal_header());
     }
 
@@ -467,8 +466,7 @@ private:
         auto scope = register_scope();
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -478,8 +476,7 @@ private:
         auto scope = register_scope();
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -518,8 +515,7 @@ private:
                 0, src2_width, src2_stride, to_ngen(dpas_func.src2_type));
 
         ngen::InstructionModifier mod = esize;
-        if (!attr.is_empty())
-            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/true);
         if (dpas_func.is_dpasw) {
             host_->dpasw(mod, dpas_func.sdepth, dpas_func.rcount, dst, src0,
@@ -567,8 +563,7 @@ private:
                 to_ngen(mad_func.src2_type));
 
         ngen::InstructionModifier mod = mad_func.exec_size;
-        if (!attr.is_empty())
-            mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/false);
         if (src0.isNull()) {
@@ -723,7 +718,7 @@ private:
 
         ngen::InstructionModifier mod = send_func.nmasks();
         gpu_assert(math::is_pow2(mod.getExecSize()));
-        if (!attr.is_empty()) mod |= attr.as<instruction_modifier_attr_t>().mod;
+        if (attr) mod |= attr.as<instruction_modifier_attr_t>().mod;
         if (!mask_op.is_invalid()) mod |= mask_op.flag_register_mod();
 
         // Zero-out inactive channels unless told not to.

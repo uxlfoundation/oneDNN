@@ -130,8 +130,7 @@ void slm_reduce_builder_t::build() {
     allocs_.push_back(
             alloc_t::make(tmp_reg_buf_, tmp_reg_buf_size_, alloc_kind_t::grf));
 
-    if (!reduce_cond_.is_empty())
-        load_stmt_ = if_t::make(reduce_cond_, load_stmt_);
+    if (reduce_cond_) load_stmt_ = if_t::make(reduce_cond_, load_stmt_);
     if (!thr_tile_coord_.is_empty()) {
         thr_tile_coord_ = thr_tile_coord_.sub(local_thr_tile_coord);
     }

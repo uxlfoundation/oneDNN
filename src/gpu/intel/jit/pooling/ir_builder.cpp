@@ -521,12 +521,10 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     loop_bound_counter_t lbc(schedule);
     auto exit_cond = (lbc.count(ow) >= prb.ow) ? (ow < prb.ow) : expr_t();
     if (lbc.count(oh) >= prb.oh)
-        exit_cond = (!exit_cond.is_empty()) ? (oh < prb.oh) & exit_cond
-                                            : (oh < prb.oh);
+        exit_cond = exit_cond ? (oh < prb.oh) & exit_cond : (oh < prb.oh);
     if (lbc.count(od) >= prb.od)
-        exit_cond = (!exit_cond.is_empty()) ? (od < prb.od) & exit_cond
-                                            : (od < prb.od);
-    if (!exit_cond.is_empty())
+        exit_cond = exit_cond ? (od < prb.od) & exit_cond : (od < prb.od);
+    if (exit_cond)
         stmt = if_t::make(shuffle_t::make_broadcast(exit_cond, simd), stmt);
 
     if (!is_xe2_or_xe3_small_kdhw && ((dims[0] - prb.mb) / lg[0] >= 1)) {

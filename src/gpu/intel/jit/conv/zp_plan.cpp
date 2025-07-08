@@ -518,7 +518,7 @@ public:
                     load_mul * load_wei, store_t::default_stride, mask, true));
         });
         auto zp_1x4 = buf_mgr.get("zp_1x4");
-        if (!zp_1x4.is_empty()) {
+        if (zp_1x4) {
             if (zp_layout_.type().is_s8()) {
                 auto load = load_t::make(
                         zp_layout_.type(), buf_mgr.get("zp_src"), 0);

@@ -124,7 +124,7 @@ class post_op_tensor_t {
 public:
     post_op_tensor_t(ir_context_t &ir_ctx, const post_op_tensor_info_t &info)
         : ir_ctx_(&ir_ctx), info_(info) {
-        if (!mem_buf().is_empty()) {
+        if (mem_buf()) {
             auto &type = mem_buf().type();
             if (!type.is_ptr()) {
                 gpu_assert(type.is_f32()) << "Expected f32: " << mem_buf();
@@ -516,7 +516,7 @@ public:
     stmt_t build_tile_stmt(const object_map_t<expr_t, post_op_tensor_t *> &args,
             const zero_pad_builder_t &zero_pad_builder) const {
         auto &lhs_tensor = *args.at(post_op_.lhs());
-        if (!post_op_.eltwise().is_empty()) {
+        if (post_op_.eltwise()) {
             // Apply eltwise post-op.
             gpu_assert(post_op_.lhs().is_equal(post_op_.rhs()))
                     << "Only supported form is lhs = eltwise(lhs).";
@@ -798,7 +798,7 @@ private:
 
         void set_buf(const expr_t &buf) {
             // Replace old buffer if there is an assigned statement.
-            if (!stmt.is_empty()) { stmt = substitute(stmt, this->buf, buf); }
+            if (stmt) { stmt = substitute(stmt, this->buf, buf); }
             this->buf = buf;
         }
 
@@ -918,7 +918,7 @@ private:
         }
 
         stmt_ = stmt_.append(thr_reduce_stmt);
-        if (!slm_store_stmt.is_empty()) {
+        if (slm_store_stmt) {
             stmt_ = stmt_.append(funcs::barrier());
             stmt_ = stmt_.append(slm_store_stmt);
             stmt_ = stmt_.append(funcs::barrier());
@@ -988,7 +988,7 @@ private:
         }
         if (restore_zero_padding_) {
             auto buf = make_c_tmp_buffer();
-            if (!zero_pad_builder_.build_stmt(c_fx_layout, buf).is_empty()) {
+            if (zero_pad_builder_.build_stmt(c_fx_layout, buf)) {
                 c_zero_pad_stage_idx = int(c_stages.size());
                 c_stages.emplace_back(c_fx_layout, 0, buf); // Z_f32
             }

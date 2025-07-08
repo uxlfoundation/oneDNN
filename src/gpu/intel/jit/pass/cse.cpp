@@ -254,7 +254,7 @@ public:
     }
 
     bool has_var(const expr_t &e) const {
-        return !find_cse_expr(e).cse_var.is_empty();
+        return bool(find_cse_expr(e).cse_var);
     }
 
     int get_refs(const expr_t &e) const {

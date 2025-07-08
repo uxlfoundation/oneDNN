@@ -213,12 +213,10 @@ public:
 
     stmt_t iter_stmt() const {
         stmt_t stmt;
-        bool use_prefetch = !prefetch_stmt_.is_empty();
-        bool use_slm = !g2s_load_stmt_.is_empty();
-        if (use_prefetch) {
+        if (prefetch_stmt_) {
             stmt = stmt.append(stmt_group_t::make(
                     stmt_label_t::prefetch(), prefetch_stmt_));
-        } else if (use_slm) {
+        } else if (g2s_load_stmt_) {
             stmt = stmt.append(stmt_group_t::make(
                     stmt_label_t::g2s_load(), g2s_load_stmt_));
             stmt = stmt.append(funcs::barrier());
@@ -534,7 +532,7 @@ private:
                 gemm_schedule, force_c_reorder, post_op_ctx, thr_tile_coord,
                 c_thr_reg_layout, cp_buf_, c_buf, c_buf_size);
         (void)buf_mgr_.get("c", c_buf_size);
-        if (!reduce_cond.is_empty()) stmt = if_t::make(reduce_cond, stmt);
+        if (reduce_cond) stmt = if_t::make(reduce_cond, stmt);
         c_store_stmt_ = c_store_stmt_.append(stmt);
     }
 

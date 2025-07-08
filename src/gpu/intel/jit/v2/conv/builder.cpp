@@ -904,8 +904,7 @@ private:
                 *this, loop_nest, buf_info_, desc_, plan_.x2r_fma);
 
         zero_out(buf_info_.reg_buf("c"));
-        if (!buf_info_.reg_buf("bias").is_empty())
-            zero_out(buf_info_.reg_buf("bias"));
+        if (buf_info_.reg_buf("bias")) zero_out(buf_info_.reg_buf("bias"));
 
         emit(x2r_mul_builder.get_init_stmt());
         emit(prefetch_builder.get_init_stmt());
@@ -1019,8 +1018,7 @@ private:
             const auto &tg_idx = coord_info.tg_index(d);
             if (is_const(tg_idx)) continue;
             auto base_tg_idx
-                    = (!_base_tg_idx.is_empty() ? _base_tg_idx
-                                                : tg_grid.index_var(d));
+                    = (_base_tg_idx ? _base_tg_idx : tg_grid.index_var(d));
             if (base_tg_idx.is_empty()) continue;
             auto value = unpack_tg_index(d, base_tg_idx);
             let(tg_idx, value);

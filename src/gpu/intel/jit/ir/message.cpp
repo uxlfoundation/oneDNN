@@ -258,7 +258,7 @@ public:
     // granularity and `nmasks` number of masks.
     bool check_mask_size(int off, int size, int mask_size, int nmasks) const {
         auto mask = get_mask(off, size, mask_size, nmasks, /*allow_fail=*/true);
-        return !mask.is_empty();
+        return bool(mask);
     }
 
     expr_t get_offset(int off, expr_t &base, int &off_const) const {
@@ -857,7 +857,7 @@ bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
     auto sub_view = mem_view_.create_sub_view(tile, coord);
     auto mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset());
     mask = mask_tensor.to_expr(1);
-    if (!mask.is_empty()) return true;
+    if (mask) return true;
 
     // Virtual surface implies no out-of-bound send checks.
     if (use_virtual_surface) return false;
@@ -878,7 +878,7 @@ bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
     }
     mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset(), tmask);
     mask = mask_tensor.to_expr(1);
-    if (!mask.is_empty()) return true;
+    if (mask) return true;
 
     return false;
 }

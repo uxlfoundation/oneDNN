@@ -383,7 +383,7 @@ public:
 
     bool has_mask() const {
         auto &mask = dim_->mask();
-        return !mask.is_empty() && !mask.is_equal(expr_t(true));
+        return mask && !mask.is_equal(expr_t(true));
     }
 
     bool has_vidx(int vidx) const {
@@ -2002,8 +2002,8 @@ public:
         std::ostringstream oss;
         oss << tag << ":" << std::endl;
         oss << "  base = " << addr_base_ << std::endl;
-        if (!x_base_.is_empty()) oss << "  x = " << x_base_ << std::endl;
-        if (!y_base_.is_empty()) oss << "  y = " << y_base_ << std::endl;
+        if (x_base_) oss << "  x = " << x_base_ << std::endl;
+        if (y_base_) oss << "  y = " << y_base_ << std::endl;
         oss << "  layout = " << reg_layout_ << " (size = " << reg_buf_size_
             << ")" << std::endl;
         if (split_factor_ != 1)
@@ -2251,7 +2251,7 @@ private:
             std::vector<expr_t> vec_mask;
             for (int i = start; i < stop; i++) {
                 auto i_mask = remove_bcast(send_t::arg_mask(calls[i]));
-                gpu_assert(!i_mask.is_empty());
+                gpu_assert(i_mask);
                 gpu_assert(i_mask.type().is_scalar());
                 for (int i = 0; i < size / 4; i++) {
                     vec_mask.push_back(i_mask);

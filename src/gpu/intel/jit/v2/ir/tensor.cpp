@@ -704,7 +704,7 @@ bool try_div_mod(const expr_t &a, int b, const var_range_info_t &range_info,
             continue;
         }
         if (range_info.bound(v) > b) return false;
-        if (!a_mod.is_empty()) return false;
+        if (a_mod) return false;
         a_mod = v;
     }
     div = std::move(a_div);
@@ -1105,8 +1105,8 @@ expr_t dim_mask_desc_t::dim_stride(const pvar_t &dim) const {
 
 std::string dim_mask_desc_t::str() const {
     coord_t dummy_coord;
-    if (!x.is_empty()) dummy_coord[x_dim] = x;
-    if (!y.is_empty()) dummy_coord[y_dim] = y;
+    if (x) dummy_coord[x_dim] = x;
+    if (y) dummy_coord[y_dim] = y;
     auto expr = simplify_rewrite(to_expr(dummy_coord));
     std::ostringstream oss;
     oss << expr << " < " << bound << " (has_underflow: " << has_underflow << ")"

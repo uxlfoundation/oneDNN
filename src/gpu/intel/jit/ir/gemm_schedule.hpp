@@ -250,7 +250,7 @@ public:
 
     void set_bound(const expr_t &bound) { bound_ = bound; }
 
-    bool is_bound() const { return !bound_var().is_empty(); }
+    bool is_bound() const { return bool(bound_var()); }
 
     const expr_t &bound_var() const { return bound_var_; }
 

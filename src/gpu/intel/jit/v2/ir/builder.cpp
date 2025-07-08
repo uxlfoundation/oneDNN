@@ -175,8 +175,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
                 = off_ctx.add_header(plan.desc, mem_buf, plan.addr, e.addr_inc);
         auto mask = off_ctx.add_mask(plan.mask, e.mask_incs);
         auto call_reg_buf = reg_buf;
-        if (!reg_buf.is_empty())
-            call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
+        if (reg_buf) call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
         auto call
                 = send(mem_buf, header.to_expr(), call_reg_buf, mask.to_expr());
         ret = ret.append(header.off().inline_init);
@@ -204,8 +203,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
                 plan.x_base, plan.y_base, e.x_inc, e.y_inc);
         auto mask = off_ctx.add_mask(plan.mask);
         auto call_reg_buf = reg_buf;
-        if (!reg_buf.is_empty())
-            call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
+        if (reg_buf) call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
         auto call
                 = send(mem_buf, header.to_expr(), call_reg_buf, mask.to_expr());
         ret = ret.append(header.off().inline_init);

@@ -188,7 +188,7 @@ public:
 
     const expr_t &compute_expr() const { return compute_expr_; }
 
-    bool needs_compute() const { return !compute_expr().is_empty(); }
+    bool needs_compute() const { return bool(compute_expr()); }
 
     bool do_convert() const { return do_convert_; }
 

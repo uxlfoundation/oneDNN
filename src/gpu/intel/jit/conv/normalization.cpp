@@ -197,8 +197,8 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
                 }
                 off -= I;
             }
-            o = (!l.is_empty()) ? l : o;
-            o = (!r.is_empty()) ? (!l.is_empty()) ? l + r : r : o;
+            o = l ? l : o;
+            o = r ? l ? l + r : r : o;
             o = (off != 0) ? o + off : o;
         }
         const auto &x = view_t::placeholder_var();

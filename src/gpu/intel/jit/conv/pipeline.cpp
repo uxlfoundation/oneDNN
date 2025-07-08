@@ -314,8 +314,8 @@ private:
         expr_t preload_var;
         expr_t mul_var;
 
-        bool is_preload() const { return !preload_var.is_empty(); }
-        bool is_mul() const { return !mul_var.is_empty(); }
+        bool is_preload() const { return bool(preload_var); }
+        bool is_mul() const { return bool(mul_var); }
 
         bool needs_update() const { return is_preload() && is_mul(); }
     };

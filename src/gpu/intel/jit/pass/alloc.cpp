@@ -169,8 +169,7 @@ private:
         // - 2 references: one from producer, one from consumer - means single usage
         // - Consumer and producer are on the same level (same loop)
         // - Variable is not external
-        if (ref_info.refs == 2 && ref_info.is_same_level()
-                && !obj.value.is_empty()) {
+        if (ref_info.refs == 2 && ref_info.is_same_level() && obj.value) {
             return substitute(obj.body, obj.var, obj.value);
         }
         return obj;

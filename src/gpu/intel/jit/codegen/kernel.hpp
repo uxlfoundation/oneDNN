@@ -107,13 +107,13 @@ public:
     }
 
     void bind_dst(const expr_t &expr, const ngen_operand_t &operand) {
-        gpu_assert(!expr.is_empty());
+        gpu_assert(expr);
         auto ret = expr2dst_.insert({expr, operand});
         gpu_assert(ret.second) << "Already bound: " << expr;
     }
 
     void unbind_dst(const expr_t &expr) {
-        gpu_assert(!expr.is_empty());
+        gpu_assert(expr);
         auto it = expr2dst_.find(expr);
         gpu_assert(it != expr2dst_.end());
         expr2dst_.erase(it);
@@ -161,7 +161,7 @@ public:
     }
 
     void unbind(const expr_t &expr) {
-        gpu_assert(!expr.is_empty());
+        gpu_assert(expr);
 
         auto it = expr2operand_.find(expr);
         gpu_assert(it != expr2operand_.end());
@@ -256,7 +256,7 @@ public:
         int r0_sub_idxs[] = {1, 6, 7};
         for (int i = 0; i < 3; i++) {
             auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
-            if (!tg_idx.is_empty()) {
+            if (tg_idx) {
                 auto tmp = ra_.template alloc_sub<int32_t>();
                 mov(1, tmp, ngen_generator_t::r0.ud(r0_sub_idxs[i]));
                 expr_binding.bind(tg_idx, tmp);
@@ -266,13 +266,13 @@ public:
         // Bind local IDs.
         for (int i = 0; i < 3; i++) {
             auto local_id = alloc_mgr.find_let(ir_builder_t::local_id(i), true);
-            if (!local_id.is_empty()) {
+            if (local_id) {
                 expr_binding.bind(
                         local_id, ngen_generator_t::getLocalID(i).uw(0));
             }
             auto local_size
                     = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
-            if (!local_size.is_empty()) {
+            if (local_size) {
                 expr_binding.bind(
                         local_size, ngen_generator_t::getLocalSize(i).uw(0));
             }
@@ -296,7 +296,7 @@ public:
 
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
-        if (!slm_buf.is_empty()) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+        if (slm_buf) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
 
         auto setup_flags = get_setup_flags(kernel_body);
         // Allocate and initialize signal header for future use.
@@ -1225,7 +1225,7 @@ public:
             }
         }
 
-        if (!kernel_body.is_empty() && local_range_) {
+        if (kernel_body && local_range_) {
             int slm_size = alloc_manager_t(kernel_body)
                                    .total_size(alloc_kind_t::slm);
             int max_slm_size = compute::device_info_t::max_slm_size_per_tg(

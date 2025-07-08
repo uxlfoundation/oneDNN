@@ -74,8 +74,8 @@ public:
         std::function<int(const stmt_t &)> get_src2_off;
         get_src2_off = [&](const stmt_t &s) {
             auto &si = find_send_info(s);
-            if (!si.base_call.is_empty()) return get_src2_off(si.base_call);
-            if (!si.prev_send.is_empty()) return get_src2_off(si.prev_send);
+            if (si.base_call) return get_src2_off(si.base_call);
+            if (si.prev_send) return get_src2_off(si.prev_send);
 
             auto it = send2off.find(s);
             if (it != send2off.end()) return it->second;
@@ -93,7 +93,7 @@ public:
             int src2_off = get_src2_off(si.call);
             auto src2_sub = src2_base[src2_off];
             auto new_call = si.new_call;
-            if (!new_call.is_empty()) {
+            if (new_call) {
                 new_call = substitute(
                         new_call, send_t::arg_reg_buf(new_call), src2_sub, 1);
             }
@@ -281,9 +281,7 @@ private:
                 if (it != buf2send.end()) prev_send = it->second;
                 buf2send[buf] = s;
                 send_infos_.push_back(std::move(send_info));
-                if (!prev_send.is_empty()) {
-                    send_infos_.back().set_prev_send(prev_send);
-                }
+                if (prev_send) { send_infos_.back().set_prev_send(prev_send); }
                 continue;
             }
             dpas_info_t dpas_info;

@@ -55,7 +55,7 @@ public:
 
 private:
     static const expr_t &not_empty(const expr_t &v) {
-        gpu_assert(!v.is_empty()) << "Queried empty index.";
+        gpu_assert(v) << "Queried empty index.";
         return v;
     }
 

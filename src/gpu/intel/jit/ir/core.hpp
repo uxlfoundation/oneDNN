@@ -774,6 +774,8 @@ public:
 
     bool is_empty() const { return !impl_; }
 
+    explicit operator bool() const { return !is_empty(); }
+
     const type_info_t &type_info() const { return impl_->type_info(); }
 
     template <typename T>
@@ -2148,7 +2150,7 @@ public:
             const expr_t &_mask = expr_t(), bool fill_mask0 = false) {
         auto mask = _mask;
         auto value = _value;
-        if (!mask.is_empty()) {
+        if (mask) {
             if (all_of(mask, expr_t(true))) {
                 mask = expr_t();
             } else if (all_of(mask, expr_t(false))) {
@@ -2161,8 +2163,8 @@ public:
                 mask = expr_t();
             }
         }
-        return stmt_t(new store_t(
-                buf, off, value, stride, mask, fill_mask0 && !mask.is_empty()));
+        return stmt_t(
+                new store_t(buf, off, value, stride, mask, fill_mask0 && mask));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2184,7 +2186,7 @@ public:
         std::ostringstream out;
         out << load_t::make(value.type(), buf, off, stride);
         out << " = " << value;
-        if (!mask.is_empty()) {
+        if (mask) {
             out << ", mask = " << mask.str();
             if (fill_mask0) out << " [FILL]";
         }
@@ -2215,7 +2217,7 @@ private:
         normalize_ptr(value.type(), buf, off);
         gpu_assert(is_var(buf)) << buf;
         if (stride == value.type().scalar().size()) stride = default_stride;
-        if (!mask.is_empty())
+        if (mask)
             gpu_assert(mask.type() == type_t::_bool(value.type().elems()));
     }
 };
@@ -2375,7 +2377,7 @@ public:
 private:
     let_t(const expr_t &var, const expr_t &value, const stmt_t &body)
         : stmt_impl_t(_type_info()), var(var), value(value), body(body) {
-        if (!value.is_empty() && !is_const(value))
+        if (value && !is_const(value))
             gpu_assert(var.type() == value.type())
                     << "Variable " << var << " and  value " << value
                     << "have different types. " << var.type()
@@ -2732,7 +2734,7 @@ public:
         std::ostringstream out;
         out << func.str() << "(" << ir_utils::make_seq_print_helper(args)
             << ")";
-        if (!attr.is_empty()) out << " " << attr;
+        if (attr) out << " " << attr;
         return out.str();
     }
 
@@ -2746,7 +2748,7 @@ private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
         : stmt_impl_t(_type_info()), func(func), args(args), attr(attr) {
-        gpu_assert(!func.is_empty());
+        gpu_assert(func);
     }
 };
 
@@ -2798,7 +2800,8 @@ private:
 // The following types are intrusive pointers and, as such, should have the same
 // size as a pointer.
 static_assert(sizeof(object_t) <= sizeof(void *),
-        "intrusive pointer type object_t size is greater than void * size.");
+        "intrusive pointer type object_t size is greater than void * "
+        "size.");
 static_assert(sizeof(expr_t) <= sizeof(void *),
         "intrusive pointer type expr_t size is greater than void * size.");
 static_assert(sizeof(stmt_t) <= sizeof(void *),

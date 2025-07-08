@@ -78,7 +78,7 @@ public:
             auto src2_buf = ptr_base(obj.args[3]);
 
             // src0 may be null in some cases, skip it.
-            if (!src0_buf.is_empty()) bufs_.insert(std::move(src0_buf));
+            if (src0_buf) bufs_.insert(std::move(src0_buf));
             bufs_.insert(std::move(src1_buf));
             bufs_.insert(std::move(src2_buf));
 
@@ -109,7 +109,7 @@ public:
 
 private:
     void init_attr() {
-        if (!attr_.is_empty()) return;
+        if (attr_) return;
 
         is_frozen = true;
         std::vector<expr_t> buf_vec;

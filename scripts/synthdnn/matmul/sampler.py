@@ -23,7 +23,7 @@ from matmul.primitive import *
 
 class Dequantization:
     @staticmethod
-    def next(ndims, src_type, wei_type):
+    def next(ndims, src_type, wei_type, dims):
         out_zp = ""
         out_scale = ""
         prefix_zp = "--attr-zero-points="
@@ -34,7 +34,7 @@ class Dequantization:
                 out_zp += f"{prefix_zp}src:{zp}"
                 prefix_zp = "+"
 
-            scale = random.choice(Dequantization.supported_scale(False))
+            scale = random.choice(Dequantization.supported_scale(False, dims.k))
             if scale is not None:
                 out_scale += f"{prefix_scale}src:{scale}"
                 prefix_scale = "+"
@@ -44,7 +44,7 @@ class Dequantization:
                 out_zp += f"{prefix_zp}wei:{zp}"
                 prefix_zp = "+"
 
-            scale = random.choice(Dequantization.supported_scale(True))
+            scale = random.choice(Dequantization.supported_scale(True, dims.k))
             if scale is not None:
                 out_scale += f"{prefix_scale}wei:{scale}"
                 prefix_scale = "+"
@@ -60,20 +60,40 @@ class Dequantization:
             return [
                 "common",
                 "per_oc",
+                "per_ocic",
+                "per_tensor",
             ]
-        return ["common"]
+        return ["common",
+                "per_ocic",
+                "per_tensor",
+            ]
 
     @staticmethod
     def supported_scale_type():
         return ["f32", "f16", "bf16"]
 
     @staticmethod
-    def supported_scale(is_wei):
+    def supported_groups(k_dim):
+        valid_groups = [k_dim]
+        group = 32
+        while group < k_dim and k_dim % group == 0:
+            valid_groups.append(group)
+            group *= 2
+        return valid_groups
+
+    @staticmethod
+    def supported_scale(is_wei, k_dim):
         out = [None]
         for t in Dequantization.supported_scale_type():
             for p in Dequantization.supported_scale_policy(is_wei):
                 if p == "common":
                     out.append(f"{p}:0.25:{t}")
+                elif is_wei and (p == "per_ocic" or p == "per_tensor") :
+                    k_group = random.choice(Dequantization.supported_groups(k_dim))
+                    out.append(f"{p}:{t}:{k_group}x1")
+                elif p == "per_ocic" or p == "per_tensor" :
+                    k_group = random.choice(Dequantization.supported_groups(k_dim))
+                    out.append(f"{p}:{t}:1x{k_group}")
                 else:
                     out.append(f"{p}:{t}")
         return out
@@ -193,7 +213,7 @@ class Sampler:
             k = next(self.kinds_iter)
             s = next(self.dim_sampler)
             q = Dequantization.next(
-                self.dim_sampler.region.ndims - 1, k.type.A, k.type.B
+                self.dim_sampler.region.ndims - 1, k.type.A, k.type.B, s
             )
 
             return Primitive(k, s, q)

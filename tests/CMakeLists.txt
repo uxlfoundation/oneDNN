@@ -103,6 +103,7 @@ if(DNNL_WITH_SYCL AND DNNL_CPU_RUNTIME STREQUAL "NONE")
     handle_tbb_target()
 endif()
 
+# TODO: Remove these after the next pull-down from main.
 if(DNNL_WITH_XE3P)
 add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
 add_definitions_with_host_compiler(-DPRERELEASE_HW)

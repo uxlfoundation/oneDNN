@@ -21,11 +21,6 @@ file(GLOB_RECURSE SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     )
 
-if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DDNNL_WITH_XE3P)
-add_definitions_with_host_compiler(-DXE3P)
-endif()
-
 if(DNNL_SYCL_CUDA OR (DNNL_SYCL_GENERIC AND NVIDIA_TARGET_SUPPORTED))
     append(CMAKE_CXX_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
     # Suppress irrelevant warning about incompatible triplets.

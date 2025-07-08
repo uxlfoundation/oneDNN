@@ -18,8 +18,34 @@
 #define BENCHDNN_GRAPH_REF_PRIMITIVE_HPP
 
 #include "deserialize.hpp"
+#include "setting_handler.hpp"
 
 namespace graph {
+
+#define DECLARE_REF_PRIM_HELPER_FUNCS(driver) \
+    namespace driver { \
+    void init_memory_args_native(const ::driver::prb_t *prb, \
+            const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map, \
+            const engine_t &ref_eng); \
+    int execute(const ::driver::prb_t *prb, const args_t &args, res_t *res); \
+    }
+
+DECLARE_REF_PRIM_HELPER_FUNCS(binary);
+DECLARE_REF_PRIM_HELPER_FUNCS(bnorm);
+DECLARE_REF_PRIM_HELPER_FUNCS(concat);
+DECLARE_REF_PRIM_HELPER_FUNCS(conv);
+DECLARE_REF_PRIM_HELPER_FUNCS(custom);
+DECLARE_REF_PRIM_HELPER_FUNCS(deconv);
+DECLARE_REF_PRIM_HELPER_FUNCS(eltwise);
+DECLARE_REF_PRIM_HELPER_FUNCS(gnorm);
+DECLARE_REF_PRIM_HELPER_FUNCS(lnorm);
+DECLARE_REF_PRIM_HELPER_FUNCS(matmul);
+DECLARE_REF_PRIM_HELPER_FUNCS(pool);
+DECLARE_REF_PRIM_HELPER_FUNCS(prelu);
+DECLARE_REF_PRIM_HELPER_FUNCS(reduction);
+DECLARE_REF_PRIM_HELPER_FUNCS(reorder);
+DECLARE_REF_PRIM_HELPER_FUNCS(resampling);
+DECLARE_REF_PRIM_HELPER_FUNCS(softmax);
 
 // `prb_wrapper_base_t` and `prb_wrapper_t` defined to wrap `prb_t` object
 // because C++11 doesn't support templated member variables, and there is no

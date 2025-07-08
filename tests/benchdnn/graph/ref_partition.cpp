@@ -130,8 +130,10 @@ int ref_partition_t::init_ref(
         SAFE(ref_prim->displace_scales(), WARN);
 
         // Initialze the rest ops if current status is UNTESTED or EXECUTED
+        // or UNIMPLEMENTED (specially for case of softmax with stats).
         // otherwise there is no need to init memory for the rest ops.
-        if (res->state != UNTESTED && res->state != EXECUTED) {
+        if (res->state != UNTESTED && res->state != EXECUTED
+                && res->state != UNIMPLEMENTED) {
             // But for perf mode, when the tensors in the current op is not
             // the graph in/out, continue, otherwise return.
             if (has_bench_mode_bit(mode_bit_t::perf)) {
@@ -331,7 +333,7 @@ void ref_partition_t::exec_ops(res_t *res) {
             }
         }
 
-        ref_prim->execute_prim(res);
+        SAFE_V(ref_prim->execute_prim(res));
 
         // For an output, because of various graph compositions, there's a more
         // detailed guide when data adjustment should happen. It's covered by
@@ -339,10 +341,11 @@ void ref_partition_t::exec_ops(res_t *res) {
         //
         // A data type to where transform the data will also be provided by the
         // same function since there are corner cases.
-        dnnl_data_type_t dt = dnnl_data_type_undef;
-        if ((is_softmax_in_sdpa_pattern || is_multiply_in_gated_mlp_pattern)
-                && need_unfusable_output_crop(op, dt)) {
+        if (is_softmax_in_sdpa_pattern || is_matmul_in_sdpa_bwd_pattern
+                || is_multiply_in_gated_mlp_pattern) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
+                dnnl_data_type_t dt = dnnl_data_type_undef;
+                need_unfusable_output_crop(op, i, dt);
                 // There's no need to reorder data for undefined or f32 tensors.
                 if (dt == dnnl_data_type_undef || dt == dnnl_f32) continue;
 
@@ -509,15 +512,15 @@ const deserialized_op_t *ref_partition_t::get_parent_op(size_t in_lt_id) const {
 
 // This function decides when unfusable transcendental op output should be
 // reordered to lower data type and back to f32 for a reference path.
-bool ref_partition_t::need_unfusable_output_crop(
-        const deserialized_op_t &op, dnnl_data_type_t &dt) const {
+bool ref_partition_t::need_unfusable_output_crop(const deserialized_op_t &op,
+        size_t output_offset, dnnl_data_type_t &dt) const {
     const deserialized_op_t *child_op = nullptr;
     // First of all, the output should have a child op...
     if (!has_child_op(op, &child_op)) return false;
     // If the child op is not a TypeCast, it's safe to crop.
     if (child_op->kind_ != "TypeCast") {
         // Target dt in this case is the output dt of input `op`.
-        dt = convert_dt(op.out_lts_[0].get_data_type());
+        dt = convert_dt(op.out_lts_[output_offset].get_data_type());
         return true;
     }
     // When it is a TypeCast (it always changes `cur_dt` <-> f32, both ways are
@@ -531,13 +534,13 @@ bool ref_partition_t::need_unfusable_output_crop(
     // * However, a second TypeCast would negate an effect of the previous...
     if (next_child_op->kind_ == "TypeCast") {
         // Target dt in this case is the output dt of the last TypeCast.
-        dt = convert_dt(next_child_op->out_lts_[0].get_data_type());
+        dt = convert_dt(next_child_op->out_lts_[output_offset].get_data_type());
         return true;
     }
 
     // Rest potential outcomes are default to make a crop. The target dt in
     // this case is the output dt of the child op.
-    dt = convert_dt(child_op->out_lts_[0].get_data_type());
+    dt = convert_dt(child_op->out_lts_[output_offset].get_data_type());
     return true;
 }
 

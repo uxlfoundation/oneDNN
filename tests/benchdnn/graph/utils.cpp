@@ -704,6 +704,18 @@ int get_prim_arg_name_from_graph_op_output_offset(
             }
 
         } break;
+        case dnnl::graph::op::kind::SoftMax: {
+            if (output_offset == 0)
+                return DNNL_ARG_DST;
+            else if (output_offset == 1)
+                return DNNL_ARG_DST_1;
+            else {
+                BENCHDNN_PRINT(0, "Error: no matching ARG for offset %d",
+                        static_cast<int>(output_offset));
+                assert(false);
+                return -1;
+            }
+        } break;
         default: {
             return DNNL_ARG_DST;
         } break;

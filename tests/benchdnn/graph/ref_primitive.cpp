@@ -15,9 +15,95 @@
 *******************************************************************************/
 
 #include "ref_primitive.hpp"
-#include "setting_handler.hpp"
 
 namespace graph {
+
+#define DEFINE_REF_PRIM_HELPER_FUNCS(driver) \
+    namespace driver { \
+    void init_memory_args_native(const ::driver::prb_t *prb, \
+            const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map, \
+            const engine_t &ref_eng) {} \
+    int execute(const ::driver::prb_t *prb, const args_t &args, res_t *res) { \
+        res->state = UNIMPLEMENTED; \
+        return FAIL; \
+    } \
+    } // namespace driver
+
+// template to generate empty memory post processing and execute functions
+// This is used for drivers that do not require any memory post processing
+// or specialized execution logic.
+DEFINE_REF_PRIM_HELPER_FUNCS(binary);
+DEFINE_REF_PRIM_HELPER_FUNCS(bnorm);
+DEFINE_REF_PRIM_HELPER_FUNCS(concat);
+DEFINE_REF_PRIM_HELPER_FUNCS(conv);
+DEFINE_REF_PRIM_HELPER_FUNCS(custom);
+DEFINE_REF_PRIM_HELPER_FUNCS(deconv);
+DEFINE_REF_PRIM_HELPER_FUNCS(eltwise);
+DEFINE_REF_PRIM_HELPER_FUNCS(gnorm);
+DEFINE_REF_PRIM_HELPER_FUNCS(lnorm);
+DEFINE_REF_PRIM_HELPER_FUNCS(matmul);
+DEFINE_REF_PRIM_HELPER_FUNCS(pool);
+DEFINE_REF_PRIM_HELPER_FUNCS(prelu);
+DEFINE_REF_PRIM_HELPER_FUNCS(reduction);
+DEFINE_REF_PRIM_HELPER_FUNCS(reorder);
+DEFINE_REF_PRIM_HELPER_FUNCS(resampling);
+// DEFINE_REF_PRIM_HELPER_FUNCS(softmax); // Has defined body below.
+
+namespace softmax {
+
+void init_memory_args_native(const ::softmax::prb_t *prb,
+        const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map,
+        const engine_t &ref_eng) {
+    if (base_op_ref.out_lts_.size() != 2) {
+        assert(!"softmax should have two outputs to run into "
+                "init_memory_args_native");
+    }
+
+    mem_map.emplace(DNNL_ARG_SRC,
+            dnn_mem_t(prb->ndims, prb->dims.data(), dnnl_f32, prb->stag,
+                    ref_eng, /* prefill = */ true));
+
+    mem_map.emplace(DNNL_ARG_DST,
+            dnn_mem_t(prb->ndims, prb->dims.data(), dnnl_f32, prb->dtag,
+                    ref_eng, /* prefill = */ true));
+
+    dims_t stats_shapes = base_op_ref.out_lts_[1].shape_;
+    dims_t stats_strides = base_op_ref.out_lts_[1].stride_;
+    mem_map.emplace(DNNL_ARG_DST_1,
+            dnn_mem_t(prb->ndims, stats_shapes.data(), dnnl_f32,
+                    stats_strides.data(), ref_eng, /* prefill = */ true));
+}
+
+int execute(const ::softmax::prb_t *prb, const args_t &args, res_t *res) {
+    assert(args.find(DNNL_ARG_DST_1).size() != 0);
+    // in order to run with ::softmax::compute_ref, we need to
+    // construct all memory with abx tag and f32 dt
+    args_t ref_args;
+    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
+    dnn_mem_t src_f32_abx(src, dnnl_f32, tag::abx, src.engine());
+    SAFE_V(src_f32_abx.reorder(src));
+    ref_args.set(DNNL_ARG_SRC, src_f32_abx);
+
+    dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
+    dnn_mem_t dst_f32_abx(dst, dnnl_f32, tag::abx, dst.engine());
+    SAFE_V(dst_f32_abx.reorder(dst));
+    ref_args.set(DNNL_ARG_DST, dst_f32_abx);
+
+    dnn_mem_t &stats = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST_1));
+    dnn_mem_t stats_f32_abx(stats, dnnl_f32, tag::abx, stats.engine());
+    SAFE_V(stats_f32_abx.reorder(stats));
+    ref_args.set(DNNL_ARG_DST_1, stats_f32_abx);
+
+    ::softmax::compute_ref(prb, prb->dir, ref_args);
+
+    // restore original memory format after ::softmax::compute_ref
+    SAFE_V(dst.reorder(dst_f32_abx));
+    SAFE_V(stats.reorder(stats_f32_abx));
+
+    res->state = EXECUTED;
+    return OK;
+}
+} // namespace softmax
 
 ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
     : op_(op), kind_(opstr2kind(op_.kind_)), driver_(opkind2driver(kind_)) {
@@ -144,8 +230,13 @@ void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
     case dnnl_driver_t::driver: { \
         if (prb_wrapper_) { \
             const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-            ::init_memory_args(mems_, prb, prim_, \
-                    ::driver::supported_exec_args(prb->dir), ref_eng); \
+            if (prim_) { \
+                ::init_memory_args(mems_, prb, prim_, \
+                        ::driver::supported_exec_args(prb->dir), ref_eng); \
+            } else { \
+                /* handle an empty primitive through a driver's reference */ \
+                driver::init_memory_args_native(prb, op_, mems_, ref_eng); \
+            } \
         } \
         break; \
     }
@@ -194,12 +285,27 @@ int ref_primitive_t::init_ref_memory_args(const engine_t &ref_eng, res_t *res) {
 }
 
 int ref_primitive_t::execute_prim(res_t *res) const {
-    if (driver_ == dnnl_driver_t::custom) {
-        const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>();
-        SAFE(::custom::execute(prb, args_, res), WARN);
-    } else {
-        SAFE(execute_and_wait(prim_, args_, res), WARN);
+#define CASE_EXECUTE(driver) \
+    case dnnl_driver_t::driver: { \
+        if (prim_) { \
+            SAFE(execute_and_wait(prim_, args_, res), WARN); \
+        } else if (prb_wrapper_) { \
+            const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
+            SAFE(driver::execute(prb, args_, res), WARN); \
+        } \
+        break; \
     }
+
+#define CASE_CUSTOM_EXECUTE \
+    case dnnl_driver_t::custom: { \
+        if (prb_wrapper_) { \
+            const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
+            SAFE(::custom::execute(prb, args_, res), WARN); \
+        } \
+        break; \
+    }
+
+    SWITCH_DRIVER(CASE_EXECUTE, CASE_CUSTOM_EXECUTE);
     return OK;
 }
 
@@ -214,6 +320,7 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_BIAS, BIA},
                     {DNNL_ARG_DIFF_BIAS, BIA},
                     {DNNL_ARG_DST, DST},
+                    {DNNL_ARG_DST_1, DST_1},
                     {DNNL_ARG_DIFF_SRC_0, DST},
                     {DNNL_ARG_SRC_1, SRC_1},
                     {DNNL_ARG_MEAN, MEAN},

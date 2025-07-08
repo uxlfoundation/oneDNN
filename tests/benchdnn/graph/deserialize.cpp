@@ -288,6 +288,7 @@ dnnl_driver_t deserialized_op_t::get_driver() const {
                     {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::SigmoidBackward,
                             dnnl_driver_t::eltwise},
+                    {dnnl::graph::op::kind::SoftMax, dnnl_driver_t::softmax},
                     {dnnl::graph::op::kind::SoftMaxBackward,
                             dnnl_driver_t::softmax},
                     {dnnl::graph::op::kind::SoftPlus, dnnl_driver_t::eltwise},
@@ -315,12 +316,6 @@ dnnl_driver_t deserialized_op_t::get_driver() const {
     const auto it = op_map.find(op_kind);
     if (it != op_map.end()) {
         return it->second;
-    } else if (op_kind == dnnl::graph::op::kind::SoftMax) {
-        if (out_lts_.size() > 1)
-            // for softmax, if it has stats output, using the custom driver, as
-            // primitive doesn't support it.
-            return dnnl_driver_t::custom;
-        return dnnl_driver_t::softmax;
     } else {
         fprintf(stderr, "graph: ERROR: Unsupported opkind: `%d`, exiting...\n",
                 static_cast<int>(op_kind));

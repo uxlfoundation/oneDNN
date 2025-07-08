@@ -52,6 +52,9 @@ dim_t brgemm_calc_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_f32,
 dim_t adjust_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_int8_amx,
         bool is_xf16_amx);
 
+dim_t brgemm_calc_n_block(
+        const cpu::rnn_utils::rnn_conf_t &rnn, alg_kind_t cell_kind);
+
 bool has_amx_support(data_type_t dt) {
     switch (dt) {
         case data_type::u8:
@@ -292,6 +295,25 @@ x64::cpu_isa_t adjust_isa_by_m_block(
     return current_isa;
 }
 
+dim_t brgemm_calc_n_block(
+        const cpu::rnn_utils::rnn_conf_t &rnn, alg_kind_t cell_kind) {
+    const bool is_amx_isa_selected
+            = rnn.is_cell_int8_amx() || rnn.is_cell_xf16_amx();
+    const bool can_use_block64
+            = is_amx_isa_selected && rnn.N % 64 == 0 && !rnn.is_lstm_projection;
+    if (can_use_block64) return 64;
+
+    const int simd_w = isa_max_vlen(rnn.brgemm_isa) / sizeof(float);
+
+    // TODO: check if 4*simd_w can be used for other cases
+    if (rnn.brgemm_isa == avx2 && rnn.M == 1
+            && utils::one_of(
+                    cell_kind, alg_kind::vanilla_lstm, alg_kind::lbr_gru))
+        return 4 * simd_w;
+    else
+        return 2 * simd_w;
+}
+
 } // namespace
 
 void rnn_brgemm_base_t::init_scratchpad(const cpu::rnn_utils::rnn_conf_t &rnn,
@@ -376,12 +398,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
         return status::unimplemented;
 
     rnn.nthr = dnnl_get_max_threads();
-    const bool is_amx_isa_selected
-            = rnn.is_cell_int8_amx() || rnn.is_cell_xf16_amx();
-    const bool can_use_block64
-            = is_amx_isa_selected && rnn.N % 64 == 0 && !rnn.is_lstm_projection;
-    const int simd_w = isa_max_vlen(rnn.brgemm_isa) / sizeof(float);
-    rnn.n_block = can_use_block64 ? 64 : 2 * simd_w;
+    rnn.n_block = brgemm_calc_n_block(rnn, cell_kind);
     rnn.N_blocks = utils::div_up(rnn.N, rnn.n_block);
     rnn.n_tail = rnn.N % rnn.n_block;
 

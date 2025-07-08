@@ -2295,6 +2295,15 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
             case data_type::f32:
                 // f32 is already in the correct format
                 break;
+            case data_type::s8:
+                uni_vcvtps2dq(input, input);
+                vpmovsdb(Vmm_lower_t(input.getIdx()), input);
+                break;
+            case data_type::u8:
+                uni_vcvtps2dq(input, input);
+                vpmovusdb(Vmm_lower_t(input.getIdx()), input);
+                break;
+
             default:
                 assert(!"Unsupported destination data type for decompression");
         }
@@ -2334,6 +2343,7 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
     template <typename Vmm>
     void decompress_value(const Vmm &input, const Vmm &zp,
             const Xbyak::Operand &scale_op, data_type_t src_dt) {
+        if (!conf_->with_wei_decompression) return;
         apply_shift(input, zp, src_dt);
         upconvert_to_f32(input, src_dt);
         apply_scales(input, scale_op);
@@ -2371,13 +2381,12 @@ protected:
 };
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_int8_t
+    : public jit_brgemm_matmul_copy_b_base_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_int8_t)
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_base_t(conf)
         , src_stride_(conf->copy_B_wei_stride)
         , tr_src_stride_(conf->LDB * k_blk_step_ * sizeof(int8_t))
         , is_amx_(mayiuse(avx512_core_amx))
@@ -2387,6 +2396,8 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                   do_compute_compensation_ && !isa_has_int8_vnni(conf->isa))
         , is_dynamic_stride_(is_runtime_value(src_stride_))
         , is_dynamic_N_(conf->is_runtime_N)
+        , req_zp_b_shift(conf->has_zero_point_b && conf->with_wei_decompression)
+        , req_apply_scales(conf->apply_scales_in_buffer_b)
         , comp_acc_idx_(is_ymm_                      ? 13
                           : avx512_core_dot_product_ ? 23
                                                      : 25) {}
@@ -2413,6 +2424,8 @@ protected:
     const bool avx512_core_dot_product_;
     const bool is_dynamic_stride_;
     const bool is_dynamic_N_;
+    const bool req_zp_b_shift;
+    const bool req_apply_scales;
 
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
@@ -2435,6 +2448,7 @@ protected:
     reg64_t reg_src_stride = r13;
     reg64_t reg_src_backup = r14;
     reg64_t reg_tmp = r15;
+    reg64_t reg_scales = r16;
 
     reg64_t reg_copy_block_n_shift = rsi;
 
@@ -2444,6 +2458,8 @@ protected:
     // Required in every dot product for INT8 non-VNNI computation.
     Vmm vmm_ones_words = Vmm(24);
     Vmm vmm_dot_product_temp = Vmm(25);
+
+    Vmm vmm_zp_b_shift = Vmm(24);
 
     // ZMM stuff
     Vmm vreg_idx_lo_256 = Vmm(26);
@@ -2500,6 +2516,11 @@ inline void jit_brgemm_matmul_copy_b_int8_t<Zmm>::load(
     auto src_load = is_tail ? vmm_src | kTail | T_z : vmm_src;
     const auto offset = is_dynamic_stride_ ? 0 : i * src_stride_;
     vmovdqu8(src_load, EVEX_compress_addr(reg_src, offset));
+    if (conf_->with_wei_decompression) {
+        std::cout << "with_wei_decompression" << std::endl;
+        decompress_value(src_load, vmm_zp_b_shift, reg_scales,
+                conf_->orig_wei_dt, conf_->dst_dt);
+    }
     if (is_dynamic_stride_) add(reg_src, reg_src_stride);
 }
 
@@ -2983,6 +3004,12 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         mov(reg_tmp.cvt16(), 1);
         vpbroadcastw(vmm_ones_words, reg_tmp.cvt16());
     }
+
+    if (req_zp_b_shift) {
+        mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
+        uni_vpbroadcastd(vmm_zp_b_shift, ptr[reg_tmp]);
+    }
+    mov(reg_scales, ptr[param1 + GET_OFF(scales_ptr)]);
 
     uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
     mov(reg_src, ptr[param1 + GET_OFF(src)]);
@@ -5092,6 +5119,7 @@ status_t create_brgemm_matmul_copy_b(
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_b_f32_t<Ymm>(conf)));
         } else {
+            std::cout << "S COPy KERNEL" << std::endl;
             if (mayiuse(avx512_core_amx))
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_amx_brgemm_matmul_copy_b_int8_t(conf)));

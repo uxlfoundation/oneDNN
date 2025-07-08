@@ -281,7 +281,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , bf8_dt(everyone_is(f8_e5m2, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
-    , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8) && bgmmc.wei_dt == s8
+    , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8)
+              && one_of(bgmmc.wei_dt, s8, s4, u4)
               && one_of(bgmmc.dst_dt, u8, s8, s32, f32, bf16))
     , bf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
@@ -289,7 +290,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , tf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
               && isa == avx10_2_512_amx_2)
-    , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+    , weights_decompression_support(
+              one_of(bgmmc.wei_dt, u8, s8, u4, s4, f16, bf16)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,

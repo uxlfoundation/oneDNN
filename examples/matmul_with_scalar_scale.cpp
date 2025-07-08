@@ -96,7 +96,7 @@ void simple_matmul_with_host_scalar(engine::kind engine_kind) {
 
     // Prepare a scalar (alpha) as a host-side float value and wrap it in a oneDNN memory object
     float alpha = 2.0f;
-    memory alpha_m(memory::desc::host_scalar(memory::data_type::f32), &alpha);
+    memory alpha_m(memory::desc::host_scalar(memory::data_type::f32), alpha);
 
     // Create a matmul primitive descriptor
     // Attribute is for specifying that the source memory (A) will have an alpha applied

@@ -3411,21 +3411,21 @@ struct memory : public handle<dnnl_memory_t> {
     }
 
     /// Constructs a memory object that wraps a host scalar value.
-    /// @note The scalar value is copied from the provided pointer into the
-    ///     newly allocated memory storage, so the user does not need to
-    ///     manage the lifetime of the original scalar data.
+    /// @note The scalar value is copied into the newly allocated memory storage,
+    ///     so the user does not need to manage the lifetime of the original scalar data.
     ///
+    /// @tparam T Type of the scalar value.
     /// @param md The memory descriptor that defines data type.
-    /// @param value_ptr Pointer to the host memory to be wrapped by the
-    ///     memory object.
+    /// @param value The scalar value to be wrapped by the memory object.
     ///
     /// @throws error if the memory object could not be created.
-    memory(const desc &md, void *value_ptr) { // todo: probably use templates?
+    template <typename T>
+    memory(const desc &md, const T &value) {
         dnnl_memory_t result;
-        dnnl_status_t status
-                = dnnl_memory_create_host_scalar(&result, md.get(), value_ptr);
+        dnnl_status_t status = dnnl_memory_create_host_scalar(
+                &result, md.get(), (void *)&value);
         error::wrap_c_api(status, "could not create a memory object");
-        reset(result); // ???
+        reset(result);
     }
 
     /// Returns the associated memory descriptor.

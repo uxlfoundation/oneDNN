@@ -95,8 +95,11 @@ struct ref_matmul_t : public gpu_primitive_t {
             const bool is_int8 = utils::one_of(src_dt_, u8, s8)
                     && utils::one_of(wei_dt_, u8, s8, u4, s4)
                     && utils::one_of(dst_dt_, f32, s8, u8, s32, f16, bf16);
+            const bool is_int16 = utils::one_of(src_dt_, u16, s16)
+                    && utils::one_of(wei_dt_, u8, s8)
+                    && utils::one_of(dst_dt_, f32, s8, u8, s32, f16, bf16);
             VDISPATCH_MATMUL(
-                    (is_int8
+                    (is_int8 || is_int16
                             || ((is_f32 || is_f64 || is_f16 || is_f8 || is_f4
                                         || is_bf16)
                                     && IMPLICATION(with_bias(),

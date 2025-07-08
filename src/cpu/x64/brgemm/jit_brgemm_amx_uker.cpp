@@ -399,6 +399,7 @@ private:
             prf1C;
 
     bool dt_requires_saturation_ = false;
+    bool use_sat_cvt_ = false;
 
     bool ununroll_bd_loop = false;
 
@@ -1011,7 +1012,8 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
 void jit_brgemm_amx_uker_base_t::maybe_saturation(Xbyak::Zmm &zmm) {
     if (!dt_requires_saturation_) return;
-    saturate_cvt_f32(zmm, zmm_lbound, zmm_ubound, brg.dt_d);
+    saturate_cvt_f32(
+            zmm, zmm_lbound, zmm_ubound, brg.dt_d, false, use_sat_cvt_);
 }
 
 void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
@@ -1411,7 +1413,7 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
     const Xbyak::Zmm r_zmm = vmm_mask(zmm, true, true, k_mask);
     const Xbyak::Ymm r_ymm = vmm_mask(ymm, true, true, k_mask);
     const Xbyak::Xmm r_xmm = vmm_mask(xmm, true, true, k_mask);
-    if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+    if (use_sat_cvt_) {
         assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
         auto zmm_perm = zmm_ubound;
         vpermb(zmm, zmm_perm, zmm);
@@ -2606,9 +2608,11 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
         dt_requires_saturation_ = brg.is_int8
                 && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
     }
+    use_sat_cvt_ = dt_requires_saturation_
+            && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
     if (dt_requires_saturation_) {
-        init_saturate_f32(
-                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        init_saturate_f32(zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32,
+                brg.dt_d, false, use_sat_cvt_);
     }
 
     if (bi.skip_accumulation) return;

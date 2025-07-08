@@ -538,12 +538,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         for (int i = unroll / 2; i < unroll; i++)
             vperm2f128(Ymm(i), Ymm(i), Ymm(unroll / 2 + i), uquad);
 
+        const bool use_sat_cvt
+                = need_saturation && isa_has_sat_cvt(isa_, prb_.otype);
         if (need_saturation) {
             init_saturate_f32(ymm_zero_, ymm_saturation_ubound_, reg_tmp_, f32,
-                    prb_.otype);
+                    prb_.otype, false, use_sat_cvt);
             for (int i = 0; i < unroll; i++)
-                saturate_cvt_f32(
-                        Ymm(i), ymm_zero_, ymm_saturation_ubound_, prb_.otype);
+                saturate_cvt_f32(Ymm(i), ymm_zero_, ymm_saturation_ubound_,
+                        prb_.otype, false, use_sat_cvt);
         }
 
         for (int i = 0; i < unroll; i++) {
@@ -553,7 +555,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         need_saturation       ? s32
                                 : interim_f32 ? f32
                                               : prb_.itype,
-                        need_saturation);
+                        use_sat_cvt);
             store(o_addr(o_off + i * node_1_output_stride), Ymm(i),
                     unroll * otype_sz_);
         }
@@ -885,6 +887,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     && prb_.dst_scale_type != scale_type_t::MANY
                     && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp;
             if (fast_return) {
+                const bool use_sat_cvt = need_saturation
+                        && !compensation_needed_
+                        && isa_has_sat_cvt(isa_, prb_.otype);
                 if (prb_.src_scale_type == scale_type_t::COMMON)
                     for (int ur = 0; ur < reg_unroll; ur += load_step)
                         uni_vmulps(Xmm(ur), Xmm(ur), xmm_src_scales_);
@@ -894,16 +899,17 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 if (prb_.otype != f32) {
                     init_saturate_f32(xmm_zero_, xmm_saturation_ubound_,
                             reg_tmp_, interim_f32 ? f32 : prb_.itype,
-                            prb_.otype);
+                            prb_.otype, false, use_sat_cvt);
                     for (int ur = 0; ur < reg_unroll; ur += load_step) {
                         if (need_saturation)
                             saturate_cvt_f32(Xmm(ur), xmm_zero_,
-                                    xmm_saturation_ubound_, prb_.otype);
+                                    xmm_saturation_ubound_, prb_.otype, false,
+                                    use_sat_cvt);
                         cvt2odt(Xmm(ur), prb_.otype,
                                 need_saturation       ? s32
                                         : interim_f32 ? f32
                                                       : prb_.itype,
-                                need_saturation);
+                                use_sat_cvt);
                     }
                 }
                 for (int ur = 0; ur < reg_unroll; ur += load_step) {
@@ -1108,16 +1114,18 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             }
         }
 
+        const bool use_sat_cvt = need_saturation && !compensation_needed_
+                && isa_has_sat_cvt(isa_, prb_.otype);
         if (need_saturation) {
             init_saturate_f32(xmm_zero_, xmm_saturation_ubound_, reg_tmp_, f32,
-                    prb_.otype, compensation_needed_);
+                    prb_.otype, compensation_needed_, use_sat_cvt);
             for (int ur = 0; ur < reg_unroll; ur += ur_step) {
                 if (compensation_needed_)
                     saturate_f32(Xmm(ur), xmm_zero_, xmm_saturation_ubound_,
                             prb_.otype, compensation_needed_);
                 else
                     saturate_cvt_f32(Xmm(ur), xmm_zero_, xmm_saturation_ubound_,
-                            prb_.otype, compensation_needed_);
+                            prb_.otype, compensation_needed_, use_sat_cvt);
             }
 
             // reset back xmm_zero_ if needed.
@@ -1229,7 +1237,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         need_saturation && !compensation_needed_ ? s32
                                 : interim_f32                    ? f32
                                                                  : prb_.itype,
-                        need_saturation);
+                        use_sat_cvt);
 
             store(o_addr(o_off[ur]), Xmm(ur), ur_step * otype_sz_);
         }

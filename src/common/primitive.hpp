@@ -89,7 +89,7 @@ protected:
     static status_t create_primitive_common(
             std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
             const pd_t *pd, engine_t *engine, bool use_global_scratchpad,
-            const cache_blob_t &cache_blob) {
+            const cache_blob_t &cache_blob, bool force_create_from_blob) {
 
         auto global_primitive_cache = primitive_cache();
         primitive_hashing::key_t key(pd, engine);
@@ -105,7 +105,8 @@ protected:
         create_context_t context {
                 // default to primitive_cache_hit, create() will flag partial/complete cache miss
                 engine, pd, cache_blob, use_global_scratchpad,
-                cache_state_t::primitive_hit};
+                force_create_from_blob ? cache_state_t::persistent_hit
+                                       : cache_state_t::primitive_hit};
 
         primitive_cache_iface_t::create_func_ptr_t create = [](void *context) {
             auto &c = *static_cast<create_context_t *>(context);
@@ -116,7 +117,7 @@ protected:
             return primitive_cache_iface_t::result_t {std::move(p), status};
         };
         auto result = global_primitive_cache.get_or_create(
-                key, *create, &context, false);
+                key, *create, &context, force_create_from_blob);
         primitive = {std::move(result.value), context.cache_status};
         return result.status;
     }

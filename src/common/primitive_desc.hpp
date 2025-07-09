@@ -399,9 +399,13 @@ struct primitive_desc_t : public c_compatible {
         return {};
     }
 
+    // `force_create_from_blob` forces the implementation not to pick up the
+    // primitive from the cache even if it resides there.
+    // See `force_create_from_blob` comment for more details.
     virtual status_t create_primitive(
             std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
-            engine_t *engine, const cache_blob_t &cache_blob) const = 0;
+            engine_t *engine, const cache_blob_t &cache_blob,
+            bool force_create_from_blob) const = 0;
 
     // This is a proxy interface that is used for creating nested primitives.
     // It ignores the cache_state_t value that indicates whether the requested primitive
@@ -421,9 +425,18 @@ struct primitive_desc_t : public c_compatible {
             std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
             engine_t *engine,
             const cache_blob_t &cache_blob = cache_blob_t()) const {
+        // A scenario with a top-level primitive containing two or more nested
+        // primitives is unique when it comes to a creation from a blob. If the
+        // top-level primitive wasn't fetched from the cache, all nested
+        // primitives must be forced to be created. Otherwise, there's a
+        // possible collision of nested primitives, one of them could be picked
+        // up from the cache and lead to the errornous deserialization process
+        // of further nested primitives which may not hit the primitive cache.
+        const bool force_create_from_blob = static_cast<bool>(cache_blob);
         if (get_verbose(verbose_t::debuginfo) >= 1) {
             double start_ms = get_msec();
-            CHECK(create_primitive(primitive, engine, cache_blob));
+            CHECK(create_primitive(
+                    primitive, engine, cache_blob, force_create_from_blob));
             double duration_ms = get_msec() - start_ms;
 
             // Since the primitive_hit has a higher fetching priority,
@@ -435,7 +448,8 @@ struct primitive_desc_t : public c_compatible {
             VPROF(start_ms, primitive, create_nested, str, info(engine),
                     duration_ms);
         } else {
-            CHECK(create_primitive(primitive, engine, cache_blob));
+            CHECK(create_primitive(
+                    primitive, engine, cache_blob, force_create_from_blob));
         }
         return status::success;
     }
@@ -519,10 +533,11 @@ protected:
     status_t create_primitive( \
             std::pair<std::shared_ptr<impl::primitive_t>, cache_state_t> \
                     &primitive, \
-            dnnl::impl::engine_t *engine, const cache_blob_t &cache_blob) \
-            const override { \
+            dnnl::impl::engine_t *engine, const cache_blob_t &cache_blob, \
+            bool force_create_from_blob) const override { \
         return primitive_t::create_primitive_common<impl_type, pd_t>( \
-                primitive, this, engine, use_global_scratchpad, cache_blob); \
+                primitive, this, engine, use_global_scratchpad, cache_blob, \
+                force_create_from_blob); \
     } \
     const char *name() const override { return impl_name; } \
     template <typename pd_t> \

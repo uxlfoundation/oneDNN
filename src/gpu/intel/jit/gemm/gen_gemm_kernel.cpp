@@ -560,7 +560,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SB]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OB]";
-        if (dt.isF8()) return "B";
+        if (dt.isF8()) return "[OB]";
         if (dt.isF4()) return "F";
         return nullptr;
     });
@@ -568,7 +568,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SH]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OH]";
-        if (dt.isF8()) return "H";
+        if (dt.isF8()) return "[OH]";
         if (dt.isF4()) return "F";
         return nullptr;
     });

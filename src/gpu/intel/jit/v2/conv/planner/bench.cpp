@@ -51,6 +51,13 @@ namespace v2 {
 namespace conv {
 namespace planner {
 
+bench_manager_t::bench_manager_t()
+    : engine_(engine::kind::gpu, 0)
+    , stream_(engine_,
+              static_cast<stream::flags>(
+                      stream_flags::in_order | stream_flags::profiling))
+    , hw_(engine_.get()) {}
+
 bench_manager_t::~bench_manager_t() {
     dump_plan_registry();
 }

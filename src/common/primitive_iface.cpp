@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,7 +72,10 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
                 p_iface, cache_blob));
         double duration_ms = get_msec() - start_ms;
 
-        if (cache_blob) p_iface.second = cache_state_t::persistent_hit;
+        // Since the primitive_hit has a higher fetching priority,
+        // it shouldn't be overrided by a persistent_hit.
+        if (cache_blob && p_iface.second != cache_state_t::primitive_hit)
+            p_iface.second = cache_state_t::persistent_hit;
         const char *str = cache_state2str(p_iface.second);
 
         VPROF(start_ms, primitive, create, str, p_iface.first->pd()->info(),

@@ -1986,7 +1986,16 @@ private:
 			b = true;
 		} else {
 			if (v) VL = (std::max)(VL, v->getBit());
-			VL = (std::max)((std::max)(reg.getBit(), base.getBit()), VL);
+			// TODO: review below changes.
+            // for amx10 instruction with mix of Tmm/Zmm (like topbf16pse)
+			// the VL should be based on Zmm
+			if (reg.isTMM() && base.isZMM()) {
+				VL = (std::max)(base.getBit(), VL);
+			} else if (base.isTMM() && reg.isZMM()) {
+				VL = (std::max)(reg.getBit(), VL);
+            } else {
+				VL = (std::max)((std::max)(reg.getBit(), base.getBit()), VL);
+			}
 			LL = (VL >= 512 /* tmm */) ? 2 : (VL == 256) ? 1 : 0;
 			if (b) {
 				disp8N = ((type & T_B16) == T_B16) ? 2 : (type & T_B32) ? 4 : 8;

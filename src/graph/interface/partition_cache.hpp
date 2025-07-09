@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,7 +60,10 @@ struct compiled_partition_cache_t {
 
     result_t get_or_create(
             const key_t &key, create_func_t create, void *create_context) {
-        return cache_.get_or_create(key, create, create_context);
+        // Always try to fetch the compiled_partition from the cache. There's no
+        // scenario when forcing creation for a kernel is required.
+        constexpr bool force_create = false;
+        return cache_.get_or_create(key, create, create_context, force_create);
     }
 
     const partition_t *get_partition(const key_t &key);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,6 +23,11 @@ namespace dnnl_impl {
 
 bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    // Asynchronous version of decomp kernel is not working.
+    return false;
+#endif
+
     // The order of input logical tensors in inputs is not certain, we need
     // to record the input offset in a certain order of ops.
     record_input_offset(sg, inputs);

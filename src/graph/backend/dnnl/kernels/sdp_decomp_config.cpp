@@ -28,6 +28,11 @@ namespace dnnl_impl {
 
 bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    // Asynchronous version of decomp kernel is not working.
+    return false;
+#endif
+
     // The order of input logical tensors in inputs is not certain, we need
     // to record the input offset in a certain order of ops.
     CHECK_BOOL(record_input_offset(sg, inputs));

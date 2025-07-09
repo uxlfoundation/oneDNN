@@ -50,6 +50,14 @@ echo "Working directory: $PWD"
 for ((i=1; i<=REPS; i++)); do
   echo "[base] iteration $i / $REPS"
   OMP_NUM_THREADS=$THREADS "$BASE_BIN" "${FINAL_ARGS[@]}" >> base.txt 2>&1
+  rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    echo "::error::baseline benchdnn failed (exit code $rc)"
+    echo "Dumping base.txt:"
+    cat base.txt || echo "(base.txt is empty)"
+    exit $rc
+  fi
 done
 
 # Run benchdnn on new build
@@ -57,6 +65,14 @@ done
 for ((i=1; i<=REPS; i++)); do
   echo "[new ] iteration $i / $REPS"
   OMP_NUM_THREADS=$THREADS "$NEW_BIN" "${FINAL_ARGS[@]}" >> new.txt 2>&1
+  rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    echo "::error::new benchdnn failed (exit code $rc)"
+    echo "Dumping new.txt:"
+    cat new.txt || echo "(new.txt is empty)"
+    exit $rc
+  fi
 done
 
 echo "===== base.txt ====="

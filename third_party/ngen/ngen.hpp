@@ -213,7 +213,7 @@ protected:
 
     DebugLine debugLine;
 
-    std::atomic<bool> cancelAutoSWSB_ = false;
+    std::atomic<bool> cancelAutoSWSB_;
 
 private:
     InstructionModifier defaultModifier;
@@ -453,7 +453,7 @@ private:
 
 public:
     explicit BinaryCodeGenerator(Product product_, DebugConfig debugConfig = {})
-        : product{product_}, debugLine(debugConfig), defaultModifier{}, labelManager{},
+        : product{product_}, debugLine(debugConfig), cancelAutoSWSB_(false), defaultModifier{}, labelManager{},
 
 #if XE3P
                                                      lfsr{this}, shfl{this},

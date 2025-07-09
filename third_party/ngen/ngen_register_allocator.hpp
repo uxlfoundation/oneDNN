@@ -746,7 +746,7 @@ GRFRange RegisterAllocator::tryAllocRange(int nregs, Bundle baseBundle, BundleGr
         // If allocating an even number of registers, start on an even register on Xe4
         //   to allow for 64-bit type access.
         if (hw >= HW::Xe4 && (nregs & 1) == 0) {
-            auto nbaseMask = baseMask & 0x5555'5555'5555'5555;
+            auto nbaseMask = baseMask & 0x5555555555555555;
             if (nbaseMask)
                 baseMask = nbaseMask;
         }

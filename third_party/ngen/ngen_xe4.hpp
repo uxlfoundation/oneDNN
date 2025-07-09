@@ -401,7 +401,7 @@ struct InstructionXe4 {
         }
     }
 
-    static constexpr int directARFSize() { return 32; }
+    static constexpr unsigned directARFSize() { return 32; }
 };
 
 static_assert(sizeof(InstructionXe4) == 16, "Internal error: Instruction12 has been padded by the compiler.");

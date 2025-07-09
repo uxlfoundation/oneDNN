@@ -954,7 +954,7 @@ public:
 
     constexpr int getBase()            const { return base; }
     constexpr RegFile getRegFile()     const { return static_cast<RegFile>(rf); }
-    constexpr RegFile8 getRegFile8()   const {
+    constexpr14 RegFile8 getRegFile8()   const {
 #ifdef NGEN_SAFE
         if (rf > 1) throw invalid_register_file_exception();
 #endif
@@ -1740,7 +1740,7 @@ public:
 
     FlagRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 
-    constexpr FlagRegister operator[](int offset) const {
+    constexpr14 FlagRegister operator[](int offset) const {
         FlagRegister sub(getARFBase(), getOffset() + offset);
         sub.mods = mods;
         return sub;
@@ -1748,13 +1748,13 @@ public:
 
     int index() const { return (getARFBase() << 1) + getOffset(); }
 
-    static inline constexpr int count(HW hw) {
+    static inline constexpr14 int count(HW hw) {
 #if XE4
         if (hw >= HW::Xe4) return 15;
 #endif
         return (hw >= HW::XeHPC) ? 4 : 2;
     }
-    static inline constexpr int subcount(HW hw) { return count(hw) * 2; }
+    static inline constexpr14 int subcount(HW hw) { return count(hw) * 2; }
 
 #if XE4
     inline operator IndirectARF() const;
@@ -3573,7 +3573,7 @@ public:
     constexpr SWSBItem(int token_, bool src_, bool dst_) : all((token_ & 0x1F) | (uint16_t(src_) << 6) | (uint16_t(dst_) << 5) | 0x80) {}
 
     static constexpr SWSBItem createNoAccSBSet() { return SWSBItem(0x08); }
-    constexpr bool isNoAccSBSet()                { return (all == 0x08); }
+    constexpr bool isNoAccSBSet() const          { return (all == 0x08); }
 
     static uint32_t pack4(std::array<SWSBItem, 4> items) {
         return items[0].all | (items[1].all << 8) | (items[2].all << 16) | (items[3].all << 24);

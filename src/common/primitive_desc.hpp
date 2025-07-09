@@ -425,7 +425,11 @@ struct primitive_desc_t : public c_compatible {
             double start_ms = get_msec();
             CHECK(create_primitive(primitive, engine, cache_blob));
             double duration_ms = get_msec() - start_ms;
-            if (cache_blob) primitive.second = cache_state_t::persistent_hit;
+
+            // Since the primitive_hit has a higher fetching priority,
+            // it shouldn't be overrided by a persistent_hit.
+            if (cache_blob && primitive.second != cache_state_t::primitive_hit)
+                primitive.second = cache_state_t::persistent_hit;
             const char *str = cache_state2str(primitive.second);
 
             VPROF(start_ms, primitive, create_nested, str, info(engine),

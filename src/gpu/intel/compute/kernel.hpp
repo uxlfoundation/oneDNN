@@ -152,6 +152,10 @@ public:
         // Some kernels may not support argument validation.
         if (arg_types().empty()) return status::success;
 
+        gpu_assert(static_cast<size_t>(arg_list.nargs()) == arg_types().size())
+                << "The number of arguments is not consistent with the types "
+                   "container";
+
         for (int i = 0; i < arg_list.nargs(); i++) {
             auto &arg = arg_list.get(i);
             auto req_arg_type = arg_types()[i];
@@ -240,10 +244,31 @@ public:
         return impl_->dump();
     }
 
+    // A `tag` may be provided by the user to differentiate the source of the
+    // kernel. In particular, it may come from the blob, or it could be
+    // properly generated.
+    void hash_dump(impl::engine_t *engine, const char *tag = nullptr) const {
+        if (get_verbose_dev_mode(verbose_t::debuginfo) >= 6) {
+            printf("kernel creation [%s] %s -> %zu\n", tag ? tag : "unlabeled",
+                    name().c_str(), get_hash(engine));
+            fflush(stdout);
+        }
+    }
+
     std::string name() const { return impl_->name(); }
 
 private:
     std::shared_ptr<kernel_impl_t> impl_;
+
+    size_t get_hash(impl::engine_t *engine) const {
+        xpu::binary_t binary;
+        status_t status = get_binary(engine, binary);
+        if (status != status::success) return 0;
+        size_t h = 0;
+        for (auto &v : binary)
+            h = hash_combine(h, v);
+        return (uint32_t)(h % (1ULL << 32));
+    }
 };
 
 class kernel_bundle_t {

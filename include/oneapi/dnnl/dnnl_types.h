@@ -55,9 +55,8 @@ typedef enum {
     dnnl_format_kind_opaque,
     /// Format kind for sparse tensors.
     dnnl_format_kind_sparse,
-    /// Parameter to allow internal only format kinds without undefined
-    /// behavior. This parameter is chosen to be valid for so long as
-    /// sizeof(int) >= 2.
+
+    // Max value to prevent UB for internal-use-only values.
     dnnl_format_kind_max = 0x7fff,
 } dnnl_format_kind_t;
 
@@ -85,6 +84,9 @@ typedef enum {
     dnnl_profiling_data_kind_undef = 0,
     /// Data kind to query an execution time in nanoseconds.
     dnnl_profiling_data_kind_time,
+
+    // Max value to prevent UB for internal-use-only values.
+    dnnl_profiling_data_max = 0x7fff,
 } dnnl_profiling_data_kind_t;
 
 #endif
@@ -2043,8 +2045,7 @@ typedef enum {
     /// A group normalization primitive.
     dnnl_group_normalization,
 
-    /// Parameter to allow internal only primitives without undefined behavior.
-    /// This parameter is chosen to be valid for so long as sizeof(int) >= 2.
+    // Max value to prevent UB for internal-use-only values.
     dnnl_primitive_kind_max = 0x7fff,
 } dnnl_primitive_kind_t;
 
@@ -2831,7 +2832,8 @@ typedef enum {
     dnnl_query_sparse_encoding, ///< Sparse encoding
     dnnl_query_nnz_s64, ///< Number of non-zero entries
     dnnl_query_num_handles_s32, ///< Number of buffers required for a memory descriptor
-    // Max value to prevent UB for internal use only dnnl_query_t
+
+    // Max value to prevent UB for internal-use-only values.
     dnnl_query_max = 0x7fff,
 } dnnl_query_t;
 

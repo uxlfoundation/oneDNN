@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +50,10 @@ struct iface_t::cache_t {
 
     result_t get_or_create(
             const key_t &key, create_func_t create, void *create_context) {
-        return cache_.get_or_create(key, create, create_context);
+        // Always try to fetch the kernel from the cache. There's no scenario
+        // when forcing creation for a kernel is required.
+        constexpr bool force_create = false;
+        return cache_.get_or_create(key, create, create_context, force_create);
     }
 
 private:

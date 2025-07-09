@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -109,8 +109,7 @@ typedef enum {
     /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
     dnnl_f4_e3m0 = 15,
 
-    /// Parameter to allow internal only data_types without undefined behavior.
-    /// This parameter is chosen to be valid for so long as sizeof(int) >= 2.
+    // Max value to prevent UB for internal-use-only values.
     dnnl_data_type_max = 0x7fff,
 } dnnl_data_type_t;
 
@@ -211,6 +210,9 @@ typedef enum {
     /// Enables profiling capabilities.
     dnnl_stream_profiling = 0x4U,
 #endif
+
+    // Max value to prevent UB for internal-use-only values.
+    dnnl_stream_flags_max = 0x7fff,
 } dnnl_stream_flags_t;
 
 /// @struct dnnl_stream

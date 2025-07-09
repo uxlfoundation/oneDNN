@@ -212,10 +212,11 @@ private:
     status_t create_primitive( \
             std::pair<std::shared_ptr<impl::primitive_t>, cache_state_t> \
                     &primitive, \
-            dnnl::impl::engine_t *engine, const cache_blob_t &cache_blob) \
-            const override { \
+            dnnl::impl::engine_t *engine, const cache_blob_t &cache_blob, \
+            bool force_create_from_blob) const override { \
         return primitive_t::create_primitive_common<__VA_ARGS__, pd_t>( \
-                primitive, this, engine, false, cache_blob); \
+                primitive, this, engine, false, cache_blob, \
+                force_create_from_blob); \
     } \
     pd_t *clone() const override { \
         auto new_pd = utils::make_unique<pd_t>(*this); \

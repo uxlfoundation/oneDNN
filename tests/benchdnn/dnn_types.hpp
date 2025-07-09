@@ -71,6 +71,7 @@ struct attr_t {
         PER_DIM_2, // ... dims[2] point.
         PER_DIM_3, // ... dims[3] point.
         PER_TENSOR, // ... point in the tensor.
+        COMMON_V2, // same as COMMON, but uses host-side scalar memory
         POLICY_TOTAL // guard
     };
 

@@ -42,17 +42,21 @@ echo "Threads: $THREADS | Repetitions: $REPS"
 echo
 
 # Run benchdnn on baseline
+echo "Running BASE_BIN: $BASE_BIN"
+ls -l "$BASE_BIN" || { echo "::error::Baseline binary not found"; exit 1; }
+echo "Working directory: $PWD"
+
 : > base.txt
 for ((i=1; i<=REPS; i++)); do
   echo "[base] iteration $i / $REPS"
-  OMP_NUM_THREADS=$THREADS "$BASE_BIN" "${FINAL_ARGS[@]}" >> base.txt
+  OMP_NUM_THREADS=$THREADS "$BASE_BIN" "${FINAL_ARGS[@]}" >> base.txt 2>&1
 done
 
 # Run benchdnn on new build
 : > new.txt
 for ((i=1; i<=REPS; i++)); do
   echo "[new ] iteration $i / $REPS"
-  OMP_NUM_THREADS=$THREADS "$NEW_BIN" "${FINAL_ARGS[@]}" >> new.txt
+  OMP_NUM_THREADS=$THREADS "$NEW_BIN" "${FINAL_ARGS[@]}" >> new.txt 2>&1
 done
 
 echo "===== base.txt ====="

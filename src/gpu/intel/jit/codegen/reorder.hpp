@@ -362,6 +362,8 @@ private:
         return {layout, buffer};
     }
 
+    layout_t make_retyped_layout(
+            const layout_t &layout, const type_t &type) const;
     layout_t make_compact_layout(const layout_t &layout, const type_t &type,
             bool is_source = false) const;
 

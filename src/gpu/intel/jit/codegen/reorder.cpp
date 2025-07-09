@@ -499,8 +499,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
     const bool in_place = dst_dt.size() >= tmp_dt.size() && (dst_dt.size() & 6);
     layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
     layout_t down_layout = in_place
-            ? dst_op.layout.retype(tmp_dt).make_strided(
-                    dst_dt.size() / tmp_dt.size())
+            ? make_retyped_layout(dst_op.layout, tmp_dt)
             : make_compact_layout(dst_op.layout, tmp_dt);
 
     if (direct_copy || !(do_pre_conv || do_post_conv)) {
@@ -559,6 +558,14 @@ bool reorder_impl_t::layouts_compatible(
     }
 
     return a_block_it == a_block_end && b_block_it == b_block_end;
+}
+
+layout_t reorder_impl_t::make_retyped_layout(
+        const layout_t &layout, const type_t &type) const {
+    if (layout.blocks().empty()) return layout;
+    const int stride = into<int>(layout.blocks().front().stride);
+    return layout.retype(type).make_strided(
+            stride * layout.type().size() / type.size());
 }
 
 layout_t reorder_impl_t::make_compact_layout(

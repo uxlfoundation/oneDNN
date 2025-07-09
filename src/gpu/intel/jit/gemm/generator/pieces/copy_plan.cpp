@@ -2948,11 +2948,17 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     }
 
     /* Check which instruction groups must be issued together */
+    auto groupInstructions = [&](std::vector<bool> &joined, bool reset = false) {
+        if (reset) joined.assign(joined.size(), false);
+
+        for (auto &i: insns)
+            if (i.phase >= minPhaseTemp && i.phase <= maxPhaseTemp)
+                for (int cnum = i.cnumMin; cnum < i.cnumMax; cnum++)
+                    joined[cnum] = true;
+    };
+
     std::vector<bool> joined(ncnum);
-    for (auto &i: insns)
-        if (i.phase >= minPhaseTemp && i.phase <= maxPhaseTemp)
-            for (int cnum = i.cnumMin; cnum < i.cnumMax; cnum++)
-                joined[cnum] = true;
+    groupInstructions(joined);
 
     /* Sort instructions and temporaries by parent instruction (cnum) */
     std::vector<std::pair<int, int>> cnumOrder;
@@ -2963,9 +2969,13 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     std::sort(cnumOrder.begin(), cnumOrder.end());
 
     auto emit = [&](int cnumMin, int cnumMax, uint16_t minPhase, uint16_t maxPhase) {
+        bool emitted = false;
         for (const auto &i: insns)
-            if (i.cnumMin >= cnumMin && i.cnumMax < cnumMax && i.phase >= minPhase && i.phase <= maxPhase)
+            if (i.cnumMin >= cnumMin && i.cnumMax < cnumMax && i.phase >= minPhase && i.phase <= maxPhase) {
                 sortedInsns.push_back(i);
+                emitted = true;
+            }
+        return emitted;
     };
 
     /* Issue instructions up to first temporary */
@@ -2986,8 +2996,19 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
         /* Back off to the nearest instruction group boundary */
         while (cnum1 > 0 && joined[cnum1 - 1])
             cnum1--;
-        if (cnum1 <= cnum0)
-            throw out_of_registers_exception();
+        if (cnum1 <= cnum0) {
+            bool emitted = false;
+            if (order != end) {
+                auto &temp = temps[order->second];
+                if (temp.phaseMin > minPhaseTemp) {
+                    emitted = emit(0, ncnum, minPhaseTemp, temp.phaseMin - 1);
+                    minPhaseTemp = temp.phaseMin;
+                }
+            }
+            if (!emitted)
+                throw out_of_registers_exception();
+            groupInstructions(joined, /*reset=*/true);
+        }
 
         /* Issue instructions for this batch of instruction groups */
         emit(cnum0, cnum1, minPhaseTemp, maxPhaseTemp);

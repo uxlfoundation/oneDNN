@@ -122,6 +122,7 @@ struct CopyTemporary
     bool flag = false;
     int16_t cnumMin = 0x7FFF;
     int16_t cnumMax = -1;
+    uint16_t phaseMin = 0xFFFF;
     int assignment = -1;
 
     explicit CopyTemporary(int bytes_, int align_, int offset_ = 0)
@@ -133,6 +134,7 @@ protected:
     void usedBy(const CopyInstruction &i) {
         cnumMin = std::min(cnumMin, i.cnumMin);
         cnumMax = std::max(cnumMax, i.cnumMax);
+        phaseMin = std::min(phaseMin, i.phase);
     }
 
 private:

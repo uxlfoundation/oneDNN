@@ -115,8 +115,8 @@ protected:
             c.cache_status = p->creation_cache_state();
             return primitive_cache_iface_t::result_t {std::move(p), status};
         };
-        auto result
-                = global_primitive_cache.get_or_create(key, *create, &context);
+        auto result = global_primitive_cache.get_or_create(
+                key, *create, &context, false);
         primitive = {std::move(result.value), context.cache_status};
         return result.status;
     }

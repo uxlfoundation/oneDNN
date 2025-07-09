@@ -36,19 +36,13 @@ namespace planner {
 
 class bench_manager_t {
 public:
-    bench_manager_t()
-        : engine_(engine::kind::gpu, 0)
-        , stream_(engine_, _stream_flags)
-        , hw_(engine_.get()) {}
+    bench_manager_t();
     const engine &get_engine() const { return engine_; }
     const stream &get_stream() const { return stream_; }
     const hw_t &hw() const { return hw_; }
     ~bench_manager_t();
 
 private:
-    static const stream::flags _stream_flags = static_cast<stream::flags>(
-            stream_flags::in_order | stream_flags::profiling);
-
     engine engine_;
     stream stream_;
     hw_t hw_;

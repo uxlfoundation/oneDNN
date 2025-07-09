@@ -531,6 +531,9 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
 
 bool reorder_impl_t::layouts_compatible(
         const layout_t &a, const layout_t &b) const {
+    // TODO: Split huge temporary buffers.
+    if (a.type().is_x8() && b.type().is_x8()) return true;
+
     // Test to see if all of the non-size-1 blocks of the two layouts are
     // listed in the same order, ignoring strides.
     using iterator_t = decltype(a.blocks().begin());

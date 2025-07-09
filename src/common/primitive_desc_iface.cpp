@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,7 +95,11 @@ status_t dnnl_primitive_desc::create_primitive_iface(
         const cache_blob_t &cache_blob) const {
     // Step 1: create impl::primitive_t or get it from primitive cache
     std::pair<std::shared_ptr<primitive_t>, cache_state_t> p;
-    auto status = impl()->create_primitive(p, engine(), cache_blob);
+    // Top level primitive can be fetched from the primitive cache since it's
+    // fetching it faster.
+    constexpr bool force_create_from_blob = false;
+    auto status = impl()->create_primitive(
+            p, engine(), cache_blob, force_create_from_blob);
     if (status != status::success) return status;
     // Step 2: create primitive_iface_t, init and return it to user
     primitive_iface_t *p_iface = nullptr;

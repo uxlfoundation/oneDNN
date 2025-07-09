@@ -30,17 +30,7 @@ foreach(d ${DIRS})
     list(APPEND SOURCES "${d_sources}")
 endforeach()
 
-if(DNNL_EXPERIMENTAL)
-    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/v2/conv/planner/planner_main.cpp")
-else()
-    file(GLOB planner_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/v2/conv/planner/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/v2/conv/planner/*.cpp
-        )
-    foreach(s ${planner_sources})
-        list(REMOVE_ITEM SOURCES "${s}")
-    endforeach()
-endif()
+list(FILTER SOURCES EXCLUDE REGEX "planner")
 
 add_subdirectory(gemm)
 
@@ -49,7 +39,7 @@ add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
-if(DNNL_EXPERIMENTAL)
+if(DNNL_EXPERIMENTAL AND DNNL_DEV_MODE)
     add_subdirectory(v2/conv/planner)
 endif()
 

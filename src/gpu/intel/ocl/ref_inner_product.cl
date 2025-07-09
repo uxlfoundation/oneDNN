@@ -67,8 +67,7 @@ __kernel void ref_inner_product_fwd(__global SRC_DATA_T *src,
     dest_data = DST_TO_REF(dst[mb * OC + oc]);
 #endif
 
-    APPLY_POST_OPS_SERIAL_BINARY_2D(
-            tmp, DATA_T, dest_data, float, mb, 1, oc, 1);
+    APPLY_POST_OPS_SERIAL(tmp, dest_data, mb, oc, 0, 0, 0);
 
 #if WITH_DST_SCALES
     tmp /= dst_scales[0];

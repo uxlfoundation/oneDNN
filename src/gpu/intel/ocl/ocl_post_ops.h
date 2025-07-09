@@ -17,137 +17,65 @@
 #ifndef GPU_INTEL_OCL_OCL_POST_OPS_H
 #define GPU_INTEL_OCL_OCL_POST_OPS_H
 
-#if WITH_POST_OP
+#ifndef POST_OP_DATA_T
+#if DT_F64
+#define POST_OP_DATA_T double
+#else
+#define POST_OP_DATA_T float
+#endif
+#endif
 
-#include "gpu/intel/ocl/ocl_conversion.h"
+#if WITH_POST_OP
 #include "gpu/intel/ocl/ocl_eltwise.h"
 #include "gpu/intel/ocl/ocl_io.h"
 
-float fwd_Xnary(bool is_binary, unsigned algorithm, float x, float y,
-        float alpha, float beta, float scale) {
-    if (is_binary) {
-        switch (algorithm) {
-            // binary
-            case BINARY_ADD: return x + y; break;
-            case BINARY_MUL: return x * y; break;
-            case BINARY_MIN: return x < y ? x : y; break;
-            case BINARY_MAX: return x > y ? x : y; break;
-            case BINARY_DIV: return x / y; break;
-            case BINARY_SUB: return x - y; break;
-            case BINARY_GE: return x >= y; break;
-            case BINARY_GT: return x > y; break;
-            case BINARY_LE: return x <= y; break;
-            case BINARY_LT: return x < y; break;
-            case BINARY_EQ: return x == y; break;
-            case BINARY_NE: return x != y; break;
-            case RELU: // binary && relu = prelu
-                return fwd_eltwise_common(RELU, x, y, beta, scale);
-                break;
-            default: return 0.f;
-        }
-    } else { // eltwise kind
-        return fwd_eltwise_common(algorithm, x, alpha, beta, scale);
+float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
+    switch (algorithm) {
+        // binary
+        case BINARY_ADD: return x + y; break;
+        case BINARY_MUL: return x * y; break;
+        case BINARY_MIN: return x < y ? x : y; break;
+        case BINARY_MAX: return x > y ? x : y; break;
+        case BINARY_DIV: return x / y; break;
+        case BINARY_SUB: return x - y; break;
+        case BINARY_GE: return x >= y; break;
+        case BINARY_GT: return x > y; break;
+        case BINARY_LE: return x <= y; break;
+        case BINARY_LT: return x < y; break;
+        case BINARY_EQ: return x == y; break;
+        case BINARY_NE: return x != y; break;
+        case RELU: // binary && relu = prelu
+            return fwd_eltwise_common(RELU, x, y, 0.0f, 1.0f);
+            break;
+        default: return 0.f;
     }
 }
 
-#define FWD_XNARY_GENERIC_DT(is_binary, algorithm, res_ptr, arg0_ptr, \
-        arg0_len, arg1_ptr, arg1_len, alpha, beta, scale) \
+// unused arguments are maintained for interface compatibility
+#define APPLY_PO_BINARY(idx, acc, _sum_src, x0, x1, x2, x3, x4, x5) \
     { \
-        auto ty = arg0_len + arg1_len; \
-        const typeof(ty) out_len \
-                = max((typeof(ty))arg0_len, (typeof(ty))arg1_len); \
-        unroll_for(typeof(out_len + 0) idx = 0; idx < out_len; ++idx) { \
-            const int arg0_idx = arg0_len == 1 ? 0 : idx; \
-            const int arg1_idx = arg1_len == 1 ? 0 : idx; \
-            res_ptr[idx] = fwd_Xnary(is_binary, algorithm, \
-                    into_float(arg0_ptr[arg0_idx]), \
-                    into_float(arg1_ptr[arg1_idx]), alpha, beta, scale); \
-        } \
+        bool bcast0 = CONCAT3(PO_, idx, _BIN_ARG_D0) == 1; \
+        bool bcast1 = CONCAT3(PO_, idx, _BIN_ARG_D1) == 1; \
+        bool bcast2 = CONCAT3(PO_, idx, _BIN_ARG_D2) == 1; \
+        bool bcast3 = CONCAT3(PO_, idx, _BIN_ARG_D3) == 1; \
+        bool bcast4 = CONCAT3(PO_, idx, _BIN_ARG_D4) == 1; \
+        bool bcast5 = CONCAT3(PO_, idx, _BIN_ARG_D5) == 1; \
+        const auto po_off = OFF_MD(CONCAT3(PO_, idx, _BIN_ARG), \
+                bcast0 ? 0 : x0, bcast1 ? 0 : x1, bcast2 ? 0 : x2, \
+                bcast3 ? 0 : x3, bcast4 ? 0 : x4, bcast5 ? 0 : x5); \
+        POST_OP_DATA_T po_src \
+                = load(po_src, (CONCAT3(po_, idx, _binary_arg)) + po_off); \
+        acc = fwd_binary(CONCAT3(PO_, idx, _ALG), acc, po_src); \
     }
 
-#define FMA_BLOCK( \
-        block_size, nof_elems, acc_ptr, acc_elem_dt, a_ptr, a_elem_dt, b, c) \
-    unroll_for(; nof_elems >= block_size; acc_ptr += block_size, \
-               a_ptr += block_size, nof_elems -= block_size) { \
-        CONCAT2(acc_elem_dt, block_size) \
-        a_conv = CONCAT3(convert_, acc_elem_dt, block_size)( \
-                *((CONCAT2(a_elem_dt, block_size) *)a_ptr)); \
-        *((CONCAT2(acc_elem_dt, block_size) *)acc_ptr) = fma(a_conv - c, b, \
-                *((CONCAT2(acc_elem_dt, block_size) *)acc_ptr)); \
-    }
+// unused arguments are maintained for interface compatibility
+#define APPLY_PO_SUM(idx, acc, sum_src, _x0, _x1, _x2, _x3, _x4, _x5) \
+    acc += (load(acc, &sum_src) - (CONCAT3(PO_, idx, _SUM_ZP))) \
+            * CONCAT3(PO_, idx, _SUM_SCALE);
 
-#define FMA_MIXED(acc_nof_elems, a, a_elem_dt, b, acc_ptr, acc_elem_dt, c) \
-    { \
-        auto nof_elems = acc_nof_elems; \
-        a_elem_dt *a_ptr = (a_elem_dt *)(&a); \
-        FMA_BLOCK(8, nof_elems, acc_ptr, acc_elem_dt, a_ptr, a_elem_dt, b, c); \
-        FMA_BLOCK(4, nof_elems, acc_ptr, acc_elem_dt, a_ptr, a_elem_dt, b, c); \
-        FMA_BLOCK(2, nof_elems, acc_ptr, acc_elem_dt, a_ptr, a_elem_dt, b, c); \
-        if (nof_elems == 1) { *acc_ptr += (*a_ptr - c) * b; } \
-    }
-
-#define po_dt(idx) CONCAT3(PO_, idx, _BIN_ARG_ACTUAL_DATA_T)
-#define po_buf(idx) ((__global po_dt(idx) *)(CONCAT3(po_, idx, _binary_arg)))
-
-#define FILL_BIN_ARG_SERIAL(idx, dest_ptr, x0, x0_s, x1, x1_s, x2, x2_s, x3, \
-        x3_s, x4, x4_s, x5, x5_s) \
-    bool bcast0 = CONCAT3(PO_, idx, _BIN_ARG_D0) == 1; \
-    bool bcast1 = CONCAT3(PO_, idx, _BIN_ARG_D1) == 1; \
-    bool bcast2 = CONCAT3(PO_, idx, _BIN_ARG_D2) == 1; \
-    bool bcast3 = CONCAT3(PO_, idx, _BIN_ARG_D3) == 1; \
-    bool bcast4 = CONCAT3(PO_, idx, _BIN_ARG_D4) == 1; \
-    bool bcast5 = CONCAT3(PO_, idx, _BIN_ARG_D5) == 1; \
-    unroll_for(typeof(x0 + x0_s) x0_idx = x0, bin_arg_offset = 0; \
-               x0_idx < x0 + x0_s; ++x0_idx) { \
-        unroll_for(typeof(x1 + x1_s) x1_idx = x1; x1_idx < x1 + x1_s; \
-                   ++x1_idx) { \
-            unroll_for(typeof(x2 + x2_s) x2_idx = x2; x2_idx < x2 + x2_s; \
-                       ++x2_idx) { \
-                unroll_for(typeof(x3 + x3_s) x3_idx = x3; x3_idx < x3 + x3_s; \
-                           ++x3_idx) { \
-                    unroll_for(typeof(x4 + x4_s) x4_idx = x4; \
-                               x4_idx < x4 + x4_s; ++x4_idx) { \
-                        unroll_for(typeof(x5 + x5_s) x5_idx = x5; \
-                                   x5_idx < x5 + x5_s; \
-                                   ++x5_idx, ++bin_arg_offset) { \
-                            const auto bin_arg_glob_off = OFF_MD( \
-                                    CONCAT3(PO_, idx, _BIN_ARG), \
-                                    bcast0 ? 0 : x0_idx, bcast1 ? 0 : x1_idx, \
-                                    bcast2 ? 0 : x2_idx, bcast3 ? 0 : x3_idx, \
-                                    bcast4 ? 0 : x4_idx, bcast5 ? 0 : x5_idx); \
-                            dest_ptr[bin_arg_offset] = into_float( \
-                                    po_buf(idx)[bin_arg_glob_off]); \
-                        } \
-                    } \
-                } \
-            } \
-        } \
-    }
-
-// sum_args are unused and maintained for interface compatibility
-#define APPLY_PO_BINARY(idx, bin_arg_size, accumulator, _sum_arg1, _sum_arg2, \
-        _sum_arg3, x0, x0_s, x1, x1_s, x1_incr, x2, x2_s, x3, x3_s, x4, x4_s, \
-        x5, x5_s) \
-    { \
-        float bin_arg[bin_arg_size]; \
-        __private float *bin_arg_ptr = &bin_arg[0]; \
-        FILL_BIN_ARG_SERIAL(idx, bin_arg_ptr, x0, x0_s, (x1 + x1_incr), x1_s, \
-                x2, x2_s, x3, x3_s, x4, x4_s, x5, x5_s); \
-        FWD_XNARY_GENERIC_DT(true, CONCAT3(PO_, idx, _ALG), accumulator, \
-                accumulator, bin_arg_size, bin_arg_ptr, bin_arg_size, 0.0f, \
-                0.0f, 1.0f); \
-    }
-
-// VA_ARGS are unused and maintained for interface compatibility
-#define APPLY_PO_SUM( \
-        idx, acc_size, accumulator, acc_elem_dt, sum_src, sum_elem_dt, ...) \
-    FMA_MIXED(acc_size, sum_src, sum_elem_dt, CONCAT3(PO_, idx, _SUM_SCALE), \
-            accumulator, acc_elem_dt, CONCAT3(PO_, idx, _SUM_ZP));
-
-// VA_ARGS are unused and maintained for interface compatibility
-#define APPLY_PO_ELTWISE(idx, nelems, accumulator, ...) \
-    FWD_XNARY_GENERIC_DT(false, CONCAT3(PO_, idx, _ALG), accumulator, \
-            accumulator, nelems, accumulator, nelems, \
+// unused arguments are maintained for interface compatibility
+#define APPLY_PO_ELTWISE(idx, acc, _sum_src, _x0, _x1, _x2, _x3, _x4, _x5) \
+    acc = fwd_eltwise_common(CONCAT3(PO_, idx, _ALG), acc, \
             CONCAT3(PO_, idx, _ELTWISE_ALPHA), \
             CONCAT3(PO_, idx, _ELTWISE_BETA), \
             CONCAT3(PO_, idx, _ELTWISE_SCALE));
@@ -188,29 +116,18 @@ float fwd_Xnary(bool is_binary, unsigned algorithm, float x, float y,
 #define APPLY_PO_STAGE_32(...) APPLY_PO_STAGE_31(__VA_ARGS__) APPLY_PO_31(31, __VA_ARGS__)
 // clang-format on
 
-#define APPLY_ALL_PO_STAGES(accumulator, acc_elem_dt, ...) \
+#define APPLY_POST_OPS_SERIAL(result, sum_src, x0, x1, x2, x3, x4, x5) \
     { \
-        const int nelems = sizeof(accumulator) / sizeof(acc_elem_dt); \
-        acc_elem_dt *acc = (acc_elem_dt *)&accumulator; \
+        POST_OP_DATA_T acc; \
+        write(&acc, result); \
         CONCAT2(APPLY_PO_STAGE_, POST_OP_CHAIN_LENGTH) \
-        (nelems, acc, acc_elem_dt, __VA_ARGS__) \
+        (acc, sum_src, x0, x1, x2, x3, x4, x5); \
+        write(&result, acc); \
     }
 
-#define APPLY_POST_OPS_SERIAL(accumulator, acc_elem_dt, sum_src, sum_elem_dt, \
-        mb_start, mb_size, oc_start, oc_size, d2_start, d2_size, d3_start, \
-        d3_size, d4_start, d4_size, d5_start, d5_size) \
-    APPLY_ALL_PO_STAGES(accumulator, acc_elem_dt, sum_src, sum_elem_dt, \
-            mb_start, mb_size, oc_start, oc_size, 0, d2_start, d2_size, \
-            d3_start, d3_size, d4_start, d4_size, d5_start, d5_size)
-
-#define APPLY_POST_OPS_SERIAL_BINARY_2D(accumulator, acc_elem_dt, sum_src, \
-        sum_elem_dt, mb_start, mb_size, oc_start, oc_size) \
-    APPLY_ALL_PO_STAGES(accumulator, acc_elem_dt, sum_src, sum_elem_dt, \
-            mb_start, mb_size, oc_start, oc_size, 0, 0, 1, 0, 1, 0, 1, 0, 1)
 #else
 
 #define APPLY_POST_OPS_SERIAL(...)
-#define APPLY_POST_OPS_SERIAL_BINARY_2D(...)
 
 #endif // WITH_POST_OP
 

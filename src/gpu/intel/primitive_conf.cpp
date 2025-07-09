@@ -388,16 +388,33 @@ void def_block_offsets(const block_layout_t &layout,
     }
 }
 
+const char *get_type_name(data_type_t dt, bool with_punning) {
+    switch (dt) {
+        case data_type::undef: return "undef_data";
+        case data_type::bf16: return with_punning ? "ushort" : "bf16";
+        case data_type::f16: return "half";
+        case data_type::f32: return "float";
+        case data_type::f64: return "double";
+        case data_type::s8: return "char";
+        case data_type::u8: return "uchar";
+        case data_type::f8_e4m3: return with_punning ? "uchar" : "f8_e4m3";
+        case data_type::f8_e5m2: return with_punning ? "uchar" : "f8_e5m2";
+        case data_type::f4_e2m1: return with_punning ? "uchar" : "f4_e2m1";
+        case data_type::f4_e3m0: return with_punning ? "uchar" : "f4_e3m0";
+        case data_type::e8m0: return with_punning ? "uchar" : "e8m0";
+        case data_type::s4: return with_punning ? "uchar" : "s4";
+        case data_type::u4: return with_punning ? "uchar" : "u4";
+        case data_type::s32: return "int";
+        default:
+            gpu_error_not_expected()
+                    << "Unexpected data type " << dnnl_dt2str(dt);
+            return "invalid";
+    }
+}
+
 void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         const char *str, bool with_punning) {
-    const char *bf16_name = with_punning ? "ushort" : "bf16";
-    const char *bf8_name = with_punning ? "uchar" : "f8_e5m2";
-    const char *hf8_name = with_punning ? "uchar" : "f8_e4m3";
-    const char *f4_e2m1_name = with_punning ? "uchar" : "f4_e2m1";
-    const char *f4_e3m0_name = with_punning ? "uchar" : "f4_e3m0";
-    const char *e8m0_name = with_punning ? "uchar" : "e8m0";
-    const char *u4_name = with_punning ? "uchar" : "u4";
-    const char *s4_name = with_punning ? "uchar" : "s4";
+    const char *name = get_type_name(dt, with_punning);
 
     switch (dt) {
         case data_type::undef:
@@ -406,7 +423,7 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             break;
         case data_type::bf16:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_BF16", str, bf16_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_BF16", str, name, str));
             break;
         case data_type::f16:
             kernel_ctx.add_option(
@@ -430,31 +447,31 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             break;
         case data_type::f8_e4m3:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_HF8", str, hf8_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_HF8", str, name, str));
             break;
         case data_type::f8_e5m2:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_BF8", str, bf8_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_BF8", str, name, str));
             break;
         case data_type::f4_e2m1:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, f4_e2m1_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, name, str));
             break;
         case data_type::f4_e3m0:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, f4_e3m0_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, name, str));
             break;
         case data_type::e8m0:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_E8M0", str, e8m0_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_E8M0", str, name, str));
             break;
         case data_type::s4:
-            kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_S4", str, s4_name, str));
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=%s -D%s_DT_S4", str, name, str));
             break;
         case data_type::u4:
-            kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_U4", str, u4_name, str));
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=%s -D%s_DT_U4", str, name, str));
             break;
         case data_type::s32:
             kernel_ctx.add_option(
@@ -634,15 +651,14 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     bool post_op_uses_bf8 = false;
     bool post_op_uses_hf8 = false;
 
+    auto set_post_op_uses = [&](data_type_t type) {
+        post_op_uses_bf16 |= (type == data_type::bf16);
+        post_op_uses_bf8 |= (type == data_type::f8_e5m2);
+        post_op_uses_hf8 |= (type == data_type::f8_e4m3);
+    };
+
     auto add_po_defines = [&](const std::string &bin_arg_name,
                                   const post_ops_t::entry_t &e, int idx) {
-        auto define_binary_po_type = [&](data_type_t type) {
-            def_data_type(kernel_ctx, type,
-                    utils::format("%s_ACTUAL", bin_arg_name).c_str(), false);
-            post_op_uses_bf16 |= (type == data_type::bf16);
-            post_op_uses_bf8 |= (type == data_type::f8_e5m2);
-            post_op_uses_hf8 |= (type == data_type::f8_e4m3);
-        };
         if (e.is_binary()) {
             kernel_ctx.add_option(
                     "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_BINARY");
@@ -652,11 +668,11 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             const memory_desc_wrapper src1_mdw(e.binary.src1_desc);
             const auto mdi = memory_desc_info_t::create(src1_mdw);
             def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
-            define_binary_po_type(mdi.data_type);
+            set_post_op_uses(mdi.data_type);
 
-            po_kernel_args += ", const __global PO_" + std::to_string(idx)
-                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
-                    + "_binary_arg";
+            po_kernel_args += std::string(", const __global ")
+                    + get_type_name(mdi.data_type, false) + " *po_"
+                    + std::to_string(idx) + "_binary_arg";
         } else if (e.is_prelu()) {
             // binary && eltwise relu = prelu post op
             kernel_ctx.add_option(
@@ -672,12 +688,9 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             const auto mdi = memory_desc_info_t::create(weight_mdw);
             def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
 
-            // prelu weights are assumed to be f32
-            define_binary_po_type(data_type::f32);
-
-            po_kernel_args += ", const __global PO_" + std::to_string(idx)
-                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
-                    + "_binary_arg";
+            po_kernel_args += std::string(", const __global ")
+                    + get_type_name(mdi.data_type, false) + " *po_"
+                    + std::to_string(idx) + "_binary_arg";
         } else if (e.is_eltwise()) {
             kernel_ctx.add_option(
                     "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_ELTWISE");

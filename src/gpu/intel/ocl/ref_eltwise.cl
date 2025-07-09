@@ -76,8 +76,7 @@ __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
     load(dst_data, dst + data_off);
 #endif
 
-    APPLY_POST_OPS_SERIAL(tmp_s, float, dst_data, float, d0, 1, d1, 1, d2, 1,
-            d3, 1, d4, 1, d5, 1);
+    APPLY_POST_OPS_SERIAL(tmp_s, dst_data, d0, d1, d2, d3, d4, d5);
     write(dst + data_off, tmp_s);
 }
 

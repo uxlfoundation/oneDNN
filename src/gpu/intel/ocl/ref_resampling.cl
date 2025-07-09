@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,8 +95,7 @@ __kernel void ref_resampling_fwd(
     const unsigned po_d3 = 0;
     const unsigned po_d4 = 0;
 #endif
-    APPLY_POST_OPS_SERIAL(result, float, sum_src, float, mb, 1, c, 1, po_d2, 1,
-            po_d3, 1, po_d4, 1, 0, 1);
+    APPLY_POST_OPS_SERIAL(result, sum_src, mb, c, po_d2, po_d3, po_d4, 0);
     dst[dst_index] = TO_DST(result);
 }
 #endif

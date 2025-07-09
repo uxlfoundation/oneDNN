@@ -203,14 +203,12 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
     if (po_oc < C_WO_PADDING) {
         POST_OP_DATA_T po_sum0 = DATA_TO_REF(sum0);
         float po_D0 = USE_FLOATS ? D0 : CONVERT_FLOAT_T(D0);
-        APPLY_POST_OPS_SERIAL_BINARY_2D(
-                po_D0, float, po_sum0, POST_OP_DATA_T, po_mb, 1, po_oc, 1);
+        APPLY_POST_OPS_SERIAL(po_D0, po_sum0, po_mb, po_oc, 0, 0, 0, 0);
         D0 = USE_FLOATS ? po_D0 : CONVERT_DATA_T(po_D0);
 
         POST_OP_DATA_T po_sum1 = DATA_TO_REF(sum1);
         float po_D1 = USE_FLOATS ? D1 : CONVERT_FLOAT_T(D1);
-        APPLY_POST_OPS_SERIAL_BINARY_2D(
-                po_D1, float, po_sum1, POST_OP_DATA_T, po_mb, 1, po_oc, 1);
+        APPLY_POST_OPS_SERIAL(po_D1, po_sum1, po_mb, po_oc, 0, 0, 0, 0);
         D1 = USE_FLOATS ? po_D1 : CONVERT_DATA_T(po_D1);
     }
 
@@ -232,8 +230,7 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
             D0[idx] = 0;
             WS0[idx] = 0;
         } else {
-            APPLY_POST_OPS_SERIAL_BINARY_2D(
-                    d0_i, float, sum0_i, POST_OP_DATA_T, po_mb, 1, po_oc, 1);
+            APPLY_POST_OPS_SERIAL(d0_i, sum0_i, po_mb, po_oc, 0, 0, 0, 0);
             D0[idx] = USE_FLOATS ? d0_i : CONVERT_DATA_T(d0_i);
         }
 
@@ -251,8 +248,7 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
             D1[idx] = 0;
             WS1[idx] = 0;
         } else {
-            APPLY_POST_OPS_SERIAL_BINARY_2D(
-                    d1_i, float, sum1_i, POST_OP_DATA_T, po_mb, 1, po_oc, 1);
+            APPLY_POST_OPS_SERIAL(d1_i, sum1_i, po_mb, po_oc, 0, 0, 0, 0);
             D1[idx] = USE_FLOATS ? d1_i : CONVERT_DATA_T(d1_i);
         }
     }

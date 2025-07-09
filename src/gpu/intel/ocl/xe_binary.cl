@@ -128,9 +128,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     unroll_for(unsigned idx = 0; idx < NVECT; ++idx) {
         float d_i = tmp[idx];
         float dst_i = dst_data[idx];
-        APPLY_POST_OPS_SERIAL(d_i, float, dst_i, float, po_dims0[0], 1,
-                po_dims0[1], 1, po_dims0[2], 1, po_dims0[3], 1, po_dims0[4], 1,
-                po_dims0[5], 1);
+        APPLY_POST_OPS_SERIAL(d_i, dst_i, po_dims0[0], po_dims0[1], po_dims0[2],
+                po_dims0[3], po_dims0[4], po_dims0[5]);
         tmp[idx] = d_i;
         po_dims0[NDIMS - 1] += SUB_GROUP_SIZE;
     }
@@ -245,8 +244,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
             res = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
 #endif
 
-            APPLY_POST_OPS_SERIAL(res, float, dst_data, float, d0 + d0_i, 1,
-                    d1 + d1_i, 1, d2, 1, d3 + sglid, 1, d4, 1, d5, 1);
+            APPLY_POST_OPS_SERIAL(res, dst_data, d0 + d0_i, d1 + d1_i, d2,
+                    d3 + sglid, d4, d5);
 
             res_buf[i] = TO_DST(res);
             ++i;
@@ -340,9 +339,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
                 } else {
                     float d_i = d[lcl_mb];
                     float dst_i = dst_data[lcl_mb];
-                    APPLY_POST_OPS_SERIAL(d_i, float, dst_i, float,
-                            po_mb + lcl_mb, 1, po_oc, 1, dims0[2], 1, dims0[3],
-                            1, dims0[4], 1, dims0[5], 1);
+                    APPLY_POST_OPS_SERIAL(d_i, dst_i, po_mb + lcl_mb, po_oc,
+                            dims0[2], dims0[3], dims0[4], dims0[5]);
                     d[lcl_mb] = d_i;
                 }
             }
@@ -445,14 +443,14 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     const int po_mb = dims0[0];
     const int po_oc = dims0[1] + get_sub_group_local_id();
 #if NVECT == 1
-    APPLY_POST_OPS_SERIAL(d, float, dst_data, float, po_mb, 1, po_oc, 1,
-            dims0[2], 1, dims0[3], 1, dims0[4], 1, dims0[5], 1);
+    APPLY_POST_OPS_SERIAL(
+            d, dst_data, po_mb, po_oc, dims0[2], dims0[3], dims0[4], dims0[5]);
 #else
     for (int vidx = 0; vidx < NVECT; ++vidx) {
         float d_i = d[vidx];
         float dst_i = dst_data[vidx];
-        APPLY_POST_OPS_SERIAL(d_i, float, dst_i, float, po_mb, 1, po_oc, 1,
-                dims0[2], 1, dims0[3], 1, dims0[4], 1, dims0[5], 1);
+        APPLY_POST_OPS_SERIAL(d_i, dst_i, po_mb, po_oc, dims0[2], dims0[3],
+                dims0[4], dims0[5]);
         d[vidx] = d_i;
         ++dims0[NDIMS - 1];
     }
@@ -531,8 +529,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 #endif
         const int po_mb = dims0[0];
         const int po_oc = dims0[1] + get_sub_group_local_id();
-        APPLY_POST_OPS_SERIAL(d, float, dst_data, float, po_mb, 1, po_oc, 1,
-                dims0[2], 1, dims0[3], 1, dims0[4], 1, dims0[5], 1);
+        APPLY_POST_OPS_SERIAL(d, dst_data, po_mb, po_oc, dims0[2], dims0[3],
+                dims0[4], dims0[5]);
         ++dims0[NDIMS - 1];
 
         DST_BLOCK_WRITE(&dst[local_channel + sub_group_size * idx], TO_DST(d));

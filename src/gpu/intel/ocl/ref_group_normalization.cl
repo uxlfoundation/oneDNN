@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -135,18 +135,17 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
 
 // the macro changes meaning of the input parameters with diffrent ndims
 #if NDIMS == 3
-            APPLY_POST_OPS_SERIAL(result_val, GNORM_ACC, post_op_acc, GNORM_ACC,
-                    id_batch, 1, channel, 1, width, 1, 0, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(
+                    result_val, post_op_acc, id_batch, channel, width, 0, 0, 0);
 #elif NDIMS == 4
-            APPLY_POST_OPS_SERIAL(result_val, GNORM_ACC, post_op_acc, GNORM_ACC,
-                    id_batch, 1, channel, 1, height, 1, width, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(result_val, post_op_acc, id_batch, channel,
+                    height, width, 0, 0);
 #elif NDIMS == 5
-            APPLY_POST_OPS_SERIAL(result_val, GNORM_ACC, post_op_acc, GNORM_ACC,
-                    id_batch, 1, channel, 1, depth, 1, height, 1, width, 1, 0,
-                    1);
+            APPLY_POST_OPS_SERIAL(result_val, post_op_acc, id_batch, channel,
+                    depth, height, width, 0);
 #else
-            APPLY_POST_OPS_SERIAL(result_val, GNORM_ACC, post_op_acc, GNORM_ACC,
-                    id_batch, 1, channel, 1, 0, 1, 0, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(
+                    result_val, post_op_acc, id_batch, channel, 0, 0, 0, 0);
 #endif
             result_val *= r_dst_scale_val;
 

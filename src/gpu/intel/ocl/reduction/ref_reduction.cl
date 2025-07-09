@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -105,8 +105,7 @@ __kernel void ref_reduce(
     dst_val = DST_TO_REF(dst[dst_off]);
 #endif
 
-    APPLY_POST_OPS_SERIAL(res, float, dst_val, float, d0, 1, d1, 1, d2, 1, d3,
-            1, d4, 1, d5, 1);
+    APPLY_POST_OPS_SERIAL(res, dst_val, d0, d1, d2, d3, d4, d5);
 
     dst[dst_off] = TO_DST(res);
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -183,8 +183,7 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
     const unsigned po_d3 = 0;
     const unsigned po_d4 = 0;
 #endif
-    APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T, mb, 1,
-            oc, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+    APPLY_POST_OPS_SERIAL(tmp, sum_src, mb, oc, po_d2, po_d3, po_d4, 0);
 
     // store result
 #if DT_F64

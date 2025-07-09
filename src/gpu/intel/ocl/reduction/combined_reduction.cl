@@ -306,9 +306,8 @@ combined_reduce(
             if (idxs[0] < DST_D0 && idxs[1] < DST_D1 && idxs[2] < DST_D2
                     && idxs[3] < DST_D3 && idxs[4] < DST_D4
                     && idxs[5] < DST_D5) {
-                APPLY_POST_OPS_SERIAL(res, float, dst_val, float, idxs[0], 1,
-                        idxs[1], 1, idxs[2], 1, idxs[3], 1, idxs[4], 1, idxs[5],
-                        1);
+                APPLY_POST_OPS_SERIAL(res, dst_val, idxs[0], idxs[1], idxs[2],
+                        idxs[3], idxs[4], idxs[5]);
             }
 #endif
             if (is_dst_zero_padded(dst_off)) res = 0.0f;

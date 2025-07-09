@@ -221,20 +221,15 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
 
         if (DST_NDIMS == 2)
-            APPLY_POST_OPS_SERIAL(po_acc, float, dst_data, float, m, 1, n, 1, 0,
-                    1, 0, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(po_acc, dst_data, m, n, 0, 0, 0, 0);
         if (DST_NDIMS == 3)
-            APPLY_POST_OPS_SERIAL(po_acc, float, dst_data, float, d0, 1, m, 1,
-                    n, 1, 0, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(po_acc, dst_data, d0, m, n, 0, 0, 0);
         if (DST_NDIMS == 4)
-            APPLY_POST_OPS_SERIAL(po_acc, float, dst_data, float, d1, 1, d0, 1,
-                    m, 1, n, 1, 0, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(po_acc, dst_data, d1, d0, m, n, 0, 0);
         if (DST_NDIMS == 5)
-            APPLY_POST_OPS_SERIAL(po_acc, float, dst_data, float, d2, 1, d1, 1,
-                    d0, 1, m, 1, n, 1, 0, 1);
+            APPLY_POST_OPS_SERIAL(po_acc, dst_data, d2, d1, d0, m, n, 0);
         if (DST_NDIMS == 6)
-            APPLY_POST_OPS_SERIAL(po_acc, float, dst_data, float, d3, 1, d2, 1,
-                    d1, 1, d0, 1, m, 1, n, 1);
+            APPLY_POST_OPS_SERIAL(po_acc, dst_data, d3, d2, d1, d0, m, n);
 
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0

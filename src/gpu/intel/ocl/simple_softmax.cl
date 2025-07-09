@@ -158,8 +158,8 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         const unsigned po_d3 = GET_DATA_IDX(3);
         const unsigned po_d4 = GET_DATA_IDX(4);
 
-        APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T,
-                po_d0, 1, po_d1, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+        APPLY_POST_OPS_SERIAL(
+                tmp, sum_src, po_d0, po_d1, po_d2, po_d3, po_d4, 0);
 #undef GET_DATA_IDX
 
 #if WITH_DST_SCALES

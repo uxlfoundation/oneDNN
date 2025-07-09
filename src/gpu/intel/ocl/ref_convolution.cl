@@ -154,8 +154,7 @@ __kernel void ref_convolution_fwd(
     tmp = stochastic_round_fwd(
             tmp, DST_OFF(n, g * OC + oc, od, oh, ow), sround_seed);
 #endif
-    APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T, n, 1,
-            g * OC + oc, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+    APPLY_POST_OPS_SERIAL(tmp, sum_src, n, g * OC + oc, po_d2, po_d3, po_d4, 0);
 
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
@@ -274,8 +273,7 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
     const unsigned po_d3 = 0;
     const unsigned po_d4 = 0;
 #endif
-    APPLY_POST_OPS_SERIAL(tmp, POST_OP_DATA_T, sum_src, POST_OP_DATA_T, n, 1,
-            g * IC + ic, 1, po_d2, 1, po_d3, 1, po_d4, 1, 0, 1);
+    APPLY_POST_OPS_SERIAL(tmp, sum_src, n, g * IC + ic, po_d2, po_d3, po_d4, 0);
 
 #if WITH_DST_SCALES
     tmp /= dst_scales[0];

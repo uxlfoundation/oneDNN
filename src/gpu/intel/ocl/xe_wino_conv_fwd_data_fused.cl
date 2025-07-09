@@ -613,8 +613,15 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                 }
             }
 
-            APPLY_POST_OPS_SERIAL(C, DATA_T, S, DATA_T, mb, 1, oc,
-                    COMP_OC_COUNT, oh, WINO_M, ow, OUT_TYPE_BLOCK, 0, 1, 0, 1);
+            for_(int oc_block = 0; oc_block < COMP_OC_COUNT; oc_block++)
+            for_(int oh_block = 0; oh_block < WINO_M; oh_block++)
+            for (int ow_block = 0; ow_block < OUT_TYPE_BLOCK; ow_block++) {
+                DATA_T C_elem = C[oc_block][oh_block][ow_block];
+                DATA_T S_elem = S[oc_block][oh_block][ow_block];
+                APPLY_POST_OPS_SERIAL(C_elem, S_elem, mb, oc + oc_block,
+                        oh + oh_block, ow + ow_block, 0, 0);
+                C[oc_block][oh_block][ow_block] = C_elem;
+            }
         }
 
         unroll_for(int oc_off = 0; oc_off < COMP_OC_COUNT; oc_off++) {

@@ -50,8 +50,7 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
     dst_data = CONVERT_FLOAT_T(dst[off]);
 #endif
 
-    APPLY_POST_OPS_SERIAL(
-            d, float, dst_data, float, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    APPLY_POST_OPS_SERIAL(d, dst_data, 0, 0, 0, 0, 0, 0);
     dst[off] = TO_DST(d);
 }
 #else
@@ -146,9 +145,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 #if WITH_SUM
             dst_data = CONVERT_FLOAT_T(dst[dst_off]);
 #endif
-            APPLY_POST_OPS_SERIAL(d, float, dst_data, float, dims0_po[0], 1,
-                    dims0_po[1], 1, dims0_po[2], 1, dims0_po[3], 1, dims0_po[4],
-                    1, dims0_po[5], 1);
+            APPLY_POST_OPS_SERIAL(d, dst_data, dims0_po[0], dims0_po[1],
+                    dims0_po[2], dims0_po[3], dims0_po[4], dims0_po[5]);
 
             dst[dst_off] = TO_DST(d);
 
@@ -189,9 +187,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 #if WITH_SUM
             dst_data = CONVERT_FLOAT_T(dst[dst_off]);
 #endif
-            APPLY_POST_OPS_SERIAL(d, float, dst_data, float, dims0_po[0], 1,
-                    dims0_po[1], 1, dims0_po[2], 1, dims0_po[3], 1, dims0_po[4],
-                    1, dims0_po[5], 1);
+            APPLY_POST_OPS_SERIAL(d, dst_data, dims0_po[0], dims0_po[1],
+                    dims0_po[2], dims0_po[3], dims0_po[4], dims0_po[5]);
 
             dst[dst_off] = TO_DST(d);
 

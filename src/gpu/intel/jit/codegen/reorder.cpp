@@ -485,9 +485,9 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         return plan.newTemp(dt, elems, 1);
     };
 
-    const bool direct_copy = layouts_compatible(src_layout_, dst_layout_);
     auto src_op = init_operand(src_layout_, from_rd(src));
     auto dst_op = init_operand(dst_layout_, from_rd(dst));
+    const bool direct_copy = layouts_compatible(src_op.layout, dst_op.layout);
 
     const auto &src_dt = src_op.layout.type();
     const auto &dst_dt = dst_op.layout.type();
@@ -495,8 +495,11 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
 
     const bool do_pre_conv = src_dt != tmp_dt;
     const bool do_post_conv = dst_dt != tmp_dt;
-    // Only support w->w, w->d, d->d type sizes for in-place conversion
-    const bool in_place = dst_dt.size() >= tmp_dt.size() && (dst_dt.size() & 6);
+    // XeHPC+ uses a word-sized channel intermediate for u8<->s8, so even
+    // "in-place" conversion would require a larger buffer than either operand
+    const int size_mask = hw_ < ngen::HW::XeHPC ? 7 : 6;
+    const bool in_place = dst_dt.size() >= tmp_dt.size()
+            && (dst_dt == tmp_dt || dst_dt.size() & size_mask);
     layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
     layout_t down_layout = in_place
             ? make_retyped_layout(dst_op.layout, tmp_dt)
@@ -530,9 +533,6 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
 
 bool reorder_impl_t::layouts_compatible(
         const layout_t &a, const layout_t &b) const {
-    // TODO: Split huge temporary buffers.
-    if (a.type().is_x8() && b.type().is_x8()) return true;
-
     // Test to see if all of the non-size-1 blocks of the two layouts are
     // listed in the same order, ignoring strides.
     using iterator_t = decltype(a.blocks().begin());

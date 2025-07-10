@@ -551,9 +551,9 @@ private:
         cond &= (kw == 0);
         cond &= (ic == 0);
         loop_kind_t filter = loop_kind_t::kernel_grid;
-        if (!plan_.slm.has_b()) filter = filter | loop_kind_t::tg_grid;
+        if (!plan_.slm.x_reduce) filter = filter | loop_kind_t::tg_grid;
         cond = gemm_schedule.expand(cond, /*expand_trivial_vars=*/true, filter);
-        if (plan_.slm.has_b()) {
+        if (plan_.slm.x_reduce) {
             cond = add_grid_guard(
                     cond, cfg_.thread_group_grid(), plan_.slm.b_grid);
         }

@@ -27,6 +27,90 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+// AVX2-specific performance helper for brgemm_dst_layer_iter_t.
+// This is an heuristic class that provides performance estimation.
+// Time is supposed to be measured in milliseconds, but the actual performance
+// may vary. The results of functions iter_time_estimation and multithreading_overhead
+// should be consistent.
+struct brgemm_dst_iter_avx2_perf_t {
+    // Returns the number of threads to use for a given workload
+    static dim_t nthr_to_use(
+            double total_calculation_time, int work_amount, int max_nthr) {
+        const bool use_mt = total_calculation_time
+                        * (work_amount - div_up(work_amount, max_nthr))
+                > multithreading_overhead(max_nthr) * work_amount;
+        return use_mt ? max_nthr : 1;
+    }
+
+    // Estimates the time for a single iteration of the brgemm_dst_layer_iter_t.
+    // Returns true if the estimation is available, false otherwise.
+    // The estimation value is returned in @p time.
+    // This is a template function that should be specialized for supported data types.
+    template <typename src_type, typename weights_type>
+    static bool iter_time_estimation(
+            const rnn_utils::rnn_conf_t &rnn, double &time) {
+        // Time estimation is not available by default.
+        return false;
+    }
+
+private:
+    // Multithreading overhead estimation based on the number of threads.
+    // This is a heuristic function that provides an estimation of the overhead
+    // associated with multithreading. The estimation is based on empirical data.
+    static double multithreading_overhead(int nthr) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
+        if (nthr <= 1)
+            return 0.f;
+        else if (nthr <= 6)
+            return 2.1e-4 * nthr - 2.61e-4;
+        else
+            return 7.68e-5 * nthr + 5.72e-4;
+#else
+        // TODO: add estimation for other cases
+        return 0.0;
+#endif
+    }
+};
+
+// The current implementation supports only cases with need_gemm_layer_==false
+// (see brgemm_dst_layer_iter_t class) that implies rnn.merge_gemm_layer==true and
+// rnn.mb==1. Condition rnn.merge_gemm_layer==true implies cell types are VANILLA_LSTM
+// or LBR_GRU. VANILLA_LSTM with rnn.mb==1 implies rnn.unfused_post_gemm==true so
+// estimation of "post gemm" calculations is not required.
+// The number of gates is included in coefficients.
+
+template <>
+bool brgemm_dst_iter_avx2_perf_t::iter_time_estimation<uint8_t, int8_t>(
+        const rnn_utils::rnn_conf_t &rnn, double &time) {
+    if (rnn.cell_kind == alg_kind::vanilla_lstm && rnn.M == 1
+            && rnn.unfused_post_gemm) {
+        time = (rnn.N * rnn.K2) * 3.25e-8;
+        return true;
+    }
+
+    return false;
+}
+
+template <>
+bool brgemm_dst_iter_avx2_perf_t::iter_time_estimation<float, float>(
+        const rnn_utils::rnn_conf_t &rnn, double &time) {
+    if (rnn.cell_kind == alg_kind::vanilla_lstm) {
+        if (rnn.M == 1 && rnn.unfused_post_gemm) {
+            time = (rnn.N * rnn.K2) * 1.2e-7;
+            return true;
+        }
+    } else if (rnn.cell_kind == alg_kind::lbr_gru) {
+        if (rnn.M == 1 && !rnn.unfused_post_gemm) {
+            const double U_mult_time = (rnn.N * rnn.K2) * 8.5e-8;
+            const double post_gemm_time = rnn.N * 3.9e-6;
+            time = U_mult_time + post_gemm_time;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
 brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
@@ -51,7 +135,6 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , C_cell_(scratch_cell)
     , LDAl_(rnn_.src_layer_ld(cell_position))
     , LDAi_(rnn_.src_iter_ld(cell_position))
-    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
@@ -103,7 +186,8 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_(fused_postgemm)
     , is_fused_layer_iter_brgemm_(!rnn_.is_lbr && rnn_.sic == rnn_.slc
-              && LDAi_ == LDAl_ && need_gemm_layer_) {}
+              && LDAi_ == LDAl_ && need_gemm_layer_)
+    , max_nthr_(calculate_nthr()) {}
 
 template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
@@ -118,6 +202,21 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
             this->kernel(ithr, nthr);
         });
     }
+}
+
+template <typename src_t, typename weights_t, typename scratch_t,
+        typename gemm_acc_t>
+int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
+        gemm_acc_t>::calculate_nthr() const {
+    const auto max_nthr = nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
+    if (!need_gemm_layer_ && rnn_.brgemm_isa == x64::avx2) {
+        double time = 0.0;
+        if (brgemm_dst_iter_avx2_perf_t::iter_time_estimation<src_t, weights_t>(
+                    rnn_, time))
+            return brgemm_dst_iter_avx2_perf_t::nthr_to_use(
+                    time, work_amount_, max_nthr);
+    }
+    return max_nthr;
 }
 
 template <typename src_t, typename weights_t, typename scratch_t,

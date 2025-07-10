@@ -218,6 +218,8 @@ public:
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };
 
+    ngen::GRF r0_info = ngen_generator_t::r0;
+
     void generate_prologue() {
         ngen_generator_t::setDefaultNoMask();
         ngen_generator_t::setDefaultAutoSWSB(true);
@@ -226,11 +228,24 @@ public:
 
         // Claim registers.
         ra_.claim(ngen_generator_t::r0);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 3; i++) {
             ra_.claim(ngen_generator_t::getLocalID(i));
+            ra_.claim(ngen_generator_t::getLocalSize(i));
+        }
 
         for (int i = 0; i < kernel_iface_.nargs(); i++) {
             ra_.claim(ngen_generator_t::getArgument(kernel_iface_.arg_name(i)));
+        }
+
+        // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
+        // suppression bug results in incorrect results when using r0. This
+        // disables the use of r0 to avoid the issue.
+        if (utils::one_of(getProductFamily(), ngen::ProductFamily::MTL,
+                    ngen::ProductFamily::ARL)) {
+            r0_info = ra_.alloc();
+            int grf_size = ngen::GRF::bytes(getHardware());
+            ra_.claim(r0_info);
+            mov(grf_size / 4, r0_info.ud(), r0.ud());
         }
 
         if (emu_strategy.emulate64) {
@@ -256,9 +271,7 @@ public:
         for (int i = 0; i < 3; i++) {
             auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
             if (!tg_idx.is_empty()) {
-                auto tmp = ra_.template alloc_sub<int32_t>();
-                mov(1, tmp, ngen_generator_t::r0.ud(r0_sub_idxs[i]));
-                expr_binding.bind(tg_idx, tmp);
+                expr_binding.bind(tg_idx, r0_info.ud(r0_sub_idxs[i]));
             }
         }
 
@@ -389,7 +402,8 @@ public:
     void bind_kernel_grid_walk_order(
             const walk_order_t &walk_order, expr_binding_t &expr_binding) {
         const int grid_ndims = 3;
-        ngen::Subregister grid_ids[grid_ndims] = {r0.ud(1), r0.ud(6), r0.ud(7)};
+        ngen::Subregister grid_ids[grid_ndims]
+                = {r0_info.ud(1), r0_info.ud(6), r0_info.ud(7)};
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
             std::unordered_map<pvar_t, int> dim_map;
@@ -423,7 +437,7 @@ public:
     }
 
     void generate_epilogue() {
-        ngen_generator_t::epilogue();
+        ngen_generator_t::epilogue(r0_info);
         pad_kernel();
     }
 
@@ -1265,16 +1279,19 @@ public:
 
     int getSIMD() const { return interface_.getSIMD(); }
     void prologue() { interface_.generatePrologue(*this); }
-    void epilogue() {
+    void epilogue(ngen::RegData r0_info) {
         int GRFCount = interface_.getGRFCount();
         bool hasSLM = (interface_.getSLMSize() > 0);
-        epilogue(GRFCount, hasSLM, r0);
+        epilogue(GRFCount, hasSLM, r0_info);
     }
 
     ngen::Subregister getArgument(const std::string &name) const {
         return interface_.getArgument(name);
     }
     ngen::GRF getLocalID(int dim) const { return interface_.getLocalID(dim); }
+    ngen::Subregister getLocalSize(int dim) const {
+        return interface_.getLocalSize(dim);
+    }
     std::string str() {
         std::ostringstream oss;
         getCode(oss);

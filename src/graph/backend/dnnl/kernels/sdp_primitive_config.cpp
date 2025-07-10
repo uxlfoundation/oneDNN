@@ -250,6 +250,17 @@ status_t sdp_primitive_config_t::initial_check(
                 // Scale exists, update post_op and traverse to next op
                 scale = post_op;
                 post_op = get_post_op(post_op);
+                // Sdpa primitive does not support host scale. Check both inputs
+                // as we are not sure which one is the scale input.
+                const auto &lt_s0
+                        = scale->get_input_value(0)->get_logical_tensor();
+                const auto &lt_s1
+                        = scale->get_input_value(1)->get_logical_tensor();
+                if (ltw(lt_s0).property_type() == property_type::host_scalar
+                        || ltw(lt_s1).property_type()
+                                == property_type::host_scalar)
+                    return status::unimplemented;
+
                 const auto &lt_ss
                         = scale->get_output_value(0)->get_logical_tensor();
                 f32_inter = f32_inter

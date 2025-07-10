@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -155,5 +155,22 @@ TEST(APITensor, CreateWithLogicalTensorS8) {
 
     ASSERT_EQ(t.get_data_handle(), nullptr);
     ASSERT_EQ(t.get_engine().get_kind(), dnnl::engine::kind::cpu);
+}
+
+TEST(APITensor, CreateScalarTensor) {
+    using namespace dnnl::graph;
+
+    auto lt = logical_tensor(0, logical_tensor::data_type::f32, 0,
+            logical_tensor::layout_type::strided,
+            logical_tensor::property_type::host_scalar);
+
+    float scalar = 0.25f;
+    // success
+    EXPECT_NO_THROW(tensor::make_scalar_tensor(lt, &scalar));
+
+    // fail
+    lt = logical_tensor(0, logical_tensor::data_type::f32, 0,
+            logical_tensor::layout_type::strided);
+    EXPECT_THROW(tensor::make_scalar_tensor(lt, &scalar), dnnl::error);
 }
 #endif

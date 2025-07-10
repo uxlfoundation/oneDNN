@@ -21,62 +21,36 @@
 # Usage example inside GitHub Actions:
 #   .github/automation/performance/run_benchdnn_compare.sh \
 #       "${BASE_BIN}" "${NEW_BIN}" "${CMD_ORIG}" "${THREADS:-16}"
-#
+
 set -euo pipefail
 
-BASE_BIN=$1       # path to baseline benchdnn binary
-NEW_BIN=$2        # path to new benchdnn binary
-CMD_ORIG=$3       # full benchdnn command as a single string
-THREADS=${4:-16}  # OMP threads (default: 16)
-REPS=${5:-5}      # repetitions (default: 5)
+BASE_BINARY=$1
+NEW_BINARY=$2
+CMD_STR=$3
+THREADS=${4:-16}
+REPS=5
+PERF='--perf-template=%prb%,%-time%,%-ctime%'
+MODE='--mode=P'
 
-# Prepend this to every run (includes mode=P and perf-template)
-PERF="--mode=P --perf-template=%prb%,%-time%,%-ctime%"
+read -ra TOKENS <<< "$CMD_STR"
+FINAL_ARGS=()
+if [[ "$CMD_STR" != *"$MODE"* ]]; then
+  FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${MODE}" "${TOKENS[@]:1}")
+else
+  FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${TOKENS[@]:1}")
+fi
 
-# Build final args
-read -ra FINAL_ARGS <<< "$PERF $CMD_ORIG"
-
-echo "Final arguments:"
-printf '  %s\n' "${FINAL_ARGS[@]}"
-echo "Threads: $THREADS | Repetitions: $REPS"
-echo
-
-# Run benchdnn on baseline
-echo "Running BASE_BIN: $BASE_BIN"
-ls -l "$BASE_BIN" || { echo "::error::Baseline binary not found"; exit 1; }
-echo "Working directory: $PWD"
-
-: > base.txt
-for ((i=1; i<=REPS; i++)); do
-  echo "[base] iteration $i / $REPS"
-  OMP_NUM_THREADS=$THREADS "$BASE_BIN" "${FINAL_ARGS[@]}" >> base.txt 2>&1
-  rc=$?
-
-  if [[ $rc -ne 0 ]]; then
-    echo "::error::baseline benchdnn failed (exit code $rc)"
-    echo "Dumping base.txt:"
-    cat base.txt || echo "(base.txt is empty)"
-    exit $rc
-  fi
+for i in $(seq 1 "$REPS"); do
+  echo "Running base iteration $i..."
+  OMP_NUM_THREADS="$THREADS" "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
 done
 
-# Run benchdnn on new build
-: > new.txt
-for ((i=1; i<=REPS; i++)); do
-  echo "[new ] iteration $i / $REPS"
-  OMP_NUM_THREADS=$THREADS "$NEW_BIN" "${FINAL_ARGS[@]}" >> new.txt 2>&1
-  rc=$?
-
-  if [[ $rc -ne 0 ]]; then
-    echo "::error::new benchdnn failed (exit code $rc)"
-    echo "Dumping new.txt:"
-    cat new.txt || echo "(new.txt is empty)"
-    exit $rc
-  fi
+for i in $(seq 1 "$REPS"); do
+  echo "Running new iteration $i..."
+  OMP_NUM_THREADS="$THREADS" "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
 done
 
-echo "===== base.txt ====="
-cat base.txt || echo "(empty)"
-
-echo "===== new.txt ====="
-cat new.txt || echo "(empty)"
+echo "base.txt"
+cat base.txt || echo "base.txt is empty"
+echo "new.txt"
+cat new.txt || echo "new.txt is empty"

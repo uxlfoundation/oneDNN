@@ -204,7 +204,7 @@ jobs:
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
             "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn"  \
             "${{ inputs.benchdnn_command }}"                                    \
-            "${{ inputs.num_threads || 16 }}"
+            "${{ inputs.num_threads }}"
 
       - name: Print speed comparisons
         if: ${{ inputs.benchdnn_command != '' }}

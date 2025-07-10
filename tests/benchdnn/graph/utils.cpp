@@ -656,7 +656,8 @@ bool is_contiguous_memory(const dnnl::graph::logical_tensor::dims &strides,
 
     dnnl_dim_t s = 1;
     for (size_t i = 0; i < ndims; ++i) {
-        size_t adim = real_tag[ndims - 1 - i] - 'a';
+        int adim = real_tag[ndims - 1 - i] - static_cast<int>('a');
+        if (adim < 0 || adim >= static_cast<int>(strides.size())) return false;
         if (strides[adim] != s) return false;
         s *= (shape[adim] == 0 ? 1 : shape[adim]);
     }

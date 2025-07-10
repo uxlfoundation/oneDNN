@@ -106,6 +106,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
                 = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
                         this, jpp.post_ops, bsp);
     }
+    io::io_conf_t io_conf;
 
     io::io_tail_conf_t io_tail_conf(jpp.c_block, tail_size,
             k_c_tail_mask.getIdx(), vmm_c_tail_mask.getIdx(), tmp_gpr);
@@ -133,13 +134,20 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     if (jpp.needs_f32_accum_for_bf16) dtypes.insert(data_type::f32);
 
     typename io_mdt_helper::saturation_map_t saturation_confs;
-    if (dtypes.count(data_type::u8)) {
-        saturation_confs[data_type::u8]
-                = io::io_saturation_conf_t(0, 1, tmp_gpr);
+    if (jpp.dst_dt == data_type::u8) {
+
+        uni_vxorps(vmm_zero, vmm_zero, vmm_zero);
+        mov(tmp_gpr, float2int(255.0f));
+        uni_vmovq(xmm_tmp, tmp_gpr);
+        uni_vbroadcastss(vmm_saturation_ubound, xmm_tmp);
+
+        io::io_saturation_conf_t io_saturation_conf(
+                vmm_zero.getIdx(), vmm_saturation_ubound.getIdx(), tmp_gpr);
+        saturation_confs.insert({data_type::u8, io_saturation_conf});
     }
 
-    io_ = io_mdt_helper(this, jpp.isa, dtypes, {}, io_tail_conf, io_bf16_conf,
-            saturation_confs, utils::nullopt, io_fp8_conf);
+    io_ = io_mdt_helper(this, jpp.isa, dtypes, io_conf, io_tail_conf,
+            io_bf16_conf, saturation_confs, utils::nullopt, io_fp8_conf);
 }
 
 static status_t set_binary_postops_formats(

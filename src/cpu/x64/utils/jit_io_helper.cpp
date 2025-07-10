@@ -927,7 +927,6 @@ void jit_io_helper_t<Vmm>::store_i8(
             store_i8_fn(src_xmm, src_vmm);
             host_->uni_vmovntps(dst_addr, src_xmm);
         } else {
-            host_->vcvtps2dq(src_vmm, src_vmm);
             store_i8_fn(dst_addr, src_vmm);
         }
     }

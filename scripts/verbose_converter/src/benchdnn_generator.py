@@ -63,11 +63,11 @@ class Converter(metaclass=ConverterMeta):
 
     @staticmethod
     def _get_policies():
-        return "common", "per_oc"
+        return "common", "per_oc", "per_ocic"
 
     @staticmethod
     def _get_policy_map():
-        return 0, 1, 1, 1
+        return 0, 1, 1, 1, 4, 4, 2
 
     def policy(self, mask: int):
         policies = self._get_policies()

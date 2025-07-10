@@ -492,7 +492,8 @@ struct registrar_t {
 
     void book(const key_t &key, const registry_t &registry,
             size_t perf_align = default_alignment) {
-        registry_.book(make_key(prefix_, key), registry.size(), 1, perf_align);
+        registry_.book(make_key(prefix_, key), registry.size(),
+                default_alignment, perf_align);
     }
 
     size_t size() const { return registry_.size(); }

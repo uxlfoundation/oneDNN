@@ -139,6 +139,15 @@ TEST(c_api_host_scalar_mem, TestHostScalarF32) {
     DNNL_CHECK(dnnl_memory_create_host_scalar(
             &scalar_mem, scalar_md, &scalar_value));
 
+    float retrieved_value = 0.0f;
+    DNNL_CHECK(dnnl_memory_get_host_scalar_value(scalar_mem, &retrieved_value));
+    EXPECT_EQ(retrieved_value, 42.0f);
+
+    float new_value = 84.0f;
+    DNNL_CHECK(dnnl_memory_set_host_scalar_value(scalar_mem, &new_value));
+    DNNL_CHECK(dnnl_memory_get_host_scalar_value(scalar_mem, &retrieved_value));
+    EXPECT_EQ(retrieved_value, 84.0f);
+
     DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
     DNNL_CHECK(dnnl_memory_destroy(scalar_mem));
 }

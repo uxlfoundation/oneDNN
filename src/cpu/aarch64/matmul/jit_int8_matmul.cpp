@@ -600,7 +600,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
             LDR_IMM(reg_bias, reg_param, GET_OFF(bias));
             LDR_IMM(reg_scales, reg_param, GET_OFF(scales));
             LDR_IMM(reg_aux_scales, reg_param, GET_OFF(dst_scales));
-            LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point_buf));
+            LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point));
             han_blk();
         }
 
@@ -1016,10 +1016,13 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     const auto *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
-    DEFINE_ZERO_POINTS_BUFFER(wei_zero_point_buf, DNNL_ARG_WEIGHTS);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
@@ -1276,12 +1279,12 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
         p.bias = (float *)bias + bias_addr;
         p.scales = oscales + scl_addr;
         p.dst_scales = dst_scales;
-        p.src_zero_point = &src_zero_point;
+        p.src_zero_point = src_zero_points;
         if (b.is_zp_b_int8)
-            p.wei_zero_point_buf = (int8_t *)wei_zero_point_buf + zp_b_buf;
+            p.wei_zero_point_buf = (int8_t *)wei_zero_points + zp_b_buf;
         else
-            p.wei_zero_point = &wei_zero_point;
-        p.dst_zero_point = &dst_zero_point;
+            p.wei_zero_point = wei_zero_points;
+        p.dst_zero_point = dst_zero_points;
         p.M = M;
         p.N = N;
         p.K = K;

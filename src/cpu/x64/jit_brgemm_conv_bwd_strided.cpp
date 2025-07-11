@@ -705,8 +705,10 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -773,8 +775,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                        key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
-    const auto dst_zp_vals = jcp.dst_zero_point ? &dst_zero_point : nullptr;
-    const auto src_zp_vals = src_zero_point;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -851,8 +851,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
             btc.iwb = iwb;
             btc.oscales = oscales;
             btc.dst_scales = dst_scales;
-            btc.src_zp_vals = src_zp_vals;
-            btc.dst_zp_vals = jcp.dst_zero_point ? dst_zp_vals : nullptr;
+            btc.src_zp_val = src_zero_points ? src_zero_points[0] : 0;
+            btc.dst_zp_vals = dst_zero_points;
             btc.src_zp_comp_ptr
                     = jcp.src_zero_point ? src_zp_comp_base : nullptr;
             btc.s8s8_comp_ptr
@@ -1000,10 +1000,10 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
         char *dst, char *c_buffer, const char *bias_w, int id, int ih, int iw,
         int iw_raw, int g_ic, bool is_ic_tail, int ker_iw_s, int ker_iw_f,
         int kd_l, int kh_l, const void *post_ops_binary_rhs_arg_vec,
-        const float *oscales, int32_t src_zp_vals, int32_t *src_zp_ptr,
-        int32_t *dst_zp_ptr, int32_t *s8s8_compensation, size_t comp_ker_offs,
-        bool maybe_do_init, bool do_postwork, bool do_post_comp,
-        const float *dst_scales) const {
+        const float *oscales, int32_t src_zp_val, int32_t *src_zp_ptr,
+        const int32_t *dst_zp_ptr, int32_t *s8s8_compensation,
+        size_t comp_ker_offs, bool maybe_do_init, bool do_postwork,
+        bool do_post_comp, const float *dst_scales) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -1030,7 +1030,7 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
         p.ptr_binary_post_ops_rhs = post_ops_binary_rhs_arg_vec;
         p.dst_orig = dst;
         p.c_zp_values = dst_zp_ptr;
-        p.a_comp_val = src_zp_vals;
+        p.a_comp_val = src_zp_val;
         p.ptr_dst_scales = (void *)dst_scales;
     }
 
@@ -1087,8 +1087,8 @@ template <cpu_isa_t isa>
 void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         brgemm_bwd_thread_ctx_t &btc, int brg_idx, int batch_size, char *ptr_C,
         char *ptr_D, const char *bias_w, int g_ic, bool do_postops,
-        const void *binary_post_ops_rhs, int32_t src_zp_vals,
-        int32_t *src_zp_ptr, int32_t *dst_zp_ptr, int32_t *s8s8_comp,
+        const void *binary_post_ops_rhs, int32_t src_zp_val,
+        int32_t *src_zp_ptr, const int32_t *dst_zp_ptr, int32_t *s8s8_comp,
         bool do_only_comp, bool is_first_call_postops) const {
 
     const auto _pd = pd();
@@ -1111,9 +1111,9 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
                 static_cast<const char *>(bias_w),
                 &btc.oscales[jcp.is_ic_scale * g_ic], binary_post_ops_rhs,
                 static_cast<size_t>(g_ic), 0, btc.brgemm_ctx.diff_src, 0,
-                static_cast<void *>(src_zp_ptr), nullptr,
-                static_cast<void *>(dst_zp_ptr), do_skip_accm, src_zp_vals,
-                do_only_comp, do_only_pass_comp, btc.dst_scales};
+                static_cast<void *>(src_zp_ptr), nullptr, dst_zp_ptr,
+                do_skip_accm, src_zp_val, do_only_comp, do_only_pass_comp,
+                btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
@@ -1327,7 +1327,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
             k_sum += k;
         }
         call_brgemm_kernel(btc, brg_idx, k_sum, ptr_C, ptr_D, bias_w, g_ic,
-                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_vals,
+                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 src_zp, btc.dst_zp_vals, s8s8_comp, do_only_comp,
                 is_first_call_postops);
         if (!is_first_call_postops_state_changed) {
@@ -1397,10 +1397,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
         const auto iw_ee = iw_b + (M_without_overflow * SW);
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
                 btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw_b, iw_ee, kd_l, kh_l,
-                post_ops_binary_rhs_arg_vec.data(), btc.oscales,
-                btc.src_zp_vals, btc.src_zp_comp_ptr, btc.dst_zp_vals,
-                btc.s8s8_comp_ptr, comp_ker_offs, do_init, do_postwork, false,
-                btc.dst_scales);
+                post_ops_binary_rhs_arg_vec.data(), btc.oscales, btc.src_zp_val,
+                btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr,
+                comp_ker_offs, do_init, do_postwork, false, btc.dst_scales);
     };
 
     if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s && kw_s < jcp.kw) {
@@ -1450,7 +1449,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
                 btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, kd_l_full,
                 kh_l_full, post_ops_binary_rhs_arg_vec.data(), btc.oscales,
-                btc.src_zp_vals, btc.src_zp_comp_ptr, btc.dst_zp_vals,
+                btc.src_zp_val, btc.src_zp_comp_ptr, btc.dst_zp_vals,
                 btc.s8s8_comp_ptr, 0, do_init, do_postwork, false,
                 btc.dst_scales);
     }
@@ -1587,7 +1586,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
             k_sum += k;
         }
         call_brgemm_kernel(btc, brg_idx, k_sum, ptr_C, ptr_D, bias_w, g_ic,
-                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_vals,
+                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 src_zp, btc.dst_zp_vals, s8s8_comp, false,
                 is_first_call_postops);
         if (!is_first_call_postops_state_changed) {

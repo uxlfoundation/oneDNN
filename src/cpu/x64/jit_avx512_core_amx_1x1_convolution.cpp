@@ -79,8 +79,10 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
             jit_scale_precompute_.get());
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -165,8 +167,8 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
 
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
 
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;

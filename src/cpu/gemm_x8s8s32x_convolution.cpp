@@ -40,7 +40,8 @@ using namespace dnnl::impl::memory_tracking::names;
 
 const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
         int32_t *zp_src_comp_scratch_dst,
-        const int32_t *const zp_src_comp_from_wei, const int32_t zp_src) {
+        const int32_t *const zp_src_comp_from_wei,
+        const int32_t src_zero_point) {
     static constexpr int cache_line_size
             = platform::get_cache_line_size() / sizeof(int);
     const auto res = std::div(zp_comp_size, cache_line_size);
@@ -53,7 +54,7 @@ const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
 
             PRAGMA_OMP_SIMD()
             for (int i = 0; i < cache_line_size; ++i) {
-                dst[i] = src[i] * zp_src;
+                dst[i] = src[i] * src_zero_point;
             }
         });
     }
@@ -65,7 +66,7 @@ const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
 
         PRAGMA_OMP_SIMD()
         for (int i = 0; i < res.rem; ++i) {
-            dst[i] = src[i] * zp_src;
+            dst[i] = src[i] * src_zero_point;
         }
     }
 
@@ -75,7 +76,7 @@ const int32_t *mul_zp_src_comp_from_wei_by_zp_src(const int zp_comp_size,
 static zero_point_call_params_t prepare_zp_params(const conv_gemm_conf_t &jcp,
         const memory_tracking::grantor_t &scratchpad, const int8_t *weights,
         const memory_desc_wrapper &weights_md, bool with_groups,
-        const int32_t *zp_src, const int32_t *zp_dst) {
+        const int32_t *src_zero_points, const int32_t *dst_zero_points) {
 
     int32_t *zp_src_comp_pad = nullptr;
     const int32_t *zp_src_comp = nullptr;
@@ -91,7 +92,8 @@ static zero_point_call_params_t prepare_zp_params(const conv_gemm_conf_t &jcp,
 
         if (jcp.zp.src_is_common) {
             zp_src_comp = mul_zp_src_comp_from_wei_by_zp_src(zp_comp_size,
-                    zp_src_comp_scratch, zp_src_comp_from_wei, *zp_src);
+                    zp_src_comp_scratch, zp_src_comp_from_wei,
+                    *src_zero_points);
         } else
             zp_src_comp = zp_src_comp_from_wei;
 
@@ -100,12 +102,12 @@ static zero_point_call_params_t prepare_zp_params(const conv_gemm_conf_t &jcp,
                     ? utils::rnd_up(zp_comp_size, cache_line_size)
                     : 0;
             zp_src_comp_pad = zp_src_comp_scratch + shift;
-            compute_zp_src_comp_pad(jcp, zp_src_comp_pad, zp_src, weights,
-                    weights_md, with_groups);
+            compute_zp_src_comp_pad(jcp, zp_src_comp_pad, src_zero_points,
+                    weights, weights_md, with_groups);
         }
     }
 
-    return {zp_src, zp_dst, zp_src_comp, zp_src_comp_pad};
+    return {src_zero_points, dst_zero_points, zp_src_comp, zp_src_comp_pad};
 }
 
 status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward(
@@ -115,8 +117,12 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward(
     auto wei_base = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     auto bia_base = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst_base = CTX_OUT_MEM(void *, DNNL_ARG_DST);
-    DEFINE_ZERO_POINTS_BUFFER(zp_src, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(zp_dst, DNNL_ARG_DST);
+
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
                     this->pd()->attr()->post_ops_, ctx);
@@ -127,7 +133,7 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward(
 
     const zero_point_call_params_t zp = prepare_zp_params(jcp, scratchpad,
             wei_base, memory_desc_wrapper(pd()->weights_md(0)),
-            this->pd()->with_groups(), zp_src, zp_dst);
+            this->pd()->with_groups(), src_zero_points, dst_zero_points);
 
     std::atomic<status_t> st(status::success);
 

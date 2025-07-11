@@ -84,7 +84,7 @@ struct call_params_t {
     dim_t M, K, N;
     char *buf_B_ptr_;
     int *na, *nb;
-    int32_t *src_zero_point, *wei_zero_point, *dst_zero_point;
+    const int32_t *src_zero_point, *wei_zero_point, *dst_zero_point;
     const int8_t *wei_zero_point_buf;
     float *zp_a_ptr, *zp_b_ptr;
 };

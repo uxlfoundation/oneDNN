@@ -57,8 +57,10 @@ status_t jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward(
                     pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -111,7 +113,7 @@ status_t jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward(
     parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, local_scales, dst_scales, dw_oscales, dw_dst_scales,
-                src_zero_point, dst_zero_point, scratchpad,
+                src_zero_points, dst_zero_points, scratchpad,
                 post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
@@ -124,7 +126,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
         const char *bias, const char *weights_dw, const char *bias_dw,
         char *dst, const float *oscales, const float *dst_scales,
         const float *dw_oscales, const float *dw_dst_scales,
-        const int32_t *src_zero_point, const int32_t *dst_zero_point,
+        const int32_t *src_zero_points, const int32_t *dst_zero_points,
         const memory_tracking::grantor_t &scratchpad,
         const void *post_ops_binary_rhs_arg_vec,
         const void *post_ops_binary_rhs_arg_vec_dw) const {
@@ -273,8 +275,8 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
         p.zp_compensation = jcp.src_zero_point
                 ? zp_compensation + _ocb * jcp.oc_block
                 : nullptr;
-        p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-        p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+        p.src_zero_point = src_zero_points;
+        p.dst_zero_point = dst_zero_points;
         p.scales = &oscales[jcp.is_oc_scale * _ocb * jcp.oc_block];
         p.dst_scale = dst_scales;
         if (pd()->rtus_.reduce_src_) {

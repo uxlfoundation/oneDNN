@@ -47,7 +47,7 @@
  * @param [in]      src_scale Input data scale [1]
  * @param [in]      dst_scale Output data scale [1]
  * @param [in]      eps       User defined constant
- * 
+ *
  * POST_OP_ARGS Expands to ', const __global POST_OP_TYPE *po_0_binary_arg' where POST_OP_TYPE
  * defined by post operation type API
  *
@@ -55,16 +55,15 @@
 KERNEL_ATTR
 __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
         __global AUX_DATA_T *mean, __global AUX_DATA_T *variance,
-        __global DST_DATA_T *dst, __global const AUX_DATA_T *scale,
-        __global const AUX_DATA_T *shift, __global const AUX_DATA_T *src_scale,
+        __global DST_DATA_T *dst, dim_t C_PER_G,
+        __global const AUX_DATA_T *scale, __global const AUX_DATA_T *shift,
+        __global const AUX_DATA_T *src_scale,
         __global const AUX_DATA_T *dst_scale,
         const AUX_DATA_T eps POST_OP_ARGS) {
 
     // get parallel variables IDs
     const size_t id_batch = GWS_GET_BATCH();
     const size_t id_group = GWS_GET_NGROUPS();
-
-    const size_t C_PER_G = C / G;
 
     const size_t channel_start = id_group * C_PER_G;
     const size_t channel_end = channel_start + C_PER_G;
@@ -114,7 +113,11 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
 
     const GNORM_ACC variance_rsqrt = rsqrt(variance_val + eps);
 
-    for (size_t channel = channel_start; channel < channel_end; ++channel) {
+    // Unroll hint is to avoid register spilling. For real workloads, D,H, and W
+    // should be large enough that unrolling the outer loop is pointless from a
+    // performance perspective.
+    unroll_for_by(1)(size_t channel = channel_start; channel < channel_end;
+                     ++channel) {
         const GNORM_ACC scale_val = scale ? scale[channel] : GNORM_ACC_CONST_1;
         const GNORM_ACC shift_val = shift ? shift[channel] : GNORM_ACC_CONST_0;
 

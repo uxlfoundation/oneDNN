@@ -138,17 +138,19 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, src);
-    arg_list.set(1, mean);
-    arg_list.set(2, variance);
-    arg_list.set(3, dst);
-    arg_list.set(4, scale);
-    arg_list.set(5, shift);
-    arg_list.set(6, src_scale);
-    arg_list.set(7, dst_scale);
-    arg_list.set(8, pd()->desc()->group_norm_epsilon);
+    arg_list.append(src);
+    arg_list.append(mean);
+    arg_list.append(variance);
+    arg_list.append(dst);
+    arg_list.append(pd()->C() / pd()->G());
+    arg_list.append(scale);
+    arg_list.append(shift);
+    arg_list.append(src_scale);
+    arg_list.append(dst_scale);
+    arg_list.append(pd()->desc()->group_norm_epsilon);
 
-    append_post_ops_to_arg_list(ctx, arg_list, 9, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(
+            ctx, arg_list, arg_list.nargs(), pd()->attr()->post_ops_);
 
     const compute::nd_range_t &nd_range_kernel = pd()->dispatch.nd_range();
     status_t status = parallel_for(ctx, nd_range_kernel, kernel_, arg_list);
@@ -212,15 +214,15 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
     memory_storage_t &diff_shift = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SHIFT);
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, src);
-    arg_list.set(1, mean);
-    arg_list.set(2, variance);
-    arg_list.set(3, diff_dst);
-    arg_list.set(4, scale);
-    arg_list.set(5, diff_src);
-    arg_list.set(6, diff_scale);
-    arg_list.set(7, diff_shift);
-    arg_list.set(8, pd()->desc()->group_norm_epsilon);
+    arg_list.append(src);
+    arg_list.append(mean);
+    arg_list.append(variance);
+    arg_list.append(diff_dst);
+    arg_list.append(scale);
+    arg_list.append(diff_src);
+    arg_list.append(diff_scale);
+    arg_list.append(diff_shift);
+    arg_list.append(pd()->desc()->group_norm_epsilon);
 
     const compute::nd_range_t &nd_range_kernel = pd()->dispatch.nd_range();
     status = parallel_for(ctx, nd_range_kernel, kernel_, arg_list);

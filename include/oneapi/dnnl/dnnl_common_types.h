@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -108,6 +108,10 @@ typedef enum {
     dnnl_f4_e2m1 = 14,
     /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
     dnnl_f4_e3m0 = 15,
+    /// 16-bit signed integer.
+    dnnl_s16 = 16,
+    /// 16-bit unsigned integer.
+    dnnl_u16 = 17,
 
     /// Parameter to allow internal only data_types without undefined behavior.
     /// This parameter is chosen to be valid for so long as sizeof(int) >= 2.

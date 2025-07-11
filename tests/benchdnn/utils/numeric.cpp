@@ -70,6 +70,14 @@ struct prec_traits<dnnl_s32> {
     using type = int32_t;
 };
 template <>
+struct prec_traits<dnnl_s16> {
+    using type = int16_t;
+};
+template <>
+struct prec_traits<dnnl_u16> {
+    using type = uint16_t;
+};
+template <>
 struct prec_traits<dnnl_s8> {
     using type = int8_t;
 };
@@ -97,6 +105,8 @@ struct prec_traits<dnnl_u4> {
         CASE(dnnl_f32); \
         CASE(dnnl_f64); \
         CASE(dnnl_s32); \
+        CASE(dnnl_s16); \
+        CASE(dnnl_u16); \
         CASE(dnnl_s8); \
         CASE(dnnl_u8); \
         CASE(dnnl_s4); \
@@ -167,8 +177,16 @@ float saturate_and_round(float value) {
 }
 
 bool is_integral_dt(dnnl_data_type_t dt) {
-    return dt == dnnl_s32 || dt == dnnl_s8 || dt == dnnl_u8 || dt == dnnl_s4
-            || dt == dnnl_u4;
+    switch (dt) {
+        case dnnl_s32:
+        case dnnl_s16:
+        case dnnl_u16:
+        case dnnl_s8:
+        case dnnl_u8:
+        case dnnl_s4:
+        case dnnl_u4: return true;
+        default: return false;
+    }
 }
 
 template <dnnl_data_type_t dt>
@@ -207,6 +225,8 @@ float round_to_nearest_representable_templ(float value) {
         case dnnl_bf16: value = (float)dnnl::impl::bfloat16_t(value); break;
         case dnnl_f16: value = (float)dnnl::impl::float16_t(value); break;
         case dnnl_s32:
+        case dnnl_s16:
+        case dnnl_u16:
         case dnnl_s8:
         case dnnl_u8:
         case dnnl_s4:

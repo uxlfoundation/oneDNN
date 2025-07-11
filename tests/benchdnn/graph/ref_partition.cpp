@@ -130,8 +130,10 @@ int ref_partition_t::init_ref(
         SAFE(ref_prim->displace_scales(), WARN);
 
         // Initialze the rest ops if current status is UNTESTED or EXECUTED
+        // or UNIMPLEMENTED (specially for case of softmax with stats).
         // otherwise there is no need to init memory for the rest ops.
-        if (res->state != UNTESTED && res->state != EXECUTED) {
+        if (res->state != UNTESTED && res->state != EXECUTED
+                && res->state != UNIMPLEMENTED) {
             // But for perf mode, when the tensors in the current op is not
             // the graph in/out, continue, otherwise return.
             if (has_bench_mode_bit(mode_bit_t::perf)) {
@@ -331,7 +333,7 @@ void ref_partition_t::exec_ops(res_t *res) {
             }
         }
 
-        ref_prim->execute_prim(res);
+        SAFE_V(ref_prim->execute_prim(res));
 
         // For an output, because of various graph compositions, there's a more
         // detailed guide when data adjustment should happen. It's covered by

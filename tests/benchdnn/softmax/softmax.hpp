@@ -52,6 +52,7 @@ struct settings_t : public base_settings_t {
     std::vector<std::string> stag {tag::abx}, dtag {tag::any};
     std::vector<alg_t> alg {SOFTMAX};
     std::vector<int> axis {1};
+    std::vector<bool> has_stats {false};
 
     const char *perf_template_csv() const {
         static const std::string args
@@ -64,7 +65,8 @@ struct settings_t : public base_settings_t {
     bool has_single_setup() const override {
         return dir.size() == 1 && sdt.size() == 1 && ddt.size() == 1
                 && stag.size() == 1 && dtag.size() == 1 && alg.size() == 1
-                && axis.size() == 1 && base_settings_t::has_single_setup();
+                && axis.size() == 1 && has_stats.size() == 1
+                && base_settings_t::has_single_setup();
     }
 };
 
@@ -72,7 +74,7 @@ struct prb_t : public prb_dims_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_dims, s.dir[0], s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
-                s.alg[0], s.axis[0], s.mb[0], s.inplace[0],
+                s.alg[0], s.axis[0], s.has_stats[0], s.mb[0], s.inplace[0],
                 s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
                 s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
@@ -80,9 +82,10 @@ struct prb_t : public prb_dims_t {
 
     prb_t(const prb_dims_t &prb_dims, dir_t dir, dnnl_data_type_t sdt,
             dnnl_data_type_t ddt, const std::string &stag,
-            const std::string &dtag, alg_t alg, int axis, int64_t mb,
-            bool inplace, const attr_t &attr, const thr_ctx_t &ctx_init,
-            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
+            const std::string &dtag, alg_t alg, int axis, bool has_stats,
+            int64_t mb, bool inplace, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
+            const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
         , dir(dir)
         , sdt(sdt)
@@ -91,6 +94,7 @@ struct prb_t : public prb_dims_t {
         , dtag(dtag)
         , alg(alg)
         , axis(axis)
+        , has_stats(has_stats)
         , user_mb(mb)
         , inplace(inplace)
         , attr(attr)
@@ -106,6 +110,7 @@ struct prb_t : public prb_dims_t {
     std::string stag, dtag;
     alg_t alg;
     int axis;
+    bool has_stats;
     int64_t user_mb;
     bool inplace;
     attr_t attr;
@@ -193,11 +198,6 @@ std::vector<int> supported_exec_args(dir_t dir);
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,
         dnnl_primitive_t prim_ref = nullptr);
-
-// Used in graph custom op to cover softmax with stats for sdpa training.
-// TODO: remove when/if softmax primitive receives a public extension for extra
-// stat output support.
-int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp);
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res);
 void skip_invalid_prb(const prb_t *prb, res_t *res);

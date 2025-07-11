@@ -167,7 +167,7 @@ namespace custom {
     switch (opkind) {
         case ::graph::op::kind::GenIndex:
             op_setting.alg = ::custom::alg_t::GENINDEX;
-            get_driver_axis(base_op_ref, op_setting.axis);
+            base_op_ref.get_attr_s64(op_setting.axis, "axis");
             break;
         case ::graph::op::kind::StaticTranspose:
             op_setting.alg = ::custom::alg_t::TRANSPOSE;
@@ -176,19 +176,6 @@ namespace custom {
         case ::graph::op::kind::StaticReshape:
             op_setting.alg = ::custom::alg_t::RESHAPE;
             break;
-        case ::graph::op::kind::SoftMax: {
-            ::softmax::settings_t softmax_setting
-                    = softmax::get_setting(base_op_ref, res);
-            op_setting.alg = ::custom::alg_t::SOFTMAX;
-            op_setting.prb_dims = softmax_setting.prb_dims;
-            op_setting.dir.front() = softmax_setting.dir.front();
-            op_setting.sdt.front() = softmax_setting.sdt.front();
-            op_setting.ddt.front() = softmax_setting.ddt.front();
-            op_setting.stag.front() = softmax_setting.stag.front();
-            op_setting.dtag.front() = softmax_setting.dtag.front();
-            op_setting.axis = softmax_setting.axis.front();
-            break;
-        }
         default:
             op_setting.alg = ::custom::alg_t::ALG_UNKNOWN;
             assert(!"unknown alg");
@@ -1987,9 +1974,21 @@ bool get_softmax_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
 
 bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
-    const auto &dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
-    op_setting.sdt.front() = dt;
-    op_setting.ddt.front() = dt;
+    const auto &sdt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    op_setting.sdt.front() = sdt;
+    const auto &ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    op_setting.ddt.front() = ddt;
+
+    return true;
+}
+
+bool get_softmax_stag_and_dtag(const deserialized_op_t &base_op_ref,
+        ::softmax::settings_t &op_setting) {
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.stag.front(), 0, /*from_output*/ false);
+    get_driver_tag_by_idx(
+            base_op_ref, op_setting.dtag.front(), 0, /*from_output*/ true);
+
     return true;
 }
 
@@ -2025,15 +2024,17 @@ bool get_softmax_alg(
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front()),
-            res);
+            softmax::get_softmax_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_alg(base_op_ref, op_setting.alg.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_axis(base_op_ref, op_setting.axis.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+    // softmax has stats only when it has more than one output
+    if (base_op_ref.out_lts_.size() > 1) {
+        op_setting.has_stats.front() = true;
+    }
 
     return op_setting;
 }

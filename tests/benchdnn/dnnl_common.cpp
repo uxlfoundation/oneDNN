@@ -386,8 +386,13 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");
         sycl::ext::oneapi::experimental::command_graph graph {
                 queue.get_context(), queue.get_device(),
-                {sycl::ext::oneapi::experimental::property::graph::
-                                assume_buffer_outlives_graph {}}};
+                {
+// Only enable assume_buffer_outlives_graph if supported by SYCL runtime (Enabled in DPC++ 2025 or later).
+#if defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20250000)
+                        sycl::ext::oneapi::experimental::property::graph::
+                                assume_buffer_outlives_graph {}
+#endif
+                }};
 
         graph.begin_recording(queue);
         status = exec_func(stream, dnnl_args);

@@ -25,6 +25,7 @@
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
+using namespace dnnl::impl;
 
 
 static void unparseAccessType(std::ostream &s, const MatrixAddressingStrategy &astrategy);
@@ -93,7 +94,7 @@ CacheSettingsLSC getCaching(char l1, char l3)
     }
 }
 
-CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
+CacheSettingsLSC getCachingEntry(dnnl_stringstream_t &s, HW hw)
 {
     {
         char l1, l3;
@@ -102,7 +103,7 @@ CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
     }
 }
 
-void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy, bool leaveDefault = false)
+void getCaching(dnnl_stringstream_t &s, HW hw, MatrixAddressingStrategy &astrategy, bool leaveDefault = false)
 {
     auto &cachingR = astrategy.cachingR;
     auto &cachingW = astrategy.cachingW;
@@ -128,7 +129,7 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
     }
 }
 
-static void getTiling(std::stringstream &s, MatrixAddressingStrategy &astrategy)
+static void getTiling(dnnl_stringstream_t &s, MatrixAddressingStrategy &astrategy)
 {
     if (s.peek() == '#') {
         char eat = 0;
@@ -140,8 +141,7 @@ static void getTiling(std::stringstream &s, MatrixAddressingStrategy &astrategy)
 
 void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
-    std::stringstream s(str);
-    s.imbue(std::locale::classic());
+    dnnl::impl::dnnl_stringstream_t s(str);
 
     bool overrideFusedLoop = false;
     bool gotSR = false;
@@ -475,8 +475,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                 strategy.kChain = stoi(mod.substr(2));
             else if (mod.substr(0, 2) == "ks") {
                 char eat;
-                std::stringstream ms(mod);
-                ms.imbue(std::locale::classic());
+                dnnl_stringstream_t ms(mod);
                 ms >> eat >> eat >> strategy.unrollKSLM;
                 if (!ms.eof() && (ms.peek() == '/'))
                     ms >> eat >> strategy.unrollKSLMMasked;
@@ -529,8 +528,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                         mod.erase(0, 1);
                         strategy.slmB = true;
                     }
-                    std::stringstream ms(mod);
-                    ms.imbue(std::locale::classic());
+                    dnnl_stringstream_t ms(mod);
                     ms >> strategy.slmBuffers;
                     ms >> eat;
                     if (!ms.eof())
@@ -539,8 +537,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
                 }
                 case 'k': {
                     char eat;
-                    std::stringstream ms(mod);
-                    ms.imbue(std::locale::classic());
+                    dnnl_stringstream_t ms(mod);
                     ms >> eat >> strategy.unroll[LoopK];
                     if (!ms.eof() && (ms.peek() == '/'))
                         ms >> eat >> strategy.unrollK_masked;
@@ -731,9 +728,8 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
 
 std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
-    std::stringstream s;
-    s.imbue(std::locale::classic());
-
+    dnnl::impl::dnnl_stringstream_t s;
+    
     bool anyOptAlignAB = strategy.optAlignAB || strategy.optAlignAB2D;
 
     unparseAddressBase(s, strategy.A.base);

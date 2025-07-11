@@ -21,7 +21,7 @@
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
-
+using namespace dnnl::impl;
 
 // Transpose a GEMM problem.
 void GEMMProblem::transpose()
@@ -55,15 +55,14 @@ void GEMMProblem::transpose()
     Bg.transpose();
 }
 
-static inline void append(std::ostringstream &ss, const Scalar &x);
-static inline void append(std::ostringstream &ss, Type T, const MatrixAddressing &atype);
-static inline void append(std::ostringstream &s, Type T1);
-static inline void append(std::ostringstream &s, Type T1, Type T2);
+static inline void append(dnnl_ostringstream_t &ss, const Scalar &x);
+static inline void append(dnnl_ostringstream_t &ss, Type T, const MatrixAddressing &atype);
+static inline void append(dnnl_ostringstream_t &s, Type T1);
+static inline void append(dnnl_ostringstream_t &s, Type T1, Type T2);
 
 std::string GEMMProblem::toString() const
 {
-    std::ostringstream ss;
-    ss.imbue(std::locale::classic());
+    dnnl_ostringstream_t ss;
 
     switch (batch) {
         default:                                      break;
@@ -124,8 +123,7 @@ std::string GEMMProblem::toString() const
 
 std::string GEMMProblem::scalarsToString() const
 {
-    std::ostringstream ss;
-    ss.imbue(std::locale::classic());
+    dnnl_ostringstream_t ss;
     append(ss, alpha);
     ss << ' ';
     append(ss, beta);
@@ -133,7 +131,7 @@ std::string GEMMProblem::scalarsToString() const
 }
 
 
-static inline void append(std::ostringstream &ss, const Scalar &x)
+static inline void append(dnnl_ostringstream_t &ss, const Scalar &x)
 {
     switch (x.getType()) {
         case Scalar::Variable:    ss << '-'; break;
@@ -143,7 +141,7 @@ static inline void append(std::ostringstream &ss, const Scalar &x)
     }
 }
 
-static inline void append(std::ostringstream &ss, Type T, const MatrixAddressing &atype)
+static inline void append(dnnl_ostringstream_t &ss, Type T, const MatrixAddressing &atype)
 {
     ss << "NTAB"[static_cast<int>(atype.layout)];
     if (atype.crosspack > 1)
@@ -158,12 +156,12 @@ static inline void append(std::ostringstream &ss, Type T, const MatrixAddressing
         ss << '@' << int(atype.alignment);
 }
 
-static inline void append(std::ostringstream &ss, Type T1)
+static inline void append(dnnl_ostringstream_t &ss, Type T1)
 {
     ss << precisionChar(T1);
 }
 
-static inline void append(std::ostringstream &ss, Type T1, Type T2)
+static inline void append(dnnl_ostringstream_t &ss, Type T1, Type T2)
 {
     if (T1 == T2)
         append(ss, T1);

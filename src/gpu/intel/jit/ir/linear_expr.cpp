@@ -279,7 +279,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        dnnl_ostringstream_t oss;
         oss << "imm: " << imm_;
         if (factors_.empty()) return oss.str();
         oss << std::endl << "factors:";

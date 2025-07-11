@@ -92,7 +92,7 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
         // Warning: will override problem data types (including up/down
         // conversions) - this will cause inaccuracies if precisions/layouts
         // are chosen that are incompatible with the given problem
-        std::stringstream ss(ovr_strategy);
+        dnnl_stringstream_t ss(ovr_strategy);
         std::string val;
         ss >> val;
         gpu_assert(val == "gemm");

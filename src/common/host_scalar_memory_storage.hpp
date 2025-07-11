@@ -27,7 +27,8 @@
 
 /**
  * @class host_scalar_memory_storage_t
- * @brief Scalar memory storage implementation for data that is always accessible on the host.
+ * @brief Memory storage implementation for scalar data that
+ * is always accessible on the host.
 */
 namespace dnnl {
 namespace impl {
@@ -38,19 +39,40 @@ public:
         : memory_storage_t(nullptr), data_(nullptr, release), size_(0) {}
     ~host_scalar_memory_storage_t() override = default;
 
-    status_t get_data_handle(void **handle) const override {
-        *handle = data_.get();
+    status_t get_scalar_value(void *value, size_t value_size) const {
+        if (size_ != value_size || data_ == nullptr)
+            return status::invalid_arguments;
+
+        std::memcpy(value, data_.get(), value_size);
         return status::success;
     }
 
-    status_t set_data_handle(void *handle) override {
-        return status::unimplemented;
+    status_t set_scalar_value(const void *scalar_value, size_t value_size) {
+        if (size_ != value_size || data_ == nullptr)
+            return status::invalid_arguments;
+
+        std::memcpy(data_.get(), scalar_value, value_size);
+        return status::success;
+    }
+
+    bool is_host_accessible() const override { return true; }
+
+    // Implementations below are required for internals to interact with
+    // host scalar memory storage
+    status_t get_data_handle(void **handle) const override {
+        *handle = data_.get();
+        return status::success;
     }
 
     status_t map_data(
             void **mapped_ptr, stream_t *stream, size_t size) const override {
         UNUSED(size);
         UNUSED(stream);
+        return get_data_handle(mapped_ptr);
+    }
+
+    // Functions below are not expected to be used for host scalar storage
+    status_t set_data_handle(void *handle) override {
         return status::unimplemented;
     }
 
@@ -60,8 +82,6 @@ public:
         return status::unimplemented;
     }
 
-    bool is_host_accessible() const override { return true; }
-
     std::unique_ptr<memory_storage_t> get_sub_storage(
             size_t offset, size_t size) const override {
         UNUSED(offset);
@@ -69,30 +89,7 @@ public:
         return nullptr;
     }
 
-    status_t get_scalar_value(void *value, size_t value_size) const {
-        if (size_ != value_size || data_ == nullptr || data_.get() == nullptr)
-            return status::invalid_arguments;
-
-        std::memcpy(value, data_.get(), value_size);
-        return status::success;
-    }
-
-    status_t set_scalar_value(const void *scalar_value, size_t value_size) {
-        if (size_ != value_size || data_ == nullptr || data_.get() == nullptr)
-            return status::invalid_arguments;
-
-        std::memcpy(data_.get(), scalar_value, value_size);
-        return status::success;
-    }
-
-    std::unique_ptr<memory_storage_t> clone() const override {
-        auto storage = new host_scalar_memory_storage_t();
-        if (storage)
-            storage->init(memory_flags_t::use_runtime_ptr,
-                    0 /* size is not required for use_runtime_ptr */,
-                    data_.get());
-        return std::unique_ptr<memory_storage_t>(storage);
-    }
+    std::unique_ptr<memory_storage_t> clone() const override { return nullptr; }
 
 protected:
     status_t init_allocate(size_t size) override {

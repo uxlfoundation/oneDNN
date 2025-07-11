@@ -368,7 +368,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        dnnl_ostringstream_t oss;
         oss << "g" << g;
         oss << "mb" << mb;
         oss << "ic" << ic;

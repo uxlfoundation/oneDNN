@@ -81,7 +81,7 @@ protected:
     class status_stream {
     protected:
         char cc;
-        std::stringstream line;
+        dnnl::impl::dnnl_stringstream_t line;
         bool lineStart = true;
 
         Generator<hw> &parent;

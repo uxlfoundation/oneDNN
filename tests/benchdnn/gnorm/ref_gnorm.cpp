@@ -100,8 +100,6 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     benchdnn_parallel_nd(C, [&](int64_t c) {
         int64_t g = c / C_PER_G;
 
-        float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
-
         float d_gamma = 0;
         float d_beta = 0;
 
@@ -123,26 +121,52 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
 
         if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_f32_elem(c, d_gamma);
         if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_f32_elem(c, d_beta);
+    });
 
-        for (int64_t mb = 0; mb < MB; ++mb) {
-            int64_t stat_off = mb * G + g;
-            float smean = mean.get_f32_elem(stat_off);
-            float svar = var.get_f32_elem(stat_off);
-            float rcp_denom = 1.f / sqrtf(svar + prb->eps);
+    benchdnn_parallel_nd(MB, G, [&](int64_t mb, int64_t g) {
+        int64_t stat_off = mb * G + g;
+        float smean = mean.get_f32_elem(stat_off);
+        float svar = var.get_f32_elem(stat_off);
+        float rcp_denom = 1.f / sqrtf(svar + prb->eps);
 
+        float sum_dd_scaled = 0.0f;
+        float sum_dd_snorm = 0.0f;
+
+        if (!glob_stats) {
+            for_(int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1); ++c)
             for_(int64_t d = 0; d < D; ++d)
             for_(int64_t h = 0; h < H; ++h)
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, mb, c, d, h, w);
                 float dd = d_dst.get_f32_elem(off);
-                float ds = dd;
+                float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
+                float x_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                
+                float dd_scaled = dd * gamma;
+                sum_dd_scaled += dd_scaled;
+                sum_dd_snorm += dd_scaled * x_hat;
+            }
+        }
 
-                if (!glob_stats) {
-                    float x_hat = (src.get_f32_elem(off) - smean) * d_gamma;
-                    ds -= (d_beta + x_hat * rcp_denom) / CSP;
-                }
+        float mean_dd_scaled = sum_dd_scaled / CSP;
+        float mean_dd_snorm = sum_dd_snorm / CSP;
 
-                d_src.set_f32_elem(off, rcp_denom * ds * gamma);
+        // Apply gradients
+        for_(int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1); ++c)
+        for_(int64_t d = 0; d < D; ++d)
+        for_(int64_t h = 0; h < H; ++h)
+        for (int64_t w = 0; w < W; ++w) {
+            auto off = data_off(prb, mb, c, d, h, w);
+            float dd = d_dst.get_f32_elem(off);
+            float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
+
+            if (!glob_stats) {
+                float x_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                float dd_scaled = dd * gamma;
+                float ds = dd_scaled - mean_dd_scaled - x_hat * mean_dd_snorm;
+                d_src.set_f32_elem(off, rcp_denom * ds);
+            } else {
+                d_src.set_f32_elem(off, dd * gamma * rcp_denom);
             }
         }
     });

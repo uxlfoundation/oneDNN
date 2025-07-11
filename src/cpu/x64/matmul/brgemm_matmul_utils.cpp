@@ -1525,6 +1525,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             = is_batch_layout_trivial(dst_d, bgmmc.batch);
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
+    if (bm_conf_utils.is_f32()) {
+        // Dispatch the shapes with large N to gemm for better performance
+        // The heuristic values are empirical
+        const bool large_N = bgmmc.N >= 3200
+                && one_of(true, bgmmc.K <= 128, bgmmc.M <= 128)
+                && bgmmc.K * bgmmc.M <= 32768;
+        VCONDCHECK_BG(
+                IMPLICATION(bgmmc.ndims == 2, !large_N), VERBOSE_LARGE_SHAPES);
+    }
+
     bgmmc.use_buffer_reduce
             = (bgmmc.reduce_dt != data_type::f32) || (bgmmc.nthr_k > 1);
 

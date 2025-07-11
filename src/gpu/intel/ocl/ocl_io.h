@@ -351,6 +351,10 @@ DEF_load(float, e8m0);
 DEF_load(double, undef_data);
 
 DEF_load(float, double); // Needed for src=f64, dst=f32
+
+DEF_load(double, char);
+DEF_load(double, uchar);
+DEF_load(double, int);
 DEF_load(double, bf16);
 DEF_load(double, float);
 DEF_load(double, double);

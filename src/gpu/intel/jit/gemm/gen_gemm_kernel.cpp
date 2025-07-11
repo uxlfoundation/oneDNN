@@ -492,8 +492,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
     }
 
-    problem_.forceAGroupSums = with_ags;
-    problem_.forceBGroupSums = with_bgs;
+    problem_.forceAGroupSums = false && with_ags;
+    problem_.forceBGroupSums = false && with_bgs;
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem_.sumB = (reduce_ab == sum_ab::sum_a_row);

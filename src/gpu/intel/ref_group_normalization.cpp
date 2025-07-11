@@ -161,6 +161,10 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
 status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
 
+    // TODO: remove me
+    VDISPATCH_GNORM(
+            false, "The implementation doesn't return the correct result");
+
     const data_type_t src_dt = src_md()->data_type;
     const data_type_t diff_dst_dt = diff_dst_md()->data_type;
     const data_type_t diff_src_dt = diff_src_md()->data_type;

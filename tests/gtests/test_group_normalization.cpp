@@ -52,6 +52,9 @@ protected:
         SKIP_IF(unsupported_data_type(p.src_dt, p.dst_dt),
                 "Engine does not support this data type.");
 
+        SKIP_IF(get_test_engine_kind() == engine::kind::gpu,
+                "GPU engine is not supported");
+
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status);
     }

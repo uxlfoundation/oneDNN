@@ -18,6 +18,7 @@
 #define COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
 
 #include <memory>
+#include <type_traits>
 
 #include "common/c_types_map.hpp"
 #include "common/memory.hpp"
@@ -35,35 +36,46 @@ namespace impl {
 
 class host_scalar_memory_storage_t : public memory_storage_t {
 public:
+    static constexpr size_t max_scalar_size = 16; // todo: figure out max size
+    static constexpr size_t max_scalar_align = alignof(std::max_align_t);
+
     host_scalar_memory_storage_t()
-        : memory_storage_t(nullptr), data_(nullptr, release), size_(0) {}
+        : memory_storage_t(nullptr), size_(0), is_initialized_(false) {}
     ~host_scalar_memory_storage_t() override = default;
 
     status_t get_scalar_value(void *value, size_t value_size) const {
-        if (size_ != value_size || data_ == nullptr)
+        if (!is_initialized_ || value == nullptr || value_size != size_)
             return status::invalid_arguments;
 
-        std::memcpy(value, data_.get(), value_size);
+        std::memcpy(value, &scalar_storage_, value_size);
         return status::success;
     }
 
     status_t set_scalar_value(const void *scalar_value, size_t value_size) {
-        if (size_ != value_size || data_ == nullptr)
+        if (scalar_value == nullptr || value_size == 0
+                || value_size > max_scalar_size)
             return status::invalid_arguments;
 
-        std::memcpy(data_.get(), scalar_value, value_size);
+        std::memcpy(&scalar_storage_, scalar_value, value_size);
+        size_ = value_size;
+        is_initialized_ = true;
+
         return status::success;
     }
 
     bool is_host_accessible() const override { return true; }
 
-    // Implementations below are required for internals to interact with
-    // host scalar memory storage
+    // Required for compatibility
+    // Usage for getting a value is discouraged, use get_scalar_value instead
     status_t get_data_handle(void **handle) const override {
-        *handle = data_.get();
+        if (!is_initialized_ || handle == nullptr)
+            return status::invalid_arguments;
+        *handle = const_cast<void *>(
+                static_cast<const void *>(&scalar_storage_));
         return status::success;
     }
 
+    // Required for compatibility
     status_t map_data(
             void **mapped_ptr, stream_t *stream, size_t size) const override {
         UNUSED(size);
@@ -71,17 +83,19 @@ public:
         return get_data_handle(mapped_ptr);
     }
 
-    // Functions below are not expected to be used for host scalar storage
+    // Not supported for scalar storage
     status_t set_data_handle(void *handle) override {
         return status::unimplemented;
     }
 
+    // Not supported for scalar storage
     status_t unmap_data(void *mapped_ptr, stream_t *stream) const override {
         UNUSED(mapped_ptr);
         UNUSED(stream);
         return status::unimplemented;
     }
 
+    // Not supported for scalar storage
     std::unique_ptr<memory_storage_t> get_sub_storage(
             size_t offset, size_t size) const override {
         UNUSED(offset);
@@ -89,25 +103,23 @@ public:
         return nullptr;
     }
 
+    // Not supported for scalar storage
     std::unique_ptr<memory_storage_t> clone() const override { return nullptr; }
 
 protected:
+    // Not supported for scalar storage
     status_t init_allocate(size_t size) override {
-        void *ptr = malloc(size, 64); // todo: choose better alignment?
-        if (!ptr) return status::out_of_memory;
-        data_ = decltype(data_)(ptr, destroy);
-        size_ = size;
-        return status::success;
+        UNUSED(size);
+        return status::unimplemented;
     }
 
 private:
-    std::unique_ptr<void, void (*)(void *)> data_;
-    size_t size_ = 0;
+    typename std::aligned_storage<max_scalar_size, max_scalar_align>::type
+            scalar_storage_;
+    size_t size_;
+    bool is_initialized_;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(host_scalar_memory_storage_t);
-
-    static void release(void *ptr) {}
-    static void destroy(void *ptr) { free(ptr); }
 };
 
 } // namespace impl

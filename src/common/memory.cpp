@@ -228,13 +228,8 @@ status_t dnnl_memory_create_host_scalar(
     std::unique_ptr<dnnl::impl::host_scalar_memory_storage_t>
             memory_storage_ptr(new dnnl::impl::host_scalar_memory_storage_t());
 
-    size_t scalar_size = mdw.size(0);
-    // todo: simplify
-    status_t status = memory_storage_ptr->init(
-            memory_flags_t::alloc, scalar_size, nullptr /* handle */);
-    if (status != success) { return out_of_memory; }
-
-    memory_storage_ptr->set_scalar_value(scalar_ptr, scalar_size);
+    memory_storage_ptr->set_scalar_value(
+            scalar_ptr, mdw.size(0) /* scalar_size */);
 
     // todo: should we use service cpu engine or nullptr?
     // memory_t *mem_obj = new memory_t(dnnl::impl::cpu::get_service_engine(), md,

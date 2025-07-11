@@ -114,7 +114,8 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
 
     const GNORM_ACC variance_rsqrt = rsqrt(variance_val + eps);
 
-    for (size_t channel = channel_start; channel < channel_end; ++channel) {
+    unroll_for_by(1)(size_t channel = channel_start; channel < channel_end;
+                     ++channel) {
         const GNORM_ACC scale_val = scale ? scale[channel] : GNORM_ACC_CONST_1;
         const GNORM_ACC shift_val = shift ? shift[channel] : GNORM_ACC_CONST_0;
 

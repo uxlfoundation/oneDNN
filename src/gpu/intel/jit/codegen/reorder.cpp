@@ -70,7 +70,7 @@ void copy_plan_t::mov(int simd, ngen::InstructionModifier mod,
         const auto &block_bases = op.block_bases;
         // Count contiguous registers
         int regs = block_size - (op.grf - block_bases[op.block_off]);
-        for (size_t j = op.block_off; j < block_bases.size(); ++j) {
+        for (size_t j = op.block_off; j < block_bases.size() - 1; ++j) {
             if (block_bases[j] + block_size != block_bases[j + 1]) break;
             regs += block_size;
         }

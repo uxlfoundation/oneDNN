@@ -38,8 +38,10 @@ status_t memory_desc_init_host_scalar(
     memory_desc.data_type = data_type;
     memory_desc.format_kind = format_kind::host_scalar;
 
-    bool args_ok = memory_desc_sanity_check(memory_desc.ndims, memory_desc.dims,
-            memory_desc.data_type, memory_desc.format_kind);
+    // align with scales attr support
+    bool args_ok = utils::one_of(data_type, dnnl_f32, dnnl_bf16, dnnl_f16,
+            dnnl_e8m0, dnnl_f8_e5m2, dnnl_f8_e4m3);
+
     VCHECK_MEMORY(args_ok, invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
 
     return success;

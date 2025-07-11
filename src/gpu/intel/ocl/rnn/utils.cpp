@@ -18,6 +18,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/ocl/rnn/grid.hpp"
 #include "gpu/intel/utils.hpp"
 

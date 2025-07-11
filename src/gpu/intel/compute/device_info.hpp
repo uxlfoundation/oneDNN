@@ -25,7 +25,9 @@
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "common/z_magic.hpp"
+#include "gpu/intel/compute/device_types.hpp"
 
+#include "ngen_core.hpp"
 #include "xpu/utils.hpp"
 
 #include "oneapi/dnnl/dnnl_config.h"
@@ -36,117 +38,6 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
-enum class gpu_arch_t { unknown, xe_lp, xe_hp, xe_hpg, xe_hpc, xe2, xe3 };
-
-static inline std::string to_string(gpu_arch_t arch) {
-#define CASE(_case) \
-    if (arch == gpu_arch_t::_case) return STRINGIFY(_case)
-    CASE(xe_lp);
-    CASE(xe_hp);
-    CASE(xe_hpg);
-    CASE(xe_hpc);
-    CASE(xe2);
-    CASE(xe3);
-    return "unknown";
-#undef CASE
-}
-
-static inline gpu_arch_t str2gpu_arch(const char *str) {
-#define CASE(_case) \
-    if (!strcmp(STRINGIFY(_case), str)) return gpu_arch_t::_case
-    CASE(xe_lp);
-    CASE(xe_hp);
-    CASE(xe_hpg);
-    CASE(xe_hpc);
-    CASE(xe2);
-    CASE(xe3);
-    return gpu_arch_t::unknown;
-#undef CASE
-}
-
-enum class device_ext_t : uint64_t {
-    // clang-format off
-    // OpenCL data types
-    khr_fp16 = 1ull << 0,
-    khr_fp64 = 1ull << 1,
-    // OpenCL atomics
-    khr_global_int32_base_atomics     = 1ull << 2,
-    khr_global_int32_extended_atomics = 1ull << 3,
-    khr_int64_base_atomics            = 1ull << 4,
-    khr_int64_extended_atomics        = 1ull << 5,
-    khr_local_int32_base_atomics      = 1ull << 6,
-    khr_local_int32_extended_atomics  = 1ull << 7,
-    ext_float_atomics                 = 1ull << 8,
-    // Intel specific Xe_LP+
-    intel_subgroups               = 1ull << 16,
-    intel_required_subgroup_size  = 1ull << 17,
-    intel_subgroups_char          = 1ull << 18,
-    intel_subgroups_short         = 1ull << 19,
-    intel_subgroups_long          = 1ull << 20,
-    intel_subgroup_local_block_io = 1ull << 21,
-    intel_dot_accumulate          = 1ull << 22,
-    // Intel specific Xe_HP+
-    intel_global_float_atomics                      = 1ull << 23,
-    intel_subgroup_matrix_multiply_accumulate       = 1ull << 24,
-    intel_subgroup_split_matrix_multiply_accumulate = 1ull << 25,
-    intel_variable_eu_thread_count                  = 1ull << 26,
-    intel_unified_shared_memory                     = 1ull << 27,
-    // Future extensions
-    future_bf16_cvt                                 = 1ull << 31,
-    last
-    // clang-format on
-};
-
-static inline const char *ext2cl_str(device_ext_t ext) {
-#define CASE(x) \
-    case device_ext_t::x: return STRINGIFY(CONCAT2(cl_, x));
-    switch (ext) {
-        CASE(khr_fp16)
-        CASE(khr_fp64)
-
-        CASE(khr_global_int32_base_atomics)
-        CASE(khr_global_int32_extended_atomics)
-        CASE(khr_int64_base_atomics)
-        CASE(khr_int64_extended_atomics)
-        CASE(khr_local_int32_base_atomics)
-        CASE(khr_local_int32_extended_atomics)
-        CASE(ext_float_atomics)
-
-        CASE(intel_subgroups)
-        CASE(intel_required_subgroup_size)
-        CASE(intel_subgroups_char)
-        CASE(intel_subgroups_short)
-        CASE(intel_subgroups_long)
-
-        CASE(intel_subgroup_local_block_io)
-        CASE(intel_dot_accumulate)
-
-        CASE(intel_global_float_atomics)
-        CASE(intel_subgroup_matrix_multiply_accumulate)
-        CASE(intel_subgroup_split_matrix_multiply_accumulate)
-        CASE(intel_variable_eu_thread_count)
-        CASE(intel_unified_shared_memory)
-        CASE(future_bf16_cvt)
-        default: return nullptr;
-    }
-#undef CASE
-}
-
-enum class native_ext_t : uint64_t {
-    // clang-format off
-    // OpenCL data types
-    fp32_atomic_add = 1ull << 0,                   
-    fp32_atomic_min_max = 1ull << 1, 
-    fp32_atomic_load_store = 1ull << 2,  
-    fp16_atomic_add = 1ull << 3,                   
-    fp16_atomic_min_max = 1ull << 4,              
-    fp16_atomic_load_store = 1ull << 5,  
-    fp64_atomic_add = 1ull << 6,
-    fp64_atomic_min_max = 1ull << 7,
-    fp64_atomic_load_store = 1ull << 8,  
-    last
-};
-
 // Needed workaround for future HW extensions
 uint64_t get_future_extensions(
         compute::gpu_arch_t gpu_arch, bool mayiuse_systolic);
@@ -155,8 +46,8 @@ struct device_info_t {
 public:
     virtual ~device_info_t() = default;
 
-    status_t init(
-            impl::engine_t *engine, const std::vector<uint8_t> &cache_blob = {}) {
+    status_t init(impl::engine_t *engine,
+            const std::vector<uint8_t> &cache_blob = {}) {
         if (!cache_blob.empty()) {
             CHECK(init_from_cache_blob(cache_blob));
             return init_serialized_device_info(cache_blob);
@@ -181,10 +72,15 @@ public:
     std::string get_cl_ext_options() const;
 
     bool has(device_ext_t ext) const { return extensions_ & (uint64_t)ext; }
-    bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
+    bool has_native(native_ext_t ext) const {
+        return native_extensions_ & (uint64_t)ext;
+    }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
-    int gpu_product_family() const { return gpu_product_family_; }
-    int stepping_id() const { return stepping_id_; }
+    const ngen::Product &gpu_product() const { return gpu_product_; }
+    const ngen::ProductFamily &gpu_product_family() const {
+        return gpu_product_.family;
+    }
+    int stepping_id() const { return gpu_product_.stepping; }
     uint64_t native_extensions() const { return native_extensions_; }
     bool is_integrated() const;
     uint32_t ip_version() const { return ip_version_; }
@@ -223,6 +119,7 @@ public:
     bool mayiuse_ngen_kernels() const { return mayiuse_ngen_kernels_; }
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
+    bool mayiuse_large_grf_mode() const { return mayiuse_systolic_; }
 
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
@@ -263,8 +160,7 @@ protected:
     virtual status_t init_attributes(impl::engine_t *engine) = 0;
 
     compute::gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
-    int gpu_product_family_ = 0;
-    int stepping_id_ = 0;
+    ngen::Product gpu_product_ = {};
     uint32_t ip_version_ = 0;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;

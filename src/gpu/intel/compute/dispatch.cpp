@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "common/math_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/utils.hpp"
 

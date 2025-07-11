@@ -17,6 +17,11 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -103,9 +108,7 @@ struct Instruction12;
 enum class Opcode;
 
 struct EncodingTag12;
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag);
 struct EncodingTagXeHPC;
-static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag);
 
 // Exceptions, used when NGEN_SAFE is defined.
 
@@ -3228,5 +3231,8 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
 
 } /* namespace NGEN_NAMESPACE */
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif /* header guard */

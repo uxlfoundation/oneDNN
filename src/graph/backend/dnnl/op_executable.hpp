@@ -54,6 +54,8 @@
 
 #include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/kernel.hpp"
+#include "gpu/intel/compute/utils.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif

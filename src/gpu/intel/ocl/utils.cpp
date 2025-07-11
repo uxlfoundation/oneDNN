@@ -24,6 +24,7 @@
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/utils.hpp"
+#include "ngen_opencl.hpp"
 #include "xpu/ocl/utils.hpp"
 
 #ifndef CL_KERNEL_BINARY_PROGRAM_INTEL
@@ -370,20 +371,20 @@ status_t get_ocl_device_enabled_native_float_atomics(
     return status::success;
 }
 
-status_t get_ocl_device_eu_count(cl_device_id device,
-        gpu::intel::compute::gpu_arch_t arch, int32_t *eu_count) {
+status_t get_ocl_device_eu_count(cl_device_id device, int32_t *eu_count) {
     // Start with standard OpenCL query.
     cl_uint max_compute_units = 0;
     OCL_CHECK(clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
             sizeof(max_compute_units), &max_compute_units, nullptr));
 
+    auto arch = ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectHW(device);
     // Try to use Intel-specific slice/sub-slice queries to correct EU count
     //   for certain buggy drivers.
     bool ok = true;
 
 #ifdef _WIN32
     // But don't try this on Windows Xe2 to avoid undercounting EUs.
-    ok &= (arch != gpu::intel::compute::gpu_arch_t::xe2);
+    ok &= arch != ngen::HW::Xe2;
 #endif
 
     auto do_query = [&](cl_uint query) -> cl_uint {
@@ -402,8 +403,7 @@ status_t get_ocl_device_eu_count(cl_device_id device,
 
     if (ok) {
         /* Some drivers report incorrect values on Xe2 */
-        if (arch == gpu::intel::compute::gpu_arch_t::xe2)
-            num_eus_per_sub_slice = 8;
+        if (arch == ngen::HW::Xe2) num_eus_per_sub_slice = 8;
         max_compute_units = std::min(max_compute_units,
                 num_slices * num_sub_slices_per_slice * num_eus_per_sub_slice);
     }

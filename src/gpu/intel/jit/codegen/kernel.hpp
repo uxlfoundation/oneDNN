@@ -197,9 +197,10 @@ public:
 
     template <typename... ngen_generator_args>
     ir_kernel_base_t(const kernel_desc_base_t &desc,
-            const impl::engine_t *engine, ngen_generator_args... args)
-        : ngen_generator_t(std::forward<ngen_generator_args>(args)...)
-        , exec_cfg_(desc.exec_cfg(engine))
+            const exec_config_t &exec_cfg, ngen_generator_args... args)
+        : ngen_generator_t(exec_cfg.hw().product(),
+                std::forward<ngen_generator_args>(args)...)
+        , exec_cfg_(exec_cfg)
         , ra_(getHardware())
         , emu_strategy(getHardware(), exec_cfg_.hw().stepping_id()) {
         desc.init_kernel_iface(kernel_iface_);
@@ -209,7 +210,8 @@ public:
     template <typename... ngen_generator_args>
     ir_kernel_base_t(const exec_config_t &exec_cfg,
             const kernel_iface_t &kernel_iface, ngen_generator_args &&...args)
-        : ngen_generator_t(std::forward<ngen_generator_args>(args)...)
+        : ngen_generator_t(exec_cfg.hw().product(),
+                std::forward<ngen_generator_args>(args)...)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)
         , ra_(getHardware())
@@ -1155,7 +1157,7 @@ public:
 
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
-        : base(desc, engine, debug_config)
+        : base(desc, desc.exec_cfg(engine), debug_config)
         , kernel_name_(desc.kernel_name())
         , require_dpas_(desc.with_dpas())
         , local_range_(desc.local_range()) {}
@@ -1259,10 +1261,9 @@ private:
 #ifdef NGEN_ASM
 class ir_asm_generator_t : public ngen::AsmCodeGenerator {
 public:
-    template <typename ngen_generator_t>
-    ir_asm_generator_t(const ngen_generator_t &k)
-        : ngen::AsmCodeGenerator(k.getProduct())
-        , interface_(k.neo_interface()) {}
+    ir_asm_generator_t(const ngen::Product &product,
+            const ngen::NEOInterfaceHandler &interface)
+        : ngen::AsmCodeGenerator(product), interface_(interface) {}
 
     NGEN_FORWARD_SCOPE(ngen::AsmCodeGenerator)
 
@@ -1300,7 +1301,7 @@ public:
 
     template <ngen::HW hw>
     ir_asm_kernel_t(const ir_kernel_t<hw> &k)
-        : base(k.exec_cfg(), k.kernel_iface(), k) {}
+        : base(k.exec_cfg(), k.kernel_iface(), k.neo_interface()) {}
 };
 #else
 class ir_asm_kernel_t {

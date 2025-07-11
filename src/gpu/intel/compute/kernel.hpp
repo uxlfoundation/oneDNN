@@ -25,10 +25,9 @@
 #include <memory>
 #include <utility>
 
-#include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/utils.hpp"
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
@@ -38,6 +37,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace compute {
+
+class nd_range_t;
 
 #if defined(__linux__) && (defined(DNNL_DEV_MODE) || !defined(NDEBUG))
 struct program_src_t {

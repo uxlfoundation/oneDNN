@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/device_types.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
@@ -146,6 +146,11 @@ protected:
 };
 
 } // namespace compute
+
+namespace ocl {
+using dispatch_t = compute::dispatch_t;
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

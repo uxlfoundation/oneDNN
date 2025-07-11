@@ -43,6 +43,7 @@ copy_operand_t::copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
 
 copy_operand_t &copy_operand_t::advance(
         ngen::HW hw, dim_t elems, uint8_t stride) {
+    const auto nblocks = into<int>(block_bases.size());
     const auto grf_bits = ngen::GRF::bytes(hw) << 3;
     const auto type_bit_size = ngen::getBits(type);
     const auto bit_off = (offset + elems * stride) * type_bit_size;
@@ -54,7 +55,18 @@ copy_operand_t &copy_operand_t::advance(
         const auto grf_off = grf - orig_block_base + grf_shift;
         const auto block_shift = grf_off / block_size;
         block_off += block_shift;
-        grf = (int16_t)(block_bases[block_off] + (grf_off % block_size));
+        if (block_off >= nblocks)
+            // If we advance past the end of the buffer, continue linearly from
+            // (max_base + block_size).
+            grf = [&]() {
+                const auto past_end = block_size * (block_off - nblocks + 1);
+                int max_base = grf;
+                for (const auto &base : block_bases)
+                    max_base = std::max(max_base, base);
+                return (int16_t)(max_base + past_end + (grf_off % block_size));
+            }();
+        else
+            grf = (int16_t)(block_bases[block_off] + (grf_off % block_size));
     }
     offset = (uint8_t)((bit_off % grf_bits) / type_bit_size);
     return *this;
@@ -88,9 +100,12 @@ void copy_plan_t::mov(int simd, ngen::InstructionModifier mod,
         }
 
         append(phase, mov, block_simd, mod, block_dst, block_src);
+        simd -= block_simd;
+        // Protection from advancing past the end of the buffer, which may
+        // result in OOB accesses when registers are permuted.
+        if (simd <= 0) break;
         block_dst.advance(hw(), block_simd, dst.stride);
         block_src.advance(hw(), block_simd, src.stride);
-        simd -= block_simd;
     }
 }
 

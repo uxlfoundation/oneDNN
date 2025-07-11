@@ -225,20 +225,16 @@ status_t dnnl_memory_create_host_scalar(
     VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
-    std::unique_ptr<dnnl::impl::memory_storage_t> memory_storage_ptr(
-            new dnnl::impl::host_scalar_memory_storage_t());
+    std::unique_ptr<dnnl::impl::host_scalar_memory_storage_t>
+            memory_storage_ptr(new dnnl::impl::host_scalar_memory_storage_t());
 
     size_t scalar_size = mdw.size(0);
+    // todo: simplify
     status_t status = memory_storage_ptr->init(
             memory_flags_t::alloc, scalar_size, nullptr /* handle */);
     if (status != success) { return out_of_memory; }
 
-    void *h = nullptr;
-    status = memory_storage_ptr->get_data_handle(&h);
-    if (status != success || h == nullptr) {
-        return out_of_memory; // todo: is there a better status?
-    }
-    std::memcpy(h, scalar_ptr, scalar_size);
+    memory_storage_ptr->set_scalar_value(scalar_ptr, scalar_size);
 
     // todo: should we use service cpu engine or nullptr?
     // memory_t *mem_obj = new memory_t(dnnl::impl::cpu::get_service_engine(), md,
@@ -318,6 +314,40 @@ status_t dnnl_memory_set_data_handle_v2(
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
     CHECK(memory->set_data_handle(handle, index));
     return status::success;
+}
+
+status_t dnnl_memory_get_host_scalar_value(
+        const_dnnl_memory_t memory, void *value) {
+    if (any_null(memory, value)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    auto *storage = memory->memory_storage(0);
+    auto *scalar_storage
+            = dynamic_cast<dnnl::impl::host_scalar_memory_storage_t *>(storage);
+    if (!scalar_storage) return invalid_arguments;
+
+    return scalar_storage->get_scalar_value(value, mdw.size(0));
+}
+
+status_t dnnl_memory_set_host_scalar_value(
+        dnnl_memory_t memory, const void *value) {
+    if (any_null(memory, value)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    auto *storage = memory->memory_storage(0);
+    auto *scalar_storage
+            = dynamic_cast<dnnl::impl::host_scalar_memory_storage_t *>(storage);
+    if (!scalar_storage) return invalid_arguments;
+
+    scalar_storage->set_scalar_value(value, mdw.size(0));
+
+    return success;
 }
 
 status_t dnnl_memory_map_data_v2(

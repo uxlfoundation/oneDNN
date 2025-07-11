@@ -35,7 +35,7 @@ namespace impl {
 class host_scalar_memory_storage_t : public memory_storage_t {
 public:
     host_scalar_memory_storage_t()
-        : memory_storage_t(nullptr), data_(nullptr, release) {}
+        : memory_storage_t(nullptr), data_(nullptr, release), size_(0) {}
     ~host_scalar_memory_storage_t() override = default;
 
     status_t get_data_handle(void **handle) const override {
@@ -44,21 +44,20 @@ public:
     }
 
     status_t set_data_handle(void *handle) override {
-        data_ = decltype(data_)(handle, release);
-        return status::success;
+        return status::unimplemented;
     }
 
     status_t map_data(
             void **mapped_ptr, stream_t *stream, size_t size) const override {
         UNUSED(size);
         UNUSED(stream);
-        return get_data_handle(mapped_ptr);
+        return status::unimplemented;
     }
 
     status_t unmap_data(void *mapped_ptr, stream_t *stream) const override {
         UNUSED(mapped_ptr);
         UNUSED(stream);
-        return status::success;
+        return status::unimplemented;
     }
 
     bool is_host_accessible() const override { return true; }
@@ -68,6 +67,22 @@ public:
         UNUSED(offset);
         UNUSED(size);
         return nullptr;
+    }
+
+    status_t get_scalar_value(void *value, size_t value_size) const {
+        if (size_ != value_size || data_ == nullptr || data_.get() == nullptr)
+            return status::invalid_arguments;
+
+        std::memcpy(value, data_.get(), value_size);
+        return status::success;
+    }
+
+    status_t set_scalar_value(const void *scalar_value, size_t value_size) {
+        if (size_ != value_size || data_ == nullptr || data_.get() == nullptr)
+            return status::invalid_arguments;
+
+        std::memcpy(data_.get(), scalar_value, value_size);
+        return status::success;
     }
 
     std::unique_ptr<memory_storage_t> clone() const override {
@@ -84,11 +99,13 @@ protected:
         void *ptr = malloc(size, 64); // todo: choose better alignment?
         if (!ptr) return status::out_of_memory;
         data_ = decltype(data_)(ptr, destroy);
+        size_ = size;
         return status::success;
     }
 
 private:
     std::unique_ptr<void, void (*)(void *)> data_;
+    size_t size_ = 0;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(host_scalar_memory_storage_t);
 

@@ -87,6 +87,9 @@ int ref_partition_t::init_ref(
         SAFE(ref_prim->init_prb(res), WARN);
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
+        // reset res to avoid a skipped state from init_prim() to affect the rest part.
+        res->state = UNTESTED;
+        res->reason.clear();
 
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
@@ -149,11 +152,22 @@ int ref_partition_t::init_ref(
         }
     }
 
-    // displace data if needed
-    for (const auto &entry : lt_id_2_mems_) {
-        SAFE_V(data_displacer.displace_input_data(
-                entry.first, const_cast<dnn_mem_t &>(entry.second), res));
+    // displace data if needed, with topo order
+    for (const auto &par_op_ref : partition_ops_ref_) {
+        for (size_t i = 0; i < par_op_ref.get().in_lts_.size(); i++) {
+            size_t lt_id = par_op_ref.get().in_lts_[i].id_;
+            if (lt_id_2_mems_.find(lt_id) == lt_id_2_mems_.end()) continue;
+            if (data_displacer.get_filling_type(lt_id)
+                    == filling_type_t::softmax_stats) {
+                res_t temp_res;
+                exec_ops(&temp_res);
+            }
+            const dnn_mem_t &mem = lt_id_2_mems_.at(lt_id);
+            SAFE_V(data_displacer.displace_input_data(
+                    lt_id, const_cast<dnn_mem_t &>(mem), lt_id_2_mems_, res));
+        }
     }
+
     return OK;
 }
 
@@ -203,6 +217,13 @@ int ref_partition_t::init_graph_mem(
 }
 
 void ref_partition_t::exec_ops(res_t *res) {
+    // check if there's softmax backward op in the partition,
+    // which will be a candidate for sdpa training backward pattern
+    bool has_softmax_backward = std::any_of(partition_ops_ref_.begin(),
+            partition_ops_ref_.end(), [](const op_ref_t &op_ref) {
+                return op_ref.get().kind_ == "SoftMaxBackward";
+            });
+
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
         auto ref_prim = ref_prims_.at(op.id_);
@@ -255,9 +276,21 @@ void ref_partition_t::exec_ops(res_t *res) {
         //
         // For SDPA, it is limited for a Softmax with a parent op presented, as
         // it's assumed Softmax is unfusable.
-        const bool is_sdpa_pattern
+        const bool is_softmax_in_sdpa_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::SoftMax
                 && has_parent_op(op, /* check_all_in_lts = */ true);
+
+        // For SDPA training backward, it is limited for MatMuls used to compute
+        // dQ, dK, dV.
+        const bool is_matmul
+                = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul;
+        bool is_matmul_in_sdpa_bwd_pattern = false;
+        if (is_matmul && has_softmax_backward) {
+            const deserialized_op_t *child_op = nullptr;
+            if (!has_child_op(op, &child_op))
+                is_matmul_in_sdpa_bwd_pattern = true;
+        }
+
         // For gated-MLP, it is complicated - the Swish op is decomposed into
         // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its
         // output is passed to another Multiply which is the target for the
@@ -268,16 +301,17 @@ void ref_partition_t::exec_ops(res_t *res) {
         const bool is_child_multiply
                 = ref_prim->get_kind() == dnnl::graph::op::kind::Multiply
                 && has_parent_op(op, /* check_all_in_lts */ true);
-        bool is_gated_mlp_pattern = false;
+        bool is_multiply_in_gated_mlp_pattern = false;
         if (is_child_multiply && op.in_lts_.size() == 2) {
             const auto &parent0 = get_parent_op(op.in_lts_[0].id_)->kind_;
             const auto &parent1 = get_parent_op(op.in_lts_[1].id_)->kind_;
-            is_gated_mlp_pattern
+            is_multiply_in_gated_mlp_pattern
                     = (parent0 == "MatMul" && parent1 == "Multiply")
                     || (parent0 == "Multiply" && parent1 == "MatMul");
         }
 
-        if (is_sdpa_pattern || is_gated_mlp_pattern) {
+        if (is_softmax_in_sdpa_pattern || is_matmul_in_sdpa_bwd_pattern
+                || is_multiply_in_gated_mlp_pattern) {
             for (size_t i = 0; i < op.in_lts_.size(); i++) {
                 const auto dt = ref_prim->get_lt_dt(op.in_lts_[i].id_);
                 // There's no need to reorder data for f32 tensors.
@@ -285,7 +319,7 @@ void ref_partition_t::exec_ops(res_t *res) {
 
                 // MLP pattern requires reorder only for an input coming from
                 // MatMul0 directly, not from Swish.
-                if (is_gated_mlp_pattern) {
+                if (is_multiply_in_gated_mlp_pattern) {
                     const auto parent_op = get_parent_op(op.in_lts_[i].id_);
                     if (!parent_op) continue;
                     if (parent_op->kind_ != "MatMul") continue;
@@ -300,7 +334,7 @@ void ref_partition_t::exec_ops(res_t *res) {
             }
         }
 
-        ref_prim->execute_prim(res);
+        SAFE_V(ref_prim->execute_prim(res));
 
         // For an output, because of various graph compositions, there's a more
         // detailed guide when data adjustment should happen. It's covered by
@@ -308,10 +342,11 @@ void ref_partition_t::exec_ops(res_t *res) {
         //
         // A data type to where transform the data will also be provided by the
         // same function since there are corner cases.
-        dnnl_data_type_t dt = dnnl_data_type_undef;
-        if ((is_sdpa_pattern || is_gated_mlp_pattern)
-                && need_unfusable_output_crop(op, dt)) {
+        if (is_softmax_in_sdpa_pattern || is_matmul_in_sdpa_bwd_pattern
+                || is_multiply_in_gated_mlp_pattern) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
+                dnnl_data_type_t dt = dnnl_data_type_undef;
+                need_unfusable_output_crop(op, i, dt);
                 // There's no need to reorder data for undefined or f32 tensors.
                 if (dt == dnnl_data_type_undef || dt == dnnl_f32) continue;
 
@@ -342,7 +377,7 @@ int ref_partition_t::check_partition_correctness(
         // Currently, both cases use set_has_eltwise_post_op flag in benchdnn
         // compare function.
         // The flag name is not very accurate, add this note to avoid confusion
-        const auto op_driver = opkind2driver(ref_prim->get_kind());
+        const auto op_driver = op.get().get_driver();
         has_eltwise = has_eltwise
                 || (op_driver == dnnl_driver_t::eltwise
                         || ((opstr2kind(op_kind)
@@ -478,15 +513,15 @@ const deserialized_op_t *ref_partition_t::get_parent_op(size_t in_lt_id) const {
 
 // This function decides when unfusable transcendental op output should be
 // reordered to lower data type and back to f32 for a reference path.
-bool ref_partition_t::need_unfusable_output_crop(
-        const deserialized_op_t &op, dnnl_data_type_t &dt) const {
+bool ref_partition_t::need_unfusable_output_crop(const deserialized_op_t &op,
+        size_t output_offset, dnnl_data_type_t &dt) const {
     const deserialized_op_t *child_op = nullptr;
     // First of all, the output should have a child op...
     if (!has_child_op(op, &child_op)) return false;
     // If the child op is not a TypeCast, it's safe to crop.
     if (child_op->kind_ != "TypeCast") {
         // Target dt in this case is the output dt of input `op`.
-        dt = convert_dt(op.out_lts_[0].get_data_type());
+        dt = convert_dt(op.out_lts_[output_offset].get_data_type());
         return true;
     }
     // When it is a TypeCast (it always changes `cur_dt` <-> f32, both ways are
@@ -500,13 +535,13 @@ bool ref_partition_t::need_unfusable_output_crop(
     // * However, a second TypeCast would negate an effect of the previous...
     if (next_child_op->kind_ == "TypeCast") {
         // Target dt in this case is the output dt of the last TypeCast.
-        dt = convert_dt(next_child_op->out_lts_[0].get_data_type());
+        dt = convert_dt(next_child_op->out_lts_[output_offset].get_data_type());
         return true;
     }
 
     // Rest potential outcomes are default to make a crop. The target dt in
     // this case is the output dt of the child op.
-    dt = convert_dt(child_op->out_lts_[0].get_data_type());
+    dt = convert_dt(child_op->out_lts_[output_offset].get_data_type());
     return true;
 }
 

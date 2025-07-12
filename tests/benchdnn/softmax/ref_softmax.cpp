@@ -28,6 +28,9 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     float *dst_ptr = (float *)dst;
 
+    // Used for graph reference version only when runs SDPA fwd training.
+    const dnn_mem_t &stats = args.find(DNNL_ARG_DST_1);
+
     const auto alg = prb->alg;
     int64_t outer_size {0}, inner_size {0}, axis_size {0};
     get_sizes(prb, outer_size, inner_size, axis_size);
@@ -66,6 +69,12 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         }
 
         if (alg == SOFTMAX || alg == SOFTMAX_INF_AS_ZERO) {
+            if (prb->has_stats) {
+                int64_t stats_idx = ou * inner_size + in;
+                float stats_value
+                        = space_denom ? space_max + logf(space_denom) : 0;
+                stats.set_elem(stats_idx, stats_value);
+            }
             space_denom = space_denom ? (1.f / space_denom) : 1.f;
         } else if (alg == LOGSOFTMAX) {
             space_denom = logf(space_denom);

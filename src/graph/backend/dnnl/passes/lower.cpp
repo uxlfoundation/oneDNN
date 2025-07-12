@@ -707,6 +707,168 @@ static status_t select_handler(
     return status::success;
 }
 
+static status_t softmax_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    const auto &src = op->get_input_value(0);
+    const auto &dst = op->get_output_value(0);
+    bool no_stats = op->num_outputs() == 1;
+
+    auto new_softmax_op = std::make_shared<op_t>(op_kind::dnnl_softmax);
+    new_softmax_op->merge_attributes(op->get_attributes());
+
+    src->remove_consumer(*op, 0);
+    src->add_consumer(*new_softmax_op, 0);
+    new_softmax_op->add_input(src);
+    if (no_stats) {
+        new_softmax_op->add_output(dst);
+        insert_empty_scratchpad(new_softmax_op);
+        rewriter.to_insert(new_softmax_op);
+        rewriter.to_remove(op);
+        return status::success;
+    }
+
+    auto f32_dst = dst;
+    if (f32_dst->get_logical_tensor().data_type == impl::data_type::f32) {
+        // if the dst is already f32, we can just use it as the output
+        new_softmax_op->add_output(dst);
+        dst->remove_consumer(*op, 0);
+        insert_empty_scratchpad(new_softmax_op);
+        rewriter.to_insert(new_softmax_op);
+        rewriter.to_remove(op);
+    } else {
+        logical_tensor_t softmax_op_out_lt
+                = empty_logical_tensor_with_default_id();
+        f32_dst = std::make_shared<value_t>(
+                *new_softmax_op, 0, softmax_op_out_lt, true);
+        f32_dst->set_data_type(impl::data_type::f32);
+        new_softmax_op->add_output(f32_dst);
+        insert_empty_scratchpad(new_softmax_op);
+
+        // create reorder op to convert the output to the original data type
+        auto reorder_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+        reorder_op->set_attr<bool>(op_attr::change_layout, false);
+        reorder_op->add_input(f32_dst);
+        f32_dst->add_consumer(*reorder_op, 0);
+        reorder_op->add_output(dst);
+        dst->remove_consumer(*op, 0);
+        insert_empty_scratchpad(reorder_op);
+        rewriter.to_insert(new_softmax_op);
+        rewriter.to_insert(reorder_op);
+        rewriter.to_remove(op);
+    }
+
+    // support stats computation: stats = reducemax(src) - log(reducemax(f32_dst))
+    const auto &stats = op->get_output_value(1);
+    // create reduce_src op
+    auto reduce_src_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+    reduce_src_op->set_attr<std::vector<int64_t>>(
+            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+    reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
+    reduce_src_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::reduction_max));
+    reduce_src_op->add_input(src);
+    src->add_consumer(*reduce_src_op, 0);
+    // add output for reduce_src
+    logical_tensor_t reduce_src_op_out_lt
+            = empty_logical_tensor_with_default_id();
+    auto reduce_src_op_out_val = std::make_shared<value_t>(
+            *reduce_src_op, 0, reduce_src_op_out_lt, true);
+    reduce_src_op_out_val->set_data_type(impl::data_type::f32);
+    reduce_src_op->add_output(reduce_src_op_out_val);
+    insert_empty_scratchpad(reduce_src_op);
+
+    // create reduce_dst op
+    auto reduce_dst_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+    reduce_dst_op->set_attr<std::vector<int64_t>>(
+            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+    reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
+    reduce_dst_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::reduction_max));
+    reduce_dst_op->add_input(f32_dst);
+    f32_dst->add_consumer(*reduce_dst_op, 0);
+    // add output for reduce_dst
+    logical_tensor_t reduce_dst_op_out_lt
+            = empty_logical_tensor_with_default_id();
+    auto reduce_dst_op_out_val = std::make_shared<value_t>(
+            *reduce_dst_op, 0, reduce_dst_op_out_lt, true);
+    reduce_dst_op_out_val->set_data_type(impl::data_type::f32);
+    reduce_dst_op->add_output(reduce_dst_op_out_val);
+    insert_empty_scratchpad(reduce_dst_op);
+
+    // create log op
+    auto log_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+    log_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::eltwise_log));
+    log_op->add_input(reduce_dst_op_out_val);
+    reduce_dst_op_out_val->add_consumer(*log_op, 0);
+    // add output for log_op
+    logical_tensor_t log_op_out_lt = empty_logical_tensor_with_default_id();
+    auto log_op_out_val
+            = std::make_shared<value_t>(*log_op, 0, log_op_out_lt, true);
+    log_op_out_val->set_data_type(impl::data_type::f32);
+    log_op->add_output(log_op_out_val);
+    insert_empty_scratchpad(log_op);
+
+    // create subtract op
+    auto sub_op = std::make_shared<op_t>(op_kind::dnnl_binary);
+    sub_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::binary_sub));
+    sub_op->add_input(reduce_src_op_out_val);
+    reduce_src_op_out_val->add_consumer(*sub_op, 0);
+    sub_op->add_input(log_op_out_val);
+    log_op_out_val->add_consumer(*sub_op, 1);
+    // add output for sub_op
+    logical_tensor_t sub_op_out_lt = empty_logical_tensor_with_default_id();
+    auto sub_op_out_val
+            = std::make_shared<value_t>(*sub_op, 0, sub_op_out_lt, true);
+    sub_op_out_val->set_data_type(impl::data_type::f32);
+    sub_op->add_output(sub_op_out_val);
+    insert_empty_scratchpad(sub_op);
+
+    // special handling for inf_as_zero:
+    // stats = reducesum(f32_dst) == 0? 0: stats
+    // create reduce_sum_dst op
+    auto reduce_sum_dst_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+    reduce_sum_dst_op->set_attr<std::vector<int64_t>>(
+            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+    reduce_sum_dst_op->set_attr<bool>(op_attr::keep_dims, true);
+    reduce_sum_dst_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::reduction_sum));
+    reduce_sum_dst_op->add_input(f32_dst);
+    f32_dst->add_consumer(*reduce_sum_dst_op, 0);
+    // add output for reduce_sum_dst
+    logical_tensor_t reduce_sum_dst_op_out_lt
+            = empty_logical_tensor_with_default_id();
+    auto reduce_sum_dst_op_out_val = std::make_shared<value_t>(
+            *reduce_sum_dst_op, 0, reduce_sum_dst_op_out_lt, true);
+    reduce_sum_dst_op_out_val->set_data_type(dnnl::impl::data_type::s8);
+    reduce_sum_dst_op->add_output(reduce_sum_dst_op_out_val);
+    insert_empty_scratchpad(reduce_sum_dst_op);
+
+    // create select op
+    auto select_op = std::make_shared<op_t>(op_kind::dnnl_binary);
+    select_op->set_attr<int64_t>(op_attr::alg_kind,
+            static_cast<int64_t>(dnnl::algorithm::binary_select));
+    select_op->add_input(sub_op_out_val);
+    sub_op_out_val->add_consumer(*select_op, 0);
+    select_op->add_input(reduce_dst_op_out_val);
+    reduce_dst_op_out_val->add_consumer(*select_op, 1);
+    // condition
+    select_op->add_input(reduce_sum_dst_op_out_val);
+    reduce_sum_dst_op_out_val->add_consumer(*select_op, 2);
+    select_op->add_output(stats);
+    insert_empty_scratchpad(select_op);
+
+    rewriter.to_insert(reduce_src_op);
+    rewriter.to_insert(reduce_dst_op);
+    rewriter.to_insert(log_op);
+    rewriter.to_insert(sub_op);
+    rewriter.to_insert(reduce_sum_dst_op);
+    rewriter.to_insert(select_op);
+
+    return status::success;
+}
+
 static status_t gen_index_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_gen_index);
@@ -748,7 +910,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(AvgPoolBackward, avgpool_bwd_handler),
         ITEM(MaxPoolBackward, maxpool_bwd_handler),
         // softmax
-        ITEM(SoftMax, common_handler<op_kind::kDnnl_softmax>),
+        ITEM(SoftMax, softmax_handler),
         ITEM(LogSoftmax, common_handler<op_kind::kDnnl_logsoftmax>),
         ITEM(SoftMaxBackward, common_handler<op_kind::kDnnl_softmax_bwd>),
         ITEM(LogSoftmaxBackward, common_handler<op_kind::kDnnl_logsoftmax_bwd>),

@@ -933,6 +933,8 @@ struct memory : public handle<dnnl_memory_t> {
         blocked = dnnl_blocked,
         /// Format kind for sparse tensors.
         sparse = dnnl_format_kind_sparse,
+        /// Format kind for host scalars.
+        host_scalar = dnnl_format_kind_host_scalar,
         /// A special format kind that indicates that tensor format is opaque.
         opaque = dnnl_format_kind_opaque,
     };
@@ -2960,6 +2962,22 @@ struct memory : public handle<dnnl_memory_t> {
             return desc {md};
         }
 
+        /// Creates a memory descriptor for a scalar value that resides on the host.
+        /// This descriptor is intended for passing a scalar directly as an argument
+        /// to device-side kernels, helping to avoid unnecessary memory transfers
+        /// during primitive execution.
+        ///
+        /// @param adata_type Data type of the scalar.
+        /// @returns A memory descriptor for host-side scalar input.
+        static desc host_scalar(data_type adata_type) {
+            dnnl_memory_desc_t md = nullptr;
+            error::wrap_c_api(dnnl_memory_desc_create_host_scalar(
+                                      &md, convert_to_c(adata_type)),
+                    "could not create a memory descriptor describing host side "
+                    "scalar");
+            return desc {md};
+        }
+
         /// Construct a memory descriptor from a C API ::dnnl_memory_desc_t
         /// handle. The resulting handle is not weak and the C handle will be
         /// destroyed during the destruction of the C++ object.
@@ -3392,6 +3410,24 @@ struct memory : public handle<dnnl_memory_t> {
         reset(result);
     }
 
+    /// Constructs a memory object that wraps a host scalar value.
+    /// @note The scalar value is copied into the newly allocated memory storage,
+    ///     so the user does not need to manage the lifetime of the original scalar data.
+    ///
+    /// @tparam T Type of the scalar value.
+    /// @param md The memory descriptor that defines data type.
+    /// @param value The scalar value to be wrapped by the memory object.
+    ///
+    /// @throws error if the memory object could not be created.
+    template <typename T>
+    memory(const desc &md, const T &value) {
+        dnnl_memory_t result;
+        dnnl_status_t status = dnnl_memory_create_host_scalar(
+                &result, md.get(), (void *)&value);
+        error::wrap_c_api(status, "could not create a memory object");
+        reset(result);
+    }
+
     /// Returns the associated memory descriptor.
     desc get_desc() const {
         const_dnnl_memory_desc_t cdesc;
@@ -3432,6 +3468,26 @@ struct memory : public handle<dnnl_memory_t> {
     void set_data_handle(void *handle, int index = 0) const {
         error::wrap_c_api(dnnl_memory_set_data_handle_v2(get(), handle, index),
                 "could not set native handle of a memory object");
+    }
+
+    /// Returns the scalar value stored in the memory object as type T.
+    /// @tparam T Type to cast the scalar value to.
+    template <typename T>
+    T get_host_scalar_value() const {
+        T value;
+        error::wrap_c_api(dnnl_memory_get_host_scalar_value(get(), &value),
+                "could not get host scalar value from a memory object");
+        return value;
+    }
+
+    /// Sets the scalar value stored in the memory object.
+    ///
+    /// @param value Pointer to the scalar value to set.
+    /// @note The scalar value is copied into the memory storage, so the user
+    ///     does not need to manage the lifetime of the original scalar data.
+    void set_host_scalar_value(const void *value) const {
+        error::wrap_c_api(dnnl_memory_set_host_scalar_value(get(), value),
+                "could not set host scalar value to a memory object");
     }
 
     /// Maps a memory object and returns a host-side pointer to a memory

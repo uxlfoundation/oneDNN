@@ -137,10 +137,14 @@ html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']
 #html_js_files = [('dnnl.js', {'defer': 'defer'})]
 
-html_logo = '_static/oneAPI-rgb-rev-100.png'
 html_favicon = '_static/favicons.png'
 
 html_theme_options = {
+    "logo": {
+        "text": "oneDNN Documentation",
+        "image_light": "_static/oneAPI-rgb-rev-100.png",
+        "image_dark": "_static/oneAPI-rgb-rev-100.png",
+    },
     "repository_url": "https://github.com/uxlfoundation/oneDNN",
     "repository_branch": "main",
     "use_repository_button": True,

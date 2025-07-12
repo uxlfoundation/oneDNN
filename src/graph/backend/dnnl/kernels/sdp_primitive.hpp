@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -97,6 +97,10 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_kernel_t)
+    status_t reset_engine(const engine_t *g_engine) override {
+        UNUSED(g_engine);
+        return dnnl_success;
+    }
 };
 
 } // namespace dnnl_impl

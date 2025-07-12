@@ -287,8 +287,11 @@ private:
         // only 1 GB so far to check if it proves working well.
         const bool is_total_size_big = total_size_ >= 1024 * 1024 * 1024;
         const bool is_total_size_unexpected = total_size_ > expected_max_;
-        if (!has_warned_ && is_max_set && is_total_size_big
-                && is_total_size_unexpected) {
+        // Perf mode might have cold-cache enabled which potentially allocates
+        // unaccounted memory. To avoid a dependency on a cold-cache in this
+        // file, just rely on perf mode.
+        if (!has_bench_mode_bit(mode_bit_t::perf) && !has_warned_ && is_max_set
+                && is_total_size_big && is_total_size_unexpected) {
             BENCHDNN_PRINT(0,
                     "[CHECK_MEM][ERROR]: Memory use is underestimated. Current "
                     "allocation size: %s; expected size: %s.\n",

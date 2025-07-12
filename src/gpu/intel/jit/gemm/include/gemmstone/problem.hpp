@@ -174,6 +174,8 @@ struct GEMMProblem : public CommonProblem {
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
+    bool forceAGroupSums = false;                   // If true, needsAGroupSums() returns true no matter what
+    bool forceBGroupSums = false;                   // If true, needsBGroupSums() returns true no matter what
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
 
@@ -234,8 +236,14 @@ struct GEMMProblem : public CommonProblem {
     bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
 
-    bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
-    bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
+    bool needsAGroupSums() const {
+        if (forceAGroupSums) return true;
+        return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb));
+    }
+    bool needsBGroupSums() const {
+        if (forceBGroupSums) return true;
+        return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta));
+    }
 
     bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }

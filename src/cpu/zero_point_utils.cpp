@@ -99,20 +99,22 @@ zero_point_call_params_t::zero_point_call_params_t(const int32_t *src,
 
 bool zero_points_valid(
         const primitive_attr_t *attr, bool per_oc_bcast_accepted) noexcept {
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+    const auto &zp = attr->zero_points_;
 
     static constexpr int common_mask = 0x0,
                          per_oc_mask = 0x2; // mask for common and per_oc_bcast
 
-    if (!attr->zero_points_.has_default_values(DNNL_ARG_SRC)) {
-        int mask_src = attr->zero_points_.get_mask(DNNL_ARG_SRC);
+    if (!zp.has_default_values(DNNL_ARG_SRC)) {
+        int mask_src = zp.get_mask(DNNL_ARG_SRC);
         const bool src_mask_valid = per_oc_bcast_accepted
                 ? utils::one_of(mask_src, common_mask, per_oc_mask)
                 : mask_src == 0;
         if (!src_mask_valid) return false;
     }
 
-    if (!attr->zero_points_.has_default_values(DNNL_ARG_DST)) {
-        int mask_dst = attr->zero_points_.get_mask(DNNL_ARG_DST);
+    if (!zp.has_default_values(DNNL_ARG_DST)) {
+        int mask_dst = zp.get_mask(DNNL_ARG_DST);
 
         const bool dst_mask_valid = per_oc_bcast_accepted
                 ? utils::one_of(mask_dst, common_mask, per_oc_mask)
@@ -120,7 +122,13 @@ bool zero_points_valid(
         if (!dst_mask_valid) return false;
     }
 
-    return attr->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
+    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)
+            || !zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+            || !zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+            || !zp.has_default_values(user_precomp | DNNL_ARG_DST)) {
+        return false;
+    }
+    return true;
 }
 
 void set_zp_src_comp_flags(memory_desc_t &weights_md, bool with_groups) {

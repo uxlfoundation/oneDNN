@@ -216,6 +216,12 @@ TEST(cpp_api_host_scalar_mem, TestHostScalarF32) {
     float scalar_value = 42.0f;
     memory scalar_mem(
             memory::desc::host_scalar(memory::data_type::f32), scalar_value);
+
+    EXPECT_EQ(scalar_mem.get_host_scalar_value<float>(), 42.0f);
+
+    float new_value = 84.0f;
+    scalar_mem.set_host_scalar_value(&new_value);
+    EXPECT_EQ(scalar_mem.get_host_scalar_value<float>(), 84.0f);
 }
 
 } // namespace dnnl

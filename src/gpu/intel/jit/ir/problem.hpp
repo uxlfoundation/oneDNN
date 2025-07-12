@@ -124,6 +124,11 @@ public:
             operator[](k) = value;
     }
 
+    pvar_map_t(const std::initializer_list<std::pair<pvar_t, ValueT>> &keys) {
+        for (auto &k : keys)
+            operator[](k.first) = k.second;
+    }
+
     explicit pvar_map_t(const std::string &s) {
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
             operator[](pvar_t(kv.first)) = ValueT(kv.second);
@@ -395,6 +400,18 @@ inline coord_t operator+(const coord_t &a, const coord_t &b) {
     for (auto &d : b) {
         if (ret.has(d)) continue;
         ret[d] = a.get(d, expr_t(0)) + b.get(d, expr_t(0));
+    }
+    return ret;
+}
+
+inline icoord_t operator+(const icoord_t &a, const icoord_t &b) {
+    icoord_t ret;
+    for (auto &d : a) {
+        ret[d] = a.get(d, 0) + b.get(d, 0);
+    }
+    for (auto &d : b) {
+        if (ret.has(d)) continue;
+        ret[d] = a.get(d, 0) + b.get(d, 0);
     }
     return ret;
 }

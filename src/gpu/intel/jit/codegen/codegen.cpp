@@ -813,11 +813,9 @@ private:
                 int full_elems
                         = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
                 auto tmp = i_scope.alloc_reg_data(type_t::f32(full_elems));
-                emit_reorder_1d_tile(
-                        hw(), host_, i_scope, cur_elems, rd, 1, tmp, 1);
+                emit_reorder_1d_tile(host_, i_scope, cur_elems, rd, 1, tmp, 1);
                 do_eltwise(tmp, full_elems * f_size / grf_size);
-                emit_reorder_1d_tile(
-                        hw(), host_, i_scope, cur_elems, tmp, 1, rd, 1);
+                emit_reorder_1d_tile(host_, i_scope, cur_elems, tmp, 1, rd, 1);
             } else {
                 do_eltwise(rd, cur_elems * f_size / grf_size);
             }

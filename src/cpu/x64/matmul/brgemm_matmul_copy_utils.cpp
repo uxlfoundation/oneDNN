@@ -4304,6 +4304,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
                 vcvtph2ps(vmm_src, Xmm(vmm_src.getIdx()));
             } else if (use_bf16_instructions_) {
                 // Upconvert: move loaded 16 bits left.
+                uni_vpmovzxwd(vmm_src, vmm_src);
                 uni_vpslld(vmm_src, vmm_src, 16);
             }
         } else {

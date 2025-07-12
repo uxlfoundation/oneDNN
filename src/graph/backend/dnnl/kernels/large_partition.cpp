@@ -170,9 +170,17 @@ void larger_partition_kernel_t::setup_pipeline(pass_pipeline_t &pipeline,
 void larger_partition_kernel_t::prepare_host_scalar_args(
         execution_args_set_t *res, const std::vector<tensor_t> &inputs) {
     for (const auto &host_scalar_info : res->get_host_scalar_infos()) {
-        auto mem = make_dnnl_memory(host_scalar_info.md,
-                make_dnnl_engine(
-                        *(inputs[host_scalar_info.input_idx].get_engine())),
+        const engine_t *eng_ptr
+                = inputs[host_scalar_info.input_idx].get_engine();
+        // For host scalar tensor, if it contains an engine, use it. Otherwise,
+        // create a host engine for it. This can be changed once dnnl::memory
+        // supports host scalar memory creation without engine and also supports
+        // reorder from a host scalar memory to a gpu device memory.
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
+        assert(eng_ptr);
+#endif
+        auto eng = eng_ptr ? make_dnnl_engine(*eng_ptr) : make_host_engine();
+        auto mem = make_dnnl_memory(host_scalar_info.md, eng,
                 inputs[host_scalar_info.input_idx].get_data_handle());
         auto args = res->get_exec_args()[host_scalar_info.exec_idx];
         args.insert({host_scalar_info.arg, mem});

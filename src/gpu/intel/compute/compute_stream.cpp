@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2024 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ status_t compute_stream_t::zero_pad(
         CHECK(zero_pad_primitive->execute(zero_pad_ctx));
         status_t status = this->wait();
         double duration_ms = get_msec() - start_ms;
-        std::stringstream info;
+        dnnl_stringstream_t info;
         info << "gpu,zero_pad," << zero_pad_primitive->pd()->name() << ",undef,"
              << md2fmt_str("data", memory->md(), format_kind::undef) << ",,,"
              << md2dim_str(memory->md());

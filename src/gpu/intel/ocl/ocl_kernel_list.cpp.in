@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ const char *get_kernel_source(const char *name) {
             = dnnl::impl::gpu::intel::gpu_utils::dev_getenv(
                     "runtime_kernel_overrides", std::string());
     if (!runtime_kernel_overrides.empty()) {
-        std::istringstream paths_stream(runtime_kernel_overrides);
+        dnnl_istringstream_t paths_stream(runtime_kernel_overrides);
         std::string name_path_pair;
 
         while (std::getline(paths_stream, name_path_pair, ':')) {
@@ -66,7 +66,7 @@ const char *get_kernel_source(const char *name) {
                 std::ifstream file(kernel_path, std::ios::binary);
                 gpu_assert(file) << "Could not open runtime_kernel_path file "
                                  << kernel_path << "\n";
-                std::stringstream buffer;
+                dnnl_stringstream_t buffer;
                 buffer << file.rdbuf();
                 custom_kernels[kernel_name] = buffer.str();
             }

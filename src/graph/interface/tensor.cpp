@@ -123,6 +123,9 @@ dnnl_graph_tensor::dnnl_graph_tensor(
         if (lt.data_type == data_type::s32) {
             scalar_.s32_value = *static_cast<int32_t *>(handle);
             handle_.reset(&scalar_.s32_value, dummy_destructor);
+        } else if (lt.data_type == data_type::f32) {
+            scalar_.f32_value = *static_cast<float *>(handle);
+            handle_.reset(&scalar_.f32_value, dummy_destructor);
         } else {
             assertm(false, "Unsupported data type for host scalar");
         }
@@ -144,6 +147,25 @@ status_t DNNL_API dnnl_graph_tensor_create(tensor_t **tensor,
         *tensor = nullptr;
         return status::out_of_memory;
     }
+    return status::success;
+}
+
+status_t DNNL_API dnnl_graph_tensor_create_host_scalar(tensor_t **tensor,
+        const logical_tensor_t *logical_tensor, void *handle) {
+    if (utils::any_null(tensor, logical_tensor))
+        return status::invalid_arguments;
+
+    if (logical_tensor->property != property_type::host_scalar)
+        return status::invalid_arguments;
+
+    // TODO(xxx): extend for library allocated host scalar?
+    if (nullptr == handle || DNNL_MEMORY_ALLOCATE == handle) {
+        return status::invalid_arguments;
+    }
+
+    *tensor = new tensor_t {*logical_tensor, nullptr, handle};
+    if (*tensor == nullptr) return status::out_of_memory;
+
     return status::success;
 }
 

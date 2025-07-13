@@ -575,6 +575,8 @@ private:
 /// A tensor object
 class tensor : public tensor_handle {
 public:
+    using tensor_handle::handle;
+
     /// Default constructor. Constructs an empty object.
     tensor() = default;
 
@@ -606,6 +608,22 @@ public:
     /// @param aengine Engine to store the data on.
     tensor(const logical_tensor &lt, const engine &aengine)
         : tensor(lt, aengine, DNNL_MEMORY_ALLOCATE) {}
+
+    /// Creates a tensor object for host-side scalar value. The data type contained
+    /// in the logical tensor parameter will be used to interpret the scalar
+    /// pointer. The property type in the logical tensor must be `host_scalar`.
+    ///
+    /// @param lt The logical tensor describing the host scalar
+    /// @param scalar The pointer to scalar value
+    /// @returns Created tensor object
+    static tensor make_scalar_tensor(const logical_tensor &lt, void *scalar) {
+        dnnl_graph_tensor_t t = nullptr;
+        error::wrap_c_api(
+                dnnl_graph_tensor_create_host_scalar(&t, &(lt.data), scalar),
+                "could not create a scalar tensor object");
+
+        return tensor(t);
+    }
 
     /// Returns the underlying memory buffer.
     ///

@@ -10,6 +10,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 
 [Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_graph_sdpa.html
 [Grouped Query Attention (GQA)]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_graph_gqa.html
+
 ## Intel Graphics Products
 * Improved performance on Intel GPUs based on Xe3 architecture.
 * Improved matmul performance for Intel Arc Graphics for Intel Core Ultra processors (Series 2) (formerly Lunar Lake) 
@@ -24,7 +25,6 @@ This functionality is not dispatched by default and requires opt-in with environ
     * SDPA with bottom-right implicit causal mask. 
     * fp32 SDPA. 
     * fp16 SDPA on Intel GPUs without XMX cores. 
-
 
 ## AArch64-based Processors
 TBD
@@ -41,14 +41,15 @@ TBD
 
 ## Microkernel API
 * Introduced support for `fp8` data types. 
+
 ## Intel Architecture Processors
 * Introduced support for select algorithm in binary post-op. 
 * Introduced source, destination, and weight scales support in fp8 convolution and deconvolution primitives. 
 
 ## Intel Graphics Products
 * Introduced support for select algorithm in binary primitive. 
+
 ## NVIDIA GPUs
-*
 
 # Usability
 * Enabled build with `-Wundef` compiler flag. 

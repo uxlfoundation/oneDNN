@@ -30,8 +30,7 @@ using namespace Xbyak_aarch64;
 
 namespace jit_uni_brgemm_conv_comp_pad_kernel {
 
-#define GET_OFF(field) \
-    (uint32_t) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
+#define GET_OFF(field) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
 
 template <cpu_isa_t isa>
 jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::
@@ -168,14 +167,14 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::khw_loop(const int icb,
         const int mb_tail, const int n_block) {
     Xbyak_aarch64::Label label_kw_loop, label_kw_end, label_kh_loop,
             label_kh_end;
-    ldr(reg_kh_l, ptr(param1, GET_OFF(kh_l)));
+    add_imm(reg_kh_l, param1, GET_OFF(kh_l), X_TMP_0);
     mov(reg_aux_kh_in, reg_in);
 
     L_aligned(label_kh_loop);
     {
         cmp(reg_kh_l, 0);
         b(EQ, label_kh_end);
-        ldr(reg_kw_l, ptr(param1, GET_OFF(kw_l)));
+        add_imm(reg_kw_l, param1, GET_OFF(kw_l), X_TMP_0);
         mov(reg_aux_kw_in, reg_aux_kh_in);
         L_aligned(label_kw_loop);
         {
@@ -197,9 +196,9 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::khw_loop(const int icb,
 
 template <cpu_isa_t isa>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::load_params() {
-    ldr(reg_in, ptr(param1, (GET_OFF(ptr_in))));
-    ldr(reg_zp_comp_out, ptr(param1, (GET_OFF(ptr_zp_out))));
-    ldr(reg_comp_out, ptr(param1, (GET_OFF(ptr_cp_out))));
+    add_imm(reg_in, param1, GET_OFF(ptr_in), X_TMP_0);
+    add_imm(reg_zp_comp_out, param1, GET_OFF(ptr_zp_out), X_TMP_1);
+    add_imm(reg_comp_out, param1, GET_OFF(ptr_cp_out), X_TMP_2);
 }
 
 template <cpu_isa_t isa>
@@ -277,7 +276,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
     const auto mb_tail = div_up(icb_tail, ic_step);
 
     Label label_kd_loop, label_loop_end;
-    ldr(reg_kd_l, ptr(param1, GET_OFF(kd_l)));
+    add_imm(reg_kd_l, param1, GET_OFF(kd_l), X_TMP_0);
 
     zero_accumulators(m_block, n_block);
 

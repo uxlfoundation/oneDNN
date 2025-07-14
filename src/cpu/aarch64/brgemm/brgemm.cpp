@@ -231,8 +231,7 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
 
     if (brg->is_int8) {
         if ((brg->dt_a == data_type::s8 && brg->dt_b == data_type::u8)
-                || (!one_of(dt_bias, data_type::undef, data_type::f32))
-                || (dt_d != data_type::f32))
+                || (dt_bias != data_type::f32) || (dt_d != data_type::f32))
             return status::unimplemented;
     }
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)

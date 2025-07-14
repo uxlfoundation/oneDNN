@@ -48,7 +48,7 @@ struct brgemm_kernel_diff_bias_t {
     int flags;
 };
 
-#define GET_OFF(field) (uint32_t) offsetof(brgemm_kernel_diff_bias_t, field)
+#define GET_OFF(field) offsetof(brgemm_kernel_diff_bias_t, field)
 
 struct jit_brgemm_kernel_diff_bias_t : public jit_generator {
     jit_brgemm_kernel_diff_bias_t(
@@ -457,9 +457,8 @@ private:
             case data_type::bf16: assert(!"unsupported data type\n"); break;
             default: assert(!"unsupported data type");
         }
-        if (types::is_integral_dt(type_in)) {
-            scvtf(zmm_in.s, P_ALL_ONE / T_m, zmm_in.s);
-        }
+        if (!utils::one_of(type_in, data_type::f32, data_type::bf16))
+            assert(!"unsupported data type\n");
     }
 
     ZReg vector(int m, int n, int n_block) { return ZReg(m * n_block + n); };
@@ -619,8 +618,9 @@ private:
                 add_imm(X_DEFAULT_ADDR, aux_reg_scales,
                         is_oc_scale_ * sizeof(float) * (n * brg.ld_block),
                         X_TMP_0);
-                ld1w(vmm_tmp0.s, k_mask, ptr(X_DEFAULT_ADDR));
+                ldr(vmm_tmp0, ptr(X_DEFAULT_ADDR));
                 fmul(vmm.s, vmm.s, vmm_tmp0.s);
+                if (tail > 0) mov(vmm.s, k_mask / T_m, vmm.s);
             }
         }
 

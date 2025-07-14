@@ -50,6 +50,8 @@
 #define SIZE_e8m0 1
 #define SIZE_bf16 2
 #define SIZE_half 2
+#define SIZE_short 2
+#define SIZE_ushort 2
 #define SIZE_int 4
 #define SIZE_float 4
 #define SIZE_double 8
@@ -250,6 +252,8 @@ DECLARE_AS_BLOCK(double)
 
 // Loads
 DEF_load(float, int);
+DEF_load(float, short);
+DEF_load(float, ushort);
 DEF_load(float, float);
 DEF_load(float, char);
 DEF_load(float, uchar);
@@ -265,6 +269,8 @@ DEF_load(float, undef_data);
 // Writes
 DEF_write(char, float);
 DEF_write(uchar, float);
+DEF_write(short, float);
+DEF_write(ushort, float);
 DEF_write(bf16, float);
 DEF_write(float, float);
 

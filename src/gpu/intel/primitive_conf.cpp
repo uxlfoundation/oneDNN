@@ -397,6 +397,8 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
         case data_type::f64: return "double";
         case data_type::s8: return "char";
         case data_type::u8: return "uchar";
+        case data_type::s16: return "short";
+        case data_type::u16: return "ushort";
         case data_type::f8_e4m3: return with_punning ? "uchar" : "f8_e4m3";
         case data_type::f8_e5m2: return with_punning ? "uchar" : "f8_e5m2";
         case data_type::f4_e2m1: return with_punning ? "uchar" : "f4_e2m1";

@@ -2091,7 +2091,9 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
     */
     template <typename Vmm>
     Vmm maybe_mask(Vmm vmm, bool is_tail, bool is_int4 = false) {
-        const auto tail_mask = is_int4 ? kTail_int4 : kTail;
+        // Transposed kernel uses the same kTail mask for both cases
+        const auto tail_mask
+                = is_int4 && !conf_->transposed_B ? kTail_int4 : kTail;
         const auto unmask_tail
                 = one_of(conf_->wei_dt, data_type::bf16, data_type::f16)
                 && !conf_->transposed_B;
@@ -2152,10 +2154,16 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
         MAYBE_UNUSED(vmm_lower);
 
         const bool is_xf16
-                = everyone_is(conf_->dst_dt, data_type::bf16, data_type::f16);
+                = one_of(conf_->wei_dt, data_type::bf16, data_type::f16);
 
         switch (dt) {
-            case data_type::f32: uni_vmovups(vmm_in, op); break;
+            case data_type::f32: {
+                if (conf_->transposed_B)
+                    vmovdqu8(vmm_in, op);
+                else
+                    uni_vmovups(vmm_in, op);
+                break;
+            }
             case data_type::f16:
                 if (!is_xf16) {
                     if (is_superset(conf_->isa, avx512_core_fp16)) {
@@ -2167,9 +2175,12 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
                 }
             case data_type::bf16:
                 if (is_xf16) {
-                    // jit_brgemm_matmul_copy_b_bf16 requires
+                    // jit_brgemm_matmul_copy_b_transposed_t requires
                     // another instruction to load
-                    vmovdqu16(vmm_in, op);
+                    if (conf_->transposed_B)
+                        vmovdqu8(vmm_in, op);
+                    else
+                        vmovdqu16(vmm_in, op);
                 } else {
                     uni_vpmovzxwd(vmm_in, op);
                     uni_vpslld(vmm_in, vmm_in, 16);
@@ -2334,6 +2345,8 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
     template <typename Vmm>
     void decompress_value(const Vmm &input, const Vmm &zp,
             const Xbyak::Operand &scale_op, data_type_t src_dt) {
+        if (src_dt == data_type::f32)
+            return; // Decompression doesn't support f32
         apply_shift(input, zp, src_dt);
         upconvert_to_f32(input, src_dt);
         apply_scales(input, scale_op);
@@ -2343,6 +2356,7 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
     void decompress_value(const Vmm &input, const Vmm &zp,
             const Xbyak::Operand &scale_op, data_type_t src_dt,
             data_type_t dst_dt) {
+        if (src_dt == dst_dt) return;
         decompress_value(input, zp, scale_op, src_dt);
         downconvert_to_dst_dt(input, dst_dt);
     }
@@ -2351,6 +2365,7 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
     void decompress_value(const Vmm &input1, const Vmm &input2, const Vmm &zp,
             const Xbyak::Operand &scale_op1, const Xbyak::Operand &scale_op2,
             data_type_t src_dt, data_type_t dst_dt) {
+        if (src_dt == dst_dt) return;
         decompress_value(input1, zp, scale_op1, src_dt);
         decompress_value(input2, zp, scale_op2, src_dt);
         downconvert_to_dst_dt(input1, input2, dst_dt);
@@ -2367,7 +2382,7 @@ protected:
     opmask_t kF0F0 = k6;
     opmask_t kFFFF = k6;
     opmask_t kTail = k7;
-    opmask_t kTail_int4 = k5;
+    opmask_t kTail_int4 = k5; // TODO: refactor: use kTail for both cases
 };
 
 template <typename Vmm>
@@ -4136,7 +4151,9 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             const auto &src_op = preloaded_int4
                     ? static_cast<const Xbyak::Operand &>(xmm_preload)
                     : static_cast<const Xbyak::Operand &>(addr);
+            if (is_src_int4_) init_tail_mask(columns_tail, true);
             load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail);
+            if (is_src_int4_) init_tail_mask(columns_tail, false);
             decompress_value(maybe_mask(src_reg, is_tail), vmm_zp_b_val,
                     scales_addr, conf_->orig_wei_dt);
         } else
@@ -4166,8 +4183,10 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                 const auto &src_op = preloaded_int4
                         ? static_cast<const Xbyak::Operand &>(xmm_preload)
                         : static_cast<const Xbyak::Operand &>(next_addr);
+                if (is_src_int4_) init_tail_mask(columns_tail, true);
                 load_value(src_reg_next, src_op, vmm_permd, conf_->orig_wei_dt,
                         is_tail);
+                if (is_src_int4_) init_tail_mask(columns_tail, false);
                 decompress_value(maybe_mask(src_reg_next, is_tail),
                         vmm_zp_b_val, scales_addr, conf_->orig_wei_dt);
             } else
@@ -4197,9 +4216,9 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         }
 
         const auto is_tail = columns_tail > 0;
-        auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
         const auto src_offset = (i * src_stride_) / typesize_scale_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
+        auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
         if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             const auto scales_addr
@@ -4210,7 +4229,9 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             const auto &src_op = preloaded_int4
                     ? static_cast<const Xbyak::Operand &>(xmm_preload)
                     : static_cast<const Xbyak::Operand &>(addr);
+            if (is_src_int4_) init_tail_mask(columns_tail, true);
             load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail);
+            if (is_src_int4_) init_tail_mask(columns_tail, false);
             decompress_value(maybe_mask(src_reg, is_tail), vmm_zp_b_val,
                     scales_addr, conf_->orig_wei_dt);
         } else if (use_fp16_instructions_) {

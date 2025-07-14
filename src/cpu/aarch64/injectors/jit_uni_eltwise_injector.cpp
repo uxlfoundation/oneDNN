@@ -33,7 +33,7 @@ namespace aarch64 {
 namespace eltwise_injector {
 
 bool is_isa_supported(cpu_isa_t isa) {
-    return isa == sve_128;
+    return isa == asimd || isa == sve_128;
 }
 
 bool is_alg_supported(alg_kind_t alg) {
@@ -2398,8 +2398,139 @@ void jit_uni_eltwise_injector_f32<isa>::register_table_entries() {
     }
 }
 
-// We only need sve_128 as the injector is fully vector length agnostic
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::relu_zero_ns_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    TRegS vmm_tmp(vmm_src.getIdx() + 3);
+    h->movi(vmm_tmp, 0);
+    h->fmaxnm(vmm_src, vmm_src, vmm_tmp);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::relu_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    TRegS vmm_tmp(vmm_src.getIdx() + 1);
+    // vmm_tmp = alpha * vmm_tmp
+    h->fmul(vmm_tmp, vmm_src, z_tmp);
+    // vmm_src = max(vmm_src, vmm_tmp)
+    h->fmaxnm(vmm_src, vmm_src, vmm_tmp);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::abs_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    h->fabs(vmm_src, vmm_src);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::sqrt_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    h->fsqrt(vmm_src, vmm_src);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::linear_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // compute x = alpha * x + beta;
+    h->fmul(vmm_src, vmm_src, z_tmp);
+    h->fadd(vmm_src, vmm_src, vmm_aux0);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::clip_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    h->fmaxnm(vmm_src, vmm_src, z_tmp);
+    h->fminnm(vmm_src, vmm_src, vmm_aux0);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::hardsigmoid_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // alpha:z_tmp, beta:vmm_aux0
+    // result = max(0, min(1, alpha * x + beta))
+    TRegS vmm_tmp0(vmm_src.getIdx() + 1);
+    TRegS vmm_tmp1(vmm_src.getIdx() + 2);
+    h->fmov(vmm_tmp0, 0);
+    h->fmov(vmm_tmp1, 1);
+    h->fmul(vmm_src, vmm_src, z_tmp);
+    h->fadd(vmm_src, vmm_src, vmm_aux0);
+    h->fminnm(vmm_src, vmm_src, vmm_tmp1);
+    h->fmaxnm(vmm_src, vmm_src, vmm_tmp0);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::hardswish_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // result = x * hardsigmoid(x)
+    h->mov(VReg16B(vmm_aux1.getIdx()), VReg16B(vmm_src.getIdx()));
+    hardsigmoid_compute_vector_fwd(vmm_src);
+    h->fmul(vmm_src, vmm_src, vmm_aux1);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::round_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    h->frintn(vmm_src, vmm_src);
+}
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::load_1word_replicate(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ld1r(vmm_src, ptr(x_addr));
+}
+template <>
+void jit_uni_eltwise_injector_f32<sve_128>::load_1word_replicate(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ldr(TReg(vmm_src.getIdx()), ptr(x_addr));
+}
+
+#define DEFINE_ASIMD_EMPTY_FUNC(func_name) \
+    template <> \
+    void jit_uni_eltwise_injector_f32<asimd>::func_name(const TRegS &) {}
+DEFINE_ASIMD_EMPTY_FUNC(exp_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(mish_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(elu_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(tanh_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(gelu_tanh_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(soft_relu_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(logistic_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(swish_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(log_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(tanh_polynomial_approx_compute_vector_fwd);
+DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_minimax_approx_compute_vector_fwd);
+
+DEFINE_ASIMD_EMPTY_FUNC(relu_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(elu_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(tanh_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(gelu_tanh_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(square_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(abs_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(sqrt_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(linear_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(soft_relu_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(mish_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(logistic_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(exp_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(swish_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(log_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(clip_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(hardswish_compute_vector_bwd);
+DEFINE_ASIMD_EMPTY_FUNC(hardsigmoid_compute_vector_bwd);
+#undef DEFINE_ASIMD_EMPTY_FUNC
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::compute_cmp_mask(const TRegS &vmm_src,
+        const TRegS &compare_operand, int cmp_predicate) {};
+
+template <>
+void jit_uni_eltwise_injector_f32<asimd>::blend_with_mask(
+        const TRegS &vmm_dst, const TRegS &src) {};
+
+// We only need sve_128 as the injector is fully vector length agnostic.
 template struct jit_uni_eltwise_injector_f32<sve_128>;
+template struct jit_uni_eltwise_injector_f32<asimd>;
 
 } // namespace aarch64
 } // namespace cpu

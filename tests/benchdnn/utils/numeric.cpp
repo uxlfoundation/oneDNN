@@ -177,8 +177,16 @@ float saturate_and_round(float value) {
 }
 
 bool is_integral_dt(dnnl_data_type_t dt) {
-    return dt == dnnl_s32 || dt == dnnl_s8 || dt == dnnl_u8 || dt == dnnl_s4
-            || dt == dnnl_u4;
+    switch (dt) {
+        case dnnl_s32:
+        case dnnl_s16:
+        case dnnl_u16:
+        case dnnl_s8:
+        case dnnl_u8:
+        case dnnl_s4:
+        case dnnl_u4: return true;
+        default: return false;
+    }
 }
 
 template <dnnl_data_type_t dt>

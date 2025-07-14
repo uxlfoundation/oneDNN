@@ -62,6 +62,8 @@ inline size_t data_type_size(data_type_t data_type) {
         case f32: return sizeof(prec_traits_t<f32>::type);
         case f64: return sizeof(prec_traits_t<f64>::type);
         case s32: return sizeof(prec_traits_t<s32>::type);
+        case s16: return sizeof(prec_traits_t<s16>::type);
+        case u16: return sizeof(prec_traits_t<u16>::type);
         case s8: return sizeof(prec_traits_t<s8>::type);
         case u8: return sizeof(prec_traits_t<u8>::type);
         case s4: return sizeof(prec_traits_t<s4>::type);

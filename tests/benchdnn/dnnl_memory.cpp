@@ -239,6 +239,8 @@ float dnn_mem_t::get_elem(int64_t idx, int buffer_index) const {
     switch (dt(buffer_index)) {
         case dnnl_s8: elem = static_cast<int8_t *>(data)[idx]; break;
         case dnnl_u8: elem = static_cast<uint8_t *>(data)[idx]; break;
+        case dnnl_s16: elem = static_cast<int16_t *>(data)[idx]; break;
+        case dnnl_u16: elem = static_cast<uint16_t *>(data)[idx]; break;
         case dnnl_s32: elem = static_cast<int32_t *>(data)[idx]; break;
         case dnnl_f32: elem = static_cast<float *>(data)[idx]; break;
         case dnnl_f64: elem = static_cast<double *>(data)[idx]; break;
@@ -1093,6 +1095,8 @@ int check_zero_padding(
             CASE(dnnl_f32, float);
             CASE(dnnl_f64, double);
             CASE(dnnl_s32, int32_t);
+            CASE(dnnl_s16, int16_t);
+            CASE(dnnl_u16, uint16_t);
             CASE(dnnl_s8, int8_t);
             CASE(dnnl_u8, uint8_t);
             CASE(dnnl_s4, dnnl::impl::int4_t);

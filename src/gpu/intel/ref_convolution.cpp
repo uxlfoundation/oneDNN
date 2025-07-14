@@ -209,7 +209,7 @@ status_t ref_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(3, subbyte_pack ? *tmp : dst);
 
     unsigned arg_idx = append_post_ops_to_arg_list(
-            ctx, arg_list, 4, pd()->attr()->post_ops_);
+            ctx, arg_list, 4, pd()->attr()->post_ops_, *pd()->dst_md());
 
     arg_list.set(arg_idx++, src_scales);
     arg_list.set(arg_idx++, wei_scales);
@@ -293,7 +293,7 @@ status_t ref_convolution_bwd_data_t::execute_backward_data(
     arg_list.set(3, bias);
 
     unsigned arg_idx = append_post_ops_to_arg_list(
-            ctx, arg_list, 4, pd()->attr()->post_ops_);
+            ctx, arg_list, 4, pd()->attr()->post_ops_, *pd()->dst_md());
 
     arg_list.set(arg_idx++, src_scales);
     arg_list.set(arg_idx++, wei_scales);

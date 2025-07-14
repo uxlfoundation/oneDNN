@@ -206,7 +206,9 @@ struct relative_md_t {
         rmd.broadcast_mask = ~0;
         uint16_t mask_bit = 1;
         for (int i = ndims - 1; i >= 0; i--) {
-            if (ndim_normalizer.dim(i, md) > 1) rmd.broadcast_mask &= ~mask_bit;
+            auto d = ndim_normalizer.dim(i, md);
+            if (d > 1 || d == DNNL_RUNTIME_DIM_VAL)
+                rmd.broadcast_mask &= ~mask_bit;
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 
@@ -221,6 +223,50 @@ struct relative_md_t {
         if (rmd.inner_dim.is_unset()) rmd.inner_dim = {0};
 
         return status::success;
+    }
+
+    std::string ocl_defines(const std::string &prefix,
+            const std::array<std::string, MAX_NDIMS> &strides,
+            int ndims) const {
+        std::array<int, MAX_NDIMS> current_alignment = {1, 1, 1, 1, 1, 1};
+        std::string defines = "";
+        for (int i = 0; i < blocking_t::max_dims; i++) {
+            const idx_t idx = inner_layout.idxs[i];
+            const uint8_t block = inner_layout.blocks[i];
+            std::string def = " -D" + prefix + "_B" + std::to_string(i);
+            if (!idx.is_unset()) {
+                auto &align = current_alignment[to_md_idx(idx, ndims)];
+                defines += def + "_IDX=x"
+                        + std::to_string(to_md_idx(idx, ndims));
+                defines += def + "_ALIGN=" + std::to_string(align);
+                align *= block;
+                defines += def + "_STRIDE=" + std::to_string(align);
+            } else {
+                defines += def + "_IDX=0";
+                defines += def + "_ALIGN=1";
+                defines += def + "_STRIDE=0";
+            }
+        }
+
+        for (int i = 0; i < MAX_NDIMS; i++) {
+            if (!is_broadcast(i, ndims)) {
+                std::string def = " -D" + prefix + "_X" + std::to_string(i);
+                defines += def
+                        + "_ALIGN=" + std::to_string(current_alignment[i]);
+                defines += def + "_STRIDE=" + strides[i];
+            } else {
+                std::string def = " -D" + prefix + "_X" + std::to_string(i);
+                defines += def + "_ALIGN=1";
+                defines += def + "_STRIDE=0";
+            }
+        }
+        return defines;
+    }
+
+    bool is_broadcast(int idx, int ndims) const {
+        idx_t norm = from_md_idx(idx, ndims, {});
+        if (norm.is_unset()) return true;
+        return (1 << norm.as_int()) & broadcast_mask;
     }
 
     // Implicitly removes size 1 outer-dimensions from the original memory

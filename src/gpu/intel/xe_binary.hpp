@@ -158,8 +158,8 @@ struct xe_binary_t : public gpu_primitive_t {
         }
 
         arg_list.set(arg_idx++, dst);
-        arg_idx = append_post_ops_to_arg_list(
-                ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
+        arg_idx = append_post_ops_to_arg_list(ctx, arg_list, arg_idx,
+                pd()->attr()->post_ops_, *pd()->dst_md());
 
         arg_list.set(arg_idx++, src0_scale);
         arg_list.set(arg_idx, src1_scale);

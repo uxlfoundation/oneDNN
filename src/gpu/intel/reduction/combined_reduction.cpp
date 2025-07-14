@@ -492,7 +492,8 @@ status_t combined_reduction_t::execute_combined(const exec_ctx_t &ctx) const {
         auto empty_po = post_ops_t();
         const auto &actual_po = &pd()->attr()->post_ops_;
         const post_ops_t *po = phase.is_final ? actual_po : &empty_po;
-        append_post_ops_to_arg_list(ctx, reduction_arg_list, 2, *po);
+        append_post_ops_to_arg_list(
+                ctx, reduction_arg_list, 2, *po, *pd()->dst_md());
 
         status = parallel_for(ctx, nd_range, kernel, reduction_arg_list);
         CHECK(status);

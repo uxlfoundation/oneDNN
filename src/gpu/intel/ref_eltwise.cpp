@@ -121,7 +121,8 @@ status_t ref_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     arg_list.set(2, alpha);
     arg_list.set(3, beta);
 
-    append_post_ops_to_arg_list(ctx, arg_list, 5, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(
+            ctx, arg_list, 5, pd()->attr()->post_ops_, *pd()->dst_md());
 
     auto nd_range = conf.dispatch.nd_range();
     return large_parallel_for(ctx, nd_range, kernel_, arg_list, 4);

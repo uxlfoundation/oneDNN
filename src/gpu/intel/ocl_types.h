@@ -945,6 +945,19 @@
 #define OFF_MD(prefix, x0, x1, x2, x3, x4, x5) \
     CONCAT2(OFF_MD_, CONCAT2(prefix, _NLEVELS))(prefix, x0, x1, x2, x3, x4, x5)
 
+#define OFF_RMD(prefix, x0, x1, x2, x3, x4, x5) \
+    rnd_down(CONCAT2(prefix, _B0_IDX), CONCAT2(prefix, _B0_ALIGN)) * CONCAT2(prefix, _B0_STRIDE) + \
+    rnd_down(CONCAT2(prefix, _B1_IDX), CONCAT2(prefix, _B1_ALIGN)) * CONCAT2(prefix, _B1_STRIDE) + \
+    rnd_down(CONCAT2(prefix, _B2_IDX), CONCAT2(prefix, _B2_ALIGN)) * CONCAT2(prefix, _B2_STRIDE) + \
+    rnd_down(CONCAT2(prefix, _B3_IDX), CONCAT2(prefix, _B3_ALIGN)) * CONCAT2(prefix, _B3_STRIDE) + \
+    rnd_down(x0, CONCAT2(prefix, _X0_ALIGN)) * (off_t)CONCAT2(prefix, _X0_STRIDE) + \
+    rnd_down(x1, CONCAT2(prefix, _X1_ALIGN)) * (off_t)CONCAT2(prefix, _X1_STRIDE) + \
+    rnd_down(x2, CONCAT2(prefix, _X2_ALIGN)) * (off_t)CONCAT2(prefix, _X2_STRIDE) + \
+    rnd_down(x3, CONCAT2(prefix, _X3_ALIGN)) * (off_t)CONCAT2(prefix, _X3_STRIDE) + \
+    rnd_down(x4, CONCAT2(prefix, _X4_ALIGN)) * (off_t)CONCAT2(prefix, _X4_STRIDE) + \
+    rnd_down(x5, CONCAT2(prefix, _X5_ALIGN)) * (off_t)CONCAT2(prefix, _X5_STRIDE)
+
+
 #define ALIAS(prefix) CONCAT2(prefix, _DT_ALIAS)
 
 // BLOCK types

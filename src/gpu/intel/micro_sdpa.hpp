@@ -124,9 +124,18 @@ struct micro_sdpa_t : public gpu_primitive_t {
                 VCHECK_SDPA_COND(
                         attn_mask_md()->dims[mask_k_index] == desc()->keys(),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
+            }
+            if (qry_md()->data_type == data_type::f32) {
                 VCHECK_SDPA_COND(
                         attn_mask_md()->data_type == qry_md()->data_type,
                         "Mask data type should match Qry/Dst data type.");
+            } else {
+                VCHECK_SDPA_COND(
+                        (attn_mask_md()->data_type == qry_md()->data_type)
+                                || (attn_mask_md()->data_type
+                                        == data_type::f32),
+                        "Mask data type should be xf16 or f32 when Qry/Dst is "
+                        "xf16.");
             }
             VCHECK_SDPA_COND(
                     (utils::everyone_is(data_type::f16, qry_md()->data_type,

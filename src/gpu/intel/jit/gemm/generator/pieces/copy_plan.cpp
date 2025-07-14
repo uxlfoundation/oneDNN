@@ -2646,6 +2646,7 @@ void CopyPlan::optimizeWidenIntegers()
 }
 
 // Optimization pass: concatenate instructions.
+//   The instructions may overlap partially or completely.
 //   On the initial pass (initial = true), there is no limit on the SIMD width.
 //   Otherwise, do not concatenate beyond SIMD32, or two registers.
 //
@@ -2657,6 +2658,7 @@ void CopyPlan::optimizeWidenIntegers()
 //
 void CopyPlan::optimizeConcatenate(bool initial)
 {
+    const auto grf = ngen::GRF::bytes(hw);
     auto ninsn = insns.size();
     for (size_t n1 = 0; n1 < ninsn; n1++) {
         for (size_t n2 = n1 + 1; n2 < ninsn; n2++) {
@@ -2665,6 +2667,7 @@ void CopyPlan::optimizeConcatenate(bool initial)
 
             if (i1.op != i2.op || i1.phase != i2.phase || i1.flag || i2.flag) break;
 
+            int lead1 = i1.simd; // arbitrary
             auto joinable = [&](const CopyOperand &o1, const CopyOperand &o2, bool *outTooFar = nullptr) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind == CopyOperand::Null) return true;
@@ -2674,26 +2677,29 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 if (o1.temp && (o1.value != o2.value)) return false;
                 if (o1.neg != o2.neg) return false;
                 if (o1.abs != o2.abs) return false;
-                auto gap = (o2.absByteOffset(hw) - o1.absByteOffset(hw))
-                         - elementsToBytes(o1.stride * i1.simd, o1.type);
-                if (outTooFar)
-                    *outTooFar = (gap > 0);
-                return (gap == 0);
+                auto lead = bytesToElements((o2.grf - o1.grf) * grf, o1.type) + (int)o2.offset - (int)o1.offset;
+                auto breadth = o1.stride * i1.simd;
+                if (outTooFar) {
+                    *outTooFar = (lead > breadth);
+                    lead1 = lead;
+                }
+                return (lead == lead1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
             };
 
             bool tooFar = false;
             bool doJoin = joinable(i1.dst, i2.dst, &tooFar) && joinable(i1.src0, i2.src0)
                        && joinable(i1.src1, i2.src1) && joinable(i1.src2, i2.src2);
 
+            auto simd1 = i1.dst.stride ? lead1 / i1.dst.stride : 0;
+            int simd = std::max(simd1 + i2.simd, i1.simd);
             if (!initial) {
-                doJoin &= (i1.simd + i2.simd <= 32);
-                doJoin &= ((i1.simd + i2.simd) * getBytes(i1.dst.type) <= 2 * GRF::bytes(hw));
+                doJoin &= (simd <= 32);
+                doJoin &= (simd * getBytes(i1.dst.type) <= 2 * GRF::bytes(hw));
             }
 
             if (tooFar) break;
 
             if (doJoin) {
-                int simd = i1.simd + i2.simd;
                 if (auto &i = join(i1, i2))
                     i.simd = simd;
             }

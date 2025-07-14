@@ -34,7 +34,8 @@ status_t simple_softmax_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     arg_list.set(1, dst);
     arg_list.set(2, src_scale);
     arg_list.set(3, dst_scale);
-    append_post_ops_to_arg_list(ctx, arg_list, 4, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(
+            ctx, arg_list, 4, pd()->attr()->post_ops_, *pd()->dst_md());
 
     if (pd()->group_size > 1) {
         auto nd_range = compute::nd_range_t(pd()->gws, pd()->lws);

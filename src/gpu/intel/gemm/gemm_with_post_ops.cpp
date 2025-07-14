@@ -256,8 +256,8 @@ status_t gemm_with_post_ops_t::execute(const gemm_exec_ctx_t &ctx) const {
     arg_list.set(1, GEMM_CTX_ARG_STORAGE(bias));
     arg_list.set(2, pd()->subbyte_pack_ ? *tmp : GEMM_CTX_ARG_STORAGE(c));
     const auto &args = ctx.args();
-    int idx = append_post_ops_to_arg_list_gemm(
-            args.exec_args, arg_list, 3, pd()->attr()->post_ops_);
+    int idx = append_post_ops_to_arg_list_gemm(args.exec_args, arg_list, 3,
+            pd()->attr()->post_ops_, *pd()->dst_md());
     //a/b tensors are swapped for gemm
     arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(b_scales));
     arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(a_scales));

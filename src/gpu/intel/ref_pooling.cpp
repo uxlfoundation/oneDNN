@@ -125,7 +125,8 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(0, src);
     arg_list.set(1, ws);
     arg_list.set(2, dst);
-    append_post_ops_to_arg_list(ctx, arg_list, 3, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(
+            ctx, arg_list, 3, pd()->attr()->post_ops_, *pd()->dst_md());
 
     auto nd_range = pd()->conf.dispatch.nd_range();
 

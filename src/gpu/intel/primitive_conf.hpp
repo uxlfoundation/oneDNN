@@ -701,13 +701,13 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
 
 int append_post_ops_to_arg_list_base(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 int append_post_ops_to_arg_list_gemm(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 int append_post_ops_to_arg_list(const exec_ctx_t &ctx,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 
 bool post_ops_preserves_zeroes(
         const exec_ctx_t &ctx, const post_ops_t &post_ops);

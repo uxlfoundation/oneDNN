@@ -54,31 +54,23 @@ float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
 // unused arguments are maintained for interface compatibility
 #define APPLY_PO_BINARY(idx, acc, _sum_src, x0, x1, x2, x3, x4, x5) \
     { \
-        bool bcast0 = CONCAT3(PO_, idx, _BIN_ARG_D0) == 1; \
-        bool bcast1 = CONCAT3(PO_, idx, _BIN_ARG_D1) == 1; \
-        bool bcast2 = CONCAT3(PO_, idx, _BIN_ARG_D2) == 1; \
-        bool bcast3 = CONCAT3(PO_, idx, _BIN_ARG_D3) == 1; \
-        bool bcast4 = CONCAT3(PO_, idx, _BIN_ARG_D4) == 1; \
-        bool bcast5 = CONCAT3(PO_, idx, _BIN_ARG_D5) == 1; \
-        const auto po_off = OFF_MD(CONCAT3(PO_, idx, _BIN_ARG), \
-                bcast0 ? 0 : x0, bcast1 ? 0 : x1, bcast2 ? 0 : x2, \
-                bcast3 ? 0 : x3, bcast4 ? 0 : x4, bcast5 ? 0 : x5); \
+        const auto po_off \
+                = OFF_RMD(CONCAT2(PO_, idx), x0, x1, x2, x3, x4, x5); \
         POST_OP_DATA_T po_src \
-                = load(po_src, (CONCAT3(po_, idx, _binary_arg)) + po_off); \
+                = load(po_src, (CONCAT3(po, idx, _binary_arg)) + po_off); \
         acc = fwd_binary(CONCAT3(PO_, idx, _ALG), acc, po_src); \
     }
 
 // unused arguments are maintained for interface compatibility
 #define APPLY_PO_SUM(idx, acc, sum_src, _x0, _x1, _x2, _x3, _x4, _x5) \
-    acc += (load(acc, &sum_src) - (CONCAT3(PO_, idx, _SUM_ZP))) \
-            * CONCAT3(PO_, idx, _SUM_SCALE);
+    acc += (load(acc, &sum_src) - (CONCAT3(po, idx, _zp))) \
+            * CONCAT3(po, idx, _scale);
 
 // unused arguments are maintained for interface compatibility
 #define APPLY_PO_ELTWISE(idx, acc, _sum_src, _x0, _x1, _x2, _x3, _x4, _x5) \
     acc = fwd_eltwise_common(CONCAT3(PO_, idx, _ALG), acc, \
-            CONCAT3(PO_, idx, _ELTWISE_ALPHA), \
-            CONCAT3(PO_, idx, _ELTWISE_BETA), \
-            CONCAT3(PO_, idx, _ELTWISE_SCALE));
+            CONCAT3(po, idx, _alpha), CONCAT3(po, idx, _beta), \
+            CONCAT3(po, idx, _scale));
 
 // clang-format off
 #define APPLY_PO_STAGE_0(...)

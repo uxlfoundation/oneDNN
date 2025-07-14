@@ -148,8 +148,8 @@ status_t ref_reduction_t::execute_ref(const exec_ctx_t &ctx) const {
 
     reduction_arg_list.set(0, src);
     reduction_arg_list.set(1, dst);
-    append_post_ops_to_arg_list(
-            ctx, reduction_arg_list, 2, pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(ctx, reduction_arg_list, 2,
+            pd()->attr()->post_ops_, *pd()->dst_md());
 
     auto nd_range = conf.dispatch.nd_range();
 

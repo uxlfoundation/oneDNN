@@ -290,7 +290,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
         arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED));
     }
     append_post_ops_to_arg_list(
-            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 
     compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);

@@ -202,7 +202,7 @@ status_t simple_binary_t::execute_simple(const exec_ctx_t &ctx) const {
     }
     arg_list.set(arg_idx++, dst);
     arg_idx = append_post_ops_to_arg_list(
-            ctx, arg_list, arg_idx, pd()->attr()->post_ops_);
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 
     arg_list.set(arg_idx++, src0_scale);
     arg_list.set(arg_idx, src1_scale);

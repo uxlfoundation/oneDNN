@@ -66,8 +66,8 @@ public:
     constexpr Type real()             const { return *this; }
     constexpr bool isComplex()        const { return false; }
     constexpr int complexComponents() const { return 1; }
-    constexpr int components()        const { return 1; }
-    constexpr int mcomponents()       const { return 1; }
+    constexpr int components()        const { return (uint32_t(val) >> 24) & 0xF; }
+    constexpr int mcomponents()       const { return components(); }
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
     constexpr bool is4()              const { return uint32_t(val) & 0x20000000; }

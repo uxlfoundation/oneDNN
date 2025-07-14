@@ -110,6 +110,8 @@ const fill_cfg_t &get_perf_fill_cfg(dnnl_data_type_t dt) {
         CASE(dnnl_f32, -1024.f, 1024.f);
         CASE(dnnl_f64, -1024.f, 1024.f);
         CASE(dnnl_s32, -1024.f, 1024.f);
+        CASE(dnnl_s16, -1024, 1024);
+        CASE(dnnl_u16, 0, 2048);
         CASE(dnnl_s8, -32, 32);
         CASE(dnnl_u8, 0, 64);
         CASE(dnnl_s4, -8, 7);
@@ -295,8 +297,12 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
                         // Need a general solution for the problem.
             } else if (round_dt == dnnl_u8) {
                 return 128.f; // catch faulty s8 loads instead of u8.
+            } else if (round_dt == dnnl_s16) {
+                ;
+            } else if (round_dt == dnnl_u16) {
+                return 32768.f;
             } else if (round_dt == dnnl_s32) {
-                return 256.f; // catch faulty int8 loads instead of s32.
+                return 65536.f; // catch faulty int8/int16 loads instead of s32.
             } else if (round_dt == dnnl_u4) {
                 return 15.f;
             } else if (round_dt == dnnl_s4) {

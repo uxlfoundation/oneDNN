@@ -129,6 +129,14 @@ static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const 
     return std::make_tuple(0,0,0,0);
 }
 
+static inline int componentMultiplyDepth(Type Ta, Type Tb)
+{
+    if (Ta.isFP() && Tb.isFP())
+        return std::max(Ta.mcomponents(), Tb.mcomponents());
+    else
+        return Ta.mcomponents() + Tb.mcomponents() - 1;
+}
+
 GEMMSTONE_NAMESPACE_END
 
 #endif

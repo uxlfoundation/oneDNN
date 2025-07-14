@@ -281,6 +281,7 @@ struct GEMMState : public CommonState {
     std::vector<GRFMultirange> A_regs, B_regs, C_regs;
     GRFMultirange Ar_regs, Br_regs;                         // Repacked A/B registers.
     GRFMultirange Cr_regs;                                  // C registers to be repacked.
+    std::vector<GRFMultirange> Ct_regs;                     // C temporary accumulators.
     std::vector<GRFMultirange> Ai_regs, Bi_regs;            // Incoming data to copy to SLM.
     std::vector<GRFMultirange> Ai_regsRem, Bi_regsRem;
     GRFMultirange Ao_regs, Bo_regs;                         // Outgoing data to copy to SLM.
@@ -365,7 +366,7 @@ struct GEMMState : public CommonState {
     RegisterLayout Ar_offsetLayout, Br_offsetLayout;
     RegisterLayout Ar_scaleLayout, Br_scaleLayout;
     RegisterLayout Agr_layout, Bgr_layout;
-    RegisterLayout Cr_layout;
+    RegisterLayout Cr_layout, Ct_layout;
     RegisterLayout C_layoutReduced;
     RegisterLayout C_layoutExt, C_layoutExtUnmasked, C_layoutExtNonatomicUnmasked;
     Address2DParams A_params, B_params;

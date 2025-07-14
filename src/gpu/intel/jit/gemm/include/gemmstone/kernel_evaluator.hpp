@@ -38,6 +38,7 @@ struct EvaluateParams {
     bool postOps = false;
     bool batch = false;
     bool deterministic = false;
+    bool noCAtomics = false;
 };
 
 struct DerivedEvaluateParams : public EvaluateParams {

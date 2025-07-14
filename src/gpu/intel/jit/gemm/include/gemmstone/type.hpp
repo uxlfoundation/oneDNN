@@ -43,6 +43,8 @@ public:
         s32      = 0x01190402,
         u64      = 0x011A0803,
         s64      = 0x011B0803,
+        u8x2     = 0x02140100,
+        s8x2     = 0x02150100,
         f4_e2m1  = 0x21040100,
         f4_e3m0  = 0x21050100,
         nf4      = 0x21060100,
@@ -65,6 +67,7 @@ public:
     constexpr bool isComplex()        const { return false; }
     constexpr int complexComponents() const { return 1; }
     constexpr int components()        const { return 1; }
+    constexpr int mcomponents()       const { return 1; }
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
     constexpr bool is4()              const { return uint32_t(val) & 0x20000000; }

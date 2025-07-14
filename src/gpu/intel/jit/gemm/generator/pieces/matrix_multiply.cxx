@@ -376,7 +376,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                                          const GRFMultirange &A_regs, const GRFMultirange &B_regs,
                                          const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
+    auto Ta = problem.Ta, Tb = problem.Tb;
     bool globalCM = state.C_layout.colMajor();
     auto params = systolicParams(hw, problem, strategy);
     auto ksys = params.ksys;
@@ -390,14 +390,18 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         : state.systolicSumB;
     bool snake = strategy.fmaBoustrophedon && !sum;
     bool repackC = !state.Cr_layout.empty();
+    bool tempC = !state.Ct_layout.empty();
     bool startRepackC = false, endRepackC = false;
     int Cr_unrollM = state.Cr_layout.rows(), Cr_unrollN = state.Cr_layout.cols();
+    int Ct_unrollM = state.Ct_layout.rows(), Ct_unrollN = state.Ct_layout.cols();
     int Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
+    int Ct_unrollX = globalCM ? Ct_unrollM : Ct_unrollN;
     if (repackC) {
         auto rphase = align_down(h, opCount) % state.cRepackPeriod;
         startRepackC = rem || (rphase == 0);
         endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
     }
+    if (tempC && (state.systolicSumA || state.systolicSumB)) stub();
 
     RegisterBlock sumBlock;
     sumBlock.colMajor = globalCM;
@@ -414,15 +418,25 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 
     int xinc = osys;
 
-    const int compA = 0, compB = 0;
-    const int incompCount = 1, oncompCount = 1;
-
     // Split y loop for k-chaining or boustrophedon ordering.
     bool reverse = false;
     int ny1 = 1;
     if (opCount > ksys || snake)
         ny1 = rcountMax * (strategy.dpasw ? 2 : 1);
 
+    // Prepare for multicomponent loops.
+    auto Tv = globalCM ? Ta : Tb;
+    auto Tn = globalCM ? Tb : Ta;
+    int compVCount = Tv.mcomponents();
+    int compNCount = Tn.mcomponents();
+    bool dstOverlap = (state.C_buffers < componentMultiplyDepth(Ta, Tb)) && (ny < 32 || tempC);
+    int icompNCount = dstOverlap ? 1 : compNCount;
+    int ocompNCount = dstOverlap ? compNCount : 1;
+
+    const int icxCompNCount = 1, ocxCompNCount = 1;
+
+    for (int compV = 0; compV < compVCount; compV++) {
+    for (int ocompN = 0; ocompN < ocompNCount; ocompN++) {
     for (int x = 0; x < nx; x += xinc) {
         Subregister A0, B0, C0;
         int rcount = 0, ybase = 0, hhbase = 0;
@@ -436,6 +450,8 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
             auto N0 = globalCM ? B0 : A0;
             RegData srcC0 = C0;
 
+            if (rc == 0) return;
+
             if (rsFix) {
                 GRF v0GRF{V0.getBase()};
                 mov<uint32_t>(8, v0GRF, v0GRF);
@@ -448,7 +464,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
-            if (startRepackC && hhbase == 0)
+            if ((startRepackC && hhbase == 0) || (tempC && ocompN + compV >= state.C_buffers))
                 srcC0 = null.retype(C0.getType());
 
             {
@@ -457,21 +473,33 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
             }
         };
 
-        for (int oncomp = 0; oncomp < oncompCount; oncomp++, reverse = !reverse) {
+        for (int icompN = 0; icompN < icompNCount; icompN++, reverse = !reverse) {
+        for (int ocxCompN = 0; ocxCompN < ocxCompNCount; ocxCompN++) {
         for (int y0_ = 0; y0_ < ny + sum; y0_ += ny1) {
             int y0 = (snake && reverse) ? (ny - ny1 - y0_) : y0_;
             for (int hh = 0; hh < opCount; hh += ksys) {
             for (int y1 = 0; y1 < ny1 && y0 + y1 < ny + sum; y1++) {
-            for (int incomp = 0; incomp < incompCount; incomp++) {
+            for (int icxCompN = 0; icxCompN < icxCompNCount; icxCompN++) {
                 int y = y0 + y1;
                 int hha = ha + hh, hhb = hb + hh;
+
+                // Identify components.
+                int compN = icompN + ocompN;
+                int compA = globalCM ? compV : compN;
+                int compB = globalCM ? compN : compV;
+                int compC = compV + compN;
+                if (compC >= componentMultiplyDepth(Ta, Tb))
+                    continue;
+                int ntempC = compC;
+                compC = std::min(compC, state.C_buffers - 1);
+                ntempC = std::min<int>(ntempC - compC, state.Ct_regs.size()) - 1;
+
+                const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
 
                 // Find the appropriate A and B registers.
                 int na, nb, nc;
                 const RegisterBlock *A_block, *B_block, *C_block;
                 Subregister A, B, C;
-
-                const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
 
                 if (y < ny) {
                     if (strategy.dpasw && (y % (2 * dpaswTile) >= dpaswTile))
@@ -482,7 +510,9 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 
                     A = A_layout.find(i, hha, A_regs, &na, &A_block, cxCompA, compA);
                     B = B_layout.find(hhb, j, B_regs, &nb, &B_block, cxCompB, compB);
-                    if (repackC)
+                    if (ntempC >= 0)
+                        C = state.Ct_layout.find(i % Ct_unrollM, j % Ct_unrollN, state.Ct_regs[ntempC], &nc, &C_block, cxCompC);
+                    else if (repackC)
                         C = state.Cr_layout.find(i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, &nc, &C_block, cxCompC);
                     else
                         C = state.C_layout.find(i, j, state.C_regs[cBuffer], &nc, &C_block, cxCompC);
@@ -509,6 +539,12 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 int nv = globalCM ? na : nb;
                 int nn = globalCM ? nb : na;
 
+                // Adjust signedness for lower order integer terms.
+                if (A.getType() == DataType::b && compA + 1 < Ta.components())
+                    A.setType(DataType::ub);
+                if (B.getType() == DataType::b && compB + 1 < Tb.components())
+                    B.setType(DataType::ub);
+
                 // Verify DPAS requirements.
                 if (globalCM) {
                     if (A_block->crosspack * Ta.real() != std::max(4, Ta.real().paddedSize())) stub();
@@ -528,9 +564,11 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 if (A0.isValid()) {
                     chain = globalCM ? (elementDiff(hw, B, B0) == (y - ybase) * ksys)
                                      : (elementDiff(hw, A, A0) == (y - ybase) * ksys);
-                    chain = chain && (elementDiff(hw, C, C0) == (y - ybase) * osys);
-                    chain = chain && (rcount < rcountMax);
-                    chain = chain && (hh == hhbase);
+                    chain = chain && (elementDiff(hw, C, C0) == (y - ybase) * osys)
+                                  && (rcount < rcountMax)
+                                  && (hh == hhbase)
+		                  && (A.getType() == A0.getType())
+		                  && (B.getType() == B0.getType());
                     if (strategy.dpasw)
                         chain = chain && y < ny && (y % (2 * dpaswTile) > 0);
                 }
@@ -541,17 +579,15 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                     if (strategy.dpasw && y < ny && rcount > 0 && rcount != dpaswTile) stub();
                     if (A0.isValid()) issueDPAS(false);
                     A0 = A; B0 = B; C0 = C; rcount = 1;
-                    A0.setType(Ta.ngen());
-                    B0.setType(Tb.ngen());
-                    C0.setType(Tc.ngen());
                     ybase = y;
                     hhbase = hh;
                 }
-            } /* incomp loop */
+            } /* icxCompN loop */
             } /* y1 loop */
             } /* hh loop */
         } /* y loop */
-        } /* oncomp loop */
+        } /* ocxCompN loop */
+        } /* icompN loop */
 
         bool finishChain = !strategy.extendedAtomicFMA || (x + osys >= nx) || (repackC && x >= (Cr_unrollX - 2*xinc));
         issueDPAS(finishChain);
@@ -561,11 +597,20 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
             if (xr >= 0)
                 outerProductRepackC(xr, xr % Cr_unrollX, xinc, h, rem, problem, strategy, state);
         }
+        if (tempC) {
+            int xt = x - Ct_unrollX + xinc;
+            if (xt >= 0)
+                outerProductFoldC(xt, xt % Ct_unrollX, xinc, ocompN + compV, problem, strategy, state);
+        }
     } /* x loop */
 
     if (endRepackC) for (int xr = nx - Cr_unrollX + xinc; xr < nx; xr += xinc)
         outerProductRepackC(xr, xr % Cr_unrollX, xinc, h, rem, problem, strategy, state);
+    if (tempC) for (int xt = nx - Ct_unrollX + xinc; xt < nx; xt += xinc)
+        outerProductFoldC(xt, xt % Ct_unrollX, xinc, ocompN + compV, problem, strategy, state);
 
+    } /* ocompN loop */
+    } /* compV loop */
 }
 
 // Repack (part of) a C tile, converting types and scaling as needed.
@@ -722,6 +767,52 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
     }
 
     processItems();
+}
+
+// Fold temporary C accumulators into main C accumulator.
+template <HW hw>
+void Generator<hw>::outerProductFoldC(int x0, int xt0, int nx, int compC,
+                                      const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    auto Tc = problem.Tc;
+    const auto &C_layout = state.C_layout;
+    int nec = elementsPerGRF(hw, Tc);
+    bool globalCM = C_layout.colMajor();
+
+    int ny = strategy.unroll[globalCM ? LoopN : LoopM];
+
+    int t = compC - state.C_buffers;
+    if (t < 0) return;
+
+    auto &C0_regs = (t == 0) ? state.C_regs[state.C_buffers - 1] : state.Ct_regs[t - 1];
+    auto &C1_regs = state.Ct_regs[t];
+    for (int x1 = 0; x1 < nx; x1 += 2 * nec) {
+        int x = x0 + x1, xt = xt0 + x1;
+        int xchunk = std::min(nx - x1, 2 * nec);
+        for (int y = 0; y < ny; y++) {
+            auto i = globalCM ? x : y;
+            auto j = globalCM ? y : x;
+            auto it = globalCM ? xt : y;
+            auto jt = globalCM ? y : xt;
+            auto i0 = (t > 0) ? it : i;
+            auto j0 = (t > 0) ? jt : j;
+            auto &C1_layout = state.Ct_layout;
+            auto &C0_layout = (t > 0) ? C1_layout : state.C_layout;
+
+            int ne0, ne1;
+            const RegisterBlock *C0_block, *C1_block;
+
+            auto C0 = C0_layout.find(i0, j0, C0_regs, &ne0, &C0_block)(1);
+            auto C1 = C1_layout.find(it, jt, C1_regs, &ne1, &C1_block)(1);
+
+            int ne = std::min({ne0, ne1, xchunk});
+            if (ne < xchunk) stub();
+
+            if (C0_block->crosspack != 1 || C1_block->crosspack != 1) stub();
+
+            mad(ne, C0, C0, C1, 256);
+        }
+    }
 }
 
 template <HW hw>

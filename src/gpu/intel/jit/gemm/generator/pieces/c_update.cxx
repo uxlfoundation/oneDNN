@@ -2711,4 +2711,18 @@ void Generator<hw>::setupCAddr0(GRFRange (&C_addr0)[2], GRFRange (&C_addr0Unmask
     }
 }
 
+template <HW hw>
+void Generator<hw>::combineCMulticomponent(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    auto Tc = problem.Tc;
+    for (int q = state.C_buffers - 1; q > 0; q--) {
+        map(hw, Tc, state.C_regs[q - 1], state.C_regs[q], strategy, [&](int simd, const RegData &c1, const RegData &c2) {
+            if (Tc.isFP())
+                add(simd, c1, c1, c2);
+            else
+                mad(simd, c1, c1, c2, Immediate::uw(256));
+        });
+    }
+}
+
 GEMMSTONE_NAMESPACE_END

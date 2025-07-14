@@ -2931,7 +2931,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 template <HW hw>
 void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
-    auto Tc = problem.Tc;
+    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
     state.useTempC = strategy.needsTempC(problem);
@@ -2979,6 +2979,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
                || strategy.forceCopyC
                || (strategy.C.base.getModel() == ModelInvalid);
 
+	state.C_buffers = componentMultiplyDepth(Ta, Tb);
     state.Cext_strategy = strategy.C;
     state.Cext_strategy.tileR = state.Cext_strategy.tileC = 0;
 

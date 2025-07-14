@@ -433,7 +433,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
     int icompNCount = dstOverlap ? 1 : compNCount;
     int ocompNCount = dstOverlap ? compNCount : 1;
 
-    const int icxCompNCount = 1, ocxCompNCount = 1;
+    const int icxCompNCount = 1, ocxCompNCount = 1, cxCompVCount = 1, cxCompNCount = 1, cxCompV = 0;
 
     for (int compV = 0; compV < compVCount; compV++) {
     for (int ocompN = 0; ocompN < ocompNCount; ocompN++) {
@@ -494,7 +494,15 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 compC = std::min(compC, state.C_buffers - 1);
                 ntempC = std::min<int>(ntempC - compC, state.Ct_regs.size()) - 1;
 
-                const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
+                int cxCompN = icxCompN + ocxCompN;
+                int rcxCompV = (cxCompVCount > 1) ? cxCompV : -1;
+                int rcxCompN = (cxCompNCount > 1) ? cxCompN : -1;
+                int cxCompA = globalCM ? rcxCompV : rcxCompN;
+                int cxCompB = globalCM ? rcxCompN : rcxCompV;
+                int cxCompC = (rcxCompV == -1) ? -1 : (cxCompV ^ cxCompN);
+                int cBuffer = (compC > 0) ? compC :
+                            (rcxCompV == -1) ? (cxCompV ^ cxCompN)
+                                          : 0;
 
                 // Find the appropriate A and B registers.
                 int na, nb, nc;

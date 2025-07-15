@@ -51,7 +51,6 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , C_cell_(scratch_cell)
     , LDAl_(rnn_.src_layer_ld(cell_position))
     , LDAi_(rnn_.src_iter_ld(cell_position))
-    , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
@@ -103,7 +102,8 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_(fused_postgemm)
     , is_fused_layer_iter_brgemm_(!rnn_.is_lbr && rnn_.sic == rnn_.slc
-              && LDAi_ == LDAl_ && need_gemm_layer_) {}
+              && LDAi_ == LDAl_ && need_gemm_layer_)
+    , max_nthr_(calculate_nthr()) {}
 
 template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
@@ -118,6 +118,30 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
             this->kernel(ithr, nthr);
         });
     }
+}
+
+// Returns the number of threads to use. Returns 1 for small problems to avoid multithreading overhead.
+// Implementation is based on empirical data.
+template <typename src_t, typename weights_t, typename scratch_t,
+        typename gemm_acc_t>
+int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
+        gemm_acc_t>::calculate_nthr() const {
+    const auto max_nthr = nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
+    // TODO: add support for other cases
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
+    if (rnn_.brgemm_isa == x64::avx2 && !need_gemm_layer_ && rnn_.M == 1
+            && utils::one_of(rnn_.cell_kind, alg_kind::vanilla_lstm,
+                    alg_kind::lbr_gru)) {
+        if (std::is_same<src_t, uint8_t>::value
+                && std::is_same<weights_t, int8_t>::value) {
+            return rnn_.K2 <= 192 ? 1 : max_nthr;
+        } else if (std::is_same<src_t, float>::value
+                && std::is_same<weights_t, float>::value) {
+            return rnn_.K2 <= 112 ? 1 : max_nthr;
+        }
+    }
+#endif
+    return max_nthr;
 }
 
 template <typename src_t, typename weights_t, typename scratch_t,

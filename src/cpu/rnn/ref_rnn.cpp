@@ -558,6 +558,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
             CHECK(memory_desc_init_by_tag(
                     this->ws_md_, 1, ws_dims, data_type::u8, format_tag::x));
         }
+        rnn_.cell_kind = this->desc()->cell_kind;
     }
     return st;
 }

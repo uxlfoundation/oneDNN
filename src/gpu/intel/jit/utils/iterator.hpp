@@ -32,9 +32,9 @@ namespace jit {
 //
 // E.g.
 //
-//   std::vector<block_t> blocks = {...};
-//   auto block_filter = [](const block_t &blk) { return blk.block != 1; };
-//   filter_t<std::vector<block_t>> non_size_1_blocks(blocks, block_filter);
+//   std::vector<layout_block_t> blocks = {...};
+//   auto block_filter = [](const layout_block_t &blk) { return blk.block != 1; };
+//   filter_t<std::vector<layout_block_t>> non_size_1_blocks(blocks, block_filter);
 //   for (const auto &blk : non_size_1_blocks) {
 //       // blk is a value from blocks, skipping those with blk.block == 1
 //       ...
@@ -206,8 +206,8 @@ class inner_tiles_t {
     using inner_iter_t = decltype(std::declval<const IterT>().begin());
     using iter_value_t = decltype(*std::declval<inner_iter_t>());
     using decayed_iter_value_t = typename std::decay<iter_value_t>::type;
-    static_assert(std::is_same<decayed_iter_value_t, block_t>::value,
-            "inner_tiles_t only accepts iterables with block_t values");
+    static_assert(std::is_same<decayed_iter_value_t, layout_block_t>::value,
+            "inner_tiles_t only accepts iterables with layout_block_t values");
 
 public:
     class iterator_t {
@@ -228,7 +228,7 @@ public:
                 if (size % factor_ == 0) return *this;
             }
 
-            dims_[(*it_).dim_idx] *= block;
+            dims_[(*it_).dim] *= block;
             ++it_;
             factor_ = 1;
             log2scale_ = 0;
@@ -237,7 +237,7 @@ public:
 
         tile_t operator*() const {
             auto dims = dims_;
-            dims[(*it_).dim_idx] *= factor();
+            dims[(*it_).dim] *= factor();
             return tile_t(dims);
         }
 

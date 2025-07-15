@@ -40,16 +40,38 @@ std::string to_string(tensor_kind_t tensor) {
     return {};
 }
 
+pvar_name_t::pvar_name_t(const std::string &s) {
+    gpu_assert(!s.empty() && s.length() <= max_len);
+    s.copy(data_, s.length());
+}
+
+std::string pvar_name_t::str() const {
+    return std::string(data_);
+}
+
+size_t pvar_name_t::get_hash() const {
+    static_assert(max_len % sizeof(uint64_t) == 0,
+            "max_len must be aligned to 64 bits");
+    size_t h = 0;
+    for (size_t i = 0; i < max_len; i += sizeof(uint64_t)) {
+        uint64_t u64 = 0;
+        std::memcpy(&u64, &data_[i], sizeof(u64));
+        h = hash_combine(h, u64);
+    }
+    return h;
+}
+
 const expr_t &pvar_t::index_var() const {
     static thread_local pvar_map_t<expr_t> vars;
     if (!vars.has(*this))
-        vars[*this] = var_t::make(type_t::s32(), name_ + "_idx");
+        vars[*this] = var_t::make(type_t::s32(), name_.str() + "_idx");
     return vars[*this];
 }
 
 const expr_t &pvar_t::var() const {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this)) vars[*this] = const_var_t::make(type_t::s32(), name_);
+    if (!vars.has(*this))
+        vars[*this] = const_var_t::make(type_t::s32(), name_.str());
     return vars[*this];
 }
 
@@ -72,9 +94,10 @@ pvar_t pvar_t::from_index_var(const expr_t &index_var) {
 }
 
 char pvar_t::to_spatial() const {
-    if (name_.size() != 2) return ' ';
-    char c0 = name_[0];
-    char c1 = name_[1];
+    auto s = name_.str();
+    if (s.size() != 2) return ' ';
+    char c0 = s[0];
+    char c1 = s[1];
     if (!std::strchr("dikops", c0)) return ' ';
     if (!std::strchr("dhw", c1)) return ' ';
     return c1;
@@ -121,9 +144,10 @@ pvar_t k("k");
 } // namespace pvars
 
 bool is_spatial(const pvar_t &pvar, char prefix) {
-    if (pvar.name().size() != 2) return false;
-    char c0 = pvar.name()[0];
-    char c1 = pvar.name()[1];
+    auto s = pvar.str();
+    if (s.size() != 2) return false;
+    char c0 = s[0];
+    char c1 = s[1];
     return (c0 == prefix) && utils::one_of(c1, 'd', 'h', 'w');
 }
 bool is_input_spatial(const pvar_t &pvar) {

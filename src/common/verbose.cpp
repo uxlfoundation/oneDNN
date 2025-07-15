@@ -1605,8 +1605,9 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             delimiter = "+";
         }
     }
-    ss << ",";
+    ss << ",alg:" << desc->softmax_alg;
 
+    delimiter = " ";
     if (pd->with_attn_mask()) {
         auto *md = pd->attn_mask_md();
         ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';

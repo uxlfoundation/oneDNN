@@ -198,8 +198,10 @@ ngen::CacheSettingsLSC get_cache_settings(const send_t &send, const hw_t &hw) {
             break;
         case send_cache_hint_t::load_once:
             ret = ngen::CacheSettingsLSC::L1C_L3C;
+            break;
         case send_cache_hint_t::hw_default:
             ret = ngen::CacheSettingsLSC::Default;
+            break;
     }
     return ret;
 }

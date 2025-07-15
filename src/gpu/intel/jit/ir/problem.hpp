@@ -41,17 +41,72 @@ enum class tensor_kind_t {
 
 std::string to_string(tensor_kind_t tensor);
 
+class pvar_name_t {
+public:
+    pvar_name_t() = default;
+    pvar_name_t(dim_idx_t idx) { data_[0] = 'a' + idx; }
+    pvar_name_t(const std::string &s);
+
+    bool operator==(const pvar_name_t &other) const {
+        return data_ == other.data_;
+    }
+    bool operator!=(const pvar_name_t &other) const {
+        return !operator==(other);
+    }
+    bool operator<(const pvar_name_t &other) const {
+        for (size_t i = 0; i < max_chunks; i++) {
+            if (data_[i] < other.data_[i]) return true;
+            if (data_[i] > other.data_[i]) return false;
+        }
+        return false;
+    }
+    dim_idx_t index() const {
+        for (size_t i = 1; i < max_chunks; i++) {
+            gpu_assert(data_[i] == 0);
+        }
+        dim_idx_t idx = into<dim_idx_t>(data_[0]);
+        gpu_assert('a' <= idx && idx <= 'z');
+        return into<dim_idx_t>(idx - 'a');
+    }
+
+    bool is_empty() const {
+        for (size_t i = 0; i < max_chunks; i++) {
+            if (data_[i] != 0) return false;
+        }
+        return true;
+    }
+
+    size_t get_hash() const { return ir_utils::get_hash(data_); }
+    std::string str() const;
+
+    IR_DEFINE_DUMP()
+
+private:
+    static const size_t max_chunks = 2;
+    static const size_t max_len = max_chunks * sizeof(uint64_t) - 1;
+
+    std::array<uint64_t, max_chunks> data_ = {};
+};
+
 class pvar_t {
 public:
     pvar_t() = default;
-    pvar_t(const std::string &name) : name_(name) { gpu_assert(!name.empty()); }
-    const std::string &name() const { return name_; }
-    bool is_undef() const { return name_.empty(); }
+    pvar_t(dim_idx_t idx) : name_(idx) {}
+    pvar_t(const std::string &name) : name_(name) {}
+    bool is_undef() const { return name_.is_empty(); }
     bool operator==(const pvar_t &other) const { return name_ == other.name_; }
     bool operator!=(const pvar_t &other) const { return name_ != other.name_; }
     bool operator<(const pvar_t &other) const { return name_ < other.name_; }
+    bool operator==(dim_idx_t idx) const { return *this == pvar_t(idx); }
+    bool operator!=(dim_idx_t idx) const { return !operator==(idx); }
+    bool operator<(dim_idx_t idx) const { return *this < pvar_t(idx); }
+    bool operator==(int idx) const { return operator==(into<dim_idx_t>(idx)); }
+    bool operator!=(int idx) const { return operator!=(into<dim_idx_t>(idx)); }
+    bool operator<(int idx) const { return operator<(into<dim_idx_t>(idx)); }
+    dim_idx_t index() const { return name_.index(); }
+    operator dim_idx_t() const { return index(); }
     size_t get_hash() const { return ir_utils::get_hash(name_); }
-    std::string str() const { return name_; }
+    std::string str() const { return name_.str(); }
 
     IR_DEFINE_DUMP()
 
@@ -64,7 +119,7 @@ public:
     int spatial_index() const;
 
 private:
-    std::string name_;
+    pvar_name_t name_;
 };
 
 namespace pvars {
@@ -202,7 +257,7 @@ public:
     std::unordered_map<std::string, dim_t> to_string_map() const {
         std::unordered_map<std::string, dim_t> ret;
         for (auto &kv : map_)
-            ret[kv.first.name()] = kv.second;
+            ret[kv.first.str()] = kv.second;
         return ret;
     }
 
@@ -475,7 +530,7 @@ namespace std {
 template <>
 struct hash<dnnl::impl::gpu::intel::jit::pvar_t> {
     size_t operator()(const dnnl::impl::gpu::intel::jit::pvar_t &pvar) const {
-        return std::hash<std::string>()(pvar.name());
+        return pvar.get_hash();
     }
 };
 } // namespace std

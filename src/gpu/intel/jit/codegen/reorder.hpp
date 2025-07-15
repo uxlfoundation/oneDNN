@@ -1762,8 +1762,8 @@ private:
                 if (i > min_log_bytes) {
                     gpu_assert(!layout.blocks().empty());
                     gpu_assert(!v.layout.blocks().empty());
-                    int dim_idx0 = layout.blocks()[0].dim_idx;
-                    int dim_idx1 = v.layout.blocks()[0].dim_idx;
+                    int dim_idx0 = layout.blocks()[0].dim;
+                    int dim_idx1 = v.layout.blocks()[0].dim;
                     if (dim_idx0 != dim_idx1) continue;
                 }
                 min_cost = cur_cost;
@@ -1968,14 +1968,14 @@ private:
     static std::vector<layout_t> generate_all_layouts(
             const type_t &type, int a, int b) {
         std::vector<layout_t> ret;
-        std::vector<block_t> blocks;
+        std::vector<layout_block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
         return ret;
     }
 
     static void generate_all_layouts_impl(std::vector<layout_t> &layouts,
-            std::vector<block_t> &blocks, const type_t &type, int a, int b,
-            int stride) {
+            std::vector<layout_block_t> &blocks, const type_t &type, int a,
+            int b, int stride) {
         if (a == 1 && b == 1) {
             layouts.emplace_back(type, 2, 0, blocks);
             return;
@@ -1986,8 +1986,8 @@ private:
         // Avoid repeating indices to keep only unique layouts.
         if (!blocks.empty()) {
             auto &last = blocks.back();
-            iterate_a &= (last.dim_idx != 0);
-            iterate_b &= (last.dim_idx != 1);
+            iterate_a &= (last.dim != 0);
+            iterate_b &= (last.dim != 1);
         }
 
         if (iterate_a) {
@@ -2074,12 +2074,12 @@ private:
             int non_one_dims = 0;
             int count = 0;
             std::unordered_set<int> seen;
-            return [=](const block_t &b) mutable {
+            return [=](const layout_block_t &b) mutable {
                 if ((dim_t)b.stride != stride) return false;
                 if (b.block != 1) {
                     count++;
                     stride *= b.block;
-                    auto ret = seen.insert(b.dim_idx);
+                    auto ret = seen.insert(b.dim);
                     if (ret.second) non_one_dims++;
                 }
                 return non_one_dims <= 2 && count <= max_tile_blocks;
@@ -2190,7 +2190,7 @@ private:
         for (int i = 0; i < min_blocks; i++) {
             auto &ab = a_blocks[i];
             auto &bb = b_blocks[i];
-            if (ab.dim_idx != bb.dim_idx || ab.block != bb.block) break;
+            if (ab.dim != bb.dim || ab.block != bb.block) break;
 
             // Strides are supported for the innermost block only.
             if (src_cur_stride != int(ab.stride)) break;
@@ -2198,7 +2198,7 @@ private:
 
             src_cur_stride = int(ab.block * ab.stride);
             dst_cur_stride = int(bb.block * bb.stride);
-            tile_dims[ab.dim_idx] *= ab.block;
+            tile_dims[ab.dim] *= ab.block;
         }
         return tile_t(tile_dims);
     }

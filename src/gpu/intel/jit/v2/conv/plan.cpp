@@ -338,7 +338,7 @@ private:
         for (auto &b : layout.blocks()) {
             dim_t block = b.block;
             while (block > 1) {
-                auto dim_block = dims[b.dim_idx].pop(block);
+                auto dim_block = dims[b.dim].pop(block);
                 ret.add_block(dim_block.first, dim_block.second);
             }
         }
@@ -446,7 +446,7 @@ private:
         for (auto &d : conv_index_dims(desc_.prop)) {
             auto gemm_d = to_gemm(d, desc_.prop);
             gpu_assert(!gemm_d.is_undef());
-            ret[d] = gemm_d.name()[0];
+            ret[d] = gemm_d.str()[0];
         }
         return ret;
     }

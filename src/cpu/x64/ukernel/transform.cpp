@@ -128,7 +128,7 @@ status_t transform_t::execute(const void *src, void *dst) const {
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double duration_ms = get_msec() - start_ms;
 
-        std::stringstream ss;
+        stringstream_t ss;
         ss << "cpu,transform,pack_B,undef," << verbose_info_;
         VPROF(start_ms, ukernel, exec, VERBOSE_profile, ss.str().c_str(),
                 duration_ms);
@@ -141,7 +141,7 @@ status_t transform_t::create_verbose_info() {
     return status::success;
 #endif
 
-    std::stringstream ss;
+    stringstream_t ss;
 
     memory_desc_t src_md;
     const dims_t dims = {K_, N_};

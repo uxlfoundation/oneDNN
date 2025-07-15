@@ -608,7 +608,7 @@ void prb_node_move(prb_t &p, int d0, int d1) {
 }
 
 std::string prb_dump(const prb_t &p) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << "@@@ type:" << dnnl_dt2str(p.itype) << ':' << dnnl_dt2str(p.otype)
        << " ndims:" << p.ndims;
     for (int d = 0; d < p.ndims; ++d) {

@@ -200,7 +200,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
 
-        std::stringstream ss;
+        stringstream_t ss;
         ss << "cpu,brgemm,,undef," << verbose_info_;
         VPROF(start_ms, ukernel, exec, VERBOSE_profile, ss.str().c_str(),
                 duration_ms);
@@ -310,7 +310,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
 
-        std::stringstream ss;
+        stringstream_t ss;
         ss << "cpu,brgemm,,undef," << verbose_info_;
         VPROF(start_ms, ukernel, exec, VERBOSE_profile, ss.str().c_str(),
                 duration_ms);
@@ -329,7 +329,7 @@ status_t brgemm_t::create_verbose_info() {
 #endif
 
     const auto &d = brgemm_desc_;
-    std::stringstream ss;
+    stringstream_t ss;
 
     memory_desc_t src_md;
     const dims_t src_dims = {M_, K_};

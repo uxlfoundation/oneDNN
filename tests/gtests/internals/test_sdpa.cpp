@@ -194,9 +194,11 @@ using dnnl::softmax_forward;
 // initialize the mask with first 3/4 elements with 0s and the last 1/4 elements
 // with -inf.
 void fill_mask(std::vector<float> &mask, const memory::desc &desc) {
-    size_t seq_len = desc.get_dims()[3];
-    size_t query_num = desc.get_dims()[2];
-    size_t batches = desc.get_dims()[1] * desc.get_dims()[0];
+    const auto &dims = desc.get_dims();
+    if (dims.empty()) return;
+    size_t seq_len = dims[3];
+    size_t query_num = dims[2];
+    size_t batches = dims[1] * dims[0];
     for (size_t b = 0; b < batches; b++) {
         for (size_t q = 0; q < query_num; q++) {
             for (size_t i = 0; i < seq_len; i++) {
@@ -215,9 +217,11 @@ void fill_mask(std::vector<float> &mask, const memory::desc &desc) {
 
 void fill_causal_mask(
         std::vector<float> &mask, const memory::desc &desc, mask_type mask_t) {
-    int64_t seq_len = desc.get_dims()[3];
-    int64_t query_num = desc.get_dims()[2];
-    int64_t batches = desc.get_dims()[1] * desc.get_dims()[0];
+    const auto &dims = desc.get_dims();
+    if (dims.empty()) return;
+    int64_t seq_len = dims[3];
+    int64_t query_num = dims[2];
+    int64_t batches = dims[1] * dims[0];
     for (int64_t b = 0; b < batches; b++) {
         for (int64_t q = 0; q < query_num; q++) {
             for (int64_t k = 0; k < seq_len; k++) {
@@ -238,7 +242,7 @@ void fill_causal_mask(
 
 memory::dims double_mb(const memory::dims &dims) {
     memory::dims ret = dims;
-    ret[0] *= 2;
+    if (!ret.empty()) ret[0] *= 2;
     return ret;
 }
 
@@ -326,7 +330,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
 
     memory::dims mask_sz;
     switch (p.mask) {
-        case mask_type::no_mask: mask_sz = {};
+        case mask_type::no_mask: mask_sz = {}; break;
         case mask_type::oneD: mask_sz = {1, 1, 1, p.seq_len}; break;
         case mask_type::causal_br:
         case mask_type::causal_tl:
@@ -670,7 +674,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
                 out.vs_groups, 1);
     }
 
-    write_to_dnnl_memory(mask_data.data(), out.m_mask);
+    if (p.mask != mask_type::no_mask)
+        write_to_dnnl_memory(mask_data.data(), out.m_mask);
     write_to_dnnl_memory(scale_data.data(), out.m_scale);
 
     // Write data to tensor object's handle.
@@ -1158,18 +1163,18 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
 
-    scale_f32 = reshape(strm, scale_f32,
-            {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
-    mask_f32 = reshape(strm, mask_f32,
-            {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
-                    memory::format_tag::abcde});
     if (scale_dt != mdt::undef) {
+        scale_f32 = reshape(strm, scale_f32,
+                {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
         if (invert_scale)
             bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
         else
             bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
     }
     if (p.mask != mask_type::no_mask) {
+        mask_f32 = reshape(strm, mask_f32,
+                {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
+                        memory::format_tag::abcde});
         bmm1_po.append_binary(algorithm::binary_add, mask_f32.get_desc());
     }
 
@@ -1195,13 +1200,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             p.seq_len, p.head_size};
     const memory::dims q_sz {p.mb, head_group_batches, head_q_group_size,
             p.query_num, p.head_size};
-    const memory::dims m_sz {1, 1, 1, mask.get_desc().get_dims()[2],
-            mask.get_desc().get_dims()[3]};
     memory::desc grouped_key_md(k_sz, p.dt, memory::format_tag::abcde);
     memory::desc grouped_value_md(v_sz, mdt::f32, memory::format_tag::abcde);
     memory::desc grouped_query_md(q_sz, p.qdt, memory::format_tag::abcde);
-    memory::desc grouped_mask_md(
-            m_sz, mask.get_desc().get_data_type(), memory::format_tag::abcde);
 
     memory key_dequantized;
     if ((key.get_desc().get_data_type() != mdt::f16

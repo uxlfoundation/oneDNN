@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -534,6 +535,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (jcp_.with_scales)
         book_precomputed_scales(scratchpad, attr()->scales_, OC(),
                 jcp_.scale_adjust_factor != 1.0f);
+
+    // temporary fix for large l_pad failing test caused by PR #3552
+    if (2 * jcp_.l_pad > jcp_.ow_block) return status::unimplemented;
 
     return status::success;
 }

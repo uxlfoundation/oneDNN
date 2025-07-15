@@ -45,6 +45,7 @@ public:
     void execute() const;
 
 private:
+    int calculate_nthr() const;
     void kernel(const int ithr, const int nthr) const;
     void kernel_fused_iter_layer(const int ithr, const int nthr) const;
 
@@ -61,7 +62,6 @@ private:
     scratch_t *const C_cell_;
     const dim_t LDAl_;
     const dim_t LDAi_;
-    const dim_t max_nthr_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
     const int work_amount_;
@@ -100,6 +100,7 @@ private:
     brgemm_batch_element_t *const addr_batch_global_;
     const postgemm_fused_t fused_postgemm_;
     const bool is_fused_layer_iter_brgemm_;
+    const int max_nthr_;
 };
 
 template <typename src_t, typename weights_t, typename gemm_acc_t>

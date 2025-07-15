@@ -154,7 +154,7 @@ struct serialization_stream_t {
     }
 
     std::string str() {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << std::hex << std::setfill('0');
         for (auto c : data_) {
             oss << std::setw(2) << static_cast<uint32_t>(c);

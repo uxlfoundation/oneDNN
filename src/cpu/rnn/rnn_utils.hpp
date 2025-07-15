@@ -664,6 +664,8 @@ struct rnn_conf_t {
     // for merged layer computation in brgemm
     dim_t Mlayermerged;
     dim_t mlayermerged_block, Mlayermerged_blocks;
+
+    alg_kind_t cell_kind = alg_kind::undef;
 };
 
 bool is_ldigo(const memory_desc_wrapper &md);

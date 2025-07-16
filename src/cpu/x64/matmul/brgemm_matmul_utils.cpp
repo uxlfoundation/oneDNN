@@ -315,8 +315,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
-              && !one_of(attr.fpmath_.mode_, fpmath_mode::bf16,
-                      fpmath_mode::f16, fpmath_mode::tf32))
+              && !one_of(
+                      attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16))
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)

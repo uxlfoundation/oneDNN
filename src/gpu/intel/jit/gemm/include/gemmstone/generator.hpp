@@ -372,7 +372,7 @@ protected:
     void gemmBLoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     template <typename I> void gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, I kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
-    template <bool doA> void gemmAiBiRemLoadInc(bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const ngen::Subregister &kSLMX, const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const std::vector<ngen::GRFRange> &Xi_addrs, const std::vector<RegisterLayout> &Xi_layoutK, const std::vector<std::vector<ngen::GRFRange>> &Xi_addrsK, const GRFMultirange &Xo_regs, const RegisterLayout &Xo_layout, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    template <bool doA> void gemmAiBiRemLoadInc(int h, bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const ngen::Subregister &kSLMX, const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const std::vector<ngen::GRFRange> &Xi_addrs, const std::vector<RegisterLayout> &Xi_layoutK, const std::vector<std::vector<ngen::GRFRange>> &Xi_addrsK, const GRFMultirange &Xo_regs, const RegisterLayout &Xo_layout, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmSLMRemask(bool remaskA, bool remaskB, GRFMultirange &Ao_regs, GRFMultirange &Bo_regs, int kOffset, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 

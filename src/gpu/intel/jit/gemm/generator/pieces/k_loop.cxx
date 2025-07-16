@@ -437,8 +437,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     auto doSLMRemLoad = [&](Iteration h) {
         kLoopActivateSLMRemainder(true, false, problem, strategy, state, h.counterOffset());
-        if (slmA) gemmAiBiRemLoadInc<true> (Ai_incrementalRem, Ai_remIncrCopy, needXPReset, slmRemaskA, kSLMA, Ai_regs(h), state.Ai_layoutRem, state.Ai_addrsRem, state.Ai_layoutK, state.Ai_addrsK, state.Ao_regsRem, state.Ao_layout, problem, strategy, state);
-        if (slmB) gemmAiBiRemLoadInc<false>(Bi_incrementalRem, Bi_remIncrCopy, needXPReset, slmRemaskB, kSLMB, Bi_regs(h), state.Bi_layoutRem, state.Bi_addrsRem, state.Bi_layoutK, state.Bi_addrsK, state.Bo_regsRem, state.Bo_layout, problem, strategy, state);
+        if (slmA) gemmAiBiRemLoadInc<true> (h, Ai_incrementalRem, Ai_remIncrCopy, needXPReset, slmRemaskA, kSLMA, Ai_regs(h), state.Ai_layoutRem, state.Ai_addrsRem, state.Ai_layoutK, state.Ai_addrsK, state.Ao_regsRem, state.Ao_layout, problem, strategy, state);
+        if (slmB) gemmAiBiRemLoadInc<false>(h, Bi_incrementalRem, Bi_remIncrCopy, needXPReset, slmRemaskB, kSLMB, Bi_regs(h), state.Bi_layoutRem, state.Bi_addrsRem, state.Bi_layoutK, state.Bi_addrsK, state.Bo_regsRem, state.Bo_layout, problem, strategy, state);
     };
 
     if (slmA || slmB) {
@@ -1728,7 +1728,7 @@ void Generator<hw>::gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout
 
 template <HW hw>
 template <bool doA>
-void Generator<hw>::gemmAiBiRemLoadInc(bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const Subregister &kSLMX,
+void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const Subregister &kSLMX,
                                        const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const vector<GRFRange> &Xi_addrs,
                                        const vector<RegisterLayout> &Xi_layoutK, const vector<vector<GRFRange>> &Xi_addrsK,
                                        const GRFMultirange &Xo_regs, const RegisterLayout &Xo_layout,
@@ -1787,10 +1787,14 @@ void Generator<hw>::gemmAiBiRemLoadInc(bool incremental, bool incrementalCopy, b
             if (Xi_layoutK.size() == 1) hh_layout = 0;
             if (Xi_addrsK.size()  == 1) hh_addr = 0;
 
+            
+            int kx_stride = unrollKSLM;
+            if (strategy.kInterleave && (h % strategy.kInterleaveChunk) >= (strategy.kInterleaveChunk - unrollKSLM))
+                kx_stride = unrollKSLM + strategy.kInterleaveChunk * (strategy.wg[LoopK] - 1);
             // OPTIMIZEME: delay inc if kx_slm = 1
-            auto kx_inc = (Xi_addrsK.size() > 1) ? unrollKSLM :
+            auto kx_inc = (Xi_addrsK.size() > 1) ? kx_stride :
                             ((hh + 1) != kx_slm) ? 1
-                                                 : (unrollKSLM - kx_slm + 1);
+                                                 : (kx_stride - kx_slm + 1);
 
             if (keepAddrTogether) kx_inc = 0;
 

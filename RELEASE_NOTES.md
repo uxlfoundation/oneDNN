@@ -49,6 +49,11 @@ TBD
 ## Intel Graphics Products
 * Introduced support for select algorithm in binary primitive. 
 
+## Generic GPU Vendor
+
+* Introduced support for RNN Vanilla backward propagation.
+* Introduced support for zero_pad with the `fp64` data type.
+
 ## NVIDIA GPUs
 
 # Usability

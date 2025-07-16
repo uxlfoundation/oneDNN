@@ -19,7 +19,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 * Improved `bf16` convolution with `NCHW` activations and plain weights on:
     * Intel Arc Graphics for Intel Core Ultra processor series 2 (formerly Lunar Lake).
     * Intel Arc B-series discrete graphics (formerly Battlemage).
-* Improved `fp32` softmax performance  
+* Improved `fp32` softmax performance.  
 * Improved performance of the following subgraphs with Graph API:
     * SDPA  with implicit causal mask. 
     * SDPA with bottom-right implicit causal mask. 

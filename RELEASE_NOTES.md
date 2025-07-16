@@ -19,7 +19,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 * Improved `bf16` convolution with `NCHW` activations and plain weights on:
     * Intel Arc Graphics for Intel Core Ultra processor series 2 (formerly Lunar Lake).
     * Intel Arc B-series discrete graphics (formerly Battlemage).
-* Improved ` fp32` softmax performance  
+* Improved `fp32` softmax performance  
 * Improved performance of the following subgraphs with Graph API:
     * SDPA  with implicit causal mask. 
     * SDPA with bottom-right implicit causal mask. 
@@ -27,7 +27,14 @@ This functionality is not dispatched by default and requires opt-in with environ
     * fp16 SDPA on Intel GPUs without Intel XMX cores. 
 
 ## AArch64-based Processors
-TBD
+* Fixed failing layernorm test cases
+* Fixed out of bounds crash when ops are expected to be single threaded
+* Extended JIT depthwise convolution to `bf16`
+* Fixed failing binary add cases
+* Enable `f32` accumulation for `f16` matmul in ComputeLibrary
+* Fixed performance regression for 1x1 conv
+* Extended brdgemm to SVE 128
+* Added `int8` support to brgemm
 
 # Functionality
 ## Functional API

@@ -82,6 +82,6 @@ This functionality is not dispatched by default and requires opt-in with environ
 
 
 # Thanks to our Contributors
-This release contains contributions from the [project core team] as well as Aditya Tewari @aditew01, Alexander Simonov @asimonov1, Anallear @Anallear, Anna Sztukowska @asztukow, Avanish Tiwari @Tiwari-Avanish, Dmitriy Ovchinnikov @inteldimitrius, Kasture Deeksha, Krishna Sai @krishnasai-mcw, Manaal @manaalmj, Marek Michalowski @michalowski-arm, Orel Yehuda @yehudaorel, Ruqiu Cao @rcao8, Shaojie Cui, Tsao Zhong @CaoZhongZ, Viktoriia Gvozdeva @vgvozdeva,Yair Obodovsky @yair-obodovsky, Ye Tao @taoye9, Yuanyuan Chen @cyyever, gausah-arm @gausah-arm, karmeh01 @karmeh01, pmanczak @pmanczak, zhangfei @zhangfeiv0
+This release contains contributions from the [project core team] as well as Aditya Tewari @aditew01, Alexander Simonov @asimonov1, Anallear @Anallear, Anna Sztukowska @asztukow, Avanish Tiwari @Tiwari-Avanish, Dmitriy Ovchinnikov @inteldimitrius, Kasture Deeksha, Krishna Sai @krishnasai-mcw, Manaal @manaalmj, Marek Michalowski @michalowski-arm, Orel Yehuda @yehudaorel, Ruqiu Cao @rcao8, Shaojie Cui, Tsao Zhong @CaoZhongZ, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, Ye Tao @taoye9, Yuanyuan Chen @cyyever, gausah-arm @gausah-arm, karmeh01 @karmeh01, pmanczak @pmanczak, zhangfei @zhangfeiv0
 
 [project core team]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.9/MAINTAINERS.md

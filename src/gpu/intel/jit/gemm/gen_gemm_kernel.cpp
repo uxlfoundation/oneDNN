@@ -130,18 +130,28 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
         parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
+
+        // TODO: override derived values in aux_params_ in a way that's
+        // consistent with the kernel evaluator (typically requires extra
+        // benchmarking data not supplied with the kernel override string)
+        // Currently: assume the W model because it's simple
+        aux_params_.k0 = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
+                strategy_.unroll[LoopK]);
+        aux_params_.wgK = std::max(1,
+                std::min(strategy_.wg[LoopK],
+                        int(utils::div_up(k_, aux_params_.k0))));
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
         parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+        modifyStrategy(strategy_, aux_params_);
 #ifdef DNNL_DEV_MODE
     }
 #endif
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
-    modifyStrategy(strategy_, aux_params_);
 
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
@@ -255,21 +265,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
-
-#ifdef DNNL_DEV_MODE
-    if (!ovr_strategy.empty()) {
-        // TODO: override in a way that's consistent with the kernel evaluator
-        // (typically requires extra benchmarking data not supplied with
-        // the kernel override string)
-        // Currently: assume the W model because it's simple
-        aux_params_.k0
-                = utils::rnd_up(utils::div_up(k_, driver_info_.wg[LoopK]),
-                        driver_info_.unroll[LoopK]);
-        aux_params_.wgK = std::max(1,
-                std::min(driver_info_.wg[LoopK],
-                        int(utils::div_up(k_, aux_params_.k0))));
-    }
-#endif
 
     return status::success;
 }

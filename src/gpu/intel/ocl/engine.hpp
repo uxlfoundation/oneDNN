@@ -33,7 +33,7 @@ namespace ocl {
 
 const char *get_kernel_source(const char *name);
 
-status_t preprocess_headers(std::stringstream &pp_code, const char *code,
+status_t preprocess_headers(stringstream_t &pp_code, const char *code,
         const compute::kernel_ctx_t &kernel_ctx);
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,

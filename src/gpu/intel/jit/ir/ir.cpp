@@ -551,7 +551,7 @@ private:
 } // namespace
 
 std::string object_impl_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     ir_printer_t printer(oss);
     printer.visit(this);
     return oss.str();

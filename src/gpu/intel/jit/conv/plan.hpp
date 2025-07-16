@@ -51,7 +51,7 @@ struct reorder_plan_t : public base_plan_t {
     dim_t estimate_regs() const;
 
     std::string str(const std::string &tag = "reorder") const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ": src:" << src << " -> dst:" << dst;
         return oss.str();
     }
@@ -75,7 +75,7 @@ struct reduce_plan_t : public base_plan_t {
     int estimate_regs() const;
 
     std::string str(const std::string &tag = "reduce") const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ": src:" << src << " -> dst:" << dst;
         return oss.str();
     }

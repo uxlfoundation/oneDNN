@@ -55,7 +55,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(id); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "pexpr_t(" << id << ")";
         return oss.str();
     }
@@ -122,7 +122,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(id, value); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "pint_imm_t(" << value << ")";
         return oss.str();
     }
@@ -705,7 +705,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "(";
         for (size_t i = 0; i < args.size(); i++) {
             oss << (i != 0 ? " " + to_string(op_kind) + " " : "") << args[i];
@@ -1031,7 +1031,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(factors); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "f(";
         for (size_t i = 0; i < factors.size(); i++) {
             oss << (i != 0 ? " x " : "") << factors[i];

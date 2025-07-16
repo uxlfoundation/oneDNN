@@ -109,7 +109,7 @@ struct addr_t {
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "base: " << base << std::endl;
         oss << "slot_incs: " << slot_incs;
         return oss.str();
@@ -134,7 +134,7 @@ struct dim_mask_t {
     std::string str() const {
         using namespace ir_utils;
         if (is_empty()) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "[" << dim << "] " << base << " < " << bound << std::endl;
         oss << "slot_incs: " << slot_incs;
         return oss.str();
@@ -182,7 +182,7 @@ struct mask_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         for (int i = 0; i < nmasks(); i++) {
             if (dim_masks[i].is_empty()) continue;
@@ -313,7 +313,7 @@ struct send_2d_hint_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << width << "x" << height;
         if (vnni || transpose) {
             oss << ".";
@@ -351,7 +351,7 @@ struct send_params_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "send_params:" << std::endl;
         oss << "  hw:                 " << hw << std::endl;
         oss << "  address:            " << to_string(address) << std::endl;
@@ -395,7 +395,7 @@ struct send_1d_desc_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op) << ".b" << type_size;
         if (slots != 1) oss << "x" << slots;
         return oss.str();
@@ -412,7 +412,7 @@ struct send_1d_entry_t {
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mem[" << addr_inc << "] reg[" << reg_off << "] mask"
             << mask_incs;
         return oss.str();
@@ -463,7 +463,7 @@ struct send_1d_plan_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::add_tag("addr", addr.str()) << std::endl;
         oss << ir_utils::add_tag("mask", mask.str()) << std::endl;
         oss << "reg_layout = " << reg_layout.str_with_size(hw) << std::endl;
@@ -592,7 +592,7 @@ struct send_2d_desc_t {
     int header_size(int grf_size) const { return grf_size; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op) << "_2d.";
         oss << c << "x" << h << "x" << w;
         if (vnni || transpose) {
@@ -621,7 +621,7 @@ struct send_2d_entry_t {
     coord_t coord;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "reg[" << reg_off << "] ";
         oss << "x_inc = " << x_inc << " y_inc = " << y_inc;
         return oss.str();
@@ -664,7 +664,7 @@ struct send_2d_plan_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "base = " << base << std::endl;
         oss << "x_base = " << x_base << std::endl;
         oss << "y_base = " << y_base << std::endl;

@@ -94,7 +94,7 @@ public:
     }
 
     std::string str(bool csv = false) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (csv) {
             oss << simd_;
             oss << "," << loop_;
@@ -237,7 +237,7 @@ public:
 
     std::string str() const {
         if (utils::everyone_is(0, loop, thread_group, iter)) return "x";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (loop != 0) oss << "l" << loop;
         if (thread_group != 0) oss << "T" << thread_group;
         if (iter != 0) oss << "i" << iter;
@@ -337,7 +337,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "l:" << loop_;
         oss << " T:" << thread_group_;
         oss << " i:" << iter_;
@@ -484,7 +484,7 @@ public:
     }
 
     std::string str(bool csv = false) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (csv) {
             oss << blocking_.str(csv);
             oss << "," << bufs_hint_;

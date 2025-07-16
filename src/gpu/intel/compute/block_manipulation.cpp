@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ bool mapped_block_t::can_merge(
 }
 
 std::string block_bin_t::str() const {
-    std::ostringstream ss;
+    ostringstream_t ss;
     ss << "block bin (dim_idx: " << dim_idx;
     ss << ", num_layouts: " << num_layouts;
     ss << ", size: " << size() << ")" << std::endl;

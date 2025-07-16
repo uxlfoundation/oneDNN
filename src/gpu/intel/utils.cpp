@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ status_t dump_kernel_binary(
     std::lock_guard<std::mutex> guard(m);
 
     static int counter = 0;
-    std::ostringstream fname;
+    ostringstream_t fname;
     fname << "dnnl_dump_gpu_" << name << "." << counter << ".bin";
 
     FILE *fp = fopen(fname.str().c_str(), "wb+");

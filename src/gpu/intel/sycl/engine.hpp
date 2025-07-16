@@ -135,7 +135,7 @@ public:
         VERROR_ENGINE(source, status::runtime_error,
                 "No OpenCL source was found for kernel");
 
-        std::stringstream pp_code;
+        stringstream_t pp_code;
         CHECK(gpu::intel::ocl::preprocess_headers(pp_code, source, kernel_ctx));
 
         std::string build_options = kernel_ctx.options();

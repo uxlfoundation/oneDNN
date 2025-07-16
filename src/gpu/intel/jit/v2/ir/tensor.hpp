@@ -167,7 +167,7 @@ public:
 private:
     struct map_data_t {
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << expr;
             if (has_underflow) oss << " (has_underflow)";
             return oss.str();
@@ -198,7 +198,7 @@ struct layout_raw_tag_entry_t {
     bool is_x() const { return letter == 'x'; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (block != 0) oss << block;
         oss << std::string(1,
                 (is_blocked && block == 0
@@ -633,7 +633,7 @@ public:
     const var_range_info_t &var_range_info() const { return var_range_info_; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         for (auto &kv : virt_grid_idxs_) {
             if (!is_first) oss << "\n";

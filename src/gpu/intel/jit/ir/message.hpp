@@ -104,7 +104,7 @@ struct block_2d_info_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << count << "x";
         oss << height << "x";
         oss << width;
@@ -200,7 +200,7 @@ public:
                 && (cache_hint == other.cache_hint);
     }
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op);
         oss << ".";
         oss << type.str();
@@ -477,7 +477,7 @@ public:
     const stmt_t &stmt() const { return stmt_; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "Memory view:          " << mem_view_ << std::endl;
         oss << "Register layout:      " << reg_layout_ << std::endl;
         oss << "Register buffer:      " << reg_buf_ << std::endl;

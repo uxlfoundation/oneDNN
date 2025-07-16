@@ -87,7 +87,7 @@ struct stride_layout_t {
             return false;
         }
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << dim << ":" << size << "*" << stride;
             return oss.str();
         }
@@ -102,7 +102,7 @@ struct stride_layout_t {
         return strides.begin() + ndims;
     }
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "buffer_size:" << buffer_size;
         for (auto i = strides.begin(); i != strides_end(); i++) {
             oss << " " << i->str();
@@ -147,7 +147,7 @@ struct send_hint_t {
     }
     dim_t &operator[](dim_type_t i) { return hint_[i]; }
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "hint:";
         bool is_empty = true;
         for (auto &kv : hint_) {
@@ -269,7 +269,7 @@ struct uniform_send_idiom_t final {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "uniform " << min_size << " byte send ";
         return oss.str();
     }

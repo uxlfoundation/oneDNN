@@ -42,7 +42,7 @@ struct base_plan_t {
 };
 
 inline std::string add_indent(const std::string &tag, const std::string &s) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << tag << ":" << std::endl;
     oss << ir_utils::add_indent(s, "  ");
     return oss.str();

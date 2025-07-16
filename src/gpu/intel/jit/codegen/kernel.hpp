@@ -1275,7 +1275,7 @@ public:
     }
     ngen::GRF getLocalID(int dim) const { return interface_.getLocalID(dim); }
     std::string str() {
-        std::ostringstream oss;
+        ostringstream_t oss;
         getCode(oss);
         return oss.str();
     }

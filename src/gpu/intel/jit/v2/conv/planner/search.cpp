@@ -74,7 +74,7 @@ bool any(tile_flags_t a) {
 }
 
 inline std::string to_string(tile_flags_t flags) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (any(flags & tile_flags_t::loop)) oss << "l";
     if (any(flags & tile_flags_t::thread_group)) oss << "t";
     if (any(flags & tile_flags_t::iter)) oss << "i";
@@ -108,7 +108,7 @@ struct tile_info_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << dim << ": " << to_string(flags);
         return oss.str();
     }
@@ -176,7 +176,7 @@ struct dim_tile_t {
     int iter = 0;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (loop != 0) oss << "l" << loop;
         if (tg != 0) oss << "t" << tg;
         if (iter != 0) oss << "i" << iter;
@@ -206,7 +206,7 @@ struct tiling_desc_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "iter: " << iter.str();
         oss << " thread_group: " << thread_group.str();
         return oss.str();
@@ -582,7 +582,7 @@ std::string merge_cmd_lines(const std::string &recipe_line,
     parse_result_t recipe_parse_result;
     iface.parse(recipe_line, recipe_desc, &recipe_parse_result);
     bool is_first = true;
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (auto &kv : cmd_parse_result.args()) {
         auto &name = kv.first;
         ;

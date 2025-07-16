@@ -40,9 +40,9 @@ namespace ocl {
 
 const char *get_kernel_header(const std::string &name);
 
-status_t preprocess_headers(std::stringstream &pp_code, const char *code,
+status_t preprocess_headers(stringstream_t &pp_code, const char *code,
         const compute::kernel_ctx_t &kernel_ctx) {
-    std::stringstream code_stream(code);
+    stringstream_t code_stream(code);
 
     for (std::string line; std::getline(code_stream, line);) {
         const size_t include_pos = line.find("#include");
@@ -89,7 +89,7 @@ void maybe_print_build_info(const std::vector<const char *> &kernel_names,
 
     // Print out kernel options if the correct verbosity is set
     if (get_verbose(verbose_t::debuginfo) >= 5) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (const char *name : kernel_names)
             oss << name << " ";
 
@@ -244,7 +244,7 @@ status_t engine_t::build_program_from_source(
     options += " " + dev_info->get_cl_ext_options();
 
     cl_int err;
-    std::stringstream pp_code;
+    stringstream_t pp_code;
     // The `cl_cache` requires using `clBuildProgram`. Unfortunately, unlike
     // `clCompileProgram` `clBuildProgram` doesn't take headers. Because of
     // that, a manual preprocessing of `include` header directives in the
@@ -314,7 +314,7 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
     gpu_assert(source)
             << "No kernel source file was found for the kernels: " <<
             [&]() {
-                std::ostringstream oss;
+                ostringstream_t oss;
                 bool is_first = true;
                 for (auto &n : kernel_names) {
                     if (!is_first) oss << ", ";

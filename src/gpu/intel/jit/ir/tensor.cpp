@@ -360,7 +360,7 @@ std::vector<std::pair<char, dim_t>> layout_t::parse_letter_blocks(
         const std::string &format) {
     std::vector<std::pair<char, dim_t>> ret;
 
-    std::stringstream ss(format);
+    stringstream_t ss(format);
     while (!ss.eof()) {
         int next = ss.peek();
         if (ss.eof()) break;

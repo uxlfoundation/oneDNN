@@ -24,7 +24,7 @@ This functionality is not dispatched by default and requires opt-in with environ
     * SDPA  with implicit causal mask. 
     * SDPA with bottom-right implicit causal mask. 
     * fp32 SDPA. 
-    * fp16 SDPA on Intel GPUs without Intel XMX cores. 
+    * `fp16` SDPA on Intel GPUs without Intel XMX cores. 
 
 ## AArch64-based Processors
 * Fixed failing layernorm test cases

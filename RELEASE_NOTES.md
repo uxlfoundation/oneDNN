@@ -47,7 +47,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 [`GELU`]: https://uxlfoundation.github.io/oneDNN/dev_guide_op_gelu.html
 
 ## Microkernel API
-* Introduced support for `fp8` data types. 
+* Introduced support for `fp8` data type. 
 
 ## Intel Architecture Processors
 * Introduced support for select algorithm in binary post-op. 

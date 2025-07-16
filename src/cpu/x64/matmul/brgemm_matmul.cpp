@@ -176,8 +176,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
         }
         // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei
-                    || is_f32_with_int_wei)) {
+        if (!(is_bf16_with_int_wei || is_f16_with_int_wei)) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);

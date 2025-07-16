@@ -3946,7 +3946,6 @@ private:
     constexpr static int ldb_step_idx_offs = 0;
     constexpr static int stack_space_needed = 8;
 
-
     reg64_t reg_src_base = rax;
     reg64_t reg_tr_src_base = rbx;
     reg64_t reg_comp_ptr = rdx;
@@ -4219,7 +4218,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto src_offset = (i * src_stride_) / typesize_scale_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
-        if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
+        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei)
+                && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             const auto scales_addr
                     = EVEX_compress_addr(reg_scales, i * scales_K_stride_);
@@ -4803,7 +4803,6 @@ private:
     const bool req_zp_b_shift_;
     const bool req_apply_scales_;
     const int reserved_regs_;
-
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;

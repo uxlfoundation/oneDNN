@@ -85,6 +85,74 @@ Cons:
 - Requires explicit support in each non-host implementation to handle host-side scalars
     correctly.
 
+#### Additional considerations for primitive descriptor creation
+
+For primitives such as matmul, and when using attributes like scales or zero
+points, we should also consider whether information about scales and zero
+points being host-side scalars should be available during primitive descriptor
+creation.
+
+With the option proposed above, to use a scaling factor as a host-side scalar,
+the user would do the following:
+```C
+// alpha is a host-side scalar
+memory alpha_m(memory::desc::host_scalar(memory::data_type::f32), 2.0f);
+
+// scaling factor is a single value to be applied to src
+primitive_attr attr;
+attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
+
+// No info about scaling factor being host-side scalar is
+// passed to primitive descriptor creation as it is an attribute
+matmul::primitive_desc matmul_pd(
+    eng, a_mem.get_desc(), b_mem.get_desc(), c_mem.get_desc(), attr);
+matmul matmul_prim(matmul_pd);
+
+// Info about scaling factor being host-side scalar is only available at execute
+// since we pass it as a memory object
+std::unordered_map<int, memory> args = {
+    {DNNL_ARG_SRC, a_mem},
+    {DNNL_ARG_WEIGHTS, b_mem},
+    {DNNL_ARG_DST, c_mem},
+    {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_m}
+};
+matmul_prim.execute(s, args);
+```
+
+**Option 1 (recommended):** Introduce new "set" APIs for scales and zero points:
+```C
+void dnnl::primitive_attr::set_host_scale(int arg);
+void dnnl::primitive_attr::set_host_zero_point(int arg);
+```
+This allows us to explicitly specify that the scaling factor or zero point
+is a host-side scalar for primitive descriptor creation.
+Which allows us to prepare a correct kernel that passes the value as a kernel parameter,
+exit early if host-side scalars are not supported for the implementation,
+as well as provide more verbose error messages in case of any failure.
+
+**Option 2**: Introduce new mask value for existing APIs specifically for
+host-side scalars:
+```C
+#define DNNL_MASK_HOST_SCALAR (INT_MIN + (INT_MIN >> 1))
+```
+This would allow us to specify that a scaling factor or zero point is a
+host-side scalar without introducing new APIs.
+The user would pass this mask value to the existing `set_scales(...)`
+or `set_zero_points(...)` APIs.
+
+**Option 3:** Do not introduce new APIs. Kernels would have to support both
+`void *scalar_ptr` and `float scalar_value`, checking at runtime which to use.
+If host-side scalar is unsupported by the implementation, we would return
+an error during execution, which is less user-friendly.
+
+##### Side-by-side comparison of options:
+
+| Option | Pros | Cons |
+|:---------------------------------------------|:------------------------------------------------------------------------------|:---------------------------------------------------------|
+| **New API**                                  | - Explicitly indicates host-side scalars during primitive descriptor creation<br> - Retrieved mask value is consistent with device memory objects (returned mask is `0`) | - Requires introducing new APIs<br> - Might need a way to distinguish between attributes set via `set_scales(DNNL_ARG_SRC, 0)` and `set_host_scale(DNNL_ARG_SRC)`<br>- Might need to handle conflicts if both APIs are used for the same attribute |
+| **Special mask value for host-side scalars** | - No new APIs required<br> - Integrates well with existing APIs for scales and zps | - Only applicable to attributes that use masks in the API,<br> extending support to other attributes that do not require masks would require a different solution |
+| **No new API, runtime detection only**       | - No API changes needed<br> - Simplifies user code                           | - Errors are only detected at execution time <br> - Debugging might become more difficult                                   |
+
 ## Other options considered
 
 ### Option 1: User to rely on USM `malloc_host` (no changes to oneDNN)

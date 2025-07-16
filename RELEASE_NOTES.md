@@ -15,7 +15,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 * Improved performance on Intel GPUs based on Xe3 architecture.
 * Improved matmul performance for Intel Arc Graphics for Intel Core Ultra processors (Series 2) (formerly Lunar Lake) 
 * Improved RNN primitive performance with LBR_GRU cell type  
-* Improved `int8` convolution performance with plain weights and trivial filter 
+* Improved `int8` convolution performance with plain weights and trivial filter.
 * Improved `bf16` convolution with `NCHW` activations and plain weights on:
     * Intel Arc Graphics for Intel Core Ultra processor series 2 (formerly Lunar Lake).
     * Intel Arc B-series discrete graphics (formerly Battlemage).

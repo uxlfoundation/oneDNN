@@ -51,7 +51,7 @@ This functionality is not dispatched by default and requires opt-in with environ
 
 ## Intel Architecture Processors
 * Introduced support for select algorithm in binary post-op. 
-* Introduced source, destination, and weight scales support in fp8 convolution and deconvolution primitives. 
+* Introduced source, destination, and weight scales support in `fp8` convolution and deconvolution primitives. 
 
 ## Intel Graphics Products
 * Introduced support for select algorithm in binary primitive. 

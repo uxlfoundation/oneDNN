@@ -720,7 +720,7 @@ std::string verbose_partitions_n_ops(
 std::string lt_dims2str(const dnnl::graph::logical_tensor::dims &dims) {
     if (dims.empty()) return std::string();
 
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     std::copy(
             dims.begin(), dims.end(), std::ostream_iterator<int64_t>(ss, "x"));
     auto res = ss.str();

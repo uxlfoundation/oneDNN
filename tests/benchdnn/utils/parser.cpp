@@ -27,7 +27,7 @@ namespace parser {
 
 bool last_parsed_is_problem = false;
 const size_t eol = std::string::npos;
-std::stringstream help_ss;
+dnnl::impl::stringstream_t help_ss;
 
 static const std::string benchdnn_url
         = "https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn";

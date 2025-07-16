@@ -69,6 +69,8 @@ extern cold_cache_input_t cold_cache_input;
 
 const cold_cache_input_t &default_cold_cache_input();
 
+dnn_mem_t &flush_cache_memory();
+
 std::ostream &operator<<(std::ostream &s, cold_cache_mode_t cold_cache_mode);
 std::ostream &operator<<(
         std::ostream &s, const cold_cache_input_t &cold_cache_input);
@@ -96,11 +98,13 @@ struct cold_cache_t {
 
     // Takes arguments passed to execute function in a hot-loop and updates
     // memory pointers to ones from cold cache.
-    // Returns `true` when:
-    // * Cold cache is disabled.
-    // * Cold cache is enabled and update was successful.
-    // Otherwise, return `false`.
-    bool update_dnnl_args(std::vector<dnnl_exec_arg_t> &dnnl_args);
+    // * If cold-cache is disabled, returns `true`.
+    // * If cold-cache is enabled and update was successful, returns `true`.
+    //   - Additionally flushes GPU L3 cache if update was sucessful. Requires
+    //     @p stream to submit a flushing kernel in it.
+    // * Otherwise, returns `false`.
+    bool update_dnnl_args(
+            dnnl_stream_t stream, std::vector<dnnl_exec_arg_t> &dnnl_args);
 
     // Informs if cold cache spent all its resources when they were limited.
     bool should_stop() const;
@@ -134,6 +138,9 @@ private:
     bool use_cold_cache(const std::vector<dnnl_exec_arg_t> &dnnl_args) const;
 
     int thrash_reorder(size_t mem_size, size_t granularity) const;
+
+    static constexpr size_t flush_cache_size_ = (32 << 20); // 32 MB;
+    void flush_cache(dnnl_stream_t stream) const;
 
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(cold_cache_t);
 };

@@ -630,8 +630,14 @@ void notify_gpu_profiling_complete(dnnl_stream_t stream) {
 #endif
 }
 
+void destroy_flush_cache() {
+    // Need to free up the memory used for flush_cache.
+    if (flush_cache_memory()) { flush_cache_memory() = dnn_mem_t(); }
+}
+
 void finalize() {
     finalize_tbb();
+    destroy_flush_cache();
 }
 
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
@@ -640,13 +646,17 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
 
     t.reset();
     while (true) {
-        if (!cold_cache.update_dnnl_args(dnnl_args)) break;
+        if (!cold_cache.update_dnnl_args(stream, dnnl_args)) break;
         t.start();
         DNN_SAFE(perf_func(stream, dnnl_args), WARN);
         t.stamp();
         if (should_stop(t)) break;
     }
     return OK;
+}
+
+bool should_stop_fast_mode_heuristic() {
+    return has_bench_mode_bit(mode_bit_t::fast);
 }
 
 inline int measure_perf_aggregate(timer::timer_t &t,
@@ -663,18 +673,33 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
 
+    double ms_warmup = 0;
     for (size_t j = 0; j < v_stream.size(); j++) {
         // Warm-up run, this is not measured due to possibility the associated
         // kernel has not been built and skews the results.
         DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
-        if (use_profiling) reset_gpu_profiling(v_stream[j]);
+        if (use_profiling) {
+            std::vector<uint64_t> v_nsecs, v_cycles;
+            SAFE(get_gpu_profiling_info(v_stream[j], v_nsecs, v_cycles, 1),
+                    CRIT);
+            double ms = v_nsecs[0] / 1e6;
+            ms_warmup = (ms_warmup == 0.0 ? ms : std::min(ms, ms_warmup));
+            reset_gpu_profiling(v_stream[j]);
+        }
     }
 
     bool is_first_loop = true;
     int cur_batch_times
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
+
+    if (has_bench_mode_bit(mode_bit_t::fast) && ms_warmup > 0) {
+        int target_times = 25;
+        if (ms_warmup > 0.1) target_times = 10;
+        if (ms_warmup > 1) target_times = 5;
+        cur_batch_times = target_times;
+    }
 
     t.reset();
     while (true) {
@@ -683,7 +708,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         // Keep inner loop over streams for better submission overlapping.
         for_(int i = 0; i < cur_batch_times; i++)
         for (size_t j = 0; j < v_stream.size(); j++) {
-            if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
+            if (!cold_cache[j].update_dnnl_args(v_stream[j], dnnl_args[j]))
+                break;
             DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
             execute_count++;
         }
@@ -722,7 +748,9 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         }
 
         // Assumption that for each stream cold_cache acts same.
-        if (should_stop(t) || cold_cache[0].should_stop()) break;
+        if (should_stop_fast_mode_heuristic() || should_stop(t)
+                || cold_cache[0].should_stop())
+            break;
 
         // Adjust cur_batch_times after the first batch run
         if (is_first_loop) {

@@ -376,7 +376,7 @@ struct brgemm_matmul_conf_utils_t {
     inline bool with_weights_decompression() const {
         return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8,
                        data_type::s4, data_type::u4)
-                && weights_decompression_support;
+                && (weights_decompression_support || f32_with_int_wei_dt);
     }
 
     inline bool is_int8_with_bf16_dst() const {

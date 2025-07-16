@@ -2064,19 +2064,20 @@ template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Zmm>;
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
 /** 
- * @brief Base class for BRGEMM B matrix copy operations
+ * @brief Common class for BRGEMM B matrix copy operations
  * 
  * This class contains common methods and properties for all copy B kernels.
  * Now it consists of `load_value` and `decompress_value` and it's considered(TODO: )
  * to contain all common methods for copy B kernels.
  */
-struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_base_t)
+struct jit_brgemm_matmul_copy_b_common_t : public jit_brgemm_matmul_copy_b_t,
+                                           public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_common_t)
 
-    jit_brgemm_matmul_copy_b_base_t(const brgemm_matmul_conf_t *conf)
+    jit_brgemm_matmul_copy_b_common_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf), jit_generator_t(jit_name()) {}
 
+protected:
     /**
     * @brief Conditionally applies a mask to a vector register for tail or specialized processing
     * 
@@ -2371,7 +2372,6 @@ struct jit_brgemm_matmul_copy_b_base_t : public jit_brgemm_matmul_copy_b_t,
         downconvert_to_dst_dt(input1, input2, dst_dt);
     }
 
-protected:
     // Common used masks to permute data
     using opmask_t = const Xbyak::Opmask;
     opmask_t k3333 = k1;
@@ -3215,11 +3215,11 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_bf16_t
-    : public jit_brgemm_matmul_copy_b_base_t {
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_bf16_t)
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_base_t(conf)
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , typesize(conf->b_dt_sz)
         , tr_typesize(conf->tr_b_dt_sz)
         , wei_scales_typesize(conf->wei_scales_dt_sz)
@@ -3662,11 +3662,12 @@ template struct jit_brgemm_matmul_copy_b_bf16_t<Zmm>;
 template struct jit_brgemm_matmul_copy_b_bf16_t<Ymm>;
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_base_t {
+struct jit_brgemm_matmul_copy_b_f32_t
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_base_t(conf)
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
@@ -3871,11 +3872,11 @@ template struct jit_brgemm_matmul_copy_b_f32_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_transposed_t
-    : public jit_brgemm_matmul_copy_b_base_t {
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_transposed_t)
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_base_t(conf)
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
@@ -3968,7 +3969,6 @@ private:
 
     constexpr static int ldb_step_idx_offs = 0;
     constexpr static int stack_space_needed = 8;
-
 
     reg64_t reg_src_base = rax;
     reg64_t reg_tr_src_base = rbx;
@@ -4248,7 +4248,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto src_offset = (i * src_stride_) / typesize_scale_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
-        if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
+        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei)
+                && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             const auto scales_addr
                     = EVEX_compress_addr(reg_scales, i * scales_K_stride_);
@@ -4793,11 +4794,11 @@ template struct jit_brgemm_matmul_copy_b_transposed_t<Ymm>;
 
 template <typename Vmm>
 struct jit_brgemm_matmul_copy_b_cvt_bf16_t
-    : public jit_brgemm_matmul_copy_b_base_t {
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_cvt_bf16_t)
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_base_t(conf)
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
@@ -4841,7 +4842,6 @@ private:
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
     const int reserved_regs_;
-
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;

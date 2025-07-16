@@ -180,7 +180,7 @@ std::string partition2fmt_str(const partition_t &partition) {
 
 std::string init_info_partition(const engine_t *engine,
         const compiled_partition_t *compiled_partition) {
-    std::stringstream ss;
+    stringstream_t ss;
 
     const auto &partition = compiled_partition->src_partition();
 

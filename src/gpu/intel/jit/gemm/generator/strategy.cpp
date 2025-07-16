@@ -179,6 +179,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     block2DCRemainder &= (hw >= HW::XeHPC);
     block2DCRemainder &= !isPacked(problem.C.layout);
     block2DCRemainder &= !isBlock2D(C.accessType);
+    auto X = unroll[isTransposing(C.accessType) ? LoopN : LoopM];
+    block2DCRemainder &= (X * problem.Tc_ext) % 4 == 0;
     block2DCFull |= (Tc_ext.paddedSize() < 4);
     block2DCFull &= block2DCRemainder;
 

@@ -1534,14 +1534,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
     if (mask_ptr) { s8_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-    std::unordered_map<int, memory> f16_args
-            = {{DNNL_ARG_QUERIES, t.m_query}, {DNNL_ARG_KEYS, t.m_key},
-                    {DNNL_ARG_VALUES, t.m_value}, {DNNL_ARG_DST, t.m_output}};
-    if (scale_dt != mdt::undef) { f16_args[DNNL_ARG_SCALE] = t.m_scale; }
-    if (mask_ptr) { f16_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
-
-    auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
-    loop_quantized();
+    sdpa_quantized_p.execute(strm, s8_args);
 
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
@@ -1682,13 +1675,6 @@ GPU_TEST_P(sdpa_test_t, perf) {
             throw;
     }
 
-    auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
-            p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
-            t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
-            alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
-    auto sdpaf16_p = sdpa(sdpaf16_pd);
-
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},
             {DNNL_ARG_VALUES, t.m_value_quantized},
             {DNNL_ARG_DST, t.m_output_quantized}}};
@@ -1712,49 +1698,8 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
 
-    /// Dequantize reorder for key
-    memory key_dequantized;
-    dnnl::reorder key_dequantize_prim;
-    bool dequantize_k = !(p.kdt == mdt::f16 || p.kdt == mdt::bf16)
-            && p.qtype != quantize_type::no_quantization;
-    if (dequantize_k) {
-        std::tie(key_dequantize_prim, key_dequantized)
-                = dequantize_prim(eng, mdt::f16,
-                        p.with_key_transposed ? t.m_key_t_quantized.get_desc()
-                                              : t.m_key_quantized.get_desc(),
-                        t.kq_mask, t.kq_groups, p.ksdt, p.kzpdt,
-                        (p.with_key_transposed ? memory::format_tag::abdc
-                                               : memory::format_tag::abcd));
-    } else {
-        key_dequantized = p.with_key_transposed ? t.m_key_t_quantized
-                                                : t.m_key_quantized;
-    }
-
-    /// Dequantize reorder for value
-    memory value_dequantized;
-    dnnl::reorder value_dequantize_prim;
-    bool dequantize_v = p.vdt != mdt::f16 && p.vdt != mdt::bf16
-            && p.qtype != quantize_type::no_quantization;
-    if (dequantize_v) {
-        std::tie(value_dequantize_prim, value_dequantized)
-                = dequantize_prim(eng, mdt::f16, t.m_value_quantized.get_desc(),
-                        t.vs_mask, t.vs_groups, p.vsdt, p.vzpdt);
-    } else {
-        value_dequantized = t.m_value_quantized;
-    }
-
-    std::unordered_map<int, memory> f16_args
-            = {{DNNL_ARG_QUERIES, t.m_query}, {DNNL_ARG_KEYS, key_dequantized},
-                    {DNNL_ARG_VALUES, value_dequantized},
-                    {DNNL_ARG_DST, t.m_output_quantized}};
-    if (scale_dt != mdt::undef) { f16_args[DNNL_ARG_SCALE] = t.m_scale; }
-    if (mask_ptr) { f16_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
-
-    //auto loop_sdpa_f16 = [&] { sdpaf16_p.execute(strm, f16_args); };
-
     int iterations = 20;
     auto quantized_time = timeit(loop_quantized, strm, iterations);
-    //auto sdpa_f16_time = timeit(loop_sdpa_f16, strm, iterations);
 
     using namespace std::chrono;
     auto min_time = [](const std::vector<microseconds> &a) {
@@ -1766,11 +1711,11 @@ GPU_TEST_P(sdpa_test_t, perf) {
     // total number of bytes of all tensors
     byte_t<> total_bytes = t.m_query.get_desc().get_size()
 
-            + key_dequantized.get_desc().get_size() / 2
+            + t.m_key.get_desc().get_size() / 2
             + t.m_key_scales.get_desc().get_size()
             + t.m_key_zp.get_desc().get_size()
 
-            + value_dequantized.get_desc().get_size() / 2
+            + t.m_value.get_desc().get_size() / 2
             + t.m_value_scales.get_desc().get_size()
             + t.m_value_zp.get_desc().get_size()
 

@@ -44,7 +44,7 @@ flags_t str2flags(const char *str) {
 }
 
 std::string prb_t::set_repro_line() {
-    std::stringstream s;
+    dnnl::impl::stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

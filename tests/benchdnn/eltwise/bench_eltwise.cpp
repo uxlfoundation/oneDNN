@@ -54,7 +54,7 @@ int verify_input(const settings_t &s) {
     for (const auto &i_alg : s.alg) {
         bool ok = i_alg > alg_t::ELTWISE_START && i_alg < alg_t::ELTWISE_END;
         if (!ok) {
-            std::stringstream ss;
+            dnnl::impl::stringstream_t ss;
             ss << i_alg;
             BENCHDNN_PRINT(0, "%s%s%s\n", "ERROR: unknown algorithm `",
                     ss.str().c_str(), "`.");

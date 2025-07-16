@@ -118,7 +118,7 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
 }
 
 std::string print_to_string(const ::testing::TestParamInfo<sdpa_dims_t> &info) {
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     ss << info.param;
     return ss.str();
 }
@@ -130,7 +130,7 @@ void print_table_header() {
 }
 
 std::string print_row(const sdpa_dims_t &p) {
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
 
     ss << "|" << p.mb;
     ss << "|" << p.head_num;

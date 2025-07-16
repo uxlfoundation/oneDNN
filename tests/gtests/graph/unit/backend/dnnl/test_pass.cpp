@@ -5061,7 +5061,7 @@ TEST(test_pass, InputJsonIsValid) {
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
 
-    std::ostringstream valid_stream;
+    dnnl::impl::ostringstream_t valid_stream;
     std::string version = std::to_string(dnnl_version()->major) + "."
             + std::to_string(dnnl_version()->minor) + "."
             + std::to_string(dnnl_version()->patch);
@@ -5084,7 +5084,7 @@ TEST(test_pass, InputJsonIsValid) {
                  << "]\n"
                  << "}\n";
     std::string valid_str = valid_stream.str();
-    std::istringstream valid_is(valid_str);
+    dnnl::impl::istringstream_t valid_is(valid_str);
     pm.run_passes(agraph, &valid_is);
     ASSERT_EQ(agraph.get_num_partitions(), 2U);
 }
@@ -5118,7 +5118,7 @@ TEST(test_pass, InputJsonIsInvalidWithIncompleteHash) {
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
 
-    std::ostringstream invalid_stream;
+    dnnl::impl::ostringstream_t invalid_stream;
     std::string version = std::to_string(dnnl_version()->major) + "."
             + std::to_string(dnnl_version()->minor) + "."
             + std::to_string(dnnl_version()->patch);
@@ -5143,7 +5143,7 @@ TEST(test_pass, InputJsonIsInvalidWithIncompleteHash) {
                    << "]\n"
                    << "}\n";
     std::string invalid_str = invalid_stream.str();
-    std::istringstream invalid_is(invalid_str);
+    dnnl::impl::istringstream_t invalid_is(invalid_str);
     pm.run_passes(agraph, &invalid_is);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }
@@ -5177,7 +5177,7 @@ TEST(test_pass, InputJsonIsInvalidWithMissingFiled) {
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
 
-    std::ostringstream invalid_stream;
+    dnnl::impl::ostringstream_t invalid_stream;
     invalid_stream << "{\n"
                    << "\"passes\": [\n"
                    << "  {\n"
@@ -5195,7 +5195,7 @@ TEST(test_pass, InputJsonIsInvalidWithMissingFiled) {
                    << "]\n"
                    << "}\n";
     std::string invalid_str = invalid_stream.str();
-    std::istringstream invalid_is(invalid_str);
+    dnnl::impl::istringstream_t invalid_is(invalid_str);
     pm.run_passes(agraph, &invalid_is);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }
@@ -5229,7 +5229,7 @@ TEST(test_pass, InputJsonIsInvalidWithWrongFormat) {
     auto pm = dnnl::impl::graph::pass::pass_manager_t(
             backend_ptr.get_pass_registry());
 
-    std::ostringstream invalid_stream;
+    dnnl::impl::ostringstream_t invalid_stream;
     std::string version = std::to_string(dnnl_version()->major) + "."
             + std::to_string(dnnl_version()->minor) + "."
             + std::to_string(dnnl_version()->patch);
@@ -5243,7 +5243,7 @@ TEST(test_pass, InputJsonIsInvalidWithWrongFormat) {
                    << "  \"enable\": 1\n"
                    << "  },\n";
     std::string invalid_str = invalid_stream.str();
-    std::istringstream invalid_is(invalid_str);
+    dnnl::impl::istringstream_t invalid_is(invalid_str);
     pm.run_passes(agraph, &invalid_is);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }

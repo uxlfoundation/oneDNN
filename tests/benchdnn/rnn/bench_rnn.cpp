@@ -73,7 +73,7 @@ int verify_input(const settings_t &s) {
     for (const auto &i_scale_policy : s.scale_policy) {
         if (!(i_scale_policy == policy_t::COMMON
                     || i_scale_policy == policy_t::PER_OC)) {
-            std::stringstream ss;
+            dnnl::impl::stringstream_t ss;
             ss << i_scale_policy;
             const std::string cpp_pstr = ss.str();
             const char *policy_s = cpp_pstr.c_str();

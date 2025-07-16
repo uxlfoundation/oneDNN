@@ -54,7 +54,7 @@ struct dump_point_ctx_t {
 
 void dump_point_values(
         const std::string &kind_str, const dump_point_ctx_t &ctx) {
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     dims_t l_dims = md2dims(ctx.md);
     dims_t dims_idx = off2dims_idx(l_dims, ctx.l_offset);
     ss << dims_idx;

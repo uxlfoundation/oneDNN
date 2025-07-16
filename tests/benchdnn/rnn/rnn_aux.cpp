@@ -275,7 +275,7 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 std::string prb_t::set_repro_line() {
     using ::operator<<;
 
-    std::stringstream s;
+    dnnl::impl::stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

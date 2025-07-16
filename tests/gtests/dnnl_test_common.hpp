@@ -834,7 +834,7 @@ mapped_ptr_t<T> map_memory(const test_memory &mem) {
 }
 
 inline std::string to_string(dnnl_engine_kind_t engine_kind) {
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     if (engine_kind == dnnl_cpu)
         ss << "cpu";
     else if (engine_kind == dnnl_gpu)
@@ -846,7 +846,7 @@ inline std::string to_string(dnnl_engine_kind_t engine_kind) {
 }
 
 inline std::string to_string(dnnl_stream_flags_t stream_flags) {
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     if (stream_flags & dnnl_stream_default_flags)
         ss << "default";
     else if (stream_flags & dnnl_stream_in_order)

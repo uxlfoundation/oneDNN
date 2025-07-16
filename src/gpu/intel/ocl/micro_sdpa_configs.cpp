@@ -235,6 +235,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpg, 128, second_token},      {8, 16, 16, 8, 16, 1, 8, 2}},
 
         {{compute::gpu_arch_t::xe_hpg, 128,      quantized}, {8, 32, 16, 32, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 32,  quantized}, {8, 32, 16, 32, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe_hpg, 128, 64,  quantized}, {8, 8, 16, 8, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpg, 128, 512, quantized}, {16, 16, 16, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpg, 128, 96,  quantized | second_token}, {8, 8, 8, 8, 16, 2, 16, 2}},
@@ -406,6 +407,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 64, 1024, integrated | quantized}, {16, 64, 16, 32, 8, 4, 4, 8}},
         {{compute::gpu_arch_t::xe2, 64, 384,  integrated | quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
         {{compute::gpu_arch_t::xe2, 64, 128,  integrated | quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 96,   integrated | quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
 
         {{compute::gpu_arch_t::xe2, 64,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 8, 1}},
         {{compute::gpu_arch_t::xe2, 64, 768, second_token | quantized}, {64, 16, 16, 16, 16, 1, 8, 1}},
@@ -431,7 +433,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 128,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe2, 128, 512, second_token | quantized}, {16, 16, 16, 16, 16, 2, 8, 2}},
         {{compute::gpu_arch_t::xe2, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
-        {{compute::gpu_arch_t::xe2, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
+        {{compute::gpu_arch_t::xe2, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 16, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe2, 256},     {32, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe2, 256, 64}, {16, 16, 64, 16, 8, 2, 8, 2}},

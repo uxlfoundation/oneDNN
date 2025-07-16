@@ -355,7 +355,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "zp_wei_layout: " << zp_layout_ << std::endl;
         oss << "b_layout:      " << b_layout_ << std::endl;
         oss << "data_type:     " << data_type_ << std::endl;
@@ -535,7 +535,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "zp_layout:   " << zp_layout_ << std::endl;
         oss << "src_layout:  " << src_layout_ << std::endl;
         oss << "wei_layout:  " << wei_layout_ << std::endl;
@@ -923,7 +923,7 @@ struct texpr_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         std::vector<std::string> parts;
         if (!is_zero(base)) parts.push_back(base.str());
         for (int i = 0; i < nvargs(); i++) {
@@ -998,7 +998,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << lhs_ << " " << op_ << " " << rhs_;
         return oss.str();
     }
@@ -1127,7 +1127,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mask_layout: " << mask_layout_ << std::endl;
         oss << "SIMD:        " << simd_ << " (dim_idx: " << simd_dim_idx_
             << ")";
@@ -1359,7 +1359,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "comp_layout: " << comp_layout_ << std::endl;
         oss << "c_layout:    " << c_layout_ << std::endl;
         oss << "SIMD:        " << simd_str_;
@@ -1489,7 +1489,7 @@ struct zp_plan_impl_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (has_zp_src()) {
             oss << load.str("load") << std::endl;
             oss << comp_init << std::endl;

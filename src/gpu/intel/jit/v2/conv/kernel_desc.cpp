@@ -171,7 +171,7 @@ bool extensions_t::has(extension_kind_t kind) const {
 
 std::string extensions_t::str() const {
     if (kinds == extension_kind_t::undef) return "x";
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &p : extension_kind_names) {
         if (p.first == extension_kind_t::undef) continue;
@@ -500,7 +500,7 @@ std::string kernel_desc_t::cmd_str() const {
 }
 
 std::string kernel_desc_t::brief_str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << jit::to_string(prop) << "_";
     oss << "i_" << iter_tile.str();
     oss << "_T_" << thread_group_tile.str();
@@ -511,7 +511,7 @@ std::string kernel_desc_t::brief_str() const {
 
 std::string kernel_desc_t::str() const {
     if (is_empty()) return "(empty)";
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Propagation:            "
         << ir_utils::to_upper(jit::to_string(prop)) << std::endl;
     oss << "Depthwise:              " << ir_utils::to_string(is_dw)
@@ -1089,7 +1089,7 @@ status_t kernel_desc_t::init_primitive_plan(primitive_init_plan_t &plan,
 }
 
 serialization_stream_t kernel_desc_t::serialize() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     jit::stringify(oss, *this);
     auto str = oss.str();
     return serialization_stream_t::from_data(
@@ -1099,7 +1099,7 @@ serialization_stream_t kernel_desc_t::serialize() const {
 kernel_desc_t kernel_desc_t::deserialize(const serialization_stream_t &s) {
     auto &data = s.get_data();
     std::string str(data.begin(), data.end());
-    std::istringstream iss(str);
+    istringstream_t iss(str);
     auto desc = jit::parse<kernel_desc_t>(iss);
     return desc;
 }

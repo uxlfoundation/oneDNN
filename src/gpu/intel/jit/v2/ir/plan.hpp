@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ struct reduce_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "src_layout: " << src.str() << std::endl;
         oss << "dst_layout: " << dst.str();
         return oss.str();
@@ -75,7 +75,7 @@ struct reorder_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "src_layout: " << src.str() << std::endl;
         oss << "dst_layout: " << dst.str();
         return oss.str();

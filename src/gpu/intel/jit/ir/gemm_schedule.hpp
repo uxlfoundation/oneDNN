@@ -348,7 +348,7 @@ public:
     std::string str() const {
         using namespace ir_utils;
 
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "var: " << var_;
         oss << " bound: " << bound_;
         oss << " kind: " << kind_;

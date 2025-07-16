@@ -115,7 +115,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(hw_);
         oss << ", stepping: " << stepping_id();
         oss << ", EUs: " << eu_count();
@@ -168,7 +168,7 @@ public:
     void set_simd(int simd) { simd_ = simd; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << hw_.str();
         oss << ", SIMD: " << simd();
         oss << ", regs: " << regs();

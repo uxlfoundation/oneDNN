@@ -75,7 +75,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (is_fixed()) {
             oss << stride_;
         } else if (is_unknown()) {
@@ -146,7 +146,7 @@ struct block_t {
     size_t get_hash() const { return serialization_stream_t::get_hash(*this); }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "block_t(dim_idx = " << dim_idx;
         oss << ", block = " << block;
         oss << ", stride = " << stride.str();
@@ -243,7 +243,7 @@ struct block_layout_t {
     }
 
     std::string str() const {
-        std::ostringstream ss;
+        ostringstream_t ss;
         for (size_t i = 0; i < num_blocks; i++) {
             const auto &block = blocks[i];
             ss << block.str() << " ";

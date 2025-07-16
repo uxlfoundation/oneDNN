@@ -1282,7 +1282,7 @@ public:
         return interface_.getLocalSize(dim);
     }
     std::string str() {
-        std::ostringstream oss;
+        ostringstream_t oss;
         getCode(oss);
         return oss.str();
     }

@@ -138,7 +138,7 @@ public:
                 && (src2_type == other.src2_type);
     }
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << (is_dpasw ? "dpasw" : is_dp4a() ? "dp4a" : "dpas");
         if (!is_dp4a()) {
             oss << std::to_string(sdepth) << "x" << std::to_string(rcount);
@@ -216,7 +216,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "madx" << exec_size;
         return oss.str();
     }

@@ -55,7 +55,7 @@ std::ostream &operator<<(std::ostream &out, grf_usage_label_t label) {
 }
 
 std::string grf_buf_usage_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Buffers:";
     for (auto label : all_grf_usage_labels()) {
         int regs = total_regs(label);
@@ -83,7 +83,7 @@ std::string grf_usage_t::str() const {
         total += regs;
     }
     table << "Total" << total << std::endl;
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << table << std::endl;
     oss << buf_usage_;
     return oss.str();

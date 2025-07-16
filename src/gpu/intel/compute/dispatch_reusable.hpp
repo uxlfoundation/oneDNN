@@ -94,7 +94,7 @@ struct gws_indexing_term_t {
         };
 
         std::string str() const {
-            std::stringstream ss;
+            stringstream_t ss;
             ss << "<compile_params_t op=" << to_string(op)
                << ", gws_idx=" << gws_idx << ">";
             return ss.str();
@@ -130,7 +130,7 @@ struct gws_indexing_term_t {
         : compile_params_(op, gws_idx), runtime_params_(size, stride, block) {};
 
     std::string str() const {
-        std::stringstream ss;
+        stringstream_t ss;
         ss << "<gws_indexing_term_t op=" << to_string(compile_params_.op)
            << ", gws_idx=" << compile_params_.gws_idx
            << ", size=" << runtime_params_.size
@@ -161,7 +161,7 @@ struct gws_term_list_t {
     std::vector<gws_indexing_term_t> terms;
 
     std::string str() const {
-        std::ostringstream ss;
+        ostringstream_t ss;
         for (size_t i = 0; i < terms.size(); i++) {
             ss << terms[i].str() << std::endl;
         }
@@ -224,7 +224,7 @@ struct dispatch_compile_params_t {
             kernel_ctx_t &kernel_ctx, const char *suffix = "DEFAULT") const;
 
     std::string str() const {
-        std::ostringstream ss;
+        ostringstream_t ss;
         ss << "dispatch_compile_params_t<num_terms=" << num_terms;
         ss << ": [";
         for (size_t i = 0; i < static_cast<size_t>(num_terms); i++) {
@@ -284,7 +284,7 @@ public:
     dispatch_gws_rt_params_t get() const { return rt_params; };
 
     std::string str() const {
-        std::stringstream ss;
+        stringstream_t ss;
         ss << "<dispatch_runtime_params_t (size/stride/block): ";
         for (size_t i = 0; i < num_terms; i++) {
             ss << rt_params.sizes[i] << "/" << rt_params.strides[i] << "/"

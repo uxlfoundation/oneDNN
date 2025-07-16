@@ -1660,7 +1660,7 @@ private:
         tile_t tile() const { return tile_t(std::vector<dim_t> {a, b}); }
 
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << "edge(idx = " << idx << ", a = " << a << ", b = " << b
                 << ")";
             return oss.str();
@@ -1676,7 +1676,7 @@ private:
             : hw(hw), idx(idx), layout(layout) {}
 
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << "vertex(idx = " << idx << ", layout = " << layout << ")";
             return oss.str();
         }

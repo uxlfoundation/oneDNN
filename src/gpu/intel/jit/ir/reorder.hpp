@@ -40,7 +40,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "reorder[" << src_layout << ", " << dst_layout << "]";
         return oss.str();
     }

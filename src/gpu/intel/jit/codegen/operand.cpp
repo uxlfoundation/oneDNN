@@ -58,7 +58,7 @@ std::string ngen_operand_t::str() const {
 
     auto &rbd = reg_buf_data();
     auto &rb = rbd.reg_buf();
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (rbd.type() != ngen::DataType::invalid) {
         gpu_assert(rb.blocks() == 1);
         gpu_assert(!rb.with_permute());

@@ -201,7 +201,7 @@ status_t conv_problem_t::init(
 }
 
 std::string conv_problem_t::desc_str(bool print_mb) const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (print_mb) oss << "mb" << mb;
     if (g > 1) oss << "g" << g;
     oss << "ic" << ic;
@@ -1979,7 +1979,7 @@ int conv_config_t::pad_block(const pvar_t &d) const {
 std::string conv_config_t::str() const {
     using namespace ir_utils;
 
-    std::ostringstream oss;
+    ostringstream_t oss;
     // clang-format off
     oss << "  Exec config:                " << exec_cfg().str() << std::endl;
     oss << "  Problem:                    " << prb().desc_str() << std::endl;
@@ -2036,7 +2036,7 @@ conv_key_t conv_config_t::key() const {
 }
 
 std::string conv_config_t::blocking_brief_str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (auto &d : index_dims()) {
         dim_t iter = iter_dim(d);
         dim_t tg = thread_group_dim(d);

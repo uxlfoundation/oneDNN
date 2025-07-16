@@ -557,7 +557,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(kind());
         if (elems() > 1) oss << "x" << elems();
         if (is_ptr()) oss << "*";
@@ -2093,7 +2093,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "alloc " << buf.as<var_t>().name << "[" << size << "]";
         return out.str();
     }
@@ -2183,7 +2183,7 @@ public:
     bool has_default_stride() const { return stride == default_stride; }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << load_t::make(value.type(), buf, off, stride);
         out << " = " << value;
         if (mask) {
@@ -2252,7 +2252,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "for (" << var << " = " << init << "; " << var << " < " << bound
             << "; " << var << " += " << step << ") ";
         if (unroll != 1) out << "[unroll: " << unroll << "] ";
@@ -2309,7 +2309,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "if (" << cond << ")";
         return oss.str();
     }
@@ -2363,7 +2363,7 @@ public:
     };
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << var << "." << var.type() << " = " << value;
         return out.str();
     }
@@ -2563,7 +2563,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(cond, body); }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "while (" << cond << ")";
         return out.str();
     }
@@ -2635,7 +2635,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "{";
         bool is_first = true;
         auto append = [&](const std::string &s) {
@@ -2731,7 +2731,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(args, attr); }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << func.str() << "(" << ir_utils::make_seq_print_helper(args)
             << ")";
         if (attr) out << " " << attr;

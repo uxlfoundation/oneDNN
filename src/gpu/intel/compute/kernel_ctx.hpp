@@ -47,8 +47,7 @@ public:
     }
 
     std::string options() const {
-        std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        ostringstream_t oss;
 
         for (auto &opt : option_set_)
             oss << " " << opt;

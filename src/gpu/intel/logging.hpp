@@ -84,7 +84,7 @@ public:
 
     template <typename T>
     logger_t &operator<<(const T &obj) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         print_helper_t<T>::call(oss, obj);
         auto lines = gpu_utils::split(oss.str(), "\n");
         if (lines_.empty() || lines.empty()) {

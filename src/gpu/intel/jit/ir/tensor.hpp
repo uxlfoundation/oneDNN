@@ -156,7 +156,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::make_seq_print_helper(dims_, " x ");
         return oss.str();
     }
@@ -453,7 +453,7 @@ public:
 
     std::string str() const {
         if (is_empty()) return "(nil)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << desc_str();
         if (!has_zero_offset()) oss << " offset: " << offset_;
         return oss.str();
@@ -1167,7 +1167,7 @@ public:
     bool is_empty() const { return layout_.is_empty(); }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int i = 0; i < int(elems()); i++) {
             if (i != 0) oss << std::endl;
             oss << "mask #" << i << ": ";
@@ -1247,7 +1247,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << expr_;
         if (mask_) oss << " mask: " << mask_;
         return oss.str();
@@ -1402,7 +1402,7 @@ public:
         using ir_utils::operator<<;
 
         if (is_empty()) return "(nil)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << vdims_.str();
         if (!has_zero_vstart()) oss << " vstart: [" << vstart_ << "]";
         oss << " tlayout: " << tlayout_;

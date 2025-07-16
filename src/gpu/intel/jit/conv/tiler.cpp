@@ -1279,7 +1279,7 @@ public:
         uint64_t nsec = tune_data_.nsec(params.id());
         double gops_sec = ops_ / nsec;
         maybe_print_header();
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "perf,conv,";
         oss << key_.str(/*csv=*/true) << ",";
         oss << params.str(/*csv=*/true) << ",";

@@ -70,7 +70,7 @@ status_t update_config_from_devenv_values(
         if (!q_config_str.empty() && quantized)
             config_str = std::move(q_config_str);
 
-        std::stringstream ss(config_str);
+        stringstream_t ss(config_str);
         while (ss >> i) {
             config_values[num_values++] = i;
             if (ss.peek() == ',') ss.ignore();

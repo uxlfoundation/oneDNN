@@ -165,7 +165,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int id = 0; id < 3; id++) {
             if (id != 0) oss << ",";
             for (auto &b : blocks_) {

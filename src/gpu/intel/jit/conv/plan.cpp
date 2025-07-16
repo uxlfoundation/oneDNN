@@ -786,7 +786,7 @@ int reduce_plan_t::estimate_regs() const {
 }
 
 std::string slm_plan_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (has_a()) {
         oss << "a_layout: " << a_layout << std::endl;
         oss << a_g2s_load.str("a_g2s_load") << std::endl;
@@ -804,7 +804,7 @@ std::string slm_plan_t::str() const {
 }
 
 std::string prefetch_plan_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (a_prefetch) oss << a_prefetch.str("a") << std::endl;
     if (b_prefetch) oss << b_prefetch.str("b") << std::endl;
     return add_indent("prefetch", oss.str());
@@ -865,7 +865,7 @@ int x2r_plan_t::estimate_regs(bool reuse_headers) const {
 }
 
 std::string x2r_plan_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << a_load.str("a_load") << std::endl;
     oss << b_load.str("b_load") << std::endl;
     if (x_reduce) oss << x_reduce.str("x_reduce") << std::endl;
@@ -1081,7 +1081,7 @@ int fma_plan_t::estimate_regs() const {
 }
 
 std::string fma_plan_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "a:     " << a_layout << std::endl;
     oss << "b:     " << b_layout << std::endl;
     oss << "c:     " << c_layout << std::endl;
@@ -1222,7 +1222,7 @@ void conv_plan_t::reset() {
 
 std::string conv_plan_t::str() const {
     using namespace ir_utils;
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (slm) oss << slm << std::endl;
     if (prefetch) oss << prefetch << std::endl;
     oss << x2r << std::endl;

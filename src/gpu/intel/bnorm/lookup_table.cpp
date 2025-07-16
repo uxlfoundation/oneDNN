@@ -585,7 +585,7 @@ bnorm_lookup_table_t::bnorm_lookup_table_t(bool use_stat_one_pass) {
 }
 
 std::string get_desc_str(const params_t &conf) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "mb" << conf.mb;
     oss << "ic" << conf.ic;
     oss << "ih" << conf.ih;
@@ -593,7 +593,7 @@ std::string get_desc_str(const params_t &conf) {
     return oss.str();
 }
 std::string get_nhwc_desc_str(const params_t &conf) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "ic" << conf.ic;
     oss << "sp" << conf.mb * conf.ih * conf.iw * conf.id;
     return oss.str();
@@ -634,7 +634,7 @@ int params_t::sort_key(const param_t *param) const {
 }
 
 std::string params_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Fused atomic reduction: " << use_fused_atomics_reduction_.str()
         << std::endl;
     oss << "IC block: " << ic_block_.str() << std::endl;

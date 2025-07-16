@@ -375,7 +375,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "g" << g;
         oss << "mb" << mb;
         oss << "ic" << ic;

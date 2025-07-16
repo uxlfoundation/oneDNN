@@ -272,7 +272,7 @@ public:
 
     std::string str_impl(bool multiline) const {
         if (is_empty()) return "x";
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         for (auto &kv : map_) {
             auto &p = kv.first;
@@ -436,7 +436,7 @@ struct tile_coord_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "tile: " << tile.str();
         if (!has_zero_coord()) oss << " coord: " << coord.str();
         return oss.str();

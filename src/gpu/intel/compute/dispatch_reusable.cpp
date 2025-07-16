@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -316,7 +316,7 @@ struct gws_mapped_block_t : public gpu::intel::block_t {
         : block_t(block), gws_idx(gws_idx), gws_stride(gws_stride) {}
 
     std::string str() const {
-        std::ostringstream ss;
+        ostringstream_t ss;
         ss << static_cast<const block_t *>(this)->str().c_str();
         ss << " , gws_stride=" << gws_stride.str();
         ss << " / gws_idx=" << gws_idx;

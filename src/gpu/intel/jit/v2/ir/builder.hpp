@@ -79,7 +79,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "nloops: " << nloops();
         for (size_t i = 0; i < nloops(); i++) {
             oss << std::endl;
@@ -218,7 +218,7 @@ struct offset_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "buf:       " << buf << std::endl;
         oss << "base:      " << base << std::endl;
         oss << "shift:     " << shift << std::endl;

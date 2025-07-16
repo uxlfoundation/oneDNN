@@ -107,7 +107,7 @@ public:
 
     std::string str() const {
         if (is_empty()) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         if (with_permute()) oss << "[permuted] ";
         for (int base : block_bases_) {

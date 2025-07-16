@@ -85,7 +85,7 @@ public:
         }
 
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << "buf: " << buf << " size: " << size;
             return oss.str();
         }
@@ -755,7 +755,7 @@ public:
             const linear_transform_t &t, const expr_t &new_var) const;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << expr_;
         return oss.str();
     }
@@ -805,7 +805,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << expr_;
         return oss.str();
     }
@@ -898,7 +898,7 @@ public:
     int max_proven_gcd(const expr_t &var) const;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "relations:" << (relations_.empty() ? " (empty)\n" : "\n");
         for (auto &r : sort_var_map_by_key(relations_)) {
             oss << "\t" << r.first << ":";

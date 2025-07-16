@@ -124,7 +124,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << to_string(value_);
         return oss.str();
     }
@@ -146,7 +146,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << to_string(value_);
         return oss.str();
     }
@@ -194,7 +194,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         if (do_unroll_) oss << "u";
         if (reuse_headers_) oss << "r";
@@ -267,7 +267,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << "x" << bufs_;
         if (a_ != b_) oss << "." << (a_ ? "a" : "b");
@@ -337,7 +337,7 @@ public:
     void set_gmem_bufs(int gmem_bufs) { gmem_bufs_ = gmem_bufs; }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << "x" << bufs_;
         oss << ".g" << gmem_bufs_;
@@ -414,7 +414,7 @@ public:
     void set_b(int b) { b_ = b; }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         if (a_ != 1) oss << "a" << a_;
         if (b_ != 1) oss << "b" << b_;
@@ -443,7 +443,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << value_;
         return oss.str();
     }

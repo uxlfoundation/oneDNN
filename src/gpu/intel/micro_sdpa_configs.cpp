@@ -624,7 +624,7 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_configs), end(sorted_configs), query);
     if (it != end(sorted_configs)) {
-        std::stringstream ss;
+        stringstream_t ss;
         ss << " {query " << query << "} -> {config " << it->criteria << ":"
            << it->config << " }";
         VDEBUGINFO(4, primitive, sdpa, "config search: %s,", ss.str().c_str());

@@ -244,7 +244,7 @@ struct reg_mask_t {
 
     std::string str() const {
         UNUSED(&reg_mask_t::str);
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int i = hw_ctx->regs - 1; i >= 0; i--) {
             oss << (test(i) ? "1" : "0");
         }
@@ -332,7 +332,7 @@ struct reg_block_mask_t {
 
     std::string str() const {
         UNUSED(&reg_block_mask_t::str);
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int i = 0; i < regs; i++) {
             oss << "#" << i << " mask: " << masks[i].str();
             if (i != regs - 1) oss << std::endl;
@@ -372,7 +372,7 @@ struct reg_t {
     std::string str() const {
         UNUSED(&reg_t::str);
         if (is_empty()) return "null";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (block->is_assigned()) {
             int reg = block->masks[off].bsf();
             oss << "r" << reg;

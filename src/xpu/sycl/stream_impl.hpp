@@ -49,8 +49,13 @@ public:
 
     ::sycl::queue *queue() { return queue_.get(); }
 
+    bool recording() {
+        return queue()->ext_oneapi_get_state()
+                == ::sycl::ext::oneapi::experimental::queue_state::recording;
+    }
+
     status_t wait() {
-        queue()->wait_and_throw();
+        if (!recording()) queue()->wait_and_throw();
         return status::success;
     }
 

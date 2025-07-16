@@ -119,11 +119,6 @@ static syclex::command_graph<syclex::graph_state::modifiable> get_graph(
     return get_graph_internal(*q, success, 0);
 }
 
-bool stream_t::recording() const {
-    return impl()->queue()->ext_oneapi_get_state()
-            == syclex::queue_state::recording;
-}
-
 stream_t::weak_graph_t stream_t::get_current_graph_weak() const {
     bool success;
     stream_t::weak_graph_t result = get_graph(impl()->queue(), success);

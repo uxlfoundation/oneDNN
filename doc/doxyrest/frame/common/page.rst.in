@@ -13,13 +13,18 @@
 local argArray = table.pack(...)
 local page = argArray[1]
 
+local pageTitle = page.title
+if not pageTitle or pageTitle == "" then
+	pageTitle = "<Untitled>"
+end
+
 if FORCE_INCLUDE_FILE then
 }
 .. include:: $FORCE_INCLUDE_FILE
 %{
 end -- if
 }
-.. index:: pair: page; $(page.title)
+.. index:: pair: page; $pageTitle
 .. _doxid-$(page.id):
 
 $(getTitle(page.title, 1))

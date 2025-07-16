@@ -354,7 +354,7 @@ struct bmnk_conv_sample_t {
     float to_w() const { return weight; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "shape: b" << b << "m" << m << "n" << n << "k" << k;
         oss << " loop: b" << bl << "m" << ml << "n" << nl << "k" << kl;
         oss << " tg: b" << bt << "m" << mt << "n" << nt << "k" << kt;

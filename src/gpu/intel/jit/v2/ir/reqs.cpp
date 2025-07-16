@@ -186,7 +186,7 @@ public:
 
     std::string str() const {
         if (pvars_.empty()) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         stringify_impl(oss, " * ");
         return oss.str();
     }
@@ -261,7 +261,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (is_pvar()) {
             oss << pvar_.str();
         } else {
@@ -371,7 +371,7 @@ public:
 
     std::string str() const {
         if (is_undef()) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         stringify_impl(oss, /*delim=*/" ");
         return oss.str();
     }
@@ -564,7 +564,7 @@ public:
 
     std::string str() const {
         if (kind_ == req_kind_t::undef) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         stringify_impl(oss, /*delim=*/" ");
         return oss.str();
     }
@@ -761,7 +761,7 @@ void prb_reqs_t::parse(std::istream &in) {
 }
 
 std::string prb_reqs_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     stringify_impl(oss, "\n", " ");
     return oss.str();
 }

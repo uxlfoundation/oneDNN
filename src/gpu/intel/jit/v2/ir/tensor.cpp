@@ -46,7 +46,7 @@ static bool is_abx_tag(const std::string &s) {
 }
 
 std::string block_t::brief_str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "[dim = " << dim;
     oss << ", size = " << size;
     oss << ", stride = " << stride << "]";
@@ -54,7 +54,7 @@ std::string block_t::brief_str() const {
 }
 
 std::string block_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "block:" << std::endl;
     oss << "  dim:    " << dim << std::endl;
     oss << "  size:   " << size << std::endl;
@@ -131,7 +131,7 @@ std::string layout_desc_t::to_abx_tag(const std::string &tag) const {
 }
 
 std::string layout_desc_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "canonical: " << canonical_ << std::endl;
     oss << ir_utils::add_tag("letter_map", letter_map_.str());
     return oss.str();
@@ -153,7 +153,7 @@ bool dim_mapper_t::has_underflow(const pvar_t &dim) const {
 }
 
 std::string dim_mapper_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "dim_mapper:" << std::endl;
     for (auto &dim : map_) {
         oss << "  " << dim.str() << " -> ";
@@ -347,7 +347,7 @@ std::vector<bool> layout_raw_tag_t::skip_mask(
 std::vector<std::pair<char, int>> layout_raw_tag_t::parse_letter_blocks(
         const std::string &tag) {
     std::vector<std::pair<char, int>> ret;
-    std::stringstream ss(tag);
+    stringstream_t ss(tag);
     while (!ss.eof()) {
         int next = ss.peek();
         if (ss.eof()) break;
@@ -421,7 +421,7 @@ bool layout_tag_t::matches(
 
 std::string layout_tag_t::str() const {
     if (is_empty()) return "x";
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << raw_tag_ << ":" << type_ << ":" << is_strided_;
     return oss.str();
 }
@@ -867,7 +867,7 @@ std::string layout_t::blocks_str() const {
 
 std::string layout_t::str() const {
     if (is_empty()) return "(empty)";
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << blocks_str();
     oss << ":" + type().str();
     if (!is_zero(base_)) {
@@ -878,7 +878,7 @@ std::string layout_t::str() const {
 }
 
 std::string layout_t::str_with_size(const hw_t &hw) const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << str();
     int regs = (hw.is_undef() ? 0 : utils::div_up(size(), hw.grf_size()));
     oss << " (" << size() << " bytes, ";
@@ -986,7 +986,7 @@ layout_t block_iterator_t::sub_layout(int _stride) const {
 }
 
 std::string block_iterator_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "block_idx: " << block_idx_ << std::endl;
     oss << "block:     " << block_.brief_str();
     return ir_utils::add_tag("block_iterator", oss.str());
@@ -1060,7 +1060,7 @@ coord_t layout_iterator_t::coord() const {
 
 std::string layout_iterator_t::str() const {
     using namespace ir_utils;
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "offset:    " << offset_ << std::endl;
     oss << "block_off: " << block_off_;
     return ir_utils::add_tag("layout_iterator", oss.str());
@@ -1108,7 +1108,7 @@ std::string dim_mask_desc_t::str() const {
     if (!x.is_empty()) dummy_coord[x_dim] = x;
     if (!y.is_empty()) dummy_coord[y_dim] = y;
     auto expr = simplify_rewrite(to_expr(dummy_coord));
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << expr << " < " << bound << " (has_underflow: " << has_underflow << ")"
         << std::endl;
     oss << "base:  " << base << std::endl;
@@ -1176,7 +1176,7 @@ bool mask_desc_t::is_uniform(
 }
 
 std::string mask_desc_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (int i = 0; i < nmasks(); i++) {
         if (i != 0) oss << std::endl;
         auto tag = "#" + std::to_string(i);
@@ -1311,7 +1311,7 @@ view_t::view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
 }
 
 std::string view_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << ir_utils::add_tag("coord", coord_.str()) << std::endl;
     oss << "tile: " << tile_ << std::endl;
     oss << ir_utils::add_tag("layout", layout_.str()) << std::endl;

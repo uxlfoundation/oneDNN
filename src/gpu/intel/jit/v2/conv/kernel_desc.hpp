@@ -126,7 +126,7 @@ struct loop_desc_entry_t {
     bool is_empty() const { return dim.is_undef(); }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << dim;
         return oss.str();
     }
@@ -172,7 +172,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (size_t i = 0; i < entries_.size(); i++) {
             if (i > 0) oss << ",";
             oss << entries_[i].dim;
@@ -218,7 +218,7 @@ struct prefetch_desc_t {
 
     std::string str() const {
         if (!a && !b) return "x0";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "x" << dist;
         if (a && b) return oss.str();
         oss << "." << (a ? "a" : "b");

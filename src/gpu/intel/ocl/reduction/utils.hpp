@@ -152,7 +152,7 @@ struct zero_padding_t {
     // Prints the indexing this zero-padding enforces. e.g.:
     // (idx / 1) % 16 + [(idx / 256) % 2] * 16 < 30 (aren't zeros)
     std::string str() const {
-        std::stringstream os;
+        stringstream_t os;
         os << dim_idx << ": ";
         os << "(idx / " << inner_stride << ") % " << inner_size;
         os << " + " << inner_size << " * (";
@@ -176,7 +176,7 @@ public:
         , outer_block(2, outer_size, inner_size * reduction_size) {}
 
     std::string str() const {
-        std::stringstream os;
+        stringstream_t os;
         os << "subproblem:" << std::endl;
         os << "outer: " << outer_block.str() << std::endl;
         os << "reduction: " << reduction_block.str() << std::endl;

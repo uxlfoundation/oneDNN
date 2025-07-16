@@ -27,7 +27,7 @@ namespace v2 {
 namespace conv {
 
 std::string bench_data_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (int i = 0; i < size(); i++) {
         if (i > 0) oss << std::endl;
         double gops_sec = prbs[i].ops() / times[i].total;

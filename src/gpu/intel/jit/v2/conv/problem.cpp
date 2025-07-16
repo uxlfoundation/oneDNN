@@ -111,7 +111,7 @@ std::string problem_t::desc_str() const {
     dim_t dd = shape_[pvars::dd];
     dim_t dh = shape_[pvars::dh];
     dim_t dw = shape_[pvars::dw];
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "mb" << mb;
     if (g > 1) oss << "g" << g;
     oss << "ic" << g * ic;
@@ -151,7 +151,7 @@ std::string problem_t::desc_str() const {
 }
 
 std::string problem_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Conv problem" << std::endl;
     oss << "  HW:            " << to_string(hw_.to_ngen()) << std::endl;
     oss << "  Propagation:   " << jit::to_string(prop_) << std::endl;
@@ -174,7 +174,7 @@ std::string problem_t::csv_str() const {
     parts.push_back(wei_tag_.str());
     parts.push_back(dst_tag_.str());
     parts.push_back(desc_str());
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &p : parts) {
         if (!is_first) oss << ",";

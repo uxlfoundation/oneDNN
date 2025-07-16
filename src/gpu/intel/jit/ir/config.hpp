@@ -78,7 +78,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << compute_unnormalized_tag_;
         if (user_unnormalized_tag_ != compute_unnormalized_tag_)
@@ -147,7 +147,7 @@ public:
     }
 
     std::string str(const std::string &key) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (key == "regs") {
             oss << "regs=" << value_.regs();
         } else if (key == "simd") {
@@ -212,7 +212,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << tile_.str();
         return oss.str();
     }

@@ -38,7 +38,7 @@ extern pvar_t pvars[];
 class reorder_config_t : public prim_config_t {
 public:
     std::string str() const override {
-        std::ostringstream ss;
+        ostringstream_t ss;
         ss << src_layout().user().str() << " -> " << dst_layout().user().str();
         return ss.str();
     }

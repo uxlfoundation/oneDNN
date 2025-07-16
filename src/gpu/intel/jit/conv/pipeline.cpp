@@ -106,7 +106,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "multi_loop_iterator_t(";
         for (size_t i = 0; i < loops_.size(); i++) {
             oss << (i != 0 ? ", " : "");

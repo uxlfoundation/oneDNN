@@ -125,7 +125,7 @@ public:
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << vec_;
         return oss.str();
     }
@@ -186,7 +186,7 @@ public:
 
     std::string str(const std::string &indent = {}) const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << indent << vec_;
         return oss.str();
     }
@@ -310,7 +310,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "modulus(" << n() << ")";
         return oss.str();
     }
@@ -410,7 +410,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "tdim(idx = " << tidx_;
         oss << ", size = " << size_;
         oss << ", vidxs = [" << vidxs_[0] << ", " << vidxs_[1] << "]";
@@ -531,7 +531,7 @@ public:
     }
 
     std::string str(const std::string &indent = {}) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << indent << "mask#" << tidx() << std::endl;
         oss << indent << "  "
             << "base = " << base_ << std::endl;
@@ -782,7 +782,7 @@ struct send_2d_params_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << c << "x" << h << "x" << w;
         if (vnni || transpose) {
             oss << ".";
@@ -818,7 +818,7 @@ struct send_2d_params_t {
 
 struct send_block_t {
     std::string str(const std::string &indent = {}) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mem[" << addr_inc << "]";
         oss << " reg[" << reg_off << "]";
         if (!mask_inc.is_empty()) oss << " mask: " << mask_inc;
@@ -1047,7 +1047,7 @@ struct send_group_t {
 
     std::string str(const std::string &indent = {}) const {
         if (is_empty()) return indent + "(nil)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (is_2d()) {
             oss << indent << "send_2d." << send_2d_params;
         } else if (is_block()) {
@@ -1999,7 +1999,7 @@ public:
     }
 
     std::string str(const std::string &tag) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ":" << std::endl;
         oss << "  base = " << addr_base_ << std::endl;
         if (!x_base_.is_empty()) oss << "  x = " << x_base_ << std::endl;
@@ -2369,7 +2369,7 @@ public:
     }
 
     std::string str(const std::string &tag) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ":" << std::endl;
         oss << access_.stmt();
         return oss.str();

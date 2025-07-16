@@ -92,7 +92,7 @@ private:
 
         const char *file;
         int line;
-        std::ostringstream out;
+        ostringstream_t out;
     };
 
     data_t *data_;
@@ -217,7 +217,7 @@ inline std::vector<std::string> split(const std::string &s,
 
 inline std::string join(
         const std::string &delimiter, const std::vector<std::string> &parts) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &p : parts) {
         if (!is_first) oss << delimiter;

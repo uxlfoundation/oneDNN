@@ -51,6 +51,7 @@ void timer_t::reset() {
     for (int i = 0; i < n_modes; ++i)
         ms_[i] = 0;
     ms_start_ = 0;
+    ms_vec_.clear();
 
     start();
 }
@@ -74,6 +75,8 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
     ticks_[mode_t::avg] += d_ticks;
     ticks_[mode_t::sum] += d_ticks;
 
+    ms_vec_.push_back(d_ms);
+
     d_ticks /= add_times;
     d_ms /= add_times;
 
@@ -90,6 +93,25 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
 
 void timer_t::stamp(int add_times) {
     stop(add_times, ticks_now() - ticks_start_, ms_now() - ms_start_);
+}
+
+void timer_t::finalize() {
+    // Remove 5% fastest times.
+    const double outlier_share = 0.05;
+
+    assert((int)ms_vec_.size() == times_);
+    std::sort(ms_vec_.begin(), ms_vec_.end());
+    int off = (int)(times_ * outlier_share + 0.5);
+    off = std::min(off, times_ - 1);
+    for (int i = 0; i < n_modes; ++i)
+        ms_[i] = ms_vec_[off];
+    for (int i = off + 1; i < times_; i++) {
+        ms_[mode_t::min] = std::min(ms_[mode_t::min], ms_vec_[i]);
+        ms_[mode_t::max] = std::max(ms_[mode_t::max], ms_vec_[i]);
+        ms_[mode_t::sum] += ms_vec_[i];
+        ms_[mode_t::avg] += ms_vec_[i];
+    }
+    times_ -= off;
 }
 
 timer_t &timer_t::operator=(const timer_t &rhs) {

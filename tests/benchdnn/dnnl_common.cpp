@@ -491,8 +491,11 @@ void notify_gpu_profiling_complete(dnnl_stream_t stream) {
 #endif
 }
 
+void finalize_flush_cache();
+
 void finalize() {
     finalize_tbb();
+    finalize_flush_cache();
 }
 
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
@@ -510,6 +513,10 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
     return OK;
 }
 
+bool should_stop_fast_mode_heuristic() {
+    return has_bench_mode_bit(mode_bit_t::fast);
+}
+
 inline int measure_perf_aggregate(timer::timer_t &t,
         const std::vector<stream_t> &v_stream, perf_function_t &perf_func,
         std::vector<std::vector<dnnl_exec_arg_t>> &dnnl_args) {
@@ -524,18 +531,33 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
 
+    double ms_warmup = 0;
     for (size_t j = 0; j < v_stream.size(); j++) {
         // Warm-up run, this is not measured due to possibility the associated
         // kernel has not been built and skews the results.
         DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
-        if (use_profiling) reset_gpu_profiling(v_stream[j]);
+        if (use_profiling) {
+            std::vector<uint64_t> v_nsecs, v_cycles;
+            SAFE(get_gpu_profiling_info(v_stream[j], v_nsecs, v_cycles, 1),
+                    CRIT);
+            double ms = v_nsecs[0] / 1e6;
+            ms_warmup = (ms_warmup == 0.0 ? ms : std::min(ms, ms_warmup));
+            reset_gpu_profiling(v_stream[j]);
+        }
     }
 
     bool is_first_loop = true;
     int cur_batch_times
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
+
+    if (has_bench_mode_bit(mode_bit_t::fast) && ms_warmup > 0) {
+        int target_times = 25;
+        if (ms_warmup > 0.1) target_times = 10;
+        if (ms_warmup > 1) target_times = 5;
+        cur_batch_times = target_times;
+    }
 
     t.reset();
     while (true) {
@@ -583,7 +605,9 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         }
 
         // Assumption that for each stream cold_cache acts same.
-        if (should_stop(t) || cold_cache[0].should_stop()) break;
+        if (should_stop_fast_mode_heuristic() || should_stop(t)
+                || cold_cache[0].should_stop())
+            break;
 
         // Adjust cur_batch_times after the first batch run
         if (is_first_loop) {
@@ -604,6 +628,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             notify_gpu_profiling_complete(v_stream[j]);
         }
     }
+
+    t.finalize();
 
     return OK;
 }
@@ -658,11 +684,38 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
     return ret;
 }
 
+extern "C" dnnl_status_t dnnl_impl_gpu_flush_cache(
+        dnnl_stream_t stream, size_t bytes, dnnl_memory_t data);
+
+static dnn_mem_t flush_cache_data;
+
+void maybe_flush_cache(const dnnl_stream_t &stream) {
+    if (!getenv("FLUSH")) return;
+    static std::once_flag flag;
+    const size_t cache_size = (32 << 20);
+    std::call_once(flag, [&]() {
+        const dnnl_dims_t dims = {cache_size / sizeof(int32_t)};
+        dnnl_engine_t engine;
+        DNN_SAFE_V(dnnl_stream_get_engine(stream, &engine));
+        flush_cache_data
+                = dnn_mem_t(1, dims, dnnl_s32, "a", engine, /*prefill=*/true);
+    });
+    DNN_SAFE_V(
+            dnnl_impl_gpu_flush_cache(stream, cache_size, flush_cache_data.m_));
+}
+
+void finalize_flush_cache() {
+    flush_cache_data = dnn_mem_t();
+}
+
 int measure_perf(
         const thr_ctx_t &ctx, res_t *res, dnnl_primitive_t prim, args_t &args) {
-    perf_function_t perf_func = std::bind(&primitive_executor, prim,
-            std::placeholders::_1, std::placeholders::_2);
-
+    perf_function_t perf_func
+            = [&](const dnnl_stream_t &stream,
+                      const std::vector<dnnl_exec_arg_t> &args) {
+                  maybe_flush_cache(stream);
+                  return primitive_executor(prim, stream, args);
+              };
     return measure_perf(ctx, res, perf_func, args);
 }
 

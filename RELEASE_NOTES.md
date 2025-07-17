@@ -54,9 +54,6 @@
 ## Generic GPU Vendor
 * Introduced support for RNN Vanilla backward propagation.
 
-## NVIDIA GPUs
-* No new functionality in this release.
-
 # Usability
 * Enabled build with `-Wundef` compiler flag.
 * [Experimental] Introduced support for kernel compilation with [SYCL kernel compiler] extension.

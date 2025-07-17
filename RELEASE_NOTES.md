@@ -59,7 +59,6 @@ This functionality is not dispatched by default and requires opt-in with environ
 ## Generic GPU Vendor
 
 * Introduced support for RNN Vanilla backward propagation.
-* Introduced support for zero_pad with the `fp64` data type.
 
 ## NVIDIA GPUs
 

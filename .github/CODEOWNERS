@@ -37,6 +37,7 @@
 /tests/benchdnn/graph/ @uxlfoundation/onednn-graph @uxlfoundation/onednn-arch
 /tests/benchdnn/inputs/graph/ @uxlfoundation/onednn-graph @uxlfoundation/onednn-arch
 /tests/gtests/graph/ @uxlfoundation/onednn-graph
+/tests/gtests/internals/test_sdpa.cpp @uxlfoundation/onednn-gpu-intel
 
 # Graph API
 /src/graph/ @uxlfoundation/onednn-graph

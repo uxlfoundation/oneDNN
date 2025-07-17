@@ -21,9 +21,9 @@ This functionality is not dispatched by default and requires opt-in with environ
     * Intel Arc B-series discrete graphics (formerly Battlemage).
 * Improved `fp32` softmax performance.  
 * Improved performance of the following subgraphs with Graph API:
-    * SDPA  with implicit causal mask. 
+    * SDPA with implicit causal mask. 
     * SDPA with bottom-right implicit causal mask. 
-    * fp32 SDPA. 
+    * `fp32` SDPA. 
     * `fp16` SDPA on Intel GPUs without Intel XMX cores. 
 
 ## AArch64-based Processors

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,18 +33,7 @@ using namespace dnnl::impl::data_type;
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
     CPU_INSTANCE_X64(jit_uni_reduction_t)
-
-    CPU_INSTANCE(ref_reduction_t<f32, f32, f32>)
-    CPU_INSTANCE(ref_reduction_t<bf16, bf16, f32>)
-    CPU_INSTANCE(ref_reduction_t<bf16, f32, f32>)
-    CPU_INSTANCE(ref_reduction_t<f16, f16, f32>)
-    CPU_INSTANCE(ref_reduction_t<f16, f32, f32>)
-    CPU_INSTANCE(ref_reduction_t<s8, s8, s32>)
-    CPU_INSTANCE(ref_reduction_t<s8, s32, s32>)
-    CPU_INSTANCE(ref_reduction_t<s8, f32, s32>)
-    CPU_INSTANCE(ref_reduction_t<u8, u8, s32>)
-    CPU_INSTANCE(ref_reduction_t<u8, s32, s32>)
-    CPU_INSTANCE(ref_reduction_t<u8, f32, s32>)
+    CPU_INSTANCE(ref_reduction_t)
     /* eol */
     nullptr,
 });

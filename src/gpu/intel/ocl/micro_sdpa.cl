@@ -84,7 +84,7 @@ DECLARE_2D_TILE(q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
 DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 #endif
 
-#ifdef BLOCK_Q
+#if BLOCK_Q
 
 #if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE_BLOCK_OPS(
@@ -103,7 +103,7 @@ DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
 
 #endif
 
-#ifdef BLOCK_A
+#if BLOCK_A
 DECLARE_2D_TILE(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE, ugemm_vs_sg_tile_m,
         1, 1, ugemm_vs_sg_tile_n)
 #else
@@ -157,16 +157,16 @@ DECLARE_2D_TILE_COPY_REBLOCK(mask_tile_type, SUBGROUP_SIZE, mask_br, mask_bc,
         mask_bc, mask_nbr, mask_nbc, CONVERT_FLOAT_T)
 #endif
 
-#ifdef BLOCK_A
+#if BLOCK_A
 DECLARE_2D_TILE_BLOCK_OPS(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n)
 #endif
-#ifdef BLOCK_2D_A
+#if BLOCK_2D_A
 DECLARE_2D_TILE_BLOCK2D_OPS(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8)
 #endif
 
-#ifdef BLOCK_A
+#if BLOCK_A
 DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
         ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
@@ -267,7 +267,7 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 
 #if USE_SYSTOLIC_UKERNEL
 
-#ifdef BLOCK_Q
+#if BLOCK_Q
     tile_load_block_rem_q(Q_tile, (global uint *)Q, n, ldq >> 1, offset_r,
             offset_c, load_rem);
 #elif Q_ALIGN >= 4
@@ -279,7 +279,7 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 
 #else // FMA
 
-#ifdef BLOCK_Q
+#if BLOCK_Q
     tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c, load_rem);
 #else
     tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
@@ -390,7 +390,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     A += DST_BATCH(b1, b0);
 #if WITH_ATTN_MASK
     msk += MSK_BATCH(b1 % MSK_D0, b0 % MSK_D1);
-#ifndef BLOCK_MSK
+#if BLOCK_MSK == false
     int mask_aligned = (((size_t)msk) % 4) == 0;
 #endif
 #endif
@@ -446,7 +446,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         scale *= 1.442695f; // log2(e)
     }
 
-#ifdef PREFETCH_K0
+#if PREFETCH_K0
     if (k0end > 0) {
         /* Prefetch first K tile. */
         cooperative_prefetch_2d_k(
@@ -627,7 +627,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
         int k_chunk = min(k0end - k0, ugemm_kq_wg_tile_m);
-#ifdef PREFETCH_V
+#if PREFETCH_V
         /* Prefetch V tile. */
         cooperative_prefetch_2d_maybe_rem(
                 /* ptr */ V,
@@ -757,7 +757,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     sg_i_kq);
         }
 
-#ifdef PREFETCH_K
+#if PREFETCH_K
         /* Prefetch next K tile. */
         if (!last) {
 #if TRANSPOSE_K
@@ -810,7 +810,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 #endif
 
-#if WITH_ATTN_MASK && defined(PREFETCH_MASK)
+#if WITH_ATTN_MASK && PREFETCH_MASK
         /* Prefetch next mask tile. */
         if (!last) {
 #if BROADCAST_MASK_Q
@@ -917,9 +917,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n + wg_j0;
 
-#ifdef BLOCK_2D_A
+#if BLOCK_2D_A
     tile_store_block2d(A_tile_dst, A, d, q, lda, sg_i0_vs, sg_j0_vs);
-#elif defined(BLOCK_A)
+#elif BLOCK_A
     tile_store_block_rem_q(
             A_tile_dst, A, q, lda, sg_i0_vs, sg_j0_vs, remainder_q);
 #else

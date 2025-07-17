@@ -563,22 +563,17 @@ status_t micro_sdpa_params_t::get_kernel_ctx(
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     kernel_ctx.define_int("D_MAX", d_max);
 
-    if (d_full) {
-        if (block_q) kernel_ctx.define_int("BLOCK_Q", 1);
-        if (block_a) kernel_ctx.define_int("BLOCK_A", 1);
-        if (block_msk) kernel_ctx.define_int("BLOCK_MSK", 1);
-    } else if (arch_gte_hpc && ukernel_config.unroll_m_vs < 64) {
-        if (block_2d_a) kernel_ctx.define_int("BLOCK_2D_A", 1);
-    }
+    kernel_ctx.define_int("BLOCK_Q", block_q);
+    kernel_ctx.define_int("BLOCK_A", block_a);
+    kernel_ctx.define_int("BLOCK_MSK", block_msk);
+    kernel_ctx.define_int("BLOCK_2D_A", block_2d_a);
 
-    if (arch_gte_hpc) {
-        kernel_ctx.define_int("PREFETCH_MASK", 1);
-        kernel_ctx.define_int("PREFETCH_K0", 1);
-        kernel_ctx.define_int("PREFETCH_K", 1);
-        kernel_ctx.define_int("PREFETCH_V", 1);
-        kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
-        kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
-    }
+    kernel_ctx.define_int("PREFETCH_MASK", prefetch_mask);
+    kernel_ctx.define_int("PREFETCH_K0", prefetch_k0);
+    kernel_ctx.define_int("PREFETCH_K", prefetch_k);
+    kernel_ctx.define_int("PREFETCH_V", prefetch_v);
+    kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
+    kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
 
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);

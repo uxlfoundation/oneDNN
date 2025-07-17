@@ -2207,11 +2207,20 @@ private:
                     cfg_.hw(), reg_layout, reduce_layout, reduce_mask.mask);
         }
 
-        layout = fma_ctx_.get_fma_friendly_layout(
-                abc, gemm_schedule_.bmnk_mapper(), reg_layout);
-        auto &src = reg_layout;
-        auto &dst = layout;
-        reorder = create_reorder_plan(cfg_.hw(), src, dst);
+        if ((abc == abc_kind_t::a) && prb_.permute_int16_a(cfg_.hw())) {
+            auto blocks = reg_layout.blocks();
+            for (int i = 0; i < int(blocks.size()); i++)
+                blocks[i].stride *= 2;
+            reg_layout = layout_t(type_t::u8(), reg_layout.ndims(),
+                    reg_layout.offset(), blocks, false);
+            layout = fma_ctx_.get_fma_friendly_layout(
+                    abc, gemm_schedule_.bmnk_mapper(), reg_layout);
+            layout = layout.retype(reg_layout.type());
+        } else {
+            layout = fma_ctx_.get_fma_friendly_layout(
+                    abc, gemm_schedule_.bmnk_mapper(), reg_layout);
+        }
+        reorder = create_reorder_plan(cfg_.hw(), reg_layout, layout);
         return plan_status_t::success;
     }
 

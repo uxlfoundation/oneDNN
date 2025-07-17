@@ -363,7 +363,7 @@ public:
 
     int64_t size() const { return size_; }
 
-    int vidx(int i) const { return vidxs_[i]; }
+    const pvar_t &vidx(int i) const { return vidxs_[i]; }
 
     dim_t vstride(int i) const { return vstrides_[i]; }
 
@@ -386,11 +386,11 @@ public:
         return mask && !mask.is_equal(expr_t(true));
     }
 
-    bool has_vidx(int vidx) const {
+    bool has_vidx(const pvar_t &vidx) const {
         return utils::one_of(vidx, vidxs_[0], vidxs_[1]);
     }
 
-    int64_t vstride_by_vidx(int vidx) const {
+    int64_t vstride_by_vidx(const pvar_t &vidx) const {
         for (int i = 0; i < 2; i++) {
             if (vidxs_[i] == vidx) return vstrides_[i];
         }
@@ -402,7 +402,7 @@ public:
     T offset(const std::vector<T> &voff, const T &base = T()) const {
         T ret = base;
         for (int i = 0; i < 2; i++) {
-            if (vidxs_[i] == -1) continue;
+            if (vidxs_[i].is_undef()) continue;
             ret += voff[vidxs_[i]] * vstrides_[i];
         }
         if (block_ != 1) ret /= block_;
@@ -413,7 +413,8 @@ public:
         ostringstream_t oss;
         oss << "tdim(idx = " << tidx_;
         oss << ", size = " << size_;
-        oss << ", vidxs = [" << vidxs_[0] << ", " << vidxs_[1] << "]";
+        oss << ", vidxs = [" << vidxs_[0].str() << ", " << vidxs_[1].str()
+            << "]";
         oss << ", vstrides = [" << vstrides_[0] << ", " << vstrides_[1] << "]";
         oss << ", block = " << block_ << ")";
         return oss.str();
@@ -450,7 +451,7 @@ private:
     int tidx_ = -1;
     int64_t size_ = 0;
     modulus_t base_mod_;
-    int vidxs_[2] = {-1, -1};
+    pvar_t vidxs_[2];
     int64_t vstrides_[2] = {0, 0};
     int64_t block_ = 1;
     const tdim_t *dim_ = nullptr;
@@ -487,7 +488,7 @@ public:
     void set_base(const expr_t &base) {
         base_ = base;
         dim_t factor = 1;
-        if (tdim_.vidx(1) == -1) {
+        if (tdim_.vidx(1).is_undef()) {
             factor = get_max_const_factor(base_, constraint_set_t());
             factor = math::gcd(factor, a_ * tdim_.block());
             factor = math::gcd(factor, b_ * tdim_.block());
@@ -707,8 +708,8 @@ struct send_2d_params_t {
         for (int i = 0; i < nblocks; i++) {
             auto &b = blocks[i];
             if (use_xy) {
-                if (w_tdim.has_vidx(b.dim_idx)) continue;
-                if (h_tdim.has_vidx(b.dim_idx)) continue;
+                if (w_tdim.has_vidx(b.dim)) continue;
+                if (h_tdim.has_vidx(b.dim)) continue;
             }
             ret += (int64_t)b.stride * vblock_off[i];
         }
@@ -1158,7 +1159,7 @@ public:
         for (auto &eb : layout.enumerated_blocks()) {
             auto &b = eb.second;
             if (b.block == 1) continue;
-            auto &m = mods[b.dim_idx];
+            auto &m = mods[b.dim];
             ret += (m % b.block) * (int64_t)b.stride;
             if (!layout.is_outermost(eb)) m /= (int64_t)b.block;
         }
@@ -1201,24 +1202,25 @@ struct layout_2d_wrapper_t {
         int ret = 0;
         for (auto &b : l.blocks()) {
             if (b.block == 1) continue;
-            if (idx == dim_idx::invalid || b.dim_idx == idx) ret++;
+            if (idx == dim_idx::invalid || b.dim == idx) ret++;
         }
         return ret;
     }
-    const block_t &w_block() const {
+    const layout_block_t &w_block() const {
         gpu_assert(nblocks() >= 2);
         return l.blocks()[0];
     }
-    const block_t &h_block() const {
+    const layout_block_t &h_block() const {
         gpu_assert(nblocks() >= 2);
         return l.blocks()[1];
     }
     int64_t w_stride() const { return w_block().stride; }
     int64_t h_stride() const { return h_block().stride; }
+    // TODO: Rename.
     dim_t w_dim() const { return w_block().block; }
     dim_t h_dim() const { return h_block().block; }
-    dim_idx_t w_idx() const { return w_block().dim_idx; }
-    dim_idx_t h_idx() const { return h_block().dim_idx; }
+    const pvar_t &w_idx() const { return w_block().dim; }
+    const pvar_t &h_idx() const { return h_block().dim; }
 
     const layout_t &l;
 };
@@ -1268,7 +1270,7 @@ public:
         return ret;
     }
 
-    const tdim_info_t &vidx_to_tdim(int vidx) const {
+    const tdim_info_t &vidx_to_tdim(const pvar_t &vidx) const {
         for (dim_idx_t i = 0; i < view_.ntdims(); i++) {
             auto &tdim = tdims_[i];
             if (utils::one_of(vidx, tdim.vidx(0), tdim.vidx(1))) return tdim;
@@ -1441,8 +1443,8 @@ private:
                 break;
             }
             dim_t factor;
-            if (has_vidx_mask(mask_descs_, b.dim_idx, dims[b.dim_idx], b.block,
-                        factor)) {
+            if (has_vidx_mask(
+                        mask_descs_, b.dim, dims[b.dim], b.block, factor)) {
                 inner_idx = eb.first;
                 if (factor == 1) return layout;
                 inner_idx++;
@@ -1450,7 +1452,7 @@ private:
                     return layout.split_block(eb, factor, b.block / factor);
             }
             stride *= b.block;
-            dims[b.dim_idx] *= b.block;
+            dims[b.dim] *= b.block;
         }
         return layout;
     }
@@ -1646,8 +1648,8 @@ public:
         auto &w_tdim = info_.vidx_to_tdim(lw.w_idx());
         auto &h_tdim = info_.vidx_to_tdim(lw.h_idx());
 
-        int w_vidx = lw.w_idx();
-        int h_vidx = lw.h_idx();
+        auto &w_vidx = lw.w_idx();
+        auto &h_vidx = lw.h_idx();
         dim_idx_t w_tidx = w_tdim.tidx();
         dim_idx_t h_tidx = h_tdim.tidx();
         bool use_xy = true;
@@ -1655,8 +1657,8 @@ public:
         int w_tcount = 0;
         int h_tcount = 0;
         for (auto &b : info_.view().tlayout().blocks()) {
-            w_tcount += (b.dim_idx == w_tidx);
-            h_tcount += (b.dim_idx == h_tidx);
+            w_tcount += (b.dim == w_tidx);
+            h_tcount += (b.dim == h_tidx);
         }
 
         if (w_tcount > 1 || h_tcount > 1) use_xy = false;
@@ -1838,8 +1840,8 @@ public:
         std::vector<int> dims(info_.vlayout().ndims(), 1);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            block_dims_[i] = dims[b.dim_idx];
-            dims[b.dim_idx] *= (int)b.block;
+            block_dims_[i] = dims[b.dim];
+            dims[b.dim] *= (int)b.block;
         }
     }
 
@@ -1864,7 +1866,7 @@ public:
 
     int nblocks() const { return (int)blocks().size(); }
 
-    const std::vector<block_t> &blocks() const {
+    const std::vector<layout_block_t> &blocks() const {
         return info_.vlayout().blocks();
     }
 
@@ -1882,7 +1884,7 @@ public:
         off_.assign(info_.vlayout().ndims(), 0);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            off_[b.dim_idx] += block_off_[i] * block_dims_[i];
+            off_[b.dim] += block_off_[i] * block_dims_[i];
         }
         mask.merge(get_mask(mask_bits, slots));
         addr.merge(get_addr(slots, slot_size));
@@ -2512,7 +2514,7 @@ send_group_t init_block(const view_info_t &info, view_iterator_t &it,
     auto &vlayout = info.vlayout();
     auto &blocks = vlayout.blocks();
     reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
-            std::vector<block_t>(
+            std::vector<layout_block_t>(
                     blocks.begin(), blocks.begin() + info.outer_idx()));
     return ret;
 }
@@ -2548,7 +2550,7 @@ send_group_t init_scattered(const view_info_t &info,
     ret.addr_inc = std::move(addr_base);
     ret.mask_inc = std::move(mask_base);
     reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
-            std::vector<block_t>(
+            std::vector<layout_block_t>(
                     blocks.begin(), blocks.begin() + info.outer_idx()));
     reg_layout = reg_layout.make_dense();
     if (slot_stride != slot_size) {
@@ -2712,7 +2714,7 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
             stride, base_group.pad_bytes * type.packing() / type.size());
     for (int i = outer_idx; i < (int)blocks.size(); i++) {
         auto &b = blocks[i];
-        reg_layout = reg_layout.add_outer_block(b.dim_idx, b.block, stride);
+        reg_layout = reg_layout.add_outer_block(b.dim, b.block, stride);
         stride *= b.block;
     }
 

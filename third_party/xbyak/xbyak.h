@@ -196,6 +196,12 @@
 	#pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
 
+// Define this macro as 0 to disable strict checking of memory operand and register size matching.
+// This macro may be removed in future versions.
+#ifndef XBYAK_STRICT_CHECK_MEM_REG_SIZE
+	#define XBYAK_STRICT_CHECK_MEM_REG_SIZE 1
+#endif
+
 namespace Xbyak {
 
 enum {
@@ -2143,7 +2149,9 @@ private:
 		if (code2 == NONE) code2 = code;
 		if (type2 && opROO(Reg(), addr, r, type2, code2)) return;
 		if (addr.is64bitDisp()) XBYAK_THROW(ERR_CANT_USE_64BIT_DISP)
+#if XBYAK_STRICT_CHECK_MEM_REG_SIZE == 1
 		if (!(type & T_ALLOW_DIFF_SIZE) && r.getBit() <= BIT && addr.getBit() > 0 && addr.getBit() != r.getBit()) XBYAK_THROW(ERR_BAD_MEM_SIZE)
+#endif
 		bool rex2 = rex(addr, r, type);
 		writeCode(type, r, code, rex2);
 		opAddr(addr, r.getIdx());

@@ -62,7 +62,7 @@ private:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
     int vmm_idx_upper_bound() const noexcept {
-        return is_superset(isa, avx512_core) ? 29 : 13;
+        return is_superset(isa, avx512_core) ? 31 : 15;
     }
 
     int reg_idx(int idx) const noexcept { return vmm_idx_upper_bound() - idx; }
@@ -91,8 +91,8 @@ private:
 
     Vmm vmm_k_offset = Vmm(1);
 
-    Vmm vmm_zero = Vmm(is_superset(isa, avx512_core) ? 30 : 14);
-    Vmm vmm_saturation_ubound = Vmm(is_superset(isa, avx512_core) ? 31 : 15);
+    Vmm vmm_zero = Vmm(5);
+    Vmm vmm_saturation_ubound = Vmm(6);
 
     Zmm bf16_emu_reserv_1 = Zmm(5);
     Zmm bf16_emu_reserv_2 = Zmm(6);

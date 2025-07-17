@@ -62,7 +62,8 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
     return INT_MAX;
 }
 
-inline float load_float_value(data_type_t dt, const void *ptr, dim_t idx) {
+ALWAYS_INLINE float load_float_value(
+        data_type_t dt, const void *ptr, dim_t idx) {
     assert(ptr);
 #define CASE(dt) \
     case dt: \

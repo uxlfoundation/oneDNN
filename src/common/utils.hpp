@@ -92,6 +92,15 @@ static_assert(sizeof(void *) == 8, "oneDNN supports 64-bit architectures only");
 
 #define IMPLICATION(cause, effect) (!(cause) || !!(effect))
 
+#if defined(_MSC_VER) || defined(__INTEL_COMPILER) \
+        || defined(__INTEL_LLVM_COMPILER)
+#define ALWAYS_INLINE __forceinline
+#elif defined(__clang__) || defined(__GNUC__)
+#define ALWAYS_INLINE inline __attribute__((always_inline))
+#else
+#define ALWAYS_INLINE inline
+#endif
+
 namespace utils {
 
 /* a bunch of std:: analogues to be compliant with any msvs version

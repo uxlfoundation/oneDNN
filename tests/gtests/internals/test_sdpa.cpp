@@ -1417,16 +1417,19 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
         auto o_test = (float)mapped_ptr_test[offset];
         total++;
 
-        float abs_diff = abs(o_gold - o_test);
+        auto min_val = fmin(o_gold, o_test);
+        auto max_val = fmax(o_gold, o_test);
+        float abs_diff = abs(max_val - min_val);
         bool is_nan = isnan(o_gold) || isnan(o_test);
 
+        float large_threshold = abs(o_gold) * fthreshold;
         bool is_mismatch = is_nan
-                || (abs(o_gold) > 1.f ? abs_diff > abs(o_gold * fthreshold)
+                || (abs(o_gold) > 1.f ? abs_diff > large_threshold
                                       : abs_diff > fthreshold);
         if (max_diff < abs_diff) {
             if (verbose) {
-                printf("new max: gold: %f vs test: %f diff: %f\n", o_gold,
-                        o_test, abs_diff);
+                printf("new max(%d,%d,%d,%d): test: %f vs gold: %f diff: %f\n",
+                        l, k, j, i, o_test, o_gold, abs_diff);
             }
             max_diff = abs_diff;
         }
@@ -1436,14 +1439,12 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
             hist[2][j]++;
             hist[3][i]++;
         }
-        if ((is_mismatch && mismatches++ < 32)) {
+        if (is_mismatch && mismatches++ < 32) {
             if (verbose)
-                fprintf(stderr,
-                        "Mismatch at (%d,%d,%d,%d): test %f "
-                        "vs. gold %f (diff: %f thresh: %f)\n",
+                printf("Mismatch at (%d,%d,%d,%d): test %f "
+                       "vs. gold %f (diff: %f thresh: %f)\n",
                         l, k, j, i, o_test, o_gold, abs_diff,
-                        (abs(o_gold) > 2.f ? abs(o_gold * fthreshold)
-                                           : fthreshold));
+                        (abs(o_gold) > 1.f ? large_threshold : fthreshold));
         }
     }
 
@@ -1454,8 +1455,8 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
 
     int threshold = total * 0.0006;
 
-    ASSERT_LE(mismatches, threshold)
-            << "max diff: " << max_diff << " out of: " << total;
+    ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
+    ASSERT_LE(max_diff, 0.03f);
 }
 
 int to_attn_mask_type(mask_type t) {

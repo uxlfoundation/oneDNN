@@ -16,6 +16,7 @@
 
 #include <cmath>
 
+#include "cpu/platform.hpp"
 #include "cpu/primitive_attr_postops.hpp"
 #include "cpu/ref_io_helper.hpp"
 
@@ -250,9 +251,11 @@ dim_t get_binary_src_off(const memory_desc_t &src_md, const dim_t l_offset,
 
 status_t ref_post_ops_t::init(const memory_desc_t *dst_md) {
     if (!dst_md) return status::invalid_arguments;
+    if (!are_post_ops_data_types_supported(po_)) return status::unimplemented;
 
     for (auto idx = 0; idx < po_.len(); ++idx) {
         const auto &e = po_.entry_[idx];
+
         if (e.is_prelu()) {
             memory_desc_t weights_md;
             CHECK(get_prelu_memory_desc(
@@ -361,6 +364,38 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
             default: assert(!"unsupported post op primitive kind!");
         }
     }
+}
+
+bool are_post_ops_data_types_supported(const post_ops_t &po) {
+
+    for (const auto &e : po.entry_) {
+        switch (e.kind) {
+            case primitive_kind::sum:
+                if (e.sum.dt != data_type::undef
+                        && !platform::has_data_type_support(e.sum.dt))
+                    return false;
+                break;
+            case primitive_kind::convolution:
+                if (!platform::has_data_type_support(e.depthwise_conv.wei_dt)
+                        || !platform::has_data_type_support(
+                                e.depthwise_conv.bias_dt)
+                        || !platform::has_data_type_support(
+                                e.depthwise_conv.dst_dt))
+                    return false;
+                break;
+            case primitive_kind::binary:
+                if (!platform::has_data_type_support(
+                            e.binary.src1_desc.data_type)
+                        || !platform::has_data_type_support(
+                                e.binary.src2_desc.data_type))
+                    return false;
+                break;
+            case primitive_kind::eltwise:
+            case primitive_kind::prelu: break;
+            default: return false;
+        }
+    }
+    return true;
 }
 
 } // namespace cpu

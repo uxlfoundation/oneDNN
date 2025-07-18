@@ -111,6 +111,11 @@ struct gen_gemm_t : public gpu_gemm_t {
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
                     || d->transc() == dnnl_trans;
 
+            // We cannot swap A/B if we don't have kernels to support the
+            // swapped data type/alignment requirements
+            swap_ab_ &= !(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
+                    && d->b_type() == bf16);
+
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
                 std::swap(eff_transa_, eff_transb_);

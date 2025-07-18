@@ -95,20 +95,19 @@ The MatMul primitive supports the following combinations of data
 types for source, destination, weights, and bias tensors:
 
 
-| Source           | Weights              | Destination                      | Bias                        |
-|:-----------------|:---------------------|:---------------------------------|:----------------------------|
-| f64              | f64                  | f64                              | f64, f32, f16, bf16, s8, u8 |
-| f32              | f32                  | f32                              | f32, bf16, f16, u8, s8      |
-| f16              | f16, u8, s8, u4, s4  | f16, u8, s8                      | f32                         |
-| f16              | f16, u8, s8          | f32                              | f32, f16                    |
-| bf16             | bf16, u8, s8, u4, s4 | f32, bf16                        | f32, bf16                   |
-| f32, bf16, f16   | u8, s8               | f32, bf16, f16                   | f32, bf16, f16              |
-| f32, bf16, f16   | u8, s8               | f32, bf16, f16                   | f32, bf16, f16              |
-| bf16, f16        | f4_e2m1, f4_e3m0     | f32, bf16, f16                   | f32, bf16, f16              |
-| f16              | f8_e5m2, f8_e4m3     | f32, f16, bf16                   | f32, bf16, f16              |
-| f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3     | f32, f16, bf16, f8_e5m2, f8_e4m3 | f32, bf16, f16              |
-| f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0     | f32, f16, bf16, f4_e2m1, f4_e3m0 | f32, bf16, f16              |
-| u8, s8           | u8, s8, u4, s4       | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
+| Source           | Weights                                | Destination                      | Bias                        |
+|:-----------------|:---------------------------------------|:---------------------------------|:----------------------------|
+| f64              | f64                                    | f64                              | f64, f32, f16, bf16, s8, u8 |
+| f32              | f32                                    | f32                              | f32, bf16, f16, u8, s8      |
+| f16              | f16, u8, s8, u4, s4                    | f16, u8, s8                      | f32                         |
+| f16              | f16, u8, s8                            | f32                              | f32, f16                    |
+| bf16             | bf16, u8, s8, u4, s4                   | f32, bf16                        | f32, bf16                   |
+| f32, bf16, f16   | u8, s8                                 | f32, bf16, f16                   | f32, bf16, f16              |
+| f32, bf16, f16   | u8, s8                                 | f32, bf16, f16                   | f32, bf16, f16              |
+| bf16, f16        | f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0     | f32, f16, bf16                   | f32, bf16, f16              |
+| f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3                       | f32, f16, bf16, f8_e5m2, f8_e4m3 | f32, bf16, f16              |
+| f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0                       | f32, f16, bf16, f4_e2m1, f4_e3m0 | f32, bf16, f16              |
+| u8, s8           | u8, s8, u4, s4                         | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
 
 
 

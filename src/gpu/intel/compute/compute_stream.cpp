@@ -74,17 +74,18 @@ status_t compute_stream_t::zero_pad(
     // why separate logic is written apart from a common place.
     // XXX: re-consider, once zeropad appears in other places in the library.
     if (get_verbose(verbose_t::exec_profile)) {
-        CHECK(this->wait());
-        double start_ms = get_msec();
-        CHECK(zero_pad_primitive->execute(zero_pad_ctx));
-        status_t status = this->wait();
-        double duration_ms = get_msec() - start_ms;
+
         std::stringstream info;
         info << "gpu,zero_pad," << zero_pad_primitive->pd()->name() << ",undef,"
              << md2fmt_str("data", memory->md(), format_kind::undef) << ",,,"
              << md2dim_str(memory->md());
-        VPROF(start_ms, primitive, exec, VERBOSE_profile, info.str().c_str(),
-                duration_ms);
+
+        std::string info_str = info.str();
+
+        double start_ms;
+        CHECK(this->init_async_tracking(info_str, &start_ms));
+        CHECK(zero_pad_primitive->execute(zero_pad_ctx));
+        status_t status = this->check_async_exec_times(info_str, &start_ms);
 
         return status;
     } else {

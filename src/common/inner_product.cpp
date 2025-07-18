@@ -44,6 +44,9 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
     VCHECK_IP(!any_null(ip_desc, src_desc, weights_desc, dst_desc),
             VERBOSE_NULL_ARG);
+    VCHECK_IP(!any_memory_desc_host_scalar(
+                      src_desc, weights_desc, bias_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     auto id = inner_product_desc_t();
     id.primitive_kind = primitive_kind::inner_product;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,6 +57,9 @@ status_t lrn_desc_init(lrn_desc_t *lrn_desc, prop_kind_t prop_kind,
             VERBOSE_NULL_ARG);
     VCHECK_LRN(IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_LRN(!any_memory_desc_host_scalar(
+                       src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     auto ld = lrn_desc_t();
     ld.primitive_kind = primitive_kind::lrn;

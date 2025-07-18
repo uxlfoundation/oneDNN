@@ -1927,7 +1927,7 @@ private:
 	void vex(const Reg& reg, const Reg& base, const Operand *v, uint64_t type, int code, bool x = false)
 	{
 		int w = (type & T_W1) ? 1 : 0;
-		bool is256 = (type & T_L1) | reg.isYMM();
+		bool is256 = (type & T_L1) ? true : reg.isYMM();
 		bool r = reg.isExtIdx();
 		bool b = base.isExtIdx();
 		int idx = v ? v->getIdx() : 0;

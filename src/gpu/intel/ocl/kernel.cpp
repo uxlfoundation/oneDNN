@@ -105,6 +105,10 @@ status_t kernel_t::get_binary(
     return get_ocl_program_binary(ocl_kernel(), ocl_engine->device(), binary);
 }
 
+status_t kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
+    return get_ocl_kernel_binary(ocl_kernel(), binary);
+}
+
 status_t kernel_t::get_binary_size(
         const impl::engine_t *engine, size_t *binary_size) const {
     auto *ocl_engine = utils::downcast<const engine_t *>(engine);
@@ -237,7 +241,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
 
 status_t kernel_t::dump() const {
     xpu::binary_t binary;
-    CHECK(get_ocl_kernel_binary(ocl_kernel(), binary));
+    CHECK(get_kernel_binary(binary));
     CHECK(gpu_utils::dump_kernel_binary(binary, name()));
     return status::success;
 }

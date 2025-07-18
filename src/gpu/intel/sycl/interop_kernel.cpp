@@ -183,9 +183,13 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
     return status::success;
 }
 
+status_t interop_kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
+    return gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary);
+}
+
 status_t interop_kernel_t::dump() const {
     xpu::binary_t binary;
-    CHECK(gpu::intel::sycl::get_kernel_binary(sycl_kernel(), binary));
+    CHECK(get_kernel_binary(binary));
     return gpu::intel::gpu_utils::dump_kernel_binary(binary, name());
 }
 

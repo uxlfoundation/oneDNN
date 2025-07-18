@@ -1853,7 +1853,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
     L(kd_comeback_label);
     {
         sub(reg_src, get_src_offset(0, 0, filter_d_to_src(1)));
-        sub(reg_kernel, get_kernel_offset(0, jcp.kh * jcp.kw));
+        sub(reg_kernel,
+                get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw));
         dec(kj);
         cmp(kj, 0);
         jg(kd_comeback_label, T_NEAR);
@@ -2806,7 +2807,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
     if (jcp.ndims == 5) {
         add(aux_reg_src, get_src_offset(0, 0, filter_d_to_src(1)));
-        add(aux_reg_kernel, get_kernel_offset(0, jcp.kh * jcp.kw));
+        add(aux_reg_kernel,
+                get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw));
         dec(ki);
         cmp(ki, 0);
         jg(kd_label, T_NEAR);
@@ -2893,7 +2895,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
                 // substract pointer shift made within ic block loop
                 // and move to next ic block
                 safe_add(reg_kernel,
-                        get_kernel_offset(-ic_block, jcp.kd * jcp.kh * jcp.kw),
+                        get_kernel_offset(-ic_block,
+                                static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw),
                         reg_long_offt);
 
                 cmp(reg_icb, 0);
@@ -2936,7 +2939,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
     }
     if (jcp.ndims == 5) {
         add(aux_reg_src, get_src_offset(0, 0, filter_d_to_src(1)));
-        add(aux_reg_kernel, get_kernel_offset(0, jcp.kh * jcp.kw));
+        add(aux_reg_kernel,
+                get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw));
         dec(ki);
         cmp(ki, 0);
         jg(kd_label, T_NEAR);
@@ -2967,7 +2971,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::compute_oh_step_common(
 
     auto src_comeback
             = get_src_offset(0, filter_w_to_src(0, ur_w_trips * ur_w, l_pad));
-    auto ddst_comeback = get_ddst_offset(ur_w_trips * ur_w);
+    auto ddst_comeback = get_ddst_offset(static_cast<dim_t>(ur_w_trips) * ur_w);
 
     if (jcp.ndims == 5) {
         L(kd_label);
@@ -3216,7 +3220,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::compute_oh_step_common(
     }
     if (jcp.ndims == 5) {
         add(aux_reg_src, get_src_offset(0, 0, filter_d_to_src(1)));
-        add(aux_reg_kernel, get_kernel_offset(0, jcp.kh * jcp.kw));
+        add(aux_reg_kernel,
+                get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw));
         dec(ki);
         cmp(ki, 0);
         jg(kd_label, T_NEAR);
@@ -3587,7 +3592,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
     const int src_backpad_overlap
             = div_up(jcp.id + jcp.f_pad - (jcp.kd - 1), jcp.stride_d);
 
-    const auto filter_shift = get_kernel_offset(0, jcp.kh * jcp.kw);
+    const auto filter_shift
+            = get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw);
     const auto src_shift = get_src_offset(0, 0, jcp.ih);
     const auto ddst_shift = get_ddst_offset(0, jcp.oh);
     const dim_t src_common_shift = src_shift * jcp.stride_d;
@@ -3608,8 +3614,9 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
         mov(reg_kd_count, ptr[param + GET_OFF(kd_padding)]);
     } else {
         const int kd_padding = jcp.kd - kd_front_pad - kd_back_pad;
-        const int kd_offset = get_kernel_offset(
-                0, nstl::min(jcp.kd - 1, kd_front_pad) * jcp.kh * jcp.kw);
+        const int kd_offset = get_kernel_offset(0,
+                nstl::min(jcp.kd - 1, kd_front_pad) * static_cast<dim_t>(jcp.kh)
+                        * jcp.kw);
         add(reg_kernel, kd_offset);
         xor_(reg_d_index, reg_d_index);
         mov(reg_kd_count, kd_padding);
@@ -4007,7 +4014,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
     emit_kh_kw_loop(true, single_kh_kw_loop);
 
     if (!single_kh_kw_loop) {
-        auto ker_reset_offset = get_kernel_offset(0, jcp.kw * jcp.kh);
+        auto ker_reset_offset
+                = get_kernel_offset(0, static_cast<dim_t>(jcp.kw) * jcp.kh);
         sub(reg_ker, ker_reset_offset);
         and_(reg_ker, ~1); // Clear the zeroing flag for subsequent updates
 

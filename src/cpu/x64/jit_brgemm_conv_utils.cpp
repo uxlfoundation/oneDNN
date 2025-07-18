@@ -859,8 +859,8 @@ float brg_blocking_t::est_eff() {
     const auto thread_job = end - start;
     const dim_t max_job = (loop_order == loop_ndhwgc)
             ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
-            : grid_coverage(
-                    thread_job, sp, nb_od * nb_oh, sp_block, oc, oc_block);
+            : grid_coverage(thread_job, sp, static_cast<dim_t>(nb_od) * nb_oh,
+                    sp_block, oc, oc_block);
     const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
     const float job_eff = max_job == 0
@@ -890,7 +890,7 @@ float brg_blocking_t::est_eff() {
     l++;
     loop[l].src.set(src_is, 1);
     loop[l].dst.set(0, 1);
-    dim_t wei_is = kw_block * oc_blocking_size;
+    dim_t wei_is = static_cast<dim_t>(kw_block) * oc_blocking_size;
     loop[l].wei.set(wei_is, 1);
     // -- brgemm kernel: loop by ur in sp_block --
     l++;
@@ -941,7 +941,7 @@ float brg_blocking_t::est_eff() {
 
     src_is = kd * kh * rnd_inp_simd(sp_block, kw, ic);
 
-    dim_t wei_op = kd * kh * kw * adj_ocblock * ic;
+    dim_t wei_op = static_cast<dim_t>(kd) * kh * kw * adj_ocblock * ic;
     if (loop_order == loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
@@ -1343,13 +1343,14 @@ float brg_blocking_t::est_eff_1x1() {
         max_job = (loop_order == loop_ndhwgc)
                 ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
                         nb_os_blocking * sp_block)
-                : grid_coverage(thread_job, os, 1, nb_os_blocking * sp_block,
-                        oc, oc_block);
+                : grid_coverage(thread_job, os, 1,
+                        static_cast<dim_t>(nb_os_blocking) * sp_block, oc,
+                        oc_block);
     } else {
         max_job = (loop_order == loop_ndhwgc)
                 ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
-                : grid_coverage(
-                        thread_job, sp, od * oh, sp_block, oc, oc_block);
+                : grid_coverage(thread_job, sp, static_cast<dim_t>(od) * oh,
+                        sp_block, oc, oc_block);
     }
 
     const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;

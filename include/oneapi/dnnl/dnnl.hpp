@@ -4169,6 +4169,23 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                 "could not set scales primitive attribute");
     }
 
+    /// Sets a scaling factor as a single host-side scalar value for primitive
+    /// operations for a given memory argument. The host-side scale must be
+    /// provided as a host scalar memory object at execution time as an argument
+    /// with index #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_host_scale
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Scaling factor data_type.
+    void set_host_scale(
+            int arg, memory::data_type data_type = memory::data_type::f32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_host_scale(
+                                  get(), arg, memory::convert_to_c(data_type)),
+                "could not set host scale primitive attribute");
+    }
+
     /// Sets zero points for primitive operations for a given memory argument.
     /// The zero points must be passed at execution time as an argument with
     /// index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
@@ -4212,6 +4229,23 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                                   (int)groups.size(), groups.data(),
                                   memory::convert_to_c(data_type)),
                 "could not set zero points primitive attribute");
+    }
+
+    /// Sets zero point for primitive operations for a given memory
+    /// argument as a single host-side scalar value.
+    /// The host-side zero point must be provided as a host scalar memory object at
+    /// execution time as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_host_zero_point
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Zero point data_type.
+    void set_host_zero_point(
+            int arg, memory::data_type data_type = memory::data_type::f32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_host_zero_point(
+                                  get(), arg, memory::convert_to_c(data_type)),
+                "could not set host zero point primitive attribute");
     }
 
     /// Returns post-ops previously set via set_post_ops().

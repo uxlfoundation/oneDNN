@@ -25,7 +25,9 @@
 #endif
 
 #include "c_types_map.hpp"
+// #include "cpu/cpu_engine.hpp"
 #include "engine.hpp"
+#include "host_scalar_memory_storage.hpp"
 #include "memory.hpp"
 #include "memory_desc_wrapper.hpp"
 #include "stream.hpp"
@@ -259,6 +261,13 @@ status_t dnnl_memory_get_engine(const memory_t *memory, engine_t **engine) {
 
 status_t dnnl_memory_get_data_handle(const memory_t *memory, void **handle) {
     if (any_null(handle)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    if (mdw.is_host_scalar_desc()) {
+        *handle = nullptr;
+        return invalid_arguments;
+    }
+
     if (memory == nullptr) {
         *handle = nullptr;
         return success;
@@ -268,6 +277,9 @@ status_t dnnl_memory_get_data_handle(const memory_t *memory, void **handle) {
 
 status_t dnnl_memory_set_data_handle(memory_t *memory, void *handle) {
     if (any_null(memory)) return invalid_arguments;
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(!mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
     CHECK(memory->set_data_handle(handle));
     return status::success;
 }
@@ -275,6 +287,13 @@ status_t dnnl_memory_set_data_handle(memory_t *memory, void *handle) {
 status_t dnnl_memory_get_data_handle_v2(
         const memory_t *memory, void **handle, int index) {
     if (any_null(handle)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    if (mdw.is_host_scalar_desc()) {
+        *handle = nullptr;
+        return invalid_arguments;
+    }
+
     if (memory == nullptr) {
         *handle = nullptr;
         return success;
@@ -285,8 +304,45 @@ status_t dnnl_memory_get_data_handle_v2(
 status_t dnnl_memory_set_data_handle_v2(
         memory_t *memory, void *handle, int index) {
     if (any_null(memory)) return invalid_arguments;
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(!mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
     CHECK(memory->set_data_handle(handle, index));
     return status::success;
+}
+
+status_t dnnl_memory_get_host_scalar_value(
+        const_dnnl_memory_t memory, void *value) {
+    if (any_null(memory, value)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    auto *storage = memory->memory_storage(0);
+    auto *scalar_storage
+            = dynamic_cast<dnnl::impl::host_scalar_memory_storage_t *>(storage);
+    if (!scalar_storage) return invalid_arguments;
+
+    return scalar_storage->get_scalar_value(value, mdw.size(0));
+}
+
+status_t dnnl_memory_set_host_scalar_value(
+        dnnl_memory_t memory, const void *value) {
+    if (any_null(memory, value)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(memory->md());
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    auto *storage = memory->memory_storage(0);
+    auto *scalar_storage
+            = dynamic_cast<dnnl::impl::host_scalar_memory_storage_t *>(storage);
+    if (!scalar_storage) return invalid_arguments;
+
+    scalar_storage->set_scalar_value(value, mdw.size(0));
+
+    return success;
 }
 
 status_t dnnl_memory_map_data_v2(

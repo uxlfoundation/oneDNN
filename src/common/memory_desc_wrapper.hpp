@@ -73,6 +73,10 @@ struct memory_desc_wrapper : public c_compatible {
     }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
 
+    bool is_host_scalar_desc() const {
+        return format_kind() == format_kind::host_scalar;
+    }
+
     const blocking_desc_t &blocking_desc() const {
         assert(is_blocking_desc() || is_sparse_packed_desc());
         if (!is_sparse_desc()) return md_->format_desc.blocking;
@@ -330,6 +334,8 @@ struct memory_desc_wrapper : public c_compatible {
                 assert(!"unknown sparse encoding");
                 return 0;
             }
+        } else if (is_host_scalar_desc()) {
+            return data_type_size();
         } else {
             assert(!"unknown format kind");
             return 0;

@@ -153,6 +153,8 @@ status_t dnnl_memory_create(memory_t **memory, const memory_desc_t *md,
             !mdw.format_any(), invalid_arguments, VERBOSE_UNSUPPORTED_TAG);
     VCHECK_MEMORY(!mdw.has_runtime_dims_or_strides(), invalid_arguments,
             VERBOSE_UNSUPPORTED_MEM_STRIDE);
+    VCHECK_MEMORY(!mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     unsigned flags = (handle == DNNL_MEMORY_ALLOCATE)
             ? memory_flags_t::alloc
@@ -187,6 +189,8 @@ status_t dnnl_memory_create_v2(memory_t **memory, const memory_desc_t *md,
             !mdw.format_any(), invalid_arguments, VERBOSE_UNSUPPORTED_TAG);
     VCHECK_MEMORY(!mdw.has_runtime_dims_or_strides(), invalid_arguments,
             VERBOSE_UNSUPPORTED_MEM_STRIDE);
+    VCHECK_MEMORY(!mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     std::vector<unsigned> flags_vec(nhandles);
     std::vector<void *> handles_vec(nhandles);

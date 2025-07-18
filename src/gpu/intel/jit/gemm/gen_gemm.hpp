@@ -320,17 +320,21 @@ struct gen_gemm_t : public gpu_gemm_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            CHECK(kernel_desc_.select_kernel(arch_, stepping,
-                    dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
-                    swap_ab(), ao_dims_, bo_dims_, asc_dims_, bsc_dims_,
-                    with_sround_, a_q2d_group_k_, b_q2d_group_k_,
-                    with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
-                    beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
-                    ao_type, bo_type, a_scales_type_, b_scales_type_, co_type,
-                    acc_type, eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                    eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(), d->batch(),
-                    std::move(gpu_post_ops)));
+            VDISPATCH_GEMM_SC(
+                    kernel_desc_.select_kernel(arch_, stepping,
+                            dev_info_->eu_count(), has_systolic, is_integrated,
+                            mode, batch_dims(), eff_transa(), eff_transb(),
+                            eff_trans_bias(), swap_ab(), ao_dims_, bo_dims_,
+                            asc_dims_, bsc_dims_, with_sround_, a_q2d_group_k_,
+                            b_q2d_group_k_, with_c_zero_points(), with_bias(),
+                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
+                            eff_b_type(), desc()->c_type(), ao_type, bo_type,
+                            a_scales_type_, b_scales_type_, co_type, acc_type,
+                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
+                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                            d->batch(), std::move(gpu_post_ops)),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "matching kernel not found in catalog");
 
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.

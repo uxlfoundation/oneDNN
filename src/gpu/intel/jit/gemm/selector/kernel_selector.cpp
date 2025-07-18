@@ -156,7 +156,7 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
 
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
-const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
+const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
     double bestScore = std::numeric_limits<double>::infinity();
     const kcatalog::Entry *bestEntry = nullptr;
@@ -205,12 +205,12 @@ const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, 
 
 // User-facing kernel selection logic.
 // Includes architecture and data type fallbacks.
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
     return select(catalog, 1, &pattern, eparams, aux, observer);
 }
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver observer)
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
     using namespace kcatalog;
 

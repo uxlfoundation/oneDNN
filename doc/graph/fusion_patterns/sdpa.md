@@ -89,6 +89,7 @@ optional.
 
    ![SDPA-Reorder](images/sdpa-reorder.png)
 
+
 ### Floating-point SDPA for Training Forward Propagation
 
 oneDNN defines floating-point (f32, bf16, or f16) SDPA for training forward

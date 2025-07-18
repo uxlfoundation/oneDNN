@@ -686,7 +686,7 @@ public:
 	}
 	void setRounding(int idx)
 	{
-		if (rounding_) XBYAK_THROW(ERR_ROUNDING_IS_ALREADY_SET)
+		if (rounding_ && (rounding_ != idx)) XBYAK_THROW(ERR_ROUNDING_IS_ALREADY_SET)
 		rounding_ = idx;
 	}
 	void setZero() { zero_ = true; }

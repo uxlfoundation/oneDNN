@@ -1095,6 +1095,35 @@ std::string fma_plan_t::str() const {
     return add_indent("fma", oss.str());
 }
 
+stmt_t longmul_plan_t::create_stmt(ir_context_t &ir_ctx,
+        buffer_manager_t &buf_mgr, const std::string &retn_lo,
+        const std::string &hi) const {
+    gpu_assert(c_lo_layout == c_hi_layout);
+    auto lo_buf = buf_mgr.get(retn_lo);
+    auto hi_buf = buf_mgr.get(hi);
+
+    stmt_t stmt;
+    const auto stride = simd * c_lo_layout.type().size();
+    for (int i = 0; i < c_lo_layout.size(); i += stride) {
+        auto lo = load_t::make(c_lo_layout.type().with_elems(simd), lo_buf, i);
+        auto hi = load_t::make(c_hi_layout.type().with_elems(simd), hi_buf, i);
+        stmt = stmt.append(store_t::make(lo_buf, i,
+                ternary_mad(lo, hi, shuffle_t::make_broadcast(256, simd))));
+    }
+    return stmt;
+}
+
+int longmul_plan_t::estimate_regs() const {
+    return into<int>(utils::div_up(c_hi_layout.size(), grf_size()));
+}
+
+std::string longmul_plan_t::str() const {
+    ostringstream_t oss;
+    oss << "lo:    " << c_lo_layout << std::endl;
+    oss << "hi:    " << c_hi_layout << std::endl;
+    return add_indent("longmul", oss.str());
+}
+
 bool conv_plan_t::can_split(abc_kind_t abc, int factor) const {
     if (!fma.can_split(abc, factor)) return false;
     if (!x2r.can_split(abc, factor)) return false;
@@ -1214,6 +1243,7 @@ void conv_plan_t::reset() {
     prefetch = prefetch_plan_t(hw);
     x2r = x2r_plan_t(hw);
     fma = fma_plan_t(hw);
+    int16_adjust = longmul_plan_t(hw);
     split_abc = abc_kind_t::undef;
     split_factor = 1;
     reuse_headers = false;
@@ -1227,6 +1257,7 @@ std::string conv_plan_t::str() const {
     if (prefetch) oss << prefetch << std::endl;
     oss << x2r << std::endl;
     oss << fma << std::endl;
+    oss << int16_adjust << std::endl;
     if (zp) oss << zp << std::endl;
     oss << "a_can_split (2): " << to_string(can_split(abc_kind_t::a, 2))
         << std::endl;
@@ -1927,6 +1958,7 @@ private:
         PLAN_CHECK(init_prefetch_plan(plan_.prefetch));
         PLAN_CHECK(init_x2r_plan(plan_.slm, plan_.x2r));
         PLAN_CHECK(init_fma_plan(plan_.x2r, fma_ctx_, plan_.fma));
+        PLAN_CHECK(maybe_init_int16_plan(plan_.fma, plan_.int16_adjust));
         PLAN_CHECK(init_zp_plan(plan_.x2r, plan_.fma, plan_.zp));
         if (cfg_.subtiles().is_env_overridden()) {
             int a = cfg_.subtiles().a();
@@ -2174,6 +2206,7 @@ private:
             const view_t &tg_view, const tile_coord_t &thr_tile_coord,
             const tile_coord_t &abs_thr_tile_coord, send_plan_t &load,
             reorder_plan_t &reorder, layout_t &layout,
+            reorder_plan_t *reorder_hi = nullptr, layout_t *layout_hi = nullptr,
             reduce_mask_t reduce_mask = reduce_mask_t(),
             reduce_plan_t *reduce = nullptr,
             tile_coord_t *reduce_tile_coord = nullptr) const {
@@ -2207,11 +2240,31 @@ private:
                     cfg_.hw(), reg_layout, reduce_layout, reduce_mask.mask);
         }
 
-        layout = fma_ctx_.get_fma_friendly_layout(
-                abc, gemm_schedule_.bmnk_mapper(), reg_layout);
-        auto &src = reg_layout;
-        auto &dst = layout;
-        reorder = create_reorder_plan(cfg_.hw(), src, dst);
+        if ((abc == abc_kind_t::a) && prb_.permute_int16_a(cfg_.hw())) {
+            auto ty_int8 = type_t::u8();
+            auto blocks = reg_layout.blocks();
+            for (int i = 0; i < int(blocks.size()); i++)
+                blocks[i].stride *= 2;
+
+            gpu_assert(reorder_hi && layout_hi);
+            reg_layout = layout_t(ty_int8, reg_layout.ndims(),
+                    reg_layout.offset() + 1, blocks, false);
+            *layout_hi = fma_ctx_.get_fma_friendly_layout(
+                    abc, gemm_schedule_.bmnk_mapper(), reg_layout);
+            *layout_hi = layout_hi->retype(reg_layout.type());
+            *reorder_hi
+                    = create_reorder_plan(cfg_.hw(), reg_layout, *layout_hi);
+
+            reg_layout = layout_t(ty_int8, reg_layout.ndims(),
+                    reg_layout.offset() - 1, blocks, false);
+            layout = fma_ctx_.get_fma_friendly_layout(
+                    abc, gemm_schedule_.bmnk_mapper(), reg_layout);
+            layout = layout.retype(reg_layout.type());
+        } else {
+            layout = fma_ctx_.get_fma_friendly_layout(
+                    abc, gemm_schedule_.bmnk_mapper(), reg_layout);
+        }
+        reorder = create_reorder_plan(cfg_.hw(), reg_layout, layout);
         return plan_status_t::success;
     }
 
@@ -2337,17 +2390,26 @@ private:
         PLAN_CHECK(init_x_g2r_plan(abc_kind_t::a, slm.has_a(),
                 gemm_schedule_.a_tg_view(), gemm_schedule_.a_thr_tile_coord(),
                 gemm_schedule_.a_thr_tile_coord(/*is_relative=*/false),
-                plan.a_load, plan.a_reorder, plan.a_layout,
-                reduce_mask(cfg_, abc_kind_t::a), &plan.x_reduce,
-                &plan.x_reduce_tile_coord));
+                plan.a_load, plan.a_reorder, plan.a_layout, &plan.a_hi_reorder,
+                &plan.a_hi_layout, reduce_mask(cfg_, abc_kind_t::a),
+                &plan.x_reduce, &plan.x_reduce_tile_coord));
         PLAN_CHECK(init_x_g2r_plan(abc_kind_t::b, slm.has_b(),
                 gemm_schedule_.b_tg_view(), gemm_schedule_.b_thr_tile_coord(),
                 gemm_schedule_.b_thr_tile_coord(/*is_relative=*/false),
-                plan.b_load, plan.b_reorder, plan.b_layout,
+                plan.b_load, plan.b_reorder, plan.b_layout, nullptr, nullptr,
                 reduce_mask(cfg_, abc_kind_t::b), &plan.x_reduce,
                 &plan.x_reduce_tile_coord));
         PLAN_CHECK(verify_2d());
         PLAN_CHECK(fixup_k_blocks_order(plan.a_layout, plan.b_layout));
+        return plan_status_t::success;
+    }
+
+    plan_status_t maybe_init_int16_plan(
+            const fma_plan_t &fma, longmul_plan_t &plan) {
+        if (!cfg_.prb().permute_int16_a(fma.hw)) return plan_status_t::success;
+        plan.simd = fma.max_bmn_blk();
+        plan.c_lo_layout = fma.c_layout;
+        plan.c_hi_layout = fma.c_layout;
         return plan_status_t::success;
     }
 

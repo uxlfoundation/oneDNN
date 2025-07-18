@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -206,6 +207,12 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, dnnl_reduction, prb->sdt);
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_reduction);
+#ifdef __aarch64__
+    if (is_cpu() && prb->sdt == dnnl_f32 && prb->ddt == dnnl_s8) {
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+    }
+#endif
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

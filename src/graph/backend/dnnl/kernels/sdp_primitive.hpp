@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,7 +45,6 @@ struct sdp_primitive_kernel_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;
 
-    std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
 
@@ -97,6 +96,10 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_kernel_t)
+    status_t reset_engine(const engine_t *g_engine) override {
+        UNUSED(g_engine);
+        return dnnl_success;
+    }
 };
 
 } // namespace dnnl_impl

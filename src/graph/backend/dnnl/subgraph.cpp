@@ -33,6 +33,7 @@
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 #include "graph/backend/dnnl/internal_attrs.hpp"
+#include "graph/backend/dnnl/op_executable.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
@@ -63,6 +64,15 @@ subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, const dnnl::engine &eng,
 subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, bool reset_layout)
     : graph_t(ops), p_engine_(nullptr) {
     if (reset_layout) { set_all_layout_to_any(get_mutable_ops()); }
+}
+
+status_t subgraph_t::reset_engine(const dnnl::engine &eng) {
+    status_t ret = status::success;
+    for (auto const &exec : execs_) {
+        ret = exec->reset_engine(eng);
+        if (ret != status::success) return ret;
+    }
+    return ret;
 }
 
 std::string kind2str(op_kind_t kind) {

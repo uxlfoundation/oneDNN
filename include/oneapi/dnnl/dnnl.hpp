@@ -3471,6 +3471,26 @@ struct memory : public handle<dnnl_memory_t> {
                 "could not set native handle of a memory object");
     }
 
+    /// Returns the scalar value stored in the memory object as type T.
+    /// @tparam T Type to cast the scalar value to.
+    template <typename T>
+    T get_host_scalar_value() const {
+        T value;
+        error::wrap_c_api(dnnl_memory_get_host_scalar_value(get(), &value),
+                "could not get host scalar value from a memory object");
+        return value;
+    }
+
+    /// Sets the scalar value stored in the memory object.
+    ///
+    /// @param value Pointer to the scalar value to set.
+    /// @note The scalar value is copied into the memory storage, so the user
+    ///     does not need to manage the lifetime of the original scalar data.
+    void set_host_scalar_value(const void *value) const {
+        error::wrap_c_api(dnnl_memory_set_host_scalar_value(get(), value),
+                "could not set host scalar value to a memory object");
+    }
+
     /// Maps a memory object and returns a host-side pointer to a memory
     /// buffer with a copy of its contents. The memory buffer corresponds to
     /// the given index.

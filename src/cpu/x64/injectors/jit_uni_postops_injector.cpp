@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include <cassert>
 #include "common/verbose.hpp"
+#include "cpu/primitive_attr_postops.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 
 namespace dnnl {
@@ -353,6 +354,9 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
 
     VCHECK_PO_INJ_BOOL(dst_d && dst_d->md_->format_kind != dnnl_format_kind_any,
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    VCHECK_PO_INJ_BOOL(are_post_ops_data_types_supported(post_ops),
+            VERBOSE_UNSUPPORTED_DT);
 
     // Save scale and zero point of first sum postop in order to check that any
     // subsequent sum postops have the same values. This check is necessary

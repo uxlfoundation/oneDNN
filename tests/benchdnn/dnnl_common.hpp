@@ -1005,11 +1005,22 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 dims = {1};
                 ndims = 1;
             }
+
             const auto dt = sc.get(exec_arg).dt;
-            auto scales_md
-                    = dnn_mem_t::init_md(ndims, dims.data(), dt, tag::abx);
-            mem_map.emplace(exec_sc_arg,
-                    dnn_mem_t(scales_md, test_engine, /* prefill = */ true));
+            const auto policy = sc.get(exec_arg).policy;
+
+            benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> scales_md;
+            if (policy == attr_t::policy_t::COMMON_V2) {
+                scales_md = dnn_mem_t::init_host_scalar_md(dt);
+                float scale = sc.get(exec_arg).scale;
+                mem_map.emplace(exec_sc_arg, dnn_mem_t(scales_md, &scale));
+            } else {
+                scales_md
+                        = dnn_mem_t::init_md(ndims, dims.data(), dt, tag::abx);
+                mem_map.emplace(exec_sc_arg,
+                        dnn_mem_t(
+                                scales_md, test_engine, /* prefill = */ true));
+            }
         };
 
         for (const auto &exec_arg : supported_exec_args) {

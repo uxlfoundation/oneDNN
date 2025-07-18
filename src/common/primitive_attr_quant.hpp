@@ -68,6 +68,14 @@ struct quant_entry_t : public c_compatible {
                 other.group_dims_);
     }
 
+    status_t set_host_scalar(int arg, data_type_t data_type) {
+        mask_ = 0;
+        data_type_ = data_type;
+        group_ndims_ = 0;
+        is_host_value_ = true;
+        return status::success;
+    }
+
     quant_entry_t &operator=(const quant_entry_t &rhs) {
         auto st = this->set(rhs);
         assert(st == status::success);
@@ -90,6 +98,8 @@ struct quant_entry_t : public c_compatible {
         if (d >= group_ndims_) return 0;
         return group_dims_[d];
     }
+
+    bool is_host_scalar() const { return is_host_value_; }
 
     // Note: keep the definition here to satisfy the
     // `gtests/internals/test_comparison_operators` linking requirements which
@@ -118,6 +128,7 @@ private:
     data_type_t data_type_ = data_type::undef;
     int group_ndims_ = 0;
     dims_t group_dims_ {};
+    bool is_host_value_ = false; // Used for host scalar support
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -147,6 +158,11 @@ struct quant_entries_t : public c_compatible {
     // specific entry.
     status_t set(int arg, const quant_entry_t &other) {
         return entries_[arg].set(other);
+    }
+
+    status_t set_host_scalar(int arg, data_type_t data_type) {
+        if (!check_arg(arg)) return status::invalid_arguments;
+        return entries_[arg].set_host_scalar(arg, data_type);
     }
 
     // This interface is different from the one below and is just a shortcut.
@@ -193,6 +209,8 @@ struct quant_entries_t : public c_compatible {
         return get(arg).get_data_type();
     }
     dim_t get_group(int arg, int d) const { return get(arg).get_group(d); }
+
+    bool is_host_scalar(int arg) const { return get(arg).is_host_scalar(); }
 
     bool operator==(const quant_entries_t &rhs) const {
         return entries_ == rhs.entries_;

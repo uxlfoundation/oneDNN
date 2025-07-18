@@ -60,6 +60,9 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
     VCHECK_SOFTMAX(
             IMPLICATION(!is_fwd, !memory_desc_wrapper(dst_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VCHECK_SOFTMAX(!any_memory_desc_host_scalar(
+                           src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(dst_desc).has_runtime_dims_or_strides();

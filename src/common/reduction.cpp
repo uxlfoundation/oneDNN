@@ -61,6 +61,8 @@ status_t reduction_desc_init(reduction_desc_t *reduction_desc,
                        one_of(src_desc->data_type, data_type::f32,
                                data_type::bf16, data_type::f16)),
             VERBOSE_INVALID_DATATYPE, "src");
+    VCHECK_RED(!any_memory_desc_host_scalar(src_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     VCHECK_RED(src_desc->ndims == dst_desc->ndims, VERBOSE_INCONSISTENT_NDIMS,
             "src", "dst");

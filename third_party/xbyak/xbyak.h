@@ -1915,7 +1915,7 @@ private:
 	static const uint64_t T_ND1 = 1ull << 35; // ND=1
 	static const uint64_t T_ZU = 1ull << 36; // ND=ZU
 	static const uint64_t T_F2 = 1ull << 37; // pp = 3
-	static const uint64_t T_FP8 = 1ull << 38; // amx bf8 and hf8
+	static const uint64_t T_FP8 = 1ull << 40; // amx bf8 and hf8
 	// T_66 = 1, T_F3 = 2, T_F2 = 3
 	static const uint64_t T_ALLOW_DIFF_SIZE = 1ull << 38; // allow difference reg size
 	static inline uint32_t getPP(uint64_t type) { return (type & T_66) ? 1 : (type & T_F3) ? 2 : (type & T_F2) ? 3 : 0; }
@@ -2309,7 +2309,7 @@ private:
 		int opBit = op.getBit();
 		if (disableRex && opBit == 64) opBit = 32;
 		const Reg r(ext, Operand::REG, opBit);
-		if ((type & T_APX) && op.hasRex2NFZU() && opROO(d ? *d : Reg(0, Operand::REG, opBit), op, r, type, code)) return;
+		if ((type & T_APX) && (d != 0) && opROO(*d, op, r, type, code)) return;
 		if (op.isMEM()) {
 			opMR(op.getAddress(immSize), r, type, code);
 		} else if (op.isREG(bit)) {

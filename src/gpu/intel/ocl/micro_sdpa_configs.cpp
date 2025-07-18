@@ -446,7 +446,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 256,     second_token | quantized}, {16, 16, 64, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe2, 256, 64, second_token | quantized}, {16, 16, 64, 16, 8, 1, 8, 1}},
 
-        {{compute::gpu_arch_t::xe2, 256,      integrated}, {16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe2, 256,      integrated}, {16, 16, 16, 16, 16, 2, 16, 2}},
         {{compute::gpu_arch_t::xe2, 256, 128, integrated}, {16, 16, 64, 16, 8, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe2, 256,       integrated | second_token}, {16, 16, 64, 16, 16, 2, 16, 2}},
@@ -464,7 +464,6 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 256,       integrated | second_token | quantized}, {32, 16, 64, 16, 4, 1, 4, 1}},
         // TODO: restore to seq <= 1152 instead of seq < 1152?
         {{compute::gpu_arch_t::xe2, 256, 1151, integrated | second_token | quantized}, {16, 16, 64, 16, 4, 1, 4, 1}},
-        {{compute::gpu_arch_t::xe2, 256, 767,  integrated | second_token | quantized}, {64, 16, 16, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe2, 256, 511,  integrated | second_token | quantized}, {32, 32, 32, 16, 16, 1, 8, 2}},
         {{compute::gpu_arch_t::xe2, 256, 383,  integrated | second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
 

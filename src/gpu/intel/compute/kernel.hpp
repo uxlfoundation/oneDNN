@@ -182,14 +182,16 @@ public:
     virtual status_t check_alignment(
             const kernel_arg_list_t &arg_list) const = 0;
 
-    status_t check_alignment(const void *ptr) const {
+    status_t check_alignment(const void *ptr, int arg_idx) const {
         const int min_alignment = 64;
         auto addr = reinterpret_cast<uint64_t>(ptr);
         if (addr % min_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;
         // Report an error otherwise.
-        VERROR(common, runtime, "found misaligned buffer: %p", ptr);
+        VERROR(common, runtime,
+                "found misaligned buffer: %p for kernel %s at index %d", ptr,
+                name().c_str(), arg_idx);
         return status::runtime_error;
     }
 };

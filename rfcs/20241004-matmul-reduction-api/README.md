@@ -219,3 +219,7 @@ that the GPU runtime required at that time.
 * The MatMul primitive offers the necessary functionality to implement the Inner Product and
 RNN primitives.
 * The operation descriptors are now internal, enabling the addition of functionality that is not exposed to users, which means the GEMM primitive does not provide any additional flexibility.
+
+### Decision
+
+Implement the extension proposal, but do not expose it externally. We can do so later if the need arises.

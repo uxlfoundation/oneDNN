@@ -1080,9 +1080,9 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     int od {0}, odb {0}, oh {0}, ohb {0}, owb {0};
     int icc = 0;
     const float *oscales {nullptr};
-    int32_t src_zp_vals {0};
+    int32_t src_zp_val {0};
     int32_t *src_zp_comp_ptr {nullptr};
-    int32_t *dst_zp_vals {nullptr};
+    const int32_t *dst_zp_vals {nullptr};
     int32_t *s8s8_comp_ptr {nullptr};
     const float *dst_scales {nullptr};
 };
@@ -1092,8 +1092,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
@@ -1150,8 +1152,6 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                        key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
-    const auto dst_zp_vals = jcp.dst_zero_point ? &dst_zero_point : nullptr;
-    const auto src_zp_vals = src_zero_point;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -1207,8 +1207,8 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
             btc.ohb = ohb;
             btc.owb = owb;
             btc.oscales = oscales;
-            btc.src_zp_vals = src_zp_vals;
-            btc.dst_zp_vals = jcp.dst_zero_point ? dst_zp_vals : nullptr;
+            btc.src_zp_val = src_zero_points ? src_zero_points[0] : 0;
+            btc.dst_zp_vals = dst_zero_points;
             btc.src_zp_comp_ptr
                     = jcp.src_zero_point ? src_zp_comp_base : nullptr;
             btc.s8s8_comp_ptr
@@ -1368,7 +1368,7 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
                 = btc.brgemm_ctx.post_ops_binary_rhs_arg_vec.data();
         p.dst_orig = btc.brgemm_ctx.dst;
         p.c_zp_values = btc.dst_zp_vals;
-        p.a_comp_val = btc.src_zp_vals;
+        p.a_comp_val = btc.src_zp_val;
         p.ptr_dst_scales = (void *)btc.dst_scales;
     }
 
@@ -1454,9 +1454,9 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
                 &btc.oscales[jcp.is_oc_scale * g_oc],
                 btc.brgemm_ctx.post_ops_binary_rhs_arg_vec.data(),
                 static_cast<size_t>(g_oc), 0, btc.brgemm_ctx.dst, 0,
-                static_cast<void *>(src_zp_ptr), nullptr,
-                static_cast<void *>(btc.dst_zp_vals), false, btc.src_zp_vals,
-                do_only_comp, do_only_pass_comp, btc.dst_scales};
+                static_cast<void *>(src_zp_ptr), nullptr, btc.dst_zp_vals,
+                false, btc.src_zp_val, do_only_comp, do_only_pass_comp,
+                btc.dst_scales};
 
         void *scratch = static_cast<void *>(s8s8_comp);
 

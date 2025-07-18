@@ -275,7 +275,7 @@ struct brgemm_kernel_post_ops_t {
     size_t apply_comp = 0;
     int32_t a_comp_val = 1;
     int32_t *a_zp_compensation;
-    int32_t *c_zp_values;
+    const int32_t *c_zp_values;
     int32_t *s8s8_compensation;
     const void *dst_orig;
     void *ptr_dst_scales;

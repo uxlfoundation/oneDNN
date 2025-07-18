@@ -294,6 +294,12 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
 {
     using namespace ngen;
 
+    // Workaround to enable zero-points support with int8 weights in dynamic quant.
+    if ((asPtrDims >= 2 || bsPtrDims >= 2) && aoPtrDims > -1 && Ta_ext.isInt8() && Tb_ext.isInt8() && Tc.isFP()){
+        Ta = Type::f16;
+        Tb = Type::f16;
+    }
+
     // Weights decompression
     if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
     if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) Tb = Ta;

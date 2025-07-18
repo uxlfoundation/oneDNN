@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ struct ref_binary_scalar_t {
 
     float compute_scalar(float src0, float src1, bool src2) const;
 
+    static bool data_type_ok(const post_ops_t::entry_t &entry);
+
 private:
     const alg_kind_t alg_;
 };
@@ -53,6 +55,20 @@ struct ref_eltwise_scalar_fwd_t {
     const float alpha_;
     const float beta_;
     const float scale_;
+};
+
+struct ref_sum_scalar_t {
+    ref_sum_scalar_t(bool skip_sum = false);
+
+    void execute(
+            float &res, float dst_val, float scale, int32_t zero_point) const;
+
+    static bool data_type_ok(const post_ops_t::entry_t &entry);
+
+private:
+    // some primitives for example gemm are able to perform sum postop itself,
+    // in such cases executing sum should be skipped
+    const bool skip_sum_;
 };
 
 struct ref_post_ops_t {
@@ -78,12 +94,11 @@ struct ref_post_ops_t {
         return po.has_default_values({binary, eltwise, prelu, sum});
     }
 
+    static bool post_ops_ok(const post_ops_t &po);
+
 private:
     const post_ops_t &po_;
-    // some primitives for example gemm are able to perform sum postop itself,
-    // in such cases executing sum should be skipped
-    const bool skip_sum_;
-
+    ref_sum_scalar_t sum_po_;
     std::vector<ref_eltwise_scalar_fwd_t> eltwise_po_;
     std::vector<ref_binary_scalar_t> binary_po_;
     std::vector<memory_desc_t> prelu_md_;

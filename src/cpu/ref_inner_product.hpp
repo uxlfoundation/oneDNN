@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ struct ref_inner_product_fwd_t : public primitive_t {
                             /* is_int8 */ false),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
-                    ref_post_ops_t::primitive_kind_ok(attr()->post_ops_),
+                    ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
                     attr_.set_default_formats(dst_md(0)) == status::success,

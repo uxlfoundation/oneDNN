@@ -113,7 +113,7 @@ struct ref_softmax_fwd_t : public primitive_t {
             }
         }
         bool post_ops_ok() const {
-            return ref_post_ops_t::primitive_kind_ok(attr()->post_ops_);
+            return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
     };
 

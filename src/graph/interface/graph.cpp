@@ -389,7 +389,7 @@ status_t DNNL_API dnnl_graph_graph_filter(
         // deep copy for graph serialization. note that this is for
         // visualization purpose
         graph_t agraph(*graph);
-        stringstream_t filename;
+        dnnl::impl::stringstream_t filename;
         filename << "graph-" << agraph.id() << ".json";
         agraph.serialize(filename.str());
     }
@@ -454,7 +454,7 @@ status_t DNNL_API dnnl_graph_graph_get_partitions(
             aop->set_attr<std::string>(op_attr::backend, bkd_name);
         }
 
-        stringstream_t filename;
+        dnnl::impl::stringstream_t filename;
         filename << "graph-" << agraph.id() << "-partitioning.json";
         agraph.serialize(filename.str());
     }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -129,5 +129,99 @@ INSTANTIATE_TEST_SUITE_P(AllEngineKinds, memory_test_c_t, all_engine_kinds,
         print_to_string_param_name_t());
 INSTANTIATE_TEST_SUITE_P(AllEngineKinds, memory_test_cpp_t, all_engine_kinds,
         print_to_string_param_name_t());
+
+TEST(c_api_host_scalar_mem, TestHostScalarF32) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    float scalar_value = 42.0f;
+    dnnl_memory_t scalar_mem = nullptr;
+    DNNL_CHECK(dnnl_memory_create_host_scalar(
+            &scalar_mem, scalar_md, &scalar_value));
+
+    float retrieved_value = 0.0f;
+    DNNL_CHECK(dnnl_memory_get_host_scalar_value(scalar_mem, &retrieved_value));
+    EXPECT_EQ(retrieved_value, 42.0f);
+
+    float new_value = 84.0f;
+    DNNL_CHECK(dnnl_memory_set_host_scalar_value(scalar_mem, &new_value));
+    DNNL_CHECK(dnnl_memory_get_host_scalar_value(scalar_mem, &retrieved_value));
+    EXPECT_EQ(retrieved_value, 84.0f);
+
+    DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
+    DNNL_CHECK(dnnl_memory_destroy(scalar_mem));
+}
+
+TEST(c_api_host_scalar_mem, TestHostScalarNullPtr) {
+    dnnl_memory_t scalar_mem = nullptr;
+    float scalar_value = 42.0f;
+
+    EXPECT_EQ(
+            dnnl_memory_create_host_scalar(&scalar_mem, nullptr, &scalar_value),
+            dnnl_invalid_arguments);
+
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    EXPECT_EQ(dnnl_memory_create_host_scalar(&scalar_mem, scalar_md, nullptr),
+            dnnl_invalid_arguments);
+
+    DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
+}
+
+TEST(c_api_host_scalar_mem, UseUnsupportedFunctions) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    float scalar_value = 42.0f;
+    dnnl_memory_t scalar_mem = nullptr;
+
+    dnnl_engine_t engine;
+    dnnl_engine_create(&engine, dnnl_cpu, 0);
+
+    // Ensure that dnnl_memory_create is not allowed with host scalar memory
+    EXPECT_EQ(dnnl_memory_create(&scalar_mem, scalar_md, engine, &scalar_value),
+            dnnl_invalid_arguments);
+
+    // Ensure that dnnl_memory_create_v2 is not allowed with host scalar memory
+    std::vector<void *> handles(1, &scalar_value);
+    EXPECT_EQ(dnnl_memory_create_v2(
+                      &scalar_mem, scalar_md, engine, 1, handles.data()),
+            dnnl_invalid_arguments);
+
+    DNNL_CHECK(dnnl_memory_create_host_scalar(
+            &scalar_mem, scalar_md, &scalar_value));
+
+    // Ensure that dnnl_memory_{set,get}_data_handle is not allowed with host scalar memory
+    void *handle = nullptr;
+    EXPECT_EQ(dnnl_memory_get_data_handle(scalar_mem, &handle),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(handle, nullptr);
+    EXPECT_EQ(dnnl_memory_get_data_handle_v2(scalar_mem, handles.data(), 1),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(handles[0], nullptr);
+
+    float new_value = 84.0f;
+    EXPECT_EQ(dnnl_memory_set_data_handle(scalar_mem, &new_value),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(dnnl_memory_set_data_handle_v2(scalar_mem, &new_value, 1),
+            dnnl_invalid_arguments);
+
+    dnnl_engine_destroy(engine);
+}
+
+TEST(cpp_api_host_scalar_mem, TestHostScalarF32) {
+    using namespace dnnl;
+
+    float scalar_value = 42.0f;
+    memory scalar_mem(
+            memory::desc::host_scalar(memory::data_type::f32), scalar_value);
+
+    EXPECT_EQ(scalar_mem.get_host_scalar_value<float>(), 42.0f);
+
+    float new_value = 84.0f;
+    scalar_mem.set_host_scalar_value(&new_value);
+    EXPECT_EQ(scalar_mem.get_host_scalar_value<float>(), 84.0f);
+}
 
 } // namespace dnnl

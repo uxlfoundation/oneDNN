@@ -618,7 +618,7 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
         size_t seed = 0;
         seed = partition_hashing::get_unordered_array_hash(seed, key.ins_);
         seed = partition_hashing::get_unordered_array_hash(seed, key.outs_);
-        stringstream_t filename;
+        dnnl::impl::stringstream_t filename;
         filename << "graph-" << id() << "-" << seed << ".json";
         agraph.serialize(filename.str());
     }

@@ -15,12 +15,15 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/gemm/gen_gemm_kernel.hpp"
+#include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
+#include "common/type_helpers.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -581,6 +584,17 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         if (dt.isF4()) return "E";
         return nullptr;
     });
+
+    // If both A/B are integers, we can use integer dpas/accumulation
+    // but only if there are no grouped scales (in these cases,
+    // we apply scales before dpas, and we must use fp dpas)
+    bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
+    bool is_int
+            = types::is_integral_dt(a_type) && types::is_integral_dt(b_type);
+    if (asc_dims < 1 && bsc_dims < 1 && is_int && allow) {
+        match_params.push_back(base);
+        match_params.back().selector.precisions[2] = "I";
+    }
 
     EvaluateParams eval_params;
 

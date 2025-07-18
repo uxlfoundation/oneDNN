@@ -31,7 +31,7 @@
 ///   - Access a GPU memory via OpenCL interoperability interface
 ///   - Access a GPU command queue via OpenCL interoperability interface
 ///   - Execute a OpenCL kernel with related GPU command queue and GPU memory
-///   - Create operation descriptor/operation primitives descriptor/primitive .
+///   - Create primitives descriptor/primitive
 ///   - Execute the primitive with the initialized GPU memory
 ///   - Validate the result by mapping the OpenCL memory via OpenCL interoperability
 ///     interface
@@ -195,18 +195,15 @@ void gpu_opencl_interop_tutorial() {
     // [oclexecution]
 
     /// @subsection gpu_opencl_interop_cpp_sub4 Create and execute a primitive
-    /// There are three steps to create an operation primitive in oneDNN:
-    /// 1. Create an operation descriptor.
-    /// 2. Create a primitive descriptor.
-    /// 3. Create a primitive.
+    /// There are two steps to create an operation primitive in oneDNN:
+    /// 1. Create a primitive descriptor.
+    /// 2. Create a primitive.
     ///
     /// Let's create the primitive to perform the ReLU (rectified linear unit)
-    /// operation: x = max(0, x). An operation descriptor has no dependency on a
-    /// specific engine - it just describes some operation. On the contrary,
-    /// primitive descriptors are attached to a specific engine and represent
-    /// some implementation for this engine. A primitive object is a realization
-    /// of a primitive descriptor, and its construction is usually much
-    /// "heavier".
+    /// operation: x = max(0, x). Primitive descriptors are attached to a specific
+    /// engine and represent some implementation for this engine.
+    /// A primitive object is a realization of a primitive descriptor,
+    /// and its construction is usually much "heavier".
     /// @snippet gpu_opencl_interop.cpp relu creation
     //  [relu creation]
     auto relu_pd = eltwise_forward::primitive_desc(eng, prop_kind::forward,

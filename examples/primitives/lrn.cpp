@@ -76,12 +76,11 @@ void lrn_example(dnnl::engine::kind engine_kind) {
     // Write data to memory object's handle.
     write_to_dnnl_memory(src_data.data(), src_mem);
 
-    // Create operation descriptor.
+    // Create primitive descriptor.
     const memory::dim local_size = 5;
     const float alpha = 1.e-4f;
     const float beta = 0.75f;
     const float k = 1.f;
-    // Create primitive descriptor.
     auto lrn_pd = lrn_forward::primitive_desc(engine,
             prop_kind::forward_training, algorithm::lrn_across_channels, src_md,
             dst_md, local_size, alpha, beta, k);

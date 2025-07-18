@@ -27,7 +27,7 @@
 ///   - Access a SYCL USM pointer via SYCL interoperability interface.
 ///   - Access a SYCL queue via SYCL interoperability interface.
 ///   - Execute a SYCL kernel with related SYCL queue and SYCL USM pointer
-///   - Create operation descriptor/operation primitives descriptor/primitive.
+///   - Create primitives descriptor/primitive.
 ///   - Execute the primitive with the initialized memory.
 ///   - Validate the result.
 ///

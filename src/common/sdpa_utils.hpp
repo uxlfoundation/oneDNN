@@ -74,6 +74,10 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
             "dst_desc->dims[%d](%s) == v_desc->dims[%d](%s)", c,
             md2dim_str(dst_desc).c_str(), c, md2dim_str(v_desc).c_str());
 
+    VCHECK_SDPA_COND(!any_memory_desc_host_scalar(
+                             q_desc, k_desc, v_desc, dst_desc, attn_mask_md),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     return status::success;
 }
 

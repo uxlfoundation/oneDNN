@@ -76,9 +76,10 @@ static inline int format_type_checker(const char *, ...) {
 }
 
 #define UTILITY_CONST_EXPR_VALUE(exp) \
-    utility::const_expr_value_t<decltype(exp), exp>::value
+    dnnl::impl::utility::const_expr_value_t<decltype(exp), exp>::value
 
-#define __FILENAME__ (&__FILE__[utility::get_file_name_offset(__FILE__)])
+#define __FILENAME__ \
+    (&__FILE__[dnnl::impl::utility::get_file_name_offset(__FILE__)])
 
 // General formatting macro for verbose.
 // msg is typically a constant string pulled from verbose_msg.hpp
@@ -103,8 +104,10 @@ static inline int format_type_checker(const char *, ...) {
 // Logging info
 #define VINFO(apitype, logtype, logsubtype, component, msg, ...) \
     do { \
-        if (dnnl::impl::get_verbose(verbose_t::logtype##_##logsubtype)) \
-            VFORMAT(get_msec(), verbose_t::logtype##_##logsubtype, apitype, \
+        if (dnnl::impl::get_verbose( \
+                    dnnl::impl::verbose_t::logtype##_##logsubtype)) \
+            VFORMAT(dnnl::impl::get_msec(), \
+                    dnnl::impl::verbose_t::logtype##_##logsubtype, apitype, \
                     logtype, VERBOSE_##logsubtype, \
                     #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
                     __LINE__); \
@@ -126,16 +129,17 @@ static inline int format_type_checker(const char *, ...) {
     do { \
         status_t _status_ = (f); \
         VCONDCHECK(apitype, logtype, logsubtype, component, \
-                _status_ == status::success, _status_, msg, ##__VA_ARGS__); \
+                _status_ == dnnl::impl::status::success, _status_, msg, \
+                ##__VA_ARGS__); \
     } while (0)
 
 // Special syntactic sugar for error, plus flush of the output stream
 #define VERROR(apitype, component, msg, ...) \
     do { \
-        if (dnnl::impl::get_verbose(verbose_t::error)) { \
-            VFORMAT(get_msec(), verbose_t::error, apitype, error, "", \
-                    #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
-                    __LINE__); \
+        if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::error)) { \
+            VFORMAT(dnnl::impl::get_msec(), dnnl::impl::verbose_t::error, \
+                    apitype, error, "", #component "," msg ",%s:%d", \
+                    ##__VA_ARGS__, __FILENAME__, __LINE__); \
         } \
     } while (0)
 
@@ -145,10 +149,10 @@ static inline int format_type_checker(const char *, ...) {
 // thrown or when a status check fails.
 #define VWARN(apitype, component, msg, ...) \
     do { \
-        if (dnnl::impl::get_verbose(verbose_t::warn)) { \
-            VFORMAT(get_msec(), verbose_t::warn, apitype, warn, "", \
-                    #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
-                    __LINE__); \
+        if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::warn)) { \
+            VFORMAT(dnnl::impl::get_msec(), dnnl::impl::verbose_t::warn, \
+                    apitype, warn, "", #component "," msg ",%s:%d", \
+                    ##__VA_ARGS__, __FILENAME__, __LINE__); \
         } \
     } while (0)
 
@@ -156,11 +160,11 @@ static inline int format_type_checker(const char *, ...) {
 // `level` is responsible to set the bar to be printed.
 #define VDEBUGINFO(level, apitype, component, msg, ...) \
     do { \
-        if (dnnl::impl::get_verbose_dev_mode(verbose_t::debuginfo) \
+        if (dnnl::impl::get_verbose_dev_mode(dnnl::impl::verbose_t::debuginfo) \
                 >= (level)) { \
-            VFORMAT(get_msec(), verbose_t::debuginfo, apitype, debuginfo, "", \
-                    #component "," msg ",%s:%d", ##__VA_ARGS__, __FILENAME__, \
-                    __LINE__); \
+            VFORMAT(dnnl::impl::get_msec(), dnnl::impl::verbose_t::debuginfo, \
+                    apitype, debuginfo, "", #component "," msg ",%s:%d", \
+                    ##__VA_ARGS__, __FILENAME__, __LINE__); \
         } \
     } while (0)
 

@@ -215,6 +215,35 @@ status_t dnnl_memory_create_v2(memory_t **memory, const memory_desc_t *md,
     return success;
 }
 
+status_t dnnl_memory_create_host_scalar(
+        memory_t **memory, const memory_desc_t *md, void *scalar_ptr) {
+    if (any_null(memory, scalar_ptr, md)) return invalid_arguments;
+
+    const auto mdw = memory_desc_wrapper(md);
+    VCHECK_MEMORY(mdw.is_host_scalar_desc(), invalid_arguments,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    std::unique_ptr<dnnl::impl::host_scalar_memory_storage_t>
+            memory_storage_ptr(new dnnl::impl::host_scalar_memory_storage_t());
+
+    memory_storage_ptr->set_scalar_value(
+            scalar_ptr, mdw.size(0) /* scalar_size */);
+
+    // todo: should we use service cpu engine or nullptr?
+    // memory_t *mem_obj = new memory_t(dnnl::impl::cpu::get_service_engine(), md,
+    //        std::move(memory_storage_ptr));
+    memory_t *mem_obj
+            = new memory_t(nullptr, md, std::move(memory_storage_ptr));
+    if (mem_obj == nullptr) return out_of_memory;
+    if (mem_obj->memory_storage() == nullptr) {
+        mem_obj->release();
+        return out_of_memory;
+    }
+    *memory = mem_obj;
+
+    return success;
+}
+
 status_t dnnl_memory_get_memory_desc(
         const memory_t *memory, const memory_desc_t **md) {
     if (any_null(memory, md)) return invalid_arguments;

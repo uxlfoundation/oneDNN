@@ -480,6 +480,7 @@ struct memory_desc_wrapper : public c_compatible {
      * an array \param pos. if \param is_pos_padded is true \param pos
      * represents the position in already padded area */
     dim_t off_v(const dims_t pos, bool is_pos_padded = false) const {
+        if (is_host_scalar_desc()) return 0;
         assert(is_blocking_desc() || is_sparse_packed_desc());
         const blocking_desc_t &blk = blocking_desc();
 

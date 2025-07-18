@@ -125,7 +125,7 @@ std::string print_to_string(const ::testing::TestParamInfo<sdpa_dims_t> &info) {
 
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | Vdt | "
-                 "mask | quant |  time (us) | BW eff/actual (Gbps) | "
+                 "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
 
@@ -1559,12 +1559,12 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 #endif
 }
-std::vector<std::chrono::microseconds> timeit(
+std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {
     using namespace std::chrono;
     func();
     func();
-    std::vector<std::chrono::microseconds> times;
+    std::vector<std::chrono::nanoseconds> times;
     for (int j = 0; j < 5; j++) {
         auto e = steady_clock::now();
         str.wait();
@@ -1574,7 +1574,7 @@ std::vector<std::chrono::microseconds> timeit(
         }
         str.wait();
         e = steady_clock::now();
-        times.push_back(std::chrono::duration_cast<microseconds>(e - s));
+        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
     }
     return times;
 }
@@ -1703,7 +1703,7 @@ GPU_TEST_P(sdpa_test_t, perf) {
     auto quantized_time = timeit(loop_quantized, strm, iterations);
 
     using namespace std::chrono;
-    auto min_time = [](const std::vector<microseconds> &a) {
+    auto min_time = [](const std::vector<nanoseconds> &a) {
         return *std::min_element(a.begin(), a.end());
     };
 

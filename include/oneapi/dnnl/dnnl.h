@@ -989,6 +989,15 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+/// Creates a memory descriptor for a scalar value that resides on the host.
+///
+/// @param memory_desc Output memory descriptor.
+/// @param data_type Elements data type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_host_scalar(
+        dnnl_memory_desc_t *memory_desc, dnnl_data_type_t data_type);
+
 /// Creates a memory descriptor for a region inside an area
 /// described by an existing memory descriptor.
 ///

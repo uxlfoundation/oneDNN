@@ -259,6 +259,9 @@ struct memory_extra_desc_t {
     dim_t dst_size;
 };
 
+status_t memory_desc_init_host_scalar(
+        memory_desc_t &memory_desc, data_type_t data_type);
+
 status_t DNNL_API memory_desc_init_by_tag(memory_desc_t &memory_desc, int ndims,
         const dims_t dims, data_type_t data_type, format_tag_t tag);
 

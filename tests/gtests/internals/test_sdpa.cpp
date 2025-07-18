@@ -1548,6 +1548,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
         check_memory<float16_t>(t.m_output, t.m_output_quantized, strm);
     else if (t.m_output.get_desc().get_data_type() == mdt::bf16)
         check_memory<bfloat16_t>(t.m_output, t.m_output_quantized, strm);
+    else if (t.m_output.get_desc().get_data_type() == mdt::f32)
+        check_memory<float_t>(t.m_output, t.m_output_quantized, strm);
 
 #if 0
     for (auto &kv : hist) {

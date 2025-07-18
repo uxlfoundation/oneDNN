@@ -3422,7 +3422,7 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
                   conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_scales_(conf->apply_scales_in_buffer_b)
         , typesize_in_(types::data_type_size(dt_in_))
-        , typesize_scale_(is_src_int4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , scales_typesize_(sizeof(float))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * typesize_out_)
@@ -3442,7 +3442,7 @@ private:
     const data_type_t dt_in_;
     const int simd_w_;
     const bool is_src_int4_, req_zp_b_shift_, req_apply_scales_;
-    const size_t typesize_in_, typesize_scale_, scales_typesize_;
+    const size_t typesize_in_, src_elems_per_byte_, scales_typesize_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_, scales_N_stride_;
 
@@ -3563,7 +3563,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         auto src_vmm = get_vmm(blk);
         const bool is_tail = ncolumns - n < simd_w_;
         auto addr = maybe_EVEX_compress_addr(reg_src,
-                (k * src_stride_ + n * typesize_in_) / typesize_scale_);
+                (k * src_stride_ + n * typesize_in_) / src_elems_per_byte_);
         if (is_tail && !isa_has_masks(conf_->isa))
             vmaskmovps(src_vmm, ymm_tail_mask, addr);
         else
@@ -3585,7 +3585,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
             kmovw(kTail, tail_mask);
             if (is_src_int4_) {
                 const auto int4_tail_mask
-                        = (1 << (columns_tail / typesize_scale_)) - 1;
+                        = (1 << (columns_tail / src_elems_per_byte_)) - 1;
                 kmovw(kTail_int4, int4_tail_mask);
             }
         } else {
@@ -3626,7 +3626,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::compute_k_loop(int ncolumns) {
         jl(K_end_label, T_NEAR);
 
         copy_16_x_n_block(unroll, ncolumns);
-        add(reg_src, (unroll * src_stride_) / typesize_scale_);
+        add(reg_src, (unroll * src_stride_) / src_elems_per_byte_);
         add(reg_tr_src, unroll * tr_src_stride_);
         if (req_apply_scales_) add(reg_scales, unroll * scales_N_stride_);
 
@@ -3735,7 +3735,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , scales_K_stride_(conf_->K * scales_typesize_)
-        , typesize_scale_(is_src_int4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -3776,7 +3776,8 @@ private:
     const bool use_bf16_instructions_;
     const int max_tmp_idx;
 
-    const dim_t src_stride_, tr_src_stride_, scales_K_stride_, typesize_scale_;
+    const dim_t src_stride_, tr_src_stride_, scales_K_stride_,
+            src_elems_per_byte_;
     const bool is_dynamic_N_;
 
     constexpr static int ldb_step_idx_offs = 0;
@@ -4043,7 +4044,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         auto zmm_src = columns_tail > 0 && ncolumns < req_cvt_bf16_k_blk_step_
                 ? src_reg | kTail | T_z
                 : src_reg;
-        const auto src_offset = (i * src_stride_) / typesize_scale_;
+        const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         if (is_bf32_)
             vmovups(zmm_src, addr);
@@ -4064,7 +4065,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                                                  : src_reg_next;
             const auto next_src_offset
                     = (i * src_stride_ + req_cvt_bf16_k_blk_step_ * typesize_)
-                    / typesize_scale_;
+                    / src_elems_per_byte_;
             const auto next_addr = EVEX_compress_addr(reg_src, next_src_offset);
             if (is_bf32_)
                 vmovups(zmm_src_next, next_addr);
@@ -4115,7 +4116,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
 
         const auto is_tail = columns_tail > 0;
         auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
-        const auto src_offset = (i * src_stride_) / typesize_scale_;
+        const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
             load_int(src_reg, src_offset, i, columns_tail, is_tail);
@@ -4426,7 +4427,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
 
     L(K_loop);
     copy_row_x_col(nrows, k_blk_step_);
-    add(reg_src, (k_blk_step_ * typesize_) / typesize_scale_);
+    add(reg_src, (k_blk_step_ * typesize_) / src_elems_per_byte_);
     add(reg_tr_src, k_blk_step_ / vnni_granularity_ * tr_src_stride_);
     if (req_apply_scales_) add(reg_scales, k_blk_step_ * scales_typesize_);
 
@@ -4481,7 +4482,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
     L(N_loop);
     compute_K_loop(false, curr_K_tail, is_first_K_iter, is_last_K_iter);
 
-    add(reg_src_base, (n_blk_step_ * src_stride_) / typesize_scale_);
+    add(reg_src_base, (n_blk_step_ * src_stride_) / src_elems_per_byte_);
     if (conf_->LDB2 > 0) {
         Label small_increment, ldb_off_done;
         mov(regq_tmp, ptr[rsp + ldb_step_idx_offs]);
@@ -4660,8 +4661,9 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t : public jit_brgemm_matmul_copy_b_t,
         , tr_typesize_(conf->tr_b_dt_sz)
         , scales_typesize_(sizeof(float))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , typesize_scale_(is_src_int4_ ? 2 : 1)
-        , src_stride_((conf->LDB * k_blk_step * typesize_) / typesize_scale_)
+        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , src_stride_(
+                  (conf->LDB * k_blk_step * typesize_) / src_elems_per_byte_)
         , tr_src_stride_(conf_->LDB * k_blk_step * tr_typesize_)
         , scales_N_stride_(conf->N * scales_typesize_)
         , req_zp_b_shift_(
@@ -4688,7 +4690,8 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize_, tr_typesize_, scales_typesize_;
     const bool is_src_int4_;
-    const dim_t typesize_scale_, src_stride_, tr_src_stride_, scales_N_stride_;
+    const dim_t src_elems_per_byte_, src_stride_, tr_src_stride_,
+            scales_N_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_scales_;
     const int reserved_regs_;
@@ -4839,8 +4842,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const auto src_vmm0 = get_vmm(blk, 0);
         const auto src_vmm1 = get_vmm(blk, 1);
         const dim_t offset = k_blk * src_stride_
-                + (n * k_blk_step * typesize_) / typesize_scale_;
-        const auto stride = (n_blk_step * typesize_) / typesize_scale_;
+                + (n * k_blk_step * typesize_) / src_elems_per_byte_;
+        const auto stride = (n_blk_step * typesize_) / src_elems_per_byte_;
         auto load_addr0 = maybe_EVEX_compress_addr(reg_src, offset);
         auto load_addr1 = maybe_EVEX_compress_addr(reg_src, offset + stride);
         load_int(src_vmm0, load_addr0);

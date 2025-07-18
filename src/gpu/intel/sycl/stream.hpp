@@ -116,7 +116,8 @@ struct stream_t : public gpu::intel::compute::compute_stream_t {
         return impl()->register_deps(cgh);
     }
 
-    bool recording() const;
+    bool recording() const { return impl()->recording(); }
+
     using weak_graph_t = ::sycl::ext::oneapi::weak_object<
             ::sycl::ext::oneapi::experimental::command_graph<::sycl::ext::
                             oneapi::experimental::graph_state::modifiable>>;

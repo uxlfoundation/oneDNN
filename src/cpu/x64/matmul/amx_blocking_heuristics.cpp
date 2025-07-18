@@ -713,7 +713,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
             // Second, calculate the number of ways the output matrix will use
             // in each set. If higher than the threshold, useful cache lines in
             // L2 will be evicted.
-            if (l2_line_size % cache_stride == 0) {
+            if (l2_line_size % cache_stride == 0 && l2_line_size > 0) {
                 size_t num_ways_c
                         = div_up(cache_stride * m_per_thread, l2_line_size);
                 if (num_ways_c >= L2_ways_threshold()) {

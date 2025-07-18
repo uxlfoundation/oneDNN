@@ -1889,7 +1889,6 @@ private:
 	static const uint64_t T_L1 = 1ull << 12;
 	static const uint64_t T_W0 = 1ull << 13;
 	static const uint64_t T_W1 = 1ull << 14;
-	static const uint64_t T_EW0 = T_W0;//1ull << 15;
 	static const uint64_t T_EW1 = 1ull << 16;
 	static const uint64_t T_YMM = 1ull << 17; // support YMM, ZMM
 	static const uint64_t T_EVEX = 1ull << 18;
@@ -3304,7 +3303,7 @@ public:
 	{
 		const uint64_t typeTbl[] = {
 			T_EVEX|T_66|T_0F|T_W0|T_N4, T_EVEX|T_66|T_0F|T_W0|T_N4, // legacy, avx, avx512
-			T_MUST_EVEX|T_66|T_0F|T_EW0|T_N4, T_MUST_EVEX|T_F3|T_0F|T_EW0|T_N4, // avx10.2
+			T_MUST_EVEX|T_66|T_0F|T_N4, T_MUST_EVEX|T_F3|T_0F|T_N4, // avx10.2
 		};
 		const int codeTbl[] = { 0x7E, 0x6E, 0xD6, 0x7E };
 		opAVX10ZeroExt(op1, op2, typeTbl, codeTbl, enc, 32);
@@ -3313,7 +3312,7 @@ public:
 	{
 		const uint64_t typeTbl[] = {
 			T_MUST_EVEX|T_66|T_MAP5|T_N2, T_MUST_EVEX|T_66|T_MAP5|T_N2, // avx512-fp16
-			T_MUST_EVEX|T_F3|T_MAP5|T_EW0|T_N2, T_MUST_EVEX|T_F3|T_MAP5|T_EW0|T_N2, // avx10.2
+			T_MUST_EVEX|T_F3|T_MAP5|T_N2, T_MUST_EVEX|T_F3|T_MAP5|T_N2, // avx10.2
 		};
 		const int codeTbl[] = { 0x7E, 0x6E, 0x7E, 0x6E };
 		opAVX10ZeroExt(op1, op2, typeTbl, codeTbl, enc, 16|32|64);

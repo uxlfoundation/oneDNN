@@ -31,7 +31,7 @@
 ///   - Access a GPU memory via OpenCL interoperability interface
 ///   - Access a GPU command queue via OpenCL interoperability interface
 ///   - Execute a OpenCL kernel with related GPU command queue and GPU memory
-///   - Create primitives descriptor/primitive
+///   - Create primitive descriptor/primitive
 ///   - Execute the primitive with the initialized GPU memory
 ///   - Validate the result by mapping the OpenCL memory via OpenCL interoperability
 ///     interface

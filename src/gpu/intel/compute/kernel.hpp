@@ -25,6 +25,7 @@
 #include <memory>
 #include <utility>
 
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
@@ -127,6 +128,10 @@ public:
     }
     virtual status_t get_binary(
             const impl::engine_t *engine, xpu::binary_t &binary) const {
+        gpu_assert(false) << "unimplemented function get_binary() called";
+        return status::runtime_error;
+    }
+    virtual status_t get_kernel_binary(xpu::binary_t &binary) const {
         gpu_assert(false) << "unimplemented function get_binary() called";
         return status::runtime_error;
     }
@@ -233,6 +238,10 @@ public:
         return impl_->get_binary(engine, binary);
     }
 
+    status_t get_kernel_binary(xpu::binary_t &binary) const {
+        return impl_->get_kernel_binary(binary);
+    }
+
     const std::vector<scalar_type_t> &arg_types() const {
         return impl_->arg_types();
     }
@@ -247,10 +256,10 @@ public:
     // A `tag` may be provided by the user to differentiate the source of the
     // kernel. In particular, it may come from the blob, or it could be
     // properly generated.
-    void hash_dump(impl::engine_t *engine, const char *tag = nullptr) const {
+    void hash_dump(const char *tag = nullptr) const {
         if (get_verbose_dev_mode(verbose_t::debuginfo) >= 6) {
             printf("kernel creation [%s] %s -> %zu\n", tag ? tag : "unlabeled",
-                    name().c_str(), get_hash(engine));
+                    name().c_str(), get_hash());
             fflush(stdout);
         }
     }
@@ -260,14 +269,11 @@ public:
 private:
     std::shared_ptr<kernel_impl_t> impl_;
 
-    size_t get_hash(impl::engine_t *engine) const {
+    size_t get_hash() const {
         xpu::binary_t binary;
-        status_t status = get_binary(engine, binary);
+        status_t status = get_kernel_binary(binary);
         if (status != status::success) return 0;
-        size_t h = 0;
-        for (auto &v : binary)
-            h = hash_combine(h, v);
-        return (uint32_t)(h % (1ULL << 32));
+        return serialization_stream_t::get_hash(binary);
     }
 };
 

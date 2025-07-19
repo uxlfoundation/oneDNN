@@ -21,13 +21,16 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" OR CMAKE_CXX_COMPILER_ID MATCHES "
 endif()
 
 file(GLOB SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]pp)
-set(DIRS "bnorm;gemm;reduction;rnn")
+file(GLOB SOURCES_GEMM ${CMAKE_CURRENT_SOURCE_DIR}/gemm/*.[ch]pp)
+list(APPEND SOURCES "${SOURCES_GEMM}")
+set(DIRS "binary;bnorm;conv;concat;eltwise;gnorm;ip;lnorm;lrn;matmul;pool;prelu;reduction;reorder;resampling;rnn;sdpa;shuffle;softmax;sum;zeropad")
 foreach(dir ${DIRS})
     file(GLOB_RECURSE SOURCES_EXTRA
         ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/*.[ch]pp
         )
     list(APPEND SOURCES "${SOURCES_EXTRA}")
 endforeach()
+add_subdirectory(gemm/jit)
 
 include("${PROJECT_SOURCE_DIR}/cmake/gen_gpu_kernel_list.cmake")
 
@@ -44,6 +47,9 @@ gen_gpu_kernel_list(
     "${CL_HEADERS}")
 
 list(APPEND SOURCES ${kernel_list_src})
+if (NOT DNNL_EXPERIMENTAL OR NOT DNNL_DEV_MODE)
+list(FILTER SOURCES EXCLUDE REGEX "conv/jit/v2/planner")
+endif()
 
 add_subdirectory(compute)
 add_subdirectory(microkernels)

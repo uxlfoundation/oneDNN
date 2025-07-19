@@ -63,7 +63,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_utils {
+namespace bnorm {
 
 constexpr int aux_init_stage = 1;
 constexpr int aux_finalize_stage = 0;
@@ -100,7 +100,7 @@ void init_flags_lookup_table(
 void init_conf_basic(bnorm_conf_t &conf, const batch_normalization_pd_t *pd);
 std::string get_prb_desc_str(const batch_normalization_pd_t *pd);
 
-} // namespace bn_utils
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -460,7 +460,7 @@ struct reduction_conf_t {
 };
 
 // Reorder
-enum reorder_kernel_t {
+enum custom_kernel_t {
     none,
     dense_vector,
     unroll_16b,
@@ -565,7 +565,7 @@ struct reorder_conf_t {
     quantization_t src_quant, dst_quant;
     sum_quantization_t sum_quant;
 
-    reorder_kernel_t implementation;
+    custom_kernel_t implementation;
     int ndims;
     size_t nelems;
     bool subbyte_pack = false;

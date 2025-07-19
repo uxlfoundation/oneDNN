@@ -16,6 +16,8 @@
 
 #include "gpu/intel/jit/codegen/reorder.hpp"
 
+#include "gpu/intel/logging.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

@@ -24,8 +24,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "ngen_interface.hpp"
 
 namespace dnnl {

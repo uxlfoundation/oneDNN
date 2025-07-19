@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/ir/post_ops.hpp"
+#include "common/eltwise_pd.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 
 namespace dnnl {

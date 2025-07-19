@@ -23,17 +23,17 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace bnorm {
 
-using namespace bn_lookup_table;
-using namespace bn_utils;
-using namespace bn_model;
-using namespace bn_utils::kernel_id;
+using namespace lookup_table;
+using namespace model;
+using namespace kernel_id;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
@@ -669,6 +669,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
             arg_list);
 }
 
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -14,9 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <string>
+
 #include "gpu/intel/jit/generator.hpp"
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 #include "ngen_register_decl.hpp"
 
 namespace dnnl {

@@ -22,8 +22,8 @@
 #include "gpu/intel/jit/binary_format.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/generator.hpp"
 

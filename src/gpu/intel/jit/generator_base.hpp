@@ -17,21 +17,15 @@
 #ifndef GPU_INTEL_JIT_GENERATOR_BASE_HPP
 #define GPU_INTEL_JIT_GENERATOR_BASE_HPP
 
-#include <vector>
 #include <CL/cl.h>
 
-#include "xpu/utils.hpp"
+#include "gpu/intel/compute/kernel.hpp"
+#include "gpu/intel/compute/engine.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-
-namespace compute {
-class compute_engine_t;
-class kernel_t;
-} // namespace compute
-
 namespace jit {
 
 struct generator_base_t {

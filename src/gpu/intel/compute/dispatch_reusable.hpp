@@ -27,11 +27,11 @@
 #include "common/serialization.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/block_manipulation.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/types_interop.h"
+#include "gpu/intel/include/types_interop.h"
 
 namespace dnnl {
 namespace impl {

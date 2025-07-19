@@ -14,15 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
-
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/jit/pooling/gen_pooling.hpp"
-#include "gpu/intel/ref_pooling.hpp"
-#include "gpu/intel/xe_global_pooling.hpp"
-#include "gpu/intel/xe_pooling.hpp"
+#include "gpu/intel/pool/jit.hpp"
+#include "gpu/intel/pool/ref.hpp"
+#include "gpu/intel/pool/xe.hpp"
+#include "gpu/intel/pool/xe_global.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -48,19 +46,19 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_POOLING_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::jit::gen_pooling_fwd_t)
-        GPU_INSTANCE_INTEL(intel::xe_global_pooling_fwd_t)
-        GPU_INSTANCE_INTEL(intel::xe_pooling_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ref_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::gen_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::xe_global_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::xe_pooling_fwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::ref_pooling_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_pooling_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_pooling_fwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_pooling_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::xe_global_pooling_bwd_t)
-        GPU_INSTANCE_INTEL(intel::xe_pooling_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ref_pooling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::xe_global_pooling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::xe_pooling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::pool::ref_pooling_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_pooling_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_pooling_bwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_pooling_bwd_t)

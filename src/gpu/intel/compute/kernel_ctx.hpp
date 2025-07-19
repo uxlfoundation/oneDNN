@@ -27,7 +27,7 @@
 
 #include "common/bit_cast.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {

@@ -28,7 +28,8 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_lookup_table {
+namespace bnorm {
+namespace lookup_table {
 
 class use_fused_atomics_reduction_param_t : public bool_param_t {
 public:
@@ -275,7 +276,8 @@ private:
     std::unordered_map<key_t, std::vector<entry_t>> map_;
 };
 
-} // namespace bn_lookup_table
+} // namespace lookup_table
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

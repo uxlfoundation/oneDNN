@@ -19,9 +19,9 @@
 #include "gpu/generic/ref_concat.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/multi_concat.hpp"
-#include "gpu/intel/reusable_simple_concat.hpp"
-#include "gpu/intel/xe_concat.hpp"
+#include "gpu/intel/concat/multi.hpp"
+#include "gpu/intel/concat/simple.hpp"
+#include "gpu/intel/concat/xe.hpp"
 #endif
 
 namespace dnnl {
@@ -32,9 +32,9 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_CONCAT_P({
-        GPU_CONCAT_INSTANCE_INTEL(intel::reusable_simple_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::xe_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::multi_concat_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::reusable_simple_concat_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::xe_concat_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::multi_concat_t)
         GPU_CONCAT_INSTANCE_GENERIC(generic::ref_concat_t)
         nullptr,
 });

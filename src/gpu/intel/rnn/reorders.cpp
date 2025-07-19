@@ -20,6 +20,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 status_t rnn_weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
@@ -157,6 +158,7 @@ status_t rnn_weights_reorder_t::execute(const exec_ctx_t &ctx) const {
     return status;
 }
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

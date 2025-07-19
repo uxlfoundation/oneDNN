@@ -20,13 +20,11 @@
 #include <string>
 #include <vector>
 
-#include "common/eltwise_pd.hpp"
 #include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

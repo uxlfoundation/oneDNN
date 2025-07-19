@@ -16,6 +16,8 @@
 
 #include "gpu/intel/jit/utils/utils.hpp"
 
+#include <fstream>
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

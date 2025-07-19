@@ -1,0 +1,66 @@
+/*******************************************************************************
+* Copyright 2023-2025 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+#ifndef GPU_INTEL_CONV_JIT_PLAN_UTILS_HPP
+#define GPU_INTEL_CONV_JIT_PLAN_UTILS_HPP
+
+#include <string>
+
+#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
+#include "ngen.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace intel {
+namespace conv {
+namespace jit {
+
+using namespace intel::jit;
+
+struct base_plan_t {
+    base_plan_t(const hw_t hw = hw_t()) : hw(hw) {}
+
+    int grf_size() const {
+        gpu_assert(!hw.is_undef());
+        return hw.grf_size();
+    }
+
+    hw_t hw;
+};
+
+inline std::string add_indent(const std::string &tag, const std::string &s) {
+    ostringstream_t oss;
+    oss << tag << ":" << std::endl;
+    oss << ir_utils::add_indent(s, "  ");
+    return oss.str();
+}
+
+inline layout_t split(const layout_t &layout, int factor) {
+    auto tile_coord = layout.split_exact(factor);
+    if (tile_coord.is_empty()) return layout_t();
+    return layout.map(tile_coord.tile, tile_coord.coord);
+}
+
+} // namespace jit
+} // namespace conv
+} // namespace intel
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl
+
+#endif

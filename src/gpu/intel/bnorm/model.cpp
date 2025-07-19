@@ -16,7 +16,7 @@
 #include "gpu/intel/bnorm/model.hpp"
 #include <cmath>
 #include "common/utils.hpp"
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/bnorm/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
@@ -24,10 +24,10 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_model {
+namespace bnorm {
+namespace model {
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
-using namespace dnnl::impl::gpu::intel::bn_utils;
 
 int get_nhwc_vect_size(int ic, int max_vect_size, int simd) {
     int vect_size = max_vect_size;
@@ -531,8 +531,8 @@ float get_thr_utilization_factor(float ss_util, float thr_util,
                             thr_util_adj, 0.f, 0.25f, 1.f, 0.f, y_br, 1.f);
         } else { // HBM
             if (gpu_arch == compute::gpu_arch_t::xe_hpg) {
-                const float x_br = pow(
-                        2, (log2(utils::rnd_up_pow2((int)round(ss_util))) - 4));
+                const float x_br
+                        = pow(2, (log2(rnd_up_pow2((int)round(ss_util))) - 4));
                 const float y_br = ss_util > 4 ? 0.9 : 0.5;
                 return 1.f
                         / solve_2pieces_linear_function(
@@ -882,7 +882,8 @@ status_t get_params_by_model(nhwc_bnorm_params_t &conf,
     return status::success;
 }
 
-} // namespace bn_model
+} // namespace model
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -17,9 +17,9 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/convolution_inner_product.hpp"
-#include "gpu/intel/gemm_inner_product.hpp"
-#include "gpu/intel/ref_inner_product.hpp"
+#include "gpu/intel/ip/conv.hpp"
+#include "gpu/intel/ip/gemm.hpp"
+#include "gpu/intel/ip/ref.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -46,9 +46,9 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_IP_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::gemm_inner_product_fwd_t)
-        GPU_INSTANCE_INTEL(intel::convolution_inner_product_fwd_t)
-        GPU_INSTANCE_INTEL_REF(intel::ref_inner_product_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ip::gemm_inner_product_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ip::convolution_inner_product_fwd_t)
+        GPU_INSTANCE_INTEL_REF(intel::ip::ref_inner_product_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_conv_inner_product_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_gemm_inner_product_fwd_t)
@@ -56,10 +56,10 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::gemm_inner_product_bwd_data_t)
-        GPU_INSTANCE_INTEL(intel::gemm_inner_product_bwd_weights_t)
-        GPU_INSTANCE_INTEL_REF(intel::ref_inner_product_bwd_data_t)
-        GPU_INSTANCE_INTEL_REF(intel::ref_inner_product_bwd_weights_t)
+        GPU_INSTANCE_INTEL(intel::ip::gemm_inner_product_bwd_data_t)
+        GPU_INSTANCE_INTEL(intel::ip::gemm_inner_product_bwd_weights_t)
+        GPU_INSTANCE_INTEL_REF(intel::ip::ref_inner_product_bwd_data_t)
+        GPU_INSTANCE_INTEL_REF(intel::ip::ref_inner_product_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_bwd_data_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_conv_inner_product_bwd_data_t)

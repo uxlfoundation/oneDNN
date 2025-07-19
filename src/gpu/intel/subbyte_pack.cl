@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 #define DT_UNDEF 1
-#include "gpu/intel/ocl_types.h"
-#include "gpu/intel/types_interop.h"
+#include "gpu/intel/include/types.h"
+#include "gpu/intel/include/types_interop.h"
 
 __kernel void subbyte_pack(__global uchar *restrict src,
         __global uchar *restrict dst, off_t n, int bits, int64x3_t offset) {

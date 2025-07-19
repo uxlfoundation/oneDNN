@@ -20,6 +20,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 #define PART_ONE 1
 #define PART_TWO 2
@@ -159,6 +160,7 @@ cell_execution_sig((simple_rnn_common_t<aprop>::cell_execution_gru)) {
 template cell_execution_sig(simple_rnn_fwd_t::cell_execution_gru);
 template cell_execution_sig(simple_rnn_bwd_t::cell_execution_gru);
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

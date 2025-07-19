@@ -20,6 +20,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace reduction {
 
 // Convert a block structure + dims to a list of zero-padding structs
 // Note: Doesn't include blocking structures that don't require zero-padding.
@@ -234,6 +235,7 @@ status_t generate_reduction_phases(const memory_desc_t *src,
     return status::success;
 }
 
+} // namespace reduction
 } // namespace intel
 } // namespace gpu
 } // namespace impl

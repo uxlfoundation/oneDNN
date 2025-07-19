@@ -27,6 +27,7 @@
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {

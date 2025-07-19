@@ -17,12 +17,10 @@
 #ifndef GPU_INTEL_JIT_IR_MESSAGE_PATTERNS_HPP
 #define GPU_INTEL_JIT_IR_MESSAGE_PATTERNS_HPP
 
-#include <sstream>
 #include <string>
 
-#include "common/type_helpers.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {

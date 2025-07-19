@@ -18,13 +18,11 @@
 #define GPU_INTEL_JIT_IR_CONFIG_HPP
 
 #include <iostream>
-#include <sstream>
-#include <unordered_map>
 
 #include "gpu/intel/config.hpp"
 #include "gpu/intel/jit/ir/blocking.hpp"
+#include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"

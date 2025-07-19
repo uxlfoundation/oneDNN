@@ -26,17 +26,18 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 #include "common/experimental.hpp"
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/bnorm/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace bnorm {
 
 struct nhwc_reusable_bnorm_compile_params_t {
     status_t create_generator(const compute::compute_engine_t &engine,
@@ -283,6 +284,7 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

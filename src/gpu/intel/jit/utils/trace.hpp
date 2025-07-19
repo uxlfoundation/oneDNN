@@ -18,6 +18,7 @@
 #define GPU_INTEL_JIT_UTILS_TRACE_HPP
 
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {

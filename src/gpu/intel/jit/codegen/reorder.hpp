@@ -20,9 +20,9 @@
 #include <functional>
 
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/jit/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
-#include "gpu/intel/jit/gemm/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "ngen.hpp"

@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <string>
@@ -31,13 +30,11 @@
 #include "common/math_utils.hpp"
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/logging.hpp"
+#include "gpu/intel/utils.hpp"
 #include "ngen.hpp"
 
 #ifdef DNNL_DEV_MODE
 #include "common/profiler.hpp"
-#include "common/verbose.hpp"
 #endif
 
 namespace dnnl {

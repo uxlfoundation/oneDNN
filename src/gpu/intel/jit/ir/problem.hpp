@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -53,8 +53,8 @@
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
 
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/compute/stream.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif

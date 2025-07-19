@@ -22,8 +22,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_utils {
-using namespace dnnl::impl::utils;
+namespace bnorm {
 
 float get_ss_utilization(
         int max_ss, const compute::range_t &gws, const compute::range_t &lws) {
@@ -140,7 +139,7 @@ std::string get_prb_desc_str(const batch_normalization_pd_t *pd) {
     return s;
 }
 
-} // namespace bn_utils
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

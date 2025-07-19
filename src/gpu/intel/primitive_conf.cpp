@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/gpu_eltwise_pd.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
+#include "gpu/intel/post_ops.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 
 #include "gpu/intel/primitive_conf.hpp"

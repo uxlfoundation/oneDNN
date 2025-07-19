@@ -16,11 +16,10 @@
 
 #include "gpu/intel/jit/codegen/bank_conflict_allocation.hpp"
 
-#include "common/verbose.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
-#include <sstream>
 #include <string>
 #include <vector>
 #include <initializer_list>

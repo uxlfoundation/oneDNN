@@ -20,7 +20,8 @@
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/v2/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/message_patterns.hpp"
+#include "gpu/intel/jit/ir/v2/tensor.hpp"
 
 namespace dnnl {
 namespace impl {

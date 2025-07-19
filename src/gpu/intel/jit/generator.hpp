@@ -24,12 +24,12 @@
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "xpu/utils.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL

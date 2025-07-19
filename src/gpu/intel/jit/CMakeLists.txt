@@ -16,7 +16,7 @@
 
 set(CMAKE_CXX_CLANG_TIDY "")
 
-set(DIRS "codegen;config;conv;dsl;ir;pass;pooling;reorder;utils;v2")
+set(DIRS "codegen;config;dsl;ir;pass;utils;v2")
 
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
@@ -30,18 +30,10 @@ foreach(d ${DIRS})
     list(APPEND SOURCES "${d_sources}")
 endforeach()
 
-list(FILTER SOURCES EXCLUDE REGEX "planner")
-
-add_subdirectory(gemm)
-
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel_jit)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
-
-if(DNNL_EXPERIMENTAL AND DNNL_DEV_MODE)
-    add_subdirectory(v2/conv/planner)
-endif()
 
 # Workaround for unordered_map related issues with DPC++ on Windows
 string(TOUPPER "${CMAKE_BUILD_TYPE}" UPPERCASE_CMAKE_BUILD_TYPE)

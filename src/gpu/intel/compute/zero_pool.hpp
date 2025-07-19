@@ -21,8 +21,8 @@
 #include <mutex>
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/compute/stream.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -60,13 +60,12 @@ void transpose_strides(
 /// The function first transfers the data to the handle's data type then
 /// uses reorder to perform the conversion to the destination data type.
 template <typename T>
-void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
-    dnnl::engine eng = mem.get_engine();
+void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
+        dnnl::stream &s) {
     size_t size = mem.get_desc().get_size();
 
     if (!handle) throw std::runtime_error("handle is nullptr.");
 
-    dnnl::stream s(eng);
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         if (mem.get_desc().get_data_type() != dnnl_f32
                 && std::is_same<T, float>::value) {
@@ -74,7 +73,8 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
                     {mem.get_desc().get_dims(), dnnl::memory::data_type::f32,
                             mem.get_desc().get_strides()},
                     eng);
-            write_to_dnnl_memory<float>((const float *)handle, mem_f32_mem);
+            write_to_dnnl_memory<float>(
+                    (const float *)handle, mem_f32_mem, eng, s);
             dnnl::reorder(mem_f32_mem, mem).execute(s, mem_f32_mem, mem);
         } else if (mem.get_desc().get_data_type() != dnnl_s32
                 && std::is_same<T, int>::value) {
@@ -82,7 +82,7 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
                     {mem.get_desc().get_dims(), dnnl::memory::data_type::s32,
                             mem.get_desc().get_strides()},
                     eng);
-            write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem);
+            write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem, eng, s);
             dnnl::reorder(mem_s32_mem, mem).execute(s, mem_s32_mem, mem);
         } else if ((mem.get_desc().get_data_type() == dnnl_u8
                            || mem.get_desc().get_data_type() == dnnl_s8
@@ -94,7 +94,7 @@ void write_to_dnnl_memory(const T *handle, dnnl::memory &mem) {
                             mem.get_desc().get_strides()},
                     eng);
             write_to_dnnl_memory<unsigned>(
-                    (const unsigned *)handle, mem_u32_mem);
+                    (const unsigned *)handle, mem_u32_mem, eng, s);
             dnnl::reorder(mem_u32_mem, mem).execute(s, mem_u32_mem, mem);
         } else {
 #ifdef DNNL_WITH_SYCL

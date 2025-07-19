@@ -125,7 +125,7 @@ std::string print_to_string(const ::testing::TestParamInfo<sdpa_dims_t> &info) {
 
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | Vdt | "
-                 "mask | quant |  time (us) | BW eff/actual (Gbps) | "
+                 "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
 
@@ -253,8 +253,7 @@ memory::dims double_mb(const memory::dims &dims) {
 /// This function allows us to identify situations where the SDPA kernel is
 /// accessing data out-of-bounds
 memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
-        std::vector<dnnl_memory_t> &doubled_memory) {
-    dnnl::stream s(eng);
+        dnnl::stream &strm, std::vector<dnnl_memory_t> &doubled_memory) {
     memory::dims dims2 = double_mb(desc.get_dims());
     auto desc2 = memory::desc(dims2, desc.get_data_type(), desc.get_strides());
 
@@ -266,7 +265,7 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
     void *handle;
     CHECK(dnnl_memory_get_data_handle(mem2, &handle));
 #ifdef DNNL_WITH_SYCL
-    auto sycl_queue = dnnl::sycl_interop::get_queue(s);
+    auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
     sycl_queue.fill<uint8_t>(handle, 0xFF, desc2.get_size());
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -280,8 +279,8 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
     return out;
 }
 
-sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
-        std::vector<dnnl_memory_t> &doubled_memory) {
+sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
+        const sdpa_dims_t &p, std::vector<dnnl_memory_t> &doubled_memory) {
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -376,31 +375,34 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
     // clang-format on
 
     // Create memory objects
-    out.m_query = double_and_resize(query_md, eng, doubled_memory);
-    out.m_query_test = double_and_resize(query_test_md, eng, doubled_memory);
-    out.m_key = double_and_resize(key_md, eng, doubled_memory);
-    out.m_key_t = double_and_resize(key_t_md, eng, doubled_memory);
-    out.m_scale = double_and_resize(scale_md, eng, doubled_memory);
+    out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
+    out.m_query_test
+            = double_and_resize(query_test_md, eng, strm, doubled_memory);
+    out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
+    out.m_key_t = double_and_resize(key_t_md, eng, strm, doubled_memory);
+    out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_key_quantized
-            = double_and_resize(key_quantized_md, eng, doubled_memory);
+            = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
     out.m_key_t_quantized
-            = double_and_resize(key_t_quantized_md, eng, doubled_memory);
-    out.m_key_scales = double_and_resize(key_scales_md, eng, doubled_memory);
+            = double_and_resize(key_t_quantized_md, eng, strm, doubled_memory);
+    out.m_key_scales
+            = double_and_resize(key_scales_md, eng, strm, doubled_memory);
     out.m_key_scales_t
-            = double_and_resize(key_scales_t_md, eng, doubled_memory);
-    out.m_key_zp = double_and_resize(key_zp_md, eng, doubled_memory);
+            = double_and_resize(key_scales_t_md, eng, strm, doubled_memory);
+    out.m_key_zp = double_and_resize(key_zp_md, eng, strm, doubled_memory);
     out.m_value_quantized
-            = double_and_resize(val_quantized_md, eng, doubled_memory);
+            = double_and_resize(val_quantized_md, eng, strm, doubled_memory);
     out.m_value_t_quantized
-            = double_and_resize(val_t_quantized_md, eng, doubled_memory);
-    out.m_value_scales = double_and_resize(val_scales_md, eng, doubled_memory);
-    out.m_value_zp = double_and_resize(val_zp_md, eng, doubled_memory);
-    out.m_mask = double_and_resize(mask_md, eng, doubled_memory);
-    out.m_value = double_and_resize(value_md, eng, doubled_memory);
-    out.m_value_t = double_and_resize(value_t_md, eng, doubled_memory);
-    out.m_output = double_and_resize(output_md, eng, doubled_memory);
+            = double_and_resize(val_t_quantized_md, eng, strm, doubled_memory);
+    out.m_value_scales
+            = double_and_resize(val_scales_md, eng, strm, doubled_memory);
+    out.m_value_zp = double_and_resize(val_zp_md, eng, strm, doubled_memory);
+    out.m_mask = double_and_resize(mask_md, eng, strm, doubled_memory);
+    out.m_value = double_and_resize(value_md, eng, strm, doubled_memory);
+    out.m_value_t = double_and_resize(value_t_md, eng, strm, doubled_memory);
+    out.m_output = double_and_resize(output_md, eng, strm, doubled_memory);
     out.m_output_quantized
-            = double_and_resize(output_quantized_md, eng, doubled_memory);
+            = double_and_resize(output_quantized_md, eng, strm, doubled_memory);
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
@@ -675,32 +677,38 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, const sdpa_dims_t &p,
     }
 
     if (p.mask != mask_type::no_mask)
-        write_to_dnnl_memory(mask_data.data(), out.m_mask);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale);
+        write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
+    write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
 
     // Write data to tensor object's handle.
-    write_to_dnnl_memory(key_data.data(), out.m_key);
-    write_to_dnnl_memory(value_data.data(), out.m_value);
-    write_to_dnnl_memory(query_data.data(), out.m_query);
-    write_to_dnnl_memory(query_data.data(), out.m_query_test);
+    write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);
+    write_to_dnnl_memory(value_data.data(), out.m_value, eng, strm);
+    write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
+    write_to_dnnl_memory(query_data.data(), out.m_query_test, eng, strm);
 
-    write_to_dnnl_memory(key_quantized_data.data(), out.m_key_quantized);
+    write_to_dnnl_memory(
+            key_quantized_data.data(), out.m_key_quantized, eng, strm);
 
-    write_to_dnnl_memory(val_quantized_data.data(), out.m_value_quantized);
+    write_to_dnnl_memory(
+            val_quantized_data.data(), out.m_value_quantized, eng, strm);
     if (p.kzpdt == mdt::s4 || p.kzpdt == mdt::s8) {
-        write_to_dnnl_memory(key_zp_data_signed.data(), out.m_key_zp);
+        write_to_dnnl_memory(
+                key_zp_data_signed.data(), out.m_key_zp, eng, strm);
     } else {
-        write_to_dnnl_memory(key_zp_data_unsigned.data(), out.m_key_zp);
+        write_to_dnnl_memory(
+                key_zp_data_unsigned.data(), out.m_key_zp, eng, strm);
     }
     if (p.vzpdt == mdt::s4 || p.vzpdt == mdt::s8) {
-        write_to_dnnl_memory(val_zp_data_signed.data(), out.m_value_zp);
+        write_to_dnnl_memory(
+                val_zp_data_signed.data(), out.m_value_zp, eng, strm);
     } else {
-        write_to_dnnl_memory(val_zp_data_unsigned.data(), out.m_value_zp);
+        write_to_dnnl_memory(
+                val_zp_data_unsigned.data(), out.m_value_zp, eng, strm);
     }
-    write_to_dnnl_memory(key_scale_data.data(), out.m_key_scales);
-    write_to_dnnl_memory(val_scale_data.data(), out.m_value_scales);
-    write_to_dnnl_memory(output_data.data(), out.m_output);
-    write_to_dnnl_memory(output_data.data(), out.m_output_quantized);
+    write_to_dnnl_memory(key_scale_data.data(), out.m_key_scales, eng, strm);
+    write_to_dnnl_memory(val_scale_data.data(), out.m_value_scales, eng, strm);
+    write_to_dnnl_memory(output_data.data(), out.m_output, eng, strm);
+    write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
 
     transpose_strides(eng, out.m_key_scales_t, out.m_key_scales);
     transpose_strides(eng, out.m_key_t, out.m_key);
@@ -753,7 +761,7 @@ public:
         strm = dnnl::stream(eng);
         p = GetParam();
         doubled_memory.reserve(30);
-        t = get_descriptors(eng, p, doubled_memory);
+        t = get_descriptors(eng, strm, p, doubled_memory);
     }
 
     void TearDown() override {
@@ -1287,7 +1295,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     bmm2_attr.set_scratchpad_mode(scratchpad_mode::library);
     auto grouped_output
-            = double_and_resize(grouped_query_md, eng, doubled_memory);
+            = double_and_resize(grouped_query_md, eng, strm, doubled_memory);
     auto bmm2_pd = matmul::primitive_desc(
             eng, score_md, grouped_value_md, grouped_query_md, bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
@@ -1407,16 +1415,19 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
         auto o_test = (float)mapped_ptr_test[offset];
         total++;
 
-        float abs_diff = abs(o_gold - o_test);
+        auto min_val = fmin(o_gold, o_test);
+        auto max_val = fmax(o_gold, o_test);
+        float abs_diff = abs(max_val - min_val);
         bool is_nan = isnan(o_gold) || isnan(o_test);
 
+        float large_threshold = abs(o_gold) * fthreshold;
         bool is_mismatch = is_nan
-                || (abs(o_gold) > 1.f ? abs_diff > abs(o_gold * fthreshold)
+                || (abs(o_gold) > 1.f ? abs_diff > large_threshold
                                       : abs_diff > fthreshold);
         if (max_diff < abs_diff) {
             if (verbose) {
-                printf("new max: gold: %f vs test: %f diff: %f\n", o_gold,
-                        o_test, abs_diff);
+                printf("new max(%d,%d,%d,%d): test: %f vs gold: %f diff: %f\n",
+                        l, k, j, i, o_test, o_gold, abs_diff);
             }
             max_diff = abs_diff;
         }
@@ -1426,14 +1437,12 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
             hist[2][j]++;
             hist[3][i]++;
         }
-        if ((is_mismatch && mismatches++ < 32)) {
+        if (is_mismatch && mismatches++ < 32) {
             if (verbose)
-                fprintf(stderr,
-                        "Mismatch at (%d,%d,%d,%d): test %f "
-                        "vs. gold %f (diff: %f thresh: %f)\n",
+                printf("Mismatch at (%d,%d,%d,%d): test %f "
+                       "vs. gold %f (diff: %f thresh: %f)\n",
                         l, k, j, i, o_test, o_gold, abs_diff,
-                        (abs(o_gold) > 2.f ? abs(o_gold * fthreshold)
-                                           : fthreshold));
+                        (abs(o_gold) > 1.f ? large_threshold : fthreshold));
         }
     }
 
@@ -1444,8 +1453,8 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
 
     int threshold = total * 0.0006;
 
-    ASSERT_LE(mismatches, threshold)
-            << "max diff: " << max_diff << " out of: " << total;
+    ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
+    ASSERT_LE(max_diff, 0.03f);
 }
 
 int to_attn_mask_type(mask_type t) {
@@ -1524,14 +1533,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
     if (mask_ptr) { s8_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-    std::unordered_map<int, memory> f16_args
-            = {{DNNL_ARG_QUERIES, t.m_query}, {DNNL_ARG_KEYS, t.m_key},
-                    {DNNL_ARG_VALUES, t.m_value}, {DNNL_ARG_DST, t.m_output}};
-    if (scale_dt != mdt::undef) { f16_args[DNNL_ARG_SCALE] = t.m_scale; }
-    if (mask_ptr) { f16_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
-
-    auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
-    loop_quantized();
+    sdpa_quantized_p.execute(strm, s8_args);
 
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
@@ -1546,6 +1548,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
         check_memory<float16_t>(t.m_output, t.m_output_quantized, strm);
     else if (t.m_output.get_desc().get_data_type() == mdt::bf16)
         check_memory<bfloat16_t>(t.m_output, t.m_output_quantized, strm);
+    else if (t.m_output.get_desc().get_data_type() == mdt::f32)
+        check_memory<float_t>(t.m_output, t.m_output_quantized, strm);
 
 #if 0
     for (auto &kv : hist) {
@@ -1555,12 +1559,12 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 #endif
 }
-std::vector<std::chrono::microseconds> timeit(
+std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {
     using namespace std::chrono;
     func();
     func();
-    std::vector<std::chrono::microseconds> times;
+    std::vector<std::chrono::nanoseconds> times;
     for (int j = 0; j < 5; j++) {
         auto e = steady_clock::now();
         str.wait();
@@ -1570,7 +1574,7 @@ std::vector<std::chrono::microseconds> timeit(
         }
         str.wait();
         e = steady_clock::now();
-        times.push_back(std::chrono::duration_cast<microseconds>(e - s));
+        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
     }
     return times;
 }
@@ -1672,13 +1676,6 @@ GPU_TEST_P(sdpa_test_t, perf) {
             throw;
     }
 
-    auto sdpaf16_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
-            p.with_key_transposed ? t.m_key_t.get_desc() : t.m_key.get_desc(),
-            t.m_value.get_desc(), mask_ptr, scale_dt, t.m_output.get_desc(),
-            invert_scale, p.kv_head_num, to_attn_mask_type(p.mask),
-            alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr);
-    auto sdpaf16_p = sdpa(sdpaf16_pd);
-
     std::unordered_map<int, memory> s8_args = {{{DNNL_ARG_QUERIES, t.m_query},
             {DNNL_ARG_VALUES, t.m_value_quantized},
             {DNNL_ARG_DST, t.m_output_quantized}}};
@@ -1702,52 +1699,11 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     auto loop_quantized = [&] { sdpa_quantized_p.execute(strm, s8_args); };
 
-    /// Dequantize reorder for key
-    memory key_dequantized;
-    dnnl::reorder key_dequantize_prim;
-    bool dequantize_k = !(p.kdt == mdt::f16 || p.kdt == mdt::bf16)
-            && p.qtype != quantize_type::no_quantization;
-    if (dequantize_k) {
-        std::tie(key_dequantize_prim, key_dequantized)
-                = dequantize_prim(eng, mdt::f16,
-                        p.with_key_transposed ? t.m_key_t_quantized.get_desc()
-                                              : t.m_key_quantized.get_desc(),
-                        t.kq_mask, t.kq_groups, p.ksdt, p.kzpdt,
-                        (p.with_key_transposed ? memory::format_tag::abdc
-                                               : memory::format_tag::abcd));
-    } else {
-        key_dequantized = p.with_key_transposed ? t.m_key_t_quantized
-                                                : t.m_key_quantized;
-    }
-
-    /// Dequantize reorder for value
-    memory value_dequantized;
-    dnnl::reorder value_dequantize_prim;
-    bool dequantize_v = p.vdt != mdt::f16 && p.vdt != mdt::bf16
-            && p.qtype != quantize_type::no_quantization;
-    if (dequantize_v) {
-        std::tie(value_dequantize_prim, value_dequantized)
-                = dequantize_prim(eng, mdt::f16, t.m_value_quantized.get_desc(),
-                        t.vs_mask, t.vs_groups, p.vsdt, p.vzpdt);
-    } else {
-        value_dequantized = t.m_value_quantized;
-    }
-
-    std::unordered_map<int, memory> f16_args
-            = {{DNNL_ARG_QUERIES, t.m_query}, {DNNL_ARG_KEYS, key_dequantized},
-                    {DNNL_ARG_VALUES, value_dequantized},
-                    {DNNL_ARG_DST, t.m_output_quantized}};
-    if (scale_dt != mdt::undef) { f16_args[DNNL_ARG_SCALE] = t.m_scale; }
-    if (mask_ptr) { f16_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
-
-    //auto loop_sdpa_f16 = [&] { sdpaf16_p.execute(strm, f16_args); };
-
     int iterations = 20;
     auto quantized_time = timeit(loop_quantized, strm, iterations);
-    //auto sdpa_f16_time = timeit(loop_sdpa_f16, strm, iterations);
 
     using namespace std::chrono;
-    auto min_time = [](const std::vector<microseconds> &a) {
+    auto min_time = [](const std::vector<nanoseconds> &a) {
         return *std::min_element(a.begin(), a.end());
     };
 
@@ -1756,11 +1712,11 @@ GPU_TEST_P(sdpa_test_t, perf) {
     // total number of bytes of all tensors
     byte_t<> total_bytes = t.m_query.get_desc().get_size()
 
-            + key_dequantized.get_desc().get_size() / 2
+            + t.m_key.get_desc().get_size() / 2
             + t.m_key_scales.get_desc().get_size()
             + t.m_key_zp.get_desc().get_size()
 
-            + value_dequantized.get_desc().get_size() / 2
+            + t.m_value.get_desc().get_size() / 2
             + t.m_value_scales.get_desc().get_size()
             + t.m_value_zp.get_desc().get_size()
 

@@ -140,6 +140,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_arg_scale(prb->attr, res);
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_binary);
+    for (const auto &tag : prb->stag) {
+        skip_unsupported_block_format(tag, res);
+    }
+    skip_unsupported_block_format(prb->dtag, res);
 
     if (is_gpu()) {
         // N.B: Adding this for gpu as cfg is not supported in POST-OPS

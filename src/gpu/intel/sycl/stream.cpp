@@ -174,6 +174,67 @@ status_t stream_t::resume_recording() {
     return status::success;
 }
 
+status_t stream_t::init_async_tracking(std::string &vinfo, double *start_ms) {
+    stream_timing_data_ = std::make_shared<async_timing_data_t>();
+    stream_timing_data_->start_ms = get_msec();
+    stream_timing_data_->profiler_enabled = is_profiling_enabled();
+    stream_timing_data_->vinfo = vinfo;
+    return status::success;
+}
+
+status_t stream_t::register_async_tracker(const ::sycl::event &event) {
+
+    if (!stream_timing_data_) return status::runtime_error;
+
+    impl()->queue()->submit([&](::sycl::handler &cgh) {
+        cgh.depends_on(event);
+        auto td = stream_timing_data_;
+        cgh.host_task([td, event]() {
+            try {
+                if (td->profiler_enabled) {
+                    auto start_ms = event.get_profiling_info<
+                            ::sycl::info::event_profiling::command_start>();
+                    auto end_ms = event.get_profiling_info<
+                            ::sycl::info::event_profiling::command_end>();
+                    td->start_ms = start_ms * 1e-6;
+                    td->end_ms = end_ms * 1e-6;
+                    td->duration_ms = (end_ms - start_ms) * 1e-6;
+                } else {
+                    td->end_ms = get_msec();
+                    td->duration_ms = td->end_ms - td->start_ms;
+                }
+
+                VPROF(td->start_ms, primitive, exec, VERBOSE_profile,
+                        td->vinfo.c_str(), td->duration_ms);
+
+            } catch (const std::exception &e) {
+                VERROR(common, sycl, "%s", e.what());
+            }
+        });
+    });
+
+    stream_timing_data_->timing_stat = true;
+    return status::success;
+}
+
+status_t stream_t::check_async_exec_times(
+        std::string &vinfo, double *start_ms) {
+
+    if (!stream_timing_data_ || stream_timing_data_->timing_stat) {
+        stream_timing_data_.reset();
+        return status::success;
+    }
+
+    CHECK(wait());
+    double duration_ms = get_msec() - stream_timing_data_->start_ms;
+
+    VPROF(static_cast<int>(stream_timing_data_->start_ms), primitive, exec,
+            VERBOSE_profile, stream_timing_data_->vinfo.c_str(), duration_ms);
+
+    stream_timing_data_.reset();
+    return status::success;
+}
+
 } // namespace sycl
 } // namespace intel
 } // namespace gpu

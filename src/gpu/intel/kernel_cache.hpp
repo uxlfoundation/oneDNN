@@ -25,7 +25,7 @@
 #include "common/kernel_cache.hpp"
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 
 namespace dnnl {
 namespace impl {

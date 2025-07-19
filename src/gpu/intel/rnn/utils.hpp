@@ -20,7 +20,7 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/serialization.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -107,6 +107,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 namespace rnn_utils {
 
@@ -992,6 +993,7 @@ static_assert(sizeof(arg_list_t) == sizeof(compute::kernel_arg_list_t),
 
 } // namespace rnn_utils
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

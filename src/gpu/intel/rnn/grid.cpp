@@ -32,12 +32,13 @@
 #include "common/gemm_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
-#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
@@ -1087,12 +1088,12 @@ template <prop_kind_t aprop>
 gemm_sig((simple_rnn_common_t<aprop>::gemm_primitive)) {
     // We flip A and B here since the GEMM API is row major but the
     // RNN code describes GEMM in column major fashion
-    gemm_exec_args_t gemm_args;
+    gemm::exec_args_t gemm_args;
     gemm_args.a = b.get();
     gemm_args.b = a.get();
     gemm_args.c = c.get();
 
-    auto gemm_ctx = gemm_exec_ctx_t(ctx, gemm_args);
+    auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
 
     std::unique_ptr<nested_scratchpad_t> ns;
     const auto init_gemm_nested_scratchpad
@@ -1105,62 +1106,62 @@ gemm_sig((simple_rnn_common_t<aprop>::gemm_primitive)) {
         case gemm_iter_fwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_fwd_, rnn_utils::scratch_t::key_gemm_iter_fwd);
-            CHECK(gpu_gemm(gemm_iter_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_fwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_fwd_2:
             init_gemm_nested_scratchpad(gemm_iter_fwd_2_,
                     rnn_utils::scratch_t::key_gemm_iter_fwd_2);
-            CHECK(gpu_gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_fwd_, rnn_utils::scratch_t::key_gemm_layer_fwd);
-            CHECK(gpu_gemm(gemm_layer_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_fwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd_src:
             init_gemm_nested_scratchpad(gemm_layer_fwd_src_,
                     rnn_utils::scratch_t::key_gemm_layer_fwd_src);
-            CHECK(gpu_gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_bwd_, rnn_utils::scratch_t::key_gemm_iter_bwd);
-            CHECK(gpu_gemm(gemm_iter_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_bwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd_2:
             init_gemm_nested_scratchpad(gemm_iter_bwd_2_,
                     rnn_utils::scratch_t::key_gemm_iter_bwd_2);
-            CHECK(gpu_gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_bwd_, rnn_utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd_src:
             init_gemm_nested_scratchpad(gemm_layer_bwd_src_,
                     rnn_utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_iter);
-            CHECK(gpu_gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_layer);
-            CHECK(gpu_gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer_src:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_src_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_layer_src);
-            CHECK(gpu_gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter_2:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_2_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_iter_2);
-            CHECK(gpu_gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
             break;
         default: assert(!"unknown gemm_kind"); return status::runtime_error;
     }
@@ -1723,6 +1724,7 @@ elemwise_sig_gru(simple_rnn_bwd_t::gru_elemwise);
 template struct simple_rnn_common_t<prop_kind::forward>;
 template struct simple_rnn_common_t<prop_kind::backward>;
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

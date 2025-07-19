@@ -24,6 +24,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 #define AOC array_offset_calculator
 
 using namespace dnnl::impl::utils;
@@ -603,6 +604,7 @@ const memory_storage_t &rnn_utils::get_storage(
     return rnn_utils::get_storage(storage.get());
 }
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

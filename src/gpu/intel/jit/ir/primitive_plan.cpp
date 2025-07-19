@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/ir/primitive_plan.hpp"
 
-#include "gpu/intel/jit/conv/zero_out.hpp"
-#include "gpu/intel/jit/reorder/reorder_kernel.hpp"
+#include "gpu/intel/conv/jit/zero_out.hpp"
+#include "gpu/intel/reorder/jit/kernel.hpp"
 
 namespace dnnl {
 namespace impl {

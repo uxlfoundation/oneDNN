@@ -35,8 +35,8 @@
 #include "xpu/sycl/stream_impl.hpp"
 #include "xpu/sycl/stream_profiler.hpp"
 
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/compute/stream.hpp"
 
 #include "gpu/intel/ocl/utils.hpp"
 

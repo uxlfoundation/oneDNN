@@ -17,8 +17,8 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ref_resampling.hpp"
-#include "gpu/intel/vectorized_resampling.hpp"
+#include "gpu/intel/resampling/ref.hpp"
+#include "gpu/intel/resampling/vectorized.hpp"
 #endif
 
 #ifdef GENERIC_SYCL_KERNELS_ENABLED
@@ -36,13 +36,13 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_RESAMPLING_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::ref_resampling_fwd_t)        
+        GPU_INSTANCE_INTEL(intel::resampling::ref_resampling_fwd_t)        
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_resampling_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::vectorized_resampling_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ref_resampling_bwd_t)        
+        GPU_INSTANCE_INTEL(intel::resampling::vectorized_resampling_bwd_t)
+        GPU_INSTANCE_INTEL(intel::resampling::ref_resampling_bwd_t)        
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_resampling_bwd_t)
         nullptr,
     })},

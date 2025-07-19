@@ -21,6 +21,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace dnnl::impl::utils;
 using namespace rnn_utils;
@@ -141,6 +142,7 @@ cell_execution_sig((simple_rnn_common_t<aprop>::cell_execution)) {
 template cell_execution_sig(simple_rnn_fwd_t::cell_execution);
 template cell_execution_sig(simple_rnn_bwd_t::cell_execution);
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

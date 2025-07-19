@@ -20,6 +20,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace dnnl::impl::gpu::intel::gpu_utils;
 using namespace rnn_utils;
@@ -385,6 +386,7 @@ elemwise_sig_gru((simple_rnn_common_t<aprop>::gru_elemwise)) {
 template elemwise_sig_gru(simple_rnn_fwd_t::gru_elemwise);
 template elemwise_sig_gru(simple_rnn_bwd_t::gru_elemwise);
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

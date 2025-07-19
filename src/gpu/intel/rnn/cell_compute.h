@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_RNN_CELL_COMPUTE_H
 #define GPU_INTEL_RNN_CELL_COMPUTE_H
 
-#include "gpu/intel/ocl_conversion.h"
+#include "gpu/intel/include/conversion.h"
 #include "gpu/intel/rnn/common.h"
 
 #if CELL_COMP_ENABLED

@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_JIT_IR_HW_HPP
 #define GPU_INTEL_JIT_IR_HW_HPP
 
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"

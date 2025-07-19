@@ -23,6 +23,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace rnn_utils;
 
@@ -41,6 +42,7 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
         const memory_storage_t *tm_scales, const conf_t &conf,
         const ocl_conf_t &ocl_conf, const rnn_offsets_t &offsets);
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

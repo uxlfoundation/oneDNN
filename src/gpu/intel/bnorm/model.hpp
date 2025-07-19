@@ -16,14 +16,15 @@
 #ifndef GPU_INTEL_BNORM_MODEL_HPP
 #define GPU_INTEL_BNORM_MODEL_HPP
 
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_model {
+namespace bnorm {
+namespace model {
 
 enum data_location_t { HBM, L3, SLM };
 enum mem_operation_t { read, write, atomic };
@@ -118,7 +119,8 @@ struct appr_formula_t {
     appr_alg_t alg;
 };
 
-} // namespace bn_model
+} // namespace model
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -19,7 +19,7 @@
 
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/reorder/normalization.hpp"
+#include "gpu/intel/reorder/jit/normalization.hpp"
 
 namespace dnnl {
 namespace impl {

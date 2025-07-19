@@ -20,7 +20,7 @@
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_impl_list.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"

@@ -17,7 +17,7 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/convolution_deconvolution.hpp"
+#include "gpu/intel/conv/deconvolution.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -53,7 +53,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::convolution_deconvolution_bwd_weights_t)
+        GPU_INSTANCE_INTEL(intel::conv::convolution_deconvolution_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_deconvolution_bwd_data_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_deconvolution_bwd_weights_t)
         GPU_INSTANCE_AMD(amd::miopen_deconvolution_bwd_data_t)

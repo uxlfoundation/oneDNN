@@ -26,7 +26,7 @@
 #include "xpu/ocl/utils.hpp"
 #include "xpu/sycl/engine_impl.hpp"
 
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/kernel.hpp"

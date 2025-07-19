@@ -27,7 +27,7 @@
 #include "xpu/ocl/context.hpp"
 #include "xpu/ocl/stream_impl.hpp"
 
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/ocl/mdapi_utils.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 

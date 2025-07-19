@@ -28,7 +28,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t src_type, data_type_t dst_type, data_type_t acc_type>
 struct ref_reduction_t : public primitive_t {
     struct pd_t : public cpu_reduction_pd_t {
         using cpu_reduction_pd_t::cpu_reduction_pd_t;
@@ -36,16 +35,11 @@ struct ref_reduction_t : public primitive_t {
         DECLARE_COMMON_PD_T("ref:any", ref_reduction_t);
 
         status_t init(engine_t *engine) {
+            using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
+            const auto src_type = src_md(0)->data_type;
+            const auto dst_type = dst_md(0)->data_type;
 
-            VDISPATCH_REDUCTION(
-                    src_type == src_md()->data_type, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_REDUCTION(
-                    dst_type == dst_md()->data_type, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_REDUCTION(acc_type
-                            == types::default_accum_data_type(
-                                    src_type, dst_type),
-                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REDUCTION(platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REDUCTION(platform::has_data_type_support(dst_type),
@@ -75,10 +69,6 @@ struct ref_reduction_t : public primitive_t {
         return status::success;
     }
 
-    using src_t = typename prec_traits_t<src_type>::type;
-    using acc_t = typename prec_traits_t<acc_type>::type;
-    using dst_t = typename prec_traits_t<dst_type>::type;
-
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_ref(ctx);
     }
@@ -87,12 +77,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_ref(const exec_ctx_t &ctx) const;
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
-
-    void accumulate(
-            acc_t &acc, const src_t &src, alg_kind_t alg_kind, float p) const;
-    void finalize(
-            float &acc_f32, alg_kind_t alg, float p, float eps, dim_t n) const;
-    void init_acc(acc_t &acc, alg_kind_t alg) const;
 };
 
 } // namespace cpu

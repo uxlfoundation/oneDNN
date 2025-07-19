@@ -1092,6 +1092,15 @@ public:
                 type.elems(), stride, to_ngen(scalar_type));
         bind(obj, load_rbd);
     }
+    void _visit(const ref_t &obj) override {
+        auto &type = obj.type;
+        auto scalar_type = type.scalar();
+        auto buf_op = eval(obj.var);
+        int off = obj.off;
+        auto load_rbd = buf_op.reg_buf_data().format(
+                off, type.elems(), /*stride=*/1, to_ngen(scalar_type));
+        bind(obj, load_rbd);
+    }
 
     void _visit(const ptr_t &obj) override {
         auto base_op = eval(obj.base);

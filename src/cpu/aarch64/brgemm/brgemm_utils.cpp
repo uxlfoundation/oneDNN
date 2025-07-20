@@ -197,7 +197,14 @@ status_t brgemm_blocking(brgemm_t *brg) {
     set_brg_vmm(brg);
     if (!(brg->is_zmm || brg->is_ymm)) return status::unimplemented;
 
-    const int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
+    int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
+    if (brg->isa_impl == sve_128) {
+        if(brg->is_bf16 || brg->is_f16) {
+            simd_w = 8; 
+        } else if (brg->is_bf32){
+            simd_w = 4;
+        }
+    }
     brg->ld_block = simd_w;
     if (brg->is_bf16){
         brg->ld_block = brg->fmmla_tile_N;
@@ -221,7 +228,14 @@ status_t brgemm_blocking(brgemm_t *brg) {
         max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
     }
 
-    const int min_block = 1;
+    // set unrolling N as 8, which is the same as brg->ld_block.
+    if (is_superset(brg->isa_impl, sve_128) && brg->is_bf16){
+        adj_ld_block2 = calculate_ldb_params(brg, 8);
+        max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2); 
+    }
+
+    // set bd_block to 2 to comply with bfmmal requirements.
+    const int min_block = (brg->is_bf16) ? 2 : 1;
     float best_bd_block_eff = 0.f;
     brg->bd_block = 1;
     for (int bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
@@ -248,7 +262,9 @@ status_t brgemm_blocking(brgemm_t *brg) {
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
     // todo: estimate brg->ldb2 with register constrain and l1 cache size.
-    brg->bdb2 = 1;
+    brg->bd_block2 = 1;
+    brg->bdb2 = brg->bdb / brg->bd_block2;
+    brg->bdb2 = brg->bdb % brg->bd_block2;
 
     const int rd_unroll = 4;
     const int vnni_granularity = data_type_vnni_granularity(brg->dt_a);
@@ -331,10 +347,13 @@ status_t init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa,
     brg->dt_a = brg->is_row_major() ? dt_a : dt_b;
     brg->dt_b = brg->is_row_major() ? dt_b : dt_a;
     CHECK(init_kernel_datatype(brg, brg->dt_a, brg->dt_b));
-
+        
     brg->dt_c = get_accum_datatype(brg);
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
+    
+    brg->is_bgemm = (brg->is_bf16) && (brg->dt_c == data_type::bf16);
+    brg->is_sbgemm = (brg->is_bf16) && (brg->dt_c == data_type::f32);
 
     brg->typesize_A = types::data_type_size(brg->dt_a);
     brg->typesize_B = types::data_type_size(brg->dt_b);

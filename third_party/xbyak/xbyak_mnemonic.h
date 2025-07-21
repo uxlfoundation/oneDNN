@@ -1973,24 +1973,24 @@ void wrfsbase(const Reg32e& r) { opRR(edx, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE)
 void wrgsbase(const Reg32e& r) { opRR(ebx, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE); }
 void ldtilecfg(const Address& addr) { if (opROO(Reg(), addr, tmm0, T_APX|T_0F38|T_W0, 0x49)) return; opVex(tmm0, &tmm0, addr, T_0F38|T_W0, 0x49); }
 void sttilecfg(const Address& addr) { if (opROO(Reg(), addr, tmm0, T_APX|T_66|T_0F38|T_W0, 0x49)) return; opVex(tmm0, &tmm0, addr, T_66|T_0F38 | T_W0, 0x49); }
-void tileloadd(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_F2|T_0F38|T_W0, 0x4B); }
-void tileloaddt1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x4B); }
 void tilerelease() { db(0xc4); db(0xe2); db(0x78); db(0x49); db(0xc0); }
 void tilestored(const Address& addr, const Tmm& tm) { if (opROO(Reg(), addr, tm, T_APX|T_F3|T_0F38|T_W0, 0x4B)) return; opVex(tm, &tmm0, addr, T_F3|T_0F38|T_W0, 0x4B); }
 void tilezero(const Tmm& Tmm) { opVex(Tmm, &tmm0, tmm0, T_F2 | T_0F38 | T_W0, 0x49); }
-void tdpbssd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2 | T_0F38 | T_W0, 0x5e); }
-void tdpbsud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3 | T_0F38 | T_W0, 0x5e); }
-void tdpbusd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66 | T_0F38 | T_W0, 0x5e); }
-void tdpbuud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_0F38 | T_W0, 0x5e); }
-void tdpfp16ps(const Tmm &x1, const Tmm &x2, const Tmm &x3) { opVex(x1, &x3, x2, T_F2 | T_0F38 | T_W0, 0x5c); }
-void tdpbf16ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3 | T_0F38 | T_W0, 0x5c); }
-void tileloaddrs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_F2|T_0F38|T_W0, 0x4A); }
-void tileloaddrst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x4A); }
+void tdpbssd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2|T_0F38|T_W0, 0x5E); }
+void tdpbsud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3|T_0F38|T_W0, 0x5E); }
+void tdpbusd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66|T_0F38|T_W0, 0x5E); }
+void tdpbuud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_0F38|T_W0, 0x5E); }
+void tdpfp16ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2|T_0F38|T_W0, 0x5C); }
+void tdpbf16ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3|T_0F38|T_W0, 0x5C); }
 void tdpbf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_MAP5|T_W0, 0xFD); }
 void tdpbhf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2|T_MAP5|T_W0, 0xFD); }
 void tdphbf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3|T_MAP5|T_W0, 0xFD); }
 void tdphf8ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66|T_MAP5|T_W0, 0xFD); }
-void tmmultf32ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66 | T_0F38 | T_W0, 0x48); }
+void tmmultf32ps(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66|T_0F38|T_W0, 0x48); }
+void tileloadd(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_F2|T_0F38|T_W0, 0x4B); }
+void tileloaddt1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x4B); }
+void tileloaddrs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_F2|T_0F38|T_W0, 0x4A); }
+void tileloaddrst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x4A); }
 #else
 void jcxz(std::string label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }
 void jcxz(const Label& label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }

@@ -1887,7 +1887,7 @@ private:
 	static const uint64_t T_0F3A = 1ull << 10;
 	static const uint64_t T_MAP5 = 1ull << 11;
 	static const uint64_t T_L1 = 1ull << 12;
-	static const uint64_t T_W0 = 1ull << 13;
+	static const uint64_t T_W0 = 1ull << 13; // T_EW0 = T_W0
 	static const uint64_t T_W1 = 1ull << 14;
 	static const uint64_t T_EW1 = 1ull << 16;
 	static const uint64_t T_YMM = 1ull << 17; // support YMM, ZMM

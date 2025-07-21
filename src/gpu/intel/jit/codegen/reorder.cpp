@@ -620,6 +620,26 @@ layout_t reorder_impl_t::make_compact_layout(
     return {type, layout.ndims(), 0, blocks, /*do_normalize=*/false};
 }
 
+type_t reorder_impl_t::intermediate_data_type(
+        const type_t &s, const type_t &d) const {
+    // Force up-/down-convert of small types
+    if (s.is_fp4() || d.is_fp4()) return type_t::f16();
+    // int4 -> fp16 has special conversion paths
+    if (s.is_x4() && (d.is_f16() || d.is_bf16())) return d;
+    if (d.is_x4() && (s.is_f16() || s.is_bf16())) return s;
+    if (s.is_u4() || d.is_u4()) return type_t::u16();
+    if (s.is_s4() || d.is_s4()) return type_t::s16();
+
+    if (s == d) return d; // Swizzle only
+    if (s.is_fp8() || d.is_fp8()) return type_t::f16();
+
+    if (d.size() > 4) return s;
+    if (s.size() > 4) return d;
+    if (d.size() < 2) return s;
+    if (s.size() < 2) return d;
+    return s.bitsize() > d.bitsize() ? d : s;
+}
+
 void reorder_impl_t::emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,
         const reorder_operand_t &src) {
     int src_stride, dst_stride;

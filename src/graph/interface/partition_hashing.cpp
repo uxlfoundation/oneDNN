@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,14 +32,7 @@ key_t::key_t(const impl::engine_t *engine,
         const std::vector<const logical_tensor_t *> &outs)
     : ops_(get_raw_ptrs(ops))
     , nthread_(dnnl_get_max_threads())
-    // Here we use engine as a member of partition_hashing key_t, because for
-    // CPU engine and nativa runtime, the engine_id is nullptr for all engine
-    // instances. The compiled partition would be hit under different engine
-    // instances. For example, first compile with engine 1 -> execute with
-    // engine1 -> second compile with engine 2 (cache hit) -> execute with
-    // engine 2(fail). So we need to use engine as a member of key_t to avoid
-    // execution crash.
-    , engine_(engine)
+    , engine_id_(engine->engine_id())
     , thread_id_(std::this_thread::get_id()) {
     ins_.reserve(ins.size());
     outs_.reserve(outs.size());
@@ -68,7 +61,7 @@ bool key_t::operator==(const key_t &rhs) const {
 
     bool ret = true && lhs_num_ops == rhs_num_ops && lhs_num_ins == rhs_num_ins
             && lhs_num_outs == rhs_num_outs && nthread_ == rhs.nthread_
-            && engine_ == rhs.engine_;
+            && engine_id_ == rhs.engine_id_;
     if (!ret) return false;
 
     for (size_t i = 0; i < lhs_num_ops; ++i) {

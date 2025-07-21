@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -227,6 +227,8 @@ public:
         if (!info_.is_initialized()) info_.init(eng, this);
         return info_.c_str();
     }
+
+    graph::status_t reset_engine(const graph::engine_t *e);
 
 private:
     std::shared_ptr<graph::compiled_partition_impl_t> pimpl_;

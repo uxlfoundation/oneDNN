@@ -277,7 +277,7 @@ public:
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
             const std::vector<inplace_pair_t> &inplace_pairs)
-        : engine_(&engine)
+        : engine_(const_cast<engine_t *>(&engine))
         , inputs_(inputs)
         , outputs_(outputs)
         , inplace_pairs_(inplace_pairs) {};
@@ -288,6 +288,8 @@ public:
 
     /// The getters for engine_, which is used in C API implementation
     const engine_t *get_engine() const { return engine_; }
+
+    virtual status_t reset_engine(const engine_t *engine) = 0;
 
     /// The getters for inputs_, which is used in verbose mode
     const std::vector<logical_tensor_t> &get_inputs() const { return inputs_; }
@@ -373,7 +375,7 @@ protected:
     /// The engine which this compiled_partition_impl_t is specialized
     /// for. Should directly store the engine that is given when calling
     /// partition_impl_t::compile
-    const engine_t *engine_;
+    engine_t *engine_;
 
     /// The inputs logical tensors which this compiled_partition_impl_t
     /// is specialized for.Should have exact shape/dtype/layout and be

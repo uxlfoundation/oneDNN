@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,12 +40,27 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_runtime_dim_mask : s.runtime_dim_mask) {
-        const prb_t prb(s.prb_dims, i_sdt, i_ddt, i_stag, i_dtag, i_strides,
-                i_oflag, i_cross_engine, i_runtime_dim_mask, i_attr, i_ctx_init,
+        prb_t prb(s.prb_dims, i_sdt, i_ddt, i_stag, i_dtag, i_strides, i_oflag,
+                i_cross_engine, i_runtime_dim_mask, i_attr, i_ctx_init,
                 i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
-        task_executor.submit(prb, s.perf_template, createit, checkit, doit);
+        if (bench_list) {
+            bool done = false;
+            while (!done) {
+                task_executor.submit(
+                        prb, s.perf_template, createit, checkit, doit);
+                auto res = task_executor.results_[prb.str()].back();
+                if (res.impl_name.substr(0, 3) == "ref") done = true;
+                if (res.state == res_state_t::SKIPPED) {
+                    done = true;
+                    task_executor.results_[prb.str()].pop_back();
+                }
+                prb.impl_filter.emplace_back(res.impl_name);
+            }
+        } else {
+            task_executor.submit(prb, s.perf_template, createit, checkit, doit);
+        }
     }
 }
 
@@ -173,7 +189,7 @@ int bench(int argc, char **argv) {
     }
 
     task_executor.flush();
-
+    benchdnn_stat.recommendation = task_executor.get_list_recommendation();
     return parse_last_argument();
 }
 

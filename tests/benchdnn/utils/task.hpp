@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2023-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -91,6 +92,10 @@ struct task_t {
 
         return report();
     }
+
+    res_t res() { return res_; }
+
+    prb_t prb() { return prb_; }
 
 private:
     prb_t prb_;

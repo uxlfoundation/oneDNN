@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -96,6 +97,7 @@ extern bool canonical;
 extern bool mem_check;
 extern bool attr_same_pd_check;
 extern bool check_ref_impl;
+extern bool bench_list;
 extern std::string skip_impl; /* empty or "" means skip nothing */
 extern std::string driver_name;
 
@@ -144,6 +146,7 @@ struct stat_t {
     std::unordered_map<std::string, double[timer::timer_t::mode_t::n_modes]> ms;
     // Key is the number of the test, value is the repro string.
     std::map<int, std::string> failed_cases;
+    std::string recommendation;
 };
 extern stat_t benchdnn_stat;
 

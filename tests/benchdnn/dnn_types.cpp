@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -951,7 +952,8 @@ std::ostream &dump_global_params(std::ostream &s) {
         s << "--cold-cache=" << cold_cache_input << " ";
     if (canonical || execution_mode != execution_mode_t::direct)
         s << "--execution-mode=" << execution_mode2str(execution_mode) << " ";
-
+    if (canonical || bench_list)
+        s << "--test-list=" << bool2str(bench_list) << " ";
     return s;
 }
 

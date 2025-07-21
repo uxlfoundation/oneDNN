@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1563,6 +1564,18 @@ static bool parse_execution_mode(
     return parsed;
 }
 
+static bool parse_bench_list(
+        const char *str, const std::string &option_name = "bench-list") {
+    static const std::string help
+            = "Instructs the driver to test "
+              "the implementation list";
+    const std::string pattern = parser_utils::get_pattern(option_name, false);
+    if (!parser_utils::option_matched(pattern, str)) return false;
+    bench_mode = bench_mode_t::perf;
+    bench_list = true;
+    return true;
+}
+
 bool parse_bench_settings(const char *str) {
     last_parsed_is_problem = false; // if start parsing, expect an option
 
@@ -1588,7 +1601,8 @@ bool parse_bench_settings(const char *str) {
             || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
-            || parse_verbose(str) || parse_execution_mode(str);
+            || parse_verbose(str) || parse_execution_mode(str)
+            || parse_bench_list(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

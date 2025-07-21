@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,6 +34,7 @@ struct impl_filter_t {
     const std::vector<std::string> &get_names() const { return impl_names_; }
     bool use_impl() const { return use_impl_; }
     bool respect_global_filter() const { return respect_global_filter_; }
+    void emplace_back(std::string &name) { impl_names_.emplace_back(name); }
 
 private:
     std::vector<std::string> impl_names_;

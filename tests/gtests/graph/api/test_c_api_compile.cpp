@@ -741,9 +741,19 @@ TEST(CAPI, CompileConv2DSumConv2D) {
                       *(compiled_partition + 1), &num_inplace_pairs,
                       &inplace_pairs),
             dnnl_success);
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (engine == dnnl_gpu) {
+        EXPECT_EQ(num_inplace_pairs,
+                0U); // Convolutional operator W/O sum supports in-place operation.
+    } else {
+        EXPECT_EQ(num_inplace_pairs,
+                1U); // Convolutional operator W/ sum supports in-place operation.
+    }
+#else
     EXPECT_EQ(num_inplace_pairs,
             1U); // Convolutional operator W/ sum supports in-place operation.
-
+#endif
     COMPILE_CONV2D_SUM_CONV2D_DESTROY_PLUS;
 #undef COMPILE_CONV2D_SUM_CONV2D_DESTROY
 #undef COMPILE_CONV2D_SUM_CONV2D_DESTROY_PLUS
@@ -1000,14 +1010,7 @@ TEST(CAPI, CompileSumConv2DStridedBN) {
                       *(compiled_partition + 1), &num_inplace_pairs,
                       &inplace_pairs),
             dnnl_success);
-// Blocked layout is supported on intel gpu only, so here we will get one
-// in-place pair on gpu of other vendors
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
-        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     EXPECT_EQ(num_inplace_pairs, 0U);
-#else
-    EXPECT_EQ(num_inplace_pairs, engine == dnnl_gpu ? 1U : 0U);
-#endif
 
     COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY_PLUS;
 #undef COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY

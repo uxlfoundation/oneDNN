@@ -476,6 +476,7 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
            quant
              | (u8/s8)
     */
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *g_eng = get_engine();
@@ -2330,7 +2331,17 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
     const auto &post_ops = fusion_info.get_post_ops();
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (engine.kind() == graph::engine_kind::gpu) {
+        ASSERT_EQ(post_ops.size(), 0U);
+    } else {
+        ASSERT_EQ(post_ops.size(), 1U);
+    }
+
+#else
     ASSERT_EQ(post_ops.size(), 1U);
+#endif
 }
 
 TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
@@ -2486,5 +2497,15 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
     const auto &post_ops = fusion_info.get_post_ops();
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (engine.kind() == graph::engine_kind::gpu) {
+        ASSERT_EQ(post_ops.size(), 0U);
+    } else {
+        ASSERT_EQ(post_ops.size(), 1U);
+    }
+
+#else
     ASSERT_EQ(post_ops.size(), 1U);
+#endif
 }

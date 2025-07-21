@@ -523,6 +523,29 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
     if (can_2d_c) *tags++ = kcatalog::ReqBlock2DC;
 
+    // Modify base params, used for mandatory conversion.
+    auto mod_match = [&](MatchParams &params, bool has_mode,
+                             const char *(*match)(Type)) {
+        if (!has_mode) return;
+        if (match(problem_.Ta)) {
+            params.selector.precisions[0] = match(problem_.Ta);
+        }
+        if (match(problem_.Tb)) {
+            params.selector.precisions[1] = match(problem_.Tb);
+        }
+    };
+
+    // Workaround limited attribute support with int8 dynamic quant,
+    // upconvert to f16.
+    mod_match(base,
+            ((asc_dims >= 2 || bsc_dims >= 2) && ao_dims > -1
+                    && problem_.Ta_ext.isInt8() && problem_.Tb_ext.isInt8()
+                    && problem_.Tc.isFP()),
+            [](Type dt) -> const char * {
+                if (dt.isInt8()) return "[OH]";
+                return nullptr;
+            });
+
     match_params.push_back(base);
 
     bool fpmath_tf32 = mode & mode_tf32;

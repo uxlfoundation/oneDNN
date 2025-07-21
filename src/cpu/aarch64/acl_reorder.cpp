@@ -100,16 +100,6 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     VDISPATCH_REORDER_IC(format_tag::undef != src_tag,
             "Only ab, ba or cdba source formats supported");
 
-    // TODO: We need this check as ACL validation is currently broken.
-    // We can remove this once the fix is released and we bump the
-    // min supported version to ACL v53.
-    auto dst_tag = memory_desc_matches_one_of_tag(*dst_md, format_tag::BA8b4a,
-            format_tag::BA4b4a, format_tag::Ab4a, format_tag::Ab8a,
-            format_tag::Acdb8a, format_tag::Acdb4a);
-    VDISPATCH_REORDER_IC(format_tag::undef != dst_tag,
-            "Only Ab4a/Ab8a, BA8b4a/BA4b4a and Acdb8a/Acdb4a "
-            "destination formats supported");
-
     auto &transpose = _pd->app_.transpose;
     auto &dst_blocking = dst_md->format_desc.blocking;
 
@@ -133,6 +123,10 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         transpose = src_dense_idx != dst_dense_idx;
     }
 
+    // Return unimplemented for non-transposed reorders for now
+    // as they are faster in JIT for most cases.
+    VDISPATCH_REORDER_IC(transpose, "non-transposed reorders are not supported");
+
     auto &dst_wf = _pd->app_.dst_wf;
 
     VDISPATCH_REORDER_IC(
@@ -144,13 +138,11 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     for (int i = 0; i < dst_blocking.inner_nblks; i++) {
         auto blk = dst_blocking.inner_blks[i];
         if (i == 0) {
-            auto offset = dst_blocking.inner_nblks == 1 ? interleave_offset
-                                                        : block_by_offset;
+            auto offset = interleave_offset;
             dst_wf = (arm_compute::WeightFormat)(
                     static_cast<long int>(dst_wf) + offset * (blk - 1));
         } else if (i == 1) {
-            auto offset = dst_blocking.inner_nblks == 1 ? block_by_offset
-                                                        : interleave_offset;
+            auto offset = block_by_offset;
             // Set block_by
             dst_wf = (arm_compute::WeightFormat)(
                     static_cast<long int>(dst_wf) + offset * (blk - 1));

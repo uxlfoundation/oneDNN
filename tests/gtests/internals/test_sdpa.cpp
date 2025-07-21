@@ -270,10 +270,12 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
     sycl_queue.fill<uint8_t>(handle, 0xFF, desc2.get_size());
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void *mapped_ptr = nullptr;
-    CHECK(dnnl_memory_map_data(mem2, &mapped_ptr));
-    memset(mapped_ptr, 0xFF, desc2.get_size());
-    CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
+    if (desc2.get_size()) {
+        void *mapped_ptr = nullptr;
+        CHECK(dnnl_memory_map_data(mem2, &mapped_ptr));
+        memset(mapped_ptr, 0xFF, desc2.get_size());
+        CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
+    }
 #endif
 
     auto out = memory(desc, eng, handle);

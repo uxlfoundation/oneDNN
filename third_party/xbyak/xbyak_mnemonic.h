@@ -1995,6 +1995,10 @@ void t2rpntlvwz0(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_0F38|T_
 void t2rpntlvwz0t1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_0F38|T_W0, 0x6F); }
 void t2rpntlvwz1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x6E); }
 void t2rpntlvwz1t1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_0F38|T_W0, 0x6F); }
+void t2rpntlvwz0rs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_MAP5|T_W0, 0xF8); }
+void t2rpntlvwz0rst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_MAP5|T_W0, 0xF9); }
+void t2rpntlvwz1rs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_MAP5|T_W0, 0xF8); }
+void t2rpntlvwz1rst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_MAP5|T_W0, 0xF9); }
 #else
 void jcxz(std::string label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }
 void jcxz(const Label& label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }

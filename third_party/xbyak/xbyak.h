@@ -1941,19 +1941,16 @@ private:
 		}
 		db(code);
 	}
-	// Allow YMM embedded rounding for AVX10.2 to minimize flag modifications
-	bool verifySAE(const Reg& r, const Reg& b, uint64_t type) const
+	void verifySAE(const Reg& r, uint64_t type) const
 	{
-		if (((type & T_SAE_X) && (r.isYMM() && b.isXMM())) || ((type & T_SAE_Y) && b.isXMM()) || ((type & T_SAE_Z) && b.isYMM())) return true;
-		if (((type & T_SAE_X) && b.isXMM()) || ((type & T_SAE_Y) && b.isYMM()) || ((type & T_SAE_Z) && b.isZMM())) return false;
-		XBYAK_THROW_RET(ERR_SAE_IS_INVALID, false)
+		if (((type & T_SAE_X) && r.isXMM()) || ((type & T_SAE_Y) && r.isYMM()) || ((type & T_SAE_Z) && r.isZMM())) return;
+		XBYAK_THROW(ERR_SAE_IS_INVALID)
 	}
-	bool verifyER(const Reg& r, const Reg& b, uint64_t type) const
+	void verifyER(const Reg& r, uint64_t type) const
 	{
-		if ((type & T_ER_R) && b.isREG(32|64)) return false;
-		if (((type & T_ER_X) && (r.isYMM() && b.isXMM())) || ((type & T_ER_Y) && b.isXMM()) || ((type & T_ER_Z) && b.isYMM())) return true;
-		if (((type & T_ER_X) && b.isXMM()) || ((type & T_ER_Y) && b.isYMM()) || ((type & T_ER_Z) && b.isZMM())) return false;
-		XBYAK_THROW_RET(ERR_SAE_IS_INVALID, false)
+		if ((type & T_ER_R) && r.isREG(32|64)) return;
+		if (((type & T_ER_X) && r.isXMM()) || ((type & T_ER_Y) && r.isYMM()) || ((type & T_ER_Z) && r.isZMM())) return;
+		XBYAK_THROW(ERR_ER_IS_INVALID)
 	}
 	// (a, b, c) contains non zero two or three values then err
 	int verifyDuplicate(int a, int b, int c, int err)
@@ -1981,13 +1978,11 @@ private:
 		int rounding = verifyDuplicate(reg.getRounding(), base.getRounding(), v ? v->getRounding() : 0, ERR_ROUNDING_IS_ALREADY_SET);
 		int disp8N = 1;
 		if (rounding) {
-			bool isUzero = false;
 			if (rounding == EvexModifierRounding::T_SAE) {
-				isUzero = verifySAE(reg, base, type); LL = 0;
+					verifySAE(base, type); LL = 0;
 			} else {
-				isUzero = verifyER(reg, base, type); LL = rounding - 1;
+					verifyER(base, type); LL = rounding - 1;
 			}
-			if (isUzero) U = 0; // avx10.2 Evex.U
 			b = true;
 		} else {
 			if (v) VL = (std::max)(VL, v->getBit());

@@ -1992,7 +1992,7 @@ private:
 		} else {
 			if (v) VL = (std::max)(VL, v->getBit());
 			VL = (std::max)((std::max)(reg.getBit(), base.getBit()), VL);
-			LL = (VL == 512) ? 2 : (VL == 256) ? 1 : 0;
+			LL = (VL >= 512 /* tmm */) ? 2 : (VL == 256) ? 1 : 0;
 			if (b) {
 				disp8N = ((type & T_B16) == T_B16) ? 2 : (type & T_B32) ? 4 : 8;
 			} else if ((type & T_NX_MASK) == T_DUP) {

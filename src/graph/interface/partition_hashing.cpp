@@ -33,6 +33,8 @@ key_t::key_t(const impl::engine_t *engine,
     : ops_(get_raw_ptrs(ops))
     , nthread_(dnnl_get_max_threads())
     , engine_id_(engine->engine_id())
+    , allocator_(
+              *reinterpret_cast<graph::allocator_t *>(engine->get_allocator()))
     , thread_id_(std::this_thread::get_id()) {
     ins_.reserve(ins.size());
     outs_.reserve(outs.size());
@@ -61,7 +63,7 @@ bool key_t::operator==(const key_t &rhs) const {
 
     bool ret = true && lhs_num_ops == rhs_num_ops && lhs_num_ins == rhs_num_ins
             && lhs_num_outs == rhs_num_outs && nthread_ == rhs.nthread_
-            && engine_id_ == rhs.engine_id_;
+            && engine_id_ == rhs.engine_id_ && allocator_ == rhs.allocator_;
     if (!ret) return false;
 
     for (size_t i = 0; i < lhs_num_ops; ++i) {

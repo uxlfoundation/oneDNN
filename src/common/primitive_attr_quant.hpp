@@ -210,6 +210,12 @@ struct quant_entries_t : public c_compatible {
     }
     dim_t get_group(int arg, int d) const { return get(arg).get_group(d); }
 
+    bool is_host_scalar() const {
+        for (const auto &e : entries_) {
+            if (e.second.is_host_scalar()) return true;
+        }
+        return false;
+    }
     bool is_host_scalar(int arg) const { return get(arg).is_host_scalar(); }
 
     bool operator==(const quant_entries_t &rhs) const {

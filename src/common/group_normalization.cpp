@@ -169,6 +169,12 @@ status_t group_normalization_attr_check(const group_normalization_desc_t &desc,
                 const int mask = attr->scales_.get_mask(arg);
                 VCHECK_GNORM_UNIMPL(mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_GNORM_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                        !attr->scales_.is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

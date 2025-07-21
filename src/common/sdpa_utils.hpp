@@ -119,11 +119,23 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
             const auto &scale_dt = sc.get_data_type(DNNL_ARG_WEIGHTS);
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
                     vs_attr, "scales", "f16, bf16, or f32");
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       !sc.is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         if (!zp.has_default_values()) {
             const auto &zp_dt = zp.get_data_type(DNNL_ARG_WEIGHTS);
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(zp_dt, s4, u4, u8, s8, s32),
                     vs_attr, "zero_points", "u4, s4, u8, s8, or s32");
+
+            // By default, host scalar zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       !zp.is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
         }
     }
 

@@ -146,6 +146,12 @@ status_t ip_attr_check(const inner_product_desc_t &desc, const engine_t *engine,
             VCHECK_IP_UNIMPL(IMPLICATION(!sc.has_default_values(DNNL_ARG_DST),
                                      sc.get_mask(DNNL_ARG_DST) == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_IP_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !sc.is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

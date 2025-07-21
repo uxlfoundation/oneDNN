@@ -131,6 +131,13 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                 VCHECK_SOFTMAX_UNIMPL(
                         mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SOFTMAX_UNIMPL(
+                    IMPLICATION(engine->kind() == engine_kind::gpu,
+                            !attr->scales_.is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

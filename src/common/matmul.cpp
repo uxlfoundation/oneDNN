@@ -103,6 +103,12 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     if (!attr->scales_.has_default_values()) {
         const auto &sc = attr->scales_;
 
+        // By default, host scalar scales are not supported for GPU
+        // as the value should be accessed differently in the kernel
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !sc.is_host_scalar()),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
         dim_t src_scale_group_k = 1;
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
@@ -188,6 +194,12 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // Check zero points
     if (!attr->zero_points_.has_default_values()) {
         const auto &zp = attr->zero_points_;
+
+        // By default, host scalar zero points are not supported for GPU
+        // as the value should be accessed differently in the kernel
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !zp.is_host_scalar()),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
 
         dim_t src_zero_point_group_k = 1;
         if (!zp.has_default_values(DNNL_ARG_SRC)) {

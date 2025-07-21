@@ -2817,10 +2817,12 @@ private:
 #ifdef XBYAK64
 	void opAMX(const Tmm& t1, const Address& addr, uint64_t type, int code)
 	{
-		// require both base and index
 		Address addr2 = addr.cloneNoOptimize();
-		const RegExp exp = addr2.getRegExp();
-		if (exp.getBase().getBit() == 0 || exp.getIndex().getBit() == 0) XBYAK_THROW(ERR_NOT_SUPPORTED)
+		// require both base and index for all but opcode 0x49 (ldtilecfg/sttilecfg)
+		if (code != 0x49) {
+			const RegExp exp = addr2.getRegExp();
+			if (exp.getBase().getBit() == 0 || exp.getIndex().getBit() == 0) XBYAK_THROW(ERR_NOT_SUPPORTED)
+		}
 		if (opROO(Reg(), addr2, t1, T_APX|type, code)) return;
 		opVex(t1, &tmm0, addr2, type, code);
 	}

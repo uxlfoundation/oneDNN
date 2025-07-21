@@ -1144,15 +1144,23 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (as.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
-            // Check if there's a arg with pre-defined mask in `attr_args`...
-            int args_mask = attr_args.get_mask(DNNL_ARG_ATTR_SCALES | arg_name);
-            // If it's non-default, use it, otherwise, deduce it.
-            int mask = args_mask != attr_args_t::undefined_mask
-                    ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+            if (e.policy == policy_t::COMMON_V2) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_host_scale(
+                        dnnl_attr, arg_name, e.dt));
+                continue;
+            } else {
+                // Check if there's a arg with pre-defined mask in `attr_args`...
+                int args_mask
+                        = attr_args.get_mask(DNNL_ARG_ATTR_SCALES | arg_name);
+                // If it's non-default, use it, otherwise, deduce it.
+                int mask = args_mask != attr_args_t::undefined_mask
+                        ? args_mask
+                        : attr_t::policy2mask(arg_name, e.policy, ndims);
 
-            DNN_SAFE_V(dnnl_primitive_attr_set_scales(dnnl_attr, arg_name, mask,
-                    static_cast<int>(e.groups.size()), e.groups.data(), e.dt));
+                DNN_SAFE_V(dnnl_primitive_attr_set_scales(dnnl_attr, arg_name,
+                        mask, static_cast<int>(e.groups.size()),
+                        e.groups.data(), e.dt));
+            }
         }
     }
 

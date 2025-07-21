@@ -999,6 +999,12 @@ public:
                 auto src0_op = eval(obj.a, a_out_op);
                 auto src1_op = eval(obj.b, b_out_op);
 
+                if ((src0_op.is_reg_buf_data()
+                            && src0_op.reg_buf_data().hs() != 0)
+                        || (src1_op.is_reg_buf_data()
+                                && src1_op.reg_buf_data().hs() != 0))
+                    mod.setExecSize(obj.type.elems());
+
                 ebinary(obj, mod, dst_op, src0_op, src1_op);
                 break;
             }

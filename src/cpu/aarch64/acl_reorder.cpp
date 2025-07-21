@@ -125,7 +125,8 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
 
     // Return unimplemented for non-transposed reorders for now
     // as they are faster in JIT for most cases.
-    VDISPATCH_REORDER_IC(transpose, "non-transposed reorders are not supported");
+    VDISPATCH_REORDER_IC(
+            transpose, "non-transposed reorders are not supported");
 
     auto &dst_wf = _pd->app_.dst_wf;
 

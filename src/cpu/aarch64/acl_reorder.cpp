@@ -74,14 +74,6 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
 
     VDISPATCH_REORDER_IC(ok, "unsupported datatype");
 
-    if (!attr->scales_.has_default_values(DNNL_ARG_DST)) {
-        int mask = attr->scales_.get_mask(DNNL_ARG_DST);
-        const memory_desc_wrapper input_d(src_md);
-        VDISPATCH_REORDER_IC(
-                !(input_d.has_runtime_dims_or_strides() && mask > 0),
-                "unsupported strides or masks");
-    }
-
     // Create and check primitive descriptor
     auto _pd = make_unique_pd<pd_t>(
             attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
@@ -93,7 +85,7 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     // In case we have two or four dimensions, we can't have one of the
     // two first dimensions as 1. This is valid for f32->f32 and f32->bf16.
     VDISPATCH_REORDER_IC(dst_md->dims[0] != 1 && dst_md->dims[1] != 1,
-            "first two dimensions cannot be 1");
+            "first two dimensions of the reorder being 1 is not supported");
 
     auto src_tag = memory_desc_matches_one_of_tag(
             *src_md, format_tag::ab, format_tag::ba, format_tag::cdba);
@@ -112,9 +104,10 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         VDISPATCH_REORDER_IC(
                 memory_desc_matches_tag(*src_md, dnnl::impl::format_tag::cdba)
                         && (memory_desc_matches_one_of_tag(*dst_md,
-                                dnnl::impl::format_tag::Acdb4a,
-                                dnnl::impl::format_tag::Acdb8a)),
-                "unsupported memory format");
+                                    dnnl::impl::format_tag::Acdb4a,
+                                    dnnl::impl::format_tag::Acdb8a)
+                                != format_tag::undef),
+                VERBOSE_UNSUPPORTED_TAG);
         transpose = true;
     } else {
         int src_dense_idx = find_innermost_dense_idx(src_md);
@@ -125,12 +118,13 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
 
     // Return unimplemented for non-transposed reorders for now
     // as they are faster in JIT for most cases.
-    VDISPATCH_REORDER_IC(transpose, "non-transposed reorders are not supported");
+    VDISPATCH_REORDER_IC(
+            transpose, "non-transposed reorders are not supported");
 
     auto &dst_wf = _pd->app_.dst_wf;
 
     VDISPATCH_REORDER_IC(
-            dst_blocking.inner_nblks <= 2, "unsupported blocking format");
+            dst_blocking.inner_nblks <= 2, VERBOSE_UNSUPPORTED_TAG);
     // Offsets to calculate the enum for ComputeLibrary weight formats
     // defined in arm_compute/core/CoreTypes.h
     const auto interleave_offset = 0x000100;
@@ -168,6 +162,8 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
                 acl_tensor_shape_out = arm_compute::TensorShape(
                         dst_md->padded_dims[1], dst_md->padded_dims[0]);
             } else {
+                VINFO(primitive, create, dispatch, reorder,
+                        "Unsupported source tag for 2D reorder");
                 return status::unimplemented;
             }
         } break;
@@ -183,7 +179,11 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
                     dst_md->padded_dims[1], dst_md->padded_dims[0]);
             break;
         }
-        default: return status::unimplemented;
+        default: {
+            VINFO(primitive, create, dispatch, reorder,
+                    VERBOSE_UNSUPPORTED_TAG);
+            return status::unimplemented;
+        }
     }
 
     // Choose the data layout

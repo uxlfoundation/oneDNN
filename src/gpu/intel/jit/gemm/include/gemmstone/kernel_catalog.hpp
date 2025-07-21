@@ -87,8 +87,13 @@ struct Selector {
 
     friend bool operator<(const Selector &sel1, const Selector &sel2) {
         auto tupleize = [](const Selector &sel) {
+            bool compoundA = sel.precisions[0][0] == '[';
+            bool compoundB = sel.precisions[1][0] == '[';
             return std::make_tuple(sel.hw,
-                                   sel.precisions[0][0] & 0x1F, sel.precisions[1][0] & 0x1F,
+                                   sel.precisions[0][0] & 0x1F,
+                                   compoundA ? sel.precisions[0][1] & 0x1F : 'a',
+                                   sel.precisions[1][0] & 0x1F,
+                                   compoundB ? sel.precisions[1][1] & 0x1F : 'b',
                                    sel.layouts[0][0], sel.layouts[1][0]);
         };
         return tupleize(sel1) < tupleize(sel2);

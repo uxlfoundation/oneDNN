@@ -1971,11 +1971,6 @@ void rdfsbase(const Reg32e& r) { opRR(eax, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE)
 void rdgsbase(const Reg32e& r) { opRR(ecx, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE); }
 void wrfsbase(const Reg32e& r) { opRR(edx, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE); }
 void wrgsbase(const Reg32e& r) { opRR(ebx, r, T_F3|T_0F|T_ALLOW_DIFF_SIZE, 0xAE); }
-void ldtilecfg(const Address& addr) { opAMX(tmm0, addr, T_0F38|T_W0, 0x49); }
-void sttilecfg(const Address& addr) { opAMX(tmm0, addr,  T_66|T_0F38|T_W0, 0x49); }
-void tilestored(const Address& addr, const Tmm& tm) { opAMX(tm, addr, T_F3|T_0F38|T_W0, 0x4B); }
-void tilerelease() { db(0xc4); db(0xe2); db(0x78); db(0x49); db(0xc0); }
-void tilezero(const Tmm& Tmm) { opVex(Tmm, &tmm0, tmm0, T_F2 | T_0F38 | T_W0, 0x49); }
 void tdpbssd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F2|T_0F38|T_W0, 0x5E); }
 void tdpbsud(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_F3|T_0F38|T_W0, 0x5E); }
 void tdpbusd(const Tmm& x1, const Tmm& x2, const Tmm& x3) { opVex(x1, &x3, x2, T_66|T_0F38|T_W0, 0x5E); }
@@ -2001,6 +1996,12 @@ void t2rpntlvwz0rs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_MAP5|
 void t2rpntlvwz0rst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_MAP5|T_W0, 0xF9); }
 void t2rpntlvwz1rs(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_MAP5|T_W0, 0xF8); }
 void t2rpntlvwz1rst1(const Tmm& tm, const Address& addr) { opAMX(tm, addr, T_66|T_MAP5|T_W0, 0xF9); }
+void ldtilecfg(const Address& addr) { opAMX(tmm0, addr, T_0F38|T_W0, 0x49); }
+void sttilecfg(const Address& addr) { opAMX(tmm0, addr,  T_66|T_0F38|T_W0, 0x49); }
+void tilestored(const Address& addr, const Tmm& tm) { opAMX(tm, addr, T_F3|T_0F38|T_W0, 0x4B); }
+void tilerelease() { db(0xc4); db(0xe2); db(0x78); db(0x49); db(0xc0); }
+void tilezero(const Tmm& t) { opVex(t, &tmm0, tmm0, T_F2|T_0F38|T_W0, 0x49); }
+void tconjtfp16(const Tmm& t1, const Tmm& t2) { opVex(t1, 0, t2, T_66|T_0F38|T_W0, 0x6B); }
 #else
 void jcxz(std::string label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }
 void jcxz(const Label& label) { db(0x67); opJmp(label, T_SHORT, 0xe3, 0, 0); }

@@ -27,7 +27,7 @@
 namespace NGEN_NAMESPACE {
 
 template <HW hw> class OpenCLCodeGenerator;
-template <HW hw> class L0CodeGenerator;
+template <HW hw> class LevelZeroCodeGenerator;
 
 // Exceptions.
 #ifdef NGEN_SAFE

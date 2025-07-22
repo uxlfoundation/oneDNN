@@ -17,9 +17,9 @@
 #include "gpu/intel/sycl/utils.hpp"
 
 #include "gpu/intel/compute/ukernels.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/l0/utils/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
-#include "gpu/intel/sycl/l0/utils.hpp"
 #include "xpu/ocl/engine_factory.hpp"
 #include "xpu/ocl/utils.hpp"
 #include "xpu/sycl/compat.hpp"
@@ -31,6 +31,53 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
+
+// FIXME: Currently SYCL doesn't provide any API to get device UUID so
+// we query it directly from Level0 with the zeDeviceGetProperties function.
+// The `get_device_uuid` function packs 128 bits of the device UUID, which are
+// represented as an uint8_t array of size 16, to 2 uint64_t values.
+xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
+    return gpu::intel::l0::get_device_uuid(
+            xpu::sycl::compat::get_native<ze_device_handle_t>(dev));
+}
+
+bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs) {
+    auto lhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(lhs);
+    auto rhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(rhs);
+
+    return lhs_ze_handle == rhs_ze_handle;
+}
+
+status_t sycl_create_kernels_with_level_zero(
+        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
+        const std::vector<const char *> &kernel_names,
+        const gpu::intel::sycl::engine_t *sycl_engine,
+        const xpu::binary_t &binary) {
+    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(
+            sycl_engine->device());
+    auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
+            sycl_engine->context());
+    ze_module_handle_t ze_module = nullptr;
+    std::vector<ze_kernel_handle_t> ze_kernels;
+
+    gpu::intel::l0::create_kernels(
+            ze_device, ze_ctx, kernel_names, binary, &ze_module, ze_kernels);
+
+    ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
+            = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
+                    ::sycl::bundle_state::executable>(
+                    {ze_module}, sycl_engine->context());
+
+    sycl_kernels.resize(kernel_names.size());
+    for (size_t i = 0; i < kernel_names.size(); i++) {
+        if (kernel_names[i] == nullptr) continue;
+        auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
+                {kernel_bundle, ze_kernels[i]}, sycl_engine->context());
+        sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
+    }
+
+    return status::success;
+}
 
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range) {
@@ -150,7 +197,6 @@ status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev) {
     }
 
     *ocl_dev = d;
-
     return status::success;
 }
 
@@ -217,10 +263,10 @@ status_t get_kernel_binary(
             auto l0_kernel = ::sycl::get_native<
                     ::sycl::backend::ext_oneapi_level_zero>(kernel);
             size_t binary_size = 0;
-            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
+            CHECK(gpu::intel::l0::func_zeGetKernelBinary(
                     l0_kernel, &binary_size, nullptr));
             binary.resize(binary_size);
-            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
+            CHECK(gpu::intel::l0::func_zeGetKernelBinary(
                     l0_kernel, &binary_size, binary.data()));
 #else
             auto bundle = kernel.get_kernel_bundle();
@@ -229,10 +275,10 @@ status_t get_kernel_binary(
             auto module = module_vec[0];
             size_t module_binary_size;
             xpu::binary_t module_binary;
-            CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
+            CHECK(gpu::intel::l0::func_zeModuleGetNativeBinary(
                     module, &module_binary_size, nullptr));
             module_binary.resize(module_binary_size);
-            CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
+            CHECK(gpu::intel::l0::func_zeModuleGetNativeBinary(
                     module, &module_binary_size, module_binary.data()));
             {
                 std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>

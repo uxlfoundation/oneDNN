@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,6 +37,10 @@
 #include "xpu/sycl/engine_factory.hpp"
 #endif
 
+#ifdef DNNL_WITH_LEVEL_ZERO
+#include "gpu/intel/l0/engine_factory.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 
@@ -59,6 +63,10 @@ static inline std::unique_ptr<engine_factory_t> get_engine_factory(
 #ifdef DNNL_WITH_SYCL
     if (runtime_kind == runtime_kind::sycl)
         return xpu::sycl::get_engine_factory(kind);
+#endif
+#ifdef DNNL_WITH_LEVEL_ZERO
+    if (runtime_kind == runtime_kind::l0)
+        return gpu::intel::l0::get_engine_factory(kind);
 #endif
     return nullptr;
 }

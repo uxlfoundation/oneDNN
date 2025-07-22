@@ -32,6 +32,9 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "oneapi/dnnl/dnnl_ze.hpp"
+#endif
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "oneapi/dnnl/dnnl_threadpool.h"
@@ -84,6 +87,11 @@ bool is_sycl_engine(const dnnl_engine_t &engine) {
 
 bool is_opencl_engine(const dnnl_engine_t &engine) {
     if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL;
+    return false;
+}
+
+bool is_ze_engine(const dnnl_engine_t &engine) {
+    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE;
     return false;
 }
 
@@ -1143,6 +1151,16 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto ze_dev = dnnl::ze_interop::get_device(eng);
+    ze_device_properties_t ze_dev_props;
+    auto status = zeDeviceGetProperties(ze_dev, &ze_dev_props);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    ram_size = (size_t)ze_dev_props.maxMemAllocSize;
+    max_alloc_size = (size_t)ze_dev_props.maxMemAllocSize;
+    return OK;
 #else
     assert(!"unsupported GPU runtime");
 #endif
@@ -1750,6 +1768,14 @@ engine_t::engine_t(const engine_t &other) : is_owner_(other.is_owner_) {
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_device(other.engine_, &dev));
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(other.engine_, &ctx));
         DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine_, dev, ctx));
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        ze_driver_handle_t drv;
+        ze_device_handle_t dev;
+        ze_context_handle_t ctx;
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_driver(other.engine_, &drv));
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_device(other.engine_, &dev));
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_context(other.engine_, &ctx));
+        DNN_SAFE_V(dnnl_ze_interop_engine_create(&engine_, drv, dev, ctx));
 #else
         assert(!"unsupported GPU runtime");
 #endif

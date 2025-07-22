@@ -26,6 +26,11 @@
 #include "gpu/intel/sycl/utils.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "gpu/intel/ze/engine.hpp"
+#include "gpu/intel/ze/utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -64,6 +69,11 @@ bool mayiuse_microkernels(const engine_t *engine) {
             case runtime_kind::sycl:
                 return sycl::mayiuse_microkernels(
                         utils::downcast<const sycl::engine_t *>(engine));
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+            case runtime_kind::ze:
+                return utils::downcast<const ze::engine_t *>(engine)
+                        ->mayiuse_microkernels();
 #endif
             default: return false;
         }

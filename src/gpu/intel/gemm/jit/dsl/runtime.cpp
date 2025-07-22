@@ -155,4 +155,18 @@ cl_kernel make_kernel(
 }
 #endif
 
+#ifdef GEMMSTONE_WITH_LEVEL_ZERO_RUNTIME
+std::pair<ze_module_handle_t, ze_kernel_handle_t> make_kernel(
+        const GEMMKernelDesc &desc, ze_context_handle_t context,
+        ze_device_handle_t device) {
+    if (desc.strategy.isDSLGenerator) {
+        generator_dsl_desc_t dsl_desc(
+                desc.problem, desc.strategy, desc.iface, desc.options);
+        auto dsl_kernel = make_kernel(dsl_desc);
+        return dsl::make_kernel(dsl_kernel, context, device);
+    }
+    stub();
+}
+#endif
+
 GEMMSTONE_NAMESPACE_END

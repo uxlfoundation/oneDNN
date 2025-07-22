@@ -237,6 +237,7 @@ private:
 
     int initialize_memory_create_sycl(const handle_info_t &handle_info);
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
+    int initialize_memory_create_ze(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
     // `prefill` is a flag that controls whether the underlying memory buffer

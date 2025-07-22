@@ -1132,9 +1132,10 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // 0.75f is taken randomly and is subject to change in future.
     const double capacity_factor = 0.75;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
+    // Note: there used to be a separate limit for combined memory pool, however
+    // it didn't work even at 0.80 point due to, likely, system memory
+    // requirements. Use same limit for combined cpu and pure cpu cases.
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
-    // Note: used to be 0.90 until large f64 conv cases on Xe2-LPG emerged.
-    const double benchdnn_combined_limit = 0.80 * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {
@@ -1232,11 +1233,9 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // for the library and for the reference paths.
     // If the problem runs on a device, the combined memory represents potential
     // requirement for integrated devices that use CPU pool for both memories.
-    // The second case has higher limit because TODO:<the_reason>.
     size_t cpu_and_device_size
             = total_size_cpu + check_mem_size_args.total_size_device;
-    bool fits_cpu_ram = cpu_and_device_size
-            <= (is_cpu() ? benchdnn_cpu_limit : benchdnn_combined_limit);
+    bool fits_cpu_ram = cpu_and_device_size <= benchdnn_cpu_limit;
 
     // Save the expected value to set at `doit`, otherwise, the check doesn't
     // work correctly. See `zmalloc_expected_size` comment.

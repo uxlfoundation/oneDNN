@@ -36,6 +36,7 @@ const char *dnnl_runtime2str(unsigned runtime) {
         case DNNL_RUNTIME_OCL: return "OpenCL";
         case DNNL_RUNTIME_THREADPOOL: return "threadpool";
         case DNNL_RUNTIME_SYCL: return "SYCL";
+        case DNNL_RUNTIME_ZE: return "Level Zero";
         default: return "unknown";
     }
 }

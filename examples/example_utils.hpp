@@ -39,6 +39,9 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "dnnl_sycl.hpp"
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "oneapi/dnnl/dnnl_ze.hpp"
+#endif
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 
@@ -235,7 +238,7 @@ inline void read_from_dnnl_memory(
         return;
     }
 #endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         void *mapped_ptr = mem.map_data();
         if (mapped_ptr) std::memcpy(handle, mapped_ptr, size);
@@ -295,7 +298,7 @@ inline void write_to_dnnl_memory(
         return;
     }
 #endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         void *mapped_ptr = mem.map_data(buffer_index);
         if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);

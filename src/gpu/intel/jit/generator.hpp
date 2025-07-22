@@ -43,6 +43,12 @@
 #include "ngen_opencl.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "gpu/intel/ze/engine.hpp"
+#include "gpu/intel/ze/kernel.hpp"
+#include "ngen_level_zero.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -90,6 +96,11 @@ template <gpu_gen_t hw>
 using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+template <gpu_gen_t hw>
+using ngen_code_generator_t = ngen::LevelZeroCodeGenerator<hw>;
+#endif
+
 void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
         const intel::engine_t *engine);
 
@@ -125,6 +136,16 @@ public:
         auto ocl_kernel = ngen_code_generator_t<hw>::getKernel(
                 ocl_engine->context(), ocl_engine->device());
         return ocl::kernel_t::make(kernel, ocl_kernel, {});
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        auto *ze_engine = utils::downcast<const ze::engine_t *>(engine);
+        auto ze_module_kernel = ngen_code_generator_t<hw>::getModuleAndKernel(
+                ze_engine->context(), ze_engine->device());
+        auto ze_module_ptr
+                = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
+                        ze_module_kernel.first);
+        return ze::kernel_t::make(
+                kernel, ze_module_ptr, ze_module_kernel.second, kernel_name());
 #endif
     }
 };

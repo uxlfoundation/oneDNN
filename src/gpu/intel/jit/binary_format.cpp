@@ -45,6 +45,9 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#define FORWARD(hw) NGEN_FORWARD_LEVEL_ZERO(hw)
+#endif
 
 namespace dnnl {
 namespace impl {

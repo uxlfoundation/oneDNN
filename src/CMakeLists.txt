@@ -135,7 +135,7 @@ if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE")
     add_subdirectory(gpu)
 endif()
 
-if(DNNL_WITH_SYCL OR DNNL_GPU_RUNTIME STREQUAL "OCL")
+if(DNNL_WITH_SYCL OR DNNL_GPU_RUNTIME MATCHES "^(OCL|ZE)$")
     add_subdirectory(xpu)
 endif()
 
@@ -153,6 +153,12 @@ endif()
 
 if(ONEDNN_BUILD_GRAPH)
     message(STATUS "Graph component is enabled")
+
+    if (DNNL_GPU_RUNTIME STREQUAL "ZE")
+        message(FATAL_ERROR "Graph API does not support ZE GPU runtime. "
+            "Either disable Graph API with ONEDNN_BUILD_GRAPH=OFF or change "
+            "GPU runtime to OCL/SYCL.")
+    endif()
 
     if (NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND NOT DNNL_GPU_VENDOR STREQUAL "INTEL" AND NOT DNNL_GPU_VENDOR STREQUAL "NVIDIA")
         message(FATAL_ERROR "Graph API does not support ${DNNL_GPU_VENDOR} GPU. "

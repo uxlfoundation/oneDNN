@@ -2725,35 +2725,35 @@ typedef struct {
 ///
 /// Query kind                      | Type of query result
 /// --------------------------------|-----------------------------
-/// dnnl_query_*_engine             | #dnnl_engine_t *
-/// #dnnl_query_primitive_kind      | #dnnl_primitive_kind_t *
-/// dnnl_query_*_s32                | int *
-/// dnnl_query_*_s64                | #dnnl_dim_t * (same as int64_t *)
-/// dnnl_query_*_f32                | float *
-/// dnnl_query_*_f64                | double *
-/// dnnl_query_*_str                | const char **
-/// dnnl_query_*_md                 | #const_dnnl_memory_desc_t *
-/// dnnl_query_*_pd                 | #const_dnnl_primitive_desc_t *
-/// dnnl_query_cache_blob_id        | const uint8_t **
-/// dnnl_query_strides              | const #dnnl_dims_t **
-/// dnnl_query_dilations            | const #dnnl_dims_t **
-/// dnnl_query_padding_l            | const #dnnl_dims_t **
-/// dnnl_query_padding_r            | const #dnnl_dims_t **
-/// dnnl_query_flags                | unsigned *
-/// dnnl_query_alg_kind             | #dnnl_alg_kind_t *
-/// dnnl_query_factors              | const float **
-/// dnnl_query_cell_kind            | #dnnl_alg_kind_t *
-/// dnnl_query_direction            | #dnnl_rnn_direction_t *
-/// dnnl_query_activation_kind      | #dnnl_alg_kind_t *
-/// dnnl_query_kernel               | const #dnnl_dims_t **
-/// dnnl_query_dims                 | const #dnnl_dims_t **
-/// dnnl_query_data_type            | #dnnl_data_type_t *
-/// dnnl_query_padded_dims          | const #dnnl_dims_t **
-/// dnnl_query_padded_offsets       | const #dnnl_dims_t **
-/// dnnl_query_format_kind          | #dnnl_format_kind_t *
-/// dnnl_query_inner_blks           | const #dnnl_dims_t **
-/// dnnl_query_inner_idxs           | const #dnnl_dims_t **
-/// dnnl_query_sparse_encoding      | #dnnl_sparse_encoding_t *
+/// dnnl_query_*_engine             | `#dnnl_engine_t *`
+/// #dnnl_query_primitive_kind      | `#dnnl_primitive_kind_t *`
+/// dnnl_query_*_s32                | `int *`
+/// dnnl_query_*_s64                | `#dnnl_dim_t *` (same as `int64_t *`)
+/// dnnl_query_*_f32                | `float *`
+/// dnnl_query_*_f64                | `double *`
+/// dnnl_query_*_str                | `const char **`
+/// dnnl_query_*_md                 | `#const_dnnl_memory_desc_t *`
+/// dnnl_query_*_pd                 | `#const_dnnl_primitive_desc_t *`
+/// dnnl_query_cache_blob_id        | `const uint8_t **`
+/// dnnl_query_strides              | `const #dnnl_dims_t **`
+/// dnnl_query_dilations            | `const #dnnl_dims_t **`
+/// dnnl_query_padding_l            | `const #dnnl_dims_t **`
+/// dnnl_query_padding_r            | `const #dnnl_dims_t **`
+/// dnnl_query_flags                | `unsigned *`
+/// dnnl_query_alg_kind             | `#dnnl_alg_kind_t *`
+/// dnnl_query_factors              | `const float **`
+/// dnnl_query_cell_kind            | `#dnnl_alg_kind_t *`
+/// dnnl_query_direction            | `#dnnl_rnn_direction_t *`
+/// dnnl_query_activation_kind      | `#dnnl_alg_kind_t *`
+/// dnnl_query_kernel               | `const #dnnl_dims_t **`
+/// dnnl_query_dims                 | `const #dnnl_dims_t **`
+/// dnnl_query_data_type            | `#dnnl_data_type_t *`
+/// dnnl_query_padded_dims          | `const #dnnl_dims_t **`
+/// dnnl_query_padded_offsets       | `const #dnnl_dims_t **`
+/// dnnl_query_format_kind          | `#dnnl_format_kind_t *`
+/// dnnl_query_inner_blks           | `const #dnnl_dims_t **`
+/// dnnl_query_inner_idxs           | `const #dnnl_dims_t **`
+/// dnnl_query_sparse_encoding      | `#dnnl_sparse_encoding_t *`
 ///
 /// @note
 ///     Rule of thumb: all opaque types and structures are returned by

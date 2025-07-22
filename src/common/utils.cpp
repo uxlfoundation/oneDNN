@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -291,7 +291,8 @@ std::string get_jit_profiling_jitdumpdir() {
 
 bool is_destroying_cache_safe() {
 #if defined(_WIN32) \
-        && (defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL)
+        && (defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0 \
+                || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL)
     // The ntdll.dll library is located in system32, therefore setting
     // additional environment is not required.
     HMODULE handle = LoadLibraryExA(

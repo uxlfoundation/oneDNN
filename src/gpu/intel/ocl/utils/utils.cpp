@@ -23,7 +23,7 @@
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "xpu/ocl/utils.hpp"
 
 #ifndef CL_KERNEL_BINARY_PROGRAM_INTEL
@@ -215,69 +215,6 @@ status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, xpu::binary_t &binary) {
     OCL_CHECK(clGetKernelInfo(ocl_kernel, CL_KERNEL_BINARY_PROGRAM_INTEL,
             binary.size(), binary.data(), nullptr));
     return status::success;
-}
-
-void debugdump_processed_source(const std::string &source,
-        const std::string &options, const std::string &cl_options) {
-#if defined(__linux__) && defined(DNNL_DEV_MODE)
-    if (get_verbose(verbose_t::debuginfo) >= 10) {
-        auto get_defines = [](const std::string &from) {
-            std::string ret;
-            size_t pos = 0;
-            while (pos < from.length()) {
-                // Find next define argument
-                pos = from.find("-D", pos);
-
-                // Generate argument, quotes are interpreted literally, but
-                // other special shell characters need escaped. Does not
-                // currently handle quotes with the ' character or nested quotes
-                char quote_parity = true;
-                while (pos < from.length()) {
-                    if (quote_parity
-                            && utils::one_of(from[pos], '~', '#', '$', '&', '*',
-                                    '(', ')', '\\', '|', '[', ']', '{', '}',
-                                    ';', '\'', '<', '>', '/', '?', '!')) {
-                        ret += '\\';
-                    }
-                    ret += from[pos];
-                    if (from[pos] == '"') quote_parity ^= true;
-                    if (from[pos] == ' ' && quote_parity) break;
-
-                    pos++;
-                }
-            }
-            return ret;
-        };
-        auto execute_command = [](const std::string &cmd,
-                                       const std::string &stdin) {
-            std::string result;
-            std::array<char, 256> buffer;
-            FILE *pipe = popen(cmd.c_str(), "w");
-            fputs(stdin.c_str(), pipe);
-            if (pipe) {
-                while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-                    result += buffer.data();
-                }
-            }
-            pclose(pipe);
-            return result;
-        };
-
-        // Run utilities to evaluate preprocessor defines and format the file
-        // Theoretically, we can accomplish this task with libclang, but it
-        // seems more work than it is worth. Instead, wrapping this in OCL_DEBUG
-        // so that calls to the system are not included in the default build.
-
-        // Due to the use of a different C preprocessor, warnings should not be
-        // ignored, as they may correspond to a different behavior in the OpenCL
-        // C preprocessor
-        auto o = get_defines(options) + get_defines(cl_options);
-        std::string preprocess_cmd
-                = std::string() + "cpp -P " + o + " | clang-format";
-        execute_command(preprocess_cmd, source);
-        std::cout << "OCL_ARCH_OPTIONS: " << cl_options << std::endl;
-    }
-#endif
 }
 
 status_t get_kernel_arg_types(cl_kernel ocl_kernel,

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,6 +28,9 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "dnnl_ocl.h"
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+#include "dnnl_l0.h"
 #endif
 
 #define COMPLAIN_DNNL_ERROR_AND_EXIT(what, status) \
@@ -160,7 +163,7 @@ static inline void write_to_dnnl_memory(void *handle, dnnl_memory_t mem) {
     }
 #endif
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
     if (eng_kind == dnnl_gpu) {
         void *mapped_ptr = NULL;
         CHECK(dnnl_memory_map_data(mem, &mapped_ptr));

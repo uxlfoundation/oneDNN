@@ -24,7 +24,7 @@
 #include "common/engine.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/sycl/l0/utils.hpp"
+#include "gpu/intel/sycl/utils.hpp"
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA

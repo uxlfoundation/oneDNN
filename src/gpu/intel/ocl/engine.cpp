@@ -31,40 +31,13 @@
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace ocl {
-
-status_t preprocess_headers(stringstream_t &pp_code, const char *code,
-        const compute::kernel_ctx_t &kernel_ctx) {
-    stringstream_t code_stream(code);
-
-    for (std::string line; std::getline(code_stream, line);) {
-        const size_t include_pos = line.find("#include");
-        if (include_pos != std::string::npos) {
-            static constexpr size_t include_len = 8;
-            const size_t first_quote_pos
-                    = line.find("\"", include_pos + include_len);
-            const size_t second_quote_pos
-                    = line.find("\"", first_quote_pos + 1);
-            const size_t kernel_name_len
-                    = second_quote_pos - first_quote_pos - 1;
-            const auto header_name
-                    = line.substr(first_quote_pos + 1, kernel_name_len);
-            const char *header_source
-                    = kernel_ctx.get_custom_header(header_name);
-            if (!header_source) header_source = get_kernel_header(header_name);
-            CHECK(preprocess_headers(pp_code, header_source, kernel_ctx));
-        } else {
-            pp_code << line << std::endl;
-        }
-    }
-    return status::success;
-}
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         cl_device_id dev, cl_context ctx, size_t index,
@@ -331,14 +304,14 @@ status_t engine_t::build_program_from_source(
     // `clCompileProgram` `clBuildProgram` doesn't take headers. Because of
     // that, a manual preprocessing of `include` header directives in the
     // OpenCL kernels is required.
-    CHECK(preprocess_headers(pp_code, code_string, kernel_ctx));
+    CHECK(compute::preprocess_headers(pp_code, code_string, kernel_ctx));
     std::string pp_code_str = pp_code.str();
     const char *pp_code_str_ptr = pp_code_str.c_str();
 
     src = {pp_code_str};
     if (src) { options += " -g -s " + std::string(src.name()); }
 
-    debugdump_processed_source(
+    compute::debugdump_processed_source(
             pp_code_str, options, dev_info->get_cl_ext_options());
 
     auto ctx = context();

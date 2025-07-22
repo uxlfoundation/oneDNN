@@ -17,9 +17,9 @@
 #include "gpu/intel/sycl/utils.hpp"
 
 #include "gpu/intel/compute/ukernels.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/l0/utils/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
-#include "gpu/intel/sycl/l0/utils.hpp"
 #include "xpu/ocl/engine_factory.hpp"
 #include "xpu/ocl/utils.hpp"
 #include "xpu/sycl/compat.hpp"
@@ -31,6 +31,53 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
+
+// FIXME: Currently SYCL doesn't provide any API to get device UUID so
+// we query it directly from Level0 with the zeDeviceGetProperties function.
+// The `get_device_uuid` function packs 128 bits of the device UUID, which are
+// represented as an uint8_t array of size 16, to 2 uint64_t values.
+xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
+    return gpu::intel::l0::get_device_uuid(
+            xpu::sycl::compat::get_native<ze_device_handle_t>(dev));
+}
+
+bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs) {
+    auto lhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(lhs);
+    auto rhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(rhs);
+
+    return lhs_ze_handle == rhs_ze_handle;
+}
+
+status_t sycl_create_kernels_with_level_zero(
+        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
+        const std::vector<const char *> &kernel_names,
+        const gpu::intel::sycl::engine_t *sycl_engine,
+        const xpu::binary_t &binary) {
+    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(
+            sycl_engine->device());
+    auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
+            sycl_engine->context());
+    ze_module_handle_t ze_module = nullptr;
+    std::vector<ze_kernel_handle_t> ze_kernels;
+
+    gpu::intel::l0::create_kernels(
+            ze_device, ze_ctx, kernel_names, binary, &ze_module, ze_kernels);
+
+    ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
+            = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
+                    ::sycl::bundle_state::executable>(
+                    {ze_module}, sycl_engine->context());
+
+    sycl_kernels.resize(kernel_names.size());
+    for (size_t i = 0; i < kernel_names.size(); i++) {
+        if (kernel_names[i] == nullptr) continue;
+        auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
+                {kernel_bundle, ze_kernels[i]}, sycl_engine->context());
+        sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
+    }
+
+    return status::success;
+}
 
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range) {
@@ -150,7 +197,6 @@ status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev) {
     }
 
     *ocl_dev = d;
-
     return status::success;
 }
 
@@ -204,6 +250,31 @@ status_t create_ocl_engine(
     const auto &sycl_ctx = engine->context();
     return create_ocl_engine(ocl_engine, engine->device(), &sycl_ctx);
 }
+
+static status_t get_l0_kernel_binary(
+        const ::sycl::kernel &kernel, xpu::binary_t &binary) {
+    auto bundle = kernel.get_kernel_bundle();
+    auto module_vec
+            = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+                    bundle);
+    auto l0_module = module_vec[0];
+    CHECK(l0::get_module_binary(l0_module, binary));
+
+    std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t> ocl_engine;
+    const auto &devs = kernel.get_context().get_devices();
+    CHECK(create_ocl_engine(&ocl_engine, devs[0]));
+    xpu::ocl::wrapper_t<cl_program> ocl_program;
+    CHECK(xpu::ocl::create_program(
+            ocl_program, ocl_engine->device(), ocl_engine->context(), binary));
+
+    cl_int err;
+    auto name = kernel.get_info<::sycl::info::kernel::function_name>();
+    auto ocl_kernel = xpu::ocl::make_wrapper(
+            xpu::ocl::clCreateKernel(ocl_program, name.c_str(), &err));
+    OCL_CHECK(err);
+    CHECK(gpu::intel::ocl::get_ocl_kernel_binary(ocl_kernel, binary));
+    return status::success;
+}
 #endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 status_t get_kernel_binary(
@@ -212,37 +283,25 @@ status_t get_kernel_binary(
     assert(!devs.empty());
     switch (xpu::sycl::get_backend(devs[0])) {
         case xpu::sycl::backend_t::level0: {
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+            auto l0_kernel = ::sycl::get_native<
+                    ::sycl::backend::ext_oneapi_level_zero>(kernel);
+            CHECK(l0::get_kernel_binary(l0_kernel, binary));
+#else
             CHECK(get_l0_kernel_binary(kernel, binary));
-#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-            {
-                std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
-                        ocl_engine;
-                CHECK(create_ocl_engine(&ocl_engine, devs[0]));
-                xpu::ocl::wrapper_t<cl_program> ocl_program;
-                CHECK(xpu::ocl::create_program(ocl_program,
-                        ocl_engine->device(), ocl_engine->context(), binary));
-
-                cl_int err;
-                auto name = kernel.get_info<
-                        ::sycl::info::kernel::function_name>();
-                auto ocl_kernel
-                        = xpu::ocl::make_wrapper(xpu::ocl::clCreateKernel(
-                                ocl_program, name.c_str(), &err));
-                OCL_CHECK(err);
-                CHECK(gpu::intel::ocl::get_ocl_kernel_binary(
-                        ocl_kernel, binary));
-            }
-#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-            return status::success;
+#endif
+            break;
         }
         case xpu::sycl::backend_t::opencl: {
             auto ocl_kernel
                     = ::sycl::get_native<::sycl::backend::opencl>(kernel);
             CHECK(gpu::intel::ocl::get_ocl_kernel_binary(ocl_kernel, binary));
-            return status::success;
+            break;
         }
         default: return status::runtime_error;
     }
+
+    return status::success;
 }
 
 gpu_utils::device_id_t device_id(const ::sycl::device &dev) {

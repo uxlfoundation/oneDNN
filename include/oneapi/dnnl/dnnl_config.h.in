@@ -82,6 +82,9 @@
 /// DPC++ runtime
 #define DNNL_RUNTIME_DPCPP DNNL_RUNTIME_SYCL
 
+/// L0 runtime
+#define DNNL_RUNTIME_L0 1024u
+
 /// No vendor (corresponding runtime is disabled)
 #define DNNL_VENDOR_NONE 0u
 
@@ -119,7 +122,8 @@
 #endif
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL) \
-        && (DNNL_GPU_RUNTIME != DNNL_RUNTIME_SYCL)
+        && (DNNL_GPU_RUNTIME != DNNL_RUNTIME_SYCL) \
+        && (DNNL_GPU_RUNTIME != DNNL_RUNTIME_L0)
 #error "Unexpected DNNL_GPU_RUNTIME"
 #endif
 #if (DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE \
@@ -144,9 +148,6 @@
 
 // When defined, DPCPP is supported.
 #cmakedefine DNNL_WITH_SYCL
-
-// When defined, Level Zero is supported.
-#cmakedefine DNNL_WITH_LEVEL_ZERO
 
 // When defined, SYCL CUDA backend is used.
 #cmakedefine DNNL_SYCL_CUDA

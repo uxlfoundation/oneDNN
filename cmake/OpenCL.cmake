@@ -22,10 +22,10 @@ if(OpenCL_cmake_included)
 endif()
 set(OpenCL_cmake_included true)
 
-if(DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL")
-    add_definitions(-DCL_TARGET_OPENCL_VERSION=300)
-else()
+if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
+else()
+    add_definitions(-DCL_TARGET_OPENCL_VERSION=300)
 endif()
 
 if(OpenCL_INCLUDE_DIR)

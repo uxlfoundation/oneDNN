@@ -291,7 +291,8 @@ std::string get_jit_profiling_jitdumpdir() {
 
 bool is_destroying_cache_safe() {
 #if defined(_WIN32) \
-        && (defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL)
+        && (defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE \
+                || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL)
     // The ntdll.dll library is located in system32, therefore setting
     // additional environment is not required.
     HMODULE handle = LoadLibraryExA(
@@ -331,7 +332,7 @@ bool is_destroying_cache_safe() {
         // case of OpenCL runtime. There doesn't seem to be a way to distinguish
         // the 2 scenarios from the 3rd one therefore it's always
         // considered unsafe to clean up the cache.
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
         return false;
 #endif
         return true;

@@ -22,7 +22,7 @@ if(OpenCL_cmake_included)
 endif()
 set(OpenCL_cmake_included true)
 
-if(DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL")
+if((DNNL_GPU_SYCL OR DNNL_GPU_RUNTIME STREQUAL "ZE") AND DNNL_GPU_VENDOR STREQUAL "INTEL")
     add_definitions_with_host_compiler(-DCL_TARGET_OPENCL_VERSION=300)
 else()
     add_definitions(-DCL_TARGET_OPENCL_VERSION=120)

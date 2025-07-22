@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2021 Intel Corporation
+# Copyright 2019-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ if(OpenCL_cmake_included)
 endif()
 set(OpenCL_cmake_included true)
 
-if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+if("${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|L0)$")
     message(STATUS "GPU support is enabled (OpenCL)")
 else()
     return()

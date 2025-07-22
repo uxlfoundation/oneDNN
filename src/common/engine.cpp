@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,12 +29,16 @@
 #include "cpu/cpu_engine.hpp"
 #endif
 
+#ifdef DNNL_WITH_SYCL
+#include "xpu/sycl/engine_factory.hpp"
+#endif
+
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "xpu/ocl/engine_factory.hpp"
 #endif
 
-#ifdef DNNL_WITH_SYCL
-#include "xpu/sycl/engine_factory.hpp"
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+#include "gpu/intel/l0/engine_factory.hpp"
 #endif
 
 namespace dnnl {
@@ -42,23 +46,27 @@ namespace impl {
 
 static inline std::unique_ptr<engine_factory_t> get_engine_factory(
         engine_kind_t kind, runtime_kind_t runtime_kind) {
-
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     if (kind == engine_kind::cpu && is_native_runtime(runtime_kind)) {
         return std::unique_ptr<engine_factory_t>(
                 new cpu::cpu_engine_factory_t());
     }
 #endif
-
+#ifdef DNNL_WITH_SYCL
+    if (runtime_kind == runtime_kind::sycl) {
+        return xpu::sycl::get_engine_factory(kind);
+    }
+#endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     if (kind == engine_kind::gpu && runtime_kind == runtime_kind::ocl) {
         return std::unique_ptr<engine_factory_t>(
                 new xpu::ocl::engine_factory_t(kind));
     }
 #endif
-#ifdef DNNL_WITH_SYCL
-    if (runtime_kind == runtime_kind::sycl)
-        return xpu::sycl::get_engine_factory(kind);
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+    if (kind == engine_kind::gpu && runtime_kind == runtime_kind::l0) {
+        return gpu::intel::l0::get_engine_factory(kind);
+    }
 #endif
     return nullptr;
 }

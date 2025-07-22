@@ -35,6 +35,8 @@
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/stream.hpp"
 
+#include "gpu/intel/ocl/utils/utils.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

@@ -26,8 +26,10 @@
 #include "xpu/ocl/context.hpp"
 #include "xpu/ocl/stream_impl.hpp"
 
-#include "gpu/intel/ocl/mdapi_utils.hpp"
 #include "gpu/intel/stream.hpp"
+
+#include "gpu/intel/ocl/mdapi_utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

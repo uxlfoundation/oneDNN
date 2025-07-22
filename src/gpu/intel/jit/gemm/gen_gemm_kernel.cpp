@@ -135,11 +135,14 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
         // consistent with the kernel evaluator (typically requires extra
         // benchmarking data not supplied with the kernel override string)
         // Currently: assume the W model because it's simple
-        aux_params_.k0 = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                strategy_.unroll[LoopK]);
-        aux_params_.wgK = std::max(1,
-                std::min(strategy_.wg[LoopK],
-                        int(utils::div_up(k_, aux_params_.k0))));
+        if (strategy_.wg[LoopK] > 0) {
+            aux_params_.k0
+                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
+                            strategy_.unroll[LoopK]);
+            aux_params_.wgK = std::max(1,
+                    std::min(strategy_.wg[LoopK],
+                            int(utils::div_up(k_, aux_params_.k0))));
+        }
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];

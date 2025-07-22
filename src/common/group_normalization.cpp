@@ -53,7 +53,7 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
     VCHECK_GNORM(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
-    VCHECK_GNORM(any_memory_desc_host_scalar(
+    VCHECK_GNORM(!any_memory_desc_host_scalar(
                          src_desc, dst_desc, diff_src_desc, diff_dst_desc),
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
 

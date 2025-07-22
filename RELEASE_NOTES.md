@@ -38,8 +38,11 @@
 
 ## Graph API
 * Introduced support for tanh approximation in [`GELU`] operation.
+* Extended Graph API [`Softmax`] operation to support optional `stats` output.
+* Introduced support for SDPA training forward propagation and backpropagation.
 
-[`GELU`]: https://uxlfoundation.github.io/oneDNN/dev_guide_op_gelu.html
+[`GELU`]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_op_gelu.html
+[`SoftMax`]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_op_softmax.html
 
 ## Microkernel API
 * Introduced support for `fp8` data type.

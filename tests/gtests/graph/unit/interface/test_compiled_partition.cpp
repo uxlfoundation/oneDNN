@@ -206,7 +206,11 @@ TEST(test_interface_compiled_partition, CacheEngine) {
     ASSERT_EQ(get_compiled_partition_cache_size(), 0);
 #else
     if (get_test_engine_kind() == impl::graph::engine_kind::cpu) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
+        ASSERT_EQ(get_compiled_partition_cache_size(), batch_num);
+#else
         ASSERT_EQ(get_compiled_partition_cache_size(), 1);
+#endif
     } else if (get_test_engine_kind() == impl::graph::engine_kind::gpu) {
         ASSERT_GE(get_compiled_partition_cache_size(), batch_num);
     }

@@ -283,6 +283,11 @@ dnnl_status_t DNNL_API dnnl_brgemm_execute_postops(const_dnnl_brgemm_t brgemm,
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_brgemm_destroy(dnnl_brgemm_t brgemm);
 
+/// @} dnnl_api_ukernel_brgemm
+
+/// @addtogroup dnnl_api_ukernel_transform
+/// @{
+
 /// Creates a transform object.
 ///
 /// @param transform Output transform object.
@@ -325,7 +330,7 @@ dnnl_status_t DNNL_API dnnl_transform_execute(
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_transform_destroy(dnnl_transform_t transform);
 
-/// @} dnnl_api_ukernel_brgemm
+/// @} dnnl_api_ukernel_transform
 
 #endif
 

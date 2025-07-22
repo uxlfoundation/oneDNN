@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,6 +69,11 @@ typedef struct dnnl_brgemm *dnnl_brgemm_t;
 /// A constant brgemm ukernel handle.
 typedef const struct dnnl_brgemm *const_dnnl_brgemm_t;
 
+/// @} dnnl_api_ukernel_brgemm
+
+/// @addtogroup dnnl_api_ukernel_transform
+/// @{
+
 /// @struct dnnl_transform
 /// An opaque structure to describe a transform routine.
 struct dnnl_transform;
@@ -79,7 +84,7 @@ typedef struct dnnl_transform *dnnl_transform_t;
 /// A constant transform routine handle.
 typedef const struct dnnl_transform *const_dnnl_transform_t;
 
-/// @} dnnl_api_ukernel_brgemm
+/// @} dnnl_api_ukernel_transform
 #endif
 
 /// @} dnnl_api_ukernel

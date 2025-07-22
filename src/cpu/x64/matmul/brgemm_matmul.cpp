@@ -179,6 +179,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
         }
+        // This impl doesn't support scales over any batch dimensions.
+        if (!asc.has_default_values(DNNL_ARG_WEIGHTS)) {
+            const auto mask = asc.get_mask(DNNL_ARG_WEIGHTS);
+            const int kn_mask = (1 << (ndims() - 1)) + (1 << (ndims() - 2));
+            const bool scale_over_batch = (mask ^ kn_mask);
+            if (scale_over_batch && batch() > 1) ok = false;
+        }
         // Implementation has limited support w.r.t. scales groups.
         if (!asc.has_default_values(DNNL_ARG_WEIGHTS)) {
             if (!asc.get(DNNL_ARG_WEIGHTS).has_default_groups()) {

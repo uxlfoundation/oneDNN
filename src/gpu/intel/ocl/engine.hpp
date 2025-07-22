@@ -21,6 +21,7 @@
 #include "common/utils.hpp"
 #include "gpu/gpu_impl_list.hpp"
 #include "gpu/intel/engine.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"
 
@@ -29,9 +30,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace ocl {
-
-status_t preprocess_headers(stringstream_t &pp_code, const char *code,
-        const compute::kernel_ctx_t &kernel_ctx);
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         cl_device_id dev, cl_context ctx, size_t index,

@@ -287,7 +287,7 @@ set(DNNL_GPU_RUNTIME "NONE" CACHE STRING
 
     Using OpenCL for GPU requires setting OPENCLROOT if the libraries are
     installed in a non-standard location.")
-if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL)$")
+if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL|L0)$")
     message(FATAL_ERROR "Unsupported GPU runtime: ${DNNL_GPU_RUNTIME}")
 endif()
 

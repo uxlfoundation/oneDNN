@@ -40,6 +40,9 @@
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
 #include "ngen_opencl.hpp"
 #endif
+#ifdef GEMMSTONE_WITH_LEVEL_ZERO_RUNTIME
+#include "ngen_level_zero.hpp"
+#endif
 
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
@@ -1858,6 +1861,54 @@ cl_kernel make_kernel(
     return g.getKernel(ctx, dev);
 
     GEMMSTONE_HW_SWITCH(options.hw().ngen_hw());
+#undef GPU_HW_CASE
+    return {};
+}
+#endif
+#ifdef GEMMSTONE_WITH_LEVEL_ZERO_RUNTIME
+template <ngen::HW hw>
+using l0_gen_t = ir::ir_to_ngen_generator_t<ngen::LevelZeroCodeGenerator<hw>>;
+GEMMSTONE_XELP_ISA(
+        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeLP>>(
+                const stmt_t &body, l0_gen_t<ngen::HW::XeLP> &host,
+                const walk_order_t *kernel_grid_walk_order));
+GEMMSTONE_XEHP_ISA(
+        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHP>>(
+                const stmt_t &body, l0_gen_t<ngen::HW::XeHP> &host,
+                const walk_order_t *kernel_grid_walk_order));
+GEMMSTONE_XEHPG_ISA(
+        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHPG>>(
+                const stmt_t &body, l0_gen_t<ngen::HW::XeHPG> &host,
+                const walk_order_t *kernel_grid_walk_order));
+GEMMSTONE_XEHPC_ISA(
+        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHPC>>(
+                const stmt_t &body, l0_gen_t<ngen::HW::XeHPC> &host,
+                const walk_order_t *kernel_grid_walk_order));
+GEMMSTONE_XE2_ISA(template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::Xe2>>(
+        const stmt_t &body, l0_gen_t<ngen::HW::Xe2> &host,
+        const walk_order_t *kernel_grid_walk_order));
+GEMMSTONE_XE3_ISA(template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::Xe3>>(
+        const stmt_t &body, l0_gen_t<ngen::HW::Xe3> &host,
+        const walk_order_t *kernel_grid_walk_order));
+
+std::pair<ze_module_handle_t, ze_kernel_handle_t> make_kernel(
+        const kernel_t &ir_kernel, ze_context_handle_t ctx,
+        ze_device_handle_t dev) {
+    auto &iface = ir_kernel.iface;
+    auto &options = ir_kernel.options;
+    auto &body = ir_kernel.body;
+    auto &debug_cfg = ir_kernel.debug_cfg;
+
+    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
+            iface, options, body);
+
+#define GPU_HW_CASE(hw) \
+    l0_gen_t<(hw)> g(iface, options, debug_cfg); \
+    g.setInterface(std::move(interface)); \
+    convert_ir_to_ngen(body, g); \
+    return g.getKernel(ctx, dev);
+
+    GPU_HW_SWITCH(options.hw().ngen_hw());
 #undef GPU_HW_CASE
     return {};
 }

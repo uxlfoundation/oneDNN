@@ -93,7 +93,6 @@ public:
 #ifdef DNNL_WITH_SYCL
     void set_deps(::sycl::event event) { e_ = std::move(event); }
 #endif
-
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     void set_deps(cl_event event) { ocl_e_ = event; }
 #endif
@@ -106,7 +105,6 @@ private:
 #ifdef DNNL_WITH_SYCL
     ::sycl::event e_;
 #endif
-
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     cl_event ocl_e_;
 #endif

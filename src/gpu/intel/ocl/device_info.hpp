@@ -22,7 +22,7 @@
 #include <CL/cl.h>
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

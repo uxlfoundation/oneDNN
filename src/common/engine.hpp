@@ -189,6 +189,8 @@ inline runtime_kind_t get_default_runtime(engine_kind_t kind) {
     if (kind == engine_kind::gpu) return runtime_kind::ocl;
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
     if (kind == engine_kind::gpu) return runtime_kind::sycl;
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+    if (kind == engine_kind::gpu) return runtime_kind::l0;
 #endif
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SEQ
     return runtime_kind::seq;

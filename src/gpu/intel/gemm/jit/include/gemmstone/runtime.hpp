@@ -70,5 +70,10 @@ std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc, cl_device_id device
 cl_kernel make_kernel(const GEMMKernelDesc &desc, cl_device_id device, cl_context context);
 #endif
 
+#ifdef GEMMSTONE_WITH_LEVEL_ZERO_RUNTIME
+std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc, ze_device_handle_t device, ze_context_handle_t context);
+std::pair<ze_module_handle_t, ze_kernel_handle_t> make_kernel(const GEMMKernelDesc &desc, ze_device_handle_t device, ze_context_handle_t context);
+#endif
+
 GEMMSTONE_NAMESPACE_END
 #endif

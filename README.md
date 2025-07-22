@@ -279,9 +279,9 @@ Runtime-specific dependencies:
 | `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
 | `ONEDNN_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
 | `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`libtbb.so`)
-| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`)
+| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
 | `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`libOpenCL.so`)
-| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
+| `ONEDNN_GPU_RUNTIME=L0`    | any                           | oneAPI Level Zero loader (`libze_loader.so`)
 
 #### Windows
 
@@ -298,6 +298,7 @@ Runtime-specific dependencies:
 | `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), TBB (`tbb.dll`), OpenCL loader (`OpenCL.dll`)
 | `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`OpenCL.dll`)
 | `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), OpenCL loader (`OpenCL.dll`), oneAPI Level Zero loader (`ze_loader.dll`)
+| `ONEDNN_GPU_RUNTIME=L0`    | any                           | oneAPI Level Zero loader (`ze_loader.dll`)
 
 #### macOS
 

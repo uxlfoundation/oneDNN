@@ -28,7 +28,7 @@
 #include <dlfcn.h>
 #include <vector>
 
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "mdapi/metrics_discovery_api.h"
 
 #ifndef CL_PROFILING_COMMAND_PERFCOUNTERS_INTEL

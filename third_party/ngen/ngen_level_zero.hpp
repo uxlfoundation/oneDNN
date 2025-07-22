@@ -92,12 +92,11 @@ public:
     explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
     LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;
 
-    inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
+    inline std::pair<ze_module_handle_t, ze_kernel_handle_t> getKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
+    bool binaryIsZebin() { return true; }
+
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);
     static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
-
-    static bool binaryIsZebin() { return true; }
-
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -140,7 +139,7 @@ static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t cont
 }; /* namespace detail */
 
 template <HW hw>
-ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
+std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::getKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
 {
     using super = ELFCodeGenerator<hw>;
 
@@ -162,7 +161,12 @@ ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t con
     if (module == nullptr)
         throw level_zero_error{};
 
-    return module;
+    auto kernelName = ELFCodeGenerator<hw>::interface_.getExternalName().c_str();
+    ze_kernel_handle_t kernelL0;
+    ze_kernel_desc_t kernelDesc{ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernelName};
+    detail::handleL0(dynamic::zeKernelCreate(module, &kernelDesc, &kernelL0));
+
+    return std::make_pair(module, kernelL0);
 }
 
 template <HW hw>

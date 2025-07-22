@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_OCL_UTILS_HPP
-#define GPU_INTEL_OCL_UTILS_HPP
+#ifndef GPU_INTEL_OCL_UTILS_UTILS_HPP
+#define GPU_INTEL_OCL_UTILS_UTILS_HPP
 
 #include <string.h>
 #include <string>
@@ -73,4 +73,4 @@ status_t get_ocl_device_enabled_native_float_atomics(
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // GPU_INTEL_OCL_UTILS_UTILS_HPP

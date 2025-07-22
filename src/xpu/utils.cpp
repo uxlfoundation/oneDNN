@@ -94,7 +94,8 @@ void *find_symbol(const char *library_name, const char *symbol) {
         dlclose(handle);
         return nullptr;
     }
-    dlclose(handle);
+    // TODO: this is not working as symbol gets invalidated.
+    // dlclose(handle);
     return symbol_address;
 #endif
 }

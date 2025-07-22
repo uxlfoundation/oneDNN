@@ -23,7 +23,7 @@
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "xpu/ocl/utils.hpp"
 
 #ifndef CL_KERNEL_BINARY_PROGRAM_INTEL

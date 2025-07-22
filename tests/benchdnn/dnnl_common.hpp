@@ -145,6 +145,7 @@ bool is_gpu(const dnnl_engine_t &engine = get_test_engine());
 bool is_async(const dnnl_engine_t &engine = get_test_engine());
 bool is_sycl_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_opencl_engine(const dnnl_engine_t &engine = get_test_engine());
+bool is_ze_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_nvidia_gpu(const dnnl_engine_t &engine = get_test_engine());
 bool is_f64_supported(const dnnl_engine_t &engine = get_test_engine());
 bool is_amd_gpu(const dnnl_engine_t &engine = get_test_engine());

@@ -31,7 +31,7 @@
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/utils.hpp"
 

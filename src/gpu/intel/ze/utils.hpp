@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,47 +14,45 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SYCL_L0_UTILS_HPP
-#define GPU_INTEL_SYCL_L0_UTILS_HPP
+#ifndef GPU_INTEL_ZE_UTILS_HPP
+#define GPU_INTEL_ZE_UTILS_HPP
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "level_zero/ze_intel_gpu.h"
+
+#include "xpu/ze/utils.hpp"
 
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/sycl/compat.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace sycl {
-
-class engine_t;
-
-xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev);
-
-status_t sycl_create_kernels_with_level_zero(
-        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
-        const std::vector<const char *> &kernel_names,
-        const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary);
-
-status_t get_l0_kernel_binary(
-        const ::sycl::kernel &kernel, xpu::binary_t &binary);
-
-bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
+namespace ze {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
         compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
+status_t get_module_binary(
+        const ze_module_handle_t module, xpu::binary_t &binary);
+status_t get_kernel_binary(
+        const ze_kernel_handle_t kernel, xpu::binary_t &binary);
+bool mayiuse_microkernels(const ze_device_handle_t device,
+        const ze_context_handle_t context, const std::string &code);
+status_t compile_ocl_module_to_binary(const ze_device_handle_t device,
+        const ze_context_handle_t context, const std::string &code,
+        const std::string &options, xpu::binary_t &binary);
+status_t create_kernels(const ze_device_handle_t device,
+        const ze_context_handle_t context,
+        const std::vector<const char *> &kernel_names,
+        const xpu::binary_t &binary, ze_module_handle_t *module,
+        std::vector<ze_kernel_handle_t> &kernels);
 
-} // namespace sycl
+} // namespace ze
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_SYCL_L0_UTILS_HPP
+#endif // GPU_INTEL_ZE_UTILS_HPP

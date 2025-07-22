@@ -21,6 +21,7 @@
 #include "common/utils.hpp"
 #include "gpu/gpu_impl_list.hpp"
 #include "gpu/intel/engine.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"
 

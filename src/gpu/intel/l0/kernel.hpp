@@ -29,50 +29,18 @@ namespace gpu {
 namespace intel {
 namespace l0 {
 
-class module_wrapper_t {
-public:
-    module_wrapper_t(ze_module_handle_t module);
-    ~module_wrapper_t();
-    operator ze_module_handle_t() const;
-
-private:
-    ze_module_handle_t module_;
-
-    module_wrapper_t() = delete;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(module_wrapper_t);
-};
-
-class kernel_wrapper_t {
-public:
-    kernel_wrapper_t(
-            const char *kernel_name, const ze_module_handle_t module_ptr);
-    ~kernel_wrapper_t();
-
-    operator ze_kernel_handle_t() const;
-
-    status_t set_arg(int arg_index, size_t arg_size, const void *arg_value);
-    ze_event_handle_t create_out_event(
-            const ze_context_handle_t context_ptr, const bool profiling);
-
-private:
-    ze_kernel_handle_t kernel_;
-    ze_event_pool_handle_t event_pool_;
-    ze_event_handle_t event_;
-
-    kernel_wrapper_t() = delete;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(kernel_wrapper_t);
-};
-
 class kernel_t : public compute::kernel_impl_t {
 public:
     static status_t make(compute::kernel_t &compute_kernel,
             const std::shared_ptr<module_wrapper_t> module_ptr,
-            const ze_kernel_handle_t kernel_ptr);
+            const ze_kernel_handle_t kernel_ptr,
+            const std::string &kernel_name);
     ~kernel_t() override;
 
     status_t check_alignment(
             const compute::kernel_arg_list_t &arg_list) const override;
-    kernel_wrapper_t *get();
+    status_t set_arg(
+            int arg_index, size_t arg_size, const void *arg_value) const;
     status_t parallel_for(impl::stream_t &stream,
             const compute::nd_range_t &range,
             const compute::kernel_arg_list_t &arg_list,
@@ -85,16 +53,15 @@ public:
 private:
     friend class kernel_compat_t;
     kernel_t(const std::shared_ptr<module_wrapper_t> module_ptr,
-            const ze_kernel_handle_t kernel_ptr);
+            const ze_kernel_handle_t kernel_ptr,
+            const std::string &kernel_name);
 
     std::shared_ptr<module_wrapper_t> module_;
-    ze_kernel_handle_t main_kernel_;
+    ze_kernel_handle_t kernel_;
     std::string kernel_name_;
-    xpu::binary_t kernel_binary_;
 
-    utils::rw_mutex_t mutex_;
-    std::unordered_map<std::thread::id, std::unique_ptr<kernel_wrapper_t>>
-            kernels_;
+    std::shared_ptr<ze_event_pool_handle_t> event_pool_;
+    std::shared_ptr<event_wrapper_t> event_;
 
     kernel_t() = delete;
     DNNL_DISALLOW_COPY_AND_ASSIGN(kernel_t);

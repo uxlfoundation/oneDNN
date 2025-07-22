@@ -65,7 +65,8 @@ stream_impl_t::stream_impl_t(unsigned flags, ze_command_list_handle_t list)
     , list_(list)
     , event_pool_(nullptr) {
     func_zeCommandListGetContextHandle(list_, &context_);
-    if (flags & stream_flags::out_of_order) create_event_pool();
+    if (flags & stream_flags::out_of_order || is_profiling_enabled())
+        create_event_pool();
 }
 
 stream_impl_t::stream_impl_t(
@@ -86,7 +87,8 @@ stream_impl_t::stream_impl_t(
     func_zeCommandListCreateImmediate(
             context_, device, &command_queue_desc, &list_);
 
-    if (flags & stream_flags::out_of_order) create_event_pool();
+    if (flags & stream_flags::out_of_order || is_profiling_enabled())
+        create_event_pool();
 }
 
 void stream_impl_t::create_event_pool() {
@@ -98,18 +100,13 @@ void stream_impl_t::create_event_pool() {
         event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
     event_pool_desc.count = 16384;
 
-    func_zeEventPoolCreate(
-            context_, &event_pool_desc, 0, nullptr, &event_pool_);
+    ze_event_pool_handle_t event_pool;
+    func_zeEventPoolCreate(context_, &event_pool_desc, 0, nullptr, &event_pool);
+    event_pool_ = std::make_shared<event_pool_wrapper_t>(event_pool);
 }
 
 stream_impl_t::~stream_impl_t() {
     wait();
-    for (const auto &e : events_) {
-        func_zeEventHostSynchronize(e, UINT64_MAX);
-        func_zeEventDestroy(e);
-    }
-    if (event_pool_) func_zeEventPoolDestroy(event_pool_);
-
     if (allocated_) func_zeCommandListDestroy(list_);
 }
 
@@ -138,7 +135,9 @@ ze_event_handle_t stream_impl_t::get_output_event() const {
     return nullptr;
 }
 
-ze_event_handle_t stream_impl_t::create_event() {
+std::shared_ptr<event_wrapper_t> stream_impl_t::create_event() {
+    if (!event_pool_.get()) return std::make_shared<event_wrapper_t>(nullptr);
+
     ze_event_desc_t event_desc = {};
     event_desc.stype = ZE_STRUCTURE_TYPE_EVENT_DESC;
     event_desc.pNext = nullptr;
@@ -147,11 +146,17 @@ ze_event_handle_t stream_impl_t::create_event() {
     event_desc.wait = ZE_EVENT_SCOPE_FLAG_HOST;
 
     ze_event_handle_t event;
-    func_zeEventCreate(event_pool_, &event_desc, &event);
+    func_zeEventCreate(*(event_pool_.get()), &event_desc, &event);
 
-    events_.push_back(event);
+    std::shared_ptr<event_wrapper_t> event_ptr
+            = std::make_shared<event_wrapper_t>(event);
+    events_.push_back(event_ptr);
 
-    return event;
+    return event_ptr;
+}
+
+std::shared_ptr<event_pool_wrapper_t> stream_impl_t::get_event_pool() {
+    return event_pool_;
 }
 
 ze_command_list_handle_t stream_impl_t::list() {
@@ -173,10 +178,11 @@ status_t stream_impl_t::barrier() {
 status_t stream_impl_t::copy(const impl::memory_storage_t &src,
         const impl::memory_storage_t &dst, size_t size,
         const xpu::event_t &deps, xpu::event_t &out_dep) {
+    if (size == 0) return status::success;
     std::vector<ze_event_handle_t> l0_deps
             = utils::downcast<const event_t *>(&deps)->events_;
 
-    ze_event_handle_t out_event = event_pool_ ? create_event() : nullptr;
+    ze_event_handle_t out_event = *(create_event().get());
     CHECK(func_zeCommandListAppendMemoryCopy(list_, dst.data_handle(),
             src.data_handle(), size, out_event,
             static_cast<uint32_t>(l0_deps.size()),
@@ -189,10 +195,11 @@ status_t stream_impl_t::copy(const impl::memory_storage_t &src,
 
 status_t stream_impl_t::fill(const impl::memory_storage_t &dst, uint8_t pattern,
         size_t size, const xpu::event_t &deps, xpu::event_t &out_dep) {
+    if (size == 0) return status::success;
     std::vector<ze_event_handle_t> l0_deps
             = utils::downcast<const event_t *>(&deps)->events_;
 
-    ze_event_handle_t out_event = event_pool_ ? create_event() : nullptr;
+    ze_event_handle_t out_event = *(create_event().get());
     CHECK(func_zeCommandListAppendMemoryFill(list_, dst.data_handle(), &pattern,
             sizeof(pattern), size, out_event,
             static_cast<uint32_t>(l0_deps.size()),

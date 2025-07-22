@@ -26,70 +26,6 @@ namespace gpu {
 namespace intel {
 namespace l0 {
 
-module_wrapper_t::module_wrapper_t(ze_module_handle_t module)
-    : module_(module) {};
-
-module_wrapper_t::~module_wrapper_t() {
-    func_zeModuleDestroy(module_);
-};
-
-module_wrapper_t::operator ze_module_handle_t() const {
-    return module_;
-}
-
-kernel_wrapper_t::kernel_wrapper_t(
-        const char *kernel_name, const ze_module_handle_t module_ptr)
-    : event_pool_(nullptr), event_(nullptr) {
-    ze_kernel_desc_t kernel_desc = {};
-    kernel_desc.stype = ZE_STRUCTURE_TYPE_KERNEL_DESC;
-    kernel_desc.pNext = nullptr;
-    kernel_desc.flags = 0;
-    kernel_desc.pKernelName = kernel_name;
-
-    func_zeKernelCreate(module_ptr, &kernel_desc, &kernel_);
-}
-
-kernel_wrapper_t::~kernel_wrapper_t() {
-    if (event_) {
-        func_zeEventHostSynchronize(event_, UINT64_MAX);
-        func_zeEventDestroy(event_);
-    }
-    if (event_pool_) func_zeEventPoolDestroy(event_pool_);
-    func_zeKernelDestroy(kernel_);
-}
-
-kernel_wrapper_t::operator ze_kernel_handle_t() const {
-    return kernel_;
-}
-
-status_t kernel_wrapper_t::set_arg(
-        int arg_index, size_t arg_size, const void *arg_value) {
-    return func_zeKernelSetArgumentValue(
-            kernel_, arg_index, arg_size, arg_value);
-}
-
-ze_event_handle_t kernel_wrapper_t::create_out_event(
-        const ze_context_handle_t context_ptr, const bool profiling) {
-    ze_event_pool_desc_t event_pool_desc = {};
-    event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
-    event_pool_desc.pNext = nullptr;
-    event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
-    if (profiling) event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
-    event_pool_desc.count = 1;
-    func_zeEventPoolCreate(
-            context_ptr, &event_pool_desc, 0, nullptr, &event_pool_);
-
-    ze_event_desc_t event_desc = {};
-    event_desc.stype = ZE_STRUCTURE_TYPE_EVENT_DESC;
-    event_desc.pNext = nullptr;
-    event_desc.index = 0;
-    event_desc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
-    event_desc.wait = ZE_EVENT_SCOPE_FLAG_HOST;
-    func_zeEventCreate(event_pool_, &event_desc, &event_);
-
-    return event_;
-}
-
 // This class is to get around std::make_shared requirement to have a public
 // constructor. We keep the original constructor as private but expose it here
 // to use with std::make_shared.
@@ -101,21 +37,18 @@ public:
 
 status_t kernel_t::make(compute::kernel_t &compute_kernel,
         const std::shared_ptr<module_wrapper_t> module_ptr,
-        const ze_kernel_handle_t kernel_ptr) {
-    compute_kernel = compute::kernel_t(
-            std::make_shared<kernel_compat_t>(module_ptr, kernel_ptr));
+        const ze_kernel_handle_t kernel_ptr, const std::string &kernel_name) {
+    compute_kernel = compute::kernel_t(std::make_shared<kernel_compat_t>(
+            module_ptr, kernel_ptr, kernel_name));
     return status::success;
 }
 
 kernel_t::kernel_t(const std::shared_ptr<module_wrapper_t> module_ptr,
-        const ze_kernel_handle_t kernel_ptr)
-    : module_(module_ptr), main_kernel_(kernel_ptr) {
-    l0::get_kernel_name(main_kernel_, kernel_name_);
-    l0::get_kernel_binary(main_kernel_, kernel_binary_);
-}
+        const ze_kernel_handle_t kernel_ptr, const std::string &kernel_name)
+    : module_(module_ptr), kernel_(kernel_ptr), kernel_name_(kernel_name) {}
 
 kernel_t::~kernel_t() {
-    func_zeKernelDestroy(main_kernel_);
+    func_zeKernelDestroy(kernel_);
 }
 
 status_t kernel_t::check_alignment(
@@ -134,22 +67,10 @@ status_t kernel_t::check_alignment(
     return status::success;
 }
 
-kernel_wrapper_t *kernel_t::get() {
-    auto id = std::this_thread::get_id();
-    {
-        utils::lock_read_t lock_read(mutex_);
-        auto it = kernels_.find(id);
-        if (it != kernels_.end()) { return it->second.get(); }
-    }
-
-    // No copy for this thread, clone the original kernel and save the
-    // copy.
-    auto new_kernel = std::unique_ptr<kernel_wrapper_t>(
-            new kernel_wrapper_t(kernel_name_.c_str(), *(module_.get())));
-
-    utils::lock_write_t lock_write(mutex_);
-    auto ret = kernels_.emplace(id, std::move(new_kernel));
-    return ret.first->second.get();
+status_t kernel_t::set_arg(
+        int arg_index, size_t arg_size, const void *arg_value) const {
+    return func_zeKernelSetArgumentValue(
+            kernel_, arg_index, arg_size, arg_value);
 }
 
 status_t kernel_t::parallel_for(impl::stream_t &stream,
@@ -163,7 +84,6 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     auto l0_engine = l0_stream->l0_engine();
     auto l0_device_info = l0_engine->device_info();
 
-    kernel_wrapper_t *kernel = get();
     const size_t pointer_size = l0_device_info->device_address_bits() / 8;
 
     size_t param_bytes = 0;
@@ -184,17 +104,17 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 }
 
                 void *ptr = mem_storage->ptr();
-                CHECK(kernel->set_arg(i, pointer_size, &ptr));
+                CHECK(set_arg(i, pointer_size, &ptr));
                 param_bytes += pointer_size;
             } else {
-                CHECK(kernel->set_arg(i, pointer_size, nullptr));
+                CHECK(set_arg(i, pointer_size, nullptr));
                 param_bytes += pointer_size;
             }
         } else if (arg.is_local()) {
-            CHECK(kernel->set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(i, arg.size(), arg.value()));
             param_bytes += pointer_size;
         } else {
-            CHECK(kernel->set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(i, arg.size(), arg.value()));
             param_bytes += arg.size();
         }
     }
@@ -235,7 +155,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 return status::invalid_arguments;
         }
     } else {
-        CHECK(func_zeKernelSuggestGroupSize(*kernel, global_size[0],
+        CHECK(func_zeKernelSuggestGroupSize(kernel_, global_size[0],
                 global_size[1], global_size[2], &group_size[0], &group_size[1],
                 &group_size[2]));
     }
@@ -248,7 +168,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     }
 
     CHECK(func_zeKernelSetGroupSize(
-            *kernel, group_size[0], group_size[1], group_size[2]));
+            kernel_, group_size[0], group_size[1], group_size[2]));
     ze_group_count_t group_count = {global_size[0] / group_size[0],
             global_size[1] / group_size[1], global_size[2] / group_size[2]};
 
@@ -257,14 +177,11 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     std::vector<ze_event_handle_t> l0_out_deps
             = utils::downcast<const event_t *>(&out_dep)->events_;
 
-    ze_event_handle_t out_event = nullptr;
-    if (stream.flags() & stream_flags::out_of_order
-            || stream.is_profiling_enabled())
-        out_event = kernel->create_out_event(
-                l0_engine->context(), stream.is_profiling_enabled());
+    event_ = l0_stream->create_event();
+    ze_event_handle_t out_event = *(event_.get());
 
-    CHECK(func_zeCommandListAppendLaunchKernel(l0_stream->list(), *kernel,
-            &group_count, out_event, l0_deps.size(),
+    CHECK(func_zeCommandListAppendLaunchKernel(l0_stream->list(), kernel_,
+            &group_count, out_event, static_cast<uint32_t>(l0_deps.size()),
             l0_deps.size() ? l0_deps.data() : nullptr));
 
     if (out_event) l0_out_deps.push_back(out_event);
@@ -277,8 +194,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
 }
 
 status_t kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
-    binary = kernel_binary_;
-    return status::success;
+    return l0::get_kernel_binary(kernel_, binary);
 }
 
 std::string kernel_t::name() const {
@@ -286,8 +202,10 @@ std::string kernel_t::name() const {
 }
 
 status_t kernel_t::dump() const {
-    return gpu::intel::gpu_utils::dump_kernel_binary(
-            kernel_binary_, kernel_name_);
+    xpu::binary_t binary;
+    CHECK(get_kernel_binary(binary));
+
+    return gpu_utils::dump_kernel_binary(binary, kernel_name_);
 }
 
 } // namespace l0

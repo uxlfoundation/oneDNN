@@ -42,7 +42,8 @@ public:
     xpu::context_t &ctx();
     const xpu::context_t &ctx() const;
     ze_event_handle_t get_output_event() const;
-    ze_event_handle_t create_event();
+    std::shared_ptr<event_wrapper_t> create_event();
+    std::shared_ptr<event_pool_wrapper_t> get_event_pool();
 
     ze_command_list_handle_t list();
 
@@ -62,8 +63,8 @@ private:
     bool allocated_;
     ze_command_list_handle_t list_;
 
-    ze_event_pool_handle_t event_pool_;
-    std::list<ze_event_handle_t> events_;
+    std::shared_ptr<event_pool_wrapper_t> event_pool_;
+    std::list<std::shared_ptr<event_wrapper_t>> events_;
 
     mutable utils::thread_local_storage_t<context_t> ctx_;
 
@@ -91,7 +92,12 @@ public:
     ze_event_handle_t get_output_event() const {
         return impl()->get_output_event();
     }
-    ze_event_handle_t create_event() { return impl()->create_event(); }
+    std::shared_ptr<event_wrapper_t> create_event() {
+        return impl()->create_event();
+    }
+    std::shared_ptr<event_pool_wrapper_t> get_event_pool() {
+        return impl()->get_event_pool();
+    }
 
     const ze_command_list_handle_t list() const { return impl()->list(); }
 

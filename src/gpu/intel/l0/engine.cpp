@@ -141,7 +141,8 @@ status_t engine_t::convert_to_l0(
     kernels = std::vector<gpu::intel::compute::kernel_t>(kernel_names.size());
     for (size_t i = 0; i < kernel_names.size(); i++) {
         if (!l0_kernels[i]) continue;
-        CHECK(kernel_t::make(kernels[i], l0_module_ptr, l0_kernels[i]));
+        CHECK(kernel_t::make(
+                kernels[i], l0_module_ptr, l0_kernels[i], kernel_names[i]));
     }
 
     return status::success;
@@ -199,7 +200,7 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
             device(), context(), kernel_names, binary, &l0_module, l0_kernels));
     auto l0_module_ptr = std::make_shared<module_wrapper_t>(l0_module);
 
-    CHECK(kernel_t::make(kernel, l0_module_ptr, l0_kernels[0]));
+    CHECK(kernel_t::make(kernel, l0_module_ptr, l0_kernels[0], kernel_name));
 
     return status::success;
 }

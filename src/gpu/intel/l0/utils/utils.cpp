@@ -518,6 +518,41 @@ status_t func_zeCommandListAppendLaunchKernel(
     return status::success;
 }
 
+event_wrapper_t::event_wrapper_t(ze_event_handle_t event) : event_(event) {}
+
+event_wrapper_t::~event_wrapper_t() {
+    if (event_) {
+        func_zeEventHostSynchronize(event_, UINT64_MAX);
+        func_zeEventDestroy(event_);
+    }
+}
+
+event_wrapper_t::operator ze_event_handle_t() const {
+    return event_;
+}
+
+event_pool_wrapper_t::event_pool_wrapper_t(ze_event_pool_handle_t event_pool)
+    : event_pool_(event_pool) {}
+
+event_pool_wrapper_t::~event_pool_wrapper_t() {
+    if (event_pool_) func_zeEventPoolDestroy(event_pool_);
+}
+
+event_pool_wrapper_t::operator ze_event_pool_handle_t() const {
+    return event_pool_;
+}
+
+module_wrapper_t::module_wrapper_t(ze_module_handle_t module)
+    : module_(module) {};
+
+module_wrapper_t::~module_wrapper_t() {
+    if (module_) func_zeModuleDestroy(module_);
+};
+
+module_wrapper_t::operator ze_module_handle_t() const {
+    return module_;
+}
+
 status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
     ze_device_ip_version_ext_t device_ip_version_ext = {};
     device_ip_version_ext.stype = ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT;
@@ -711,18 +746,19 @@ status_t get_device_index(const ze_device_handle_t device, size_t *index) {
     return status::invalid_arguments;
 }
 
-status_t get_kernel_name(
-        const ze_kernel_handle_t kernel, std::string &kernel_name) {
+std::string get_kernel_name(const ze_kernel_handle_t kernel) {
+    std::string kernel_name;
+
     size_t kernel_name_size = 0;
-    CHECK(func_zeKernelGetName(kernel, &kernel_name_size, nullptr));
+    func_zeKernelGetName(kernel, &kernel_name_size, nullptr);
 
     kernel_name.resize(kernel_name_size, 0);
-    CHECK(func_zeKernelGetName(kernel, &kernel_name_size, &kernel_name[0]));
+    func_zeKernelGetName(kernel, &kernel_name_size, &kernel_name[0]);
 
     // Remove the null terminator as std::string already includes it
     kernel_name.resize(kernel_name_size - 1);
 
-    return status::success;
+    return kernel_name;
 }
 
 status_t get_kernel_binary(

@@ -142,7 +142,7 @@ public:
                         l0_engine->context(), l0_engine->device()));
         auto l0_kernel
                 = ngen_code_generator_t<hw>::getKernel(*(l0_module.get()));
-        return l0::kernel_t::make(kernel, l0_module, l0_kernel);
+        return l0::kernel_t::make(kernel, l0_module, l0_kernel, kernel_name());
 #endif
     }
 };

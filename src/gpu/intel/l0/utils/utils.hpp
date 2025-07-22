@@ -121,6 +121,45 @@ status_t func_zeCommandListAppendLaunchKernel(
         const ze_group_count_t *pLaunchFuncArgs, ze_event_handle_t hSignalEvent,
         uint32_t numWaitEvents, ze_event_handle_t *phWaitEvents);
 
+class event_wrapper_t {
+public:
+    event_wrapper_t(ze_event_handle_t event);
+    ~event_wrapper_t();
+    operator ze_event_handle_t() const;
+
+private:
+    ze_event_handle_t event_;
+
+    event_wrapper_t() = delete;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(event_wrapper_t);
+};
+
+class event_pool_wrapper_t {
+public:
+    event_pool_wrapper_t(ze_event_pool_handle_t event_pool);
+    ~event_pool_wrapper_t();
+    operator ze_event_pool_handle_t() const;
+
+private:
+    ze_event_pool_handle_t event_pool_;
+
+    event_pool_wrapper_t() = delete;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(event_pool_wrapper_t);
+};
+
+class module_wrapper_t {
+public:
+    module_wrapper_t(ze_module_handle_t module);
+    ~module_wrapper_t();
+    operator ze_module_handle_t() const;
+
+private:
+    ze_module_handle_t module_;
+
+    module_wrapper_t() = delete;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(module_wrapper_t);
+};
+
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
         compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
@@ -128,8 +167,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         bool &mayiuse_ngen_kernels);
 xpu::device_uuid_t get_device_uuid(const ze_device_handle_t device);
 status_t get_device_index(const ze_device_handle_t device, size_t *index);
-status_t get_kernel_name(
-        const ze_kernel_handle_t kernel, std::string &kernel_name);
+std::string get_kernel_name(const ze_kernel_handle_t kernel);
 status_t get_kernel_binary(
         const ze_kernel_handle_t kernel, xpu::binary_t &binary);
 status_t create_kernels(const ze_device_handle_t device,

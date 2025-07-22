@@ -357,7 +357,7 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
-    if (this->policy == COMMON) {
+    if (this->policy == COMMON || this->policy == COMMON_V2) {
         float value = 0.0f;
         SAFE(parse_value_and_runtime(
                      value, parser::get_substr(s, start_pos, ':')),
@@ -689,7 +689,8 @@ std::ostream &operator<<(
     using ::operator<<;
 
     s << scale.policy;
-    if (scale.policy == policy_t::COMMON) s << ":" << scale.scale;
+    if (scale.policy == policy_t::COMMON || scale.policy == policy_t::COMMON_V2)
+        s << ":" << scale.scale;
     if (scale.dt != dnnl_f32 || !scale.groups.empty()) s << ':' << scale.dt;
     if (!scale.groups.empty()) s << ":" << dims2str(scale.groups);
     return s;
@@ -703,7 +704,8 @@ std::ostream &operator<<(
     for (const auto &point : zero_points.points) {
         s << delim;
         s << arg2str(point.first) << ":" << point.second.policy;
-        if (point.second.policy == policy_t::COMMON)
+        if (point.second.policy == policy_t::COMMON
+                || point.second.policy == policy_t::COMMON_V2)
             s << ":" << point.second.value;
         if (point.second.dt != dnnl_s32 || !point.second.groups.empty())
             s << ':' << point.second.dt;

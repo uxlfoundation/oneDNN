@@ -71,6 +71,10 @@
 #include "xpu/sycl/verbose.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "xpu/ze/verbose.hpp"
+#endif
+
 #ifdef DNNL_EXPERIMENTAL
 #include "common/experimental.hpp"
 #endif
@@ -116,6 +120,9 @@ void print_header() noexcept {
 #endif
 #ifdef DNNL_WITH_SYCL
             xpu::sycl::print_verbose_header();
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+            xpu::ze::print_verbose_header();
 #endif
 #ifdef ONEDNN_BUILD_GRAPH
             graph::utils::print_verbose_header();

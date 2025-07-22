@@ -10,4 +10,4 @@ oneDNN Concepts
    dev_guide_data_types
    page_cross_engine_reorder_cpp
    dev_guide_c_and_cpp_apis
-   interop_with_dpcpp_and_opencl
+   runtimes_interoperability

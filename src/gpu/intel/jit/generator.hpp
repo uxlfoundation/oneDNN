@@ -43,6 +43,13 @@
 #include "ngen_opencl.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+#include "gpu/intel/l0/engine.hpp"
+#include "gpu/intel/l0/kernel.hpp"
+#include "ngen_level_zero.hpp"
+#include "ngen_opencl.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -80,6 +87,11 @@ template <gpu_gen_t hw>
 using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+template <gpu_gen_t hw>
+using ngen_code_generator_t = ngen::LevelZeroCodeGenerator<hw>;
+#endif
+
 template <gpu_gen_t hw>
 class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
 private:
@@ -115,6 +127,13 @@ public:
         auto ocl_kernel = ngen_code_generator_t<hw>::getKernel(
                 ocl_engine->context(), ocl_engine->device());
         return ocl::kernel_t::make(kernel, ocl_kernel, {});
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+        auto *l0_engine = utils::downcast<const l0::engine_t *>(engine);
+        auto l0_module = ngen_code_generator_t<hw>::getModule(
+                l0_engine->context(), l0_engine->device());
+        auto l0_kernel = ngen_code_generator_t<hw>::getKernel(l0_module);
+        return l0::kernel_t::make(kernel, l0_module, l0_kernel, {});
 #endif
     }
 };

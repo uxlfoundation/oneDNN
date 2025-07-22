@@ -38,6 +38,9 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
+status_t preprocess_headers(stringstream_t &pp_code, const char *code,
+        const compute::kernel_ctx_t &kernel_ctx);
+
 bool try_building(
         cl_context context, cl_device_id device, const char *kernel_code);
 

@@ -35,7 +35,7 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/engine.hpp"
-#include "gpu/intel/sycl/l0/utils.hpp"
+#include "gpu/intel/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

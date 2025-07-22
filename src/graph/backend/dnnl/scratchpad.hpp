@@ -29,6 +29,9 @@
 #ifdef DNNL_WITH_SYCL
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
+#ifdef DNNL_WITH_LEVEL_ZERO
+#include "gpu/intel/l0/context.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -93,7 +96,9 @@ public:
 #ifdef DNNL_WITH_SYCL
     void set_deps(::sycl::event event) { e_ = std::move(event); }
 #endif
-
+#ifdef DNNL_WITH_LEVEL_ZERO
+    void set_deps(ze_event_handle_t event) { e_ = event; }
+#endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     void set_deps(cl_event event) { ocl_e_ = event; }
 #endif
@@ -106,7 +111,9 @@ private:
 #ifdef DNNL_WITH_SYCL
     ::sycl::event e_;
 #endif
-
+#ifdef DNNL_WITH_LEVEL_ZERO
+    ze_event_handle_t e_;
+#endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     cl_event ocl_e_;
 #endif

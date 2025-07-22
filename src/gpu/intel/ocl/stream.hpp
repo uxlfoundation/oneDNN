@@ -29,7 +29,7 @@
 
 #include "gpu/intel/compute/compute_stream.hpp"
 #include "gpu/intel/ocl/mdapi_utils.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

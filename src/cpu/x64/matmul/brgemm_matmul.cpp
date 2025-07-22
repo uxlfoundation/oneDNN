@@ -376,7 +376,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_scale_count = bgmmc_.is_oscale_per_k
             ? (bgmmc_.is_oscale_per_n ? N() * K() : K())
             : N();
-    book_precomputed_scales(scratchpad, attr()->scales_, wei_scale_count);
+    book_precomputed_scales(scratchpad, attr()->scales_, wei_scale_count,
+            /* scale_adjust_factor = */ 1.f, bgmmc_.req_transpose_scales);
 
     return status::success;
 }

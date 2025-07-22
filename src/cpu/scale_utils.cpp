@@ -33,8 +33,8 @@ constexpr size_t scales_simd_w = 16;
 
 void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
         const scales_t &attr_scales, size_t wei_scale_count,
-        float scale_adjust_factor) {
-    if (req_copy_scales(attr_scales, scale_adjust_factor)) {
+        float scale_adjust_factor, bool req_transpose) {
+    if (req_copy_scales(attr_scales, scale_adjust_factor, req_transpose)) {
         const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
         const size_t precomputed_scales_size = wei_mask > 0
                 ? nstl::max(static_cast<size_t>(wei_scale_count), scales_simd_w)
@@ -45,12 +45,16 @@ void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
     }
 }
 
-bool req_copy_scales(const scales_t &attr_scales, float scale_adjust_factor) {
+bool req_copy_scales(const scales_t &attr_scales, float scale_adjust_factor,
+        bool req_transpose) {
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
 
-    return (with_src_scales && with_wei_scales) || scale_adjust_factor != 1.0f
+    return (with_src_scales && with_wei_scales)
+            || scale_adjust_factor != 1.0f
+            // When scales are transposed, it must be handled before the kernel
+            || req_transpose
             || !attr_scales.has_default_data_type(DNNL_ARG_WEIGHTS)
             || !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups();
 }
@@ -80,7 +84,7 @@ const float *precompute_scales(const memory_tracking::grantor_t &scratchpad,
             = (wei_scale_per_ic ? IC : 1) * (wei_scale_per_oc ? OC : 1);
 
     const float *scales = nullptr;
-    if (req_copy_scales(attr_scales, scale_adjust_factor)) {
+    if (req_copy_scales(attr_scales, scale_adjust_factor, req_transpose)) {
         size_t size = 0;
         auto loc_scales
                 = scratchpad.template get<float>(key_precomputed_scales, &size);

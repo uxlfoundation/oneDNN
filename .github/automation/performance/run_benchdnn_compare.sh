@@ -34,23 +34,16 @@ MODE='--mode=P'
 
 read -ra TOKENS <<< "$CMD_STR"
 FINAL_ARGS=()
-if [[ "$CMD_STR" != *"$MODE"* ]]; then
-  FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${MODE}" "${TOKENS[@]:1}")
-else
-  FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${TOKENS[@]:1}")
-fi
+FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${MODE}" "${TOKENS[@]:1}")
+
+echo "Final benchdnn command:"
+printf '%s ' "${FINAL_ARGS[@]}"
+echo
 
 for i in $(seq 1 "$REPS"); do
   echo "Running base iteration $i..."
   OMP_NUM_THREADS="$THREADS" "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
-done
-
-for i in $(seq 1 "$REPS"); do
+  
   echo "Running new iteration $i..."
   OMP_NUM_THREADS="$THREADS" "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
 done
-
-echo "base.txt"
-cat base.txt || echo "base.txt is empty"
-echo "new.txt"
-cat new.txt || echo "new.txt is empty"

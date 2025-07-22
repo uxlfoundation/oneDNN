@@ -98,7 +98,7 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
             )
             continue
 
-        # A test fails if either execution time or creation time:
+        # A test fails if execution time:
         # - shows a statistically significant regression and
         # - shows ≥ 10% slowdown in either median or min times
         exec_regressed = exec_ttest.pvalue <= 0.05 and (
@@ -122,7 +122,7 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
                     f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
                     f"(p={ctime_ttest.pvalue:.3g})"
                 )
-        if not check:
+        else:
             print(
                 f"{prb},{r1_med_exec:.5f},{r2_med_exec:.5f},"
                 f"{r1_med_ctime:.5f},{r2_med_ctime:.5f},"
@@ -167,4 +167,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     compare_two_benchdnn(args.file1, args.file2, check=args.check)
-     

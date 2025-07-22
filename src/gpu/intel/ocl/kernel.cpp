@@ -31,7 +31,7 @@
 
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/stream.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

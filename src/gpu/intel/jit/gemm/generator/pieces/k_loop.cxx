@@ -1118,19 +1118,23 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     auto doSLMRepack = [&](Iteration h) {
         if (slmDequantizeA)
             gemmDequantizeAB(true, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), 0, 0, problem, strategy, state);
-        else
-        if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy))
-            copyRegisters(Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state);
-        else if (slmConvertA(h))
-            convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
+        else{
+            if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy)){
+                if(Ta_ext.isF4()) zeroMatrix(Ao_regs(h), strategy);
+                copyRegisters(Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state);
+            } else if (slmConvertA(h))
+                convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
+        }
 
         if (slmDequantizeB)
             gemmDequantizeAB(false, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), 0, 0, problem, strategy, state);
-        else
-        if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy))
-            copyRegisters(Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state);
-        else if (slmConvertB(h))
-            convert(Bi_regs(h), Tb_ext, Tb, strategy, state);
+        else{
+            if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy)) {
+                if(Tb_ext.isF4()) zeroMatrix(Bo_regs(h), strategy);
+                copyRegisters(Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state);
+            } else if (slmConvertB(h))
+                convert(Bi_regs(h), Tb_ext, Tb, strategy, state);
+        }
 
         if (slmRemActive(h) && (slmRemaskA || slmRemaskB)) {
             releaseMaskAssignments(kMasksAi, state);  // Not in use -- can temporarily free these.

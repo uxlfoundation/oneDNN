@@ -240,6 +240,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                             | primitive_attr_t::skip_mask_t::scales_groups
                             | primitive_attr_t::skip_mask_t::
                                     zero_points_data_type
+                            | primitive_attr_t::skip_mask_t::zero_points_groups
                             | primitive_attr_t::skip_mask_t::post_ops
                             | primitive_attr_t::skip_mask_t::sum_dt
                             | primitive_attr_t::skip_mask_t::fpmath_mode,

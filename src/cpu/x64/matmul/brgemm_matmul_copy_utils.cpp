@@ -2080,10 +2080,7 @@ struct jit_brgemm_matmul_copy_b_common_t : public jit_brgemm_matmul_copy_b_t,
 protected:
     /**
     * @brief Conditionally applies a mask to a vector register for tail or specialized processing
-    * 
-    * This helper function applies appropriate masking for tail processing when needed.
-    * It handles both regular tails and specialized INT4 tails by selecting the appropriate mask.
-    * 
+    *
     * @tparam Vmm Vector register type (Zmm, Ymm, etc.)
     * @param vmm The vector register to potentially mask
     * @param is_tail Flag indicating if this is tail processing that requires masking
@@ -2130,14 +2127,6 @@ protected:
 
     /**
     * @brief Loads and converts data of various types into vector registers with appropriate handling
-    * 
-    * This versatile loader handles different data types with specialized processing:
-    * - Regular data types (f32, f16, bf16, s8, u8) are loaded with standard instructions
-    * - INT4 data types (s4, u4) undergo specialized processing:
-    *   1. Load as INT8 and sign/zero extend to INT32
-    *   2. Copy lower half data to upper half of register
-    *   3. Permute the data into correct order
-    *   4. Apply appropriate shifts and masks to handle 4-bit values
     * 
     * @tparam Vmm Vector register type for computation
     * @param reg Destination vector register
@@ -2247,12 +2236,7 @@ protected:
 
     /**
     * @brief Converts integer data types to floating-point format
-    * 
-    * For integer source data types (s8, u8, s4, u4), this function converts
-    * the 32-bit integer representation to 32-bit float format using vcvtdq2ps.
-    * For floating-point source data types (bf16, f16, f32), no conversion is needed
-    * as these are already handled during the loading stage.
-    * 
+    *
     * @tparam Vmm Vector register type (Zmm, Ymm, etc.)
     * @param input Vector register containing data to be converted
     * @param src_dt Source data type of the values to be converted
@@ -4872,8 +4856,7 @@ private:
     }
 
     void init_masks();
-    void load_int(const Vmm vmm_in, const Xbyak::Operand &op);
-    void get_wei_scales(const int blk, const int k, const int n,
+    void get_scales(const int blk, const int k, const int n,
             const bool is_n_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns, bool zeropad);
     void generate() override;

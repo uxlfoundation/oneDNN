@@ -62,18 +62,6 @@ status_t dnnl_sycl_interop_memory_create_v2(memory_t **memory,
 
     if (is_usm) {
         for (int i = 0; i < nhandles; i++) {
-            if (handles[i] != DNNL_MEMORY_NONE
-                    && handles[i] != DNNL_MEMORY_ALLOCATE) {
-                const auto *sycl_engine_impl
-                        = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                                engine->impl());
-                auto &sycl_ctx = sycl_engine_impl->context();
-                ::sycl::usm::alloc ptr_type
-                        = get_pointer_type(handles[i], sycl_ctx);
-                if (ptr_type == ::sycl::usm::alloc::unknown
-                        && !engine->mayiuse_system_memory_allocators())
-                    return status::invalid_arguments;
-            }
             size_t sz = dnnl_memory_desc_get_size_v2(md, i);
             mem_storages[i].reset(new xpu::sycl::usm_memory_storage_t(engine));
             if (!mem_storages[i]) return status::out_of_memory;
@@ -116,17 +104,6 @@ status_t dnnl_sycl_interop_memory_create(memory_t **memory,
 
     std::unique_ptr<memory_storage_t> mem_storage;
     if (is_usm) {
-        if (handle != DNNL_MEMORY_NONE && handle != DNNL_MEMORY_ALLOCATE) {
-            const auto *sycl_engine_impl
-                    = utils::downcast<const xpu::sycl::engine_impl_t *>(
-                            engine->impl());
-            auto &sycl_ctx = sycl_engine_impl->context();
-            ::sycl::usm::alloc ptr_type = get_pointer_type(handle, sycl_ctx);
-            if (ptr_type == ::sycl::usm::alloc::unknown
-                    && !engine->mayiuse_system_memory_allocators())
-                return status::invalid_arguments;
-        }
-
         mem_storage.reset(new usm_memory_storage_t(engine));
     } else
         mem_storage.reset(new buffer_memory_storage_t(engine));

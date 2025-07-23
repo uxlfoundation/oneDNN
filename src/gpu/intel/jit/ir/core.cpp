@@ -78,6 +78,8 @@ data_type_t to_dnnl(const type_t &type) {
         case type_kind_t::f32: return data_type::f32;
         case type_kind_t::f64: return data_type::f64;
         case type_kind_t::s32: return data_type::s32;
+        case type_kind_t::s16: return data_type::s16;
+        case type_kind_t::u16: return data_type::u16;
         case type_kind_t::s8: return data_type::s8;
         case type_kind_t::u8: return data_type::u8;
         default: gpu_error_not_expected();

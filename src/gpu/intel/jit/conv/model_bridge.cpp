@@ -37,8 +37,10 @@ type_t to_type(data_type_t dt) {
         case data_type::f8_e5m2:
         case data_type::f8_e4m3:
         case data_type::u8: return type_t::d8;
+        case data_type::bf16:
         case data_type::f16:
-        case data_type::bf16: return type_t::d16;
+        case data_type::s16:
+        case data_type::u16: return type_t::d16;
         case data_type::tf32:
         case data_type::f32:
         case data_type::s32: return type_t::d32;

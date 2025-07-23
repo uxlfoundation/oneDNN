@@ -39,9 +39,12 @@ enum class key_type_kind_t {
     s8,
     u8,
     x8, // s8 or u8
+    s16,
+    u16,
+    x16, // s16 or u16
     bf16,
     f16,
-    x16, // f16 or bf16
+    xf16, // f16 or bf16
     f32,
     s32,
     tf32,
@@ -63,9 +66,12 @@ static auto key_type_kind_names = nstl::to_array({
         make_enum_name(key_type_kind_t::s8, "s8"),
         make_enum_name(key_type_kind_t::u8, "u8"),
         make_enum_name(key_type_kind_t::x8, "x8"),
+        make_enum_name(key_type_kind_t::s16, "s16"),
+        make_enum_name(key_type_kind_t::u16, "u16"),
+        make_enum_name(key_type_kind_t::x16, "x16"),
         make_enum_name(key_type_kind_t::bf16, "bf16"),
         make_enum_name(key_type_kind_t::f16, "f16"),
-        make_enum_name(key_type_kind_t::x16, "x16"),
+        make_enum_name(key_type_kind_t::xf16, "xf16"),
         make_enum_name(key_type_kind_t::bf8, "bf8"),
         make_enum_name(key_type_kind_t::hf8, "hf8"),
         make_enum_name(key_type_kind_t::xf8, "xf8"),
@@ -103,6 +109,8 @@ key_type_kind_t to_type_kind(data_type_t dt) {
     switch ((int)dt) {
         CASE(s8);
         CASE(u8);
+        CASE(s16);
+        CASE(u16);
         CASE(bf16);
         CASE(f4_e2m1);
         CASE(f4_e3m0);
@@ -129,9 +137,12 @@ key_type_kind_t to_filter(key_type_kind_t kind) {
         case key_type_kind_t::s8:
         case key_type_kind_t::u8:
         case key_type_kind_t::x8: return key_type_kind_t::x8;
+        case key_type_kind_t::s16:
+        case key_type_kind_t::u16:
+        case key_type_kind_t::x16: return key_type_kind_t::x16;
         case key_type_kind_t::f16:
         case key_type_kind_t::bf16:
-        case key_type_kind_t::x16: return key_type_kind_t::x16;
+        case key_type_kind_t::xf16: return key_type_kind_t::xf16;
         case key_type_kind_t::bf8:
         case key_type_kind_t::hf8:
         case key_type_kind_t::xf8: return key_type_kind_t::xf8;

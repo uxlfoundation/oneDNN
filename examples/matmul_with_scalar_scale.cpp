@@ -101,7 +101,7 @@ void simple_matmul_with_host_scalar(engine::kind engine_kind) {
     // Create a matmul primitive descriptor
     // Attribute is for specifying that the source memory (A) will have an alpha applied
     primitive_attr attr;
-    attr.set_host_scale(DNNL_ARG_SRC, memory::data_type::f32);
+    attr.set_host_scale(DNNL_ARG_SRC);
     matmul::primitive_desc matmul_pd(
             eng, a_mem.get_desc(), b_mem.get_desc(), c_mem.get_desc(), attr);
 

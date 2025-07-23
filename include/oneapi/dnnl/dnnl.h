@@ -459,11 +459,10 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
 /// @param attr Primitive attributes.
 /// @param arg Parameter argument index as passed to the
 ///     dnnl_primitive_execute() call.
-/// @param data_type Scaling factor data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_host_scale(
-        dnnl_primitive_attr_t attr, int arg, dnnl_data_type_t data_type);
+        dnnl_primitive_attr_t attr, int arg);
 
 /// Sets primitive attributes zero points for primitive operations for a given
 /// memory argument. The zero points must be passed at execution time
@@ -523,11 +522,10 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
 /// @param attr Primitive attributes.
 /// @param arg Parameter argument index as passed to the
 ///     dnnl_primitive_execute() call.
-/// @param data_type Zero point data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_host_zero_point(
-        dnnl_primitive_attr_t attr, int arg, dnnl_data_type_t data_type);
+        dnnl_primitive_attr_t attr, int arg);
 
 /// Sets the rounding mode attribute value for a given argument
 ///

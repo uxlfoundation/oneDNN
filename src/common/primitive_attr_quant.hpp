@@ -160,9 +160,9 @@ struct quant_entries_t : public c_compatible {
         return entries_[arg].set(other);
     }
 
-    status_t set_host_scalar(int arg, data_type_t data_type) {
+    status_t set_host_scalar(int arg) {
         if (!check_arg(arg)) return status::invalid_arguments;
-        return entries_[arg].set_host_scalar(arg, data_type);
+        return entries_[arg].set_host_scalar(arg, default_data_type_);
     }
 
     // This interface is different from the one below and is just a shortcut.

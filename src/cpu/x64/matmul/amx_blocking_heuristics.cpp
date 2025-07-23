@@ -482,9 +482,23 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
     int l2_matrix_size = m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz;
-    int c_size = 2 * decomposition * m_or_n_blk
-            * acc_dt_sz; // Keep 2 C strips just to avoid evicting A
-    return l1_matrix_size + l2_matrix_size + c_size;
+
+    // Calculate C post size (output buffer)
+    int c_post_size;
+    if (is_horizontal) {
+        c_post_size = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
+    } else {
+        c_post_size = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
+    }
+    // Calculate C tmp size (partial results buffer)
+    int c_tmp_size;
+    if (k_blk == (size_t)K || (acc_dt == dst_dt && nthr_k_ == 1)) {
+        c_tmp_size = 2 * m_decomposition * n_decomposition * acc_dt_sz;
+    } else {
+        c_tmp_size = 2 * decomposition * m_or_n_blk * acc_dt_sz;
+    }
+
+    return l1_matrix_size + l2_matrix_size + c_tmp_size + c_post_size;
 }
 
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_and_c_usage(
@@ -815,8 +829,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     current_lda_ = get_actual_lda();
 
     // Need a temp C buffer if a BRGEMM creates partial results
-    need_buf_c_ = (nthr_k_ > 1 && K > k_chunk_elems_)
-            || (acc_dt != dst_dt || with_sum);
+    need_buf_c_ = (nthr_k_ != 1) || (k_blk_ != K && acc_dt != dst_dt);
 
     efficiency_score_ = calculate_blocking_scores();
 

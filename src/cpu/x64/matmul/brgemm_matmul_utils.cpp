@@ -1794,7 +1794,10 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                 * (bgmmc.nthr_k > 1 ? bgmmc.M : bgmmc.M_blk);
     }
 
-    if (bgmmc.nthr_k > 1) {
+    if (!bgmmc.use_buffer_c) {
+        // No need for C buffer
+        bgmmc.buffer_c_per_thread_sz = 0;
+    } else if (bgmmc.nthr_k > 1) {
         // c size == M * N (for reduction)
         bgmmc.buffer_c_per_thread_sz = bgmmc.buffer_c_chunk_sz;
 

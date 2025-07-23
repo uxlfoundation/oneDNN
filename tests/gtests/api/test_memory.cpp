@@ -224,4 +224,21 @@ TEST(cpp_api_host_scalar_mem, TestHostScalarF32) {
     EXPECT_EQ(scalar_mem.get_host_scalar_value<float>(), 84.0f);
 }
 
+TEST(cpp_api_host_scalar_mem, TestHostScalarDataTypeMismatch) {
+    using namespace dnnl;
+
+    auto scalar_md = memory::desc::host_scalar(memory::data_type::f16);
+
+    // Attempt to create a memory object with a data type that does not match
+    try {
+        float scalar_value = 42.0f;
+        memory scalar_mem(scalar_md, scalar_value);
+    } catch (const dnnl::error &e) {
+        EXPECT_EQ(e.status, dnnl_invalid_arguments);
+        EXPECT_EQ(e.message,
+                "scalar type size does not match memory descriptor data type "
+                "size");
+    }
+}
+
 } // namespace dnnl

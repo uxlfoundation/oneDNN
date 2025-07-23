@@ -3423,9 +3423,17 @@ struct memory : public handle<dnnl_memory_t> {
     template <typename T>
     memory(const desc &md, const T &value) {
         dnnl_memory_t result;
-        dnnl_status_t status = dnnl_memory_create_host_scalar(
-                &result, md.get(), (void *)&value);
-        error::wrap_c_api(status, "could not create a memory object");
+        // Check that the data type of T matches the memory descriptor's data type
+        // For host-side scalars, md.get_size() is data_type size
+        if (sizeof(T) != md.get_size()) {
+            DNNL_THROW_ERROR(dnnl_invalid_arguments,
+                    "scalar type size does not match memory descriptor data "
+                    "type size");
+        } else {
+            dnnl_status_t status = dnnl_memory_create_host_scalar(
+                    &result, md.get(), (void *)&value);
+            error::wrap_c_api(status, "could not create a memory object");
+        }
         reset(result);
     }
 

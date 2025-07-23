@@ -295,6 +295,7 @@ public:
         mov<uint32_t>(payload[1], row_major ? m_off : n_off);
         mul<uint32_t>(payload[5], pipeline.stage, slm_bytes);
         add<uint32_t>(payload[5], payload[5], slm_off);
+        shr<uint32_t>(payload[5], payload[5], 9);
         if (row_major) {
             mov<uint32_t>(tdesc[0], ((m_blk - 1) << 16) + (n_blk - 1));
             add<uint32_t>(tdesc[3], n, Immediate::d(-1));
@@ -320,7 +321,11 @@ public:
         abarrierwait(0);
 
         auto data_type = (ab == 'a' ? desc_.a_type : desc_.b_type);
-        auto cm_type = ((row_major || ab == 'b') ? Type1 : Type2);
+        bool is_type1 = (row_major || ab == 'b');
+        auto cm_type = (is_type1 ? Type1 : Type2);
+        bfi<uint32_t>(2, 28, payload[5], payload[5], is_type1 ? 0 : 1);
+        bfi<uint32_t>(11, 16, payload[5], payload[5],
+                (row_major ? n_blk : m_blk) >> 2);
         admatg2l(data_type | cm_type | ABarrier
                         | ADMAOptions::createTensorDims(2),
                 payload[0], tdesc[0], addr_base);
@@ -349,6 +354,9 @@ public:
         mov<uint32_t>(payload[0], n_off);
         mov<uint32_t>(payload[1], m_off);
         mov<uint32_t>(payload[5], slm_off);
+        shr<uint32_t>(payload[5], payload[5], 9);
+        bfi<uint32_t>(2, 28, payload[5], payload[5], 0);
+        bfi<uint32_t>(11, 16, payload[5], payload[5], n_blk >> 2);
         mov<uint32_t>(tdesc[0], ((m_blk - 1) << 16) + (n_blk - 1));
         mov<uint32_t>(tdesc[2], 0); // element strides
         add<uint32_t>(tdesc[3], n, Immediate::d(-1));
@@ -394,23 +402,17 @@ public:
         bool a_row_major = (a_trans == transpose::notrans);
         bool b_row_major = (b_trans == transpose::notrans);
         int a_bytes = ngen::getBytes(desc_.a_type);
-        int b_bytes = ngen::getBytes(desc_.b_type);
-        int c_bytes = ngen::getBytes(desc_.c_type);
-        int acc_bytes = ngen::getBytes(desc_.acc_type());
-        uint32_t acc_slm_stride = desc_.bn / (32 / acc_bytes);
-        uint32_t c_slm_stride = desc_.bn / (32 / c_bytes);
-        uint32_t a_slm_x = (a_row_major ? (32 / a_bytes) : 32);
-        uint32_t b_slm_x = 32 / b_bytes;
-        uint32_t a_slm_stride = (a_row_major ? desc_.bk : desc_.bm) / a_slm_x;
-        uint32_t b_slm_stride = (b_row_major ? desc_.bn : desc_.bk) / b_slm_x;
-        // Order: DCAB
-        // Looks like will change in the future to DABC.
+        uint32_t acc_slm_stride = desc_.bn >> 2;
+        uint32_t c_slm_stride = desc_.bn >> 2;
+        uint32_t a_slm_stride = (a_row_major ? desc_.bk : desc_.bm) >> 2;
+        uint32_t b_slm_stride = (b_row_major ? desc_.bn : desc_.bk) >> 2;
+        // Order: DABC
         if (is_last) {
             mov<uint32_t>(desc[0], c_slm_off >> 9 | (c_slm_stride << 16));
-            mov<uint32_t>(desc[1], acc_slm_off >> 9 | (acc_slm_stride << 16));
+            mov<uint32_t>(desc[3], acc_slm_off >> 9 | (acc_slm_stride << 16));
         } else {
             mov<uint32_t>(desc[0], acc_slm_off >> 9 | (acc_slm_stride << 16));
-            mov<uint32_t>(desc[1], acc_slm_off >> 9 | (acc_slm_stride << 16));
+            mov<uint32_t>(desc[3], acc_slm_off >> 9 | (acc_slm_stride << 16));
         }
 
         mul<uint32_t>(tmp0, pipeline.stage, a_slm_bytes);
@@ -418,11 +420,12 @@ public:
         add<uint32_t>(tmp0, tmp0, a_slm_off);
         add<uint32_t>(tmp1, tmp1, b_slm_off);
 
-        shr<uint32_t>(desc[2], tmp0, 9);
-        shr<uint32_t>(desc[3], tmp1, 9);
+        shr<uint32_t>(desc[1], tmp0, 9);
+        shr<uint32_t>(desc[2], tmp1, 9);
 
-        or_<uint32_t>(desc[2], desc[2], (a_slm_stride << 16));
-        or_<uint32_t>(desc[3], desc[3], (b_slm_stride << 16));
+        or_<uint32_t>(desc[1], desc[1],
+                (a_slm_stride << 16) | (a_row_major ? 0 : (1 << 28)));
+        or_<uint32_t>(desc[2], desc[2], (b_slm_stride << 16));
 
         mov(one, 1);
 
@@ -447,7 +450,12 @@ public:
         if (is_last) opts |= DTrack;
         if (!a_row_major) opts |= ATranspose;
         if (!b_row_major) opts |= BTranspose;
-        amma(false, desc_.bm, desc_.bn, desc_.bk * a_bytes,
+        uint32_t k_bytes = desc_.bk * a_bytes;
+        bool both_u8 = (desc_.a_type == ngen::DataType::u8
+                && desc_.b_type == ngen::DataType::u8);
+        // XXX: Adjust when fixed in XeSim.
+        if (a_bytes == 1 && !both_u8) k_bytes *= 2;
+        amma(false, desc_.bm, desc_.bn, k_bytes,
                 is_last ? desc_.c_type : desc_.acc_type(), desc_.a_type,
                 desc_.b_type, desc_.acc_type(), opts, desc, barriers, flags);
         if (is_last) abarrierarriveexp(tmp, d_bar, one);

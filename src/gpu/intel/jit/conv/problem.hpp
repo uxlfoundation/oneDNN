@@ -132,6 +132,10 @@ public:
                 && utils::one_of(c_data_type, dnnl_u8, dnnl_s8);
     }
     bool reduce_b() const { return is_bwd_w && with_bias; }
+    bool permute_int16_a(const hw_t &hw) const;
+    int real_a_dt_size(const hw_t &hw) const {
+        return (permute_int16_a(hw)) ? 1 : a_data_type_size;
+    }
 
     prop_kind_t prop_kind() const {
         if (is_fwd) return prop_kind::forward;

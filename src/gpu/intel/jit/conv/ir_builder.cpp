@@ -228,6 +228,12 @@ public:
         return stmt;
     }
 
+    stmt_t int8_longmul_stmt() {
+        stmt_t stmt;
+        build_int8_longmul("c", "c_hi", stmt);
+        return stmt;
+    }
+
     stmt_t inject_compute_alloc_stmts(const stmt_t &stmt) const {
         return buf_mgr_.inject_allocs(stmt, is_compute_alloc_buf);
     }
@@ -348,32 +354,45 @@ private:
         gpu_assert(x2r.split_abc == fma.split_abc);
         gpu_assert(x2r.split_factor == fma.split_factor);
         for (int i = 0; i < x2r.split_factor; i++) {
-            build_x2r(i);
+            auto ax_buf = plan_.slm.has_a() ? buf_mgr_.get("a_slm") : ap_buf_;
+            auto bx_buf = plan_.slm.has_b() ? buf_mgr_.get("b_slm") : bp_buf_;
+            stmt_t g2r_load_stmt;
+            stmt_t s2r_load_stmt;
             stmt_t mul_stmt;
+
+            build_x2r_x("a", ax_buf, i, x2r.a_load, x2r.x_reduce, x2r.a_reorder,
+                    x2r.a_buf_size(), g2r_load_stmt, s2r_load_stmt);
+            build_x2r_x("b", bx_buf, i, x2r.b_load, x2r.x_reduce, x2r.b_reorder,
+                    x2r.b_buf_size(), g2r_load_stmt, s2r_load_stmt);
             build_zp_init(i, mul_stmt);
-            build_mul(i, mul_stmt);
+
+            if (cfg_.prb().permute_int16_a(cfg_.hw())) {
+                const std::string a_prefix("a_hi");
+                const std::string c_prefix("c_hi");
+                auto reg_buf
+                        = buf_mgr_.get(a_prefix, int(x2r.a_hi_layout.size()));
+                auto load_buf = buf_mgr_.get("x2r_tmp");
+                mul_stmt = mul_stmt.append(
+                        x2r.a_hi_reorder.create_stmt(load_buf, reg_buf));
+                build_mul("a", "b", "c", i, type_t::u8(), mul_stmt);
+                auto signed_ty = type_t(cfg_.prb().a_data_type).is_signed();
+                build_mul(a_prefix, "b", c_prefix, i,
+                        (signed_ty) ? type_t::s8() : type_t::u8(), mul_stmt);
+            } else {
+                build_mul("a", "b", "c", i, type_t::undef(), mul_stmt);
+            }
             build_zp_apply(i, mul_stmt);
+
+            g2r_load_stmt = stmt_group_t::make(
+                    stmt_label_t::g2r_load(i), g2r_load_stmt);
+            s2r_load_stmt = stmt_group_t::make(
+                    stmt_label_t::s2r_load(i), s2r_load_stmt);
             mul_stmt = stmt_group_t::make(stmt_label_t::mul(i), mul_stmt);
+
+            x2r_mul_stmt_ = x2r_mul_stmt_.append(g2r_load_stmt);
+            x2r_mul_stmt_ = x2r_mul_stmt_.append(s2r_load_stmt);
             x2r_mul_stmt_ = x2r_mul_stmt_.append(mul_stmt);
         }
-    }
-
-    void build_x2r(int subtile_idx) {
-        auto &x2r = plan_.x2r;
-        auto ax_buf = plan_.slm.has_a() ? buf_mgr_.get("a_slm") : ap_buf_;
-        auto bx_buf = plan_.slm.has_b() ? buf_mgr_.get("b_slm") : bp_buf_;
-        stmt_t g2r_load_stmt;
-        stmt_t s2r_load_stmt;
-        build_x2r_x("a", ax_buf, subtile_idx, x2r.a_load, x2r.x_reduce,
-                x2r.a_reorder, x2r.a_buf_size(), g2r_load_stmt, s2r_load_stmt);
-        build_x2r_x("b", bx_buf, subtile_idx, x2r.b_load, x2r.x_reduce,
-                x2r.b_reorder, x2r.b_buf_size(), g2r_load_stmt, s2r_load_stmt);
-        g2r_load_stmt = stmt_group_t::make(
-                stmt_label_t::g2r_load(subtile_idx), g2r_load_stmt);
-        s2r_load_stmt = stmt_group_t::make(
-                stmt_label_t::s2r_load(subtile_idx), s2r_load_stmt);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(g2r_load_stmt);
-        x2r_mul_stmt_ = x2r_mul_stmt_.append(s2r_load_stmt);
     }
 
     expr_t build_zp_init_src_load(int subtile_idx, stmt_t &stmt) {
@@ -442,7 +461,8 @@ private:
             buf_mgr_.get(zp_buf, size);
             return plan_.fma.create_stmt(ir_ctx_, buf_mgr_,
                     (kind == abc_kind_t::a) ? zp_buf : "a",
-                    (kind == abc_kind_t::b) ? zp_buf : "b", "c", subtile_idx);
+                    (kind == abc_kind_t::b) ? zp_buf : "b", "c", subtile_idx,
+                    type_t::undef());
         };
         auto &zp = plan_.zp;
         if (zp.has_zp_wei()) {
@@ -496,9 +516,17 @@ private:
         load_stmt = load_stmt.append(reorder);
     }
 
-    void build_mul(int subtile_idx, stmt_t &mul_stmt) {
+    void build_mul(const std::string &a, const std::string &b,
+            const std::string &c, int subtile_idx, type_t a_ty,
+            stmt_t &mul_stmt) {
         mul_stmt = mul_stmt.append(plan_.fma.create_stmt(
-                ir_ctx_, buf_mgr_, "a", "b", "c", subtile_idx));
+                ir_ctx_, buf_mgr_, a, b, c, subtile_idx, a_ty));
+    }
+
+    void build_int8_longmul(const std::string &retn_lo, const std::string &hi,
+            stmt_t &mul_stmt) {
+        mul_stmt = mul_stmt.append(
+                plan_.int16_adjust.create_stmt(ir_ctx_, buf_mgr_, retn_lo, hi));
     }
 
     void build_c_store() {
@@ -713,6 +741,8 @@ void conv_ir_builder_t::build() {
 
     stmt_ = std::move(loop_stmt);
     stmt_ = stmt_seq_t::make(cb.zero_out_stmt(), stmt_);
+    if (cfg_.prb().permute_int16_a(cfg_.hw()))
+        stmt_ = stmt_seq_t::make(stmt_, cb.int8_longmul_stmt());
     stmt_ = cb.inject_compute_alloc_stmts(stmt_);
     stmt_ = stmt_seq_t::make(stmt_, c_store_stmt);
 

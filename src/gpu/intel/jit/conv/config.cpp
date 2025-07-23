@@ -378,6 +378,9 @@ struct nc_block_t {
     static nc_block_t get_default_blocking(const hw_t &hw, fma_kind_t fma,
             type_t type, bool is_dw, dim_t n, dim_t c, dim_t g,
             bool is_output = false) {
+        // this preserves DPAS compatibility with (INT8,INT8) x INT8
+        if (type.is_x16() && !is_output && (fma != fma_kind_t::mad))
+            type = type_t::s8();
         // Select dst layout to align with fma kind of following conv
         // for non-depthwise cases.
         fma_kind_t tmp_fma

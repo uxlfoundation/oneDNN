@@ -133,9 +133,9 @@ struct x2r_plan_t : public base_plan_t {
     send_plan_t b_load;
     tile_coord_t x_reduce_tile_coord;
     reduce_plan_t x_reduce;
-    reorder_plan_t a_reorder;
+    reorder_plan_t a_reorder, a_hi_reorder;
     reorder_plan_t b_reorder;
-    layout_t a_layout;
+    layout_t a_layout, a_hi_layout;
     layout_t b_layout;
     abc_kind_t split_abc = abc_kind_t::undef;
     int split_factor = 1;
@@ -199,12 +199,28 @@ struct fma_plan_t : public base_plan_t {
     int bmnk_start_idx(bmnk_kind_t bmnk, int subtile_idx) const;
     int bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const;
 
-    std::vector<func_t> create_fma_funcs(const hw_t &hw) const;
+    std::vector<func_t> create_fma_funcs(const hw_t &hw, type_t a_ty) const;
     static stmt_t create_fma_block(const std::vector<func_t> &fmas,
             const expr_t &a, const expr_t &b, const expr_t &c);
     stmt_t create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
             const std::string &a, const std::string &b, const std::string &c,
-            int subtile_idx) const;
+            int subtile_idx, type_t a_ty) const;
+
+    int estimate_regs() const;
+    std::string str() const;
+
+    IR_DEFINE_DUMP()
+};
+
+struct longmul_plan_t : public base_plan_t {
+    layout_t c_lo_layout;
+    layout_t c_hi_layout;
+    int simd = 0;
+
+    using base_plan_t::base_plan_t;
+
+    stmt_t create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
+            const std::string &retn_lo, const std::string &hi) const;
 
     int estimate_regs() const;
     std::string str() const;
@@ -223,6 +239,7 @@ struct conv_plan_t : public base_plan_t {
     prefetch_plan_t prefetch;
     x2r_plan_t x2r;
     fma_plan_t fma;
+    longmul_plan_t int16_adjust;
     zp_plan_t zp;
     abc_kind_t split_abc = abc_kind_t::undef;
     int split_factor = 1;
@@ -231,7 +248,13 @@ struct conv_plan_t : public base_plan_t {
     int reserved_regs = -1;
 
     conv_plan_t(const hw_t &hw)
-        : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}
+        : base_plan_t(hw)
+        , slm(hw)
+        , prefetch(hw)
+        , x2r(hw)
+        , fma(hw)
+        , int16_adjust(hw)
+        , zp(hw) {}
 
     const tile_coord_t &x_reduce_tile_coord() const {
         if (!x2r.x_reduce_tile_coord.is_empty()) return x2r.x_reduce_tile_coord;

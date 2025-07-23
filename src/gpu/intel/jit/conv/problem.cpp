@@ -294,6 +294,12 @@ status_t conv_problem_t::init_abc_data_types(const hw_t &hw) {
     return status::success;
 }
 
+bool conv_problem_t::permute_int16_a(const hw_t &hw) const {
+    auto fma = get_supported_fma_kind(hw, dnnl_s8, b_data_type, acc_data_type);
+    return utils::one_of(a_data_type, dnnl_u16, dnnl_s16)
+            && (fma != fma_kind_t::mad);
+}
+
 status_t conv_problem_t::init_acc_data_type() {
     auto a = a_data_type;
     auto b = b_data_type;
@@ -303,7 +309,8 @@ status_t conv_problem_t::init_acc_data_type() {
     bool is_fp4 = (utils::one_of(data_type::f4_e2m1, a, b, c)
             || utils::one_of(data_type::f4_e3m0, a, b, c));
     acc_data_type = data_type::undef;
-    if (utils::one_of(a, data_type::s8, data_type::u8)
+    if (utils::one_of(
+                a, data_type::s8, data_type::u8, data_type::s16, data_type::u16)
             && utils::one_of(b, data_type::s8, data_type::u8)) {
         acc_data_type = data_type::s32;
     } else if (utils::everyone_is(data_type::f16, a, b)

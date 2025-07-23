@@ -908,6 +908,21 @@ private:
             return simplify(ret);
         }
 
+        std::string str() const {
+            ostringstream_t oss;
+            for (int i = 0; i < int(loops_.size()); i++) {
+                oss << "loop #" << std::to_string(i) << "/"
+                    << std::to_string(loops_.size())
+                    << " (kind = " << to_string(loop_kinds_[i])
+                    << ", level = " << std::to_string(loop_levels_[i])
+                    << "): [";
+                oss << *loops_[i] << "]" << std::endl;
+            }
+            return oss.str();
+        }
+
+        IR_DEFINE_DUMP()
+
     private:
         std::vector<const loop_t *> loops_;
         std::vector<loop_kind_t> loop_kinds_;

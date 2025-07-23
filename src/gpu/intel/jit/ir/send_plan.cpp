@@ -1387,7 +1387,8 @@ private:
                 : 8;
         if (get_block_alignment_bytes(inner_idx) % align != 0) return false;
 
-        if (inner_bytes % hw_.grf_size() == 0) return true;
+        if (!vlayout_.type().is_x16() && (inner_bytes % hw_.grf_size() == 0))
+            return true;
 
         int oword_size = 16;
         if (inner_bytes % oword_size == 0 && inner_bytes == total_bytes) {

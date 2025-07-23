@@ -347,7 +347,10 @@ void sqt_ieee(const InstructionModifier &mod, FlagRegister flag, RegData dst, Re
 void threadend(const InstructionModifier &mod, RegData r0_info = {}, SourceLocation loc = {})
 {
 #if XE4
-    if (hardware >= HW::Xe4 && r0_info.isInvalid()) r0_info = SRF(0);
+    if (hardware >= HW::Xe4) {
+        if (r0_info.isInvalid()) r0_info = SRF(0);
+        sendgx(1 | EOT | mod, SharedFunction::gtwy, null, RegisterRange(r0_info, 1), 0, loc);
+    } else
 #endif
 #if XE3P
     if (useEfficient64Bit)
@@ -369,11 +372,14 @@ void threadend(const RegData &r0_info = {}, SourceLocation loc = {}) {
 // Gateway messages.
 void barriermsg(const InstructionModifier &mod, Register header = {}, SourceLocation loc = {})
 {
+#if XE4
+    if (hardware >= HW::Xe4) {
+        if (header.isInvalid()) header = SRF(0);
+        sendgx(mod, SharedFunction::gtwy, null, RegisterRange(header, 1), 4, loc);
+    } else
+#endif
 #if XE3P
     if (useEfficient64Bit) {
-#if XE4
-        if (hardware >= HW::Xe4 && header.isInvalid()) header = SRF(0);
-#endif
         if (header.isInvalid()) header = GRF(0);
         sendgx(1 | mod | NoMask, SharedFunction::gtwy, null, RegisterRange(header, 1), 4, loc);
     } else
@@ -392,7 +398,7 @@ void barrierheader(const Register &header, Register r0_info = {}, SourceLocation
 #if XE4
     if (hardware >= HW::Xe4) {
         if (r0_info.isInvalid()) r0_info = SRF(0);
-        mov<uint32_t>(1 | NoMask, header, r0_info);
+        mov<uint32_t>(1, header, r0_info);
         return;
     }
 #endif
@@ -413,7 +419,7 @@ void barrierheader(const Register &header, uint32_t threadCount, Register r0_inf
 {
 #if XE4
     if (hardware >= HW::Xe4) {
-        mov<uint32_t>(1 | NoMask, header, threadCount << 24, loc);
+        mov<uint32_t>(1, header, threadCount << 24, loc);
         return;
     }
 #endif
@@ -668,7 +674,7 @@ void memfence(const InstructionModifier &mod, FenceScopeLSC scope, FlushTypeLSC 
         desc |= static_cast<uint32_t>(scope) << 11;
 #if XE4
         if (hardware >= HW::Xe4)
-            sendgx(1 | mod | NoMask, SharedFunction::ugm, null, null, 0, desc, loc);
+            sendgx(mod, SharedFunction::ugm, null, null, 0, desc, loc);
         else
 #endif
         sendgx(1 | mod | NoMask, SharedFunction::ugm, null, RegisterRange(header, 1), desc, loc);
@@ -739,7 +745,7 @@ void slmfence(const InstructionModifier &mod, const RegData &dst, const RegData 
 
 #if XE4
     if (hardware >= HW::Xe4)
-        sendgx(1 | mod | NoMask, SharedFunction::slm, null, null, 0, 0x1F, loc);
+        sendgx(mod, SharedFunction::slm, null, null, 0, 0x1F, loc);
     else
 #endif
 #if XE3P
@@ -791,7 +797,7 @@ void admalpf(InstructionModifier mod, ADMAOptions opts, Register payload, Regist
     opts.setOpcode(ADMAOpcode::linear_prefetch);
     sendgx(mod, SharedFunction::dma, null, RegisterRange(payload, 0), baseAddr.uq(), opts.desc.all, loc);
 }
-void admalpf(ADMAOptions opts, Register payload, Register baseAddr = {},SourceLocation loc = {}) {
+void admalpf(ADMAOptions opts, Register payload, Register baseAddr = {}, SourceLocation loc = {}) {
     admalpf(InstructionModifier(), opts, payload, baseAddr, loc);
 }
 
@@ -803,22 +809,22 @@ void admalg2l(ADMAOptions opts, Register payload, Register baseAddr = {}, Source
     admalg2l(InstructionModifier(), opts, payload, baseAddr, loc);
 }
 
-void admalredl2r(InstructionModifier mod, ADMAReduction rop, ADMAOptions opts, Register payload, SourceLocation loc = {}) {
+void admalrl2r(InstructionModifier mod, ADMAReduction rop, ADMAOptions opts, Register payload, SourceLocation loc = {}) {
     opts.setOpcode(ADMAOpcode::linear_reduce_l2r);
     opts.setReductionOp(rop);
     sendgx(mod, SharedFunction::dma, null, RegisterRange(payload, 0), opts.desc.all, loc);
 }
-void admalredl2r(ADMAReduction rop, ADMAOptions opts, Register payload, SourceLocation loc = {}) {
-    admalredl2r(InstructionModifier(), rop, opts, payload, loc);
+void admalrl2r(ADMAReduction rop, ADMAOptions opts, Register payload, SourceLocation loc = {}) {
+    admalrl2r(InstructionModifier(), rop, opts, payload, loc);
 }
 
-void admalredl2g(InstructionModifier mod, ADMAReduction rop, ADMAOptions opts, Register payload, Register baseAddr = {}, SourceLocation loc = {}) {
+void admalrl2g(InstructionModifier mod, ADMAReduction rop, ADMAOptions opts, Register payload, Register baseAddr = {}, SourceLocation loc = {}) {
     opts.setOpcode(ADMAOpcode::linear_reduce_l2g);
     opts.setReductionOp(rop);
     sendgx(mod, SharedFunction::dma, null, RegisterRange(payload, 0), baseAddr.uq(), opts.desc.all, loc);
 }
-void admalredl2g(ADMAReduction rop, ADMAOptions opts, Register payload, Register baseAddr = {}, SourceLocation loc = {}) {
-    admalredl2g(InstructionModifier(), rop, opts, payload, baseAddr, loc);
+void admalrl2g(ADMAReduction rop, ADMAOptions opts, Register payload, Register baseAddr = {}, SourceLocation loc = {}) {
+    admalrl2g(InstructionModifier(), rop, opts, payload, baseAddr, loc);
 }
 
 void admatl2g(InstructionModifier mod, ADMAOptions opts, Register payload, Register tdesc, Register baseAddr = {}, SourceLocation loc = {}) {
@@ -926,7 +932,7 @@ void amma(bool sparse, int m, int n, int k,
 }
 
 void ammaerrorclr(InstructionModifier mod = {}, SourceLocation loc = {}) {
-    sendgx(mod, SharedFunction::mma, null, null, 0, AMMAOpcode::fp_error_clear, loc);
+    sendgx(mod, SharedFunction::mma, null, null, 0, (AMMAOpcode::fp_error_clear | 0x180), loc);
 }
 
 void ammaerrorquery(InstructionModifier mod, Register dst, SourceLocation loc = {}) {

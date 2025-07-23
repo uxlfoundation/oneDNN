@@ -118,6 +118,9 @@ protected:
         std::vector<LabelFixup> fixups;
         std::vector<uint32_t> labels;
         std::vector<uint64_t> code;
+#if XE4
+        std::vector<uint32_t> savedBPs;
+#endif
         bool appended = false;
 
         int length() const { return int(code.size() * sizeof(uint64_t)); }
@@ -133,10 +136,13 @@ protected:
         }
 
 #if XE4
-        void db(const InstructionXe4 &i) {
+        void db(const InstructionXe4 &i, bool isBP = false) {
+            if (isBP) savedBPs.push_back(code.size() >> 1);
             code.push_back(i.qword[0]);
             code.push_back(i.qword[1]);
         }
+
+        void db(const InstructionXe4 &i, const InstructionModifier &mod) { db(i, mod.isBreakpoint()); }
 #endif
 
         void addFixup(LabelFixup fixup) {
@@ -182,6 +188,15 @@ protected:
 
             for (uint32_t id : other.labels)
                 man.offsetTarget(id, offset);
+
+#if XE4
+            if (hw >= HW::Xe4) {
+                sz = savedBPs.size();
+                savedBPs.resize(sz + other.savedBPs.size());
+                for (auto ibp: other.savedBPs)
+                    savedBPs[sz++] = ibp + (offset / sizeof(InstructionXe4));
+            }
+#endif
 
             other.appended = true;
         }
@@ -235,6 +250,10 @@ private:
     void db(const Instruction12 &i)  { streamStack.back()->db(i); }
 #if XE4
     void db(const InstructionXe4 &i) { streamStack.back()->db(i); }
+    void db(const InstructionXe4 &i, const InstructionModifier &mod, SourceLocation loc) {
+        debugLine.add(rootStream.length(), loc);    /* FIXME: stream support */
+        streamStack.back()->db(i, mod);
+    }
 #endif
     void addFixup(LabelFixup fixup)  { streamStack.back()->addFixup(fixup); }
 
@@ -385,7 +404,7 @@ private:
     };
 
     template <typename S1, typename S2>
-    void op128F(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, S2 src2, SourceLocation loc, uint8_t sgran = 0, bool idx4 = false);
+    void op128F(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, S2 src2, SourceLocation loc, uint8_t sgran = 0);
 
     template <typename DS0, typename S1>
     void op128G(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, unsigned width, unsigned offset, DS0 dst, DS0 src0, S1 src1, SourceLocation loc);
@@ -419,6 +438,9 @@ private:
     template <typename D, typename S0>
     void op128R(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, D dst, S0 src0, SourceLocation loc);
 
+    template <typename S1>
+    void op128S(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, SourceLocation loc);
+
     void op64A(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, SourceLocation loc) {
         op64A(opclass, defaultType, mod, dst, src0, null, loc);
     }
@@ -428,16 +450,17 @@ private:
 
     void op64D(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, uint8_t ctrl, RegData dst, RegData src0, RegData src1, SourceLocation loc);
 
-
-
     void op64E(Opcode op, InstructionModifier mod, SyncFunction fc, SourceLocation loc);
     void op64E(Opcode op, InstructionModifier mod, SyncFunction fc, RegData src0, SourceLocation loc);
     void op64E(Opcode op, InstructionModifier mod, SyncFunction fc, Immediate src0, SourceLocation loc);
+    void op64E(Opcode op, InstructionModifier mod, SyncFunction fc, std::array<SWSBItem, 5> items, SourceLocation loc);
 
     template <typename S0, typename S1>
     void op64F(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, S0 src0, S1 src1, SourceLocation loc);
 
-    void op64G(Opcode op, InstructionModifier mod, uint32_t jip, SourceLocation loc);
+    void op64G(OpcodeClassXe4 opclass, InstructionModifier mod, SourceLocation loc) {
+        op64F(opclass, DataType::invalid, mod, null, null, null, loc);
+    }
 #endif
 
     static constexpr14 InstructionModifier defaultMods() {
@@ -746,14 +769,6 @@ public:
         op128G(OpcodeClassXe4::bfi, getDataType<DT>(), mod, width, offset, dst, src0, src1, loc);
     }
     template <typename DT = uint32_t>
-    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const RegData &src1, SourceLocation loc = {}) {
-        op128G(OpcodeClassXe4::bfia, getDataType<DT>(), mod, width, offset, dst, src0, src1, loc);
-    }
-    template <typename DT = uint32_t>
-    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const Immediate &src1, SourceLocation loc = {}) {
-        op128G(OpcodeClassXe4::bfia, getDataType<DT>(), mod, width, offset, dst, src0, src1, loc);
-    }
-    template <typename DT = uint32_t>
     void bfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
         op128A(OpcodeClassXe4::bfigen, getDataType<DT>(), mod, dst, src0, src1, src2, loc);
     }
@@ -931,7 +946,7 @@ public:
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            op128A(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1, loc);
+            op128S(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1, loc);
         else
 #endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -940,7 +955,7 @@ public:
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            op128A(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1, loc);
+            op128S(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1, loc);
         else
 #endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -949,7 +964,7 @@ public:
     void cmpn(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            op128A(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1, loc);
+            op128S(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1, loc);
         else
 #endif
         opX(isGen12 ? Opcode::cmpn_gen12 : Opcode::cmpn, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -1213,12 +1228,6 @@ public:
 #endif
         opX(Opcode::frc, getDataType<DT>(), mod, dst, src0, loc);
     }
-#if XE4
-    template <typename DT = uint32_t>
-    void geta(const InstructionModifier &mod, const RegData &dst, IndirectARF src0, SourceLocation loc = {}) {
-        op128R(OpcodeClassXe4::geta, getDataType<DT>(), mod, dst, src0, loc);
-    }
-#endif
     void goto_(InstructionModifier mod, Label &jip, Label &uip, bool branchCtrl, SourceLocation loc = {}) {
         mod.setBranchCtrl(branchCtrl);
 #if XE4
@@ -1644,6 +1653,7 @@ public:
         if (dst.isSRF() == src0.isSRF())
             throw invalid_operand_exception();
 #endif
+        lanemask.setType(DataType::b32);
         op128I(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask, loc);
     }
     template <typename DT = void>
@@ -1652,13 +1662,14 @@ public:
     }
     template <typename DT = void>
     void movb(const InstructionModifier &mod, RegData dst, Immediate src0, RegData lanemask, SourceLocation loc = {}) {
+        lanemask.setType(DataType::b32);
         op128I(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask, loc);
     }
     template <typename DT = void>
     void movg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         validateIndXe4(src0);
         if (hardware >= HW::Xe4)
-            op128A(OpcodeClassXe4::movg, getDataType<DT>(), mod, dst, src0.getIndirectRegXe4(), src0.getIndirectBaseRegXe4(), loc);
+            op128A(OpcodeClassXe4::movg, getDataType<DT>(), mod, dst, src0.getIndirectBaseRegXe4(), src0.getIndirectRegXe4(), loc);
         else
             mov(mod, dst, src0);
     }
@@ -1666,7 +1677,7 @@ public:
     void movs(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         validateIndXe4(dst);
         if (hardware >= HW::Xe4)
-            op128A(OpcodeClassXe4::movs, getDataType<DT>(), mod, dst.getIndirectBaseRegXe4(), dst.getIndirectRegXe4(), src0, loc);
+            op128A(OpcodeClassXe4::movs, getDataType<DT>(), mod, dst.getIndirectBaseRegXe4(), src0, dst.getIndirectRegXe4(), loc);
         else
             mov(mod, dst, src0);
     }
@@ -1770,8 +1781,7 @@ public:
         op128A(OpcodeClassXe4::nop128, DataType::invalid, InstructionModifier(), null, null, loc);
     }
     void nop64(SourceLocation loc = {}) {
-        /* actually 64A; doesn't matter */
-        op128A(OpcodeClassXe4::nop64, DataType::invalid, InstructionModifier(), null, null, loc);
+        op64A(OpcodeClassXe4::nop64, DataType::invalid, InstructionModifier(), null, null, loc);
     }
 #endif
     template <typename DT = void>
@@ -2220,14 +2230,6 @@ public:
 #endif
 #if XE4
     template <typename DT = uint32_t>
-    void seta(const InstructionModifier &mod, IndirectARF dst, const RegData &src0, SourceLocation loc = {}) {
-        op128R(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0, loc);
-    }
-    template <typename DT = uint32_t>
-    void seta(const InstructionModifier &mod, IndirectARF dst, const Immediate &src0, SourceLocation loc = {}) {
-        op128R(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0, loc);
-    }
-    template <typename DT = uint32_t>
     void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
         op128F(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask, loc);
     }
@@ -2384,7 +2386,7 @@ public:
         subb<DT>(InstructionModifier(), dst, src0, src1, carryIn, loc);
     }
     void tarb(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
-        op64G(Opcode::tarb_64H, mod, 0, loc);
+        op64G(OpcodeClassXe4::tarb, mod, loc);
     }
 #endif
     void wait(const InstructionModifier &mod, const RegData &nreg, SourceLocation loc = {}) {
@@ -2416,7 +2418,7 @@ public:
     }
 #if XE4
     void yield(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
-        op64G(Opcode::yield_64G, mod, 0, loc);
+        op64G(OpcodeClassXe4::yield, mod, loc);
     }
 #endif
 
@@ -2575,13 +2577,13 @@ public:
     void sbrepgen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         op128A(OpcodeClassXe4::sbrepgen, getDataType<DT>(), mod, dst, src0, loc);
     }
-    template <typename DT = void>
+    template <typename DT = uint32_t>
     void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        op128A(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1, loc);
+        op128S(OpcodeClassXe4::scmp_128S, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
-    template <typename DT = void>
+    template <typename DT = uint32_t>
     void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        op128A(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1, loc);
+        op128S(OpcodeClassXe4::scmp_128S, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
     template <typename DT = void>
     void sfbh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
@@ -2784,7 +2786,18 @@ private:
         void none(const InstructionModifier &mod = InstructionModifier(), SourceLocation loc = {}) {
             nop(mod, loc);
         }
-        // TODO: support full number of SWSB operands for barflush/barid/host/none
+        void none(SWSBItem swsb0, SWSBItem swsb1, SourceLocation loc = {}) {
+            none(swsb0, swsb1, {}, {}, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SourceLocation loc = {}) {
+            none(swsb0, swsb1, swsb2, {}, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SWSBItem swsb3, SourceLocation loc = {}) {
+            none(swsb0, swsb1, swsb2, swsb3, {}, loc);
+        }
+        void none(SWSBItem swsb0, SWSBItem swsb1, SWSBItem swsb2, SWSBItem swsb3, SWSBItem swsb4, SourceLocation loc = {}) {
+            parent.op64E(Opcode::sync_64E, InstructionModifier(), SyncFunction::none, {swsb0, swsb1, swsb2, swsb3, swsb4}, loc);
+        }
 #endif
     };
 public:
@@ -3052,7 +3065,6 @@ NGEN_FORWARD_SCOPE_REGISTERS(scope)
 #define NGEN_FORWARD_SCOPE_EXTRA2(scope) \
 NGEN_FORWARD_SCOPE_DT_OP(abs_, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(bfegen, scope) \
-NGEN_FORWARD_SCOPE_DT_OP(bfia, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(bfigen, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(bfn2, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(bfn3, scope) \
@@ -3070,7 +3082,6 @@ NGEN_FORWARD_SCOPE_DT_OP(emsin, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(emsgmd, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(emsqt, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(emtanh, scope) \
-NGEN_FORWARD_SCOPE_DT_OP(geta, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(madc, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(madlh, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(movb, scope) \
@@ -3089,7 +3100,6 @@ NGEN_FORWARD_SCOPE_DT_OP(redsum, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(redxor, scope) \
 NGEN_FORWARD_SCOPE_OP(retd, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(rnd, scope) \
-NGEN_FORWARD_SCOPE_DT_OP(seta, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(shfld, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(shfli, scope) \
 NGEN_FORWARD_SCOPE_DT_OP(shflu, scope) \
@@ -3540,16 +3550,17 @@ static inline Instruction12 encodeSyncInsertion(autoswsb::SyncInsertion &si)
 #if XE4
     if (hw >= HW::Xe4) {
         InstructionXe4 ii{{}, Opcode::sync_64E};
-        ii._64E.sctrl = encodeSyncFunctionXe4(si.fc);
+        ii._64E.ctrl = encodeSyncFunctionXe4(si.fc);
+        ii._64E.pf = encodePFXe4(InstructionModifier());
         if (si.fc == SyncFunction::none) {
             auto items = si.noneItems();
-            ii._64E.sb0 = encodeSWSBXe4(items[0]);
+            ii._64.sb0 = encodeSWSBXe4(items[0]);
             ii._64E.sb1 = encodeSWSBXe4(items[1]);
             ii._64E.sb2 = encodeSWSBXe4(items[2]);
             ii._64E.sb3 = encodeSWSBXe4(items[3]);
             ii._64E.sb4 = encodeSWSBXe4(items[4]);
         } else {
-            ii._64E.sb0 = encodeSWSBXe4(si.swsb[0]);
+            ii._64.sb0 = encodeSWSBXe4(si.swsb[0]);
             ii._64E.sb1 = encodeSWSBXe4(si.swsb[1]);
             if (si.fc == SyncFunction::srcmsk || si.fc == SyncFunction::dstmsk)
                 ii._64EImm.imm = si.mask;
@@ -3652,8 +3663,13 @@ std::vector<uint8_t> BinaryCodeGenerator<hw>::getCode()
     }
 
 #if XE4
-    /* Compress 64-bit instructions. */
     if (hw >= HW::Xe4) {
+        /* Restore breakpoint flags. */
+        auto ibase = (InstructionXe4 *) result.data();
+        for (auto ibp: rootStream.savedBPs)
+            ibase[ibp].common.dbg = 1;
+
+        /* Compress 64-bit instructions. */
         auto src = (const InstructionXe4 *) result.data();
         auto end = (const InstructionXe4 *) (result.data() + result.size());
         auto dst = (uint64_t *) result.data();
@@ -5024,11 +5040,11 @@ InstructionXe4 encode128A(Opcode op, InstructionModifier mod, D dst, S0 src0, S1
     i.w = mod.isWrEn();
     uint64_t imm = 0;
     auto esrc2 = encodeRegOrImmXe4<uint32_t, true>(src2, imm);
-    i.src2_0 = esrc2 & 0x1;
-    i.src2_1_10 = esrc2 >> 1;
-    i.src1 = encodeRegOrImmXe4<uint32_t, false>(src1, imm);
-    i.src0 = encodeRegXe4(src0);
-    i.dst = encodeRegXe4(dst);
+    i.csrc2_0_3 = esrc2 & 0xF;
+    i.csrc2_4_11 = esrc2 >> 4;
+    i.csrc1 = encodeRegOrImmXe4<uint32_t, false>(src1, imm);
+    i.csrc0 = encodeRegXe4(src0);
+    i.cdst = encodeRegXe4(dst);
     i.imm = imm;
 
     return ii;
@@ -5038,7 +5054,7 @@ template <HW hw>
 template <typename D, typename S0, typename S1, typename S2>
 void BinaryCodeGenerator<hw>::op128A(Opcode op, InstructionModifier mod, D dst, S0 src0, S1 src1, S2 src2, SourceLocation loc)
 {
-    db(encode128A(op, mod, dst, src0, src1, src2), loc);
+    db(encode128A(op, mod, dst, src0, src1, src2), mod, loc);
 }
 
 template <HW hw>
@@ -5050,10 +5066,10 @@ void BinaryCodeGenerator<hw>::op128B(OpcodeClassXe4 opclass, InstructionModifier
     InstructionXe4 i{mod, op};
 
     encodeSWSBXe4<2>(i, mod);
-    i._128B.ipred = mod.isPredInv();
-    i._128B.pf = encodePFXe4(mod);
+    i._128.ipred = mod.isPredInv();
+    i._128.pf = encodePFXe4(mod);
+    i._128.w = mod.isWrEn();
     i._128B.brc = mod.getBranchCtrl();
-    i._128B.w = mod.isWrEn();
     i._128B.sctrl = !src0.isNull();
 
     disallowMod(src0.getNeg());
@@ -5065,10 +5081,10 @@ void BinaryCodeGenerator<hw>::op128B(OpcodeClassXe4 opclass, InstructionModifier
     i._128B.uip24_31 = uip >> 24;
     i._128B.jip = jip;
 
-    i._128.src0 = encodeRegXe4(src0);
-    i._128.dst = encodeRegXe4(dst);
+    i._128.csrc0 = encodeRegXe4(src0);
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5093,29 +5109,30 @@ void BinaryCodeGenerator<hw>::op128C(Opcode op, InstructionModifier mod, SharedF
 
     InstructionXe4 i{mod, op};
 
-    encodeSWSBXe4<1, true>(i, mod);
+    i._128C.sbid = encodeSWSBWithSBIDXe4(i, mod);
     i._128C.ipred = mod.isPredInv();
     i._128C.pf = encodePFXe4(mod);
-    i._128C.w = mod.isWrEn();
-    i._128C.eot = mod.isEOT();
-    i._128C.sfid = static_cast<uint8_t>(sfid);
-
-    i._128C.msgd0_28 = desc;
-    i._128C.msgd29_46 = desc >> 29;
-
-    i._128C.ind = ind2;
-    i._128C.inda = encodeRegXe4(ind);
+    i._128.w = mod.isWrEn();
 
     disallowMod(src0.getNeg() || src1.getNeg());
     disallowMod(mod.isSaturate());
     disallowMod(mod.getRounding());
     disallowMod(mod.getCMod());
 
-    i._128.src1 = encodeRegXe4(src1);
-    i._128.src0 = encodeRegXe4(src0);
-    i._128.dst = encodeRegXe4(dst);
+    i._128.csrc1 = encodeRegXe4(src1);
+    i._128.csrc0 = encodeRegXe4(src0);
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    i._128C.eot = mod.isEOT();
+    i._128C.sfid = static_cast<uint8_t>(sfid);
+
+    i._128C.msgd0_21 = desc;
+    i._128C.msgd22_46 = desc >> 22;
+
+    i._128C.ind = ind2;
+    i._128C.inda = encodeRegXe4(ind) >> 1;
+
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5152,23 +5169,24 @@ void BinaryCodeGenerator<hw>::op128D(Opcode op, InstructionModifier mod, RegData
     disallowMod(src0.getNeg() || getNeg(src1) || getNeg(src2) || mod.isSaturate() || mod.isPredInv());
     disallowMod(mod.getPredCtrl());
     disallowMod(mod.getRounding());
+    disallowMod(mod.isWrEn());
 
     uint64_t imm = 0;
     if (i._128D.ictrl == 3) {
         uint64_t imm1, imm2;
-        i._128D.src2 = encodeRegOrImmXe4<uint32_t, true>(src2, imm2);
-        i._128D.src1 = encodeRegOrImmXe4<uint32_t, false>(src1, imm1);
+        i._128D.csrc2 = encodeRegOrImmXe4<uint32_t, true>(src2, imm2);
+        i._128.csrc1  = encodeRegOrImmXe4<uint32_t, false>(src1, imm1);
         imm = (imm1 << 32) | imm2;
     } else {
-        i._128D.src2 = encodeRegOrImmXe4<uint64_t, true>(src2, imm);
-        i._128D.src1 = encodeRegOrImmXe4<uint64_t, false>(src1, imm);
+        i._128D.csrc2 = encodeRegOrImmXe4<uint64_t, true>(src2, imm);
+        i._128.csrc1  = encodeRegOrImmXe4<uint64_t, false>(src1, imm);
     }
-    i._128D.imm0_21 = imm;
-    i._128D.imm22_52 = imm >> 21;
-    i._128.src0 = encodeRegXe4(src0);
-    i._128.dst = encodeRegXe4(dst);
+    i._128D.imm0_23 = imm;
+    i._128D.imm24_51 = imm >> 24;
+    i._128.csrc0 = encodeRegXe4(src0);
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5178,12 +5196,12 @@ void BinaryCodeGenerator<hw>::op128E(OpcodeClassXe4 opclass, DataType defaultTyp
     auto op = preprocessXe4(opclass, defaultType, mod, dst, src0, src1, src2);
     auto i = encode128A(op, mod, dst, src0, src1, src2);
     i._128E.bctrl = ctrl;
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
 template <typename S1, typename S2>
-void BinaryCodeGenerator<hw>::op128F(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, S2 src2, SourceLocation loc, uint8_t sgran, bool idx4)
+void BinaryCodeGenerator<hw>::op128F(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, S2 src2, SourceLocation loc, uint8_t sgran)
 {
     auto op = preprocessXe4(opclass, defaultType, mod, dst, src0, null, src2);
 
@@ -5191,13 +5209,12 @@ void BinaryCodeGenerator<hw>::op128F(OpcodeClassXe4 opclass, DataType defaultTyp
 
     encodeSWSBXe4<2>(i, mod);
     i._128.cmcf = encodeCMCFXe4(mod);
-    i._128F.sgran = sgran;
     i._128.ipred = mod.isPredInv();
     i._128.pf = encodePFXe4(mod);
-    i._128F.w = mod.isWrEn();
-    i._128F.idx4 = idx4;
-    i._128F.ictrl =  unsigned(std::is_base_of<Immediate, S1>::value)
-                  | (unsigned(std::is_base_of<Immediate, S2>::value) << 1);
+    i._128.w = mod.isWrEn();
+    i._128F.sgran = sgran;
+    i._128F.cctrl = unsigned(std::is_base_of<Immediate, S1>::value);
+    i._128F.lctrl = unsigned(std::is_base_of<Immediate, S2>::value);
 
     disallowMod(src0.getNeg() || getNeg(src1));
     disallowMod(mod.isSaturate());
@@ -5206,13 +5223,13 @@ void BinaryCodeGenerator<hw>::op128F(OpcodeClassXe4 opclass, DataType defaultTyp
     uint64_t imm = 0;
     auto esrc2 = encodeRegOrImmXe4<uint32_t, true>(src2, imm);
     i._128.imm = imm;
-    i._128.src2_0 = esrc2 & 0x1;
-    i._128.src2_1_10 = esrc2 >> 1;
-    i._128.src1 = encodeRegOrImmXe4<uint32_t, false>(src1, imm);
-    i._128.src0 = encodeRegXe4(src0);
-    i._128.dst = encodeRegXe4(dst);
+    i._128.csrc2_0_3 = esrc2 & 0xF;
+    i._128.csrc2_4_11 = esrc2 >> 4;
+    i._128.csrc1 = encodeRegOrImmXe4<uint32_t, true>(src1, imm);
+    i._128.csrc0 = encodeRegXe4(src0);
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5220,66 +5237,33 @@ template <typename DS0, typename S1>
 void BinaryCodeGenerator<hw>::op128G(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, unsigned width, unsigned offset, DS0 dst, DS0 src0, S1 src1, SourceLocation loc)
 {
     auto op = preprocessXe4(opclass, defaultType, mod, dst, src0, src1, NullRegister());
-
-    InstructionXe4 i{mod, op};
-
-    encodeSWSBXe4<1>(i, mod);
-    i._128G.ictrl = std::is_base_of<Immediate, S1>::value;
-    i._128G.s0inv = getNeg(src0);
-    i._128G.s1inv = getNeg(src1);
-    i._128G.ipred = mod.isPredInv();
-    i._128G.pf = encodePFXe4(mod);
-    i._128G.w = mod.isWrEn();
+    auto i = encode128A(op, mod, dst, src0, src1, NullRegister());
 
     disallowMod(mod.getCMod());
     disallowMod(mod.isSaturate());
     disallowMod(mod.getPredCtrl());
     disallowMod(mod.getRounding());
 
-    i._128G.bwidth0_1 = width & 0x3;
-    i._128G.bwidth2_5 = width >> 2;
+    i._128.cmcf = 0;
+    i._128G.bwidth = width;
     i._128G.boff = offset;
-
-    uint64_t imm = 0;
-    i._128.src1 = encodeRegOrImmXe4<uint32_t, false>(src1, imm);
-    i._128.imm = imm;
-    i._128.src0 = encodeRegXe4(src0);
-    i._128.dst = encodeRegXe4(dst);
-
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
 void BinaryCodeGenerator<hw>::op128H(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, ExtendedReg dst, ExtendedReg src0, ExtendedReg src1, ExtendedReg src2, SourceLocation loc)
 {
-    auto op = preprocessXe4(opclass, defaultType, mod, dst, src0, src1, NullRegister());
-
-    InstructionXe4 i{mod, op};
-
-    encodeSWSBXe4<1>(i, mod);
-    i._128H.cf = encodeCMCFXe4(mod) >> 3;
-    i._128H.dmme = dst.getMMENum();
-    i._128H.s0mme = src0.getMMENum();
-    i._128H.s1mme = src1.getMMENum();
-    i._128H.s2mme = src2.getMMENum();
-    i._128.s0inv = src0.getBase().getNeg();
-    i._128.s1inv = src1.getBase().getNeg();
-    i._128.s2inv = src2.getBase().getNeg();
-    i._128.ipred = mod.isPredInv();
-    i._128.rmo = static_cast<unsigned>(mod.getRounding());
-    i._128.w = mod.isWrEn();
+    auto op = preprocessXe4(opclass, defaultType, mod, dst, src0, src1, src2);
+    auto i = encode128A(op, mod, dst.getBase(), src0.getBase(), src1.getBase(), src2.getBase());
 
     disallowMod(mod.isSaturate());
     disallowMod(mod.getPredCtrl());
 
-    auto esrc2 = encodeRegXe4(src2.getBase());
-    i._128.src2_0 = esrc2 & 0x1;
-    i._128.src2_1_10 = esrc2 >> 1;
-    i._128.src1 = encodeRegXe4(src1.getBase());
-    i._128.src0 = encodeRegXe4(src0.getBase());
-    i._128.dst = encodeRegXe4(dst.getBase());
-
-    db(i, loc);
+    i._128H.dmme =  encodeMMEXe4(dst);
+    i._128H.s0mme = encodeMMEXe4(src0);
+    i._128H.s1mme = encodeMMEXe4(src1);
+    i._128H.s2mme = encodeMMEXe4(src2);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5292,10 +5276,10 @@ void BinaryCodeGenerator<hw>::op128I(OpcodeClassXe4 opclass, DataType defaultTyp
 
     encodeSWSBXe4<2>(i, mod);
     i._128I.dctrl = std::is_base_of<Immediate, S0>::value;
-    i._128I.cmcf = encodeCMCFXe4(mod);
-    i._128I.ipred = mod.isPredInv();
-    i._128I.pf = encodePFXe4(mod);
-    i._128I.w = mod.isWrEn();
+    i._128.cmcf = encodeCMCFXe4(mod);
+    i._128.ipred = mod.isPredInv();
+    i._128.pf = encodePFXe4(mod);
+    i._128.w = mod.isWrEn();
     i._128I.lctrl = std::is_base_of<Immediate, S1>::value;
 
     disallowMod(getNeg(src0) || getNeg(src1));
@@ -5303,15 +5287,16 @@ void BinaryCodeGenerator<hw>::op128I(OpcodeClassXe4 opclass, DataType defaultTyp
     disallowMod(mod.getRounding());
 
     uint64_t imm = 0;
-    i._128I.src2 = encodeRegOrImmXe4<uint32_t, true>(src1, imm);
+    i._128I.csrc2 = encodeRegOrImmXe4<uint32_t, true>(src1, imm);
     i._128I.imsk = imm;
 
     imm = 0;
-    i._128.src0 = encodeRegOrImmXe4<uint32_t, false>(src0, imm);
-    i._128I.dimm = imm;
-    i._128.dst = encodeRegXe4(dst);
+    i._128.csrc0 = encodeRegOrImmXe4<uint32_t, false>(src0, imm);
+    i._128I.dimm0 = imm;
+    i._128I.dimm1_20 = imm >> 1;
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5323,7 +5308,7 @@ void BinaryCodeGenerator<hw>::op128J(OpcodeClassXe4 opclass, DataType defaultTyp
     disallowMod(mod.getCMod());
     i._128J.spf = predicate.getARFBase();
     i._128J.spinv = predicate.getNeg();
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5335,7 +5320,7 @@ void BinaryCodeGenerator<hw>::op128K(OpcodeClassXe4 opclass, DataType defaultTyp
     disallowMod(mod.getCMod());
     i._128K.spf = carryIn.isNull()  ? 0xF : carryIn.getARFBase();
     i._128K.dpf = carryOut.isNull() ? 0xF : carryOut.getARFBase();
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5349,13 +5334,16 @@ void BinaryCodeGenerator<hw>::op128L(OpcodeClassXe4 opclass, InstructionModifier
     disallowMod(mod.getCMod());
     disallowMod(mod.isSaturate());
 
+    i._128.csrc0 = i._128.csrc1;
+    i._128L.imm = i._128.imm;
+    i._128L.res = 0;
+
     i._128L.ctype = withID;
     i._128L.cid = cid;
     i._128L.exp = exp;
 
-    db(i, loc);
+    db(i, mod, loc);
 }
-
 
 template <HW hw>
 void BinaryCodeGenerator<hw>::op128O(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, RegData src1, SourceLocation loc)
@@ -5365,6 +5353,9 @@ void BinaryCodeGenerator<hw>::op128O(OpcodeClassXe4 opclass, DataType defaultTyp
     mod = mod | defaultModifier;
 
     auto srcType = DataType::invalid;
+
+    if (allowScalarization(dst) && allowScalarization(src0) && allowScalarization(src1))
+        opclass = toScalar(opclass);
     validateXe4(mod, opclass);
     validateXe4(dst);
     validateXe4(src0);
@@ -5379,11 +5370,11 @@ void BinaryCodeGenerator<hw>::op128O(OpcodeClassXe4 opclass, DataType defaultTyp
     disallowMod(src0.getNeg() || src1.getNeg());
     disallowMod(mod.getCMod());
 
-    i._128O.sfmt = encodeCvtSrcTypeXe4(srcType);
+    i._128.cmcf = 0;
+    i._128O.sfmt = encodeSrcFormatXe4(srcType);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
-
 
 template <HW hw>
 void BinaryCodeGenerator<hw>::op128P(OpcodeClassXe4 opclass, InstructionModifier mod, RegData dst, uint64_t cip, SourceLocation loc)
@@ -5394,18 +5385,18 @@ void BinaryCodeGenerator<hw>::op128P(OpcodeClassXe4 opclass, InstructionModifier
     InstructionXe4 i{mod, op};
 
     encodeSWSBXe4<2>(i, mod);
-    i._128P.ipred = mod.isPredInv();
-    i._128P.pf = encodePFXe4(mod);
-    i._128P.w = mod.isWrEn();
+    i._128.ipred = mod.isPredInv();
+    i._128.pf = encodePFXe4(mod);
+    i._128.w = mod.isWrEn();
 
     disallowMod(mod.isSaturate());
     disallowMod(mod.getCMod());
 
-    i._128P.cip0_23 = cip;
-    i._128P.cip24_63 = cip >> 24;
-    i._128.dst = encodeRegXe4(dst);
+    i._128P.cip0_11 = cip;
+    i._128P.cip12_63 = cip >> 12;
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5414,9 +5405,10 @@ void BinaryCodeGenerator<hw>::op128Q(OpcodeClassXe4 opclass, DataType defaultTyp
 {
     auto op = preprocessXe4(opclass, defaultType, mod, dst, null, null, src2);
     auto i = encode128A(op, mod, dst, src0, src1, src2);
+    i._128.cmcf = 0;
     i._128Q.st0 = (src0.getType() == DataType::s8v4);
     i._128Q.st1 = (src1.getType() == DataType::s8v4);
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5428,10 +5420,10 @@ void BinaryCodeGenerator<hw>::op128R(OpcodeClassXe4 opclass, DataType defaultTyp
     InstructionXe4 i{mod, op};
 
     encodeSWSBXe4<2>(i, mod);
-    i._128R.ipred = mod.isPredInv();
-    i._128R.pf = encodePFXe4(mod);
-    i._128R.w = mod.isWrEn();
-    i._128R.ictrl = std::is_base_of<Immediate, S0>::value;
+    i._128.ipred = mod.isPredInv();
+    i._128.pf = encodePFXe4(mod);
+    i._128.w = mod.isWrEn();
+    i._128.ictrl = std::is_base_of<Immediate, S0>::value;
 
     disallowMod(getNeg(src0));
     disallowMod(mod.getCMod());
@@ -5439,12 +5431,40 @@ void BinaryCodeGenerator<hw>::op128R(OpcodeClassXe4 opclass, DataType defaultTyp
     disallowMod(mod.getRounding());
 
     uint64_t imm = 0;
-    i._128.src0 = encodeRegOrImmXe4<uint64_t, false>(src0, imm);
-    i._128R.imm0_10 = imm;
-    i._128R.imm11_52 = imm >> 11;
-    i._128.dst = encodeRegXe4(dst);
+    i._128.csrc0 = encodeRegOrImmXe4<uint64_t, false>(src0, imm);
+    i._128R.imm0_11 = imm;
+    i._128R.imm12_51 = imm >> 12;
+    i._128.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
+}
+
+template <HW hw>
+template <typename S1>
+void BinaryCodeGenerator<hw>::op128S(OpcodeClassXe4 opclass, DataType defaultType, InstructionModifier mod, RegData dst, RegData src0, S1 src1, SourceLocation loc)
+{
+    if (hw < HW::Xe4) unsupported();
+
+    mod = mod | defaultModifier;
+
+    auto dstType = DataType::b32;
+
+    if (allowScalarization(dst) && allowScalarization(src0) && allowScalarization(src1))
+        opclass = toScalar(opclass);
+    validateXe4(mod, opclass);
+    validateXe4(dst);
+    validateXe4(src0);
+    validateXe4(src1);
+    processTypesXe4(defaultType, src0, src1);
+    processTypesXe4(dstType, dst);
+    validateBaseXe4(dst, src0, src1);
+
+    auto op = opcodeXe4(opclass, defaultType);
+    auto i = encode128A(op, mod, dst, src0, src1, null);
+
+    i._128S.sfmt = encodeSrcFormatXe4(defaultType);
+
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5468,12 +5488,12 @@ void BinaryCodeGenerator<hw>::op64A(OpcodeClassXe4 opclass, DataType defaultType
     i._64.ictrl = std::is_base_of<Immediate, S1>::value;
 
     uint64_t imm = 0;
-    i._64.src1 = encodeRegOrImmXe4<uint16_t, false>(src1, imm);
+    i._64.csrc1 = encodeRegOrImmXe4<uint16_t, false>(src1, imm);
     i._64.imm = imm;
-    i._64.src0 = encodeRegXe4(src0);
-    i._64.dst = encodeRegXe4(dst);
+    i._64.csrc0 = encodeRegXe4(src0);
+    i._64.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5494,12 +5514,12 @@ void BinaryCodeGenerator<hw>::op64D(OpcodeClassXe4 opclass, DataType defaultType
     i._64.w = mod.isWrEn();
     i._64D.bctrl = ctrl;
     uint64_t imm = 0;
-    i._64.src1 = encodeRegOrImmXe4<uint16_t, false>(src1, imm);
+    i._64.csrc1 = encodeRegOrImmXe4<uint16_t, false>(src1, imm);
     i._64.imm = imm;
-    i._64.src0 = encodeRegXe4(src0);
-    i._64.dst = encodeRegXe4(dst);
+    i._64.csrc0 = encodeRegXe4(src0);
+    i._64.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5509,11 +5529,13 @@ void BinaryCodeGenerator<hw>::op64E(Opcode op, InstructionModifier mod, SyncFunc
 
     unsigned sb0, sb1, sbid;
     encodeSWSBXe4<2>(mod, sb0, sb1, sbid);
-    i._64E.sb0 = sb0;
+    i._64.sb0 = sb0;
     i._64E.sb1 = sb1;
-    i._64E.sctrl = encodeSyncFunctionXe4(fc);
+    i._64E.ctrl = encodeSyncFunctionXe4(fc);
+    i._64E.ipred = mod.isPredInv();
+    i._64E.pf = encodePFXe4(mod);
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 template <HW hw>
@@ -5530,22 +5552,43 @@ void BinaryCodeGenerator<hw>::op64E(Opcode op, InstructionModifier mod, SyncFunc
     InstructionXe4 i{mod, op};
 
     unsigned sb0, sb1, sbid;
-    i._64E.sctrl = encodeSyncFunctionXe4(fc);
+    i._64E.ctrl = encodeSyncFunctionXe4(fc);
+    i._64E.ipred = mod.isPredInv();
+    i._64E.pf = encodePFXe4(mod);
 
     if (fc == SyncFunction::barid) {
         encodeSWSBXe4<2>(mod, sb0, sb1, sbid);
-        i._64E.sb0 = sb0;
+        i._64.sb0 = sb0;
         i._64E.sb1 = sb1;
         i._64E.bar = static_cast<uint64_t>(src0);
     } else {
         encodeSWSBXe4<1>(mod, sb0, sb1, sbid);
-        i._64E.sb0 = sb0;
+        i._64.sb0 = sb0;
         i._64EImm.imm = static_cast<uint64_t>(src0);
     }
 
-    db(i, loc);
+    db(i, mod, loc);
 }
 
+template <HW hw>
+void BinaryCodeGenerator<hw>::op64E(Opcode op, InstructionModifier mod, SyncFunction fc, std::array<SWSBItem, 5> items, SourceLocation loc)
+{
+    mod = mod | defaultModifier;
+
+    InstructionXe4 i{mod, op};
+
+    i._64E.ctrl = encodeSyncFunctionXe4(fc);
+    i._64E.ipred = mod.isPredInv();
+    i._64E.pf = encodePFXe4(mod);
+
+    i._64.sb0  = encodeSWSBXe4(items[0]);
+    i._64E.sb1 = encodeSWSBXe4(items[1]);
+    i._64E.sb2 = encodeSWSBXe4(items[2]);
+    i._64E.sb3 = encodeSWSBXe4(items[3]);
+    i._64E.sb4 = encodeSWSBXe4(items[4]);
+
+    db(i, mod, loc);
+}
 
 template <HW hw>
 template <typename S0, typename S1>
@@ -5555,7 +5598,6 @@ void BinaryCodeGenerator<hw>::op64F(OpcodeClassXe4 opclass, DataType defaultType
 
     disallowMod(mod.getCMod());
     disallowMod(mod.isSaturate());
-    disallowMod(mod.getPredCtrl());
     disallowMod(mod.getRounding());
 
     InstructionXe4 i{mod, op};
@@ -5565,36 +5607,17 @@ void BinaryCodeGenerator<hw>::op64F(OpcodeClassXe4 opclass, DataType defaultType
     i._64.s1inv = getNeg(src1);
     i._64.s0inv = getNeg(src0);
     i._64.w = mod.isWrEn();
+    i._64F.ipred = mod.isPredInv();
+    i._64F.pf = encodePFXe4(mod);
     i._64F.ictrl0 = std::is_base_of<Immediate, S0>::value;
     i._64F.ictrl1 = std::is_base_of<Immediate, S1>::value;
 
     uint64_t imm;
-    i._64.src1 = encodeRegOrImmXe4<uint16_t, true>(src1, imm);
-    i._64.src0 = encodeRegOrImmXe4<uint16_t, true>(src0, imm);
-    i._64.dst = encodeRegXe4(dst);
+    i._64.csrc1 = encodeRegOrImmXe4<uint16_t, true>(src1, imm);
+    i._64.csrc0 = encodeRegOrImmXe4<uint16_t, true>(src0, imm);
+    i._64.cdst = encodeRegXe4(dst);
 
-    db(i, loc);
-}
-
-template <HW hw>
-void BinaryCodeGenerator<hw>::op64G(Opcode op, InstructionModifier mod, uint32_t jip, SourceLocation loc)
-{
-    mod = mod | defaultModifier;
-
-    disallowMod(mod.getCMod());
-    disallowMod(mod.isSaturate());
-    disallowMod(mod.getRounding());
-
-    InstructionXe4 i{mod, op};
-
-    encodeSWSB64Xe4(i, mod);
-
-    i._64G.ipred = mod.isPredInv();
-    i._64G.pf = encodePFXe4(mod);
-    i._64G.w = mod.isWrEn();
-    i._64G.jip = jip;
-
-    db(i, loc);
+    db(i, mod, loc);
 }
 
 #endif /* XE4 */

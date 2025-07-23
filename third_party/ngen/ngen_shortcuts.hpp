@@ -101,24 +101,6 @@ template <typename DT = void> void abs_(const RegData &dst, const RegData &src0,
     void bfi(int width, int offset, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         bfi<DT>(defaultMods(), width, offset, dst, src0, src1, loc);
     }
-    template <typename DT = uint32_t> void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, const RegData &src1, SourceLocation loc = {}) {
-        bfia(mod, width, offset, dst, dst, src1, loc);
-    }
-    template <typename DT = uint32_t> void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, const Immediate &src1, SourceLocation loc = {}) {
-        bfia(mod, width, offset, dst, dst, src1, loc);
-    }
-    template <typename DT = uint32_t> void bfia(int width, int offset, IndirectARF dst, IndirectARF src0, const RegData &src1, SourceLocation loc = {}) {
-        bfia<DT>(defaultMods(), width, offset, dst, src0, src1, loc);
-    }
-    template <typename DT = uint32_t> void bfia(int width, int offset, IndirectARF dst, IndirectARF src0, const Immediate &src1, SourceLocation loc = {}) {
-        bfia<DT>(defaultMods(), width, offset, dst, src0, src1, loc);
-    }
-    template <typename DT = uint32_t> void bfia(int width, int offset, IndirectARF dst, const RegData &src1, SourceLocation loc = {}) {
-        bfia<DT>(defaultMods(), width, offset, dst, dst, src1, loc);
-    }
-    template <typename DT = uint32_t> void bfia(int width, int offset, IndirectARF dst, const Immediate &src1, SourceLocation loc = {}) {
-        bfia<DT>(defaultMods(), width, offset, dst, dst, src1, loc);
-    }
     template <typename DT = uint32_t>
     void bfigen(const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
         bfigen<DT>(defaultMods(), dst, src0, src1, src2, loc);
@@ -242,11 +224,6 @@ template <typename DT = void> void abs_(const RegData &dst, const RegData &src0,
     template <typename DT = void> void fbl(const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         fbl<DT>(defaultMods(), dst, src0, loc);
     }
-#if XE4
-    template <typename DT = uint32_t> void geta(const RegData &dst, IndirectARF src0, SourceLocation loc = {}) {
-        geta<DT>(defaultMods(), dst, src0, loc);
-    }
-#endif
     void goto_(Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
         goto_(defaultMods(), jip, uip, branchCtrl, loc);
     }
@@ -500,12 +477,6 @@ template <typename DT = void> void abs_(const RegData &dst, const RegData &src0,
         ror<DT>(defaultMods(), dst, src0, src1, loc);
     }
 #if XE4
-    template <typename DT = uint32_t> void seta(IndirectARF dst, const RegData &src0, SourceLocation loc = {}) {
-        seta<DT>(InstructionModifier(), dst, src0, loc);
-    }
-    template <typename DT = uint32_t> void seta(IndirectARF dst, const Immediate &src0, SourceLocation loc = {}) {
-        seta<DT>(InstructionModifier(), dst, src0, loc);
-    }
     template <typename DT = uint32_t> void sel(const RegData &dst, const RegData &src0, const RegData &src1, FlagRegister predicate, SourceLocation loc = {}) {
         sel<DT>(defaultMods(), dst, src0, src1, predicate, loc);
     }

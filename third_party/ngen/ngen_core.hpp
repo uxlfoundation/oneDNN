@@ -478,6 +478,9 @@ enum class DataType : uint8_t {
     s8v4 = 0xB5,
     f16v2 = 0xB6,
     bf16v2 = 0xB7,
+    e4m3v4 = 0xBD,
+    e5m3v4 = 0xBE,
+    e8m0v4 = 0xBF,
 #endif
     invalid = 0x60
 };
@@ -500,11 +503,22 @@ static inline std::ostream &operator<<(std::ostream &str, DataType type)
 struct DataTypeXe4 {
     DataType dt;
 };
+struct DataTypeRawXe4 {
+    DataType dt;
+};
 
 static inline std::ostream &operator<<(std::ostream &str, DataTypeXe4 type)
 {
-    static const char *names[32] = {"u32",  "s32", "u16",   "s16",   "u8",   "s8",   "f64",   "f32",    "u64", "s64", "f16",  "bf16", "bf8", "", "", "",
-                                    "tf32", "hf8", "u16v2", "s16v2", "u8v4", "s8v4", "f16v2", "bf16v2", "",    "",    "e2m1", "e3m0", "",    "", "", ""};
+    static const char *names[32] = {"u32",  "s32", "u16",   "s16",   "u8",   "s8",   "f64",   "f32",    "u64", "s64", "f16",  "bf16", "bf8", "",       "",       "",
+                                    "tf32", "hf8", "u16v2", "s16v2", "u8v4", "s8v4", "f16v2", "bf16v2", "",    "",    "e2m1", "e3m0", "",    "e4m3v4", "e5m3v4", "e8m0v4"};
+    str << names[static_cast<uint8_t>(type.dt) & 0x1F];
+    return str;
+}
+
+static inline std::ostream &operator<<(std::ostream &str, DataTypeRawXe4 type)
+{
+    static const char *names[32] = {"b32", "b32", "b16",   "b16",   "",     "",     "b64",   "b32",   "b64", "b64", "", "", "", "",     "",     "",
+                                    "b32", "",    "b16v2", "b16v2", "b8v4", "b8v4", "b16v2", "b16v2", "",    "",    "", "", "", "b8v4", "b8v4", "b8v4"};
     str << names[static_cast<uint8_t>(type.dt) & 0x1F];
     return str;
 }
@@ -954,7 +968,7 @@ public:
 
     constexpr int getBase()            const { return base; }
     constexpr RegFile getRegFile()     const { return static_cast<RegFile>(rf); }
-    constexpr14 RegFile8 getRegFile8()   const {
+    constexpr14 RegFile8 getRegFile8() const {
 #ifdef NGEN_SAFE
         if (rf > 1) throw invalid_register_file_exception();
 #endif
@@ -1430,6 +1444,9 @@ public:
     constexpr14 GRF   b8v4() const { return retype(DataType::b8v4);   }
     constexpr14 GRF   u8v4() const { return retype(DataType::u8v4);   }
     constexpr14 GRF   s8v4() const { return retype(DataType::s8v4);   }
+    constexpr14 GRF e4m3v4() const { return retype(DataType::e4m3v4); }
+    constexpr14 GRF e5m3v4() const { return retype(DataType::e5m3v4); }
+    constexpr14 GRF e8m0v4() const { return retype(DataType::e8m0v4); }
 #endif
 
     Align16Operand swizzle(int s0, int s1, int s2, int s3)    const { return Align16Operand(*this, s0, s1, s2, s3); }
@@ -1532,6 +1549,9 @@ public:
     constexpr14 SRF   b8v4() const { return retype(DataType::b8v4);   }
     constexpr14 SRF   u8v4() const { return retype(DataType::u8v4);   }
     constexpr14 SRF   s8v4() const { return retype(DataType::s8v4);   }
+    constexpr14 SRF e4m3v4() const { return retype(DataType::e4m3v4); }
+    constexpr14 SRF e5m3v4() const { return retype(DataType::e5m3v4); }
+    constexpr14 SRF e8m0v4() const { return retype(DataType::e8m0v4); }
     constexpr14 SRF   e2m1() const { return retype(DataType::e2m1);   }
     constexpr14 SRF   e3m0() const { return retype(DataType::e3m0);   }
 
@@ -1850,10 +1870,10 @@ enum class IndirectARF : uint16_t {
     tarb = 23,
     cctrl = 24, msgctrl = 28, sbctrl = 29, apctrl = 30,
     abar = 31,
-    fs0 = 40, fs1 = 41, fs2 = 42, fs3 = 43,
-    fs4 = 44, fs5 = 45, fs6 = 46, fs7 = 47,
-    fs8 = 48, fs9 = 49, fs10 = 50, fs11 = 51,
-    fs12 = 52, fs13 = 53, fs14 = 54,
+    fs0 = 48, fs1 = 49, fs2 = 50, fs3 = 51,
+    fs4 = 52, fs5 = 53, fs6 = 54, fs7 = 55,
+    fs8 = 56, fs9 = 57, fs10 = 58, fs11 = 59,
+    fs12 = 60, fs13 = 61, fs14 = 62,
     nbar = 64, nhost = 65, nflsh = 66,
     tsl = 72, tsh = 73,
     tme = 76,
@@ -1913,9 +1933,9 @@ static inline std::ostream &operator<<(std::ostream &str, IndirectARF iarf)
         "", "", "", "", "gctrl", "exctrl", "tpctrl", "tarb",
         "cctrl", "", "", "", "msgctrl", "sbctrl", "apctrl", "abar",
         "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
         "fs0", "fs1", "fs2", "fs3", "fs4", "fs5", "fs6", "fs7",
         "fs8", "fs9", "fs10", "fs11", "fs12", "fs13", "fs14", "",
-        "", "", "", "", "", "", "", "",
         "nbar", "nhost", "nflsh", "", "", "", "", "",
         "tsl", "tsh", "", "", "tme", "", "", "",
         "pse", "", "", "", "ctl", "cth", "", "",
@@ -2467,25 +2487,27 @@ static inline std::ostream &operator<<(std::ostream &str, RoundingOverride rmo)
 
 /* Xe4 opcodes and type dispatching */
 enum class OpcodeClassXe4 {
-    abs, add_128A, add_64A, add_128D, add3, addc, asr, avg,
+    abs, absmax, add_128A, add_64A, add_128D, add3, addc, asr, avg,
     bfe, bfegen, bfi, bfia, bfigen, bfn2, bfn3, bfrev, brepgen, brd,
-    call, calla, callad, calld, cbit, cmp_128A, cmp_64B, cnvg, cvt, cvt2, dp4a,
+    call, calla, callad, calld, cbit, cctrl, cmp_128S, cmp_64B, cnvg, cvt, cvt2, cvts, dp4a,
     emcos, emexp2, eminv, eminvm, emlog2, emrsqt, emrsqtm, emsgmd, emsin, emsqt, emtanh,
     fbh, fbl, frc, geta, goto_, illegal, jmpi, join,
     mad_128A, mad_64C, mad_128D, madm, madlh, madc, max_, min_,
     mov_128R, mov_64I, movb, movg, movs, msk,
-    mul_128A, mul_64A, mul_128D, mullh, nop128, nop64,
-    redand, redfirst, redfirstidx, redmax, redmin, redor, redsum, redxor,
+    mul_128A, mul_64A, mul_128D, mullh, mulmx_64K, mulmx_128U, nop128, nop64,
+    redabsmax, redand, redfirst, redfirstidx, redmax, redmin, redor, redsum, redxor,
     ret, retd, rnd, rol, ror,
     sadd_128A, sadd_64A, sasr, sbfia, sbfn2, sbfn3, sbfrev, sbrepgen,
-    scmp_128A, scmp_64B, sel, send, sendc, sendcg, sendg,
+    scmp_128S, scmp_64B, sel, send, sendc, sendcg, sendg,
     seta, sgeta, shfld, shfli, shflsb, shflu, shflx, shl, shr, smad_128A, smad_64C,
     smov_128R, smov_64I, smul_128A, smul_64A, smullh, ssel, sseta,
     sshl, sshr, sbfi, sbfe, sfbh, sfbl, sbfegen, smsk, sbfigen,
-    subb, sync, tarb, tmm, tmmd, tmmamx, tcvd, tcvdmx, tcvu, tcvumx, trng, tred, tmov,
+    subb, swz, sync, tarb,
+    tcvd, tcvdmx, tcvu, tcvumx, texp, texp2, tmm, tmmd, tmmamx, tmov, trng, tred,
     yield,
 
     abs_128A = abs,
+    absmax_128A = absmax,
     add3_128A = add3,
     addc_128K = addc,
     asr_128A = asr,
@@ -2505,9 +2527,11 @@ enum class OpcodeClassXe4 {
     callad_128P = callad,
     calld_128B = calld,
     cbit_128A = cbit,
+    cctrl_64J = cctrl,
     cnvg_128L = cnvg,
     cvt_128O = cvt,
     cvt2_128O = cvt2,
+    cvts_128O = cvts,
     dp4a_128Q = dp4a,
     emcos_128A = emcos,
     emexp2_128A = emexp2,
@@ -2525,7 +2549,7 @@ enum class OpcodeClassXe4 {
     frc_128A = frc,
     geta_128R = geta,
     goto__128B = goto_,
-    illegal_128A = illegal,
+    illegal_64A = illegal,
     jmpi_128B = jmpi,
     join_128B = join,
     madc_128K = madc,
@@ -2540,6 +2564,7 @@ enum class OpcodeClassXe4 {
     mullh_128A = mullh,
     nop128_128A = nop128,
     nop64_64A = nop64,
+    redabsmax_128F = redabsmax,
     redand_128F = redand,
     redfirst_128F = redfirst,
     redfirstidx_128F = redfirstidx,
@@ -2586,12 +2611,15 @@ enum class OpcodeClassXe4 {
     sshl_128A = sshl,
     sshr_128A = sshr,
     subb_128K = subb,
+    swz_128T = swz,
     sync_64E = sync,
     tarb_64H = tarb,
     tcvd_128N = tcvd,
     tcvdmx_128N = tcvdmx,
     tcvu_128N = tcvu,
     tcvumx_128N = tcvumx,
+    texp_128N = texp,
+    texp2_128N = texp2,
     tmm_128M = tmm,
     tmmamx_128M = tmmamx,
     tmmd_128M = tmmd,
@@ -2610,7 +2638,7 @@ enum class OpcodeClassXe4 {
     NGEN_DEF_XE4_SCALAR_OPCLASS(bfn3) \
     NGEN_DEF_XE4_SCALAR_OPCLASS(bfrev) \
     NGEN_DEF_XE4_SCALAR_OPCLASS(brepgen) \
-    NGEN_DEF_XE4_SCALAR_OPCLASS(cmp_128A) \
+    NGEN_DEF_XE4_SCALAR_OPCLASS(cmp_128S) \
     NGEN_DEF_XE4_SCALAR_OPCLASS(cmp_64B) \
     NGEN_DEF_XE4_SCALAR_OPCLASS(geta) \
     NGEN_DEF_XE4_SCALAR_OPCLASS(mad_128A) \
@@ -2673,397 +2701,404 @@ static inline OpcodeClassXe4 toScalar(OpcodeClassXe4 opclass)
 #undef NGEN_DEF_XE4_SCALAR_OPCLASS
 }
 
+enum class EncodingXe4 {
+    _128A, _128B, _128C, _128D, _128E, _128F, _128G, _128H, _128I, _128J, _128K, _128L, _128M, _128N, _128O, _128P, _128Q, _128R, _128S, _128T, _128U,
+    _64A, _64B, _64C, _64D, _64E, _64F, _64G, _64H, _64I, _64J, _64K,
+};
+
 #define NGEN_DEF_XE4_OPS \
-NGEN_XE4_OP(abs, 128A, s32, 67) \
-NGEN_XE4_OP(abs, 128A, s64, 83) \
-NGEN_XE4_OP(abs, 128A, f32, 68) \
-NGEN_XE4_OP(abs, 128A, f64, 69) \
-NGEN_XE4_OP(abs, 128A, f16, 122) \
-NGEN_XE4_OP(abs, 128A, bf16, 123) \
-NGEN_XE4_OP(abs, 128A, f16v2, 70) \
-NGEN_XE4_OP(abs, 128A, bf16v2, 71) \
-NGEN_XE4_OP(add, 128A, u32, 74) \
-NGEN_XE4_OP(add, 128A, s32, 75) \
-NGEN_XE4_OP(add, 128A, u64, 76) \
-NGEN_XE4_OP(add, 128A, s64, 77) \
-NGEN_XE4_OP(add, 128A, u16v2, 45) \
-NGEN_XE4_OP(add, 128A, s16v2, 78) \
-NGEN_XE4_OP(add, 128A, s8v4, 79) \
-NGEN_XE4_OP(add, 128A, f32, 80) \
-NGEN_XE4_OP(add, 128A, f64, 268) \
-NGEN_XE4_OP(add, 128A, f16, 124) \
-NGEN_XE4_OP(add, 128A, bf16, 125) \
-NGEN_XE4_OP(add, 128A, f16v2, 81) \
-NGEN_XE4_OP(add, 128A, bf16v2, 82) \
-NGEN_XE4_OP(add, 64A, u32, 85) \
-NGEN_XE4_OP(add, 64A, s32, 86) \
-NGEN_XE4_OP(add, 64A, u64, 87) \
-NGEN_XE4_OP(add, 64A, s64, 88) \
-NGEN_XE4_OP(add, 64A, u16v2, 46) \
-NGEN_XE4_OP(add, 64A, s16v2, 89) \
-NGEN_XE4_OP(add, 64A, s8v4, 90) \
-NGEN_XE4_OP(add, 64A, f32, 91) \
-NGEN_XE4_OP(add, 64A, f64, 315) \
-NGEN_XE4_OP(add, 64A, f16, 126) \
-NGEN_XE4_OP(add, 64A, bf16, 127) \
-NGEN_XE4_OP(add, 64A, f16v2, 92) \
-NGEN_XE4_OP(add, 64A, bf16v2, 93) \
-NGEN_XE4_OP(add, 128D, u64, 96) \
-NGEN_XE4_OP(add, 128D, s64, 97) \
-NGEN_XE4_OP(add, 128D, f64, 316) \
-NGEN_XE4_OP(add3, 128A, u32, 10) \
-NGEN_XE4_OP(add3, 128A, s32, 241) \
-NGEN_XE4_OP(add3, 128A, u64, 13) \
-NGEN_XE4_OP(add3, 128A, s64, 242) \
-NGEN_XE4_OP(addc, 128K, u32, 98) \
-NGEN_XE4_OP(asr, 128A, s32, 26) \
-NGEN_XE4_OP(asr, 128A, s64, 27) \
-NGEN_XE4_OP(asr, 128A, s16v2, 347) \
-NGEN_XE4_OP(asr, 128A, s8v4, 348) \
-NGEN_XE4_OP(avg, 128A, s32, 99) \
-NGEN_XE4_RAW_OP(bfe, 128G, b32, 28) \
-NGEN_XE4_RAW_OP(bfegen, 128A, b32, 326) \
-NGEN_XE4_RAW_OP(bfi, 128G, b32, 29) \
-NGEN_XE4_RAW_OP(bfia, 128G, b32, 30) \
-NGEN_XE4_RAW_OP(bfigen, 128A, b32, 305) \
-NGEN_XE4_RAW_OP(bfn2, 64D, b32, 33) \
-NGEN_XE4_RAW_OP(bfn3, 128E, b32, 306) \
-NGEN_XE4_RAW_OP(bfrev, 128G, b32, 31) \
-NGEN_XE4_RAW_OP(brepgen, 128A, b32, 325) \
-NGEN_XE4_UNTYPED_OP(brd, 128B, 57) \
-NGEN_XE4_UNTYPED_OP(call, 128B, 3) \
-NGEN_XE4_UNTYPED_OP(calla, 128P, 4) \
-NGEN_XE4_UNTYPED_OP(callad, 128P, 58) \
-NGEN_XE4_UNTYPED_OP(calld, 128B, 59) \
-NGEN_XE4_RAW_OP(cbit, 128A, b32, 34) \
-NGEN_XE4_OP(cmp, 128A, u32, 100) \
-NGEN_XE4_OP(cmp, 128A, s32, 101) \
-NGEN_XE4_OP(cmp, 128A, u64, 102) \
-NGEN_XE4_OP(cmp, 128A, s64, 103) \
-NGEN_XE4_OP(cmp, 128A, u16v2, 47) \
-NGEN_XE4_OP(cmp, 128A, s16v2, 104) \
-NGEN_XE4_OP(cmp, 128A, s8v4, 105) \
-NGEN_XE4_OP(cmp, 128A, f32, 106) \
-NGEN_XE4_OP(cmp, 128A, f64, 107) \
-NGEN_XE4_OP(cmp, 128A, f16, 233) \
-NGEN_XE4_OP(cmp, 128A, bf16, 234) \
-NGEN_XE4_OP(cmp, 128A, f16v2, 108) \
-NGEN_XE4_OP(cmp, 128A, bf16v2, 109) \
-NGEN_XE4_OP(cmp, 64B, u32, 112) \
-NGEN_XE4_OP(cmp, 64B, s32, 113) \
-NGEN_XE4_OP(cmp, 64B, u64, 114) \
-NGEN_XE4_OP(cmp, 64B, s64, 115) \
-NGEN_XE4_OP(cmp, 64B, u16v2, 48) \
-NGEN_XE4_OP(cmp, 64B, s16v2, 116) \
-NGEN_XE4_OP(cmp, 64B, s8v4, 117) \
-NGEN_XE4_OP(cmp, 64B, f32, 118) \
-NGEN_XE4_OP(cmp, 64B, f64, 119) \
-NGEN_XE4_OP(cmp, 64B, f16, 235) \
-NGEN_XE4_OP(cmp, 64B, bf16, 236) \
-NGEN_XE4_OP(cmp, 64B, f16v2, 120) \
-NGEN_XE4_OP(cmp, 64B, bf16v2, 121) \
-NGEN_XE4_UNTYPED_OP(cnvg, 128L, 200) \
-NGEN_XE4_OP(cvt, 128O, u8, 94) \
-NGEN_XE4_OP(cvt, 128O, s8, 95) \
-NGEN_XE4_OP(cvt, 128O, u16, 154) \
-NGEN_XE4_OP(cvt, 128O, s16, 155) \
-NGEN_XE4_OP(cvt, 128O, u32, 165) \
-NGEN_XE4_OP(cvt, 128O, s32, 166) \
-NGEN_XE4_OP(cvt, 128O, u64, 176) \
-NGEN_XE4_OP(cvt, 128O, s64, 177) \
-NGEN_XE4_OP(cvt, 128O, u16v2, 188) \
-NGEN_XE4_OP(cvt, 128O, s16v2, 189) \
-NGEN_XE4_OP(cvt, 128O, f32, 193) \
-NGEN_XE4_OP(cvt, 128O, tf32, 194) \
-NGEN_XE4_OP(cvt, 128O, f64, 201) \
-NGEN_XE4_OP(cvt, 128O, f16, 204) \
-NGEN_XE4_OP(cvt, 128O, bf16, 205) \
-NGEN_XE4_OP(cvt, 128O, f16v2, 211) \
-NGEN_XE4_OP(cvt, 128O, bf16v2, 212) \
-NGEN_XE4_OP(cvt2, 128O, f16v2, 376) \
-NGEN_XE4_OP(cvt2, 128O, bf16v2, 377) \
-NGEN_XE4_OP(dp4a, 128Q, u32, 187) \
-NGEN_XE4_OP(dp4a, 128Q, s32, 190) \
-NGEN_XE4_OP(emcos, 128A, f32, 134) \
-NGEN_XE4_OP(emcos, 128A, f16, 329) \
-NGEN_XE4_OP(emcos, 128A, bf16, 338) \
-NGEN_XE4_OP(emcos, 128A, f16v2, 213) \
-NGEN_XE4_OP(emcos, 128A, bf16v2, 214) \
-NGEN_XE4_OP(emexp2, 128A, f32, 135) \
-NGEN_XE4_OP(emexp2, 128A, f16, 330) \
-NGEN_XE4_OP(emexp2, 128A, bf16, 339) \
-NGEN_XE4_OP(emexp2, 128A, f16v2, 219) \
-NGEN_XE4_OP(emexp2, 128A, bf16v2, 220) \
-NGEN_XE4_OP(eminv, 128A, f32, 136) \
-NGEN_XE4_OP(eminv, 128A, f16, 331) \
-NGEN_XE4_OP(eminv, 128A, bf16, 340) \
-NGEN_XE4_OP(eminv, 128A, f16v2, 237) \
-NGEN_XE4_OP(eminv, 128A, bf16v2, 238) \
-NGEN_XE4_OP(eminvm, 128H, f32, 137) \
-NGEN_XE4_OP(eminvm, 128H, f64, 327) \
-NGEN_XE4_OP(emlog2, 128A, f32, 138) \
-NGEN_XE4_OP(emlog2, 128A, f16, 332) \
-NGEN_XE4_OP(emlog2, 128A, bf16, 341) \
-NGEN_XE4_OP(emlog2, 128A, f16v2, 239) \
-NGEN_XE4_OP(emlog2, 128A, bf16v2, 279) \
-NGEN_XE4_OP(emrsqt, 128A, f32, 24) \
-NGEN_XE4_OP(emrsqt, 128A, f16, 333) \
-NGEN_XE4_OP(emrsqt, 128A, bf16, 342) \
-NGEN_XE4_OP(emrsqt, 128A, f16v2, 283) \
-NGEN_XE4_OP(emrsqt, 128A, bf16v2, 289) \
-NGEN_XE4_OP(emrsqtm, 128H, f32, 139) \
-NGEN_XE4_OP(emrsqtm, 128H, f64, 328) \
-NGEN_XE4_OP(emsgmd, 128A, f32, 140) \
-NGEN_XE4_OP(emsgmd, 128A, f16, 334) \
-NGEN_XE4_OP(emsgmd, 128A, bf16, 343) \
-NGEN_XE4_OP(emsgmd, 128A, f16v2, 308) \
-NGEN_XE4_OP(emsgmd, 128A, bf16v2, 310) \
-NGEN_XE4_OP(emsin, 128A, f32, 141) \
-NGEN_XE4_OP(emsin, 128A, f16, 335) \
-NGEN_XE4_OP(emsin, 128A, bf16, 344) \
-NGEN_XE4_OP(emsin, 128A, f16v2, 362) \
-NGEN_XE4_OP(emsin, 128A, bf16v2, 363) \
-NGEN_XE4_OP(emsqt, 128A, f32, 142) \
-NGEN_XE4_OP(emsqt, 128A, f16, 336) \
-NGEN_XE4_OP(emsqt, 128A, bf16, 345) \
-NGEN_XE4_OP(emsqt, 128A, f16v2, 364) \
-NGEN_XE4_OP(emsqt, 128A, bf16v2, 365) \
-NGEN_XE4_OP(emtanh, 128A, f32, 143) \
-NGEN_XE4_OP(emtanh, 128A, f16, 337) \
-NGEN_XE4_OP(emtanh, 128A, bf16, 346) \
-NGEN_XE4_OP(emtanh, 128A, f16v2, 366) \
-NGEN_XE4_OP(emtanh, 128A, bf16v2, 375) \
-NGEN_XE4_RAW_OP(fbh, 128A, b32, 35) \
-NGEN_XE4_RAW_OP(fbl, 128A, b32, 36) \
-NGEN_XE4_OP(frc, 128A, f32, 144) \
-NGEN_XE4_RAW_OP(geta, 128R, b32, 307) \
-NGEN_XE4_UNTYPED_OP(goto_, 128B, 6) \
-NGEN_XE4_UNTYPED_OP(illegal, 128A, 0) \
-NGEN_XE4_UNTYPED_OP(jmpi, 128B, 8) \
-NGEN_XE4_UNTYPED_OP(join, 128B, 9) \
-NGEN_XE4_OP(mad, 128A, u32, 191) \
-NGEN_XE4_OP(mad, 128A, s32, 192) \
-NGEN_XE4_OP(mad, 128A, u16v2, 49) \
-NGEN_XE4_OP(mad, 128A, s16v2, 195) \
-NGEN_XE4_OP(mad, 128A, s8v4, 196) \
-NGEN_XE4_OP(mad, 128A, f32, 197) \
-NGEN_XE4_OP(mad, 128A, f64, 317) \
-NGEN_XE4_OP(mad, 128A, f16, 221) \
-NGEN_XE4_OP(mad, 128A, bf16, 222) \
-NGEN_XE4_OP(mad, 128A, f16v2, 198) \
-NGEN_XE4_OP(mad, 128A, bf16v2, 199) \
-NGEN_XE4_OP(mad, 64C, u32, 202) \
-NGEN_XE4_OP(mad, 64C, s32, 203) \
-NGEN_XE4_OP(mad, 64C, u16v2, 50) \
-NGEN_XE4_OP(mad, 64C, s16v2, 206) \
-NGEN_XE4_OP(mad, 64C, s8v4, 207) \
-NGEN_XE4_OP(mad, 64C, f32, 208) \
-NGEN_XE4_OP(mad, 64C, f64, 318) \
-NGEN_XE4_OP(mad, 64C, f16, 223) \
-NGEN_XE4_OP(mad, 64C, bf16, 224) \
-NGEN_XE4_OP(mad, 64C, f16v2, 209) \
-NGEN_XE4_OP(mad, 64C, bf16v2, 210) \
-NGEN_XE4_OP(mad, 128D, f32, 215) \
-NGEN_XE4_OP(mad, 128D, f64, 319) \
-NGEN_XE4_OP(madm, 128H, f32, 216) \
-NGEN_XE4_OP(madm, 128H, f64, 169) \
-NGEN_XE4_OP(madlh, 128A, u64, 170) \
-NGEN_XE4_OP(madlh, 128A, s64, 180) \
-NGEN_XE4_OP(madc, 128K, u64, 181) \
-NGEN_XE4_OP(max, 128A, u32, 145) \
-NGEN_XE4_OP(max, 128A, s32, 146) \
-NGEN_XE4_OP(max, 128A, u64, 147) \
-NGEN_XE4_OP(max, 128A, s64, 148) \
-NGEN_XE4_OP(max, 128A, u16v2, 51) \
-NGEN_XE4_OP(max, 128A, s16v2, 149) \
-NGEN_XE4_OP(max, 128A, s8v4, 150) \
-NGEN_XE4_OP(max, 128A, f32, 151) \
-NGEN_XE4_OP(max, 128A, f64, 320) \
-NGEN_XE4_OP(max, 128A, f16, 225) \
-NGEN_XE4_OP(max, 128A, bf16, 226) \
-NGEN_XE4_OP(max, 128A, f16v2, 152) \
-NGEN_XE4_OP(max, 128A, bf16v2, 153) \
-NGEN_XE4_OP(min, 128A, u32, 156) \
-NGEN_XE4_OP(min, 128A, s32, 157) \
-NGEN_XE4_OP(min, 128A, u64, 158) \
-NGEN_XE4_OP(min, 128A, s64, 159) \
-NGEN_XE4_OP(min, 128A, u16v2, 52) \
-NGEN_XE4_OP(min, 128A, s16v2, 160) \
-NGEN_XE4_OP(min, 128A, s8v4, 161) \
-NGEN_XE4_OP(min, 128A, f32, 162) \
-NGEN_XE4_OP(min, 128A, f64, 321) \
-NGEN_XE4_OP(min, 128A, f16, 227) \
-NGEN_XE4_OP(min, 128A, bf16, 228) \
-NGEN_XE4_OP(min, 128A, f16v2, 163) \
-NGEN_XE4_OP(min, 128A, bf16v2, 164) \
-NGEN_XE4_RAW_OP(mov, 128R, b32, 17) \
-NGEN_XE4_RAW_OP(mov, 128R, b64, 18) \
-NGEN_XE4_RAW_OP(mov, 64I, b32, 19) \
-NGEN_XE4_RAW_OP(mov, 64I, b64, 20) \
-NGEN_XE4_RAW_OP(movb, 128I, b32, 25) \
-NGEN_XE4_RAW_OP(movb, 128I, b64, 84) \
-NGEN_XE4_RAW_OP(movg, 128A, b32, 22) \
-NGEN_XE4_RAW_OP(movs, 128A, b32, 23) \
-NGEN_XE4_RAW_OP(msk, 64F, b32, 282) \
-NGEN_XE4_OP(mul, 128A, u32, 167) \
-NGEN_XE4_OP(mul, 128A, s32, 168) \
-NGEN_XE4_OP(mul, 128A, u16v2, 53) \
-NGEN_XE4_OP(mul, 128A, s16v2, 171) \
-NGEN_XE4_OP(mul, 128A, s8v4, 172) \
-NGEN_XE4_OP(mul, 128A, f32, 173) \
-NGEN_XE4_OP(mul, 128A, f64, 322) \
-NGEN_XE4_OP(mul, 128A, f16, 229) \
-NGEN_XE4_OP(mul, 128A, bf16, 230) \
-NGEN_XE4_OP(mul, 128A, f16v2, 174) \
-NGEN_XE4_OP(mul, 128A, bf16v2, 175) \
-NGEN_XE4_OP(mul, 64A, u32, 178) \
-NGEN_XE4_OP(mul, 64A, s32, 179) \
-NGEN_XE4_OP(mul, 64A, u16v2, 54) \
-NGEN_XE4_OP(mul, 64A, s16v2, 182) \
-NGEN_XE4_OP(mul, 64A, s8v4, 183) \
-NGEN_XE4_OP(mul, 64A, f32, 184) \
-NGEN_XE4_OP(mul, 64A, f64, 323) \
-NGEN_XE4_OP(mul, 64A, f16, 231) \
-NGEN_XE4_OP(mul, 64A, bf16, 232) \
-NGEN_XE4_OP(mul, 64A, f16v2, 185) \
-NGEN_XE4_OP(mul, 64A, bf16v2, 186) \
-NGEN_XE4_OP(mul, 128D, f64, 324) \
-NGEN_XE4_OP(mullh, 128A, u64, 5) \
-NGEN_XE4_OP(mullh, 128A, s64, 217) \
-NGEN_XE4_UNTYPED_OP(nop128, 128A, 1) \
-NGEN_XE4_UNTYPED_OP(nop64, 64A, 2) \
-NGEN_XE4_RAW_OP(redand, 128F, b32, 302) \
-NGEN_XE4_RAW_OP(redfirst, 128F, b32, 295) \
-NGEN_XE4_OP(redfirstidx, 128F, u32, 299) \
-NGEN_XE4_OP(redmax, 128F, u32, 291) \
-NGEN_XE4_OP(redmax, 128F, s32, 292) \
-NGEN_XE4_OP(redmax, 128F, f32, 290) \
-NGEN_XE4_OP(redmax, 128F, f16, 367) \
-NGEN_XE4_OP(redmax, 128F, bf16, 368) \
-NGEN_XE4_OP(redmax, 128F, f16v2, 369) \
-NGEN_XE4_OP(redmax, 128F, bf16v2, 370) \
-NGEN_XE4_OP(redmin, 128F, u32, 300) \
-NGEN_XE4_OP(redmin, 128F, s32, 301) \
-NGEN_XE4_OP(redmin, 128F, f32, 296) \
-NGEN_XE4_OP(redmin, 128F, f16, 371) \
-NGEN_XE4_OP(redmin, 128F, bf16, 372) \
-NGEN_XE4_OP(redmin, 128F, f16v2, 373) \
-NGEN_XE4_OP(redmin, 128F, bf16v2, 374) \
-NGEN_XE4_RAW_OP(redor, 128F, b32, 303) \
-NGEN_XE4_OP(redsum, 128F, u32, 297) \
-NGEN_XE4_OP(redsum, 128F, s32, 298) \
-NGEN_XE4_RAW_OP(redxor, 128F, b32, 304) \
-NGEN_XE4_UNTYPED_OP(ret, 128B, 11) \
-NGEN_XE4_UNTYPED_OP(retd, 128B, 60) \
-NGEN_XE4_OP(rnd, 128A, f32, 245) \
-NGEN_XE4_OP(rnd, 128A, f64, 248) \
-NGEN_XE4_OP(rnd, 128A, f16, 271) \
-NGEN_XE4_OP(rnd, 128A, bf16, 274) \
-NGEN_XE4_RAW_OP(rol, 128A, b32, 37) \
-NGEN_XE4_RAW_OP(rol, 128A, b64, 38) \
-NGEN_XE4_RAW_OP(rol, 128A, b16v2, 353) \
-NGEN_XE4_RAW_OP(rol, 128A, b8v4, 354) \
-NGEN_XE4_RAW_OP(ror, 128A, b32, 39) \
-NGEN_XE4_RAW_OP(ror, 128A, b64, 40) \
-NGEN_XE4_RAW_OP(ror, 128A, b16v2, 355) \
-NGEN_XE4_RAW_OP(ror, 128A, b8v4, 356) \
-NGEN_XE4_OP(sadd, 128A, u32, 243) \
-NGEN_XE4_OP(sadd, 128A, s32, 244) \
-NGEN_XE4_OP(sadd, 128A, u64, 258) \
-NGEN_XE4_OP(sadd, 128A, s64, 259) \
-NGEN_XE4_OP(sadd, 64A, u32, 246) \
-NGEN_XE4_OP(sadd, 64A, s32, 247) \
-NGEN_XE4_OP(sadd, 64A, u64, 264) \
-NGEN_XE4_OP(sadd, 64A, s64, 265) \
-NGEN_XE4_OP(sasr, 128A, s32, 249) \
-NGEN_XE4_OP(sasr, 128A, s64, 250) \
-NGEN_XE4_RAW_OP(sbfe, 128G, b32, 358) \
-NGEN_XE4_RAW_OP(sbfegen, 128A, b32, 14) \
-NGEN_XE4_RAW_OP(sbfi, 128G, b32, 357) \
-NGEN_XE4_RAW_OP(sbfia, 128G, b32, 251) \
-NGEN_XE4_RAW_OP(sbfigen, 128A, b32, 111) \
-NGEN_XE4_RAW_OP(sbfn2, 64D, b32, 252) \
-NGEN_XE4_RAW_OP(sbfn3, 128E, b32, 253) \
-NGEN_XE4_RAW_OP(sbfrev, 128G, b32, 66) \
-NGEN_XE4_RAW_OP(sbrepgen, 128A, b32, 65) \
-NGEN_XE4_OP(scmp, 128A, u32, 254) \
-NGEN_XE4_OP(scmp, 128A, s32, 255) \
-NGEN_XE4_OP(scmp, 128A, u64, 256) \
-NGEN_XE4_OP(scmp, 128A, s64, 257) \
-NGEN_XE4_OP(scmp, 64B, u32, 260) \
-NGEN_XE4_OP(scmp, 64B, s32, 261) \
-NGEN_XE4_OP(scmp, 64B, u64, 262) \
-NGEN_XE4_OP(scmp, 64B, s64, 263) \
-NGEN_XE4_RAW_OP(sel, 128J, b32, 218) \
-NGEN_XE4_UNTYPED_OP(send, 128C, 15) \
-NGEN_XE4_UNTYPED_OP(sendc, 128C, 16) \
-NGEN_XE4_UNTYPED_OP(sendcg, 128C, 73) \
-NGEN_XE4_UNTYPED_OP(sendg, 128C, 72) \
-NGEN_XE4_RAW_OP(seta, 128R, b32, 309) \
-NGEN_XE4_RAW_OP(sfbh, 128A, b32, 359) \
-NGEN_XE4_RAW_OP(sfbl, 128A, b32, 360) \
-NGEN_XE4_RAW_OP(sgeta, 128R, b32, 313) \
-NGEN_XE4_RAW_OP(shfld, 128F, b32, 293) \
-NGEN_XE4_RAW_OP(shfli, 128F, b32, 287) \
-NGEN_XE4_RAW_OP(shflsb, 128F, b32, 294) \
-NGEN_XE4_RAW_OP(shflu, 128F, b32, 286) \
-NGEN_XE4_RAW_OP(shflx, 128F, b32, 288) \
-NGEN_XE4_RAW_OP(shl, 128A, b32, 41) \
-NGEN_XE4_RAW_OP(shl, 128A, b64, 42) \
-NGEN_XE4_RAW_OP(shl, 128A, b16v2, 349) \
-NGEN_XE4_RAW_OP(shl, 128A, b8v4, 350) \
-NGEN_XE4_RAW_OP(shr, 128A, b32, 43) \
-NGEN_XE4_RAW_OP(shr, 128A, b64, 44) \
-NGEN_XE4_RAW_OP(shr, 128A, b16v2, 351) \
-NGEN_XE4_RAW_OP(shr, 128A, b8v4, 352) \
-NGEN_XE4_OP(smad, 128A, u32, 277) \
-NGEN_XE4_OP(smad, 128A, s32, 278) \
-NGEN_XE4_OP(smad, 64C, u32, 280) \
-NGEN_XE4_OP(smad, 64C, s32, 281) \
-NGEN_XE4_RAW_OP(smov, 128R, b32, 266) \
-NGEN_XE4_RAW_OP(smov, 128R, b64, 7) \
-NGEN_XE4_RAW_OP(smov, 64I, b32, 267) \
-NGEN_XE4_RAW_OP(smov, 64I, b64, 62) \
-NGEN_XE4_RAW_OP(smsk, 64F, b32, 110) \
-NGEN_XE4_OP(smul, 128A, u32, 269) \
-NGEN_XE4_OP(smul, 128A, s32, 270) \
-NGEN_XE4_OP(smul, 64A, u32, 272) \
-NGEN_XE4_OP(smul, 64A, s32, 273) \
-NGEN_XE4_OP(smullh, 128A, u64, 275) \
-NGEN_XE4_OP(smullh, 128A, s64, 276) \
-NGEN_XE4_RAW_OP(ssel, 128J, b32, 361) \
-NGEN_XE4_RAW_OP(sseta, 128R, b32, 311) \
-NGEN_XE4_RAW_OP(sshl, 128A, b32, 284) \
-NGEN_XE4_RAW_OP(sshl, 128A, b64, 312) \
-NGEN_XE4_RAW_OP(sshr, 128A, b32, 285) \
-NGEN_XE4_RAW_OP(sshr, 128A, b64, 314) \
-NGEN_XE4_OP(subb, 128K, u32, 240) \
-NGEN_XE4_UNTYPED_OP(sync, 64E, 12) \
-NGEN_XE4_UNTYPED_OP(tarb, 64H, 32) \
-NGEN_XE4_OP(tmm, 128M, s32, 448) \
-NGEN_XE4_OP(tmm, 128M, f32, 449) \
-NGEN_XE4_OP(tmm, 128M, f16, 450) \
-NGEN_XE4_OP(tmm, 128M, bf16, 451) \
-NGEN_XE4_OP(tmmd, 128M, f16, 456) \
-NGEN_XE4_OP(tmmd, 128M, bf16, 457) \
-NGEN_XE4_OP(tmmamx, 128M, f32, 453) \
-NGEN_XE4_OP(tcvd, 128N, f16, 488) \
-NGEN_XE4_OP(tcvd, 128N, bf16, 489) \
-NGEN_XE4_OP(tcvdmx, 128N, f16, 480) \
-NGEN_XE4_OP(tcvdmx, 128N, bf16, 481) \
-NGEN_XE4_OP(tcvu, 128N, f16, 504) \
-NGEN_XE4_OP(tcvu, 128N, bf16, 505) \
-NGEN_XE4_OP(tcvu, 128N, e5m2, 506) \
-NGEN_XE4_OP(tcvu, 128N, e4m3, 507) \
-NGEN_XE4_OP(tcvumx, 128N, f16, 496) \
-NGEN_XE4_OP(tcvumx, 128N, bf16, 497) \
-NGEN_XE4_RAW_OP(trng, 128N, b32, 464) \
-NGEN_XE4_RAW_OP(trng, 128N, b16v2, 465) \
-NGEN_XE4_RAW_OP(trng, 128N, b8v4, 466) \
-NGEN_XE4_OP(tred, 128N, f16, 500) \
-NGEN_XE4_OP(tred, 128N, bf16, 501) \
-NGEN_XE4_UNTYPED_OP(tmov, 128N, 510) \
-NGEN_XE4_UNTYPED_OP(yield, 64G, 56) \
+NGEN_XE4_OP(abs, 128A, s32, 144) \
+NGEN_XE4_OP(abs, 128A, s64, 145) \
+NGEN_XE4_OP(abs, 128A, s16v2, 146) \
+NGEN_XE4_OP(abs, 128A, s8v4, 147) \
+NGEN_XE4_OP(abs, 128A, f32, 148) \
+NGEN_XE4_OP(abs, 128A, f64, 149) \
+NGEN_XE4_OP(abs, 128A, f16, 150) \
+NGEN_XE4_OP(abs, 128A, bf16, 151) \
+NGEN_XE4_OP(abs, 128A, f16v2, 152) \
+NGEN_XE4_OP(abs, 128A, bf16v2, 153) \
+NGEN_XE4_OP(absmax, 128A, s32, 324) \
+NGEN_XE4_OP(absmax, 128A, s64, 325) \
+NGEN_XE4_OP(absmax, 128A, s16v2, 326) \
+NGEN_XE4_OP(absmax, 128A, s8v4, 327) \
+NGEN_XE4_OP(absmax, 128A, f32, 328) \
+NGEN_XE4_OP(absmax, 128A, f64, 329) \
+NGEN_XE4_OP(absmax, 128A, f16, 330) \
+NGEN_XE4_OP(absmax, 128A, bf16, 331) \
+NGEN_XE4_OP(absmax, 128A, f16v2, 332) \
+NGEN_XE4_OP(absmax, 128A, bf16v2, 333) \
+NGEN_XE4_OP(add, 128A, u32, 154) \
+NGEN_XE4_OP(add, 128A, s32, 155) \
+NGEN_XE4_OP(add, 128A, u64, 156) \
+NGEN_XE4_OP(add, 128A, s64, 157) \
+NGEN_XE4_OP(add, 128A, u16v2, 158) \
+NGEN_XE4_OP(add, 128A, s16v2, 159) \
+NGEN_XE4_OP(add, 128A, s8v4, 160) \
+NGEN_XE4_OP(add, 128A, f32, 161) \
+NGEN_XE4_OP(add, 128A, f64, 162) \
+NGEN_XE4_OP(add, 128A, f16, 163) \
+NGEN_XE4_OP(add, 128A, bf16, 164) \
+NGEN_XE4_OP(add, 128A, f16v2, 165) \
+NGEN_XE4_OP(add, 128A, bf16v2, 166) \
+NGEN_XE4_OP(add, 64A, u32, 1) \
+NGEN_XE4_OP(add, 64A, s32, 2) \
+NGEN_XE4_OP(add, 64A, u64, 3) \
+NGEN_XE4_OP(add, 64A, s64, 4) \
+NGEN_XE4_OP(add, 64A, u16v2, 5) \
+NGEN_XE4_OP(add, 64A, s16v2, 6) \
+NGEN_XE4_OP(add, 64A, s8v4, 7) \
+NGEN_XE4_OP(add, 64A, f32, 8) \
+NGEN_XE4_OP(add, 64A, f64, 9) \
+NGEN_XE4_OP(add, 64A, f16, 10) \
+NGEN_XE4_OP(add, 64A, bf16, 11) \
+NGEN_XE4_OP(add, 64A, f16v2, 12) \
+NGEN_XE4_OP(add, 64A, bf16v2, 13) \
+NGEN_XE4_OP(add, 128D, u64, 384) \
+NGEN_XE4_OP(add, 128D, s64, 385) \
+NGEN_XE4_OP(add, 128D, f64, 386) \
+NGEN_XE4_OP(add3, 128A, u32, 167) \
+NGEN_XE4_OP(add3, 128A, s32, 168) \
+NGEN_XE4_OP(add3, 128A, u64, 169) \
+NGEN_XE4_OP(add3, 128A, s64, 170) \
+NGEN_XE4_OP(addc, 128K, u32, 549) \
+NGEN_XE4_OP(asr, 128A, s32, 171) \
+NGEN_XE4_OP(asr, 128A, s64, 172) \
+NGEN_XE4_OP(asr, 128A, s16v2, 173) \
+NGEN_XE4_OP(asr, 128A, s8v4, 174) \
+NGEN_XE4_OP(avg, 128A, s32, 175) \
+NGEN_XE4_RAW_OP(bfe, 128G, b32, 467) \
+NGEN_XE4_RAW_OP(bfegen, 128A, b32, 176) \
+NGEN_XE4_RAW_OP(bfi, 128G, b32, 468) \
+NGEN_XE4_RAW_OP(bfigen, 128A, b32, 177) \
+NGEN_XE4_RAW_OP(bfn2, 64D, b32, 47) \
+NGEN_XE4_RAW_OP(bfn3, 128E, b32, 406) \
+NGEN_XE4_RAW_OP(bfrev, 128G, b32, 470) \
+NGEN_XE4_RAW_OP(brepgen, 128A, b32, 178) \
+NGEN_XE4_UNTYPED_OP(brd, 128B, 340) \
+NGEN_XE4_UNTYPED_OP(call, 128B, 341) \
+NGEN_XE4_UNTYPED_OP(calla, 128P, 680) \
+NGEN_XE4_UNTYPED_OP(callad, 128P, 681) \
+NGEN_XE4_UNTYPED_OP(calld, 128B, 342) \
+NGEN_XE4_RAW_OP(cbit, 128A, b32, 179) \
+NGEN_XE4_UNTYPED_OP(cctrl, 64J, 58) \
+NGEN_XE4_RAW_OP(cmp, 128S, b32, 740) \
+NGEN_XE4_RAW_OP(cmp, 64B, b32, 32) \
+NGEN_XE4_UNTYPED_OP(cnvg, 128L, 568) \
+NGEN_XE4_OP(cvt, 128O, u8, 645) \
+NGEN_XE4_OP(cvt, 128O, s8, 646) \
+NGEN_XE4_OP(cvt, 128O, u16, 647) \
+NGEN_XE4_OP(cvt, 128O, s16, 648) \
+NGEN_XE4_OP(cvt, 128O, u32, 649) \
+NGEN_XE4_OP(cvt, 128O, s32, 650) \
+NGEN_XE4_OP(cvt, 128O, u64, 651) \
+NGEN_XE4_OP(cvt, 128O, s64, 652) \
+NGEN_XE4_OP(cvt, 128O, u16v2, 653) \
+NGEN_XE4_OP(cvt, 128O, s16v2, 654) \
+NGEN_XE4_OP(cvt, 128O, f32, 655) \
+NGEN_XE4_OP(cvt, 128O, tf32, 656) \
+NGEN_XE4_OP(cvt, 128O, f64, 657) \
+NGEN_XE4_OP(cvt, 128O, f16, 658) \
+NGEN_XE4_OP(cvt, 128O, bf16, 659) \
+NGEN_XE4_OP(cvt, 128O, f16v2, 660) \
+NGEN_XE4_OP(cvt, 128O, bf16v2, 661) \
+NGEN_XE4_OP(cvt, 128O, e4m3v4, 664) \
+NGEN_XE4_OP(cvt, 128O, e5m3v4, 665) \
+NGEN_XE4_OP(cvt2, 128O, f16v2, 662) \
+NGEN_XE4_OP(cvt2, 128O, bf16v2, 663) \
+NGEN_XE4_OP(cvts, 128O, e8m0v4, 666) \
+NGEN_XE4_OP(dp4a, 128Q, u32, 698) \
+NGEN_XE4_OP(dp4a, 128Q, s32, 699) \
+NGEN_XE4_OP(emcos, 128A, f32, 180) \
+NGEN_XE4_OP(emcos, 128A, f16, 181) \
+NGEN_XE4_OP(emcos, 128A, bf16, 182) \
+NGEN_XE4_OP(emcos, 128A, f16v2, 183) \
+NGEN_XE4_OP(emcos, 128A, bf16v2, 184) \
+NGEN_XE4_OP(emexp2, 128A, f32, 185) \
+NGEN_XE4_OP(emexp2, 128A, f16, 186) \
+NGEN_XE4_OP(emexp2, 128A, bf16, 187) \
+NGEN_XE4_OP(emexp2, 128A, f16v2, 188) \
+NGEN_XE4_OP(emexp2, 128A, bf16v2, 189) \
+NGEN_XE4_OP(eminv, 128A, f32, 190) \
+NGEN_XE4_OP(eminv, 128A, f16, 191) \
+NGEN_XE4_OP(eminv, 128A, bf16, 192) \
+NGEN_XE4_OP(eminv, 128A, f16v2, 193) \
+NGEN_XE4_OP(eminv, 128A, bf16v2, 194) \
+NGEN_XE4_OP(eminvm, 128H, f32, 491) \
+NGEN_XE4_OP(eminvm, 128H, f64, 492) \
+NGEN_XE4_OP(emlog2, 128A, f32, 195) \
+NGEN_XE4_OP(emlog2, 128A, f16, 196) \
+NGEN_XE4_OP(emlog2, 128A, bf16, 197) \
+NGEN_XE4_OP(emlog2, 128A, f16v2, 198) \
+NGEN_XE4_OP(emlog2, 128A, bf16v2, 199) \
+NGEN_XE4_OP(emrsqt, 128A, f32, 200) \
+NGEN_XE4_OP(emrsqt, 128A, f16, 201) \
+NGEN_XE4_OP(emrsqt, 128A, bf16, 202) \
+NGEN_XE4_OP(emrsqt, 128A, f16v2, 203) \
+NGEN_XE4_OP(emrsqt, 128A, bf16v2, 204) \
+NGEN_XE4_OP(emrsqtm, 128H, f32, 493) \
+NGEN_XE4_OP(emrsqtm, 128H, f64, 494) \
+NGEN_XE4_OP(emsgmd, 128A, f32, 205) \
+NGEN_XE4_OP(emsgmd, 128A, f16, 206) \
+NGEN_XE4_OP(emsgmd, 128A, bf16, 207) \
+NGEN_XE4_OP(emsgmd, 128A, f16v2, 208) \
+NGEN_XE4_OP(emsgmd, 128A, bf16v2, 209) \
+NGEN_XE4_OP(emsin, 128A, f32, 210) \
+NGEN_XE4_OP(emsin, 128A, f16, 211) \
+NGEN_XE4_OP(emsin, 128A, bf16, 212) \
+NGEN_XE4_OP(emsin, 128A, f16v2, 213) \
+NGEN_XE4_OP(emsin, 128A, bf16v2, 214) \
+NGEN_XE4_OP(emsqt, 128A, f32, 215) \
+NGEN_XE4_OP(emsqt, 128A, f16, 216) \
+NGEN_XE4_OP(emsqt, 128A, bf16, 217) \
+NGEN_XE4_OP(emsqt, 128A, f16v2, 218) \
+NGEN_XE4_OP(emsqt, 128A, bf16v2, 219) \
+NGEN_XE4_OP(emtanh, 128A, f32, 220) \
+NGEN_XE4_OP(emtanh, 128A, f16, 221) \
+NGEN_XE4_OP(emtanh, 128A, bf16, 222) \
+NGEN_XE4_OP(emtanh, 128A, f16v2, 223) \
+NGEN_XE4_OP(emtanh, 128A, bf16v2, 224) \
+NGEN_XE4_RAW_OP(fbh, 128A, b32, 225) \
+NGEN_XE4_RAW_OP(fbl, 128A, b32, 226) \
+NGEN_XE4_OP(frc, 128A, f32, 227) \
+NGEN_XE4_UNTYPED_OP(goto_, 128B, 343) \
+NGEN_XE4_UNTYPED_OP(illegal, 64A, 0) \
+NGEN_XE4_UNTYPED_OP(jmpi, 128B, 344) \
+NGEN_XE4_UNTYPED_OP(join, 128B, 345) \
+NGEN_XE4_OP(mad, 128A, u32, 228) \
+NGEN_XE4_OP(mad, 128A, s32, 229) \
+NGEN_XE4_OP(mad, 128A, u16v2, 230) \
+NGEN_XE4_OP(mad, 128A, s16v2, 231) \
+NGEN_XE4_OP(mad, 128A, s8v4, 232) \
+NGEN_XE4_OP(mad, 128A, f32, 233) \
+NGEN_XE4_OP(mad, 128A, f64, 234) \
+NGEN_XE4_OP(mad, 128A, f16, 235) \
+NGEN_XE4_OP(mad, 128A, bf16, 236) \
+NGEN_XE4_OP(mad, 128A, f16v2, 237) \
+NGEN_XE4_OP(mad, 128A, bf16v2, 238) \
+NGEN_XE4_OP(mad, 64C, u32, 34) \
+NGEN_XE4_OP(mad, 64C, s32, 35) \
+NGEN_XE4_OP(mad, 64C, u16v2, 36) \
+NGEN_XE4_OP(mad, 64C, s16v2, 37) \
+NGEN_XE4_OP(mad, 64C, s8v4, 38) \
+NGEN_XE4_OP(mad, 64C, f32, 39) \
+NGEN_XE4_OP(mad, 64C, f64, 40) \
+NGEN_XE4_OP(mad, 64C, f16, 41) \
+NGEN_XE4_OP(mad, 64C, bf16, 42) \
+NGEN_XE4_OP(mad, 64C, f16v2, 43) \
+NGEN_XE4_OP(mad, 64C, bf16v2, 44) \
+NGEN_XE4_OP(mad, 128D, f32, 387) \
+NGEN_XE4_OP(mad, 128D, f64, 388) \
+NGEN_XE4_OP(madm, 128H, f32, 495) \
+NGEN_XE4_OP(madm, 128H, f64, 496) \
+NGEN_XE4_OP(madlh, 128A, u64, 239) \
+NGEN_XE4_OP(madlh, 128A, s64, 240) \
+NGEN_XE4_OP(madc, 128K, u64, 550) \
+NGEN_XE4_OP(max, 128A, u32, 241) \
+NGEN_XE4_OP(max, 128A, s32, 242) \
+NGEN_XE4_OP(max, 128A, u64, 243) \
+NGEN_XE4_OP(max, 128A, s64, 244) \
+NGEN_XE4_OP(max, 128A, u16v2, 245) \
+NGEN_XE4_OP(max, 128A, s16v2, 246) \
+NGEN_XE4_OP(max, 128A, s8v4, 247) \
+NGEN_XE4_OP(max, 128A, f32, 248) \
+NGEN_XE4_OP(max, 128A, f64, 249) \
+NGEN_XE4_OP(max, 128A, f16, 250) \
+NGEN_XE4_OP(max, 128A, bf16, 251) \
+NGEN_XE4_OP(max, 128A, f16v2, 252) \
+NGEN_XE4_OP(max, 128A, bf16v2, 253) \
+NGEN_XE4_OP(min, 128A, u32, 254) \
+NGEN_XE4_OP(min, 128A, s32, 255) \
+NGEN_XE4_OP(min, 128A, u64, 256) \
+NGEN_XE4_OP(min, 128A, s64, 257) \
+NGEN_XE4_OP(min, 128A, u16v2, 258) \
+NGEN_XE4_OP(min, 128A, s16v2, 259) \
+NGEN_XE4_OP(min, 128A, s8v4, 260) \
+NGEN_XE4_OP(min, 128A, f32, 261) \
+NGEN_XE4_OP(min, 128A, f64, 262) \
+NGEN_XE4_OP(min, 128A, f16, 263) \
+NGEN_XE4_OP(min, 128A, bf16, 264) \
+NGEN_XE4_OP(min, 128A, f16v2, 265) \
+NGEN_XE4_OP(min, 128A, bf16v2, 266) \
+NGEN_XE4_RAW_OP(mov, 128R, b32, 717) \
+NGEN_XE4_RAW_OP(mov, 128R, b64, 718) \
+NGEN_XE4_RAW_OP(mov, 64I, b32, 54) \
+NGEN_XE4_RAW_OP(mov, 64I, b64, 55) \
+NGEN_XE4_RAW_OP(movb, 128I, b32, 513) \
+NGEN_XE4_RAW_OP(movb, 128I, b64, 514) \
+NGEN_XE4_RAW_OP(movg, 128A, b32, 267) \
+NGEN_XE4_RAW_OP(movs, 128A, b32, 268) \
+NGEN_XE4_RAW_OP(msk, 64F, b32, 50) \
+NGEN_XE4_OP(mul, 128A, u32, 269) \
+NGEN_XE4_OP(mul, 128A, s32, 270) \
+NGEN_XE4_OP(mul, 128A, u16v2, 271) \
+NGEN_XE4_OP(mul, 128A, s16v2, 272) \
+NGEN_XE4_OP(mul, 128A, s8v4, 273) \
+NGEN_XE4_OP(mul, 128A, f32, 274) \
+NGEN_XE4_OP(mul, 128A, f64, 275) \
+NGEN_XE4_OP(mul, 128A, f16, 276) \
+NGEN_XE4_OP(mul, 128A, bf16, 277) \
+NGEN_XE4_OP(mul, 128A, f16v2, 278) \
+NGEN_XE4_OP(mul, 128A, bf16v2, 279) \
+NGEN_XE4_OP(mul, 64A, u32, 14) \
+NGEN_XE4_OP(mul, 64A, s32, 15) \
+NGEN_XE4_OP(mul, 64A, u16v2, 16) \
+NGEN_XE4_OP(mul, 64A, s16v2, 17) \
+NGEN_XE4_OP(mul, 64A, s8v4, 18) \
+NGEN_XE4_OP(mul, 64A, f32, 19) \
+NGEN_XE4_OP(mul, 64A, f64, 20) \
+NGEN_XE4_OP(mul, 64A, f16, 21) \
+NGEN_XE4_OP(mul, 64A, bf16, 22) \
+NGEN_XE4_OP(mul, 64A, f16v2, 23) \
+NGEN_XE4_OP(mul, 64A, bf16v2, 24) \
+NGEN_XE4_OP(mul, 128D, f64, 389) \
+NGEN_XE4_OP(mullh, 128A, u64, 280) \
+NGEN_XE4_OP(mullh, 128A, s64, 281) \
+NGEN_XE4_OP(mulmx, 128U, f32, 784) \
+NGEN_XE4_OP(mulmx, 64K, f32, 59) \
+NGEN_XE4_UNTYPED_OP(nop128, 128A, 282) \
+NGEN_XE4_UNTYPED_OP(nop64, 64A, 25) \
+NGEN_XE4_OP(redabsmax, 128F, s32, 451) \
+NGEN_XE4_OP(redabsmax, 128F, f32, 452) \
+NGEN_XE4_OP(redabsmax, 128F, f16, 453) \
+NGEN_XE4_OP(redabsmax, 128F, bf16, 454) \
+NGEN_XE4_OP(redabsmax, 128F, f16v2, 455) \
+NGEN_XE4_OP(redabsmax, 128F, bf16v2, 456) \
+NGEN_XE4_RAW_OP(redand, 128F, b32, 424) \
+NGEN_XE4_RAW_OP(redfirst, 128F, b32, 425) \
+NGEN_XE4_RAW_OP(redfirst, 128F, b64, 426) \
+NGEN_XE4_OP(redfirstidx, 128F, u32, 427) \
+NGEN_XE4_OP(redmax, 128F, u32, 428) \
+NGEN_XE4_OP(redmax, 128F, s32, 429) \
+NGEN_XE4_OP(redmax, 128F, f32, 430) \
+NGEN_XE4_OP(redmax, 128F, f16, 431) \
+NGEN_XE4_OP(redmax, 128F, bf16, 432) \
+NGEN_XE4_OP(redmax, 128F, f16v2, 433) \
+NGEN_XE4_OP(redmax, 128F, bf16v2, 434) \
+NGEN_XE4_OP(redmin, 128F, u32, 435) \
+NGEN_XE4_OP(redmin, 128F, s32, 436) \
+NGEN_XE4_OP(redmin, 128F, f32, 437) \
+NGEN_XE4_OP(redmin, 128F, f16, 438) \
+NGEN_XE4_OP(redmin, 128F, bf16, 439) \
+NGEN_XE4_OP(redmin, 128F, f16v2, 440) \
+NGEN_XE4_OP(redmin, 128F, bf16v2, 441) \
+NGEN_XE4_RAW_OP(redor, 128F, b32, 442) \
+NGEN_XE4_OP(redsum, 128F, u32, 443) \
+NGEN_XE4_OP(redsum, 128F, s32, 444) \
+NGEN_XE4_RAW_OP(redxor, 128F, b32, 445) \
+NGEN_XE4_UNTYPED_OP(ret, 128B, 346) \
+NGEN_XE4_UNTYPED_OP(retd, 128B, 347) \
+NGEN_XE4_OP(rnd, 128A, f32, 283) \
+NGEN_XE4_OP(rnd, 128A, f64, 284) \
+NGEN_XE4_OP(rnd, 128A, f16, 285) \
+NGEN_XE4_OP(rnd, 128A, bf16, 286) \
+NGEN_XE4_RAW_OP(rol, 128A, b32, 287) \
+NGEN_XE4_RAW_OP(rol, 128A, b64, 288) \
+NGEN_XE4_OP(rol, 128A, b16v2, 289) \
+NGEN_XE4_OP(rol, 128A, b8v4, 290) \
+NGEN_XE4_RAW_OP(ror, 128A, b32, 291) \
+NGEN_XE4_RAW_OP(ror, 128A, b64, 292) \
+NGEN_XE4_OP(ror, 128A, b16v2, 293) \
+NGEN_XE4_OP(ror, 128A, b8v4, 294) \
+NGEN_XE4_OP(sadd, 128A, u32, 295) \
+NGEN_XE4_OP(sadd, 128A, s32, 296) \
+NGEN_XE4_OP(sadd, 128A, u64, 297) \
+NGEN_XE4_OP(sadd, 128A, s64, 298) \
+NGEN_XE4_OP(sadd, 64A, u32, 26) \
+NGEN_XE4_OP(sadd, 64A, s32, 27) \
+NGEN_XE4_OP(sadd, 64A, u64, 28) \
+NGEN_XE4_OP(sadd, 64A, s64, 29) \
+NGEN_XE4_OP(sasr, 128A, s32, 299) \
+NGEN_XE4_OP(sasr, 128A, s64, 300) \
+NGEN_XE4_RAW_OP(sbfia, 128G, b32, 471) \
+NGEN_XE4_RAW_OP(sbfn2, 64D, b32, 48) \
+NGEN_XE4_RAW_OP(sbfn3, 128E, b32, 407) \
+NGEN_XE4_RAW_OP(sbfrev, 128G, b32, 472) \
+NGEN_XE4_RAW_OP(sbrepgen, 128A, b32, 301) \
+NGEN_XE4_RAW_OP(scmp, 128S, b32, 741) \
+NGEN_XE4_RAW_OP(scmp, 64B, b32, 33) \
+NGEN_XE4_RAW_OP(sel, 128J, b32, 531) \
+NGEN_XE4_UNTYPED_OP(send, 128C, 364) \
+NGEN_XE4_UNTYPED_OP(sendc, 128C, 365) \
+NGEN_XE4_UNTYPED_OP(sendcg, 128C, 366) \
+NGEN_XE4_UNTYPED_OP(sendg, 128C, 367) \
+NGEN_XE4_RAW_OP(sgeta, 128R, b32, 720) \
+NGEN_XE4_RAW_OP(shfld, 128F, b32, 446) \
+NGEN_XE4_RAW_OP(shfli, 128F, b32, 447) \
+NGEN_XE4_RAW_OP(shflsb, 128F, b32, 448) \
+NGEN_XE4_RAW_OP(shflu, 128F, b32, 449) \
+NGEN_XE4_RAW_OP(shflx, 128F, b32, 450) \
+NGEN_XE4_RAW_OP(shl, 128A, b32, 302) \
+NGEN_XE4_RAW_OP(shl, 128A, b64, 303) \
+NGEN_XE4_OP(shl, 128A, b16v2, 304) \
+NGEN_XE4_OP(shl, 128A, b8v4, 305) \
+NGEN_XE4_RAW_OP(shr, 128A, b32, 306) \
+NGEN_XE4_RAW_OP(shr, 128A, b64, 307) \
+NGEN_XE4_OP(shr, 128A, b16v2, 308) \
+NGEN_XE4_OP(shr, 128A, b8v4, 309) \
+NGEN_XE4_OP(smad, 128A, u32, 310) \
+NGEN_XE4_OP(smad, 128A, s32, 311) \
+NGEN_XE4_OP(smad, 64C, u32, 45) \
+NGEN_XE4_OP(smad, 64C, s32, 46) \
+NGEN_XE4_RAW_OP(smov, 128R, b32, 721) \
+NGEN_XE4_RAW_OP(smov, 128R, b64, 722) \
+NGEN_XE4_RAW_OP(smov, 64I, b32, 56) \
+NGEN_XE4_RAW_OP(smov, 64I, b64, 57) \
+NGEN_XE4_OP(smul, 128A, u32, 312) \
+NGEN_XE4_OP(smul, 128A, s32, 313) \
+NGEN_XE4_OP(smul, 64A, u32, 30) \
+NGEN_XE4_OP(smul, 64A, s32, 31) \
+NGEN_XE4_OP(smullh, 128A, u64, 314) \
+NGEN_XE4_OP(smullh, 128A, s64, 315) \
+NGEN_XE4_RAW_OP(ssel, 128J, b32, 532) \
+NGEN_XE4_RAW_OP(sseta, 128R, b32, 723) \
+NGEN_XE4_RAW_OP(sshl, 128A, b32, 316) \
+NGEN_XE4_RAW_OP(sshl, 128A, b64, 317) \
+NGEN_XE4_RAW_OP(sshr, 128A, b32, 318) \
+NGEN_XE4_RAW_OP(sshr, 128A, b64, 319) \
+NGEN_XE4_RAW_OP(sbfi, 128G, b32, 473) \
+NGEN_XE4_RAW_OP(sbfe, 128G, b32, 474) \
+NGEN_XE4_RAW_OP(sfbh, 128A, b32, 320) \
+NGEN_XE4_RAW_OP(sfbl, 128A, b32, 321) \
+NGEN_XE4_RAW_OP(sbfegen, 128A, b32, 322) \
+NGEN_XE4_RAW_OP(smsk, 64F, b32, 51) \
+NGEN_XE4_RAW_OP(sbfigen, 128A, b32, 323) \
+NGEN_XE4_OP(subb, 128K, u32, 551) \
+NGEN_XE4_RAW_OP(swz, 128T, b32, 760) \
+NGEN_XE4_UNTYPED_OP(sync, 64E, 49) \
+NGEN_XE4_UNTYPED_OP(tarb, 64H, 53) \
+NGEN_XE4_OP(tmm, 128M, s32, 585) \
+NGEN_XE4_OP(tmm, 128M, f32, 586) \
+NGEN_XE4_OP(tmm, 128M, f16, 587) \
+NGEN_XE4_OP(tmm, 128M, bf16, 588) \
+NGEN_XE4_OP(tmmd, 128M, f16, 589) \
+NGEN_XE4_OP(tmmd, 128M, bf16, 590) \
+NGEN_XE4_OP(tmmamx, 128M, f32, 591) \
+NGEN_XE4_OP(tcvd, 128N, f16, 608) \
+NGEN_XE4_OP(tcvd, 128N, bf16, 609) \
+NGEN_XE4_OP(tcvd, 128N, f32, 629) \
+NGEN_XE4_OP(tcvdmx, 128N, f16, 610) \
+NGEN_XE4_OP(tcvdmx, 128N, bf16, 611) \
+NGEN_XE4_OP(tcvdmx, 128N, f32, 630) \
+NGEN_XE4_OP(tcvu, 128N, f16, 612) \
+NGEN_XE4_OP(tcvu, 128N, bf16, 613) \
+NGEN_XE4_OP(tcvu, 128N, e5m2, 614) \
+NGEN_XE4_OP(tcvu, 128N, e4m3, 615) \
+NGEN_XE4_OP(tcvumx, 128N, f16, 616) \
+NGEN_XE4_OP(tcvumx, 128N, bf16, 617) \
+NGEN_XE4_RAW_OP(trng, 128N, b32, 618) \
+NGEN_XE4_OP(trng, 128N, b16v2, 619) \
+NGEN_XE4_OP(trng, 128N, b8v4, 620) \
+NGEN_XE4_OP(tred, 128N, f16, 621) \
+NGEN_XE4_OP(tred, 128N, bf16, 622) \
+NGEN_XE4_OP(tred, 128N, f32, 623) \
+NGEN_XE4_UNTYPED_OP(tmov, 128N, 624) \
+NGEN_XE4_OP(texp, 128N, f16, 625) \
+NGEN_XE4_OP(texp, 128N, bf16, 626) \
+NGEN_XE4_OP(texp, 128N, f32, 631) \
+NGEN_XE4_OP(texp2, 128N, f16, 627) \
+NGEN_XE4_OP(texp2, 128N, bf16, 628) \
+NGEN_XE4_OP(texp2, 128N, f32, 632) \
+NGEN_XE4_UNTYPED_OP(yield, 64G, 52) \
 
 #endif
 
@@ -3190,7 +3225,7 @@ enum class Opcode {
     nop = 0x7E,
     directive = 0x7F,   /* not a valid opcode; used internally by nGEN */
 #if XE4
-    directive_xe4 = 0x81FF,
+    directive_xe4 = 0x83FF,
 #define NGEN_XE4_UNTYPED_OP(cls, enc, opcode) cls##_##enc = 0x8000 | opcode,
 #define NGEN_XE4_RAW_OP NGEN_XE4_OP
 #define NGEN_XE4_OP(cls, enc, dt, opcode) cls##_##enc##_##dt = 0x8000 | opcode,
@@ -3282,6 +3317,15 @@ static inline bool isBranch(Opcode op)
     return (static_cast<int>(op) >> 4) == 2;
 }
 
+static inline bool isDirective(Opcode op)
+{
+#if XE4
+    return (op == Opcode::directive || op == Opcode::directive_xe4);
+#else
+    return (op == Opcode::directive);
+#endif
+}
+
 #if XE4
 static inline bool isCvt(Opcode op)
 {
@@ -3303,8 +3347,11 @@ static inline bool isCvt(Opcode op)
         case Opcode::cvt_128O_bf16:
         case Opcode::cvt_128O_f16v2:
         case Opcode::cvt_128O_bf16v2:
+        case Opcode::cvt_128O_e4m3v4:
+        case Opcode::cvt_128O_e5m3v4:
         case Opcode::cvt2_128O_f16v2:
-        case Opcode::cvt2_128O_bf16v2: return true;
+        case Opcode::cvt2_128O_bf16v2:
+        case Opcode::cvts_128O_e8m0v4: return true;
         default:                       return false;
     }
 }
@@ -3333,12 +3380,6 @@ NGEN_DEF_XE4_OPS
 #endif
     return Opcode::illegal;
 }
-
-enum class EncodingXe4 {
-    _128A, _128B, _128C, _128D, _128E, _128F, _128G, _128H, _128I, _128J, _128K, _128L, _128M, _128N, _128O, _128P, _128Q, _128R, _128S,
-    _64A, _64B, _64C, _64D, _64E, _64F, _64G, _64H, _64I,
-};
-
 
 #ifdef NGEN_ASM
 static inline std::ostream &operator<<(std::ostream &str, EncodingXe4 enc)
@@ -3408,84 +3449,35 @@ static inline DataType dstDataType(Opcode op)
     if (!isXe4(op))
         return DataType::invalid;
 
-    using DT = DataType;
-    auto _ = DT::invalid;
-    auto f64 = DT::f64, f32 = DT::f32;
-    auto f16 = DT::f16, bf16 = DT::bf16, f16v2 = DT::f16v2, bf16v2 = DT::bf16v2;
-    auto e4m3 = DT::e4m3, e5m2 = DT::e5m2;
-    auto b64 = DT::b64, b32 = DT::b32, b16v2 = DT::b16v2, b8v4 = DT::b8v4;
-    auto s64 = DT::s64, s32 = DT::s32, s16 = DT::s16, s16v2 = DT::s16v2, s8 = DT::s8, s8v4 = DT::s8v4;
-    auto u64 = DT::u64, u32 = DT::u32, u16 = DT::u16, u16v2 = DT::u16v2, u8 = DT::u8;
-    auto tf32 = DT::tf32;
+    int iop = static_cast<int>(op) & 0x3FF;
+#define NGEN_XE4_UNTYPED_OP(cls, enc, opcode)
+#define NGEN_XE4_RAW_OP NGEN_XE4_OP
+#define NGEN_XE4_OP(cls, enc, dt, opcode) \
+        if (iop == opcode) return DataType::dt;
+    NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
 
-    static const DataType dt[512] = {
-        _, _, _, _, _, u64, _, b64,
-        _, _, u32, _, _, u64, b32, _,
-        _, b32, b64, b32, b64, b64, b32, b32,
-        f32, b32, s32, s64, b32, b32, b32, b32,
-        _, b32, b32, b32, b32, b32, b64, b32,
-        b64, b32, b64, b32, b64, u16v2, u16v2, u16v2,
-        u16v2, u16v2, u16v2, u16v2, u16v2, u16v2, u16v2, b64,
-        _, _, _, _, _, _, b64, _,
-        _, b32, b32, s32, f32, f64, f16v2, bf16v2,
-        _, _, u32, s32, u64, s64, s16v2, s8v4,
-        f32, f16v2, bf16v2, s64, b64, u32, s32, u64,
-        s64, s16v2, s8v4, f32, f16v2, bf16v2, u8, s8,
-        u64, s64, u32, s32, u32, s32, u64, s64,
-        s16v2, s8v4, f32, f64, f16v2, bf16v2, b32, b32,
-        u32, s32, u64, s64, s16v2, s8v4, f32, f64,
-        f16v2, bf16v2, f16, bf16, f16, bf16, f16, bf16,
-        _, _, _, _, _, _, f32, f32,
-        f32, f32, f32, f32, f32, f32, f32, f32,
-        f32, u32, s32, u64, s64, s16v2, s8v4, f32,
-        f16v2, bf16v2, u16, s16, u32, s32, u64, s64,
-        s16v2, s8v4, f32, f16v2, bf16v2, u32, s32, u32,
-        s32, f64, u64, s16v2, s8v4, f32, f16v2, bf16v2,
-        u64, s64, u32, s32, s64, u64, s16v2, s8v4,
-        f32, f16v2, bf16v2, u32, u16v2, s16v2, s32, u32,
-        s32, f32, tf32, s16v2, s8v4, f32, f16v2, bf16v2,
-        _, f64, u32, s32, f16, bf16, s16v2, s8v4,
-        f32, f16v2, bf16v2, f16v2, bf16v2, f16v2, bf16v2, f32,
-        f32, s64, b32, f16v2, bf16v2, f16, bf16, f16,
-        bf16, f16, bf16, f16, bf16, f16, bf16, f16,
-        bf16, f16, bf16, f16, bf16, f16v2, bf16v2, f16v2,
-        u32, s32, s64, u32, s32, f32, u32, s32,
-        f64, s32, s64, b32, b32, b32, u32, s32,
-        u64, s64, u64, s64, u32, s32, u64, s64,
-        u64, s64, b32, b32, f64, u32, s32, f16,
-        u32, s32, bf16, u64, s64, u32, s32, bf16v2,
-        u32, s32, b32, f16v2, b32, b32, b32, b32,
-        b32, bf16v2, f32, u32, s32, b32, b32, b32,
-        f32, u32, s32, u32, u32, s32, b32, b32,
-        b32, b32, b32, b32, f16v2, b32, bf16v2, b32,
-        b64, b32, b64, f64, f64, f64, f64, f64,
-        f64, f64, f64, f64, f64, b32, b32, f64,
-        f64, f16, f16, f16, f16, f16, f16, f16,
-        f16, f16, bf16, bf16, bf16, bf16, bf16, bf16,
-        bf16, bf16, bf16, s16v2, s8v4, b16v2, b8v4, b16v2,
-        b8v4, b16v2, b8v4, b16v2, b8v4, b32, b32, b32,
-        b32, b32, f16v2, bf16v2, f16v2, bf16v2, f16v2, f16,
-        bf16, f16v2, bf16v2, f16, bf16, f16v2, bf16v2, bf16v2,
-        f16v2, bf16v2, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        s32, f32, f16, bf16, _, f32, _, _,
-        f16, bf16, _, _, _, _, _, _,
-        b32, b16v2, b8v4, _, _, _, _, _,
-        _, _, _, _, _, _, _, _,
-        f16, bf16, _, _, _, _, _, _,
-        f16, bf16, _, _, _, _, _, _,
-        f16, bf16, _, _, f16, bf16, _, _,
-        f16, bf16, e5m2, e4m3, _, _, _, _,
-    };
+    return DataType::invalid;
+}
 
-    return dt[static_cast<int>(op) & 0x1FF];
+static inline bool isRaw(Opcode op)
+{
+    if (!isXe4(op))
+        return false;
+
+    int iop = static_cast<int>(op) & 0x3FF;
+#define NGEN_XE4_UNTYPED_OP(cls, enc, opcode)
+#define NGEN_XE4_RAW_OP(cls, enc, dt, opcode) \
+        if (iop == opcode) return true;
+#define NGEN_XE4_OP(cls, enc, dt, opcode)
+    NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
+
+    return false;
 }
 #endif
 
@@ -5475,10 +5467,10 @@ union SendgMessageDescriptor {
                     case GatewayOpcode::save_bar:
                         return 1;
 #if XE4
-                    case GatewayOpcode::abar_arrive:
-                    case GatewayOpcode::abar_arrive_expect:
                     case GatewayOpcode::abar_test_poll:
                         return 1;
+                    case GatewayOpcode::abar_arrive:
+                    case GatewayOpcode::abar_arrive_expect:
                     case GatewayOpcode::abar_query:
                         return 2;
 #endif
@@ -5548,13 +5540,13 @@ union SendgMessageDescriptor {
             case SharedFunction::dma:
                 switch (static_cast<ADMAOpcode>(common.opcode)) {
                     case ADMAOpcode::linear_l2r:
+                    case ADMAOpcode::linear_reduce_l2r:
                         return 5;
                     case ADMAOpcode::linear_g2l:
-                    case ADMAOpcode::linear_reduce_l2r:
-                        return 4;
+                        return 2 + adma.multicast + adma.abar;
                     case ADMAOpcode::linear_l2g:
                     case ADMAOpcode::linear_reduce_l2g:
-                        return 3;
+                        return 2 + adma.abar;
                     case ADMAOpcode::linear_prefetch:
                         return 1;
                     case ADMAOpcode::row_g2l:
@@ -5563,12 +5555,12 @@ union SendgMessageDescriptor {
                     case ADMAOpcode::row_prefetch:
                         return ((adma.addrType == 2) ? 2 : 1) + adma.useCopySize;
                     case ADMAOpcode::tensor_g2l:
-                        return 8;
+                        return 6 + adma.multicast + adma.abar;
                     case ADMAOpcode::tensor_prefetch:
                         return 5;
                     case ADMAOpcode::tensor_l2g:
                     case ADMAOpcode::tensor_reduce_l2g:
-                        return 7;
+                        return 6 + adma.abar;
                     default: break;
                 }
                 break;
@@ -5656,24 +5648,10 @@ union SendgMessageDescriptor {
                 return 0;
 #if XE4
             case SharedFunction::dma:
-                switch (static_cast<ADMAOpcode>(common.opcode)) {
-                    case ADMAOpcode::linear_g2l:
-                    case ADMAOpcode::linear_l2r:
-                    case ADMAOpcode::linear_reduce_l2r:
-                    case ADMAOpcode::linear_l2g:
-                    case ADMAOpcode::linear_reduce_l2g:
-                    case ADMAOpcode::linear_prefetch:
-                        return 0;
-                    case ADMAOpcode::row_g2l:
-                    case ADMAOpcode::row_l2g:
-                    case ADMAOpcode::row_reduce_l2g:
-                    case ADMAOpcode::row_prefetch:
-                        return 3;
-                    case ADMAOpcode::tensor_g2l:
-                    case ADMAOpcode::tensor_prefetch:
-                    case ADMAOpcode::tensor_l2g:
-                    case ADMAOpcode::tensor_reduce_l2g:
-                        return 16;
+                switch (adma.memtype) {
+                    case 1: return 0;  /* linear */
+                    case 2: return 3;  /* row */
+                    case 0: return 16; /* tensor */
                     default: break;
                 }
                 break;
@@ -5889,7 +5867,36 @@ struct ADMAOptions
         return *this;
     }
 
-    constexpr14 void setOpcode(ADMAOpcode op)         { desc.common.opcode  = static_cast<uint8_t>(op); }
+    constexpr14 void setOpcode(ADMAOpcode op) {
+        desc.common.opcode  = static_cast<uint8_t>(op);
+        switch (op) {
+            default:
+            case ADMAOpcode::tensor_g2l:
+            case ADMAOpcode::tensor_prefetch:
+            case ADMAOpcode::tensor_l2g:
+            case ADMAOpcode::tensor_reduce_l2g:     desc.adma.memtype = 0; break;
+            case ADMAOpcode::linear_g2l:
+            case ADMAOpcode::linear_l2r:
+            case ADMAOpcode::linear_reduce_l2r:
+            case ADMAOpcode::linear_l2g:
+            case ADMAOpcode::linear_reduce_l2g:
+            case ADMAOpcode::linear_prefetch:       desc.adma.memtype = 1; break;
+            case ADMAOpcode::row_g2l:
+            case ADMAOpcode::row_l2g:
+            case ADMAOpcode::row_reduce_l2g:
+            case ADMAOpcode::row_prefetch:          desc.adma.memtype = 2; break;
+        }
+        switch (op) {
+            case ADMAOpcode::row_g2l:
+            case ADMAOpcode::tensor_g2l:
+            case ADMAOpcode::tensor_reduce_l2g:
+            case ADMAOpcode::linear_reduce_l2r:
+            case ADMAOpcode::linear_reduce_l2g:
+            case ADMAOpcode::row_reduce_l2g: break;
+            default: desc.adma.dataType = 0; break;
+        }
+    }
+
     constexpr14 void setReductionOp(ADMAReduction op) { desc.adma.reduction = static_cast<uint8_t>(op); }
 
     void setAddressing(AddressBase base) {

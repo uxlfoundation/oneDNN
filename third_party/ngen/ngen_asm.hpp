@@ -202,7 +202,7 @@ inline void RegisterRange::outputText(std::ostream &str, PrintDetail detail, Lab
     auto rf = srf ? 's' : 'r';
     if (detail > PrintDetail::xe4)
         GRFRange(base, len).outputText(str, detail, man);
-    else if (len > 6)
+    else if (len > 5)
         str << '(' << rf << int(base) << ':' << rf << int(base + len - 1) << ')';
     else if (len > 1) {
         str << '(' << rf << int(base);
@@ -568,7 +568,7 @@ class AsmCodeGenerator {
 private:
 #include "ngen_compiler_fix.hpp"
 public:
-    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr},
+    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr}, cancelAutoSWSB_(false),
 #if XE3P
                                                   lfsr{this}, shfl{this},
 #endif
@@ -658,7 +658,7 @@ private:
     InstructionModifier defaultModifier;
     LabelManager labelManager;
     std::vector<InstructionStream*> streamStack;
-    std::atomic<bool> cancelAutoSWSB_ = false;
+    std::atomic<bool> cancelAutoSWSB_;
 
 #if XE3P
     bool useEfficient64Bit = false;
@@ -826,6 +826,7 @@ private:
     }
     template <typename S1> void opCvt(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1);
     template <typename S1, typename S2> void opDP4A(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1, S2 src2);
+    template <typename S0, typename S1> void opMovb(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, S0 src0, S1 lanemask);
     template <typename S0, typename S1, typename S2> void opMullh(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, S0 src0, S1 src1, S2 src2);
 #endif
 
@@ -1115,14 +1116,6 @@ public:
         opX(OpcodeClassXe4::bfi, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
     }
     template <typename DT = uint32_t>
-    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::bfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
-    }
-    template <typename DT = uint32_t>
-    void bfia(const InstructionModifier &mod, unsigned width, unsigned offset, IndirectARF dst, IndirectARF src0, const Immediate &src1, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::bfia, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), width | (offset << 8));
-    }
-    template <typename DT = uint32_t>
     void bfigen(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &src2, SourceLocation loc = {}) {
         opX(OpcodeClassXe4::bfigen, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
@@ -1233,7 +1226,7 @@ public:
         (void) jip.getID(labelManager);
 #if XE4
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::call, DataType::invalid, mod, dst, jip);
+            opX(OpcodeClassXe4::call, DataType::invalid, mod, RegisterRange(dst, 3), jip);
         else
 #endif
         opCall(Opcode::call, mod, dst, jip);
@@ -1241,7 +1234,7 @@ public:
     void call(const InstructionModifier &mod, const RegData &dst, const RegData &jip, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::call, DataType::invalid, mod, dst, jip);
+            opX(OpcodeClassXe4::call, DataType::invalid, mod, RegisterRange(dst, 3), jip);
         else
 #endif
         opCall(Opcode::call, mod, dst, jip);
@@ -1249,7 +1242,7 @@ public:
 #if XE4
     void calla(const InstructionModifier &mod, const RegData &dst, uint64_t jip = 0, SourceLocation loc = {}) {
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::calla, DataType::invalid, mod, dst, Immediate::uq(jip));
+            opX(OpcodeClassXe4::calla, DataType::invalid, mod, RegisterRange(dst, 3), Immediate::uq(jip));
         else
             opCall(Opcode::calla, mod, dst, Immediate::ud(uint32_t(jip)));
     }
@@ -1263,14 +1256,14 @@ public:
     }
 #if XE4
     void callad(const InstructionModifier &mod, const RegData &dst, uint64_t jip = 0, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::callad, DataType::invalid, mod, dst, Immediate::uq(jip));
+        opX(OpcodeClassXe4::callad, DataType::invalid, mod, RegisterRange(dst, 3), Immediate::uq(jip));
     }
     void calld(const InstructionModifier &mod, const RegData &dst, Label &jip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
-        opX(OpcodeClassXe4::calld, DataType::invalid, mod, dst, jip);
+        opX(OpcodeClassXe4::calld, DataType::invalid, mod, RegisterRange(dst, 3), jip);
     }
     void calld(const InstructionModifier &mod, const RegData &dst, const RegData &jip, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::calld, DataType::invalid, mod, dst, jip);
+        opX(OpcodeClassXe4::calld, DataType::invalid, mod, RegisterRange(dst, 3), jip);
     }
 #endif
     template <typename DT = void>
@@ -1286,7 +1279,7 @@ public:
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+            opX(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1);
         else
 #endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1);
@@ -1295,7 +1288,7 @@ public:
     void cmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+            opX(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1);
         else
 #endif
         opX(isGen12 ? Opcode::cmp_gen12 : Opcode::cmp, getDataType<DT>(), mod, dst, src0, src1);
@@ -1304,7 +1297,7 @@ public:
     void cmpn(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE4
         if (hardware >= HW::Xe4)
-            opX(OpcodeClassXe4::cmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+            opX(OpcodeClassXe4::cmp_128S, getDataType<DT>(), mod, dst, src0, src1);
         else
 #endif
         opX(isGen12 ? Opcode::cmpn_gen12 : Opcode::cmpn, getDataType<DT>(), mod, dst, src0, src1);
@@ -1573,12 +1566,6 @@ public:
     template <typename DT = void> void frc(const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         frc<DT>(defaultMods(), dst, src0);
     }
-#if XE4
-    template <typename DT = uint32_t>
-    void geta(const InstructionModifier &mod, const RegData &dst, IndirectARF src0, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::geta, getDataType<DT>(), mod, dst, src0);
-    }
-#endif
     void goto_(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
@@ -1957,7 +1944,7 @@ public:
         if (dst.isSRF() == src0.isSRF())
             throw invalid_operand_exception();
 #endif
-        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+        opMovb(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
     }
     template <typename DT = void>
     void movb(const InstructionModifier &mod, RegData dst, RegData src0, RegData lanemask, SourceLocation loc = {}) {
@@ -1967,15 +1954,15 @@ public:
         if (dst.isSRF() == src0.isSRF())
             throw invalid_operand_exception();
 #endif
-        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+        opMovb(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
     }
     template <typename DT = void>
     void movb(const InstructionModifier &mod, RegData dst, Immediate src0, uint32_t lanemask = 0xFFFFFFFF, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+        opMovb(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
     }
     template <typename DT = void>
     void movb(const InstructionModifier &mod, RegData dst, Immediate src0, RegData lanemask, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
+        opMovb(OpcodeClassXe4::movb, getDataType<DT>(), mod, dst, src0, lanemask);
     }
     template <typename DT = void>
     void movg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
@@ -2591,14 +2578,6 @@ public:
 #endif
 #if XE4
     template <typename DT = uint32_t>
-    void seta(const InstructionModifier &mod, IndirectARF dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = uint32_t>
-    void seta(const InstructionModifier &mod, IndirectARF dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::seta, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = uint32_t>
     void shfld(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const RegData &lanemask, SourceLocation loc = {}) {
         opX(OpcodeClassXe4::shfld, getDataType<DT>(), mod, dst, src0, src1, lanemask);
     }
@@ -2960,11 +2939,11 @@ public:
     }
     template <typename DT = void>
     void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+        opX(OpcodeClassXe4::scmp_128S, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void scmp(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        opX(OpcodeClassXe4::scmp_128A, getDataType<DT>(), mod, dst, src0, src1);
+        opX(OpcodeClassXe4::scmp_128S, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void sfbh(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
@@ -3308,7 +3287,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
                 lineNo = 0;
         } else if (i.isComment())
             outComment(out, i);
-        else if (i.op != Opcode::directive && i.op != Opcode::directive_xe4)
+        else if (!isDirective(i.op))
             outX(out, i, lineNo);
     }
 }
@@ -3326,7 +3305,7 @@ void AsmCodeGenerator::getPartialCode(std::ostream &out)
                 out << ':' << std::endl;
             } else if (i.isComment())
                 outComment(out, i);
-            else if (i.op != Opcode::directive && i.op != Opcode::directive_xe4)
+            else if (!isDirective(i.op))
                 outX(out, i, lineNo);
         }
     }
@@ -3402,75 +3381,18 @@ static const char *getMnemonic(Opcode op, HW hw)
     };
 
 #if XE4
-    static const char *namesXe4[0x200] = {
-        "illegal\0", "nop128\0", "nop64\0", "call\0", "calla\0", "mullh\0u64", "goto\0", "smov\0b64",
-        "jmpi\0", "join\0", "add3\0u32", "ret\0", "sync\0", "add3\0u64", "sbfegen\0b32", "send\0",
-        "sendc\0", "mov\0b32", "mov\0b64", "mov\0b32", "mov\0b64", "mov\0b64", "movg\0b32", "movs\0b32",
-        "emrsqt\0f32", "movb\0b32", "asr\0s32", "asr\0s64", "bfe\0b32", "bfi\0b32", "bfia\0b32", "bfrev\0b32",
-        "tarb\0", "bfn2\0b32", "cbit\0b32", "fbh\0b32", "fbl\0b32", "rol\0b32", "rol\0b64", "ror\0b32",
-        "ror\0b64", "shl\0b32", "shl\0b64", "shr\0b32", "shr\0b64", "add\0u16v2", "add\0u16v2", "cmp\0u16v2",
-        "cmp\0u16v2", "mad\0u16v2", "mad\0u16v2", "max\0u16v2", "min\0u16v2", "mul\0u16v2", "mul\0u16v2", "smov\0b64",
-        "yield\0", "brd\0", "callad\0", "calld\0", "retd\0", "", "smov\0b64", "",
-        "", "sbrepgen\0b32", "sbfrev\0b32", "abs\0s32", "abs\0f32", "abs\0f64", "abs\0f16v2", "abs\0bf16v2",
-        "sendg\0", "sendcg\0", "add\0u32", "add\0s32", "add\0u64", "add\0s64", "add\0s16v2", "add\0s8v4",
-        "add\0f32", "add\0f16v2", "add\0bf16v2", "abs\0s64", "movb\0b64", "add\0u32", "add\0s32", "add\0u64",
-        "add\0s64", "add\0s16v2", "add\0s8v4", "add\0f32", "add\0f16v2", "add\0bf16v2", "cvt\0u8", "cvt\0s8",
-        "add\0u64", "add\0s64", "addc\0u32", "avg\0s32", "cmp\0u32", "cmp\0s32", "cmp\0u64", "cmp\0s64",
-        "cmp\0s16v2", "cmp\0s8v4", "cmp\0f32", "cmp\0f64", "cmp\0f16v2", "cmp\0bf16v2", "smsk\0b32", "sbfigen\0b32",
-        "cmp\0u32", "cmp\0s32", "cmp\0u64", "cmp\0s64", "cmp\0s16v2", "cmp\0s8v4", "cmp\0f32", "cmp\0f64",
-        "cmp\0f16v2", "cmp\0bf16v2", "abs\0f16", "abs\0bf16", "add\0f16", "add\0bf16", "add\0f16", "add\0bf16",
-        "", "", "", "", "", "", "emcos\0f32", "emexp2\0f32",
-        "eminv\0f32", "eminvm\0f32", "emlog2\0f32", "emrsqtm\0f32", "emsgmd\0f32", "emsin\0f32", "emsqt\0f32", "emtanh\0f32",
-        "frc\0f32", "max\0u32", "max\0s32", "max\0u64", "max\0s64", "max\0s16v2", "max\0s8v4", "max\0f32",
-        "max\0f16v2", "max\0bf16v2", "cvt\0u16", "cvt\0s16", "min\0u32", "min\0s32", "min\0u64", "min\0s64",
-        "min\0s16v2", "min\0s8v4", "min\0f32", "min\0f16v2", "min\0bf16v2", "cvt\0u32", "cvt\0s32", "mul\0u32",
-        "mul\0s32", "madm\0f64", "madlh\0u64", "mul\0s16v2", "mul\0s8v4", "mul\0f32", "mul\0f16v2", "mul\0bf16v2",
-        "cvt\0u64", "cvt\0s64", "mul\0u32", "mul\0s32", "madlh\0s64", "madc\0u64", "mul\0s16v2", "mul\0s8v4",
-        "mul\0f32", "mul\0f16v2", "mul\0bf16v2", "dp4a\0u32", "cvt\0u16v2", "cvt\0s16v2", "dp4a\0s32", "mad\0u32",
-        "mad\0s32", "cvt\0f32", "cvt\0tf32", "mad\0s16v2", "mad\0s8v4", "mad\0f32", "mad\0f16v2", "mad\0bf16v2",
-        "cnvg\0", "cvt\0f64", "mad\0u32", "mad\0s32", "cvt\0f16", "cvt\0bf16", "mad\0s16v2", "mad\0s8v4",
-        "mad\0f32", "mad\0f16v2", "mad\0bf16v2", "cvt\0f16v2", "cvt\0bf16v2", "emcos\0f16v2", "emcos\0bf16v2", "mad\0f32",
-        "madm\0f32", "mullh\0s64", "sel\0b32", "emexp2\0f16v2", "emexp2\0bf16v2", "mad\0f16", "mad\0bf16", "mad\0f16",
-        "mad\0bf16", "max\0f16", "max\0bf16", "min\0f16", "min\0bf16", "mul\0f16", "mul\0bf16", "mul\0f16",
-        "mul\0bf16", "cmp\0f16", "cmp\0bf16", "cmp\0f16", "cmp\0bf16", "eminv\0f16v2", "eminv\0bf16v2", "emlog2\0f16v2",
-        "subb\0u32", "add3\0s32", "add3\0s64", "sadd\0u32", "sadd\0s32", "rnd\0f32", "sadd\0u32", "sadd\0s32",
-        "rnd\0f64", "sasr\0s32", "sasr\0s64", "sbfia\0b32", "sbfn2\0b32", "sbfn3\0b32", "scmp\0u32", "scmp\0s32",
-        "scmp\0u64", "scmp\0s64", "sadd\0u64", "sadd\0s64", "scmp\0u32", "scmp\0s32", "scmp\0u64", "scmp\0s64",
-        "sadd\0u64", "sadd\0s64", "smov\0b32", "smov\0b32", "add\0f64", "smul\0u32", "smul\0s32", "rnd\0f16",
-        "smul\0u32", "smul\0s32", "rnd\0bf16", "smullh\0u64", "smullh\0s64", "smad\0u32", "smad\0s32", "emlog2\0bf16v2",
-        "smad\0u32", "smad\0s32", "msk\0b32", "emrsqt\0f16v2", "sshl\0b32", "sshr\0b32", "shflu\0b32", "shfli\0b32",
-        "shflx\0b32", "emrsqt\0bf16v2", "redmax\0f32", "redmax\0u32", "redmax\0s32", "shfld\0b32", "shflsb\0b32", "redfirst\0b32",
-        "redmin\0f32", "redsum\0u32", "redsum\0s32", "redfirstidx\0u32", "redmin\0u32", "redmin\0s32", "redand\0b32", "redor\0b32",
-        "redxor\0b32", "bfigen\0b32", "bfn3\0b32", "geta\0b32", "emsgmd\0f16v2", "seta\0b32", "emsgmd\0bf16v2", "sseta\0b32",
-        "sshl\0b64", "sgeta\0b32", "sshr\0b64", "add\0f64", "add\0f64", "mad\0f64", "mad\0f64", "mad\0f64",
-        "max\0f64", "min\0f64", "mul\0f64", "mul\0f64", "mul\0f64", "brepgen\0b32", "bfegen\0b32", "eminvm\0f64",
-        "emrsqtm\0f64", "emcos\0f16", "emexp2\0f16", "eminv\0f16", "emlog2\0f16", "emrsqt\0f16", "emsgmd\0f16", "emsin\0f16",
-        "emsqt\0f16", "emtanh\0f16", "emcos\0bf16", "emexp2\0bf16", "eminv\0bf16", "emlog2\0bf16", "emrsqt\0bf16", "emsgmd\0bf16",
-        "emsin\0bf16", "emsqt\0bf16", "emtanh\0bf16", "asr\0s16v2", "asr\0s8v4", "shl\0b16v2", "shl\0b8v4", "shr\0b16v2",
-        "shr\0b8v4", "rol\0b16v2", "rol\0b8v4", "ror\0b16v2", "ror\0b8v4", "sbfi\0b32", "sbfe\0b32", "sfbh\0b32",
-        "sfbl\0b32", "ssel\0b32", "emsin\0f16v2", "emsin\0bf16v2", "emsqt\0f16v2", "emsqt\0bf16v2", "emtanh\0f16v2", "redmax\0f16",
-        "redmax\0bf16", "redmax\0f16v2", "redmax\0bf16v2", "redmin\0f16", "redmin\0bf16", "redmin\0f16v2", "redmin\0bf16v2", "emtanh\0bf16v2",
-        "cvt2\0f16v2", "cvt2\0bf16v2", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "tmm\0s32", "tmm\0f32", "tmm\0f16", "tmm\0bf16", "", "tmmamx\0f32", "", "",
-        "tmmd\0f16", "tmmd\0bf16", "", "", "", "", "", "",
-        "trng\0b32", "trng\0b16v2", "trng\0b8v4", "", "", "", "", "",
-        "", "", "", "", "", "", "", "",
-        "tcvdmx\0f16", "tcvdmx\0bf16", "", "", "", "", "", "",
-        "tcvd\0f16", "tcvd\0bf16", "", "", "", "", "", "",
-        "tcvumx\0f16", "tcvumx\0bf16", "", "", "tred\0f16", "tred\0bf16", "", "",
-        "tcvu\0f16", "tcvu\0bf16", "tcvu\0e5m2", "tcvu\0e4m3", "", "", "tmov\0", ""
-    };
-
-    if (hw >= HW::Xe4)
-        return namesXe4[static_cast<int>(op) & 0x1FF];
+    if (isXe4(op)) {
+        if (op == Opcode::goto__128B) return "goto";
+        int iop = static_cast<int>(op) & 0x3FF;
+#define NGEN_XE4_UNTYPED_OP(cls, enc, opcode) if (iop == opcode) return #cls;
+#define NGEN_XE4_RAW_OP NGEN_XE4_OP
+#define NGEN_XE4_OP(cls, enc, dt, opcode) if (iop == opcode) return #cls;
+        NGEN_DEF_XE4_OPS
+#undef NGEN_XE4_OP
+#undef NGEN_XE4_RAW_OP
+#undef NGEN_XE4_UNTYPED_OP
+        return "";
+    }
 #endif
 
     const char *mnemonic = names[static_cast<int>(op) & 0x7F];
@@ -3495,7 +3417,10 @@ static const char *getMnemonic(Opcode op, HW hw)
 
 #if XE4
 static inline void validateXe4(NoOperand) {}
+static inline void validateXe4(RegisterRange) {}
 template <> inline void processTypesXe4(DataType &type, NoOperand &o) {}
+template <> inline void processTypesXe4(DataType &type, RegisterRange &rr) {}
+static inline bool allowScalarization(RegisterRange) { return false; }
 
 template <typename D, typename S0, typename S1, typename S2>
 void AsmCodeGenerator::opX(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1, S2 src2, uint16_t ext)
@@ -3543,6 +3468,29 @@ void AsmCodeGenerator::opDP4A(OpcodeClassXe4 opclass, DataType defaultType, cons
     validateBaseXe4(dst, src0, src1, src2);
     if (hardware < HW::Xe4) unsupported();
     streamStack.back()->append(opcodeXe4(opclass, defaultType), 0, emod, &labelManager, dst, src0, src1, src2);
+}
+
+template <typename S0, typename S1>
+void AsmCodeGenerator::opMovb(OpcodeClassXe4 opclass, DataType defaultType, const InstructionModifier &mod, RegData dst, S0 src0, S1 lanemask)
+{
+    auto emod = mod | defaultModifier;
+    validateXe4(emod, opclass);
+    validateXe4(dst);
+    validateXe4(src0);
+    validateXe4(lanemask);
+    auto lmType = DataType::b32;
+    processTypesXe4(defaultType, dst, src0);
+    processTypesXe4(lmType, lanemask);
+    validateBaseXe4(dst, src0, lanemask);
+    int nr = getDwords(defaultType) * 32;
+    if (hardware < HW::Xe4) unsupported();
+
+    AsmOperand odst{dst}, osrc0{src0};
+    for (auto *op: {&odst, &osrc0})
+        if (op->type == AsmOperand::Type::reg && op->reg.isSRF())
+            *op = RegisterRange(op->reg, nr);
+
+    streamStack.back()->append(opcodeXe4(opclass, defaultType), 0, emod, &labelManager, odst, osrc0, lanemask);
 }
 
 template <typename S0, typename S1, typename S2>
@@ -3669,6 +3617,16 @@ void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int &lin
 }
 
 #if XE4
+inline bool hasSourceFormat(Opcode op)
+{
+    switch (op) {
+        case Opcode::cmp_128S_b32:
+        case Opcode::scmp_128S_b32:
+        case Opcode::mulmx_128U_f32: return true;
+        default:                     return isCvt(op);
+    }
+}
+
 void AsmCodeGenerator::outXe4(std::ostream &out, const AsmInstruction &i, int &lineNo)
 {
     bool withCMod = (i.mod.getCMod() != ConditionModifier::none);
@@ -3676,7 +3634,7 @@ void AsmCodeGenerator::outXe4(std::ostream &out, const AsmInstruction &i, int &l
     std::array<PrintDetail, 5> dsrc;
     dsrc.fill(PrintDetail::xe4);
 
-    if (isCvt(i.op))
+    if (hasSourceFormat(i.op))
         dsrc[0] = PrintDetail::xe4_type;
     else if (i.op == Opcode::dp4a_128Q_u32 || i.op == Opcode::dp4a_128Q_s32)
         dsrc[0] = dsrc[1] = PrintDetail::xe4_type;
@@ -3701,9 +3659,14 @@ void AsmCodeGenerator::outXe4(std::ostream &out, const AsmInstruction &i, int &l
 
     outExt(out, i);
 
-    auto type = mnemonic + strlen(mnemonic) + 1;
-    if (*type)
-        out << '.' << type;
+    auto type = dstDataType(i.op);
+    if (type != DataType::invalid) {
+        out << '.';
+        if (isRaw(i.op))
+            out << DataTypeRawXe4{type};
+        else
+            out << DataTypeXe4{type};
+    }
 
     outMods(out, i.mod, i.op, ModPlacementType::MidXe4, i.ext);
     if (i.dst.type == AsmOperand::Type::ereg)
@@ -3775,7 +3738,6 @@ void AsmCodeGenerator::outExt(std::ostream &out, const AsmInstruction &i)
     if (hardware >= HW::Xe4) switch (i.opcode()) {
         case Opcode::bfe_128G_b32:
         case Opcode::bfi_128G_b32:
-        case Opcode::bfia_128G_b32:
         case Opcode::sbfia_128G_b32: {
             unsigned width = i.ext & 0xFF, offset = i.ext >> 8;
             out << ".(" << width << ',' << offset << ')';
@@ -3963,6 +3925,7 @@ void AsmCodeGenerator::outMods(std::ostream &out, const InstructionModifier &mod
                         out << '@' << int(item.pipe.dist);
                 }
             }
+            if (mod.isBreakpoint()) { startPostMod(true); out << "break"; }
 #if NGEN_ASM_SHOW_FORMATS
             startPostMod(true);
             out << getEncodingXe4(op);
@@ -4142,22 +4105,23 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
             break;
         }
         case SharedFunction::dma: {
-            bool l2r = false, reduce = false, tensor = false, row = false;
+            bool l2r = false, reduce = false, tensor = false, row = false, gwrite = false;
+            bool needDS = false, needDT = false;
             switch (desc.common.opcode) {
                 case ADMAOpcode::linear_l2r:        out << ".linear.copy_l2r"; l2r = true; break;
-                case ADMAOpcode::linear_l2g:        out << ".linear.copy_l2g"; break;
+                case ADMAOpcode::linear_l2g:        out << ".linear.copy_l2g"; gwrite = true; break;
                 case ADMAOpcode::linear_prefetch:   out << ".linear.prefetch"; break;
                 case ADMAOpcode::linear_g2l:        out << ".linear.copy_g2l"; break;
-                case ADMAOpcode::linear_reduce_l2r: out << ".linear.red_l2r"; l2r = reduce = true; break;
-                case ADMAOpcode::linear_reduce_l2g: out << ".linear.red_l2g"; reduce = true; break;
-                case ADMAOpcode::tensor_l2g:        out << ".tensor.copy_l2g"; tensor = true; break;
+                case ADMAOpcode::linear_reduce_l2r: out << ".linear.reduce_l2r"; l2r = reduce = true; break;
+                case ADMAOpcode::linear_reduce_l2g: out << ".linear.reduce_l2g"; reduce = gwrite = true; break;
+                case ADMAOpcode::tensor_l2g:        out << ".tensor.copy_l2g"; tensor = gwrite = true; break;
                 case ADMAOpcode::tensor_prefetch:   out << ".tensor.prefetch"; tensor = true; break;
                 case ADMAOpcode::tensor_g2l:        out << ".tensor.copy_g2l"; tensor = true; break;
-                case ADMAOpcode::tensor_reduce_l2g: out << ".tensor.red_l2g"; reduce = tensor = true; break;
-                case ADMAOpcode::row_l2g:           out << ".row.copy_l2g"; row = true; break;
+                case ADMAOpcode::tensor_reduce_l2g: out << ".tensor.reduce_l2g"; reduce = tensor = gwrite = true; break;
+                case ADMAOpcode::row_l2g:           out << ".row.copy_l2g"; row = gwrite = needDS = true; break;
                 case ADMAOpcode::row_prefetch:      out << ".row.prefetch"; row = true; break;
-                case ADMAOpcode::row_g2l:           out << ".row.copy_g2l"; row = true; break;
-                case ADMAOpcode::row_reduce_l2g:    out << ".row.red_l2g"; reduce = row = true; break;
+                case ADMAOpcode::row_g2l:           out << ".row.copy_g2l"; row = needDT = needDS = true; break;
+                case ADMAOpcode::row_reduce_l2g:    out << ".row.reduce_l2g"; reduce = row = gwrite = true; break;
                 default: asm_unsupported();
             }
 
@@ -4168,32 +4132,35 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
                 auto addr = addrs[desc.adma.addrType];
                 if (!*addr) asm_unsupported();
                 out << '.' << addr;
-                if (desc.common.opcode == ADMAOpcode::row_l2g || desc.common.opcode == ADMAOpcode::row_g2l) {
-                    const char *sizes[8] = {"d8", "d16", "d32", "d64", "d4", "d6", "", ""};
-                    auto ds = sizes[desc.adma.dataSize];
-                    if (!*ds) asm_unsupported();
-                    out << ".mt" << (desc.adma.coreLayout + 1) << '.' << ds;
-                }
             }
 
             if (reduce) {
                 const char *rops[8] = {"incw", "decw", "add", "min", "max", "and", "or", "xor"};
                 out << '.' << rops[desc.adma.reduction];
-                const char *rtypes[4][8] = {{"", "f16",  "f32", "f64", "", "", "", ""},
-                                            {"", "bf16", "",    "",    "", "", "", ""},
-                                            {"", "u16",  "u32", "u64", "", "", "", ""},
-                                            {"", "s16",  "s32", "s64", "", "", "", ""}};
-                auto rt = rtypes[desc.adma.dataType][desc.adma.dataSize];
-                if (!*rt) asm_unsupported();
-                out << '.' << rt;
             }
 
-            if (desc.adma.useCopySize) { separateOpt(); out << "cs"; }
+            if (reduce || needDT) {
+                const char *dtypes[4] = {"fp", "bf", "uint", "int"};
+                out << '.' << dtypes[desc.adma.dataType];
+            }
+
+            if (tensor || reduce || needDS) {
+                const char *dsizes[8] = {"d8", "d16", "d32", "d64", "d4", "d6", "", ""};
+                auto ds = dsizes[desc.adma.dataSize];
+                if (!*ds) asm_unsupported();
+                out << '.' << ds;
+            }
+
+            if (row)
+                out << '.' << (desc.adma.rowSize + 1) * 8;
+
+            if (desc.adma.useCopySize) { separateOpt(); out << "ucs"; }
             if (desc.adma.multicast)   { separateOpt(); out << "mc"; }
             if (!l2r) {
-                const char *cacheModes[4] = {"l2c_l3c", "l2c_l3uc", "l2uc_l3c", "l2uc_l3uc"};
+                const char *cacheModes[2][4] = {{"l2c_l3c",   "l2c_l3uc",  "l2uc_l3c",  "l2uc_l3uc"},
+                                                {"l2wb_l3wb", "l2wb_l3uc", "l2uc_l3wb", "l2uc_l3uc"}};
                 separateOpt();
-                out << cacheModes[desc.adma.cache];
+                out << cacheModes[gwrite][desc.adma.cache];
             }
             if (desc.adma.abar) { separateOpt(); out << "abar"; }
             break;
@@ -4218,8 +4185,8 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
                 << '_' << atypes[desc.amma.ctype];
             if (desc.amma.ascale)  { separateOpt(); out << "ascale"; }
             if (desc.amma.bscale)  { separateOpt(); out << "bscale"; }
-            if (desc.amma.alayout) { separateOpt(); out << "at"; }
-            if (desc.amma.blayout) { separateOpt(); out << "bt"; }
+            if (desc.amma.alayout) { separateOpt(); out << "am"; }
+            if (desc.amma.blayout) { separateOpt(); out << "bk"; }
             if (desc.amma.atm)     { separateOpt(); out << "atm"; }
             if (desc.amma.btm)     { separateOpt(); out << "btm"; }
             if (desc.amma.dtm)     { separateOpt(); out << "dtm"; }

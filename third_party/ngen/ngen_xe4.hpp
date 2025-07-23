@@ -30,44 +30,40 @@ namespace NGEN_NAMESPACE {
 struct InstructionXe4 {
     union {
         struct {
-            unsigned dbg : 1;
-            unsigned op : 9;
-            unsigned autoswsb : 1;  /* unused bit */
-            unsigned : 21;
+            unsigned dbg : 1;   /* temporarily used as auto-SWSB flag storage */
+            unsigned opsz : 1;
+            unsigned : 30;
             unsigned : 32;
             unsigned : 32;
             unsigned : 32;
         } common;
         struct {
-            uint64_t : 11;
-            uint64_t sbid : 5;
+            uint64_t : 2;
+            uint64_t op : 10;
             uint64_t sb0 : 7;
+            uint64_t w : 1;
             uint64_t sb1 : 7;
-            uint64_t : 11;
+            uint64_t ipred : 1;
+            uint64_t pf : 4;
             uint64_t cmcf : 7;
-            uint64_t ictrl : 2;
             uint64_t s2inv : 1;
             uint64_t s1inv : 1;
             uint64_t s0inv : 1;
             uint64_t dsat : 1;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
+            uint64_t ictrl : 2;
+            uint64_t : 12;
             uint64_t rmo : 3;
-            uint64_t w : 1;
-            uint64_t src2_0 : 1;
+            uint64_t csrc2_0_3 : 4;
 
-            uint64_t src2_1_10 : 10;
-            uint64_t imm : 21;
-            uint64_t src1 : 11;
-            uint64_t src0 : 11;
-            uint64_t dst : 11;
+            uint64_t csrc2_4_11 : 8;
+            uint64_t imm : 20;
+            uint64_t csrc1 : 12;
+            uint64_t csrc0 : 12;
+            uint64_t cdst : 12;
         } _128;
         struct {
-            uint64_t : 32;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
+            uint64_t : 38;
             uint64_t brc : 1;
-            uint64_t w : 1;
             uint64_t sctrl : 1;
             uint64_t uip0_23 : 24;
 
@@ -76,299 +72,309 @@ struct InstructionXe4 {
             uint64_t : 24;
         } _128B;
         struct {
-            uint64_t : 23;
+            uint64_t : 20;
+            uint64_t sbid : 5;
+            uint64_t sgather : 1;
             uint64_t ipred : 1;
             uint64_t pf : 4;
-            uint64_t w : 1;
-            uint64_t eot : 1;
-            uint64_t sfid : 4;
-            uint64_t : 1;
-            uint64_t msgd0_28 : 29;
-
-            uint64_t msgd29_46 : 18;
-            uint64_t ind : 1;
-            uint64_t sgather : 1;
             uint64_t inda : 11;
-            uint64_t : 33;          // -> 128A
+            uint64_t msgd0_21 : 22;
+
+            uint64_t msgd22_46 : 25;
+            uint64_t sfid : 4;
+            uint64_t : 11;
+            uint64_t ind : 1;
+            uint64_t : 11;
+            uint64_t eot : 1;
+            uint64_t : 11;
         } _128C;
         struct {
-            uint64_t : 14;
+            uint64_t : 19;
             uint64_t ictrl : 2;
-            uint64_t : 7;
             uint64_t cmcf : 7;
-            uint64_t w : 1;
-            uint64_t src2 : 11;
-            uint64_t imm0_21 : 22;
+            uint64_t csrc2 : 12;
+            uint64_t imm0_23 : 24;
 
-            uint64_t imm22_52 : 31;
-            uint64_t src1 : 11;
-            uint64_t : 22;
+            uint64_t imm24_51 : 28;
+            uint64_t : 33;
         } _128D;
         struct {
-            uint64_t : 30;
+            uint64_t : 52;
             uint64_t bctrl : 8;
-            uint64_t : 26;
+            uint64_t : 4;
+
             uint64_t : 64;
         } _128E;
         struct {
-            uint64_t : 48;
+            uint64_t : 39;
             uint64_t sgran : 3;
-            uint64_t : 8;
-            uint64_t w : 1;
-            uint64_t idx4 : 1;
-            uint64_t ictrl : 2;
-            uint64_t : 1;
+            uint64_t cctrl : 1;
+            uint64_t : 16;
+            uint64_t lctrl : 1;
+            uint64_t : 4;
+
             uint64_t : 64;
         } _128F;
         struct {
-            uint64_t : 26;
-            uint64_t ictrl : 1;
-            uint64_t : 2;
-            uint64_t s1inv : 1;
-            uint64_t s0inv : 1;
-            uint64_t : 1;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
-            uint64_t : 3;
-            uint64_t w : 1;
-            uint64_t : 21;
-            uint64_t bwidth0_1 : 2;
-
-            uint64_t bwidth2_5 : 4;
+            uint64_t : 44;
+            uint64_t bwidth : 6;
             uint64_t boff : 5;
-            uint64_t : 55;
+            uint64_t : 9;
+
+            uint64_t : 64;
         } _128G;
         struct {
-            uint64_t : 26;
-            uint64_t cf : 4;
+            uint64_t : 42;
+            uint64_t ictrl : 2;
             uint64_t dmme : 4;
             uint64_t s0mme : 4;
             uint64_t s1mme : 4;
             uint64_t s2mme : 4;
-            uint64_t : 2;
-            uint64_t ictrl : 2;
-            uint64_t : 14;
+            uint64_t : 4;
 
             uint64_t : 64;
         } _128H;
         struct {
-            uint64_t : 38;
+            uint64_t : 50;
             uint64_t dctrl : 1;
-            uint64_t cmcf : 7;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
-            uint64_t w : 1;
             uint64_t lctrl : 1;
-            uint64_t src2 : 11;
+            uint64_t csrc2 : 12;
 
-            uint64_t imsk : 21;
-            uint64_t dimm : 21;
-            uint64_t : 22;
+            uint64_t imsk : 20;
+            uint64_t dimm1_20 : 20;
+            uint64_t dimm0 : 1;
+            uint64_t : 23;
         } _128I;
         struct {
-            uint64_t : 43;
-            uint64_t spinv : 1;
+            uint64_t : 32;
             uint64_t spf : 4;
-            uint64_t : 16;
+            uint64_t : 6;
+            uint64_t spinv : 1;
+            uint64_t : 21;
 
             uint64_t : 64;
         } _128J;
         struct {
-            uint64_t : 40;
+            uint64_t : 32;
             uint64_t spf : 4;
             uint64_t dpf : 4;
-            uint64_t : 16;
+            uint64_t : 24;
 
             uint64_t : 64;
         } _128K;
         struct {
-            uint64_t : 30;
+            uint64_t : 32;
             uint64_t ctype : 1;
             uint64_t cid : 8;
-            uint64_t exp: 1;
-            uint64_t : 24;
+            uint64_t : 3;
+            uint64_t exp : 1;
+            uint64_t : 19;
 
-            uint64_t : 64;
+            uint64_t res : 20;
+            uint64_t imm : 20;
+            uint64_t : 24;
         } _128L;
         struct {
-            uint64_t : 30;
+            uint64_t : 32;
+            uint64_t sbid : 5;
+            uint64_t : 6;
             uint64_t atype : 4;
             uint64_t btype : 4;
-            uint64_t k : 3;
-            uint64_t : 3;
+            uint64_t rm : 1;
             uint64_t n : 6;
             uint64_t top : 3;
-            uint64_t : 11;
+            uint64_t k : 3;
 
-            uint64_t : 10;
-            uint64_t src3 : 11;
+            uint64_t csrc2 : 12;
+            uint64_t csrc3 : 12;
             uint64_t amxeo : 2;
             uint64_t bmxeo : 2;
-            uint64_t : 39;
+            uint64_t : 36;
         } _128M;
         struct {
-            uint64_t : 30;
-            uint64_t ttype : 4;
-            uint64_t pack : 3;
+            uint64_t : 32;
+            uint64_t sbid : 5;
+            uint64_t : 2;
             uint64_t mralg : 3;
+            uint64_t : 1;
             uint64_t mxdim : 2;
             uint64_t reddim : 2;
+            uint64_t trmo : 3;
+            uint64_t rndsrc : 2;
             uint64_t n : 6;
-            uint64_t : 14;
+            uint64_t : 1;
+            uint64_t meta0_0_4 : 5;
 
-            uint64_t : 21;
+            uint64_t meta0_5_10 : 6;
+            uint64_t : 1;
+            uint64_t meta1 : 11;
             uint64_t imm10 : 10;
-            uint64_t : 33;
+            uint64_t : 36;
         } _128N;
         struct {
-            uint64_t : 32;
+            uint64_t : 44;
             uint64_t sfmt : 5;
-            uint64_t : 27;
+            uint64_t : 11;
+            uint64_t radj : 3;
+            uint64_t emax0 : 1;
 
-            uint64_t : 64;
+            uint64_t emax1 : 1;
+            uint64_t : 63;
         } _128O;
         struct {
-            uint64_t : 32;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
-            uint64_t : 1;
-            uint64_t w : 1;
-            uint64_t : 1;
-            uint64_t cip0_23 : 24;
+            uint64_t : 52;
+            uint64_t cip0_11 : 12;
 
-            uint64_t cip24_63 : 40;
-            uint64_t : 24;
+            uint64_t cip12_63 : 52;
+            uint64_t : 12;
         } _128P;
         struct {
-            uint64_t : 30;
+            uint64_t : 45;
             uint64_t st0 : 4;
             uint64_t st1 : 4;
-            uint64_t : 10;
-            uint64_t ictrl : 2;
-            uint64_t : 14;
+            uint64_t : 11;
 
             uint64_t : 64;
         } _128Q;
         struct {
-            uint64_t : 32;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
-            uint64_t w : 1;
-            uint64_t : 10;
-            uint64_t ictrl : 1;
-            uint64_t : 4;
-            uint64_t imm0_10 : 11;
+            uint64_t : 52;
+            uint64_t imm0_11 : 12;
 
-            uint64_t imm11_52 : 42;
-            uint64_t : 22;
+            uint64_t imm12_51 : 40;
+            uint64_t : 24;
         } _128R;
         struct {
-            uint64_t : 12;
-            uint64_t sb0 : 7;
+            uint64_t : 44;
+            uint64_t sfmt : 5;
+            uint64_t : 15;
+
+            uint64_t : 64;
+        } _128S;
+        struct {
+            uint64_t : 44;
+            uint64_t b : 1;
+            uint64_t : 19;
+
+            uint64_t : 64;
+        } _128T;
+        struct {
             uint64_t : 2;
+            uint64_t op : 7;
+            uint64_t sb0 : 7;
             uint64_t s1inv : 1;
             uint64_t s0inv : 1;
             uint64_t dsat : 1;
             uint64_t w : 1;
             uint64_t ictrl : 1;
-            uint64_t imm : 5;
-            uint64_t src1 : 11;
-            uint64_t src0 : 11;
-            uint64_t dst : 11;
+            uint64_t : 3;
+            uint64_t imm : 4;
+            uint64_t csrc1 : 12;
+            uint64_t csrc0 : 12;
+            uint64_t cdst : 12;
 
             uint64_t : 64;
         } _64;
         struct {
-            uint64_t : 19;
+            uint64_t : 16;
             uint64_t cmcf : 7;
-            uint64_t ipred : 1;
-            uint64_t pf : 4;
-            uint64_t : 33;
+            uint64_t sfmt : 5;
+            uint64_t : 36;
 
             uint64_t : 64;
         } _64B;
         struct {
-            uint64_t : 20;
-            uint64_t src2 : 11;
-            uint64_t : 33;
+            uint64_t : 16;
+            uint64_t src2 : 12;
+            uint64_t : 36;
 
             uint64_t : 64;
         } _64C;
         struct {
-            uint64_t : 23;
+            uint64_t : 20;
             uint64_t bctrl : 8;
-            uint64_t : 33;
+            uint64_t : 36;
 
             uint64_t : 64;
         } _64D;
         struct {
-            uint64_t : 13;
-            uint64_t sctrl : 3;
-            uint64_t : 1;
-            uint64_t bar : 5;
-            uint64_t sb0 : 7;
+            uint64_t : 16;
             uint64_t sb1 : 7;
             uint64_t sb2 : 7;
             uint64_t sb3 : 7;
             uint64_t sb4 : 7;
-            uint64_t sb5 : 7;
+            uint64_t bar : 5;
+            uint64_t : 7;
+            uint64_t ctrl : 3;
+            uint64_t ipred : 1;
+            uint64_t pf : 4;
 
             uint64_t : 64;
         } _64E;
         struct {
-            uint32_t : 32;
-            uint32_t imm;
+            uint64_t : 24;
+            uint64_t imm : 32;
+            uint64_t : 8;
             uint64_t : 64;
         } _64EImm;
         struct {
-            uint64_t : 25;
-            uint64_t ictrl0 : 1;
+            uint64_t : 20;
             uint64_t ictrl1 : 1;
-            uint64_t : 37;
-
-            uint64_t : 64;
-        } _64F;
-        struct {
-            uint64_t : 26;
+            uint64_t ictrl0 : 1;
+            uint64_t : 1;
             uint64_t ipred : 1;
             uint64_t pf : 4;
-            uint64_t w : 1;
-            uint64_t jip : 32;
+            uint64_t : 36;
 
             uint64_t : 64;
-        } _64G;    /* 64H is the same as 64G, with no JIP */
+        } _64F; /* also covers 64G/H */
         struct {
-            uint64_t : 26;
+            uint64_t : 23;
             uint64_t ipred : 1;
             uint64_t pf : 4;
-            uint64_t : 6;
-            uint64_t imm : 5;
-            uint64_t : 22;
+            uint64_t : 8;
+            uint64_t imm : 4;
+            uint64_t : 24;
 
             uint64_t : 64;
         } _64I;
+        struct {
+            uint64_t : 23;
+            uint64_t ipred : 1;
+            uint64_t pf : 4;
+            uint64_t cacheop : 1;
+            uint64_t : 35;
+
+            uint64_t : 64;
+        } _64J;
+        struct {
+            uint64_t : 23;
+            uint64_t sfmt : 5;
+            uint64_t : 36;
+
+            uint64_t : 64;
+        } _64K;
         uint64_t qword[2];
     };
 
     constexpr InstructionXe4() : qword{0,0} {};
     InstructionXe4(InstructionModifier mod, Opcode op) : InstructionXe4{} {
-        common.dbg = mod.isBreakpoint();
-        common.op = static_cast<int>(op);
-        common.autoswsb = mod.isAutoSWSB();
+        common.dbg = mod.isAutoSWSB();      /* Temporarily reuse debug bit for auto-SWSB bit */
+        common.opsz = (static_cast<int>(op) < 0x8080) ? 0 : 1;
+        _128.op = static_cast<int>(op);
     }
 
     // Decoding routines for auto-SWSB.
-    bool autoSWSB() const          { return common.autoswsb; }
+    bool autoSWSB() const          { return common.dbg; }
     inline SWSBInfo swsb() const;
     inline void setSWSB(SWSBInfo swsb);
-    void clearAutoSWSB()           { common.autoswsb = 0; }
-    Opcode opcode() const          { return static_cast<Opcode>(common.op | 0x8000); }
+    void clearAutoSWSB()           { common.dbg = 0; }
+    Opcode opcode() const          { return static_cast<Opcode>((is64() ? _64.op : _128.op) | 0x8000); }
     inline SyncFunction syncFC() const;
     SharedFunction sfid() const    { return static_cast<SharedFunction>(_128C.sfid); }
     bool eot() const               { return isSend() && _128C.eot; }
     bool predicated() const        { return isSend() && (_128C.pf != 0xF); }
     static bool atomic()           { return false; }
-    bool is64() const              { return isEncoding64(getEncodingXe4(opcode())); }
+    bool is64() const              { return (common.opsz == 0); }
     static unsigned dstTypecode()  { return 0u; }
     static unsigned src0Typecode() { return 0u; }
     static unsigned src1Typecode() { return 0u; }
@@ -387,7 +393,7 @@ struct InstructionXe4 {
     static bool getARFType(ARFType &arfType, int opNum, HW hw) { return false; }
     inline int getFencedepJIP() const;
     inline SendgMessageDescriptor getSendgDesc() const {
-        uint64_t desc = _128C.msgd0_28 | (_128C.msgd29_46 << 29);
+        uint64_t desc = _128C.msgd0_21 | (_128C.msgd22_46 << 22);
         return static_cast<SendgMessageDescriptor>(desc);
     }
 
@@ -425,17 +431,20 @@ static inline int swsbCount(EncodingXe4 enc)
 // Encoding routines.
 static inline unsigned encodeRegXe4(RegData rd)
 {
+    canonicalizeSRF(rd);
+    unsigned r = 0;
     switch (rd.getRegFile()) {
-        case RegFileARF: return static_cast<unsigned>(rd.getARFType()) & 0xF;
-        case RegFileGRF: return InstructionXe4::directARFSize() + rd.getBase();
-        case RegFileSRF: return 2047 - rd.getBase();
-        default:         return 0; /* unreachable */
+        case RegFileARF: r = static_cast<unsigned>(rd.getARFType()) & 0xF;   break;
+        case RegFileGRF: r = InstructionXe4::directARFSize() + rd.getBase(); break;
+        case RegFileSRF: r = 0x7FF - rd.getBase();                           break;
+        default: break;
     }
+    return (r << 1) | unsigned(rd.isLUOrUC());
 }
 
 static inline unsigned encodeRegXe4(IndirectARF iarf)
 {
-    return static_cast<unsigned>(iarf);
+    return static_cast<unsigned>(iarf) << 1;
 }
 
 template <typename T>
@@ -474,11 +483,11 @@ static inline unsigned encodeRegOrImmXe4(Immediate i, uint64_t &immExtra)
 {
     auto val = encodeImmXe4<T>(i);
     if (extraHi) {
-        immExtra = val >> 11;
-        return val & 0x7FF;
+        immExtra = val >> 12;
+        return val & 0xFFF;
     } else {
         immExtra = val;
-        return val >> (8 * sizeof(T) - 11);
+        return val >> (8 * sizeof(T) - 12);
     }
 }
 
@@ -493,7 +502,7 @@ static inline unsigned encodeCMCFXe4(InstructionModifier mod)     /* cm/cf field
 
     if (cmg == ConditionModifier::none)
         cf = 0xF;
-    return cm | (cf << 3);
+    return cf | (cm << 4);
 }
 
 static inline unsigned encodePFXe4(InstructionModifier mod)
@@ -501,18 +510,25 @@ static inline unsigned encodePFXe4(InstructionModifier mod)
     return (mod.getPredCtrl() == PredCtrl::None) ? 0xF : mod.getFlagReg().getARFBase();
 }
 
-static inline unsigned encodeCvtSrcTypeXe4(DataType dt)
+static inline unsigned encodeSrcFormatXe4(DataType dt)
 {
-    unsigned table[32] = {6,  7,  8,  9,  10, 11, 0,  1,  4,  5,  3,  2,  31, 31, 31, 31,
-                          31, 31, 31, 16, 31, 17, 13, 12, 31, 31, 31, 31, 31, 31, 31, 31};
+    unsigned table[32] = {6,  7,  8,  9,  10, 11, 0,  1,  4,  5,  3,  2,  32, 32, 32, 32,
+                          32, 32, 32, 16, 32, 17, 13, 12, 32, 32, 32, 32, 32, 15, 21, 22};
     auto enc = table[static_cast<uint8_t>(dt) & 0x1F];
 
 #ifdef NGEN_SAFE
-    if (enc == 31) throw invalid_type_exception();
+    if (enc & 0x20) throw invalid_type_exception();
 #endif
 
     return enc;
 }
+
+static inline unsigned encodeMMEXe4(ExtendedReg ereg)
+{
+    auto mn = ereg.getMMENum();
+    return (mn == 8) ? 0 : mn + 1;
+}
+
 
 static inline unsigned encodeSWSBXe4(SWSBItem item)
 {
@@ -553,18 +569,26 @@ static inline void encodeSWSBXe4(InstructionModifier mod, unsigned &sb0, unsigne
 #endif
 }
 
-template <int nsb, bool withSBID = false>
+template <int nsb>
 static inline void encodeSWSBXe4(InstructionXe4 &i, InstructionModifier mod)
 {
     unsigned sb0, sb1, sbid;
-    encodeSWSBXe4<nsb, withSBID>(mod, sb0, sb1, sbid);
-
-    if (withSBID && sbid >= 0x20)
-        sb0 = 7;        /* placeholder representing unassigned SBID */
+    encodeSWSBXe4<nsb, false>(mod, sb0, sb1, sbid);
 
     i._128.sb0 = sb0;
     i._128.sb1 = sb1;
-    i._128.sbid = sbid;
+}
+
+static inline unsigned encodeSWSBWithSBIDXe4(InstructionXe4 &i, InstructionModifier mod)
+{
+    unsigned sb0, sb1, sbid;
+    encodeSWSBXe4<1, true>(mod, sb0, sb1, sbid);
+
+    if (sbid >= 0x20 && mod.isAutoSWSB())
+        sb0 = 7;        /* placeholder representing unassigned SBID */
+
+    i._128.sb0 = sb0;
+    return sbid;
 }
 
 static inline void encodeSWSB64Xe4(InstructionXe4 &i, InstructionModifier mod)
@@ -610,7 +634,9 @@ SWSBInfo InstructionXe4::swsb() const
         if (swsbItems(enc) >= 2)
             swsb[1] = decodeSWSBXe4(_128.sb1);
         else if (enc == EncodingXe4::_128C && _128.sb0 != 7)
-            swsb[1] = SBID(_128.sbid).set;
+            swsb[1] = SBID(_128C.sbid).set;
+        else if ((enc == EncodingXe4::_128M || enc == EncodingXe4::_128N) && _128.sb0 != 7)
+            swsb[1] = SBID(_128M.sbid).set;
     }
 
     return swsb;
@@ -622,16 +648,16 @@ void InstructionXe4::setSWSB(SWSBInfo swsb)
     encodeSWSBXe4<2, true>(swsb, sb0, sb1, sbid);
 
     auto enc = getEncodingXe4(opcode());
-    if (enc == EncodingXe4::_64E) {
-        _64E.sb0 = sb0;
-    } else if (isEncoding64(enc)) {
+    if (isEncoding64(enc)) {
         _64.sb0 = sb0;
     } else {
         _128.sb0 = sb0;
         if (swsbItems(enc) >= 2)
             _128.sb1 = sb1;
         else if (enc == EncodingXe4::_128C)
-            _128.sbid = sbid;
+            _128C.sbid = sbid;
+        else if (enc == EncodingXe4::_128M || enc == EncodingXe4::_128N)
+            _128M.sbid = sbid;
     }
 }
 
@@ -639,7 +665,7 @@ SyncFunction InstructionXe4::syncFC() const
 {
     using F = SyncFunction;
     F table[8] = {F::nop, F::srcmsk, F::dstmsk, F::barid, F::barsrc, F::barflush, F::host, F::nop};
-    return table[_64E.sctrl];
+    return table[_64E.ctrl];
 }
 
 autoswsb::DestinationMask InstructionXe4::destinations(int &jip, int &uip) const
@@ -687,7 +713,7 @@ bool InstructionXe4::getImm32(uint32_t &imm) const
 
 int InstructionXe4::getFencedepJIP() const
 {
-    return uint32_t(_128.imm | (_128.src1 << 21)) / sizeof(InstructionXe4);
+    return uint32_t(_128.imm | (_128.csrc1 << 20)) / sizeof(InstructionXe4);
 }
 
 bool InstructionXe4::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const
@@ -699,7 +725,7 @@ bool InstructionXe4::getOperandRegion(autoswsb::DependencyRegion &region, int op
     unsigned r = 0;
     int nr = getDwords(dstDataType(op));
 
-    if (isEncoding64(enc)) {
+    if (is64()) {
         unsigned ictrl = 0;
         int nsrc = 2;
 
@@ -715,9 +741,9 @@ bool InstructionXe4::getOperandRegion(autoswsb::DependencyRegion &region, int op
         if (opNum >= nsrc) return false;
         if (opNum >= 0 && (ictrl & (1 << opNum))) return false;
         switch (opNum) {
-            case -1: r = _64.dst; break;
-            case  0: r = _64.src0; break;
-            case  1: r = _64.src1; break;
+            case -1: r = _64.cdst; break;
+            case  0: r = _64.csrc0; break;
+            case  1: r = _64.csrc1; break;
             default: break;
         }
     } else {
@@ -725,27 +751,30 @@ bool InstructionXe4::getOperandRegion(autoswsb::DependencyRegion &region, int op
         int nsrc = 3;
         switch (enc) {
             case EncodingXe4::_128E:
+            case EncodingXe4::_128F:
             case EncodingXe4::_128J:
             case EncodingXe4::_128K:
             case EncodingXe4::_128O:
             case EncodingXe4::_128Q:
+            case EncodingXe4::_128S:
+            case EncodingXe4::_128T:
+            case EncodingXe4::_128U:
             case EncodingXe4::_128A: ictrl = _128.ictrl << 1; break;
             case EncodingXe4::_128B: ictrl = _128B.sctrl; nsrc = 1; break;
             case EncodingXe4::_128D: ictrl = _128D.ictrl << 1; break;
-            case EncodingXe4::_128F: ictrl = _128F.ictrl << 1; break;
-            case EncodingXe4::_128G: ictrl = _128G.ictrl << 1; nsrc = 2; break;
+            case EncodingXe4::_128G: ictrl = _128.ictrl << 1; nsrc = 2; break;
             case EncodingXe4::_128H: ictrl = _128H.ictrl << 1; break;
-            case EncodingXe4::_128R: ictrl = _128R.ictrl; nsrc = 1; break;
+            case EncodingXe4::_128R: ictrl = _128.ictrl; nsrc = 1; break;
             case EncodingXe4::_128I: ictrl = (_128I.imsk | (_128I.lctrl << 1)); nsrc = 2; break;
             case EncodingXe4::_128L:
             case EncodingXe4::_128P: return false;
             case EncodingXe4::_128C: {
-                uint64_t rdesc = _128C.msgd0_28 | (_128C.msgd29_46 << 29);
+                uint64_t rdesc = _128C.msgd0_21 | (_128C.msgd22_46 << 22);
                 SendgMessageDescriptor desc{rdesc};
                 auto sfid = static_cast<SharedFunction>(_128C.sfid);
                 nsrc = 2;
-                bool dstSRF = (_128.dst >= 0x600);
-                bool src1SRF = (_128.src1 >= 0x600);
+                bool dstSRF = (_128.cdst >= 0xC00);
+                bool src1SRF = (_128.csrc1 >= 0xC00);
                 switch (opNum) {
                     case -1: nr = desc.dstLen(HW::Xe4, dstSRF ? 1 : 32, sfid); break;
                     case  0: nr = desc.src0Len(HW::Xe4, 32, sfid); break;
@@ -760,17 +789,31 @@ bool InstructionXe4::getOperandRegion(autoswsb::DependencyRegion &region, int op
         if (opNum >= nsrc) return false;
         if (opNum >= 0 && (ictrl & (1 << opNum))) return false;
         if (opNum == 1 && enc == EncodingXe4::_128I)
-            r = _128I.src2;
+            r = _128I.csrc2;
         else switch (opNum) {
             case -2: r = _128C.inda; break;
-            case -1: r = _128.dst; break;
-            case  0: r = _128.src0; break;
-            case  1: r = _128.src1; break;
-            case  2: r = _128.src2_0 | (_128.src2_1_10 << 1); break;
+            case -1: r = _128.cdst; break;
+            case  0: r = _128.csrc0; break;
+            case  1: r = _128.csrc1; break;
+            case  2: r = _128.csrc2_0_3 | (_128.csrc2_4_11 << 4); break;
+            default: break;
+        }
+        switch (opcode()) {
+            case Opcode::movb_128I_b64:
+            case Opcode::redfirst_128F_b64:
+            case Opcode::mullh_128A_u64:
+            case Opcode::mullh_128A_s64:
+            case Opcode::smullh_128A_u64:
+            case Opcode::smullh_128A_s64: if (opNum >= 1) nr = 1; break;
+            case Opcode::call_128B:
+            case Opcode::calld_128B:
+            case Opcode::calla_128P:
+            case Opcode::callad_128P:     if (opNum == -1) nr = 3; break;
             default: break;
         }
     }
 
+    r >>= 1;
     if (r < directARFSize()) return false;      /* ARF */
 
     bool srf = (r >= 0x600);

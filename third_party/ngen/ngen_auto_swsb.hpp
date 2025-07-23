@@ -398,41 +398,73 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
     if (isXe4(op)) {
         GeneralizedPipe I = PipeMaskI, F = PipeMaskF, L = PipeMaskL, M = PipeMaskM;
         GeneralizedPipe S = PipeMaskS, X = PipeMaskX, _{};
-        static const GeneralizedPipe map[512] = {
-            _, _, _, _, _, I, _, S, _, _, I, _, _, I, S, _,
-            _, I, I, I, I, I, I, I, M, S, I, I, I, I, I, I,
-            _, I, I, I, I, I, I, I, I, I, I, I, I, I, I, I,
-            I, I, I, I, I, I, I, S, _, _, _, _, _, _, S, _,
-            _, I, F, I, F, L, F, F, _, _, I, I, I, I, I, I,
-            F, F, F, I, S, I, I, I, I, I, I, F, F, F, I, I,
-            I, I, I, I, I, I, I, I, I, I, F, L, F, F, S, S,
-            I, I, I, I, I, I, F, L, F, F, F, F, F, F, F, F,
-            _, _, _, _, _, _, M, M, M, M, M, M, M, M, M, M,
-            F, I, I, I, I, I, I, F, F, F, I, I, I, I, I, I,
-            I, I, F, F, F, I, I, I, I, L, I, I, I, F, F, F,
-            I, I, I, I, I, I, I, I, F, F, F, _, I, I, _, I,
-            I, F, F, I, I, F, F, F, _, L, I, I, F, F, I, I,
-            F, F, F, F, F, M, M, F, F, I, I, M, M, F, F, F,
-            F, F, F, F, F, F, F, F, F, F, F, F, F, M, M, M,
-            I, I, I, S, S, F, S, S, L, S, S, S, S, S, S, S,
-            S, S, S, S, S, S, S, S, S, S, S, S, L, S, S, F,
-            S, S, F, S, S, S, S, M, S, S, I, M, S, S, X, X,
-            X, M, X, X, X, X, X, X, X, X, X, X, X, X, X, X,
-            X, I, I, I, M, I, M, S, S, S, S, L, L, L, L, L,
-            L, L, L, L, L, I, I, M, M, M, M, M, M, M, M, M,
-            M, M, M, M, M, M, M, M, M, M, M, I, I, I, I, I,
-            I, I, I, I, I, S, S, S, S, S, M, M, M, M, M, X,
-            X, X, X, X, X, X, X, M, F, F, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-            _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
+        static const GeneralizedPipe map[1024] = {
+            _,I,I,I,I,I,I,I,F,L,F,F,F,F,I,I,
+            I,I,I,F,L,F,F,F,F,_,S,S,S,S,S,S,
+            I,S,I,I,I,I,I,F,L,F,F,F,F,S,S,I,
+            S,_,I,S,_,_,I,I,S,S,_,F,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            I,I,I,I,F,L,F,F,F,F,I,I,I,I,I,I,
+            I,F,L,F,F,F,F,I,I,I,I,I,I,I,I,I,
+            I,I,I,I,M,M,M,M,M,M,M,M,M,M,M,M,
+            M,M,M,M,M,M,M,M,M,M,M,M,M,M,M,M,
+            M,M,M,M,M,M,M,M,M,M,M,M,M,M,M,M,
+            M,I,I,F,I,I,I,I,I,F,L,F,F,F,F,I,
+            I,I,I,I,I,I,I,I,F,L,F,F,F,F,I,I,
+            I,I,I,I,I,F,L,F,F,F,F,I,I,I,I,I,
+            I,I,F,L,F,F,F,F,I,I,_,F,L,F,F,I,
+            I,I,I,I,I,I,I,S,S,S,S,S,S,S,I,I,
+            I,I,I,I,I,I,S,S,S,S,S,S,S,S,S,S,
+            S,S,S,S,I,I,I,I,F,L,F,F,F,F,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            I,I,L,F,L,L,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,I,S,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,X,X,X,X,X,X,X,X,
+            X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,
+            X,X,X,X,X,X,X,X,X,_,_,_,_,_,_,_,
+            _,_,_,I,I,_,I,S,S,S,S,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,M,M,M,M,F,
+            L,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,X,X,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,I,S,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,I,I,I,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,I,I,I,I,I,I,I,I,I,I,F,
+            F,L,F,F,F,F,F,F,F,F,I,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,I,I,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,I,I,_,
+            S,S,S,S,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,I,S,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,I,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            F,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
+            _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,
         };
-        return map[static_cast<int>(op) & 0x1FF];
+        return map[static_cast<int>(op) & 0x3FF];
     }
 #endif
 
@@ -1451,15 +1483,6 @@ static inline bool isSync(Opcode op)
     return (op == Opcode::sync || op == Opcode::sync_64E);
 #else
     return (op == Opcode::sync);
-#endif
-}
-
-static inline bool isDirective(Opcode op)
-{
-#if XE4
-    return (op == Opcode::directive || op == Opcode::directive_xe4);
-#else
-    return (op == Opcode::directive);
 #endif
 }
 

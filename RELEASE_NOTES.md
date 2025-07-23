@@ -33,8 +33,10 @@
 
 # Functionality
 ## Functional API
-* Introduced Root Mean Square Normalization (RMSNorm) mode for layer normalization primitive. This functionality is optimized for Intel CPUs and Intel GPUs.
+* Introduced [Root Mean Square Normalization (RMSNorm) mode] for layer normalization primitive. This functionality is optimized for Intel CPUs and Intel GPUs.
 * Sparse memory objects and sparse matmul are promoted to production status.
+
+[Root Mean Square Normalization (RMSNorm) mode]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_layer_normalization.html#root-mean-square-normalization-mode
 
 ## Graph API
 * Introduced support for tanh approximation in [`GELU`] operation.
@@ -66,6 +68,8 @@
 # Validation
 * Improved benchdnn performance by optimizing input data filling and testing results comparison steps. 
 
+# Known Limitations
+
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated and will be removed in future releases. If you are using this API consider switching to [matmul primitive].
 
@@ -73,6 +77,6 @@
 [matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.8/dev_guide_matmul.html
 
 # Thanks to our Contributors
-This release contains contributions from the [project core team] as well as Aditya Tewari @aditew01, Alexander Simonov @asimonov1, @Anallear, Anna Sztukowska @asztukow, Avanish Tiwari @Tiwari-Avanish, Dmitriy Ovchinnikov @inteldimitrius, Kasture Deeksha, Krishna Sai @krishnasai-mcw, Manaal @manaalmj, Marek Michalowski @michalowski-arm, Orel Yehuda @yehudaorel, Ruqiu Cao @rcao8, Tsao Zhong @CaoZhongZ, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, Ye Tao @taoye9, Yuanyuan Chen @cyyever, @gausah-arm, @karmeh01, @pmanczak, and @zhangfeiv0.
+This release contains contributions from the [project core team] as well as Aditya Tewari @aditew01, Alexander Simonov @asimonov1, @Anallear, Anna Sztukowska @asztukow, Avanish Tiwari @Tiwari-Avanish, Dmitriy Ovchinnikov @inteldimitrius, Kasture Deeksha, Krishna Sai @krishnasai-mcw, Manaal @manaalmj, Marek Michalowski @michalowski-arm, Orel Yehuda @yehudaorel, Ruqiu Cao @rcao8, Tsao Zhong @CaoZhongZ, Viktoriia Gvozdeva @vgvozdeva, Yair Obodovsky @yair-obodovsky, Ye Tao @taoye9, Yuanyuan Chen @cyyever, @gausah-arm, @karmeh01, @pmanczak, and @zhangfeiv0. We would also like to thank everyone who asked questions and reported issues.
 
 [project core team]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.9/MAINTAINERS.md

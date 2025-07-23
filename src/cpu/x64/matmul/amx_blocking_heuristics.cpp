@@ -54,6 +54,8 @@ void matmul_amx_blocking_params_t::update_configuration(
     bgmmc.is_a_nt = is_a_nt_;
     bgmmc.is_b_nt = is_b_nt_;
     bgmmc.set_nt = set_nt_;
+    bgmmc.need_prefetch_a = need_prefetch_a_;
+    bgmmc.need_prefetch_b = need_prefetch_b_;
     bgmmc.is_macro_heuristics
             = dynamic_cast<const matmul_amx_blocking_params_macro_t *>(this)
             != nullptr;
@@ -784,13 +786,6 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
             k_blk_h = nstl::min(wei_k_blk * best_k_h, K);
             best_k_h = 1;
             is_a_nt_ = true;
-            // TODO: revive after precopy implementation
-            //            need_buf_a_ = false;
-            need_prefetch = false;
-        } else {
-            // TODO: revive after precopy implementation
-            //            need_buf_a_ = false;
-            need_prefetch = true;
         }
 
         k_blk_ = k_blk_h;
@@ -799,6 +794,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         n_chunk_size_ = 1;
         m_blk_ = m_decomposition;
         m_chunk_size_ = div_up(m_per_thread, m_blk_);
+        need_prefetch_a_ = (m_per_thread / m_blk_) >= 2;
+        need_prefetch_b_ = false;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
 
@@ -822,7 +819,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         m_chunk_size_ = 1;
         is_a_nt_ = true;
         is_b_nt_ = false;
-        need_prefetch = true;
+        need_prefetch_a_ = false;
+        need_prefetch_b_ = (n_per_thread / n_blk_) >= 2;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
     }

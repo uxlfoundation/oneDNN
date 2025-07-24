@@ -777,9 +777,7 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
     const prb_t &prb = *prb_;
     dir_t dir = str2dir(prop2str(prb.prop));
     skip_unimplemented_data_type({prb.cfg[SRC_LAYER].dt}, dir, res);
-    skip_unimplemented_sum_po(prb.attr, res, dnnl_rnn, prb.cfg[SRC_LAYER].dt);
-    skip_unimplemented_binary_po(prb.attr, res);
-    skip_unimplemented_prelu_po(prb.attr, res, dnnl_rnn);
+    skip_unimplemented_attr(prb_->attr, res, dnnl_rnn, prb_->cfg[SRC_LAYER].dt);
 
     if (is_cpu()) {
 #if !defined(DNNL_X64) || DNNL_X64 == 0 \

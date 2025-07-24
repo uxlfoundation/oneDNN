@@ -378,10 +378,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->get_dt(SRC), prb->get_dt(WEI),
                                          prb->get_dt(BIA), prb->get_dt(DST)},
             prb->dir, res);
-    skip_unimplemented_sum_po(prb->attr, res, dnnl_convolution,
-            prb->get_dt(SRC), prb->get_dt(DST));
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_convolution);
+    skip_unimplemented_attr(prb->attr, res, dnnl_convolution, prb->get_dt(SRC),
+            prb->get_dt(DST));
 
     if (is_cpu()) {
         // Specific configurations are not supported.

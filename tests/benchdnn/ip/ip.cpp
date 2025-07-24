@@ -244,10 +244,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->get_dt(SRC), prb->get_dt(WEI),
                                          prb->get_dt(BIA), prb->get_dt(DST)},
             prb->dir, res);
-    skip_unimplemented_sum_po(prb->attr, res, dnnl_inner_product,
+    skip_unimplemented_attr(prb->attr, res, dnnl_inner_product,
             prb->get_dt(SRC), prb->get_dt(DST));
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_inner_product);
 
     if (is_cpu()) {
         auto is_dt_f16_or_f32 = [&](dnnl_data_type_t dt) {

@@ -493,10 +493,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type(
             {prb->src_dt(), prb->wei_dt(), prb->bia_dt, prb->dst_dt()},
             prb->dir, res);
-    skip_unimplemented_sum_po(
+    skip_unimplemented_attr(
             prb->attr, res, dnnl_gemm, prb->src_dt(), prb->dst_dt());
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_gemm);
 
     // Unconditionally skip remaining unimplemented cases.
     // TODO: stop doing it.

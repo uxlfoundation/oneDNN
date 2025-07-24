@@ -1984,11 +1984,15 @@ bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
 
 bool get_softmax_stag_and_dtag(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
-    get_driver_tag_by_idx(
-            base_op_ref, op_setting.stag.front(), 0, /*from_output*/ false);
-    get_driver_tag_by_idx(
-            base_op_ref, op_setting.dtag.front(), 0, /*from_output*/ true);
+    std::string stag, dtag;
 
+    if (!get_driver_tag_by_idx(base_op_ref, stag, 0, /*from_output*/ false)
+            || !get_driver_tag_by_idx(
+                    base_op_ref, dtag, 0, /*from_output*/ true))
+        return false;
+
+    op_setting.stag.front() = std::move(stag);
+    op_setting.dtag.front() = std::move(dtag);
     return true;
 }
 

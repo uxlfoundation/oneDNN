@@ -672,6 +672,17 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
     }
+
+    const auto src_scales = prb->attr.scales.get(DNNL_ARG_SRC);
+    const auto wei_scales = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
+    if ((!src_scales.is_def() && src_scales.policy == attr_t::PER_TENSOR)
+        || (!wei_scales.is_def() && wei_scales.policy == attr_t::PER_TENSOR)) {
+        BENCHDNN_PRINT(2, "[SKIP][%s:%d]: Full tensor scale support is limited..\n",
+                __FILE__, __LINE__);
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return;
+    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

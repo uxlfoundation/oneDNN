@@ -31,16 +31,14 @@
 #include <unordered_map>
 
 #include "oneapi/dnnl/dnnl_common.h"
-
 /// @endcond
 
-// __cpp_exceptions is referred from
-// https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_exceptions.html
-// gcc < 5 does not define __cpp_exceptions but __EXCEPTIONS,
-// Microsoft C++ Compiler does not provide an option to disable exceptions
+// If exceptions are enabled:
+// - gcc < 5  only define  __EXCEPTIONS
+// - MSVC and Clang only define __cpp_exceptions
+// - new gcc and icx/icpx define both
 #ifndef DNNL_ENABLE_EXCEPTIONS
-#if __cpp_exceptions || __EXCEPTIONS \
-        || (defined(_MSC_VER) && !defined(__clang__))
+#if defined(__EXCEPTIONS) || defined(__cpp_exceptions)
 #define DNNL_ENABLE_EXCEPTIONS 1
 #else
 #define DNNL_ENABLE_EXCEPTIONS 0

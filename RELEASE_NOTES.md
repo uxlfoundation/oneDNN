@@ -4,6 +4,9 @@
   This functionality is not dispatched by default and requires opt-in with environment variable `ONEDNN_MAX_CPU_ISA=AVX10_2_512_AMX_2`.
 * Introduced initial support for future Intel Core processors with Intel AVX 10.2 instruction set support. This functionality is not dispatched by default and requires opt-in with environment variable `ONEDNN_MAX_CPU_ISA=AVX10_2_512`.
 * Improved initialization time for convolution primitive when a large number of threads is used by introducing a new thread partition estimation and adjusting several blocking parameters.
+* Improved performance of `fp8` convolution primitive with scales and `bf16` output
+* Improved performance of matmul primitive with post-ops on processors with Intel AMX support
+* Improved performance of RNN primitive for LBR_GRU and VANILLA_LSTM cell types on processors with Intel AVX2 instruction set support
 * Improved performance of the following subgraphs with Graph API:
     * [Scaled Dot Product Attention (SDPA)] with implicit causal mask.
     * [Grouped Query Attention (GQA)] flavor specific for GEMMA models.

@@ -137,7 +137,7 @@ protected:
 
 #if XE4
         void db(const InstructionXe4 &i, bool isBP = false) {
-            if (isBP) savedBPs.push_back(code.size() >> 1);
+            if (isBP) savedBPs.push_back(static_cast<uint32_t>(code.size()) >> 1);
             code.push_back(i.qword[0]);
             code.push_back(i.qword[1]);
         }

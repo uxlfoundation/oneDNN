@@ -44,7 +44,6 @@ struct sdpa_dims_t {
     int vgroup_size;
 
     memory::data_type dt;
-
     memory::data_type qdt;
 
     memory::data_type kdt;
@@ -64,14 +63,11 @@ struct sdpa_dims_t {
 
 struct sdpa_tensors_t {
     memory m_query, m_key, m_scale, m_mask, m_value, m_output;
-    memory m_query_test;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
-    memory m_key_t, m_value_t;
-    memory m_key_t_quantized, m_value_t_quantized;
+    memory m_key_t_quantized;
 
-    memory m_reorder_scale_attr, m_key_scales, m_key_scales_t, m_key_zp,
-            m_value_scales, m_value_zp;
-    dnnl::primitive_attr sdpa_attr, sdpa_attr_quantized, sdpa_kq_attr_quantized,
+    memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
+    dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
             sdpa_vs_attr_quantized;
 
     int kq_mask, vs_mask;
@@ -351,13 +347,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     // All combined in a single matmul primitive.
     // clang-format off
     auto query_md            = memory::desc(q_sz,          p.qdt,   abcd);
-    auto key_t_md            = memory::desc(k_sz,          p.dt,    abdc);
     auto key_md              = memory::desc(k_sz,          p.dt,    abcd);
-    auto value_t_md          = memory::desc(v_sz,          p.dt,    abdc);
     auto value_md            = memory::desc(v_sz,          p.dt,    abcd);
     auto scale_md            = memory::desc(scale_sz,      p.qdt,    abcd);
-
-    auto query_test_md       = memory::desc(q_sz,          p.qdt,   abcd);
 
     auto key_quantized_md    = memory::desc(k_sz,          p.kdt,   abcd);
     auto key_t_quantized_md  = memory::desc(k_sz,          p.kdt,   abdc);
@@ -366,7 +358,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto key_zp_md           = memory::desc(key_scales_sz, kzpdt,   abcd);
 
     auto val_quantized_md    = memory::desc(v_sz,          p.vdt,   abcd);
-    auto val_t_quantized_md  = memory::desc(v_sz,          p.vdt,   abdc);
     auto val_scales_md       = memory::desc(val_scales_sz, vsdt,    abcd);
     auto val_zp_md           = memory::desc(val_scales_sz, vzpdt,   abcd);
 
@@ -378,10 +369,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
-    out.m_query_test
-            = double_and_resize(query_test_md, eng, strm, doubled_memory);
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
-    out.m_key_t = double_and_resize(key_t_md, eng, strm, doubled_memory);
     out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
@@ -389,19 +377,14 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
             = double_and_resize(key_t_quantized_md, eng, strm, doubled_memory);
     out.m_key_scales
             = double_and_resize(key_scales_md, eng, strm, doubled_memory);
-    out.m_key_scales_t
-            = double_and_resize(key_scales_t_md, eng, strm, doubled_memory);
     out.m_key_zp = double_and_resize(key_zp_md, eng, strm, doubled_memory);
     out.m_value_quantized
             = double_and_resize(val_quantized_md, eng, strm, doubled_memory);
-    out.m_value_t_quantized
-            = double_and_resize(val_t_quantized_md, eng, strm, doubled_memory);
     out.m_value_scales
             = double_and_resize(val_scales_md, eng, strm, doubled_memory);
     out.m_value_zp = double_and_resize(val_zp_md, eng, strm, doubled_memory);
     out.m_mask = double_and_resize(mask_md, eng, strm, doubled_memory);
     out.m_value = double_and_resize(value_md, eng, strm, doubled_memory);
-    out.m_value_t = double_and_resize(value_t_md, eng, strm, doubled_memory);
     out.m_output = double_and_resize(output_md, eng, strm, doubled_memory);
     out.m_output_quantized
             = double_and_resize(output_quantized_md, eng, strm, doubled_memory);
@@ -423,7 +406,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     std::vector<float> mask_data(product(mask_sz), NAN);
     std::vector<float> output_data(product(q_sz), NAN);
 
-    out.sdpa_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     out.sdpa_attr_quantized.set_scratchpad_mode(dnnl::scratchpad_mode::library);
 
     out.kq_mask = 0;
@@ -686,7 +668,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);
     write_to_dnnl_memory(value_data.data(), out.m_value, eng, strm);
     write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
-    write_to_dnnl_memory(query_data.data(), out.m_query_test, eng, strm);
 
     write_to_dnnl_memory(
             key_quantized_data.data(), out.m_key_quantized, eng, strm);
@@ -712,11 +693,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(output_data.data(), out.m_output, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
 
-    transpose_strides(eng, out.m_key_scales_t, out.m_key_scales);
-    transpose_strides(eng, out.m_key_t, out.m_key);
     transpose_strides(eng, out.m_key_t_quantized, out.m_key_quantized);
-    transpose_strides(eng, out.m_value_t, out.m_value);
-    transpose_strides(eng, out.m_value_t_quantized, out.m_value_quantized);
 
     return out;
 }
@@ -1471,7 +1448,7 @@ int to_attn_mask_type(mask_type t) {
 }
 
 GPU_TEST_P(sdpa_test_t, compare) {
-    memory::data_type scale_dt = t.m_query_test.get_desc().get_data_type();
+    memory::data_type scale_dt = t.m_query.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
     bool invert_scale = true;
 
@@ -1491,7 +1468,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
     try {
-        sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query_test.get_desc(),
+        sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
@@ -1642,7 +1619,7 @@ float compute(OPS ops, TIME duration) {
 static std::once_flag header_flag;
 
 GPU_TEST_P(sdpa_test_t, perf) {
-    memory::data_type scale_dt = t.m_query_test.get_desc().get_data_type();
+    memory::data_type scale_dt = t.m_query.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
     bool invert_scale = true;
 

@@ -257,6 +257,7 @@ public:
     // kernel. In particular, it may come from the blob, or it could be
     // properly generated.
     void hash_dump(const char *tag = nullptr) const {
+        if (!*this) return;
         if (get_verbose_dev_mode(verbose_t::debuginfo) >= 6) {
             printf("kernel creation [%s] %s -> %zu\n", tag ? tag : "unlabeled",
                     name().c_str(), get_hash());

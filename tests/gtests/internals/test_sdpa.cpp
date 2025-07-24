@@ -73,6 +73,10 @@ struct sdpa_tensors_t {
     int kq_mask, vs_mask;
     memory::dims kq_groups, vs_groups;
 };
+bool is_quantized(mdt dt, quantize_type qtype) {
+    return qtype != quantize_type::no_quantization
+            && (dt != mdt::f16 && dt != mdt::bf16 && dt != mdt::f32);
+}
 
 std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
     ss << "mb_" << p.mb;
@@ -87,14 +91,12 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
     ss << "_Q_" << p.query_num;
     ss << "_Qdt_" << p.qdt;
     ss << "_Kdt_" << p.kdt;
-    if (!(p.kdt == mdt::f16 || p.kdt == mdt::bf16)
-            || p.qtype != quantize_type::no_quantization) {
+    if (is_quantized(p.kdt, p.qtype)) {
         ss << "_Ksdt_" << p.ksdt;
         ss << "_Kzpdt_" << p.kzpdt;
     }
     ss << "_Vdt_" << p.vdt;
-    if (!(p.vdt == mdt::f16 || p.vdt == mdt::bf16)
-            || p.qtype != quantize_type::no_quantization) {
+    if (is_quantized(p.vdt, p.qtype)) {
         ss << "_Vsdt_" << p.vsdt;
         ss << "_Vzpdt_" << p.vzpdt;
     }
@@ -105,9 +107,7 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case mask_type::causal_br: ss << "_maskcausalbr"; break;
         case mask_type::causal_tl: ss << "_maskcausaltl"; break;
     }
-    if ((!(p.kdt == mdt::f16 || p.vdt == mdt::f16)
-                || !(p.kdt == mdt::bf16 || p.vdt == mdt::bf16))
-            && p.qtype != quantize_type::no_quantization) {
+    if (is_quantized(p.kdt, p.qtype) || is_quantized(p.vdt, p.qtype)) {
         ss << "_" << p.qtype;
     }
     return ss;
@@ -135,14 +135,12 @@ std::string print_row(const sdpa_dims_t &p) {
     ss << "|" << p.seq_len;
     ss << "|" << p.query_num;
     ss << "|" << p.kdt;
-    if (!(p.kdt == mdt::f16 || p.vdt == mdt::bf16)
-            && p.qtype != quantize_type::no_quantization) {
+    if (is_quantized(p.kdt, p.qtype)) {
         ss << "/" << p.ksdt;
         ss << "/" << p.kzpdt;
     }
     ss << "|" << p.vdt;
-    if (!(p.vdt == mdt::f16 || p.vdt == mdt::bf16)
-            && p.qtype != quantize_type::no_quantization) {
+    if (is_quantized(p.vdt, p.qtype)) {
         ss << "/" << p.vsdt;
         ss << "/" << p.vzpdt;
     }

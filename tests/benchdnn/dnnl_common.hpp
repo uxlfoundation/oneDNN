@@ -269,6 +269,8 @@ void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
         dnnl_data_type_t ddt, const std::string &stag, const std::string &dtag);
 void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res);
 
+void skip_unsupported_block_format(const std::string &format_tag, res_t *res);
+
 template <typename prb_t>
 int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
         const prb_t *prb, res_t *res) {

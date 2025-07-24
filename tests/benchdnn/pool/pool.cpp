@@ -146,6 +146,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, dnnl_pooling, prb->src_dt());
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_pooling);
+    skip_unsupported_block_format(prb->tag, res);
 
     if (is_cpu() && prb->src_dt() != prb->dst_dt()) {
         res->state = SKIPPED;

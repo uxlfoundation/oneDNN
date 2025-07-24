@@ -412,15 +412,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
-        auto is_blocked_format = [](const std::string &format_tag) {
-            // if the user provided tag has a capital letter,
-            // that indicates it's a blocked format, otherwise it's plain
-
-            for (const auto &c : format_tag) {
-                if (std::isupper(c)) { return true; }
-            }
-            return false;
-        };
         // Skip blocked format tags and 4 bit formats for Nvidia/AMD/Generic SYCL backends
         if (is_generic_gpu()) {
             const bool is_4bit_format
@@ -430,9 +421,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             bool zero_point_has_groups = !prb->attr.scales.is_def();
             bool scales_has_groups = !prb->attr.zero_points.is_def();
 
-            if (is_blocked_format(prb->stag) || is_blocked_format(prb->dtag)
-                    || is_4bit_format || scales_has_groups
-                    || zero_point_has_groups) {
+            skip_unsupported_block_format(prb->stag, res);
+            skip_unsupported_block_format(prb->dtag, res);
+
+            if (is_4bit_format || scales_has_groups || zero_point_has_groups) {
                 res->state = SKIPPED;
                 res->reason = skip_reason::case_not_supported;
             }

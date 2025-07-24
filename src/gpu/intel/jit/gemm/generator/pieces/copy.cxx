@@ -246,7 +246,9 @@ void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
         if (clobbered[2*i] || clobbered[2*i + 1])
             mov(1, savedFlags[i], FlagRegister(i));
 
-    // Generate code.
+    sync(SyncFunction::nop, SWSB<uint32_t>(1));
+
+     // Generate code.
     plan.execute(*this);
 
     // Restore flag registers that were clobbered, and invalidate

@@ -32,29 +32,25 @@ namespace {
 
 // Obtain dimension count for gemmstone (common scales give count 0).
 int quant_entry_ndims(
-        const quant_entry_t &entry, const memory_desc_t &md, int k_idx) {
+        const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
-
-    memory_desc_t qmd;
-    entry.get_md(qmd, md);
-    const dims_t &qdims = qmd.dims;
 
     // If quantization is batched (any batch dim > 1), we need to tell gemmstone
     // it's 3D - so it knows to change the offset as the batch index changes.
-    for (int i = 0; i < md.ndims - 2; i++) {
-        if (qdims[i] > 1) return 3;
+    for (int i = 0; i < qmd.ndims - 2; i++) {
+        if (qmd.dims[i] > 1) return 3;
     }
 
     // Count the number of nontrivial (dim > 1) dimensions present
     int count = 0;
-    for (int i = 0; i < md.ndims; ++i) {
-        if (qdims[i] > 1) { count++; }
+    for (int i = 0; i < qmd.ndims; ++i) {
+        if (qmd.dims[i] > 1) { count++; }
     }
 
     // for gemmstone, 1D quantization implies a full column vector
     // (i.e. not on the K dimension). If quantization varies over K,
     // we have to send these as 2D
-    if (count == 1 && qdims[k_idx] > 1) return 2;
+    if (count == 1 && qmd.dims[k_idx] > 1) return 2;
 
     return count;
 }
@@ -226,16 +222,18 @@ status_t pd_t::init_attrs() {
     cmask_c_ = c_zps.get_mask();
 
     // Swap descriptors to follow column major format
-    auto ndims = d->c_desc.ndims;
-    ao_dims_ = quant_entry_ndims(a_zps, d->b_desc, ndims - 2);
-    bo_dims_ = quant_entry_ndims(b_zps, d->a_desc, ndims - 1);
-
+    CHECK(a_zps.get_md(a_zp_md_, d->b_desc));
+    CHECK(b_zps.get_md(b_zp_md_, d->a_desc));
     CHECK(a_scales.get_md(a_scale_md_, desc_.b_desc));
     CHECK(b_scales.get_md(b_scale_md_, desc_.a_desc));
     CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
 
-    asc_dims_ = quant_entry_ndims(a_scales, d->b_desc, ndims - 2);
-    bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc, ndims - 1);
+    auto ndims = d->c_desc.ndims;
+    ao_dims_ = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
+    bo_dims_ = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
+
+    asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
+    bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
 
     a_scales_group_k_ = a_scales.get_group(0);
     b_scales_group_k_ = b_scales.get_group(1);

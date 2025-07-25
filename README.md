@@ -179,7 +179,7 @@ On a CPU based on Arm AArch64 architecture, oneDNN CPU engine can be built with
 machine learning applications and provides AArch64 optimized implementations
 of core functions. This functionality currently requires that ACL is downloaded
 and built separately. See [Build from Source] section of the Developer Guide for
-details. oneDNN only supports Compute Library version 52.
+details. The minimum supported version of ACL is 52.1.0.
 
 [Arm Compute Library (ACL)]: https://github.com/arm-software/ComputeLibrary
 

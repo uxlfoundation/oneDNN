@@ -759,41 +759,56 @@ static status_t softmax_handler(
 
     // support stats computation: stats = reducemax(src) - log(reducemax(f32_dst))
     const auto &stats = op->get_output_value(1);
-    // create reduce_src op
-    auto reduce_src_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
-    reduce_src_op->set_attr<std::vector<int64_t>>(
-            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
-    reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
-    reduce_src_op->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::reduction_max));
-    reduce_src_op->add_input(src);
-    src->add_consumer(*reduce_src_op, 0);
-    // add output for reduce_src
-    logical_tensor_t reduce_src_op_out_lt
-            = empty_logical_tensor_with_default_id();
-    auto reduce_src_op_out_val = std::make_shared<value_t>(
-            *reduce_src_op, 0, reduce_src_op_out_lt, true);
-    reduce_src_op_out_val->set_data_type(impl::data_type::f32);
-    reduce_src_op->add_output(reduce_src_op_out_val);
-    insert_empty_scratchpad(reduce_src_op);
+    // reduction primitive doesn't support identity operation.
+    // check if reduce ops are needed before creating them.
+    // if the dims[axis] = 1, no need to add reduce ops.
+    bool need_reduction = true;
+    int64_t axis = new_softmax_op->get_attr<int64_t>(op_attr::axis);
+    axis = axis < 0 ? axis + src->get_logical_tensor().ndims : axis;
+    if (src->get_logical_tensor().dims[axis] == 1) { need_reduction = false; }
 
-    // create reduce_dst op
-    auto reduce_dst_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
-    reduce_dst_op->set_attr<std::vector<int64_t>>(
-            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
-    reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
-    reduce_dst_op->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::reduction_max));
-    reduce_dst_op->add_input(f32_dst);
-    f32_dst->add_consumer(*reduce_dst_op, 0);
-    // add output for reduce_dst
-    logical_tensor_t reduce_dst_op_out_lt
-            = empty_logical_tensor_with_default_id();
-    auto reduce_dst_op_out_val = std::make_shared<value_t>(
-            *reduce_dst_op, 0, reduce_dst_op_out_lt, true);
-    reduce_dst_op_out_val->set_data_type(impl::data_type::f32);
-    reduce_dst_op->add_output(reduce_dst_op_out_val);
-    insert_empty_scratchpad(reduce_dst_op);
+    auto reduce_src_op_out_val = src;
+    auto reduce_dst_op_out_val = f32_dst;
+    if (need_reduction) {
+        // create reduce_src op
+        auto reduce_src_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+        reduce_src_op->set_attr<std::vector<int64_t>>(op_attr::axes,
+                {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+        reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
+        reduce_src_op->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::reduction_max));
+        reduce_src_op->add_input(src);
+        src->add_consumer(*reduce_src_op, 0);
+        // add output for reduce_src
+        logical_tensor_t reduce_src_op_out_lt
+                = empty_logical_tensor_with_default_id();
+        reduce_src_op_out_val = std::make_shared<value_t>(
+                *reduce_src_op, 0, reduce_src_op_out_lt, true);
+        reduce_src_op_out_val->set_data_type(impl::data_type::f32);
+        reduce_src_op->add_output(reduce_src_op_out_val);
+        insert_empty_scratchpad(reduce_src_op);
+
+        // create reduce_dst op
+        auto reduce_dst_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
+        reduce_dst_op->set_attr<std::vector<int64_t>>(op_attr::axes,
+                {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+        reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
+        reduce_dst_op->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::reduction_max));
+        reduce_dst_op->add_input(f32_dst);
+        f32_dst->add_consumer(*reduce_dst_op, 0);
+        // add output for reduce_dst
+        logical_tensor_t reduce_dst_op_out_lt
+                = empty_logical_tensor_with_default_id();
+        reduce_dst_op_out_val = std::make_shared<value_t>(
+                *reduce_dst_op, 0, reduce_dst_op_out_lt, true);
+        reduce_dst_op_out_val->set_data_type(impl::data_type::f32);
+        reduce_dst_op->add_output(reduce_dst_op_out_val);
+        insert_empty_scratchpad(reduce_dst_op);
+
+        rewriter.to_insert(reduce_src_op);
+        rewriter.to_insert(reduce_dst_op);
+    }
 
     // create log op
     auto log_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
@@ -828,22 +843,43 @@ static status_t softmax_handler(
     // special handling for inf_as_zero:
     // stats = reducesum(f32_dst) == 0? 0: stats
     // create reduce_sum_dst op
-    auto reduce_sum_dst_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
-    reduce_sum_dst_op->set_attr<std::vector<int64_t>>(
-            op_attr::axes, {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
-    reduce_sum_dst_op->set_attr<bool>(op_attr::keep_dims, true);
-    reduce_sum_dst_op->set_attr<int64_t>(op_attr::alg_kind,
-            static_cast<int64_t>(dnnl::algorithm::reduction_sum));
-    reduce_sum_dst_op->add_input(f32_dst);
-    f32_dst->add_consumer(*reduce_sum_dst_op, 0);
-    // add output for reduce_sum_dst
-    logical_tensor_t reduce_sum_dst_op_out_lt
-            = empty_logical_tensor_with_default_id();
-    auto reduce_sum_dst_op_out_val = std::make_shared<value_t>(
-            *reduce_sum_dst_op, 0, reduce_sum_dst_op_out_lt, true);
-    reduce_sum_dst_op_out_val->set_data_type(dnnl::impl::data_type::s8);
-    reduce_sum_dst_op->add_output(reduce_sum_dst_op_out_val);
-    insert_empty_scratchpad(reduce_sum_dst_op);
+    auto reduce_or_reorder_op_out_val = f32_dst;
+    if (need_reduction) {
+        auto reduce_sum_dst_op
+                = std::make_shared<op_t>(op_kind::dnnl_reduction);
+        reduce_sum_dst_op->set_attr<std::vector<int64_t>>(op_attr::axes,
+                {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
+        reduce_sum_dst_op->set_attr<bool>(op_attr::keep_dims, true);
+        reduce_sum_dst_op->set_attr<int64_t>(op_attr::alg_kind,
+                static_cast<int64_t>(dnnl::algorithm::reduction_sum));
+        reduce_sum_dst_op->add_input(f32_dst);
+        f32_dst->add_consumer(*reduce_sum_dst_op, 0);
+        // add output for reduce_sum_dst
+        logical_tensor_t reduce_sum_dst_op_out_lt
+                = empty_logical_tensor_with_default_id();
+        reduce_or_reorder_op_out_val = std::make_shared<value_t>(
+                *reduce_sum_dst_op, 0, reduce_sum_dst_op_out_lt, true);
+        reduce_or_reorder_op_out_val->set_data_type(dnnl::impl::data_type::s8);
+        reduce_sum_dst_op->add_output(reduce_or_reorder_op_out_val);
+        insert_empty_scratchpad(reduce_sum_dst_op);
+
+        rewriter.to_insert(reduce_sum_dst_op);
+    } else {
+        // create reorder op to convert f32_dst to s8
+        auto reorder_s8_op = std::make_shared<op_t>(op_kind::dnnl_reorder);
+        reorder_s8_op->set_attr<bool>(op_attr::change_layout, false);
+        reorder_s8_op->add_input(f32_dst);
+        f32_dst->add_consumer(*reorder_s8_op, 0);
+        // add output for reorder_s8_op
+        logical_tensor_t reorder_s8_op_out_lt
+                = empty_logical_tensor_with_default_id();
+        reduce_or_reorder_op_out_val = std::make_shared<value_t>(
+                *reorder_s8_op, 0, reorder_s8_op_out_lt, true);
+        reduce_or_reorder_op_out_val->set_data_type(dnnl::impl::data_type::s8);
+        reorder_s8_op->add_output(reduce_or_reorder_op_out_val);
+        insert_empty_scratchpad(reorder_s8_op);
+        rewriter.to_insert(reorder_s8_op);
+    }
 
     // create select op
     auto select_op = std::make_shared<op_t>(op_kind::dnnl_binary);
@@ -854,16 +890,13 @@ static status_t softmax_handler(
     select_op->add_input(reduce_dst_op_out_val);
     reduce_dst_op_out_val->add_consumer(*select_op, 1);
     // condition
-    select_op->add_input(reduce_sum_dst_op_out_val);
-    reduce_sum_dst_op_out_val->add_consumer(*select_op, 2);
+    select_op->add_input(reduce_or_reorder_op_out_val);
+    reduce_or_reorder_op_out_val->add_consumer(*select_op, 2);
     select_op->add_output(stats);
     insert_empty_scratchpad(select_op);
 
-    rewriter.to_insert(reduce_src_op);
-    rewriter.to_insert(reduce_dst_op);
     rewriter.to_insert(log_op);
     rewriter.to_insert(sub_op);
-    rewriter.to_insert(reduce_sum_dst_op);
     rewriter.to_insert(select_op);
 
     return status::success;

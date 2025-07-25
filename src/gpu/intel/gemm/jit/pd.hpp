@@ -101,6 +101,7 @@ struct pd_t : public gemm::pd_t {
 
     const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
+    memory_desc_t a_zp_md_, b_zp_md_;
     bool swap_ab_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;

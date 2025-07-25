@@ -1245,13 +1245,13 @@ private:
     }
 
     const byte *const base_ptr_;
-    const dim_t dt_size_;
+    const size_t dt_size_;
     const int dims_[Tdims];
 };
 
 template <typename... Targs>
 raw_array_offset_calculator_t<sizeof...(Targs)> make_raw_aoc(
-        const void *base, const dim_t dt_size, Targs... Fargs) {
+        const void *base, const size_t dt_size, Targs... Fargs) {
     return raw_array_offset_calculator_t<sizeof...(Targs)>(
             static_cast<const byte *>(base), dt_size,
             std::forward<Targs>(Fargs)...);

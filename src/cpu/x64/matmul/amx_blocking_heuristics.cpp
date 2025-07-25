@@ -704,6 +704,10 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
 
             uint32_t l2_sets = platform::get_num_sets_in_cache(2);
             size_t l2_line_size = l2_sets * platform::get_cache_line_size();
+            if (l2_line_size == 0) {
+                vertical_not_possible = true;
+                return;
+            }
 
             // If output matrix in vertical traversal suffers from set issues in
             // the L2, then go horizontally.

@@ -258,18 +258,14 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
 
     void *handle;
     CHECK(dnnl_memory_get_data_handle(mem2, &handle));
-#ifdef DNNL_WITH_SYCL
-    auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
-    sycl_queue.fill<uint8_t>(handle, 0xFF, desc2.get_size());
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     if (desc2.get_size()) {
         void *mapped_ptr = nullptr;
+        strm.wait();
         CHECK(dnnl_memory_map_data(mem2, &mapped_ptr));
         memset(mapped_ptr, 0xFF, desc2.get_size());
         CHECK(dnnl_memory_unmap_data(mem2, mapped_ptr));
+        strm.wait();
     }
-#endif
 
     auto out = memory(desc, eng, handle);
     return out;
@@ -1070,34 +1066,6 @@ memory as(dnnl::stream &strm, memory &mem, memory::data_type dt) {
 
 memory reshape(dnnl::stream &strm, memory &mem, const memory::desc &md) {
     auto out = memory(md, mem.get_engine());
-
-#ifdef DNNL_WITH_SYCL
-    size_t size = md.get_size();
-    auto mkind = dnnl::sycl_interop::get_memory_kind(mem);
-    if (mkind == dnnl::sycl_interop::memory_kind::buffer) {
-        auto buffer = dnnl::sycl_interop::get_buffer<uint8_t>(mem);
-        auto src = buffer.get_host_access();
-        uint8_t *src_ptr = src.get_pointer();
-        if (!src_ptr) throw std::runtime_error("get_pointer returned nullptr.");
-
-        auto out_buffer = dnnl::sycl_interop::get_buffer<uint8_t>(out);
-        auto dst = out_buffer.get_host_access();
-        uint8_t *dst_ptr = dst.get_pointer();
-        if (!dst_ptr) throw std::runtime_error("get_pointer returned nullptr.");
-
-        for (size_t i = 0; i < size; ++i)
-            ((uint8_t *)dst_ptr)[i] = src_ptr[i];
-    } else {
-        assert(mkind == dnnl::sycl_interop::memory_kind::usm);
-        uint8_t *src_ptr = (uint8_t *)mem.get_data_handle();
-        uint8_t *dst_ptr = (uint8_t *)out.get_data_handle();
-        if (!src_ptr)
-            throw std::runtime_error("get_data_handle returned nullptr.");
-        auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
-        sycl_queue.memcpy(dst_ptr, src_ptr, size).wait();
-    }
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     strm.wait();
     void *mem_ptr_ = (void *)mem.map_data();
     if (mem_ptr_ == nullptr)
@@ -1108,7 +1076,6 @@ memory reshape(dnnl::stream &strm, memory &mem, const memory::desc &md) {
     memcpy(out_ptr_, mem_ptr_, mem.get_desc().get_size());
     mem.unmap_data(mem_ptr_);
     out.unmap_data(out_ptr_);
-#endif
     return out;
 }
 
@@ -1319,21 +1286,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // Execute primitives of sdpa.
     loop();
 
-#ifdef DNNL_WITH_SYCL
-    // copy data from grouped_output to output
-    auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
-    sycl_queue.memcpy(output.get_data_handle(),
-            grouped_output.get_data_handle(), grouped_query_md.get_size());
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     strm.wait();
     void *output_ptr_ = (void *)output.map_data();
     void *grouped_output_ptr_ = (void *)grouped_output.map_data();
     memcpy(output_ptr_, grouped_output_ptr_, grouped_query_md.get_size());
     grouped_output.unmap_data(grouped_output_ptr_);
     output.unmap_data(output_ptr_);
-#endif
-
     strm.wait();
 }
 
@@ -1342,29 +1300,8 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
 
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
-#ifdef DNNL_WITH_SYCL
-    auto mkind = dnnl::sycl_interop::get_memory_kind(gold);
-
-    size_t size = gold.get_desc().get_size();
-    std::vector<uint8_t> gold_data(size);
-    std::vector<uint8_t> test_data(size);
-    mapped_ptr_gold = (T *)gold_data.data();
-    mapped_ptr_test = (T *)test_data.data();
-
-    if (mkind == dnnl::sycl_interop::memory_kind::buffer) {
-    } else {
-        uint8_t *ptr_gold = (uint8_t *)gold.get_data_handle();
-        uint8_t *ptr_test = (uint8_t *)test.get_data_handle();
-
-        auto sycl_queue = dnnl::sycl_interop::get_queue(strm);
-        sycl_queue.memcpy(gold_data.data(), ptr_gold, size);
-        sycl_queue.memcpy(test_data.data(), ptr_test, size).wait();
-    }
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     mapped_ptr_gold = (T *)gold.map_data();
     mapped_ptr_test = (T *)test.map_data();
-#endif
     strm.wait();
 
     auto dims = gold.get_desc().get_dims();
@@ -1423,10 +1360,8 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
         }
     }
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
-#endif
 
     int threshold = total * 0.0006;
 

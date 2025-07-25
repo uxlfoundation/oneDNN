@@ -72,9 +72,6 @@ public:
             const std::vector<tensor_t> &outputs,
             const scratchpad_t &scratchpad);
 
-    status_t get_prim_exec_args(exec_args_t &args, memory (&mem_storage)[10],
-            const execution_args_set_t *res) const;
-
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs) override;
@@ -96,10 +93,6 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_kernel_t)
-    status_t reset_engine(const engine_t *g_engine) override {
-        UNUSED(g_engine);
-        return dnnl_success;
-    }
 };
 
 } // namespace dnnl_impl

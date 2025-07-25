@@ -29,27 +29,15 @@ namespace jit {
 using namespace intel::jit;
 
 namespace {
-// convert a quant_entry_t and the base memory_desc_t into the dims_t for
-// the required quantization md.
-void quant_dims(
-        const memory_desc_t &md, const quant_entry_t &entry, dims_t &out) {
-    auto mask = entry.get_mask();
-    for (int i = 0; i < md.ndims; i++)
-        out[i] = md.dims[i] * ((mask >> i) & 1);
-    // Groups apply to the last 2 dims
-    if (!entry.has_default_groups()) {
-        out[md.ndims - 2] /= entry.get_group(0);
-        out[md.ndims - 1] /= entry.get_group(1);
-    }
-}
 
 // Obtain dimension count for gemmstone (common scales give count 0).
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &md, int k_idx) {
     if (entry.has_default_values()) return -1;
 
-    dims_t qdims;
-    quant_dims(md, entry, qdims);
+    memory_desc_t qmd;
+    entry.get_md(qmd, md);
+    const dims_t &qdims = qmd.dims;
 
     // If quantization is batched (any batch dim > 1), we need to tell gemmstone
     // it's 3D - so it knows to change the offset as the batch index changes.
@@ -139,21 +127,21 @@ status_t pd_t::init_post_ops() {
     }
 
     auto maybe_convert_scales_to_postop
-            = [this](const dims_t &scales_dims, int arg, data_type_t dt,
-                      bool &converted, memory_desc_t &postop_md) -> status_t {
+            = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
+                      bool &converted) -> status_t {
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
         // the scales md has K=1
         converted = false;
         int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
-        bool convert = (scales_dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
+        bool convert = (scale_md.dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
         if (convert) {
             if (arg == DNNL_ARG_C) {
-                CHECK(post_ops_.append_binary(binary_div, &postop_md));
+                CHECK(post_ops_.append_binary(binary_div, &scale_md));
                 binary_srcs_.push_back(
                         binary_src_t {binary_src_t::scales, arg});
             } else {
-                CHECK(post_ops_.prepend_binary(binary_mul, &postop_md));
+                CHECK(post_ops_.prepend_binary(binary_mul, &scale_md));
                 binary_srcs_.insert(binary_srcs_.begin(),
                         binary_src_t {binary_src_t::scales, arg});
             }
@@ -163,31 +151,23 @@ status_t pd_t::init_post_ops() {
     };
 
     if (!a_scales.has_default_values()) {
-        dims_t dims;
-        // Swap descriptors to follow column-major format
-        quant_dims(desc_.b_desc, a_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_A,
-                a_scales.get_data_type(), converted, a_scale_md_));
+        CHECK(maybe_convert_scales_to_postop(
+                a_scale_md_, DNNL_ARG_A, a_scales.get_data_type(), converted));
         if (converted) asc_dims_ = -1;
     }
 
     if (!b_scales.has_default_values()) {
-        dims_t dims;
-        // Swap descriptors to follow column-major format
-        quant_dims(desc_.a_desc, b_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_B,
-                b_scales.get_data_type(), converted, b_scale_md_));
+        CHECK(maybe_convert_scales_to_postop(
+                b_scale_md_, DNNL_ARG_B, b_scales.get_data_type(), converted));
         if (converted) bsc_dims_ = -1;
     }
 
     if (!c_scales.has_default_values()) {
-        dims_t dims;
-        quant_dims(desc_.c_desc, c_scales, dims);
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(dims, DNNL_ARG_C,
-                c_scales.get_data_type(), converted, c_scale_md_));
+        CHECK(maybe_convert_scales_to_postop(
+                c_scale_md_, DNNL_ARG_C, c_scales.get_data_type(), converted));
         // Conversion of dst scales to post ops is currently supported for all
         // cases supported in the library.
         gpu_assert(converted) << "Unable to convert dst scales to a post op";
@@ -225,7 +205,7 @@ bool pd_t::quant_enabled() {
     return wei_decomp() || dy_quant_enabled();
 }
 
-void pd_t::init_attrs() {
+status_t pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
@@ -250,9 +230,9 @@ void pd_t::init_attrs() {
     ao_dims_ = quant_entry_ndims(a_zps, d->b_desc, ndims - 2);
     bo_dims_ = quant_entry_ndims(b_zps, d->a_desc, ndims - 1);
 
-    quant_entry_init(a_scales, d->b_desc, a_scale_md_);
-    quant_entry_init(b_scales, d->a_desc, b_scale_md_);
-    quant_entry_init(c_scales, d->c_desc, c_scale_md_);
+    CHECK(a_scales.get_md(a_scale_md_, desc_.b_desc));
+    CHECK(b_scales.get_md(b_scale_md_, desc_.a_desc));
+    CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
 
     asc_dims_ = quant_entry_ndims(a_scales, d->b_desc, ndims - 2);
     bsc_dims_ = quant_entry_ndims(b_scales, d->a_desc, ndims - 1);
@@ -273,6 +253,7 @@ void pd_t::init_attrs() {
     } else if (b_scales_2d()) {
         b_q2d_group_k_ = b_scales.get_group(1);
     }
+    return status::success;
 }
 
 bool pd_t::zp_ok() {
@@ -404,15 +385,6 @@ dim_t pd_t::eff_scale_stride(int idx, int arg) const {
     gpu_assert(memory_desc_wrapper(scale_md).is_plain())
             << "Expected plain scale_md_";
     return scale_md.format_desc.blocking.strides[idx];
-}
-
-void pd_t::quant_entry_init(const quant_entry_t &entry, const memory_desc_t &md,
-        memory_desc_t &quant_md) {
-    dims_t qdims;
-    quant_dims(md, entry, qdims);
-    int ndims = desc()->c_desc.ndims;
-    memory_desc_init_by_tag(
-            quant_md, ndims, qdims, entry.get_data_type(), get_abx_tag(ndims));
 }
 
 } // namespace jit

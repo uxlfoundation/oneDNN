@@ -95,8 +95,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_zp_md, ndims, weights_d.dims(),
-            wei_zp_mask, wei_zp_group_k, wei_zp_group_n, wei_zp_dt));
+    CHECK(attr_zps.get(DNNL_ARG_WEIGHTS).get_md(wei_zp_md, *weights_d.md_));
 
     const int src_mask
             = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
@@ -121,9 +120,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_scale_md, ndims, weights_d.dims(),
-            wei_scale_mask, wei_scale_group_k, wei_scale_group_n,
-            wei_scale_dt));
+    CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
+                    .get_md(wei_scale_md, *weights_d.md_));
 
     auto dst_rnd_mode = pd()->attr()->rounding_mode_.get(DNNL_ARG_DST);
 

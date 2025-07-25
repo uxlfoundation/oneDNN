@@ -87,8 +87,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto src_zp_ngroups_k = K / src_zp_group_k;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_zp_md {};
-    CHECK(matmul_helper_t::get_quant_md(src_zp_md, ndims, src_d.dims(),
-            src_zp_mask, 1, src_zp_group_k, src_zp_dt));
+    CHECK(attr_zps.get(DNNL_ARG_SRC).get_md(src_zp_md, *src_d.md_));
 
     const bool with_wei_zero_points
             = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
@@ -99,8 +98,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_zp_ngroups_k = K / wei_zp_group_k;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_zp_md, ndims, weights_d.dims(),
-            wei_zp_mask, wei_zp_group_k, wei_zp_group_n, wei_zp_dt));
+    CHECK(attr_zps.get(DNNL_ARG_WEIGHTS).get_md(wei_zp_md, *weights_d.md_));
 
     const int src_mask
             = utils::get_dims_mask(dst_d.dims(), src_d.dims(), ndims);
@@ -125,9 +123,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_scale_ngroups_k = K / wei_scale_group_k;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
-    CHECK(matmul_helper_t::get_quant_md(wei_scale_md, ndims, weights_d.dims(),
-            wei_scale_mask, wei_scale_group_k, wei_scale_group_n,
-            wei_scale_dt));
+    CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
+                    .get_md(wei_scale_md, *weights_d.md_));
 
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
@@ -136,8 +133,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto src_scale_ngroups_k = K / src_scale_group_k;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_scale_md {};
-    CHECK(matmul_helper_t::get_quant_md(src_scale_md, ndims, src_d.dims(),
-            src_scale_mask, 1, src_scale_group_k, src_scale_dt));
+    CHECK(attr_scales.get(DNNL_ARG_SRC).get_md(src_scale_md, *src_d.md_));
 
     // For compute kernel, the minimal group is picked.
     const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);

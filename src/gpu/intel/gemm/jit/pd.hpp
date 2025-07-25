@@ -56,7 +56,7 @@ struct pd_t : public gemm::pd_t {
     }
 
     status_t init_post_ops();
-    void init_attrs();
+    status_t init_attrs();
     bool scales_ok();
     bool zp_ok();
 
@@ -188,8 +188,6 @@ struct pd_t : public gemm::pd_t {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
     dim_t eff_scale_stride(int idx, int arg) const;
-    void quant_entry_init(const quant_entry_t &entry, const memory_desc_t &md,
-            memory_desc_t &quant_md);
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

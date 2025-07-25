@@ -70,7 +70,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
-            init_attrs();
+            VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             // If we have both grouped scales and grouped zero-points, they must
             // have the same group size

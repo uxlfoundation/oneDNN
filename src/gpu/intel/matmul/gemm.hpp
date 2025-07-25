@@ -19,6 +19,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
+#include "common/matmul_pd.hpp"
+#include "common/memory_desc.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_attr_quant.hpp"
@@ -62,7 +64,7 @@ struct gemm_t : public primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
-            auto maybe_reshape = [&](const int orig_dims) -> status_t {
+            auto maybe_reshape = [&]() -> status_t {
                 int batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
@@ -75,7 +77,7 @@ struct gemm_t : public primitive_t {
 
                 // Early exit if not reshaping
                 if (!allow_reshape || !(reshape_2d || reshape_3d))
-                    return status::unimplemented;
+                    return status::success;
 
                 // memory_desc_reshape does not support strided matrices. In these cases, we want
                 // to gracefully exit without reshaping
@@ -139,17 +141,28 @@ struct gemm_t : public primitive_t {
                                 a_dims[0] == b_dims[0]
                                         || utils::one_of(
                                                 1, a_dims[0], b_dims[0]));
-                if (!ok) return status::unimplemented;
 
-                CHECK(memory_desc_reshape(
-                        a_md_reshaped, *a_md, reshape_size, a_dims));
-                CHECK(memory_desc_reshape(
-                        b_md_reshaped, *b_md, reshape_size, b_dims));
-                CHECK(memory_desc_reshape(
-                        c_md_reshaped, *c_md, reshape_size, c_dims));
+                // memory_desc_reshape can fail. If so, fail gracefully so
+                // we can use batched gemm instead of skipping entirely.
+                auto safe_reshape
+                        = [](memory_desc_t &out_md, const memory_desc_t &in_md,
+                                  int ndims, const dims_t dims) -> bool {
+                    CHECK_BOOL(memory_desc_reshape(out_md, in_md, ndims, dims));
+                    return true;
+                };
+                ok = ok
+                        && safe_reshape(
+                                a_md_reshaped, *a_md, reshape_size, a_dims);
+                ok = ok
+                        && safe_reshape(
+                                b_md_reshaped, *b_md, reshape_size, b_dims);
+                ok = ok
+                        && safe_reshape(
+                                c_md_reshaped, *c_md, reshape_size, c_dims);
                 if (with_bia) {
-                    CHECK(memory_desc_reshape(
-                            bia_md_reshaped, *bias_md, reshape_size, bia_dims));
+                    ok = ok
+                            && safe_reshape(bia_md_reshaped, *bias_md,
+                                    reshape_size, bia_dims);
                 }
                 auto reshaped_post_ops = gemm_attr.post_ops_;
                 for (int i = 0; i < attr()->post_ops_.len(); i++) {
@@ -162,7 +175,7 @@ struct gemm_t : public primitive_t {
                         }
                         //post ops cannot be applied if applied on only on a subset of batch dims
                         if (a_dim != c_dims[0] && a_dim > 1) {
-                            return status::unimplemented;
+                            return status::success;
                         }
                         auto has_dims = po_desc.ndims > 0;
                         dims_t po_dims;
@@ -181,8 +194,9 @@ struct gemm_t : public primitive_t {
                                     : 1;
                         }
                         memory_desc_t tmp_po_desc;
-                        CHECK(memory_desc_reshape(
-                                tmp_po_desc, po_desc, reshape_size, po_dims));
+                        ok = ok
+                                && safe_reshape(tmp_po_desc, po_desc,
+                                        reshape_size, po_dims);
                         reshaped_post_ops.entry_[i].binary.src1_desc
                                 = tmp_po_desc;
                     } else if (po.is_prelu()) {
@@ -195,14 +209,14 @@ struct gemm_t : public primitive_t {
                         for (int i = 0; i < c_md->ndims - batch_idx; i++) {
                             if (mask >> i & 1) {
                                 //post ops cannot be applied if applied on only on a subset of batch dims
-                                if (new_mask != 0) return status::unimplemented;
+                                if (new_mask != 0) return status::success;
                                 new_mask |= c_md->dims[i] == 1 ? 0 : 1;
                                 mask_dim *= c_md->dims[i];
                             }
                             batch_dim *= c_md->dims[i];
                         }
                         //post ops cannot be applied if applied on only on a subset of batch dims
-                        if (batch_dim != mask_dim) return status::unimplemented;
+                        if (batch_dim != mask_dim) return status::success;
                         //get non-batch part of mask
                         auto shift = c_md->ndims - batch_idx;
                         auto non_batch_mask = mask >> shift;
@@ -212,11 +226,12 @@ struct gemm_t : public primitive_t {
                         //is applied across more than one dimension.
                         if (non_batch_mask > 2
                                 || (non_batch_mask > 0 && new_mask > 0))
-                            return status::unimplemented;
+                            return status::success;
                         new_mask |= non_batch_mask << 1;
                         reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
                 }
+                if (!ok) return status::success;
 
                 // Quantization has a few wrinkles...
                 // Example: --attr-scales=src:per_ocic:f16:1x128 4x1x4096:1x4096x16
@@ -308,7 +323,8 @@ struct gemm_t : public primitive_t {
                 return status::success;
             };
 
-            UNUSED(maybe_reshape(orig_dims));
+            VDISPATCH_MATMUL_SC(maybe_reshape(), VERBOSE_IMPL_HEURISTIC_FAIL,
+                    "2D/3D reshaping");
 
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
             VDISPATCH_MATMUL(

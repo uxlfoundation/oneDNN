@@ -145,6 +145,7 @@ attribute. This attribute is supported only for integer data types as of now.
 `POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
 values are:
   - `common`
+  - `common_v2`
   - `per_dim_1` (for `src` and `dst`)
 
 `ZEROPOINT` is required for the `common` policy only, an specifies an integer

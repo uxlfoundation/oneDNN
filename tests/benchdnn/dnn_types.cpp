@@ -1173,6 +1173,12 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (zp.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
+
+            if (e.policy == policy_t::COMMON_V2) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_host_zero_point(
+                        dnnl_attr, arg_name));
+                continue;
+            }
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask
                     = attr_args.get_mask(DNNL_ARG_ATTR_ZERO_POINTS | arg_name);

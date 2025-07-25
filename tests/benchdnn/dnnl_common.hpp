@@ -1065,9 +1065,17 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 dims = {1};
                 ndims = 1;
             }
-            auto zp_md = dnn_mem_t::init_md(ndims, dims.data(), e.dt, tag::abx);
-            mem_map.emplace(exec_zp_arg,
-                    dnn_mem_t(zp_md, test_engine, /* prefill = */ true));
+
+            benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> zp_md;
+            if (e.policy == attr_t::policy_t::COMMON_V2) {
+                zp_md = dnn_mem_t::init_host_scalar_md(e.dt);
+                int32_t zero_point = zp.get(exec_arg).value;
+                mem_map.emplace(exec_zp_arg, dnn_mem_t(zp_md, &zero_point));
+            } else {
+                zp_md = dnn_mem_t::init_md(ndims, dims.data(), e.dt, tag::abx);
+                mem_map.emplace(exec_zp_arg,
+                        dnn_mem_t(zp_md, test_engine, /* prefill = */ true));
+            }
         };
 
         for (const auto &exec_arg : supported_exec_args) {

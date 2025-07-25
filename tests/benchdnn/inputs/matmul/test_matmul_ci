@@ -75,7 +75,8 @@
 # Zero-points check
 --reset
 --dt=s8:s8:s8,u8:s8:f32,u8:s8:bf16,s8:s8:f16,s8:u8:f16
---attr-zero-points=src:common:1+wei:common:-1+dst:common:2
+--attr-zero-points=src:common:1+wei:common:-1+dst:common:2,\
+               src:common_v2:1+wei:common_v2:-1+dst:common_v2:2
 --batch=shapes_2d_ci
 
 --attr-zero-points=src:common:1,\

@@ -245,7 +245,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
-            int_acc &= !wei_scales_2d();
+            int_acc &= (!wei_scales_2d() && !src_scales_2d());
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32

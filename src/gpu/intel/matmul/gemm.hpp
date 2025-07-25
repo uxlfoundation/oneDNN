@@ -17,9 +17,11 @@
 #ifndef GPU_INTEL_MATMUL_GEMM_HPP
 #define GPU_INTEL_MATMUL_GEMM_HPP
 
+#include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/primitive.hpp"
+#include "common/primitive_attr_quant.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/primitive.hpp"
@@ -42,9 +44,8 @@ struct gemm_t : public primitive_t {
             using namespace data_type;
 
             primitive_attr_t gemm_attr;
-            if (!attr()->scales_.has_default_values()) {
-                gemm_attr.scales_ = attr()->scales_;
-            }
+            gemm_attr.scales_ = attr()->scales_;
+            gemm_attr.zero_points_ = attr()->zero_points_;
             if (!attr()->dropout_.has_default_values()) {
                 return status::unimplemented;
             }
@@ -56,73 +57,6 @@ struct gemm_t : public primitive_t {
                     bia_md_reshaped;
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
-
-            const auto &scales = gemm_attr.scales_;
-            const auto &zp = attr()->zero_points_;
-
-            bool per_tensor_sc = false, per_tensor_zp = false;
-            if (orig_dims > 2) {
-                if (!scales.has_default_values()
-                        && !scales.get(DNNL_ARG_SRC).has_default_groups()) {
-                    per_tensor_sc = utils::one_of(
-                            scales.get_mask(DNNL_ARG_SRC), full_tensor_mask());
-                }
-                if (!zp.has_default_values()
-                        && !zp.get(DNNL_ARG_SRC).has_default_groups()) {
-                    per_tensor_zp = utils::one_of(
-                            zp.get_mask(DNNL_ARG_SRC), full_tensor_mask());
-                }
-            }
-
-            auto map_gemm_zp = [&](int arg, bool reshape = false,
-                                       int diff_dims = 0, dim_t g_dim = 0) {
-                const auto &zp = attr()->zero_points_;
-                if (zp.has_default_values(arg)) return status::success;
-
-                int mask = zp.get_mask(arg);
-                if (reshape) mask = mask >> diff_dims;
-                data_type_t dt = zp.get_data_type(arg);
-                int nd = 0;
-                dims_t dims {};
-                if (!zp.get(arg).has_default_groups()) {
-                    if (per_tensor_zp && g_dim) mask = 3;
-                    nd = 2; // Note: hardcoded so far.
-                    dims[0] = ((arg == DNNL_ARG_SRC && g_dim && !per_tensor_zp)
-                                    ? g_dim / attr()->scales_.get_group(arg, 0)
-                                    : zp.get_group(arg, 0));
-                    dims[1] = zp.get_group(arg, 1);
-                }
-                CHECK(gemm_attr.zero_points_.set(arg, mask, dt, nd, dims));
-                return status::success;
-            };
-
-            // The function shrinks the mask for scales and updates it in
-            // `scales` object.
-            auto adjust_scales = [&](scales_t &scales, int arg, int diff_dims,
-                                         dim_t g_dim = 0) {
-                if (attr()->scales_.has_default_values(arg))
-                    return status::success;
-
-                int mask = attr()->scales_.get_mask(arg) >> diff_dims;
-                data_type_t dt = attr()->scales_.get_data_type(arg);
-                int nd = 0;
-                dims_t dims {};
-                if (!attr()->scales_.get(arg).has_default_groups()) {
-                    if (per_tensor_sc && g_dim) mask = 3;
-                    nd = 2; // Note: hardcoded so far.
-                    dims[0] = ((arg == DNNL_ARG_SRC && g_dim && !per_tensor_sc)
-                                    ? g_dim / attr()->scales_.get_group(arg, 0)
-                                    : attr()->scales_.get_group(arg, 0));
-                    dims[1] = attr()->scales_.get_group(arg, 1);
-                }
-                CHECK(scales.set(arg, mask, dt, nd, dims));
-                return status::success;
-            };
-            if (!attr()->zero_points_.has_default_values()) {
-                CHECK(map_gemm_zp(DNNL_ARG_SRC, false, orig_dims - 2));
-                CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, false, orig_dims - 2));
-                CHECK(map_gemm_zp(DNNL_ARG_DST));
-            }
 
             auto maybe_reshape
                     = [&](dims_t &orig_a_dims, dims_t &orig_b_dims,
@@ -162,6 +96,7 @@ struct gemm_t : public primitive_t {
 
                 int ndims = a_md->ndims;
                 int reshape_size = reshape_2d ? 2 : 3;
+                int diff_dims = orig_dims - reshape_size;
 
                 // Converts input dims_t to output dims_t after reshaping
                 auto squash_dims = [](dims_t &out_dims, const dims_t &in_dims,
@@ -221,7 +156,7 @@ struct gemm_t : public primitive_t {
                     CHECK(memory_desc_reshape(
                             bia_md_reshaped, *bias_md, reshape_size, bia_dims));
                 }
-                auto tmp_post_ops = post_ops;
+                auto reshaped_post_ops = post_ops;
                 for (int i = 0; i < attr()->post_ops_.len(); i++) {
                     auto &po = post_ops.entry_[i];
                     if (po.is_binary()) {
@@ -253,7 +188,8 @@ struct gemm_t : public primitive_t {
                         memory_desc_t tmp_po_desc;
                         CHECK(memory_desc_reshape(
                                 tmp_po_desc, po_desc, reshape_size, po_dims));
-                        tmp_post_ops.entry_[i].binary.src1_desc = tmp_po_desc;
+                        reshaped_post_ops.entry_[i].binary.src1_desc
+                                = tmp_po_desc;
                     } else if (po.is_prelu()) {
                         auto mask = po.prelu.mask;
                         int new_mask = 0;
@@ -283,31 +219,97 @@ struct gemm_t : public primitive_t {
                                 || (non_batch_mask > 0 && new_mask > 0))
                             return status::unimplemented;
                         new_mask |= non_batch_mask << 1;
-                        tmp_post_ops.entry_[i].prelu.mask = new_mask;
+                        reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
                 }
-                dim_t a_dim_ratio = a_dims[0] / a_md->dims[orig_dims - 2];
-                auto new_scales = gemm_attr.scales_;
-                if (!attr()->scales_.has_default_values()) {
-                    CHECK(adjust_scales(new_scales, DNNL_ARG_A,
-                            orig_dims - reshape_size, 0));
-                    CHECK(adjust_scales(new_scales, DNNL_ARG_B,
-                            orig_dims - reshape_size, a_dim_ratio));
-                    CHECK(adjust_scales(new_scales, DNNL_ARG_C,
-                            orig_dims - reshape_size, 0));
-                }
-                if (!attr()->zero_points_.has_default_values()) {
-                    CHECK(map_gemm_zp(
-                            DNNL_ARG_WEIGHTS, true, orig_dims - reshape_size));
-                    CHECK(map_gemm_zp(DNNL_ARG_SRC, true,
-                            orig_dims - reshape_size, a_dim_ratio));
-                }
-                post_ops = tmp_post_ops;
-                gemm_attr.scales_ = std::move(new_scales);
+
+                // Quantization has a few wrinkles...
+                // Example: --attr-scales=src:per_ocic:f16:1x128 4x1x4096:1x4096x16
+                // The src scales tensor has dimensions 1x32
+                // We have two options since we can't change the scales tensor dimensions:
+                // (1) Change mask from 6 -> 3 (both remaining dims masked) and change grouping
+                //     -> src:per_ocic:4x128
+                // (2) Change mask from 6 -> 2 (just K dim masked) and don't change grouping
+                //     -> src:per_dim_1:1x128
+                // Currently gemmstone only supports (1) so that's what we'll do here.
+                // TODO: (2) has more optimization potential and is more reusable - implement
+                // this option in gemmstone.
+
+                // Same as squash_dims, but early-outs available if quantization not present
+                auto squash_quant = [&](dims_t &out_dims,
+                                            const quant_entry_t &quant,
+                                            const memory_desc_t &qmd) {
+                    if (quant.has_default_values()) return;
+                    squash_dims(out_dims, qmd.dims, ndims, reshape_size);
+                    return;
+                };
+
+                auto squashed_mask = [&](int mask, int diff_dims) -> int {
+                    return mask >> diff_dims;
+                };
+
+                auto reshape_quant = [&](const quant_entry_t &in_entry,
+                                             const memory_desc_t &reshaped_md,
+                                             const dims_t &qdims,
+                                             int diff_dims) -> quant_entry_t {
+                    if (in_entry.has_default_values()) return in_entry;
+                    int new_mask
+                            = squashed_mask(in_entry.get_mask(), diff_dims);
+                    data_type_t dt = in_entry.get_data_type();
+                    dims_t dims {};
+                    int ndims = 0;
+                    if (!in_entry.has_default_groups()) {
+                        ndims = 2;
+                        // Recalculate group sizes to obey (1) above
+                        dims[0] = reshaped_md.dims[reshaped_md.ndims - 2]
+                                / qdims[reshaped_md.ndims - 2];
+                        dims[1] = reshaped_md.dims[reshaped_md.ndims - 1]
+                                / qdims[reshaped_md.ndims - 1];
+                    }
+                    quant_entry_t out_entry;
+                    UNUSED_STATUS(out_entry.set(new_mask, dt, ndims, dims));
+                    return out_entry;
+                };
+
+                auto adjust_quant = [&](quant_entries_t &entries, int arg,
+                                            const memory_desc_t &md,
+                                            const memory_desc_t &reshaped_md,
+                                            int diff_dims) -> status_t {
+                    const quant_entry_t &entry = entries.get(arg);
+                    memory_desc_t qmd;
+                    CHECK(entry.get_md(qmd, md));
+                    dims_t qdims;
+                    squash_quant(qdims, entry, qmd);
+                    quant_entry_t reshaped_entry = reshape_quant(
+                            entry, reshaped_md, qdims, diff_dims);
+                    CHECK(entries.set(arg, reshaped_entry));
+                    return status::success;
+                };
+
+                scales_t reshaped_scales = gemm_attr.scales_;
+                zero_points_t reshaped_zp = gemm_attr.zero_points_;
+                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_SRC, *a_md,
+                        a_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_WEIGHTS, *b_md,
+                        b_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_DST, *c_md,
+                        c_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_SRC, *a_md,
+                        a_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_WEIGHTS, *b_md,
+                        b_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_DST, *c_md,
+                        c_md_reshaped, diff_dims));
+
+                // Reshaping successful - lock in changes
                 a_md = &a_md_reshaped;
                 b_md = &b_md_reshaped;
                 c_md = &c_md_reshaped;
                 if (with_bia) bias_md = &bia_md_reshaped;
+
+                gemm_attr.scales_ = reshaped_scales;
+                gemm_attr.zero_points_ = reshaped_zp;
+                post_ops = reshaped_post_ops;
                 return status::success;
             };
 

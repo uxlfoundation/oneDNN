@@ -19,10 +19,9 @@
 * Improved matmul performance for Intel Arc Graphics for Intel Core Ultra processors (Series 2) (formerly Lunar Lake).
 * Improved RNN primitive performance with LBR_GRU cell type.
 * Improved `int8` convolution performance with plain weights and trivial filter.
-* Improved `bf16` convolution with `NCHW` activations and plain weights on:
-    * Intel Arc Graphics for Intel Core Ultra processor series 2 (formerly Lunar Lake).
-    * Intel Arc B-series discrete graphics (formerly Battlemage).
+* Improved convolution performance with `NCHW` activations with 1x1 filter and unit strides.
 * Improved `fp32` softmax performance.
+* Improved performance of reorder when used with USM host memory.
 * Improved performance of the following subgraphs with Graph API:
     * SDPA with implicit causal mask.
     * SDPA with bottom-right implicit causal mask.

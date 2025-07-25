@@ -19,6 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
+#include "common/matmul_pd.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_attr_quant.hpp"
 #include "common/primitive_desc_iterator.hpp"
@@ -62,7 +63,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
-            auto maybe_reshape = [&](const int orig_dims) -> status_t {
+            auto maybe_reshape = [&]() -> status_t {
                 int batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
@@ -75,7 +76,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
 
                 // Early exit if not reshaping
                 if (!allow_reshape || !(reshape_2d || reshape_3d))
-                    return status::unimplemented;
+                    return status::success;
 
                 int ndims = a_md->ndims;
                 int reshape_size = reshape_2d ? 2 : 3;
@@ -149,7 +150,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         }
                         //post ops cannot be applied if applied on only on a subset of batch dims
                         if (a_dim != c_dims[0] && a_dim > 1) {
-                            return status::unimplemented;
+                            return status::success;
                         }
                         auto has_dims = po_desc.ndims > 0;
                         dims_t po_dims;
@@ -182,14 +183,14 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         for (int i = 0; i < c_md->ndims - batch_idx; i++) {
                             if (mask >> i & 1) {
                                 //post ops cannot be applied if applied on only on a subset of batch dims
-                                if (new_mask != 0) return status::unimplemented;
+                                if (new_mask != 0) return status::success;
                                 new_mask |= c_md->dims[i] == 1 ? 0 : 1;
                                 mask_dim *= c_md->dims[i];
                             }
                             batch_dim *= c_md->dims[i];
                         }
                         //post ops cannot be applied if applied on only on a subset of batch dims
-                        if (batch_dim != mask_dim) return status::unimplemented;
+                        if (batch_dim != mask_dim) return status::success;
                         //get non-batch part of mask
                         auto shift = c_md->ndims - batch_idx;
                         auto non_batch_mask = mask >> shift;
@@ -199,7 +200,7 @@ struct gemm_matmul_t : public gpu_primitive_t {
                         //is applied across more than one dimension.
                         if (non_batch_mask > 2
                                 || (non_batch_mask > 0 && new_mask > 0))
-                            return status::unimplemented;
+                            return status::success;
                         new_mask |= non_batch_mask << 1;
                         reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
@@ -295,7 +296,8 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 return status::success;
             };
 
-            UNUSED(maybe_reshape(orig_dims));
+            VDISPATCH_MATMUL_SC(maybe_reshape(), VERBOSE_IMPL_HEURISTIC_FAIL,
+                    "2D/3D reshaping");
 
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
             VDISPATCH_MATMUL(

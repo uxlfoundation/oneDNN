@@ -44,12 +44,16 @@ struct gemm_t : public primitive_t {
             using namespace data_type;
 
             primitive_attr_t gemm_attr;
+            gemm_attr.fpmath_ = attr()->fpmath_;
+            gemm_attr.acc_mode_ = attr()->acc_mode_;
+            gemm_attr.deterministic_ = attr()->deterministic_;
+            gemm_attr.rounding_mode_ = attr()->rounding_mode_;
             gemm_attr.scales_ = attr()->scales_;
             gemm_attr.zero_points_ = attr()->zero_points_;
+            gemm_attr.post_ops_ = attr()->post_ops_;
             if (!attr()->dropout_.has_default_values()) {
                 return status::unimplemented;
             }
-            auto post_ops = attr()->post_ops_;
             auto a_md = src_md(), b_md = weights_md(), c_md = dst_md(),
                  bias_md = weights_md(1);
             const auto acc_dt = desc()->accum_data_type;
@@ -147,9 +151,9 @@ struct gemm_t : public primitive_t {
                     CHECK(memory_desc_reshape(
                             bia_md_reshaped, *bias_md, reshape_size, bia_dims));
                 }
-                auto reshaped_post_ops = post_ops;
+                auto reshaped_post_ops = gemm_attr.post_ops_;
                 for (int i = 0; i < attr()->post_ops_.len(); i++) {
-                    auto &po = post_ops.entry_[i];
+                    auto &po = reshaped_post_ops.entry_[i];
                     if (po.is_binary()) {
                         const auto &po_desc = po.binary.src1_desc;
                         auto a_dim = po_desc.dims[po_desc.ndims - reshape_size];
@@ -300,23 +304,11 @@ struct gemm_t : public primitive_t {
 
                 gemm_attr.scales_ = reshaped_scales;
                 gemm_attr.zero_points_ = reshaped_zp;
-                post_ops = reshaped_post_ops;
+                gemm_attr.post_ops_ = reshaped_post_ops;
                 return status::success;
             };
 
-            CHECK(gemm_attr.set_fpmath_mode(
-                    attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
-            CHECK(gemm_attr.set_accumulation_mode(attr()->acc_mode_));
-            gemm_attr.deterministic_ = attr()->deterministic_;
-
             UNUSED(maybe_reshape(orig_dims));
-
-            if (!attr()->post_ops_.has_default_values()) {
-                gemm_attr.post_ops_ = post_ops;
-            }
-            if (!attr()->rounding_mode_.has_default_values()) {
-                gemm_attr.rounding_mode_ = attr()->rounding_mode_;
-            }
 
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
             VDISPATCH_MATMUL(

@@ -170,27 +170,6 @@ inline bool simple_attr_check(const primitive_attr_t *attr,
     return src_mask == 0 && dst_mask == 0;
 }
 
-// TODO: once re-factor for quantization happens, for each entry maintain a md
-// in complaince with correspondent argument for easier offset computation.
-inline status_t get_quant_md(memory_desc_t &md, const int ndims,
-        const dims_t in_dims, const int quant_mask, const dim_t g0,
-        const dim_t g1, const data_type_t dt) {
-    dims_t quant_dims {};
-    // TODO: incorporate groups into `utils::copy_dims_with_mask` to simplify
-    // the logic.
-    utils::copy_dims_with_mask(quant_dims, in_dims, ndims, quant_mask,
-            /* fill_with_ones = */ true);
-    if (ndims >= 2) {
-        if (utils::one_of(0, g0, g1)) return status::runtime_error;
-        quant_dims[ndims - 1] /= g1;
-        quant_dims[ndims - 2] /= g0;
-    }
-
-    CHECK(memory_desc_init_by_tag(
-            md, ndims, quant_dims, dt, get_abx_tag(ndims)));
-    return status::success;
-}
-
 // Returns an offset of a quantization entry based on logical offset dimensions
 // of the correspondent input - `input_idx`, `quant_mask`, groups `g0` and
 // `g1` when they are supported (otherwise, pass `1`), and `quant_dims`.
@@ -2373,9 +2352,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         memory_desc_t src_scales_md {};
         if (has_src_scales) {
-            get_quant_md(src_scales_md, ndims, input_d.dims(), src_scales_mask,
-                    src_scales_group0, src_scales_group1,
-                    src_scales_d.data_type());
+            CHECK(scales.get(DNNL_ARG_SRC).get_md(src_scales_md, *input_d.md_));
         }
 
         int src_zps_mask = zps.get_mask(DNNL_ARG_SRC);
@@ -2385,8 +2362,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto src_zps_group1 = zps.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_zps_md {};
         if (has_src_zps) {
-            get_quant_md(src_zps_md, ndims, input_d.dims(), src_zps_mask,
-                    src_zps_group0, src_zps_group1, src_zps_d.data_type());
+            CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
         parallel_nd(input_d.nelems(), [&](dim_t idx) {
@@ -2601,16 +2577,13 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto src_scales_group1 = scales.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_scales_md {};
         if (has_src_scales) {
-            get_quant_md(src_scales_md, ndims, input_d.dims(), src_scales_mask,
-                    src_scales_group0, src_scales_group1,
-                    src_scales_d.data_type());
+            CHECK(scales.get(DNNL_ARG_SRC).get_md(src_scales_md, *input_d.md_));
         }
 
         const bool has_dst_scales = !scales.has_default_values(DNNL_ARG_DST);
         memory_desc_t dst_scales_md {};
         if (has_dst_scales) {
-            get_quant_md(dst_scales_md, ndims, input_d.dims(), dst_scales_mask,
-                    1, 1, data_type::f32);
+            CHECK(scales.get(DNNL_ARG_DST).get_md(dst_scales_md, *input_d.md_));
         }
 
         const auto &zps = pd->attr()->zero_points_;
@@ -2622,8 +2595,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto src_zps_group1 = zps.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_zps_md {};
         if (has_src_zps) {
-            get_quant_md(src_zps_md, ndims, input_d.dims(), src_zps_mask,
-                    src_zps_group0, src_zps_group1, src_zps_d.data_type());
+            CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
         parallel_nd(input_d.nelems(), [&](dim_t idx) {

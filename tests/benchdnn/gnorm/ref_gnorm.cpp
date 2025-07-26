@@ -57,19 +57,23 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         float sqrt_var = sqrtf(svar + prb->eps);
         float rcp_denom = 1.f / sqrt_var;
 
-        for_(int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1); ++c)
-        for_(int64_t d = 0; d < D; ++d)
-        for_(int64_t h = 0; h < H; ++h)
-        for (int64_t w = 0; w < W; ++w) {
-            auto off = data_off(prb, n, c, d, h, w);
-            float x_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+        for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
+                ++c) {
             float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
             float beta = use_sh ? sh.get_f32_elem(c) : 0.f;
-            float res = gamma * x_hat + beta;
-            const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, off);
-            res *= src_scale_val;
-            maybe_post_ops(prb->attr, res, 0.f, v_po_vals);
-            dst_ptr[off] = res * r_dst_scale_val;
+
+            for_(int64_t d = 0; d < D; ++d)
+            for_(int64_t h = 0; h < H; ++h)
+            for (int64_t w = 0; w < W; ++w) {
+                auto off = data_off(prb, n, c, d, h, w);
+                float x_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                float res = gamma * x_hat + beta;
+                const auto v_po_vals
+                        = prepare_po_vals(dst, args, v_po_masks, off);
+                res *= src_scale_val;
+                maybe_post_ops(prb->attr, res, 0.f, v_po_vals);
+                dst_ptr[off] = res * r_dst_scale_val;
+            }
         }
     });
 }
@@ -97,10 +101,10 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     const int C_PER_G = C / G;
     const float CSP = C_PER_G * D * H * W;
 
+    // Scale and shift are computed over a channel, thus, accumulate diff_dst
+    // values over the spatial only.
     benchdnn_parallel_nd(C, [&](int64_t c) {
         int64_t g = c / C_PER_G;
-
-        float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
 
         float d_gamma = 0;
         float d_beta = 0;
@@ -116,33 +120,82 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, mb, c, d, h, w);
                 float dd = d_dst.get_f32_elem(off);
-                d_gamma += dd * (src.get_f32_elem(off) - smean) * rcp_denom;
+                float src_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                d_gamma += dd * src_hat;
                 d_beta += dd;
+                // Update `src` to save on some computations.
+                src.set_f32_elem(off, src_hat);
             }
         }
 
         if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_f32_elem(c, d_gamma);
         if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_f32_elem(c, d_beta);
+    });
 
-        for (int64_t mb = 0; mb < MB; ++mb) {
-            int64_t stat_off = mb * G + g;
-            float smean = mean.get_f32_elem(stat_off);
-            float svar = var.get_f32_elem(stat_off);
-            float rcp_denom = 1.f / sqrtf(svar + prb->eps);
+    // Statistics values are computed over the `group * spatial`, it's the unit
+    // where a single source point has its impact and derivative values
+    // distributed, thus, parallel over MB and G - independent clusters of a
+    // tensor.
+    //
+    // The complete computation differs from bnorm and lnorm because of the way
+    // scales and statistics are applied to the dst point. Since scales are
+    // applied per channel, a part of derivative coming from the mean and
+    // variance over different channels will be different, this is the primary
+    // reason why accumulation is needed.
+    //
+    // y(c) = [(x(c) - m) / v] * gamma(c) + beta;
+    // dy/dx = gamma(c) * [d(x(c) - m)/dx * v - (x(c) - m) * dv/dx] / v^2
+    // `sum_dd_scaled` covers `d(x(c) - m)/dx` part;
+    // `sum_dd_scaled_x_hat` covers a part coming from `dv/dx`;
+    // The rest of values are computed at `Apply gradients` part.
+    benchdnn_parallel_nd(MB, G, [&](int64_t mb, int64_t g) {
+        int64_t stat_off = mb * G + g;
+        float svar = var.get_f32_elem(stat_off);
+        float rcp_denom = 1.f / sqrtf(svar + prb->eps);
 
+        float sum_dd_scaled = 0.0f;
+        float sum_dd_scaled_x_hat = 0.0f;
+
+        if (!glob_stats) {
+            for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
+                    ++c) {
+                float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
+                for_(int64_t d = 0; d < D; ++d)
+                for_(int64_t h = 0; h < H; ++h)
+                for (int64_t w = 0; w < W; ++w) {
+                    auto off = data_off(prb, mb, c, d, h, w);
+                    float dd = d_dst.get_f32_elem(off);
+                    float x_hat = src.get_f32_elem(off);
+
+                    float dd_scaled = dd * gamma;
+                    sum_dd_scaled += dd_scaled;
+                    sum_dd_scaled_x_hat += dd_scaled * x_hat;
+                }
+            }
+        }
+
+        float mean_dd_scaled = sum_dd_scaled / CSP;
+        float mean_dd_scaled_x_hat = sum_dd_scaled_x_hat / CSP;
+
+        // Apply gradients
+        for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
+                ++c) {
+            float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
             for_(int64_t d = 0; d < D; ++d)
             for_(int64_t h = 0; h < H; ++h)
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, mb, c, d, h, w);
                 float dd = d_dst.get_f32_elem(off);
-                float ds = dd;
 
                 if (!glob_stats) {
-                    float x_hat = (src.get_f32_elem(off) - smean) * d_gamma;
-                    ds -= (d_beta + x_hat * rcp_denom) / CSP;
+                    float x_hat = src.get_f32_elem(off);
+                    float dd_scaled = dd * gamma;
+                    float ds = dd_scaled - mean_dd_scaled
+                            - x_hat * mean_dd_scaled_x_hat;
+                    d_src.set_f32_elem(off, rcp_denom * ds);
+                } else {
+                    d_src.set_f32_elem(off, dd * gamma * rcp_denom);
                 }
-
-                d_src.set_f32_elem(off, rcp_denom * ds * gamma);
             }
         }
     });

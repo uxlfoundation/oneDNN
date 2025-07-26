@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -201,14 +201,15 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
     }
 
     const auto C_PER_G = C / G;
-    const auto CSP = C_PER_G * D * H * W;
+    const auto CSP = C_PER_G * D * H * W; // Elements per group
+    auto get_c_start = [&C_PER_G](int64_t g) { return g * C_PER_G; };
 
+    // See benchdnn's ref path for explaining comments.
     parallel_nd(C, [&](dim_t c) {
-        int64_t g = c / C_PER_G;
+        dim_t g = c / C_PER_G;
 
-        float gamma = scale ? scale[ss_d.off(c)] : 1.0f;
-        float diff_gamma = 0;
-        float diff_beta = 0;
+        float diff_gamma = 0.0f;
+        float diff_beta = 0.0f;
 
         for (dim_t n = 0; n < N; ++n) {
             size_t stat_off = n * G + g;
@@ -231,31 +232,86 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
 
         if (diff_scale) diff_scale[diff_ss_d.off(c)] = diff_gamma;
         if (diff_shift) diff_shift[diff_ss_d.off(c)] = diff_beta;
+    });
 
-        for (dim_t n = 0; n < N; ++n) {
-            size_t stat_off = n * G + g;
-            float v_mean = mean[stat_off];
-            float v_variance = variance[stat_off];
-            float sqrt_variance = 1.0f / sqrtf(v_variance + eps);
+    parallel_nd(N, G, [&](dim_t n, dim_t g) {
+        size_t stat_off = n * G + g;
+        float v_mean = mean[stat_off];
+        float v_variance = variance[stat_off];
+        float sqrt_variance = 1.0f / sqrtf(v_variance + eps);
 
-            for_(dim_t d = 0; d < D; ++d)
-            for_(dim_t h = 0; h < H; ++h)
-            for (dim_t w = 0; w < W; ++w) {
-                const size_t s_off = DATA_OFF(src_d, n, c, d, h, w);
-                const size_t dd_off = DATA_OFF(diff_dst_d, n, c, d, h, w);
-                const size_t ds_off = DATA_OFF(diff_src_d, n, c, d, h, w);
-                float dd = io::load_float_value(
-                        diff_dst_d.data_type(), diff_dst, dd_off);
-                float s = io::load_float_value(src_d.data_type(), src, s_off);
-                float v_diff_src = dd;
-                if (calculate_diff_stats) {
-                    v_diff_src -= diff_beta / CSP
-                            + (s - v_mean) * diff_gamma * sqrt_variance / CSP;
+        if (calculate_diff_stats) {
+            float sum_dd_scaled = 0.0f;
+            float sum_dd_snorm = 0.0f;
+
+            for (dim_t c = 0; c < C_PER_G; ++c) {
+                dim_t global_c = g * C_PER_G + c;
+                float gamma = scale ? scale[ss_d.off(global_c)] : 1.0f;
+
+                for_(dim_t d = 0; d < D; ++d)
+                for_(dim_t h = 0; h < H; ++h)
+                for (dim_t w = 0; w < W; ++w) {
+                    const size_t s_off = DATA_OFF(src_d, n, global_c, d, h, w);
+                    const size_t dd_off
+                            = DATA_OFF(diff_dst_d, n, global_c, d, h, w);
+
+                    float s = io::load_float_value(
+                            src_d.data_type(), src, s_off);
+                    float dd = io::load_float_value(
+                            diff_dst_d.data_type(), diff_dst, dd_off);
+
+                    float dd_scaled = dd * gamma;
+                    float s_normalized = (s - v_mean) * sqrt_variance;
+
+                    sum_dd_scaled += dd_scaled;
+                    sum_dd_snorm += dd_scaled * s_normalized;
                 }
+            }
 
-                v_diff_src *= gamma * sqrt_variance;
-                io::store_float_value(
-                        diff_src_d.data_type(), v_diff_src, diff_src, ds_off);
+            float mean_dd_scaled = sum_dd_scaled / CSP;
+            float mean_dd_snorm = sum_dd_snorm / CSP;
+
+            for (dim_t c = 0; c < C_PER_G; ++c) {
+                dim_t global_c = g * C_PER_G + c;
+                float gamma = scale ? scale[ss_d.off(global_c)] : 1.0f;
+
+                for_(dim_t d = 0; d < D; ++d)
+                for_(dim_t h = 0; h < H; ++h)
+                for (dim_t w = 0; w < W; ++w) {
+                    const size_t s_off = DATA_OFF(src_d, n, global_c, d, h, w);
+                    const size_t dd_off
+                            = DATA_OFF(diff_dst_d, n, global_c, d, h, w);
+                    const size_t ds_off
+                            = DATA_OFF(diff_src_d, n, global_c, d, h, w);
+
+                    float s = io::load_float_value(
+                            src_d.data_type(), src, s_off);
+                    float dd = io::load_float_value(
+                            diff_dst_d.data_type(), diff_dst, dd_off);
+
+                    float dd_scaled = dd * gamma;
+                    float s_normalized = (s - v_mean) * sqrt_variance;
+                    float v_diff_src = sqrt_variance
+                            * (dd_scaled - mean_dd_scaled
+                                    - s_normalized * mean_dd_snorm);
+                    io::store_float_value(diff_src_d.data_type(), v_diff_src,
+                            diff_src, ds_off);
+                }
+            }
+        } else {
+            for (int c = get_c_start(g); c < get_c_start(g + 1); ++c) {
+                float gamma = scale ? scale[ss_d.off(c)] : 1.0f;
+                for_(dim_t d = 0; d < D; ++d)
+                for_(dim_t h = 0; h < H; ++h)
+                for (dim_t w = 0; w < W; ++w) {
+                    const size_t dd_off = DATA_OFF(diff_dst_d, n, c, d, h, w);
+                    const size_t ds_off = DATA_OFF(diff_src_d, n, c, d, h, w);
+                    float dd = io::load_float_value(
+                            diff_dst_d.data_type(), diff_dst, dd_off);
+                    float v_diff_src = dd * gamma * sqrt_variance;
+                    io::store_float_value(diff_src_d.data_type(), v_diff_src,
+                            diff_src, ds_off);
+                }
             }
         }
     });

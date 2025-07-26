@@ -500,6 +500,16 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->dt[0], prb->dt[1]}, prb->dir, res);
+
+    if ((is_gpu() || is_generic_gpu()) && (prb->dir & FLAG_BWD)) {
+        BENCHDNN_PRINT(2,
+                "[SKIP][%s:%d]: The implementation doesn't return the correct "
+                "result.\n",
+                __FILE__, __LINE__);
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return;
+    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

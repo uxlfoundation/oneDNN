@@ -89,6 +89,11 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
                                   bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
 {
     auto ned = elementsPerGRF(hw, Td.real());
+    int D_components = Td.mcomponents();
+
+    if (D_components > 1)
+        if (Td.isFP() || Ts.isFP() || D_components * Td.bits() != Ts.bits())
+            stub("Unsupported multicomponent copy");
 
     // Special s4 upconversion path for pre-shifted data.
     bool preshiftedS4 = (Ts == Type::s4 && !s4Shift);
@@ -121,6 +126,7 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
     for (auto &sblock : layoutSrc) {
     for (int eoffY = 0; eoffY < sblock.*ny; eoffY++) {
+    for (int dcomp = 0; dcomp < D_components; dcomp++) {
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;
         auto eoffC = sblock.colMajor ? eoffY : eoffX;
@@ -131,8 +137,8 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
         int cxComp = 0;
 
         // Locate source and destination registers.
-        CopyOperand sOp = sblock.findRegion(Ts,                 eoffR,                          eoffC,         src, &ns,          cxComp, 0, true);
-        CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, 0, true);
+        CopyOperand sOp = sblock.findRegion(Ts,                 eoffR,                          eoffC,         src, &ns,          cxComp, 0,     true);
+        CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, dcomp, true);
         dOp.type = Td.real().ngen();
         int n = std::min(ns, nd);
 
@@ -142,6 +148,15 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
         }
 
         dOp.overwriteStride = (dblock->*ny == 1 && dblock->crosspack > 1);
+
+        // Multicomponent integer handling.
+        if (D_components > 1) {
+            sOp.stride *= D_components;
+            sOp.vs *= D_components;
+            sOp.offset *= D_components;
+            sOp.offset += dcomp;
+            sOp.type = dOp.type;
+        }
 
         // Prepare instruction modifiers.
         if (!alpha.fixed())
@@ -167,6 +182,7 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
         eoffX += n;
     } /* eoffX loop */
+    } /* dcomp loop */
     } /* eoffY loop */
     } /* sblock loop */
 

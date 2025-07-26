@@ -294,7 +294,8 @@ private:
                 // This is to ensure that reduction-related address shifts are
                 // constant. For example with a_blk = 8 and Ax16a layout there are two
                 // kinds of "a" shifts: inside the innermost block and outer shift.
-                int dpas_unit = (is_dpas ? 32 / prb.a_data_type_size : 1);
+                int dpas_unit
+                        = (is_dpas ? 32 / prb.real_a_dt_size(cfg.hw()) : 1);
                 int layout_unit = get_layout_unit(cfg, d);
                 if (is_fused_reduction) {
                     // dpas unit is handled by finalize_fused_reduction().
@@ -354,7 +355,7 @@ private:
         gpu_assert(info0.min_iter_blk == tile_info_t::default_min_iter_blk);
         gpu_assert(info1.min_iter_blk == tile_info_t::default_min_iter_blk);
 
-        int unit = 32 / prb.a_data_type_size;
+        int unit = 32 / prb.real_a_dt_size(cfg.hw());
         x2_tile_info_t x2_info(d0, d1);
         x2_info.add(flags);
         x2_info.set_iter_unit(unit);
@@ -580,6 +581,7 @@ public:
 
     bool is_ok(const blocking_t &blk) const override {
         context_t ctx(blk, cfg_);
+        //blk.dump();
         if (!check_vec_ok(ctx)) return false;
         if (!check_fp4_ok(ctx)) return false;
         if (!check_tg_size_ok(ctx)) return false;
@@ -593,6 +595,7 @@ public:
         if (!limit_m_iter_ok(ctx)) return false;
         if (!limit_n_iter_ok(ctx)) return false;
         if (!limit_k_iter_ok(ctx)) return false;
+        //printf("^^^ GOOD\n");
         return true;
     }
 
@@ -737,7 +740,7 @@ private:
         if (!is_enabled(check_kind_t::check_dpas)) return true;
 
         if (!cfg_.is_dp_fma()) return true;
-        int ab_size = cfg_.prb().a_data_type_size;
+        int ab_size = cfg_.prb().real_a_dt_size(cfg_.hw());
         int dpas_k = dpas_reduce_bytes_ / ab_size;
         return cfg_.prb().ab_swap_transpose ? ctx.n_iter % cfg_.simd() == 0
                                             : ctx.k_iter % dpas_k == 0;
@@ -945,16 +948,16 @@ private:
 
     int min_k_iter(const context_t &ctx) const {
         if (!cfg_.is_dp_fma()) return 1;
-        int type_size = cfg_.prb().a_data_type_size;
+        int type_size = cfg_.prb().real_a_dt_size(cfg_.hw());
         int k_iter = dpas_reduce_bytes_ / type_size;
         if (ctx.dpas_2x_depth) k_iter *= 2;
         return k_iter;
     }
 
     int max_k_iter(const context_t &ctx) const {
-        int type_size = cfg_.prb().a_data_type_size;
-        if (!cfg_.is_dp_fma()) return max_mad_reduce_bytes_ / type_size;
-        int k_iter = dpas_reduce_bytes_ / type_size;
+        if (!cfg_.is_dp_fma())
+            return max_mad_reduce_bytes_ / cfg_.prb().a_data_type_size;
+        int k_iter = dpas_reduce_bytes_ / cfg_.prb().real_a_dt_size(cfg_.hw());
         if (ctx.dpas_2x_depth) k_iter *= 2;
         return k_iter;
     }

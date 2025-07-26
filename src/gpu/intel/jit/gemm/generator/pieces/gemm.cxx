@@ -871,6 +871,10 @@ bool Generator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrategy &strateg
         if (C_ngran > 1) and_(1, remN, remN, uint32_t(~(C_ngran - 1)));
     }
 
+    // Combine C copies for multicomponent GEMMs.
+    if ((problem.Ta.mcomponents() > 1 || problem.Tb.mcomponents() > 1) && state.C_buffers > 1)
+        combineCMulticomponent(problem, strategy, state);
+
     // Local k reduction.
     if (strategy.kParallelLocal)
         gemmKReduce(problem, strategy, state);

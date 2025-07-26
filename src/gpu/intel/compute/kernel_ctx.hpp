@@ -138,6 +138,8 @@ public:
             case data_type::f4_e2m1: define_int("DT_F4_E2M1", 1); break;
             case data_type::f4_e3m0: define_int("DT_F4_E3M0", 1); break;
             case data_type::s32: define_int("DT_S32", 1); break;
+            case data_type::s16: define_int("DT_S16", 1); break;
+            case data_type::u16: define_int("DT_U16", 1); break;
             default: assert(!"unknown data type"); break;
         }
         define_int("WITH_PUNNING", with_punning);

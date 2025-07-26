@@ -129,15 +129,23 @@ int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     const auto max_nthr = nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
     // TODO: add support for other cases
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
+    constexpr dim_t k2_i8_avx2 = 192;
+    constexpr dim_t k2_f32_avx2 = 112;
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    constexpr dim_t k2_i8_avx2 = 176;
+    constexpr dim_t k2_f32_avx2 = 96;
+#endif
+#if (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB) \
+        || (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP)
     if (rnn_.brgemm_isa == x64::avx2 && !need_gemm_layer_ && rnn_.M == 1
             && utils::one_of(rnn_.cell_kind, alg_kind::vanilla_lstm,
                     alg_kind::lbr_gru)) {
         if (std::is_same<src_t, uint8_t>::value
                 && std::is_same<weights_t, int8_t>::value) {
-            return rnn_.K2 <= 192 ? 1 : max_nthr;
+            return rnn_.K2 <= k2_i8_avx2 ? 1 : max_nthr;
         } else if (std::is_same<src_t, float>::value
                 && std::is_same<weights_t, float>::value) {
-            return rnn_.K2 <= 112 ? 1 : max_nthr;
+            return rnn_.K2 <= k2_f32_avx2 ? 1 : max_nthr;
         }
     }
 #endif

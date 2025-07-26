@@ -16,6 +16,7 @@
 
 #include <cmath>
 
+#include "cpu/platform.hpp"
 #include "cpu/primitive_attr_postops.hpp"
 #include "cpu/ref_io_helper.hpp"
 
@@ -149,6 +150,12 @@ float ref_binary_scalar_t::compute_scalar(
     return compute_binary_scalar(alg_, src0, src1, src2);
 }
 
+bool ref_binary_scalar_t::data_type_ok(
+        const post_ops_t::entry_t::binary_t &binary) {
+    return platform::has_data_type_support(binary.src1_desc.data_type)
+            && platform::has_data_type_support(binary.src2_desc.data_type);
+}
+
 ref_eltwise_scalar_fwd_t::ref_eltwise_scalar_fwd_t(
         alg_kind_t alg, float alpha, float beta, float scale)
     : alg_(alg), alpha_(alpha), beta_(beta), scale_(scale) {
@@ -173,8 +180,28 @@ float ref_eltwise_scalar_fwd_t::compute_scalar(float s) const {
     return compute_eltwise_scalar_fwd(alg_, s, alpha_, beta_) * scale_;
 }
 
+ref_sum_scalar_t::ref_sum_scalar_t(const post_ops_t &po, bool skip_sum)
+    : po_(po), skip_sum_(skip_sum) {}
+
+bool ref_sum_scalar_t::has_sum() const {
+    return !skip_sum_ && po_.find(primitive_kind::sum) != -1;
+}
+
+void ref_sum_scalar_t::execute(float &res, float dst_val) const {
+    if (!has_sum()) return;
+
+    const auto sum_idx = po_.find(primitive_kind::sum);
+    const auto &e = po_.entry_[sum_idx];
+    res += e.sum.scale * (dst_val - static_cast<float>(e.sum.zero_point));
+}
+
+bool ref_sum_scalar_t::data_type_ok(const post_ops_t::entry_t::sum_t &sum) {
+    return sum.dt == data_type::undef
+            || platform::has_data_type_support(sum.dt);
+}
+
 ref_post_ops_t::ref_post_ops_t(const post_ops_t &po, bool skip_sum)
-    : po_(po), skip_sum_(skip_sum) {
+    : po_(po), sum_po_(po, skip_sum) {
     for (auto idx = 0; idx < po_.len(); ++idx) {
         const auto &e = po_.entry_[idx];
         if (po_.contain(primitive_kind::eltwise, idx)) {
@@ -250,9 +277,11 @@ dim_t get_binary_src_off(const memory_desc_t &src_md, const dim_t l_offset,
 
 status_t ref_post_ops_t::init(const memory_desc_t *dst_md) {
     if (!dst_md) return status::invalid_arguments;
+    if (!post_ops_ok(po_)) return status::unimplemented;
 
     for (auto idx = 0; idx < po_.len(); ++idx) {
         const auto &e = po_.entry_[idx];
+
         if (e.is_prelu()) {
             memory_desc_t weights_md;
             CHECK(get_prelu_memory_desc(
@@ -285,13 +314,7 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
     for (auto idx = 0; idx < po_.len(); ++idx) {
         const auto &e = po_.entry_[idx];
         switch (e.kind) {
-            case primitive_kind::sum:
-                if (!skip_sum_) {
-                    res += e.sum.scale
-                            * (args.dst_val
-                                    - static_cast<float>(e.sum.zero_point));
-                }
-                break;
+            case primitive_kind::sum: sum_po_.execute(res, args.dst_val); break;
             case primitive_kind::eltwise:
                 res = it_eltwise_po->compute_scalar(res);
                 it_eltwise_po++;
@@ -361,6 +384,34 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
             default: assert(!"unsupported post op primitive kind!");
         }
     }
+}
+
+bool ref_post_ops_t::post_ops_ok(const post_ops_t &po) {
+
+    if (!primitive_kind_ok(po)) return false;
+
+    for (const auto &e : po.entry_) {
+        switch (e.kind) {
+            case primitive_kind::sum:
+                if (!ref_sum_scalar_t::data_type_ok(e.sum)) return false;
+                break;
+            case primitive_kind::binary:
+                if (!ref_binary_scalar_t::data_type_ok(e.binary)) return false;
+                break;
+            case primitive_kind::convolution:
+                if (!platform::has_data_type_support(e.depthwise_conv.wei_dt)
+                        || !platform::has_data_type_support(
+                                e.depthwise_conv.bias_dt)
+                        || !platform::has_data_type_support(
+                                e.depthwise_conv.dst_dt))
+                    return false;
+                break;
+            case primitive_kind::eltwise:
+            case primitive_kind::prelu: break;
+            default: return false;
+        }
+    }
+    return true;
 }
 
 } // namespace cpu

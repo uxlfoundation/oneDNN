@@ -258,7 +258,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             const bool is_int8 = utils::one_of(src_md()->data_type, s8, u8);
             return attr()->post_ops_.check_sum_consistency(
                            dst_md()->data_type, is_int8)
-                    && ref_post_ops_t::primitive_kind_ok(attr()->post_ops_);
+                    && ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
 
         bool zero_points_ok() const {

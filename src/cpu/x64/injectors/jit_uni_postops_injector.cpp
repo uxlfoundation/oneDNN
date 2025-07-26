@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include <cassert>
 #include "common/verbose.hpp"
+#include "cpu/primitive_attr_postops.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 
 namespace dnnl {

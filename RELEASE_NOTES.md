@@ -23,9 +23,7 @@
 * Improved `fp32` softmax performance.
 * Improved performance of reorder when used with USM host memory.
 * Improved performance of the following subgraphs with Graph API:
-    * SDPA with implicit causal mask.
-    * SDPA with bottom-right implicit causal mask.
-    * `fp32` SDPA.
+    * `fp32` SDPA with implicit causal mask.
     * `fp16` SDPA on Intel GPUs without Intel XMX cores.
 
 ## AArch64-based Processors
@@ -43,7 +41,9 @@
 ## Graph API
 * Introduced support for tanh approximation in [`GELU`] operation.
 * Extended Graph API [`Softmax`] operation to support optional `stats` output.
-* Introduced support for SDPA training forward propagation and backpropagation.
+* Introduced fusion support for SDPA training forward and backward propagation.
+* Introduced fusion support for SDPA with bottom-right implicit causal mask.
+* Introduced `make_scalar_tensor()` API for engine-agnostic scalar tensor creation.
 
 [`GELU`]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_op_gelu.html
 [`SoftMax`]: https://uxlfoundation.github.io/oneDNN/v3.9/dev_guide_op_softmax.html
@@ -68,7 +68,8 @@
 [SYCL kernel compiler]: https://github.com/intel/llvm/blob/sycl/sycl/doc/extensions/experimental/sycl_ext_oneapi_kernel_compiler.asciidoc
 
 # Validation
-* Improved benchdnn performance by optimizing input data filling and testing results comparison steps. 
+* Improved benchdnn performance by optimizing input data filling and testing results comparison steps.
+* Improved benchdnn graph driver performance mode via adding CPU memory pool for allocator.
 
 # Known Limitations
 

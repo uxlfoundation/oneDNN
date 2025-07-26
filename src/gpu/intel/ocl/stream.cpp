@@ -136,6 +136,81 @@ status_t stream_t::barrier() {
     return impl()->barrier();
 }
 
+status_t stream_t::init_async_tracking(std::string &vinfo, double *start_ms) {
+    stream_timing_data_->start_ms = get_msec();
+    stream_timing_data_->profiler_enabled = is_profiling_enabled();
+    stream_timing_data_->vinfo = vinfo;
+    return status::success;
+}
+
+status_t stream_t::register_async_tracker(cl_event event) {
+
+    // Checks if there is any event in the queue - for default
+    // implementation, there is no kernel on queue to record for.
+    if (!event) return status::success;
+
+    if (!stream_timing_data_) return status::success;
+
+    cl_event exec_evt = event;
+    OCL_CHECK(clRetainEvent(exec_evt));
+    async_tracked_event_ = exec_evt;
+
+    // local container for storing timing data for the event
+    auto *event_timing_data_ = new async_timing_data_t(*stream_timing_data_);
+
+    cl_int err = clSetEventCallback(
+            exec_evt, CL_COMPLETE, async_tracker_callback, event_timing_data_);
+    stream_timing_data_->timing_stat = (err == CL_SUCCESS);
+
+    return (stream_timing_data_->timing_stat) ? status::success
+                                              : status::runtime_error;
+}
+
+status_t stream_t::check_async_exec_times(
+        std::string &vinfo, double *start_ms) {
+
+    if (!stream_timing_data_->timing_stat) {
+        CHECK(wait());
+        double duration_ms = get_msec() - stream_timing_data_->start_ms;
+
+        VPROF(stream_timing_data_->start_ms, primitive, exec, VERBOSE_profile,
+                stream_timing_data_->vinfo.c_str(), duration_ms);
+    }
+
+    return status::success;
+}
+
+void CL_CALLBACK async_tracker_callback(
+        cl_event event, cl_int event_command_status, void *user_data) {
+
+    auto *td = static_cast<stream_t::async_timing_data_t *>(user_data);
+
+    if (event_command_status == CL_COMPLETE) {
+        if (td->profiler_enabled) {
+            cl_ulong start_ns = 0, end_ns = 0;
+
+            clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                    sizeof(start_ns), &start_ns, nullptr);
+            clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
+                    sizeof(end_ns), &end_ns, nullptr);
+
+            td->start_ms = start_ns * 1e-6;
+            td->end_ms = end_ns * 1e-6;
+            td->duration_ms = (end_ns - start_ns) * 1e-6;
+
+        } else {
+            td->end_ms = get_msec();
+            td->duration_ms = td->end_ms - td->start_ms;
+        }
+
+        VPROF(td->start_ms, primitive, exec, VERBOSE_profile, td->vinfo.c_str(),
+                td->duration_ms);
+    }
+
+    delete td;
+    clReleaseEvent(event);
+}
+
 } // namespace ocl
 } // namespace intel
 } // namespace gpu

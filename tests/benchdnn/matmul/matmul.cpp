@@ -671,6 +671,20 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
+
+        for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+            if (!prb->attr.scales.is_def(arg)
+                    && prb->attr.scales.get(arg).policy == attr_t::COMMON_V2) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Scales as host-side scalars are not "
+                        "supported "
+                        "on GPU.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+        }
     }
 }
 

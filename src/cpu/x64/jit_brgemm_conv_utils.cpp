@@ -1342,7 +1342,7 @@ float brg_blocking_t::est_eff_1x1() {
     if (is_os_blocking) {
         max_job = (loop_order == loop_ndhwgc)
                 ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
-                        nb_os_blocking * sp_block)
+                        static_cast<dim_t>(nb_os_blocking) * sp_block)
                 : grid_coverage(thread_job, os, 1,
                         static_cast<dim_t>(nb_os_blocking) * sp_block, oc,
                         oc_block);

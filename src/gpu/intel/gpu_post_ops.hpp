@@ -206,7 +206,9 @@ struct relative_md_t {
         rmd.broadcast_mask = ~0;
         uint16_t mask_bit = 1;
         for (int i = ndims - 1; i >= 0; i--) {
-            if (ndim_normalizer.dim(i, md) > 1) rmd.broadcast_mask &= ~mask_bit;
+            auto d = ndim_normalizer.dim(i, md);
+            if (d > 1 || d == DNNL_RUNTIME_DIM_VAL)
+                rmd.broadcast_mask &= ~mask_bit;
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 
@@ -221,6 +223,66 @@ struct relative_md_t {
         if (rmd.inner_dim.is_unset()) rmd.inner_dim = {0};
 
         return status::success;
+    }
+
+    std::string ocl_defines(const std::string &prefix,
+            const std::array<std::string, MAX_NDIMS> &strides,
+            int ndims) const {
+        std::array<int, MAX_NDIMS> current_alignment = {1, 1, 1, 1, 1, 1};
+        std::array<const char *, MAX_NDIMS> args
+                = {"(x0)", "(x1)", "(x2)", "(x3)", "(x4)", "(x5)"};
+        std::string offset;
+        int inner_stride = 1;
+        for (int i = 0; i < blocking_t::max_dims; i++) {
+            const idx_t idx = inner_layout.idxs[i];
+            const uint8_t block = inner_layout.blocks[i];
+            if (!idx.is_unset()) {
+                auto md_idx = to_md_idx(idx, ndims);
+                auto &align = current_alignment[md_idx];
+                auto total_block = align * block;
+
+                if (!offset.empty()) offset += "+";
+
+                offset += args[md_idx];
+
+                if (total_block != 1)
+                    offset += "%" + std::to_string(total_block);
+                if (align != 1) offset += "/" + std::to_string(align);
+                if (align * inner_stride != 1)
+                    offset += "*" + std::to_string(align * inner_stride);
+
+                align = total_block;
+                inner_stride *= block;
+            }
+        }
+
+        for (int i = 0; i < MAX_NDIMS; i++) {
+            if (!is_broadcast(i, ndims)) {
+                auto &align = current_alignment[i];
+                if (!offset.empty()) offset += "+";
+                offset += args[i];
+                if (align != 1) offset += "/" + std::to_string(align);
+                offset += "*"
+                        + (is_inner_dim(i, ndims) ? std::to_string(inner_stride)
+                                                  : strides[i]);
+            }
+        }
+
+        std::string offset_macro = " -D" + prefix
+                + "_RMD_OFF(x0,x1,x2,x3,x4,x5)="
+                + (offset.empty() ? "0" : offset) + "";
+
+        return offset_macro;
+    }
+
+    bool is_broadcast(int idx, int ndims) const {
+        idx_t norm = from_md_idx(idx, ndims, {});
+        if (norm.is_unset()) return true;
+        return (1 << norm.as_int()) & broadcast_mask;
+    }
+
+    bool is_inner_dim(int idx, int ndims) const {
+        return idx == to_md_idx(inner_dim, ndims);
     }
 
     // Implicitly removes size 1 outer-dimensions from the original memory

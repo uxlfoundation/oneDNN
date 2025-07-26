@@ -945,6 +945,9 @@
 #define OFF_MD(prefix, x0, x1, x2, x3, x4, x5) \
     CONCAT2(OFF_MD_, CONCAT2(prefix, _NLEVELS))(prefix, x0, x1, x2, x3, x4, x5)
 
+#define OFF_RMD(prefix, x0, x1, x2, x3, x4, x5) \
+    CONCAT2(prefix, _RMD_OFF)(x0, x1, x2, x3, x4, x5)
+
 #define ALIAS(prefix) CONCAT2(prefix, _DT_ALIAS)
 
 // BLOCK types

@@ -383,7 +383,8 @@ status_t xe_wino_convolution_fwd_t::execute_forward(
         arg_list.set(1, src);
         arg_list.set(2, *wei_trans);
         arg_list.set(3, bias);
-        append_post_ops_to_arg_list(ctx, arg_list, 4, pd()->attr()->post_ops_);
+        append_post_ops_to_arg_list(
+                ctx, arg_list, 4, pd()->attr()->post_ops_, *pd()->dst_md());
         auto nd_range = compute::nd_range_t(conf.gws_d, conf.lws_d);
         status = parallel_for(ctx, nd_range, kernel_, arg_list);
     } else {
@@ -410,8 +411,8 @@ status_t xe_wino_convolution_fwd_t::execute_forward(
         dst_transform_args.set(0, dst);
         dst_transform_args.set(1, *M_buf);
         dst_transform_args.set(2, bias);
-        append_post_ops_to_arg_list(
-                ctx, dst_transform_args, 3, pd()->attr()->post_ops_);
+        append_post_ops_to_arg_list(ctx, dst_transform_args, 3,
+                pd()->attr()->post_ops_, *pd()->dst_md());
         auto dst_trans_nd_range
                 = compute::nd_range_t(conf.M_gws_d, conf.M_lws_d);
         status = parallel_for(

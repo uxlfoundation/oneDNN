@@ -31,14 +31,35 @@ int __attribute__((overloadable)) div_up(int a, unsigned int b) {
     return (a / b) + (a % b != 0);
 }
 
+int __attribute__((overloadable)) div_up(unsigned int a, unsigned int b) {
+    return (a / b) + (a % b != 0);
+}
+
 long __attribute__((overloadable)) div_up(long a, unsigned int b) {
     return (a / b) + (a % b != 0);
 }
 
-int rnd_up(int a, unsigned int b) {
+int __attribute__((overloadable)) rnd_up(int a, unsigned int b) {
     return div_up(a, b) * b;
 }
-int rnd_down(int a, unsigned int b) {
+
+int __attribute__((overloadable)) rnd_up(unsigned int a, unsigned int b) {
+    return div_up(a, b) * b;
+}
+
+int __attribute__((overloadable)) rnd_up(long a, unsigned int b) {
+    return div_up(a, b) * b;
+}
+
+int __attribute__((overloadable)) rnd_down(int a, unsigned int b) {
+    return (a / b) * b;
+}
+
+int __attribute__((overloadable)) rnd_down(unsigned int a, unsigned int b) {
+    return (a / b) * b;
+}
+
+int __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
     return (a / b) * b;
 }
 

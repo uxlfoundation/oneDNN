@@ -149,8 +149,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(dst_scale);
     arg_list.append(pd()->desc()->group_norm_epsilon);
 
-    append_post_ops_to_arg_list(
-            ctx, arg_list, arg_list.nargs(), pd()->attr()->post_ops_);
+    append_post_ops_to_arg_list(ctx, arg_list, arg_list.nargs(),
+            pd()->attr()->post_ops_, *pd()->dst_md());
 
     const compute::nd_range_t &nd_range_kernel = pd()->dispatch.nd_range();
     status_t status = parallel_for(ctx, nd_range_kernel, kernel_, arg_list);

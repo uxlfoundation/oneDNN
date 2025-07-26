@@ -415,6 +415,17 @@ bool post_binary_fusible(
         if (ltw(fused_in).data_type() != ltw(bin_out).data_type()) return false;
     }
 
+    // Special check: subtract and divide binary post-op can only be fused
+    // when base_op is their first input's producer
+    if (static_cast<dnnl::algorithm>(
+                bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_sub
+            || static_cast<dnnl::algorithm>(
+                       bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_div) {
+        if (fused_in_off != 0) return false;
+    }
+
     return post_binary_fusible_impl(
             base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
 }

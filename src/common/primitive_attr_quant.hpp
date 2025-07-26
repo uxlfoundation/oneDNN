@@ -108,7 +108,7 @@ struct quant_entry_t : public c_compatible {
 
     static quant_entry_t deserialize(deserializer_t &d);
 
-    std::string get_verbose() const;
+    std::string get_verbose(bool user_precomp = false) const;
 
 private:
     // Note: INT_MIN is used on purpose to avoid potential issues when
@@ -319,6 +319,8 @@ private:
         for (const auto &sa : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (arg == sa) return true;
         }
+        // user-supplied precomputed zp
+        if (arg == (DNNL_ARG_SRC | DNNL_ARG_ATTR_USER_PRECOMP)) return true;
         // sdpa
         if (arg == DNNL_ARG_SRC_2) return true;
         return false;

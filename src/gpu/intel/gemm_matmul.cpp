@@ -56,6 +56,10 @@ status_t gemm_matmul_t::execute(const exec_ctx_t &ctx) const {
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     gemm_args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     gemm_args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    gemm_args.a_group_sums = &CTX_IN_STORAGE(
+            DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    gemm_args.b_group_sums = &CTX_IN_STORAGE(
+            DNNL_ARG_ATTR_USER_PRECOMP_ZERO_POINTS | DNNL_ARG_SRC);
     gemm_args.sround_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
     gemm_args.exec_args = ctx.args();
     gemm_desc_t gemm_desc;

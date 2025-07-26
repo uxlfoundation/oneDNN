@@ -226,11 +226,20 @@ status_t acl_lowp_matmul_sq_t::execute(const exec_ctx_t &ctx) const {
     acl_obj.wei_tensor.allocator()->import_memory(const_cast<int8_t *>(wei));
     acl_obj.dst_tensor.allocator()->import_memory(const_cast<int8_t *>(dst));
     DEFINE_ARG_SCALES_BUFFER(src_scale, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scale, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scale, DNNL_ARG_DST);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *wei_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
+    const int32_t src_zero_point = src_zero_points ? src_zero_points[0] : 0;
+    const int32_t wei_zero_point = wei_zero_points ? wei_zero_points[0] : 0;
+    const int32_t dst_zero_point = dst_zero_points ? dst_zero_points[0] : 0;
+
     if (with_bias) {
         const auto scratchpad = ctx.get_scratchpad_grantor();
         auto bia_s32_base = scratchpad.get<uint32_t>(

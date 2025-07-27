@@ -176,7 +176,7 @@ inline size_t data_type_vnni_granularity(data_type_t data_type) {
         case f32:
         case s32: return size_t(1);
         case f16:
-        case bf16: return size_t(2);
+        case bf16: return size_t(1);
         case s8:
         case u8: return size_t(4);
         case data_type::undef:
@@ -184,8 +184,13 @@ inline size_t data_type_vnni_granularity(data_type_t data_type) {
     }
     return size_t(0); /* should not be reachable */
 }
-status_t brgemm_blocking(brgemm_t *brg) {
 
+status_t brgemm_blocking(brgemm_t *brg) {
+    if (brg->is_bf16){
+       brg->fmmla_tile_M = 2;
+       brg->fmmla_tile_N = 2;
+       brg->fmmla_tile_K = 4; 
+    }
     CHECK(set_isa_impl(brg));
     if (brg->isa_impl == isa_undef) return status::unimplemented;
     assert(!brg->is_dgmm); // should not be called from brdgmm
@@ -194,11 +199,19 @@ status_t brgemm_blocking(brgemm_t *brg) {
 
     const int simd_w = is_superset(brg->isa_impl, sve_512) ? 16 : 8;
     brg->ld_block = simd_w;
+    if (brg->is_bf16){
+        brg->ld_block = brg->fmmla_tile_N;
+    }
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
 
     int adj_ld_block2 = calculate_ldb_params(brg, 4);
     int max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
+
+    // todo: estimate brg->ldb2 with register constrain
+    if (brg->is_bf16){
+        brg->ldb2 = 2;
+    }
 
     // reduce 'ld_block2' to allow a larger 'bd_block'
     const int max_vpad = nstl::max(
@@ -228,12 +241,22 @@ status_t brgemm_blocking(brgemm_t *brg) {
             best_bd_block_eff = bd_block_eff;
         }
     }
+    
+    if (brg->is_bf16){
+        brg->bd_block = brg->fmmla_tile_M;
+    }
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+    // todo: estimate brg->ldb2 with register constrain and l1 cache size.
+    brg->bdb2 = 1;
 
     const int rd_unroll = 4;
     const int vnni_granularity = data_type_vnni_granularity(brg->dt_a);
     brg->rd_block = rd_unroll * vnni_granularity;
+
+    if (brg->is_bf16){
+        brg->rd_block = brg->fmmla_tile_K;
+    }
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 

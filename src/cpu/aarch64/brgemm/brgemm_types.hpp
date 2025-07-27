@@ -244,6 +244,13 @@ struct brgemm_t {
     int rdb = 0, rd_block = 0, rdb_tail = 0;
     int rd_step = 0, ld_step = 0;
 
+    bool is_bgemm = false, is_sbgemm = false;
+    // These are used when leveraging Arm's `bfmmla` and `fmmla` instructions for matrix multiplication.
+    //   - bfmmla: 2x4 multiply of bfloat16 inputs
+    int fmmla_tile_M = 0;
+    int fmmla_tile_N = 0;
+    int fmmla_tile_K = 0;
+
     int typesize_A = 0;
     int typesize_B = 0;
     int typesize_C = 0;
@@ -255,6 +262,7 @@ struct brgemm_t {
 
     bool is_int8 = false;
     bool is_bf16 = false, is_bf16_emu = false;
+
     bool is_f16 = false;
 
     bool is_f32 = false;

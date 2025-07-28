@@ -450,6 +450,10 @@ private:
     void gemm_microkernel_amx(dim_t bd_block2, bool is_bdb_tail,
             dim_t ld_block2, bool is_rd_tail, bool is_ld_tail, bool last_bdb);
 
+    void bs_loop(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
+            bool is_ld_tail, bool first_bdb, bool last_bdb,
+            dim_t rows_for_rd_tail, bool skip_accumulation);
+
     void ldb_loop(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             dim_t ldb_loop_length, bool is_reg_tail, bool is_ld_tail,
             bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
@@ -2561,15 +2565,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
-        dim_t ld_block2, dim_t ldb_loop_length, bool is_reg_tail,
-        bool is_ld_tail, bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
-        bool skip_accumulation) {
-
-    Label ldb_loop_label;
+void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
+        dim_t ld_block2, bool is_ld_tail, bool first_bdb, bool last_bdb,
+        dim_t rows_for_rd_tail, bool skip_accumulation) {
     Label BS_loop_label;
-
-    copy_post_ops_stack_values_to_aux(is_reg_tail);
 
     auto ld_loop_body = [&](dim_t vpad, bool last_bdb) {
         set_A_B_matrices();
@@ -2615,6 +2614,100 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             }
         }
     };
+
+    if (brg.brgattr.max_bs > 1) mov(ptr[rsp + reg_aux_D_offs_], reg_aux_D);
+
+    if (brg.alpha != 0.f && !skip_accumulation) {
+        restore_A_B_matrices();
+        if (brg.is_tmm) {
+            mov(reg_stride_lda, brg.typesize_A * brg.LDA);
+            mov(reg_stride_ldb, brg.rd_step * brg.typesize_B * brg.LDB);
+        }
+
+        if (brg.brgattr.max_bs > 1) mov(reg_BS_loop, reg_BS);
+        L_aligned(BS_loop_label, 64);
+        {
+            if (first_bdb || last_bdb) {
+                const auto vpad_first
+                        = last_bdb ? (-brg.brgattr.max_bottom_vpad) : 1;
+                const auto vpad_last
+                        = first_bdb ? brg.brgattr.max_top_vpad : -1;
+                const auto n_vpads = vpad_last - vpad_first + 2;
+                constexpr auto MAX_N_VPADS = 2 * brgemm_desc_t::MAX_VPAD;
+                assert(n_vpads < MAX_N_VPADS);
+
+                Label Vpad_loop_end_label;
+                std::vector<Label> Vpad_loop_iter_label(MAX_N_VPADS);
+                if (vpad_exist) {
+                    reg64_t reg_batch = (brg.type == brgemm_addr)
+                            ? reg_aux1_batch
+                            : ((brg.type == brgemm_offs) ? reg_offs_batch
+                                                         : reg_strd_batch);
+                    if (brg.type == brgemm_strd)
+                        mov(reg_strd_batch, ptr[rsp + origin_strd_batch_offs_]);
+
+                    mov(reg_aux_A_vpad,
+                            ptr[reg_batch + GET_OFF_BATCH_ELEMENT(vvpad.top)]);
+                    sub(reg_aux_A_vpad,
+                            ptr[reg_batch
+                                    + GET_OFF_BATCH_ELEMENT(vvpad.bottom)]);
+                } else
+                    xor_(reg_aux_A_vpad, reg_aux_A_vpad);
+
+                for (dim_t vpad = vpad_first; vpad <= vpad_last; vpad++) {
+                    const auto label_vpad = vpad - vpad_first;
+                    L(Vpad_loop_iter_label[label_vpad]);
+                    if (!first_bdb && vpad > 0) continue;
+                    if (!last_bdb && vpad < 0) continue;
+                    auto real_vpad = vpad;
+                    if (last_bdb && brg.bdb_tail && vpad < 0) {
+                        if (!is_bdb_tail) {
+                            // for last full block before
+                            // bdb_tail && -vpad greater than bdb_tail
+                            if (brg.bdb_tail < -vpad)
+                                real_vpad += brg.bdb_tail;
+                            else
+                                continue;
+                        } else {
+                            // for block with tail, call ldb_loop()
+                            // to only calculate compensation for
+                            // padding area when bdb_tail < -vpad for
+                            // the cases using pre-cal compensation
+                            if (brg.bdb_tail < -vpad && need_comp_pads
+                                    && !brg.req_cal_comp_pads)
+                                real_vpad = -brg.bdb_tail;
+                        }
+                    }
+                    cmp(reg_aux_A_vpad, vpad);
+                    jne(Vpad_loop_iter_label[label_vpad + 1], T_NEAR);
+                    ld_loop_body(real_vpad, last_bdb);
+                    jmp(Vpad_loop_end_label, T_NEAR);
+                }
+                L(Vpad_loop_iter_label[n_vpads - 1]);
+                ld_loop_body(0, last_bdb);
+                L(Vpad_loop_end_label);
+            } else {
+                ld_loop_body(0, last_bdb);
+            }
+            if (brg.brgattr.max_bs > 1) {
+                dec(reg_BS_loop);
+                cmp(reg_BS_loop, 0);
+                jg(BS_loop_label, T_NEAR);
+            }
+        }
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
+        dim_t ld_block2, dim_t ldb_loop_length, bool is_reg_tail,
+        bool is_ld_tail, bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
+        bool skip_accumulation) {
+
+    Label ldb_loop_label;
+
+    copy_post_ops_stack_values_to_aux(is_reg_tail);
+
     if (is_ldb_loop_) {
         mov(reg_ldb_loop, ldb_loop_length);
         if (brg.is_tmm) mov(ptr[rsp + reg_ldb_loop_offs_], reg_ldb_loop);
@@ -2631,89 +2724,9 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             mov(reg_ldb_loop, reg_D);
             if (brg.is_tmm) mov(ptr[rsp + reg_ldb_loop_offs_], reg_ldb_loop);
         }
-        if (brg.brgattr.max_bs > 1) mov(ptr[rsp + reg_aux_D_offs_], reg_aux_D);
 
-        if (brg.alpha != 0.f && !skip_accumulation) {
-            restore_A_B_matrices();
-            if (brg.is_tmm) {
-                mov(reg_stride_lda, brg.typesize_A * brg.LDA);
-                mov(reg_stride_ldb, brg.rd_step * brg.typesize_B * brg.LDB);
-            }
-
-            if (brg.brgattr.max_bs > 1) mov(reg_BS_loop, reg_BS);
-            L_aligned(BS_loop_label, 64);
-            {
-                if (first_bdb || last_bdb) {
-                    const auto vpad_first
-                            = last_bdb ? (-brg.brgattr.max_bottom_vpad) : 1;
-                    const auto vpad_last
-                            = first_bdb ? brg.brgattr.max_top_vpad : -1;
-                    const auto n_vpads = vpad_last - vpad_first + 2;
-                    constexpr auto MAX_N_VPADS = 2 * brgemm_desc_t::MAX_VPAD;
-                    assert(n_vpads < MAX_N_VPADS);
-
-                    Label Vpad_loop_end_label;
-                    std::vector<Label> Vpad_loop_iter_label(MAX_N_VPADS);
-                    if (vpad_exist) {
-                        reg64_t reg_batch = (brg.type == brgemm_addr)
-                                ? reg_aux1_batch
-                                : ((brg.type == brgemm_offs) ? reg_offs_batch
-                                                             : reg_strd_batch);
-                        if (brg.type == brgemm_strd)
-                            mov(reg_strd_batch,
-                                    ptr[rsp + origin_strd_batch_offs_]);
-
-                        mov(reg_aux_A_vpad,
-                                ptr[reg_batch
-                                        + GET_OFF_BATCH_ELEMENT(vvpad.top)]);
-                        sub(reg_aux_A_vpad,
-                                ptr[reg_batch
-                                        + GET_OFF_BATCH_ELEMENT(vvpad.bottom)]);
-                    } else
-                        xor_(reg_aux_A_vpad, reg_aux_A_vpad);
-
-                    for (dim_t vpad = vpad_first; vpad <= vpad_last; vpad++) {
-                        const auto label_vpad = vpad - vpad_first;
-                        L(Vpad_loop_iter_label[label_vpad]);
-                        if (!first_bdb && vpad > 0) continue;
-                        if (!last_bdb && vpad < 0) continue;
-                        auto real_vpad = vpad;
-                        if (last_bdb && brg.bdb_tail && vpad < 0) {
-                            if (!is_bdb_tail) {
-                                // for last full block before
-                                // bdb_tail && -vpad greater than bdb_tail
-                                if (brg.bdb_tail < -vpad)
-                                    real_vpad += brg.bdb_tail;
-                                else
-                                    continue;
-                            } else {
-                                // for block with tail, call ldb_loop()
-                                // to only calculate compensation for
-                                // padding area when bdb_tail < -vpad for
-                                // the cases using pre-cal compensation
-                                if (brg.bdb_tail < -vpad && need_comp_pads
-                                        && !brg.req_cal_comp_pads)
-                                    real_vpad = -brg.bdb_tail;
-                            }
-                        }
-                        cmp(reg_aux_A_vpad, vpad);
-                        jne(Vpad_loop_iter_label[label_vpad + 1], T_NEAR);
-                        ld_loop_body(real_vpad, last_bdb);
-                        jmp(Vpad_loop_end_label, T_NEAR);
-                    }
-                    L(Vpad_loop_iter_label[n_vpads - 1]);
-                    ld_loop_body(0, last_bdb);
-                    L(Vpad_loop_end_label);
-                } else {
-                    ld_loop_body(0, last_bdb);
-                }
-                if (brg.brgattr.max_bs > 1) {
-                    dec(reg_BS_loop);
-                    cmp(reg_BS_loop, 0);
-                    jg(BS_loop_label, T_NEAR);
-                }
-            }
-        }
+        bs_loop(bd_block2, is_bdb_tail, ld_block2, is_ld_tail, first_bdb,
+                last_bdb, rows_for_rd_tail, skip_accumulation);
 
         if (is_ldb_loop_)
             mov(reg_D, ptr[rsp + reg_D_offs_]);

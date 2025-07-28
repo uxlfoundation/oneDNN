@@ -264,7 +264,7 @@ status_t brgemm_blocking(brgemm_t *brg) {
     // todo: estimate brg->ldb2 with register constrain and l1 cache size.
     brg->bd_block2 = 1;
     brg->bdb2 = brg->bdb / brg->bd_block2;
-    brg->bdb2 = brg->bdb % brg->bd_block2;
+    brg->bdb2_tail = brg->bdb % brg->bd_block2;
 
     const int rd_unroll = 4;
     const int vnni_granularity = data_type_vnni_granularity(brg->dt_a);

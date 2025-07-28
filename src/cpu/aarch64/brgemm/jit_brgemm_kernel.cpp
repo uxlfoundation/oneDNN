@@ -1219,6 +1219,7 @@ void jit_brgemm_kernel_t::sbgemm_store_accumulators_without_post_ops(
     }
 
     PReg mask = pred_load_b;
+    bool is_bdb_tail = (bd_block2 == brg.bd_block2);
 
     for (int bd2 = 0; bd2 < bd_block2; bd2 ++) {
         for (int ld2 = 0; ld2 < ld_block2; ld2++) {
@@ -1252,11 +1253,11 @@ void jit_brgemm_kernel_t::sbgemm_store_accumulators_without_post_ops(
                     = brg.typesize_C * ((bd + 1) * brg.LDC + ld * brg.ld_block);
 
             ST_MUL_VL(st1w, z_tmp_1().s, mask, x_addr, offset00 - base_offset, 4);
-            ST_MUL_VL(st1w, z_tmp_3().s, mask, x_addr, offset10 - base_offset, 4);
+            if (!is_bdb_tail)  ST_MUL_VL(st1w, z_tmp_3().s, mask, x_addr, offset10 - base_offset, 4);
 
             if (!(is_ld2_tail || is_ld2_tail)) {
                 ST_MUL_VL(st1w, z_tmp_2().s, mask, x_addr, offset01 - base_offset, 4);
-                ST_MUL_VL(st1w, z_tmp_4().s, mask, x_addr, offset11 - base_offset, 4);
+                if (!is_bdb_tail)  ST_MUL_VL(st1w, z_tmp_4().s, mask, x_addr, offset11 - base_offset, 4);
             }
         }
     }
@@ -1290,6 +1291,7 @@ void jit_brgemm_kernel_t::bgemm_store_accumulators_without_post_ops(
     }
 
     PReg mask = pred_load_b;
+    bool is_bdb_tail = (bd_block2 == brg.bd_block2);
 
     for (int bd2 = 0; bd2 < num_bd_block2; bd2 ++) {
         for (int ld2 = 0; ld2 < num_ld_block2; ld2++) {
@@ -1318,7 +1320,7 @@ void jit_brgemm_kernel_t::bgemm_store_accumulators_without_post_ops(
             const int offset10 = brg.typesize_C * (bd * brg.LDC + ld * brg.ld_block);
 
             ST_MUL_VL(st1w, accm(ld_block2, 0, 0, 0).h, mask, x_addr, offset00 - base_offset, 8);
-            ST_MUL_VL(st1w, accm(ld_block2, 0, 0, 1).h, mask, x_addr, offset10 - base_offset, 8);
+            if (!is_bdb_tail)  ST_MUL_VL(st1w, accm(ld_block2, 0, 0, 1).h, mask, x_addr, offset10 - base_offset, 8);
         }
     }
 }
@@ -1751,7 +1753,6 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
     ZReg trans_tmp0 = ZReg(15);
     ZReg trans_tmp1 = ZReg(14);
 
-    assert(is_bdb_tail == false);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     int bd_block2 = brg.bd_block2;
     
@@ -1792,6 +1793,7 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
         }
     };
 
+    if (is_bdb_tail) eor(load1.h, load1.h, load1.h);
     // inner most loop computes A ( 2 * 8 ) * B (8 * 8) = C ( 2 * 8)
     for (int bd2 = 0; bd2 <  num_bd_block2 ; bd2 ++ ) {
         for (int ld2 = 0; ld2 <  num_ld_block2 ; ld2++) {
@@ -1801,7 +1803,7 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
             ZReg mc03 = fmmla_accm(bd_block2, ld_block2, bd2, ld2, 1, 1);
 
             ld1h(load0.h, pred_load_a, ptr(reg_aux_A, A_offset(0, 0)));
-            ld1h(load1.h, pred_load_a, ptr(reg_aux_A, A_offset(1, 0)));
+            if (!is_bdb_tail) ld1h(load1.h, pred_load_a, ptr(reg_aux_A, A_offset(1, 0)));
 
             zip1(ma0.d, load0.d, load1.d);
             if (is_rd_tail || is_rd2_tail) {
@@ -2142,15 +2144,17 @@ void jit_brgemm_kernel_t::bdb_loop() {
     
     auto bdb_loop_bf16 = [=](bool skip_accumulation) {
         if (vpad_exist) assert(!"unsupported vpad for bf16");
-
+        
+        //here brg.bd_block2 is set as 1.
+        // we can bypass that logic now.
         if (brg.bdb > 0) {
+            mov_imm(reg_bdb_loop, brg.bdb);
             Label bdb_loop_label;
             L_aligned(bdb_loop_label, 64);
             {
                 bdb_loop_body(brg.bd_block2, false, false, false, 0, skip_accumulation);
                 sub(reg_bdb_loop, reg_bdb_loop, 1);
-                cmp_imm(reg_bdb_loop, rows_for_rd_tail ? 1 : 0,
-                        X_TMP_0);
+                cmp_imm(reg_bdb_loop, 1, X_TMP_0);
                 b(GT, bdb_loop_label);
             } 
         } 
@@ -2239,8 +2243,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
                             skip_accumulation);
             }
             if (brg.bdb_tail > 0)
-                do_ldb_loop(1, true, false, false, rows_for_rd_tail,
-                        skip_accumulation);
+                do_ldb_loop(1, true, false, false, rows_for_rd_tail, skip_accumulation);
         }
         L_aligned(bdb_loop_end_label, 64);
     };

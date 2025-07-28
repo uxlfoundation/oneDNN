@@ -28,11 +28,7 @@
 #define VAL_OFF(x0, x1, x2, x3) _4D_OFF(VAL, x0, x1, x2, x3)
 #define MSK_OFF(x0, x1, x2, x3) _4D_OFF(MSK, x0, x1, x2, x3)
 
-#define _BATCH_OFF(tag, x0, x1) \
-    (((x0) % tag##_B.array[0]) * tag##_SB.array[0] \
-            + ((x0) / tag##_B.array[0]) * tag##_S.array[0] \
-            + ((x1) % tag##_B.array[1]) * tag##_SB.array[1] \
-            + ((x1) / tag##_B.array[1]) * tag##_S.array[1])
+#define _BATCH_OFF(tag, x0, x1) ((x0)*tag##_S.array[0] + (x1)*tag##_S.array[1])
 
 #define QRY_BATCH(x0, x1) _BATCH_OFF(QRY, x0, x1)
 #define KEY_BATCH(x0, x1) _BATCH_OFF(KEY, x0, x1)
@@ -44,10 +40,7 @@
 
 #define RT_DIM4(varname) const int64x4_t varname
 #define RT_OFFSETS(basename) \
-    JOIN_COMMA(RT_DIM4(basename##_D), \
-            JOIN_COMMA(RT_DIM4(basename##_S), \
-                    JOIN_COMMA( \
-                            RT_DIM4(basename##_B), RT_DIM4(basename##_SB))))
+    JOIN_COMMA(RT_DIM4(basename##_D), RT_DIM4(basename##_S))
 
 #define KEY_OFFSETS RT_OFFSETS(KEY)
 #define QRY_OFFSETS RT_OFFSETS(QRY)

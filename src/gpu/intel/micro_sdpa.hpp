@@ -114,6 +114,16 @@ struct micro_sdpa_t : public gpu_primitive_t {
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
+
+            memory_desc_wrapper qry_mdw(qry_md());
+            memory_desc_wrapper key_mdw(key_md());
+            memory_desc_wrapper val_mdw(val_md());
+            memory_desc_wrapper dst_mdw(dst_md());
+            VCHECK_SDPA_COND(utils::everyone_is(true, qry_mdw.is_plain(),
+                                     key_mdw.is_plain(), val_mdw.is_plain(),
+                                     dst_mdw.is_plain()),
+                    VERBOSE_UNSUPPORTED_TAG);
+
             if (with_attn_mask()) {
                 VCHECK_SDPA_COND(
                         attn_mask_md()->ndims == 4, VERBOSE_UNSUPPORTED_TAG);

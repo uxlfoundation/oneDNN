@@ -714,13 +714,8 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
                                const offset_t &offs) {
         int64x4_t dims4 = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
         int64x4_t strides4 = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
-        int64x4_t blocks4 = {offs[0][0], offs[0][1], offs[0][2], offs[0][3]};
-        int64x4_t block_strides4
-                = {offs[2][0], offs[2][1], offs[2][2], offs[2][3]};
         arg_list.append(dims4);
         arg_list.append(strides4);
-        arg_list.append(blocks4);
-        arg_list.append(block_strides4);
     };
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);

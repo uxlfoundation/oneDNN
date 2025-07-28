@@ -1208,6 +1208,18 @@ void jit_brgemm_kernel_t::sbgemm_store_accumulators_without_post_ops(
     auto x_addr = reg_aux_C;
     int base_offset = 0;
 
+    bool is_ld2_tail = (ld_block2 != brg.ld_block2);
+    PReg pred_load_b = P_ALL_ONE;
+    if (is_ld2_tail){
+        pred_load_b = P_TMP_0;
+        set_preg(pred_load_b.h , brg.ld_block, X_TMP_0, X_TMP_1); 
+    } else if (is_ld_tail){
+        pred_load_b = ld_tail_mask;
+        set_preg(pred_load_b.h , brg.ldb_tail, X_TMP_0, X_TMP_1);
+    }
+
+    PReg mask = pred_load_b;
+
     for (int bd2 = 0; bd2 < bd_block2; bd2 ++) {
         for (int ld2 = 0; ld2 < ld_block2; ld2++) {
             ZReg mc00 = fmmla_accm(bd_block2, ld_block2, bd2, 0, ld2, 0, 0);
@@ -1216,9 +1228,12 @@ void jit_brgemm_kernel_t::sbgemm_store_accumulators_without_post_ops(
             ZReg mc03 = fmmla_accm(bd_block2, ld_block2, bd2, 0, ld2, 1, 1);
 
             uzp1(z_tmp_1().d, mc00.d, mc01.d);
-            uzp1(z_tmp_2().d, mc02.d, mc03.d);
             uzp2(z_tmp_3().d, mc00.d, mc01.d);
-            uzp2(z_tmp_4().d, mc02.d, mc03.d);
+
+            if (!(is_ld2_tail || is_ld2_tail)) {
+                uzp1(z_tmp_2().d, mc02.d, mc03.d);
+                uzp2(z_tmp_4().d, mc02.d, mc03.d);
+            }
 
             const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
             int bd = bd2 * brg.bd_block2;
@@ -1236,14 +1251,13 @@ void jit_brgemm_kernel_t::sbgemm_store_accumulators_without_post_ops(
             const int offset11
                     = brg.typesize_C * ((bd + 1) * brg.LDC + ld * brg.ld_block);
 
-            ST_MUL_VL(
-                    st1w, z_tmp_1().s, mask, x_addr, offset00 - base_offset, 4);
-            ST_MUL_VL(
-                    st1w, z_tmp_2().s, mask, x_addr, offset01 - base_offset, 4);
-            ST_MUL_VL(
-                    st1w, z_tmp_3().s, mask, x_addr, offset10 - base_offset, 4);
-            ST_MUL_VL(
-                    st1w, z_tmp_4().s, mask, x_addr, offset11 - base_offset, 4);
+            ST_MUL_VL(st1w, z_tmp_1().s, mask, x_addr, offset00 - base_offset, 4);
+            ST_MUL_VL(st1w, z_tmp_3().s, mask, x_addr, offset10 - base_offset, 4);
+
+            if (!(is_ld2_tail || is_ld2_tail)) {
+                ST_MUL_VL(st1w, z_tmp_2().s, mask, x_addr, offset01 - base_offset, 4);
+                ST_MUL_VL(st1w, z_tmp_4().s, mask, x_addr, offset11 - base_offset, 4);
+            }
         }
     }
 }
@@ -1261,9 +1275,24 @@ void jit_brgemm_kernel_t::bgemm_store_accumulators_without_post_ops(
     if (dt_requires_saturation) { assert(!"unsupported\n"); }
     auto x_addr = reg_aux_C;
     int base_offset = 0;
+    // for futher tunning unrolling params.
+    constexpr int num_bd_block2 = 1;
+    constexpr int num_ld_block2 = 1;
 
-    for (int bd2 = 0; bd2 < bd_block2; bd2 ++) {
-        for (int ld2 = 0; ld2 < ld_block2; ld2++) {
+    bool is_ld2_tail = (ld_block2 != brg.ld_block2);
+    PReg pred_load_b = P_ALL_ONE;
+    if (is_ld2_tail){
+        pred_load_b = P_TMP_0;
+        set_preg(pred_load_b.h , brg.ld_block, X_TMP_0, X_TMP_1); 
+    } else if (is_ld_tail){
+        pred_load_b = ld_tail_mask;
+        set_preg(pred_load_b.h , brg.ldb_tail, X_TMP_0, X_TMP_1);
+    }
+
+    PReg mask = pred_load_b;
+
+    for (int bd2 = 0; bd2 < num_bd_block2; bd2 ++) {
+        for (int ld2 = 0; ld2 < num_ld_block2; ld2++) {
             ZReg mc00 = fmmla_accm(bd_block2, ld_block2, bd2, 0, ld2, 0, 0);
             ZReg mc01 = fmmla_accm(bd_block2, ld_block2, bd2, 0, ld2, 0, 1);
             ZReg mc02 = fmmla_accm(bd_block2, ld_block2, bd2, 0, ld2, 1, 0);
@@ -1283,7 +1312,6 @@ void jit_brgemm_kernel_t::bgemm_store_accumulators_without_post_ops(
             uzp1(accm(ld_block2, 0, 0, 0).h, z_tmp_1().h, z_tmp_2().h);
             uzp1(accm(ld_block2, 0, 0, 1).h, z_tmp_3().h, z_tmp_4().h);
 
-            const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
             int bd = bd2 * brg.bd_block2;
             int ld = ld2 * brg.ld_block2;
             const int offset00 = brg.typesize_C * (bd * brg.LDC + ld * brg.ld_block);
@@ -1695,11 +1723,18 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
 *   Some design question:
 *   1. is microkernel capable of using all zreg?
 */
-void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
-        bool is_bdb_tail, int ld_block2, 
+void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
+        int bd_block2,
+        bool is_bdb_tail, 
+        int ld_block2, 
         bool is_rd2_tail, 
         bool is_rd_tail, 
         bool is_ld_tail) {
+    
+    // for futher tunning unrolling params.
+    constexpr int num_bd_block2 = 1;
+    constexpr int num_ld_block2 = 1;
+
     // zreg 0-3 is used as tmp
     ZReg ma0 = ZReg(8);
     ZReg ma1 = ZReg(13);
@@ -1719,7 +1754,6 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
     assert(is_bdb_tail == false);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     int bd_block2 = brg.bd_block2;
-    PReg pred_load_b = P_ALL_ONE;
     
     PReg pred_load_a = P_ALL_ONE;
     if (is_rd2_tail){
@@ -1730,13 +1764,23 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
         set_preg(pred_load_a.h , brg.rdb_tail, X_TMP_0, X_TMP_1);
     }
 
+    bool is_ld2_tail = (ld_block2 != brg.ld_block2);
+    PReg pred_load_b = P_ALL_ONE;
+    if (is_ld2_tail){
+        pred_load_b = P_TMP_0;
+        set_preg(pred_load_b.h , brg.ld_block, X_TMP_0, X_TMP_1); 
+    } else if (is_ld_tail){
+        pred_load_a = P_TMP_0;
+        set_preg(pred_load_a.h , brg.ldb_tail, X_TMP_0, X_TMP_1);
+    }
+
     // Specialized helper to load 4 rows of B matrix at RD indices [start_rd, start_rd+3].
     // If is_rd_tail is set, applies RD-tail masking: loads only valid rows, zeroes the rest.
     // Used only when start_rd == 0 or 4 (i.e., first or second half of an 8-row block).
     auto load_matrix_b_block_halfwords = [&](int ld, int start_rd) {
         auto load_or_zero = [&](const ZReg &reg, bool is_load, int rd_idx) {
             if (is_load) {
-                ld1h(reg.h, pred_load_b, ptr(reg_aux_B, B_offset(ld, rd_idx)));
+                ld1h(reg.h, pred_load_b / T_z, ptr(reg_aux_B, B_offset(ld, rd_idx)));
             } else {
                 dup(reg.h, 0);
             }
@@ -1749,12 +1793,12 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
     };
 
     // inner most loop computes A ( 2 * 8 ) * B (8 * 8) = C ( 2 * 8)
-    for (int bd = 0; bd < bd_block2 ; bd ++ ) {
-        for (int ld = 0; ld < ld_block2; ld++) {
-            ZReg mc00 = fmmla_accm(bd_block2, ld_block2, bd, ld, 0, 0);
-            ZReg mc01 = fmmla_accm(bd_block2, ld_block2, bd, ld, 0, 1);
-            ZReg mc02 = fmmla_accm(bd_block2, ld_block2, bd, ld, 1, 0);
-            ZReg mc03 = fmmla_accm(bd_block2, ld_block2, bd, ld, 1, 1);
+    for (int bd2 = 0; bd2 <  num_bd_block2 ; bd2 ++ ) {
+        for (int ld2 = 0; ld2 <  num_ld_block2 ; ld2++) {
+            ZReg mc00 = fmmla_accm(bd_block2, ld_block2, bd2, ld2, 0, 0);
+            ZReg mc01 = fmmla_accm(bd_block2, ld_block2, bd2, ld2, 0, 1);
+            ZReg mc02 = fmmla_accm(bd_block2, ld_block2, bd2, ld2, 1, 0);
+            ZReg mc03 = fmmla_accm(bd_block2, ld_block2, bd2, ld2, 1, 1);
 
             ld1h(load0.h, pred_load_a, ptr(reg_aux_A, A_offset(0, 0)));
             ld1h(load1.h, pred_load_a, ptr(reg_aux_A, A_offset(1, 0)));
@@ -1764,7 +1808,7 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
                 zip2(ma1.d, load0.d, load1.d);
             }
 
-            load_matrix_b_block_halfwords(ld, 0);
+            load_matrix_b_block_halfwords(ld2, 0);
 
             zip1(trans_tmp0.h, load0.h, load1.h);
             zip1(trans_tmp1.h, load2.h, load3.h);
@@ -1773,23 +1817,32 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(int bd_block2,
             zip2(mb1.s, trans_tmp0.s, trans_tmp1.s);
 
             bfmmla(mc00.s, ma0.h, mb0.h);
-            bfmmla(mc01.s, ma0.h, mb1.h);
-            bfmmla(mc02.s, ma0.h, mb2.h);
-            bfmmla(mc03.s, ma0.h, mb3.h);
+            if (!is_ld_tail){
+               bfmmla(mc01.s, ma0.h, mb1.h); 
+            }
+            if (!(is_ld_tail || is_ld2_tail)){
+                bfmmla(mc02.s, ma0.h, mb2.h);
+                bfmmla(mc03.s, ma0.h, mb3.h); 
+            }
 
             if (is_rd2_tail || is_rd_tail) continue;
 
-            load_matrix_b_block_halfwords(ld, 4);
+            load_matrix_b_block_halfwords(ld2, 4);
             zip1(trans_tmp0.h, load0.h, load1.h);
             zip1(trans_tmp1.h, load2.h, load3.h);
 
             zip1(mb0.s, trans_tmp0.s, trans_tmp1.s);
             zip2(mb1.s, trans_tmp0.s, trans_tmp1.s);
 
-            bfmmla(mc00.s, ma1.h, mb0.h);
-            bfmmla(mc01.s, ma1.h, mb1.h);
-            bfmmla(mc02.s, ma1.h, mb2.h);
-            bfmmla(mc03.s, ma1.h, mb3.h);
+            bfmmla(mc00.s, ma0.h, mb0.h);
+            if (!is_ld_tail){
+               bfmmla(mc01.s, ma0.h, mb1.h); 
+            }
+            if (!(is_ld_tail || is_ld2_tail)){
+                bfmmla(mc02.s, ma0.h, mb2.h);
+                bfmmla(mc03.s, ma0.h, mb3.h); 
+            }
+
         }
     }
 }
@@ -1805,8 +1858,6 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
     copy_post_ops_stack_values_to_aux(is_reg_tail);
     
     // this function is complex due to online packing of matrix A and B.
-    // which requires the kernel to process sve_legth / sizeof element along rd 
-    // instead of simple rd_block.
     // this could be simplified once we move the packing function out.
     auto sbgemm_ld_loop_body_sve_128 = [=](int vpad) -> void {
         assert(vpad == 0); 

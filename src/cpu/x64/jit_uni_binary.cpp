@@ -920,9 +920,17 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
+    const bool postops_per_w_broadcast_exists = pd()->get_conf().postops_per_w_broadcast_exists;
     const dim_t MB = dims[0];
-    const dim_t C = ndims >= 2 ? dims[1] * dims[2] : 1;
-    const dim_t SP = ndims >= 3 ? utils::array_product(dims + 3, ndims - 3) : 1;
+    dim_t C = 1;
+    dim_t SP = 1;
+    if (postops_per_w_broadcast_exists) {
+        C = (ndims >= 3) ? dims[1] * dims[2] : 1;
+        SP = (ndims >= 4) ? utils::array_product(dims + 3, ndims - 3) : 1;
+    } else {
+        C = (ndims >= 2) ? dims[1] : 1;
+        SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
+    }
 
     const auto &bcast_dims = pd()->broadcast_dims();
 

@@ -185,6 +185,22 @@ bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
             });
 }
 
+bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+            [&](const post_ops_t::entry_t &entry) -> bool {
+                if (entry.is_like_binary()) {
+                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                            get_src1_desc(entry, dst_d), dst_d,
+                            supported_strategy_set);
+                    return bcast_type == broadcasting_strategy_t::per_w
+                            || bcast_type == broadcasting_strategy_t::per_mb_w;
+                }
+                return false;
+            });
+}
+
 bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set,

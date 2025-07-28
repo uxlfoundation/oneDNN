@@ -63,6 +63,10 @@ bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const bcast_set_t &supported_strategy_set,
         const std::function<bool(const memory_desc_wrapper &)> &predicate);
 
+bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set);
+
 /*
  * Represents params related to all binary post-ops right-hand side arguments
  * (arg1) that don't change during jit_uni_binary_injector_t object lifetime

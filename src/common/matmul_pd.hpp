@@ -221,7 +221,8 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_SRC) {
                 ok = ok
                         && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K());
+                                src_qmask_M() + src_qmask_K(),
+                                full_tensor_mask());
                 ok = ok
                         && IMPLICATION((mask & src_qmask_K()),
                                 !scales.get(arg).has_default_groups());

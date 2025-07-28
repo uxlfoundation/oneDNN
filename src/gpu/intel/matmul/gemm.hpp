@@ -58,19 +58,10 @@ struct gemm_t : public primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
-            auto maybe_reshape
-                    = [&](dims_t &orig_a_dims, dims_t &orig_b_dims,
-                              dims_t &orig_c_dims, dims_t &orig_bias_dims,
-                              const int orig_dims) -> status_t {
+            auto maybe_reshape = [&](const int orig_dims) -> status_t {
                 int batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
-                }
-                for (int i = 0; i < orig_dims; i++) {
-                    orig_a_dims[i] = a_md->dims[i];
-                    orig_b_dims[i] = b_md->dims[i];
-                    orig_c_dims[i] = c_md->dims[i];
-                    orig_bias_dims[i] = bias_md->dims[i];
                 }
                 // for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
                 bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
@@ -318,10 +309,7 @@ struct gemm_t : public primitive_t {
             CHECK(gemm_attr.set_accumulation_mode(attr()->acc_mode_));
             gemm_attr.deterministic_ = attr()->deterministic_;
 
-            dims_t orig_a_dims, orig_b_dims, orig_c_dims, orig_bias_dims;
-            bool reshape = maybe_reshape(orig_a_dims, orig_b_dims, orig_c_dims,
-                                   orig_bias_dims, orig_dims)
-                    == status::success;
+            UNUSED(maybe_reshape(orig_dims));
 
             if (!attr()->post_ops_.has_default_values()) {
                 gemm_attr.post_ops_ = post_ops;
@@ -340,17 +328,6 @@ struct gemm_t : public primitive_t {
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            if (reshape) {
-                CHECK(memory_desc_reshape(
-                        src_md_, src_md_, orig_dims, orig_a_dims));
-                CHECK(memory_desc_reshape(
-                        weights_md_, weights_md_, orig_dims, orig_b_dims));
-                CHECK(memory_desc_reshape(
-                        dst_md_, dst_md_, orig_dims, orig_c_dims));
-                if (with_bia)
-                    CHECK(memory_desc_reshape(
-                            bias_md_, bias_md_, orig_dims, orig_bias_dims));
-            }
             init_scratchpad();
 
             return status::success;
@@ -359,11 +336,27 @@ struct gemm_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> gemm_pd_;
 
     private:
+        // We cannot change the number of dimensions in the input mds.
+        // Grab the gemm_pd_ mds (which should have resolved any tags
+        // by now) and unsquash the squashed dims
         status_t set_default_params() {
-            src_md_ = *gemm_pd_->arg_md(DNNL_ARG_SRC_0);
-            weights_md_ = *gemm_pd_->arg_md(DNNL_ARG_SRC_1);
-            bias_md_ = *gemm_pd_->arg_md(DNNL_ARG_BIAS);
-            dst_md_ = *gemm_pd_->arg_md(DNNL_ARG_DST);
+            auto update_md
+                    = [](memory_desc_t &md,
+                              const memory_desc_t &reshaped_md) -> status_t {
+                if (md.ndims == reshaped_md.ndims) {
+                    md = reshaped_md;
+                } else {
+                    CHECK(memory_desc_reshape(
+                            md, reshaped_md, md.ndims, md.dims));
+                }
+                return status::success;
+            };
+
+            CHECK(update_md(src_md_, *gemm_pd_->arg_md(DNNL_ARG_SRC_0)));
+            CHECK(update_md(weights_md_, *gemm_pd_->arg_md(DNNL_ARG_SRC_1)));
+            CHECK(update_md(dst_md_, *gemm_pd_->arg_md(DNNL_ARG_DST)));
+            if (with_bias())
+                CHECK(update_md(bias_md_, *gemm_pd_->arg_md(DNNL_ARG_BIAS)));
             return status::success;
         }
 

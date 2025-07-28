@@ -222,196 +222,205 @@ partition_data_displacer_t::partition_data_displacer_t(
             }
         }
 
-        // Alternatively, looking for Add->SoftMax chain, which represents
-        // explicit SDPA mask, and should be filled with upper-corner with -inf:
-        // 0 -inf -inf -inf
-        // 0    0 -inf -inf
-        // 0    0    0 -inf
-        // 0    0    0    0
-        // This is done to avoid taking future tokens into account by
-        // influencing SoftMax input values.
-        while (aop.kind_ == "Add" || aop.kind_ == "Select") {
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_op->kind_ != "SoftMax") break;
+        if (dg.get_recognized_pattern() == graph_recognized_pattern_t::sdpa) {
+            // Alternatively, looking for Add->SoftMax chain, which represents
+            // explicit SDPA mask, and should be filled with upper-corner with -inf:
+            // 0 -inf -inf -inf
+            // 0    0 -inf -inf
+            // 0    0    0 -inf
+            // 0    0    0    0
+            // This is done to avoid taking future tokens into account by
+            // influencing SoftMax input values.
+            while (aop.kind_ == "Add" || aop.kind_ == "Select") {
+                auto *aop_out_lt = &aop.out_lts_[0];
+                auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_op->kind_ != "SoftMax") break;
 
-            // Softmax must be a part of same partition as the mask. This is to
-            // avoid cases, where mask is the last op in the partition, from
-            // being modified.
-            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
+                // Softmax must be a part of same partition as the mask. This is to
+                // avoid cases, where mask is the last op in the partition, from
+                // being modified.
+                if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
 
-            // Search for an input lt without a parent, this is the one to
-            // modify for both explicit and implicit masks.
-            const deserialized_lt_t *causal_mask_lt = nullptr;
-            size_t offset = SIZE_MAX;
-            size_t qk_data_offset = SIZE_MAX;
-            // Select condition having a parent or not is the only reliable
-            // difference between explicit and implicit causal mask.
-            bool select_cond_has_parent = false;
-            // Need to iterate over all inputs to handle padding mask expressed
-            // through Select op.
-            for (size_t i = 0; i < aop.in_lts_.size(); i++) {
-                auto *aop_in_lt = &aop.in_lts_[i];
-                auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
-                if (!parent_op->empty()) {
-                    if (aop_in_lt->get_data_type()
-                            != logical_tensor::data_type::boolean) {
-                        // This is the qk_data, need to know its offset to
-                        // properly fill condition for padding mask.
-                        qk_data_offset = i;
-                    } else {
-                        // This means it's implicit causal mask.
-                        select_cond_has_parent = true;
-                    }
-                    continue;
-                }
-
-                // Explicit padding mask expressed through the Select op would
-                // have two user inputs: condition, hinting where padding
-                // occurred and a special value (-inf) to use. In such scenario,
-                // unlike for implicit causal mask, it's required to update the
-                // condition to always take qk values instead of a special one.
-                //
-                // Checking for data type to make sure that in case of two user
-                // inputs, the condition one will be updated. For implicit
-                // causal mask, the condition would have a parent and a check
-                // for `causal_mask_lt` being non-empty will fail.
-                if (causal_mask_lt
-                        && aop_in_lt->get_data_type()
-                                != logical_tensor::data_type::boolean)
-                    continue;
-
-                causal_mask_lt = aop_in_lt;
-                offset = i;
-            }
-            // No suitable tensor/subgraph for a mask displacement.
-            if (!causal_mask_lt) break;
-
-            filling_type_t filling_type = filling_type_t::undef;
-            std::string cfg_name;
-            float user_set_value = 0.f;
-            if (aop.kind_ == "Add") {
-                const auto ndims = causal_mask_lt->shape_.size();
-                if (ndims < 2) {
-                    BENCHDNN_PRINT(7, "%s\n",
-                            "[DISPLACE]: Causal mask ndims is less than 2");
-                    break;
-                }
-
-                const auto M = causal_mask_lt->shape_[ndims - 2];
-                if (M == 1) {
-                    // This is a padding mask case, when padded tokens should
-                    // be removed from the final computations. In case of
-                    // benchdnn, there's no such thing as padding as all tokens
-                    // are computed. To avoid numerical instabilities, a zero
-                    // mask can be applied without compromising validation
-                    // capabilities.
-                    filling_type = filling_type_t::fixed_setting;
-                    cfg_name = "Explicit_padding_mask";
-                } else {
-                    // This is a look-ahead (or causal) mask case, when future
-                    // tokens (row < col) are set to infinity to remove all
-                    // connections of current tokens to unissued ones.
-                    filling_type = filling_type_t::causal_mask;
-                }
-            } else if (aop.kind_ == "Select") {
-                if (select_cond_has_parent) {
-                    // Implicit causal mask case.
-                    filling_type = filling_type_t::fixed_setting;
-                    user_set_value = -INFINITY;
-                    cfg_name = "Implicit_causal_mask";
-                } else {
-                    // Padding mask.
-                    assert(qk_data_offset == 1 || qk_data_offset == 2);
-                    // Fill condition depending on qk values tensor to use only
-                    // its values, which is equivalent of not using a mask.
-                    filling_type = filling_type_t::fixed_setting;
-                    if (qk_data_offset == 1) {
-                        user_set_value = 1.f;
-                    } else if (qk_data_offset == 2) {
-                        user_set_value = 0.f;
-                    }
-                    cfg_name = "Explicit_padding_mask";
-                }
-            }
-
-            if (filling_type == filling_type_t::undef) {
-                BENCHDNN_PRINT(
-                        7, "%s\n", "[DISPLACE]: Filling type was not set");
-                break;
-            } else if (filling_type == filling_type_t::fixed_setting) {
-                displace_args_.emplace(causal_mask_lt->id_,
-                        displace_args_t {aop, offset, *causal_mask_lt,
-                                filling_type, {{user_set_value}, cfg_name}});
-            } else if (filling_type == filling_type_t::causal_mask) {
-                // Causal mask filling
-                displace_args_.emplace(causal_mask_lt->id_,
-                        displace_args_t {
-                                aop, offset, *causal_mask_lt, filling_type});
-            }
-            break;
-        }
-
-        // Fill proper data for bottom-right implicit casual mask
-        while (aop.kind_ == "Add") {
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_sub_op->kind_ != "Subtract") break;
-
-            auto *child_op_out_lt = &child_sub_op->out_lts_[0];
-            auto *next_child_op = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
-            if (next_child_op->kind_ != "GreaterEqual") break;
-
-            const std::string cfg_name = "Bottom_right_implicit_padding_mask";
-            static constexpr int seq_len_q = 0;
-            static constexpr int seq_len_kv = 1;
-
-            // The following subtract and greaterEqual must also be a part of
-            // the partition.
-            if (op_ids_set_.find(child_sub_op->id_) == op_ids_set_.end()
-                    || op_ids_set_.find(next_child_op->id_)
-                            == op_ids_set_.end())
-                break;
-
-            const auto set_seq_len_displace_args =
-                    [&](const deserialized_op_t *op, int which_seq_len) {
-                        const size_t ndims = op->out_lts_[0].shape_.size();
-                        const size_t seq_len_idx = (which_seq_len == seq_len_q)
-                                ? ndims - 2
-                                : ndims - 1;
-
-                        for (size_t i = 0; i < op->in_lts_.size(); i++) {
-                            auto *parent_op = &dg_->get_op_by_out_lt(
-                                    op->in_lts_[i].id_);
-                            // For add->sub->ge, we consider the inputs of add
-                            // and sub as scalars if they have no parent
-                            // tensors.
-                            if (parent_op->empty()) {
-                                float user_set_value = static_cast<float>(
-                                        op->in_lts_[1 - i].shape_[seq_len_idx]);
-                                displace_args_.emplace(op->in_lts_[i].id_,
-                                        displace_args_t {*op, i, op->in_lts_[i],
-                                                filling_type_t::fixed_setting,
-                                                {{user_set_value}, cfg_name}});
-                            }
+                // Search for an input lt without a parent, this is the one to
+                // modify for both explicit and implicit masks.
+                const deserialized_lt_t *causal_mask_lt = nullptr;
+                size_t offset = SIZE_MAX;
+                size_t qk_data_offset = SIZE_MAX;
+                // Select condition having a parent or not is the only reliable
+                // difference between explicit and implicit causal mask.
+                bool select_cond_has_parent = false;
+                // Need to iterate over all inputs to handle padding mask expressed
+                // through Select op.
+                for (size_t i = 0; i < aop.in_lts_.size(); i++) {
+                    auto *aop_in_lt = &aop.in_lts_[i];
+                    auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+                    if (!parent_op->empty()) {
+                        if (aop_in_lt->get_data_type()
+                                != logical_tensor::data_type::boolean) {
+                            // This is the qk_data, need to know its offset to
+                            // properly fill condition for padding mask.
+                            qk_data_offset = i;
+                        } else {
+                            // This means it's implicit causal mask.
+                            select_cond_has_parent = true;
                         }
-                    };
+                        continue;
+                    }
 
-            // The bottom-right implicit causal mask handles future tokens
-            // differently compared to the top-left casual mask. To support
-            // it, the result of `GenIndex` on rows should subtract `seq_len_q`
-            // and add `seq_len_kv` to generate masks such as:
-            // # s_q=2, s_kv=5            |    # s_q=5, s_kv=2
-            //  0    0    0    0  -inf    |      -inf  -inf
-            //  0    0    0    0    0     |      -inf  -inf
-            //                            |      -inf  -inf
-            //                            |        0   -inf
-            //                            |        0    0
-            // Add the sequence length of Key and Value.
-            set_seq_len_displace_args(&aop, seq_len_kv);
-            // Subtract the sequence lenght of Query.
-            set_seq_len_displace_args(child_sub_op, seq_len_q);
-            break;
+                    // Explicit padding mask expressed through the Select op would
+                    // have two user inputs: condition, hinting where padding
+                    // occurred and a special value (-inf) to use. In such scenario,
+                    // unlike for implicit causal mask, it's required to update the
+                    // condition to always take qk values instead of a special one.
+                    //
+                    // Checking for data type to make sure that in case of two user
+                    // inputs, the condition one will be updated. For implicit
+                    // causal mask, the condition would have a parent and a check
+                    // for `causal_mask_lt` being non-empty will fail.
+                    if (causal_mask_lt
+                            && aop_in_lt->get_data_type()
+                                    != logical_tensor::data_type::boolean)
+                        continue;
+
+                    causal_mask_lt = aop_in_lt;
+                    offset = i;
+                }
+                // No suitable tensor/subgraph for a mask displacement.
+                if (!causal_mask_lt) break;
+
+                filling_type_t filling_type = filling_type_t::undef;
+                std::string cfg_name;
+                float user_set_value = 0.f;
+                if (aop.kind_ == "Add") {
+                    const auto ndims = causal_mask_lt->shape_.size();
+                    if (ndims < 2) {
+                        BENCHDNN_PRINT(7, "%s\n",
+                                "[DISPLACE]: Causal mask ndims is less than 2");
+                        break;
+                    }
+
+                    const auto M = causal_mask_lt->shape_[ndims - 2];
+                    if (M == 1) {
+                        // This is a padding mask case, when padded tokens should
+                        // be removed from the final computations. In case of
+                        // benchdnn, there's no such thing as padding as all tokens
+                        // are computed. To avoid numerical instabilities, a zero
+                        // mask can be applied without compromising validation
+                        // capabilities.
+                        filling_type = filling_type_t::fixed_setting;
+                        cfg_name = "Explicit_padding_mask";
+                    } else {
+                        // This is a look-ahead (or causal) mask case, when future
+                        // tokens (row < col) are set to infinity to remove all
+                        // connections of current tokens to unissued ones.
+                        filling_type = filling_type_t::causal_mask;
+                    }
+                } else if (aop.kind_ == "Select") {
+                    if (select_cond_has_parent) {
+                        // Implicit causal mask case.
+                        filling_type = filling_type_t::fixed_setting;
+                        user_set_value = -INFINITY;
+                        cfg_name = "Implicit_causal_mask";
+                    } else {
+                        // Padding mask.
+                        assert(qk_data_offset == 1 || qk_data_offset == 2);
+                        // Fill condition depending on qk values tensor to use only
+                        // its values, which is equivalent of not using a mask.
+                        filling_type = filling_type_t::fixed_setting;
+                        if (qk_data_offset == 1) {
+                            user_set_value = 1.f;
+                        } else if (qk_data_offset == 2) {
+                            user_set_value = 0.f;
+                        }
+                        cfg_name = "Explicit_padding_mask";
+                    }
+                }
+
+                if (filling_type == filling_type_t::undef) {
+                    BENCHDNN_PRINT(
+                            7, "%s\n", "[DISPLACE]: Filling type was not set");
+                    break;
+                } else if (filling_type == filling_type_t::fixed_setting) {
+                    displace_args_.emplace(causal_mask_lt->id_,
+                            displace_args_t {aop, offset, *causal_mask_lt,
+                                    filling_type,
+                                    {{user_set_value}, cfg_name}});
+                } else if (filling_type == filling_type_t::causal_mask) {
+                    // Causal mask filling
+                    displace_args_.emplace(causal_mask_lt->id_,
+                            displace_args_t {aop, offset, *causal_mask_lt,
+                                    filling_type});
+                }
+                break;
+            }
+
+            // Fill proper data for bottom-right implicit casual mask
+            while (aop.kind_ == "Add") {
+                auto *aop_out_lt = &aop.out_lts_[0];
+                auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_sub_op->kind_ != "Subtract") break;
+
+                auto *child_op_out_lt = &child_sub_op->out_lts_[0];
+                auto *next_child_op
+                        = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
+                if (next_child_op->kind_ != "GreaterEqual") break;
+
+                const std::string cfg_name
+                        = "Bottom_right_implicit_padding_mask";
+                static constexpr int seq_len_q = 0;
+                static constexpr int seq_len_kv = 1;
+
+                // The following subtract and greaterEqual must also be a part of
+                // the partition.
+                if (op_ids_set_.find(child_sub_op->id_) == op_ids_set_.end()
+                        || op_ids_set_.find(next_child_op->id_)
+                                == op_ids_set_.end())
+                    break;
+
+                const auto set_seq_len_displace_args =
+                        [&](const deserialized_op_t *op, int which_seq_len) {
+                            const size_t ndims = op->out_lts_[0].shape_.size();
+                            const size_t seq_len_idx
+                                    = (which_seq_len == seq_len_q) ? ndims - 2
+                                                                   : ndims - 1;
+
+                            for (size_t i = 0; i < op->in_lts_.size(); i++) {
+                                auto *parent_op = &dg_->get_op_by_out_lt(
+                                        op->in_lts_[i].id_);
+                                // For add->sub->ge, we consider the inputs of add
+                                // and sub as scalars if they have no parent
+                                // tensors.
+                                if (parent_op->empty()) {
+                                    float user_set_value = static_cast<float>(
+                                            op->in_lts_[1 - i]
+                                                    .shape_[seq_len_idx]);
+                                    displace_args_.emplace(op->in_lts_[i].id_,
+                                            displace_args_t {*op, i,
+                                                    op->in_lts_[i],
+                                                    filling_type_t::
+                                                            fixed_setting,
+                                                    {{user_set_value},
+                                                            cfg_name}});
+                                }
+                            }
+                        };
+
+                // The bottom-right implicit causal mask handles future tokens
+                // differently compared to the top-left casual mask. To support
+                // it, the result of `GenIndex` on rows should subtract `seq_len_q`
+                // and add `seq_len_kv` to generate masks such as:
+                // # s_q=2, s_kv=5            |    # s_q=5, s_kv=2
+                //  0    0    0    0  -inf    |      -inf  -inf
+                //  0    0    0    0    0     |      -inf  -inf
+                //                            |      -inf  -inf
+                //                            |        0   -inf
+                //                            |        0    0
+                // Add the sequence length of Key and Value.
+                set_seq_len_displace_args(&aop, seq_len_kv);
+                // Subtract the sequence lenght of Query.
+                set_seq_len_displace_args(child_sub_op, seq_len_q);
+                break;
+            }
         }
 
         // Fill proper data for softmax stats in sdpa backward graph.

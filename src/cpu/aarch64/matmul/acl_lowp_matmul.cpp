@@ -81,6 +81,15 @@ status_t acl_lowp_matmul_t::pd_t::init(engine_t *engine) {
     const dim_t wei_batch = helper.wei_batch();
 
     using namespace data_type;
+    const bool is_s8s8f32 = (src_d.data_type() == s8 && wei_d.data_type() == s8
+            && dst_d.data_type() == f32);
+    // if s8s8f32 & 2 dimensional matmul, return unimplemented
+    VDISPATCH_MATMUL(!(is_s8s8f32 && dst_d.ndims() == 2),
+            "2D shapes slower with lowp for s8s8f32");
+    // if s8s8f32 & 3 dimensional matmul & D=1 (for AxBxC:DxCxE), return unimplemented
+    VDISPATCH_MATMUL(!(is_s8s8f32 && dst_d.ndims() == 3 && wei_batch == 1
+                             && M * K * N < 5000000),
+            "heuristic threshold of M*K*N < 5,000,000");
 
     // Note that has_default_values checks the argument for default zero
     // points but skips the argument for scales. Hence they are the

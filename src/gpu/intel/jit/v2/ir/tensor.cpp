@@ -838,7 +838,7 @@ int layout_t::to_linear_index(const tile_t &tile, const coord_t &coord) const {
 }
 
 std::string layout_t::blocks_str() const {
-    if (blocks_.empty()) return "(scalar):" + type().str();
+    if (blocks_.empty()) return "(scalar)";
     std::string ret;
     expr_t stride(1);
     pvar_map_t<int> seen;

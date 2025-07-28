@@ -820,8 +820,8 @@ void kernel_desc_t::init_kernel_iface(kernel_iface_t &kernel_iface) const {
     }
 }
 
-static bool try_parse_internal_arg(std::string s, pvar_t &dim, dim_t &denom,
-        const std::string &suffix = {}) {
+static bool try_parse_internal_arg(std::string s, std::string &base_name,
+        dim_t &denom, const std::string &suffix = {}) {
     size_t pos;
     if (suffix.empty()) {
         pos = s.size();
@@ -838,32 +838,32 @@ static bool try_parse_internal_arg(std::string s, pvar_t &dim, dim_t &denom,
         denom = std::stoi(s.substr(pos));
         s = s.substr(0, divup_pos);
     }
-    dim = pvar_t(s);
+    base_name = s;
     return true;
 }
 
-bool try_register_internal_arg(
-        kernel_info_t &kernel_info, const expr_t &var, const tile_t &pvar_map) {
+bool try_register_internal_arg(kernel_info_t &kernel_info, const expr_t &var,
+        const std::unordered_map<std::string, dim_t> &var_map) {
     auto &type = var.type();
     auto &name = var.as<var_t>().name;
-    pvar_t dim;
+    std::string base_name;
     dim_t denom = 1;
-    if (try_parse_internal_arg(name, dim, denom, "_magic")) {
+    if (try_parse_internal_arg(name, base_name, denom, "_magic")) {
         gpu_assert(var.type().is_u64());
         uint64_t value = ir_utils::idiv_magicgu_packed(
-                into<uint32_t>(utils::div_up(pvar_map.at(dim), denom)));
+                into<uint32_t>(utils::div_up(var_map.at(base_name), denom)));
         kernel_info.set_internal_arg(name, value);
         return true;
     }
-    if (try_parse_internal_arg(name, dim, denom)) {
-        gpu_assert(!dim.is_undef());
+    if (try_parse_internal_arg(name, base_name, denom)) {
+        gpu_assert(!base_name.empty());
         if (type == type_t::s32()) {
-            int32_t value
-                    = into<int32_t>(utils::div_up(pvar_map.at(dim), denom));
+            int32_t value = into<int32_t>(
+                    utils::div_up(var_map.at(base_name), denom));
             kernel_info.set_internal_arg(name, value);
         } else if (type == type_t::u32()) {
-            uint32_t value
-                    = into<uint32_t>(utils::div_up(pvar_map.at(dim), denom));
+            uint32_t value = into<uint32_t>(
+                    utils::div_up(var_map.at(base_name), denom));
             kernel_info.set_internal_arg(name, value);
         }
         return true;
@@ -922,9 +922,9 @@ void init_kernel_info(kernel_info_t &kernel_info, const problem_t &prb,
         const kernel_desc_t &desc, const grid_t &tg_grid,
         const tile_t &grid_dims, dim_t max_tgs, dim_t &stream_k_tg0,
         dim_t &stream_k_tg1) {
-    auto pvar_map = prb.shape();
+    auto var_map = prb.var_map();
     for (auto &d : grid_dims) {
-        pvar_map[pvar_t(d.str() + "_grid_size")] = grid_dims.at(d);
+        var_map[d.str() + "_grid_size"] = grid_dims.at(d);
     }
     if (desc.use_stream_k) {
         dim_t k_iters = 1;
@@ -947,18 +947,18 @@ void init_kernel_info(kernel_info_t &kernel_info, const problem_t &prb,
         dim_t total_iters_tail = bmn_tiles * iters_per_tile_tail;
         dim_t iters_per_tg = utils::div_up(total_iters, stream_k_tg0);
         dim_t iters_per_tg_tail = utils::div_up(total_iters_tail, stream_k_tg0);
-        pvar_map[pvar_t("sk_iters_per_tile_main")] = iters_per_tile;
-        pvar_map[pvar_t("sk_total_iters_main")] = total_iters;
-        pvar_map[pvar_t("sk_iters_per_tg_main")] = iters_per_tg;
-        pvar_map[pvar_t("sk_iters_per_tile_tail")] = iters_per_tile_tail;
-        pvar_map[pvar_t("sk_total_iters_tail")] = total_iters_tail;
-        pvar_map[pvar_t("sk_iters_per_tg_tail")] = iters_per_tg_tail;
-        pvar_map[pvar_t("sk_k_batches")] = stream_k_tg1;
+        var_map["sk_iters_per_tile_main"] = iters_per_tile;
+        var_map["sk_total_iters_main"] = total_iters;
+        var_map["sk_iters_per_tg_main"] = iters_per_tg;
+        var_map["sk_iters_per_tile_tail"] = iters_per_tile_tail;
+        var_map["sk_total_iters_tail"] = total_iters_tail;
+        var_map["sk_iters_per_tg_tail"] = iters_per_tg_tail;
+        var_map["sk_k_batches"] = stream_k_tg1;
     }
     for (int i = 0; i < kernel_info.nargs(); i++) {
         auto &var = kernel_info.arg_var(i);
         if (var.type().is_scalar()) {
-            bool ok = try_register_internal_arg(kernel_info, var, pvar_map);
+            bool ok = try_register_internal_arg(kernel_info, var, var_map);
             gpu_assert(ok) << "Cannot handle argument: " << var;
         }
     }

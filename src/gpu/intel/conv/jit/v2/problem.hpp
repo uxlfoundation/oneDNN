@@ -53,6 +53,7 @@ public:
         return src_tag_;
     }
     const tile_t &shape() const { return shape_; }
+    std::unordered_map<std::string, dim_t> var_map() const;
     bool with_groups() const { return with_groups_; }
     bool with_scales() const { return with_scales_; }
     bool with_post_ops() const { return with_post_ops_; }

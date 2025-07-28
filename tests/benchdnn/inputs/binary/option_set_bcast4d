@@ -1,0 +1,35 @@
+# base full broadcasts (larger spatial)
+1x15x8x8:1x1x1x1
+1x17x7x5:1x1x1x1
+1x16x8x8:1x1x1x1
+
+# rhs per-channel (per_oc) to hit tails for C=15,17
+1x15x8x8:1x15x1x1
+1x17x7x5:1x17x1x1
+1x16x8x8:1x16x1x1
+
+# rhs per-width (per_w) patterns
+1x15x8x8:1x1x1x8
+1x17x7x5:1x1x1x5
+1x16x8x8:1x1x1x8
+
+# mixed spatial broadcasting
+1x15x9x7:1x1x9x1
+1x17x6x10:1x1x1x10
+1x16x5x11:1x16x1x1
+
+# batch >1 and tails
+2x15x8x8:2x1x1x1
+2x17x7x5:2x17x1x1
+3x16x4x4:3x1x1x1
+
+# uneven spatial sizes to stress alignment
+1x15x3x17:1x1x1x17
+1x17x5x15:1x1x5x1
+1x16x13x2:1x1x13x1
+
+# full per-element rhs (same shape)
+1x15x8x8:1x15x8x8
+1x17x7x5:1x17x7x5
+1x16x8x8:1x16x8x8
+

@@ -1,0 +1,7 @@
+--reset
+--alg=mul
+--sdt=f32:f32
+--ddt=f32
+--attr-post-ops=add:f32:8,mul:s8+add:f32:8+sum:0.5+abs
+--batch=option_set_bcast4d
+

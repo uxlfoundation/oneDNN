@@ -63,6 +63,8 @@ struct jit_uni_binary_t : public primitive_t {
                 const memory_desc_wrapper &src1_d) const;
         bool is_applicable();
 
+        void init_scratchpad();
+
         jit_binary_conf_t conf_;
     };
 

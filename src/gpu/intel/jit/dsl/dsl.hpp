@@ -155,13 +155,19 @@ struct transform_t {
 };
 
 struct tensor_t {
+    tensor_t sub_tensor(const v2::layout_t &l, const icoord_t &coord) const {
+        return {buffer[layout.offset_in_bytes(coord)], l};
+    }
+
     std::string str() const {
         std::ostringstream oss;
         oss << "buffer:    " << buffer.str();
         oss << "layout: " << layout.str();
         return oss.str();
     }
+
     IR_DEFINE_DUMP()
+
     expr_t buffer;
     v2::layout_t layout;
 };

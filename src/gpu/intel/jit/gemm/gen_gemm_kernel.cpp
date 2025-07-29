@@ -677,8 +677,18 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     update_type(problem_.Ta, Ta_new, true);
     update_type(problem_.Tb, Tb_new, true);
     update_type(problem_.Tc, Tc_new, true);
-    update_type(problem_.Ta_ext, Ta_ext_new);
-    update_type(problem_.Tb_ext, Tb_ext_new);
+
+    // If the kernel uses tf32 types, interpret the buffer as tf32 without
+    // converting from fp32. This eliminates a rounding step, but improves performance
+    auto use_tf32 = [](Type &T, const Type &newT) {
+        if (newT == Type::tf32) {
+            gpu_assert(T == Type::f32)
+                    << "Unexpected use of tf32 for non-fp32 type";
+            T = Type::tf32;
+        }
+    };
+    use_tf32(problem_.Ta_ext, Ta_ext_new);
+    use_tf32(problem_.Tb_ext, Tb_ext_new);
 
     if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
 

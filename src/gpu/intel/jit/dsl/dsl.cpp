@@ -110,13 +110,13 @@ struct ctx_t {
         return {def(t, name, value, true), layout};
     }
 
-    expr_t let(type_t type, const std::string &name, const expr_t &value) {
+    expr_t let(type_t type, const std::string &name, expr_t value) {
         auto alloc_var = var(type, name);
-        append(let_t::make(alloc_var, value, {}));
+        append(let_t::make(alloc_var, std::move(value), {}));
         return alloc_var;
     }
-    expr_t let(const std::string &name, const expr_t &value) {
-        return let(value.type(), name, value);
+    expr_t let(const std::string &name, expr_t value) {
+        return let(value.type(), name, std::move(value));
     }
 
     void assume(const expr_t &e) { ctx_->add_constraint(e); }
@@ -139,6 +139,12 @@ struct ctx_t {
         gpu_assert(!stmts_stack_.empty())
                 << "Cannot instantiate " << stmt << " outside of a kernel";
         stmts().emplace_back(stmt);
+    }
+
+    void append(stmt_t &&stmt) {
+        gpu_assert(!stmts_stack_.empty())
+                << "Cannot instantiate " << stmt << " outside of a kernel";
+        stmts().emplace_back(std::move(stmt));
     }
 
     const ir_context_t *ir_ctx() const { return ctx_; }
@@ -237,6 +243,10 @@ void append(const stmt_t &stmt) {
     default_ctx().append(stmt);
 }
 
+void append(stmt_t &&stmt) {
+    default_ctx().append(std::move(stmt));
+}
+
 void assume(const expr_t &e) {
     default_ctx().assume(e);
 }
@@ -283,40 +293,42 @@ tensor_t def(const v2::layout_t &layout, const std::string &name,
     return default_ctx().def(layout, name, value);
 }
 
-lval_t &lval_t::operator=(const expr_t &obj) {
-    assign(this->var, obj);
+lval_t &lval_t::operator=(expr_t obj) {
+    assign(this->var, std::move(obj));
     return *this;
 }
 
-expr_t let(type_t type, const std::string &name, const expr_t &value) {
-    return default_ctx().let(type, name, value);
+expr_t let(type_t type, const std::string &name, expr_t value) {
+    return default_ctx().let(type, name, std::move(value));
 }
 
-expr_t let(const std::string &name, const expr_t &value) {
-    return default_ctx().let(name, value);
+expr_t let(const std::string &name, expr_t value) {
+    return default_ctx().let(name, std::move(value));
 }
 
 template <>
-void if_(const expr_t &cond, const stmt_t &if_body) {
+void if_(expr_t cond, stmt_t if_body) {
     if (is_const(cond))
-        append(to_cpp<bool>(cond) ? if_body : stmt_t());
+        append(to_cpp<bool>(cond) ? std::move(if_body) : stmt_t());
     else
-        append(if_t::make(cond, if_body));
-}
-template <>
-void if_(const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body) {
-    if (is_const(cond))
-        append(to_cpp<bool>(cond) ? if_body : else_body);
-    else
-        append(if_t::make(cond, if_body, else_body));
-}
-template <>
-void while_(const expr_t &cond, const stmt_t &body) {
-    append(while_t::make(cond, body));
+        append(if_t::make(std::move(cond), std::move(if_body)));
 }
 
-void assign(const expr_t &var, const expr_t &value) {
-    append(store_t::make(var, 0, value));
+template <>
+void if_(expr_t cond, stmt_t if_body, stmt_t else_body) {
+    if (is_const(cond))
+        append(to_cpp<bool>(cond) ? std::move(if_body) : std::move(else_body));
+    else
+        append(if_t::make(
+                std::move(cond), std::move(if_body), std::move(else_body)));
+}
+template <>
+void while_(expr_t cond, stmt_t body) {
+    append(while_t::make(std::move(cond), std::move(body)));
+}
+
+void assign(expr_t var, expr_t value) {
+    append(store_t::make(std::move(var), 0, std::move(value)));
 }
 
 enum class send_kind_t { load, prefetch, store };

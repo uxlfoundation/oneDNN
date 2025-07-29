@@ -217,7 +217,7 @@ class lval_t {
 public:
     lval_t(const expr_t &v) : var(v) {}
 
-    lval_t &operator=(const expr_t &obj);
+    lval_t &operator=(expr_t obj);
 
     lval_t sub(int off, int elems) const {
         assert(var.is<var_t>());
@@ -258,8 +258,8 @@ lval_t def(const std::string &name, const expr_t &value);
 
 tensor_t def(const v2::layout_t &layout, const std::string &name,
         const expr_t &value = {});
-expr_t let(type_t type, const std::string &name, const expr_t &value);
-expr_t let(const std::string &name, const expr_t &value);
+expr_t let(type_t type, const std::string &name, expr_t value);
+expr_t let(const std::string &name, expr_t value);
 
 void prefetch(const global_tensor_t &g, const transform_t &transform,
         const icoord_t &base);
@@ -271,19 +271,19 @@ void store(const global_tensor_t &g, const tensor_t &t,
 void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const tile_t &tile, const icoord_t &base, bool is_systolic);
 
-void assign(const expr_t &var, const expr_t &value);
+void assign(expr_t var, expr_t value);
 
 template <typename F>
-void if_(const expr_t &cond, F if_body) {
+void if_(expr_t cond, F if_body) {
     begin_scope();
     if_body();
-    if_(cond, pop_scope());
+    if_(std::move(cond), pop_scope());
 }
 template <>
-void if_(const expr_t &cond, const stmt_t &if_body);
+void if_(expr_t cond, stmt_t if_body);
 
 template <typename F, typename G>
-void if_(const expr_t &cond, const F &if_body, const G &else_body) {
+void if_(expr_t cond, F if_body, G else_body) {
     begin_scope();
     if_body();
     auto if_body_stmt = pop_scope();
@@ -292,19 +292,19 @@ void if_(const expr_t &cond, const F &if_body, const G &else_body) {
     else_body();
     auto else_body_stmt = pop_scope();
 
-    if_(cond, if_body_stmt, else_body_stmt);
+    if_(std::move(cond), if_body_stmt, else_body_stmt);
 }
 template <>
-void if_(const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body);
+void if_(expr_t cond, stmt_t if_body, stmt_t else_body);
 
 template <typename F>
-void while_(const expr_t &cond, F body) {
+void while_(expr_t cond, F body) {
     begin_scope();
     body();
-    while_(cond, pop_scope());
+    while_(std::move(cond), pop_scope());
 }
 template <>
-void while_(const expr_t &cond, const stmt_t &body);
+void while_(expr_t cond, stmt_t body);
 
 } // namespace dsl
 } // namespace jit

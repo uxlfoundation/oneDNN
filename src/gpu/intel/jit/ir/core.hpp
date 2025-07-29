@@ -1050,7 +1050,7 @@ public:
 
     expr_t() = default;
     expr_t(const object_t &obj) : object_t(obj) {}
-    expr_t(object_t &&obj) : object_t(obj) {}
+    expr_t(object_t &&obj) : object_t(std::move(obj)) {}
     expr_t &operator=(const object_t &obj) {
         object_t::operator=(obj);
         return *this;
@@ -1200,8 +1200,8 @@ class binary_op_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(binary_op_t)
 
-    static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b) {
-        return expr_t(new binary_op_t(op_kind, a, b));
+    static expr_t make(op_kind_t op_kind, expr_t a, expr_t b) {
+        return expr_t(new binary_op_t(op_kind, std::move(a), std::move(b)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1230,11 +1230,11 @@ public:
     expr_t b;
 
 private:
-    binary_op_t(op_kind_t op_kind, const expr_t &a, const expr_t &b)
+    binary_op_t(op_kind_t op_kind, expr_t &&a, expr_t &&b)
         : expr_impl_t(_type_info(), binary_op_type(op_kind, a, b))
         , op_kind(op_kind)
-        , a(a)
-        , b(b) {}
+        , a(std::move(a))
+        , b(std::move(b)) {}
 };
 
 // Boolean immediate value.
@@ -1278,8 +1278,7 @@ class cast_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(cast_t)
 
-    static expr_t make(
-            const type_t &type, const expr_t &expr, bool saturate = false) {
+    static expr_t make(const type_t &type, expr_t expr, bool saturate = false) {
         if (expr.type() == type) return expr;
         if (!saturate) {
             auto *expr_cast = expr.as_ptr<cast_t>();
@@ -1287,7 +1286,7 @@ public:
                     && type == expr_cast->expr.type())
                 return expr_cast->expr;
         }
-        return expr_t(new cast_t(type, expr, saturate));
+        return expr_t(new cast_t(type, std::move(expr), saturate));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1314,8 +1313,10 @@ public:
     bool saturate;
 
 private:
-    cast_t(const type_t &type, const expr_t &expr, bool saturate)
-        : expr_impl_t(_type_info(), type), expr(expr), saturate(saturate) {
+    cast_t(const type_t &type, expr_t &&expr, bool saturate)
+        : expr_impl_t(_type_info(), type)
+        , expr(std::move(expr))
+        , saturate(saturate) {
         if (!is_bool_vec_u16()) {
             gpu_assert(type.elems() == expr.type().elems())
                     << "Number of elements must match.";
@@ -1443,9 +1444,9 @@ class iif_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(iif_t);
 
-    static expr_t make(const expr_t &cond, const expr_t &true_expr,
-            const expr_t &false_expr) {
-        return expr_t(new iif_t(cond, true_expr, false_expr));
+    static expr_t make(expr_t cond, expr_t true_expr, expr_t false_expr) {
+        return expr_t(new iif_t(
+                std::move(cond), std::move(true_expr), std::move(false_expr)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1467,12 +1468,12 @@ public:
     expr_t false_expr;
 
 private:
-    iif_t(const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr)
+    iif_t(expr_t &&cond, expr_t &&true_expr, expr_t &&false_expr)
         : expr_impl_t(
                 _type_info(), common_type(true_expr.type(), false_expr.type()))
-        , cond(cond)
-        , true_expr(true_expr)
-        , false_expr(false_expr) {}
+        , cond(std::move(cond))
+        , true_expr(std::move(true_expr))
+        , false_expr(std::move(false_expr)) {}
 };
 
 // Linear combination expression:
@@ -1484,18 +1485,20 @@ private:
 class linear_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(linear_t)
-    static expr_t make(const expr_t &c, const std::vector<expr_t> &u_vec,
-            const std::vector<expr_t> &v_vec) {
-        return expr_t(new linear_t(c, u_vec, v_vec));
+    static expr_t make(
+            expr_t c, std::vector<expr_t> u_vec, std::vector<expr_t> v_vec) {
+        return expr_t(
+                new linear_t(std::move(c), std::move(u_vec), std::move(v_vec)));
     }
-    static expr_t make(const expr_t &c) { return make(c, {}, {}); }
-    static expr_t make(const expr_t &c, const std::vector<expr_t> &v_vec) {
+    static expr_t make(expr_t c) { return make(std::move(c), {}, {}); }
+    static expr_t make(expr_t c, std::vector<expr_t> v_vec) {
         std::vector<expr_t> ones(v_vec.size(), expr_t(1));
-        return make(c, ones, v_vec);
+        return make(std::move(c), std::move(ones), std::move(v_vec));
     }
-    static expr_t to_expr(const expr_t &c, const std::vector<expr_t> &u_vec,
-            const std::vector<expr_t> &v_vec) {
-        auto e = linear_t::make(c, u_vec, v_vec);
+    static expr_t to_expr(
+            expr_t c, std::vector<expr_t> u_vec, std::vector<expr_t> v_vec) {
+        auto e = linear_t::make(
+                std::move(c), std::move(u_vec), std::move(v_vec));
         return e.as<linear_t>().to_expr();
     }
     int nargs() const { return int(v_vec.size()); }
@@ -1520,12 +1523,12 @@ public:
     std::vector<expr_t> v_vec;
 
 private:
-    linear_t(const expr_t &c, const std::vector<expr_t> &u_vec,
-            const std::vector<expr_t> &v_vec)
+    linear_t(expr_t &&c, std::vector<expr_t> &&u_vec,
+            std::vector<expr_t> &&v_vec)
         : expr_impl_t(_type_info(), type_t::s32())
-        , c(c)
-        , u_vec(u_vec)
-        , v_vec(v_vec) {}
+        , c(std::move(c))
+        , u_vec(std::move(u_vec))
+        , v_vec(std::move(v_vec)) {}
 };
 
 // Updates `base_expr` and `off` so that after return:
@@ -1547,9 +1550,9 @@ public:
 
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of type.scalar() elements).
-    static expr_t make(const type_t &type, const expr_t &buf, const expr_t &off,
+    static expr_t make(const type_t &type, expr_t buf, expr_t off,
             int stride = default_stride) {
-        return expr_t(new load_t(type, buf, off, stride));
+        return expr_t(new load_t(type, std::move(buf), std::move(off), stride));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1575,11 +1578,10 @@ public:
     int stride;
 
 private:
-    load_t(const type_t &_type, const expr_t &_buf, const expr_t &_off,
-            int _stride)
+    load_t(const type_t &_type, expr_t &&_buf, expr_t &&_off, int _stride)
         : expr_impl_t(_type_info(), _type)
-        , buf(_buf)
-        , off(_off)
+        , buf(std::move(_buf))
+        , off(std::move(_off))
         , stride(_stride) {
         normalize_ptr(type, buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
@@ -1593,8 +1595,8 @@ public:
     IR_DECL_CORE_TYPE(ptr_t)
 
     // off - offset in bytes.
-    static expr_t make(const expr_t &base, const expr_t &off) {
-        return expr_t(new ptr_t(base, off));
+    static expr_t make(expr_t base, expr_t off) {
+        return expr_t(new ptr_t(std::move(base), std::move(off)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1620,8 +1622,10 @@ public:
     expr_t off;
 
 private:
-    ptr_t(const expr_t &base, const expr_t &off)
-        : expr_impl_t(_type_info(), base.type()), base(base), off(off) {
+    ptr_t(expr_t &&base, expr_t &&off)
+        : expr_impl_t(_type_info(), base.type())
+        , base(std::move(base))
+        , off(std::move(off)) {
         normalize(this->base, this->off);
     }
 };
@@ -1752,9 +1756,9 @@ class ternary_op_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(ternary_op_t)
 
-    static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b,
-            const expr_t &c) {
-        return expr_t(new ternary_op_t(op_kind, a, b, c));
+    static expr_t make(op_kind_t op_kind, expr_t a, expr_t b, expr_t c) {
+        return expr_t(new ternary_op_t(
+                op_kind, std::move(a), std::move(b), std::move(c)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1777,13 +1781,12 @@ public:
     expr_t c;
 
 private:
-    ternary_op_t(op_kind_t op_kind, const expr_t &a, const expr_t &b,
-            const expr_t &c)
+    ternary_op_t(op_kind_t op_kind, expr_t &&a, expr_t &&b, expr_t &&c)
         : expr_impl_t(_type_info(), ternary_op_type(op_kind, a, b, c))
         , op_kind(op_kind)
-        , a(a)
-        , b(b)
-        , c(c) {}
+        , a(std::move(a))
+        , b(std::move(b))
+        , c(std::move(c)) {}
 };
 
 inline expr_t ternary_mad(const expr_t &a, const expr_t &b, const expr_t &c) {
@@ -1804,8 +1807,8 @@ class unary_op_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(unary_op_t)
 
-    static expr_t make(op_kind_t op_kind, const expr_t &a) {
-        return expr_t(new unary_op_t(op_kind, a));
+    static expr_t make(op_kind_t op_kind, expr_t a) {
+        return expr_t(new unary_op_t(op_kind, std::move(a)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1823,10 +1826,10 @@ public:
     expr_t a;
 
 private:
-    unary_op_t(op_kind_t op_kind, const expr_t &a)
+    unary_op_t(op_kind_t op_kind, expr_t &&a)
         : expr_impl_t(_type_info(), unary_op_type(op_kind, a))
         , op_kind(op_kind)
-        , a(a) {}
+        , a(std::move(a)) {}
 };
 
 class var_t : public expr_impl_t {
@@ -1863,8 +1866,8 @@ class ref_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(ref_t)
 
-    static expr_t make(const expr_t &var, int off, int elems) {
-        return expr_t(new ref_t(var, off, elems));
+    static expr_t make(expr_t var, int off, int elems) {
+        return expr_t(new ref_t(std::move(var), off, elems));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1894,9 +1897,9 @@ public:
     int elems;
 
 private:
-    ref_t(const expr_t &var, int off, int elems)
+    ref_t(expr_t &&var, int off, int elems)
         : expr_impl_t(_type_info(), var.type().with_elems(elems))
-        , var(var)
+        , var(std::move(var))
         , off(off)
         , elems(elems) {}
 };
@@ -2128,12 +2131,12 @@ class bank_conflict_attr_t : public alloc_attr_impl_t {
 public:
     IR_DECL_TYPE(bank_conflict_attr_t)
 
-    static alloc_attr_t make(const std::vector<expr_t> &bufs,
-            const std::vector<int> &buf_sizes,
-            const std::vector<int> &buf_min_block_sizes,
-            const std::vector<stmt_t> &instructions) {
-        return alloc_attr_t(new bank_conflict_attr_t(
-                bufs, buf_sizes, buf_min_block_sizes, instructions));
+    static alloc_attr_t make(std::vector<expr_t> bufs,
+            std::vector<int> buf_sizes, std::vector<int> buf_min_block_sizes,
+            std::vector<stmt_t> instructions) {
+        return alloc_attr_t(new bank_conflict_attr_t(std::move(bufs),
+                std::move(buf_sizes), std::move(buf_min_block_sizes),
+                std::move(instructions)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2155,15 +2158,15 @@ public:
     std::vector<stmt_t> instructions;
 
 private:
-    bank_conflict_attr_t(const std::vector<expr_t> &bufs,
-            const std::vector<int> &buf_sizes,
-            const std::vector<int> &buf_min_block_sizes,
-            const std::vector<stmt_t> &instructions)
+    bank_conflict_attr_t(std::vector<expr_t> &&bufs,
+            std::vector<int> &&buf_sizes,
+            std::vector<int> &&buf_min_block_sizes,
+            std::vector<stmt_t> &&instructions)
         : alloc_attr_impl_t(_type_info())
-        , bufs(bufs)
-        , buf_sizes(buf_sizes)
-        , buf_min_block_sizes(buf_min_block_sizes)
-        , instructions(instructions) {}
+        , bufs(std::move(bufs))
+        , buf_sizes(std::move(buf_sizes))
+        , buf_min_block_sizes(std::move(buf_min_block_sizes))
+        , instructions(std::move(instructions)) {}
 };
 
 // Allocation for SLM and GRF buffers.
@@ -2284,11 +2287,9 @@ public:
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of value.type().scalar()
     // elements).
-    static stmt_t make(const expr_t &buf, const expr_t &off,
-            const expr_t &_value, int stride = default_stride,
-            const expr_t &_mask = expr_t(), bool fill_mask0 = false) {
-        auto mask = _mask;
-        auto value = _value;
+    static stmt_t make(expr_t buf, expr_t off, expr_t value,
+            int stride = default_stride, expr_t mask = expr_t(),
+            bool fill_mask0 = false) {
         if (mask) {
             if (all_of(mask, expr_t(true))) {
                 mask = expr_t();
@@ -2302,8 +2303,8 @@ public:
                 mask = expr_t();
             }
         }
-        return stmt_t(
-                new store_t(buf, off, value, stride, mask, fill_mask0 && mask));
+        return stmt_t(new store_t(std::move(buf), std::move(off),
+                std::move(value), stride, std::move(mask), fill_mask0 && mask));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2344,14 +2345,14 @@ public:
     bool fill_mask0;
 
 private:
-    store_t(const expr_t &_buf, const expr_t &_off, const expr_t &_value,
-            int _stride, const expr_t &_mask, bool _fill_mask0)
+    store_t(expr_t &&_buf, expr_t _off, expr_t _value, int _stride,
+            expr_t _mask, bool _fill_mask0)
         : stmt_impl_t(_type_info())
-        , buf(_buf)
-        , off(_off)
-        , value(_value)
+        , buf(std::move(_buf))
+        , off(std::move(_off))
+        , value(std::move(_value))
         , stride(_stride)
-        , mask(_mask)
+        , mask(std::move(_mask))
         , fill_mask0(_fill_mask0) {
         normalize_ptr(value.type(), buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
@@ -2371,10 +2372,10 @@ class for_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(for_t)
 
-    static stmt_t make(const expr_t &var, const expr_t &init,
-            const expr_t &bound, const stmt_t &body = {},
-            const expr_t &step = expr_t(1), int unroll = 1) {
-        return stmt_t(new for_t(var, init, bound, body, step, unroll));
+    static stmt_t make(expr_t var, expr_t init, expr_t bound, stmt_t body = {},
+            expr_t step = expr_t(1), int unroll = 1) {
+        return stmt_t(new for_t(std::move(var), std::move(init),
+                std::move(bound), std::move(body), std::move(step), unroll));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2408,14 +2409,14 @@ public:
     int unroll;
 
 private:
-    for_t(const expr_t &var, const expr_t &init, const expr_t &bound,
-            const stmt_t &body, const expr_t &step, int unroll)
+    for_t(expr_t &&var, expr_t &&init, expr_t &&bound, stmt_t &&body,
+            expr_t &&step, int unroll)
         : stmt_impl_t(_type_info())
-        , var(var)
-        , init(init)
-        , bound(bound)
-        , body(body)
-        , step(step)
+        , var(std::move(var))
+        , init(std::move(init))
+        , bound(std::move(bound))
+        , body(std::move(body))
+        , step(std::move(step))
         , unroll(unroll) {}
 };
 
@@ -2430,9 +2431,9 @@ class if_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(if_t)
 
-    static stmt_t make(const expr_t &cond, const stmt_t &body,
-            const stmt_t &else_body = stmt_t()) {
-        return stmt_t(new if_t(cond, body, else_body));
+    static stmt_t make(expr_t cond, stmt_t body, stmt_t else_body = stmt_t()) {
+        return stmt_t(new if_t(
+                std::move(cond), std::move(body), std::move(else_body)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2460,11 +2461,11 @@ public:
     stmt_t else_body;
 
 private:
-    if_t(const expr_t &cond, const stmt_t &body, const stmt_t &else_body)
+    if_t(expr_t &&cond, stmt_t &&body, stmt_t &&else_body)
         : stmt_impl_t(_type_info())
-        , cond(cond)
-        , body(body)
-        , else_body(else_body) {}
+        , cond(std::move(cond))
+        , body(std::move(body))
+        , else_body(std::move(else_body)) {}
 };
 
 // Let statement, used to bind a variable to a value within a scope.
@@ -2477,9 +2478,9 @@ class let_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(let_t)
 
-    static stmt_t make(
-            const expr_t &var, const expr_t &value, const stmt_t &body = {}) {
-        return stmt_t(new let_t(var, value, body));
+    static stmt_t make(expr_t var, expr_t value, stmt_t body = {}) {
+        return stmt_t(
+                new let_t(std::move(var), std::move(value), std::move(body)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2514,8 +2515,11 @@ public:
     stmt_t body;
 
 private:
-    let_t(const expr_t &var, const expr_t &value, const stmt_t &body)
-        : stmt_impl_t(_type_info()), var(var), value(value), body(body) {
+    let_t(expr_t &&var, expr_t &&value, stmt_t &&body)
+        : stmt_impl_t(_type_info())
+        , var(std::move(var))
+        , value(std::move(value))
+        , body(std::move(body)) {
         if (value && !is_const(value))
             gpu_assert(var.type() == value.type())
                     << "Variable " << var << " and  value " << value
@@ -2621,8 +2625,8 @@ class stmt_group_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(stmt_group_t)
 
-    static stmt_t make(const stmt_label_t &label, const stmt_t &body) {
-        return stmt_t(new stmt_group_t(label, body));
+    static stmt_t make(const stmt_label_t &label, stmt_t body) {
+        return stmt_t(new stmt_group_t(label, std::move(body)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2640,8 +2644,8 @@ public:
     stmt_t body;
 
 private:
-    stmt_group_t(const stmt_label_t &label, const stmt_t &body)
-        : stmt_impl_t(_type_info()), label(label), body(body) {}
+    stmt_group_t(const stmt_label_t &label, stmt_t &&body)
+        : stmt_impl_t(_type_info()), label(label), body(std::move(body)) {}
 };
 
 // Statement sequence, allows combining multiple statements.
@@ -2688,8 +2692,8 @@ class while_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(while_t)
 
-    static stmt_t make(const expr_t &cond, const stmt_t &body = {}) {
-        return stmt_t(new while_t(cond, body));
+    static stmt_t make(expr_t cond, stmt_t body = {}) {
+        return stmt_t(new while_t(std::move(cond), std::move(body)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2713,8 +2717,10 @@ public:
     stmt_t body;
 
 private:
-    while_t(const expr_t &cond, const stmt_t &body)
-        : stmt_impl_t(_type_info()), cond(cond), body(body) {}
+    while_t(expr_t cond, stmt_t body)
+        : stmt_impl_t(_type_info())
+        , cond(std::move(cond))
+        , body(std::move(body)) {}
 };
 
 // Function call attribute.
@@ -2854,9 +2860,10 @@ class func_call_t : public stmt_impl_t {
 public:
     IR_DECL_CORE_TYPE(func_call_t)
 
-    static stmt_t make(const func_t &func, const std::vector<expr_t> &args,
-            const func_call_attr_t &attr = {}) {
-        return stmt_t(new func_call_t(func, args, attr));
+    static stmt_t make(
+            func_t func, std::vector<expr_t> args, func_call_attr_t attr = {}) {
+        return stmt_t(new func_call_t(
+                std::move(func), std::move(args), std::move(attr)));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2884,9 +2891,12 @@ public:
     func_call_attr_t attr;
 
 private:
-    func_call_t(const func_t &func, const std::vector<expr_t> &args,
-            const func_call_attr_t &attr)
-        : stmt_impl_t(_type_info()), func(func), args(args), attr(attr) {
+    func_call_t(
+            func_t &&func, std::vector<expr_t> &&args, func_call_attr_t &&attr)
+        : stmt_impl_t(_type_info())
+        , func(std::move(func))
+        , args(std::move(args))
+        , attr(std::move(attr)) {
         gpu_assert(func);
     }
 };

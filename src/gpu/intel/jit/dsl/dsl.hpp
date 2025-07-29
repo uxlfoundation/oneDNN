@@ -157,17 +157,17 @@ struct transform_t {
 struct tensor_t {
     std::string str() const {
         std::ostringstream oss;
-        oss << "buffer:    " << buf.str();
+        oss << "buffer:    " << buffer.str();
         oss << "layout: " << layout.str();
         return oss.str();
     }
     IR_DEFINE_DUMP()
-    expr_t buf;
+    expr_t buffer;
     v2::layout_t layout;
 };
 
 struct global_tensor_t {
-    expr_t buf;
+    expr_t buffer;
     type_t type;
     expr_t base_offset;
     pvar_map_t<expr_t> idxs;
@@ -185,7 +185,7 @@ struct global_tensor_t {
 
     std::string str() const {
         std::ostringstream oss;
-        oss << "(" << buf << "+" << base_offset << ")." << type << " : ";
+        oss << "(" << buffer << "+" << base_offset << ")." << type << " : ";
         for (auto &k : idxs) {
             oss << " " << k << " - (idx: " << idxs[k]
                 << ", stride: " << strides[k] << ", size: " << sizes[k];

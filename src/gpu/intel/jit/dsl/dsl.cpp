@@ -345,15 +345,15 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_width = g.sizes[transform.dims[0]];
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
-    bool is_prefetch = t.buf.is_empty();
+    bool is_prefetch = t.buffer.is_empty();
     auto w_dim = transform.dims[0];
     auto h_dim = transform.dims[1];
     auto type = g.type;
 
     tile_t tile = transform.get_block_tile(type);
     v2::for_each(g.tile, tile, [&](const icoord_t &coord) {
-        auto buf = is_prefetch ? expr_t()
-                               : t.buf[t.layout.offset_in_bytes(base + coord)];
+        auto buffer = is_prefetch ? expr_t()
+                               : t.buffer[t.layout.offset_in_bytes(base + coord)];
         auto width = std::min(tile[w_dim], g.tile[w_dim] - coord[w_dim]);
 
         auto width_bytes = width * type.size();
@@ -377,7 +377,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
             auto send_func = send_t::make({}, send_kind, send_address_t::a64,
                     send_type, 1, true, true, transform.cache_hint);
             append(send_func.as<send_t>()(
-                    g.buf, g.offset(base + coord_local), buf, {}));
+                    g.buffer, g.offset(base + coord_local), buffer, {}));
             width_bytes -= send_type.size();
             coord_local[w_dim] += send_type.size() / type.size();
         }
@@ -390,15 +390,15 @@ void block_2d_send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_width = g.sizes[transform.dims[0]];
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
-    bool is_prefetch = t.buf.is_empty();
+    bool is_prefetch = t.buffer.is_empty();
     auto w_dim = transform.dims[0];
     auto h_dim = transform.dims[1];
     auto type = g.type;
     auto tile = transform.get_2d_tile(type);
 
     v2::for_each(g.tile, tile, [&](const icoord_t &coord) {
-        auto buf = is_prefetch ? expr_t()
-                               : t.buf[t.layout.offset_in_bytes(base + coord)];
+        auto buffer = is_prefetch ? expr_t()
+                               : t.buffer[t.layout.offset_in_bytes(base + coord)];
         int width = (int)std::min(tile[w_dim], g.tile[w_dim] - coord[w_dim]);
         int height = (int)std::min(tile[h_dim], g.tile[h_dim] - coord[h_dim]);
         // TODO: Add logic to enable count for load operations
@@ -422,8 +422,8 @@ void block_2d_send(const tensor_t &t, const global_tensor_t &g,
                 transform.kind == transform_t::kind_t::transpose_vnni,
                 /*zero_out=*/true, transform.cache_hint);
 
-        append(send_func.as<send_t>()(g.buf,
-                g.base_offset * type.size(), buf, {}, width_idx, height_idx));
+        append(send_func.as<send_t>()(g.buffer,
+                g.base_offset * type.size(), buffer, {}, width_idx, height_idx));
     });
 }
 
@@ -433,7 +433,7 @@ void send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_width = g.sizes[transform.dims[0]];
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
-    bool is_prefetch = t.buf.is_empty();
+    bool is_prefetch = t.buffer.is_empty();
     auto w_dim = transform.dims[0];
     auto h_dim = transform.dims[1];
     auto type = g.type;
@@ -510,9 +510,9 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto a_off = A.layout.offset_in_bytes(base + coord);
             auto b_off = B.layout.offset_in_bytes(base + coord);
             auto c_off = C.layout.offset_in_bytes(base + coord);
-            auto dst = C.buf[c_off];
-            auto src1 = A.buf[a_off];
-            auto src2 = B.buf[b_off];
+            auto dst = C.buffer[c_off];
+            auto src1 = A.buffer[a_off];
+            auto src2 = B.buffer[b_off];
             dpas_stmts.emplace_back(dpas.as<dpas_t>()(dst, dst, src1, src2));
         });
         append(inject_dpas_atomic(stmt_seq_t::make(dpas_stmts),
@@ -551,9 +551,9 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto a_off = A.layout.offset_in_bytes(base + coord);
             auto b_off = B.layout.offset_in_bytes(base + coord);
             auto c_off = C.layout.offset_in_bytes(base + coord);
-            auto dst = C.buf[c_off];
-            auto src1 = A.buf[a_off];
-            auto src2 = B.buf[b_off];
+            auto dst = C.buffer[c_off];
+            auto src1 = A.buffer[a_off];
+            auto src2 = B.buffer[b_off];
 
             append(mad.as<mad_t>()(dst, dst, src1, src2));
         });

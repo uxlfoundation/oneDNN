@@ -101,8 +101,12 @@ struct ctx_t {
 
     tensor_t def(const v2::layout_t &layout, const std::string &name,
             const expr_t &value = {}) {
-        auto t = type_t(
-                layout.type().kind(), layout.type().elems() * layout.elems());
+        // Tensors need to be grf-aligned for loading/storing
+        // TODO: IR should be modified to enable loading small tensors (such as
+        // scalar values) without GRF alignment.
+        auto elems = std::max(layout.type().elems() * layout.elems(),
+                grf_size() / layout.type().scalar().size());
+        auto t = type_t(layout.type().kind(), elems);
         return {def(t, name, value, true), layout};
     }
 

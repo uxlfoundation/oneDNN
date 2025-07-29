@@ -108,6 +108,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 : last_scale_dim * last_scale_stride;
         last_scale_stride = wei_scale_strides[d];
         last_scale_dim = wei_scale_dims[d];
+        if (wei_scale_dims[d] == 1) wei_scale_strides[d] = 0;
     }
 
     const dim_t wei_scale_stride_n = wei_scale_strides[b_d.ndims() - 1];
@@ -140,6 +141,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 : last_scale_dim * last_scale_stride;
         last_scale_stride = src_scale_strides[d];
         last_scale_dim = src_scale_dims[d];
+        if (src_scale_dims[d] == 1) src_scale_strides[d] = 0;
     }
 
     const dim_t src_scale_stride_k = src_scale_strides[a_d.ndims() - 1];

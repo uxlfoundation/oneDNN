@@ -1829,9 +1829,21 @@ static void get_arg_indices_for_post_ops(const op_t *op, fusion_info_mgr_t &mgr,
             indices.insert(
                     {DNNL_GRAPH_ARG_POST_SRC, indices_t {input, base_index++}});
         } else if (pops[i]->get_op()->get_kind() == op_kind::dnnl_binary) {
-            indices.insert(
-                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP((int)i) | DNNL_ARG_SRC_1,
-                            indices_t {input, base_index++}});
+            if (static_cast<dnnl::algorithm>(
+                        pops[i]->get_op()->get_attr<int64_t>(op_attr::alg_kind))
+                    == algorithm::binary_select) {
+                indices.insert({DNNL_ARG_ATTR_MULTIPLE_POST_OP((int)i)
+                                | DNNL_ARG_SRC_1,
+                        indices_t {input, base_index++}});
+                // binary select condition input
+                indices.insert({DNNL_ARG_ATTR_MULTIPLE_POST_OP((int)i)
+                                | DNNL_ARG_SRC_2,
+                        indices_t {input, base_index++}});
+            } else {
+                indices.insert({DNNL_ARG_ATTR_MULTIPLE_POST_OP((int)i)
+                                | DNNL_ARG_SRC_1,
+                        indices_t {input, base_index++}});
+            }
         } else if (pops[i]->get_op()->get_kind() == op_kind::dnnl_convolution) {
             indices.insert({DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS,
                     indices_t {input, base_index++}});

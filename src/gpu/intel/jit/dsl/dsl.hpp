@@ -203,7 +203,7 @@ void begin_scope();
 void end_scope();
 stmt_t pop_scope(); // Ends current scope and removes it from the kernel
 
-void assume(expr_t e);
+void assume(const expr_t &e);
 
 const std::array<expr_t, 3> &group_ids();
 const expr_t &group_id(int idx);

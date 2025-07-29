@@ -1651,7 +1651,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bm_conf_utils.is_f16_with_int_wei()) {
         // empirical observation for performance breakpoint between amx and vnni
         // bf16/f16
-        const dim_t buffer_a_chunk_sz_limit = 126;
+        const dim_t buffer_a_chunk_sz_limit = 256; //126;
         is_small_shapes = is_small_shapes
                 && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
     } else {

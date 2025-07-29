@@ -188,8 +188,9 @@ struct global_tensor_t {
         oss << "(" << buf << "+" << base_offset << ")." << type << " : ";
         for (auto &k : idxs) {
             oss << " " << k << " - (idx: " << idxs[k]
-                << ", stride: " << strides[k] << ", size: " << sizes[k]
-                << ", tile: " << tile[k] << ")";
+                << ", stride: " << strides[k] << ", size: " << sizes[k];
+            if (!tile.is_empty()) oss << ", tile: " << tile[k];
+            oss << ")";
         }
         return oss.str();
     }

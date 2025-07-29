@@ -67,13 +67,6 @@
 #define _SRC_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC, x0, x1, x2, x3, x4, x5)
 #define _DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
 
-// the compiler likes to aggressively unroll loops with compile-time upper
-// bounds, causing register spills. Limit the maximum unrolling to prevent this.
-// XXX: Re-use the for_ definition for nicer formatting
-#undef for_
-#define MAX_UNROLL 32
-#define for_ unroll_for_by(MAX_UNROLL)
-
 __kernel void ref_reduce(
         __global SRC_DATA_T *src, __global DST_DATA_T *dst POST_OP_ARGS) {
     off_t d0 = GWS_GET_D0();

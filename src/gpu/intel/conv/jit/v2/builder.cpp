@@ -589,9 +589,9 @@ public:
         , desc_(desc) {
         dim_t off = c_layout.offset_in_bytes(coord);
         auto store_layout
-                = store_plan.c_store.reg_layout().map(store_plan.tile);
+                = store_plan.c_store.reg_layout().sub(store_plan.tile);
         v2::layout_t payload_layout = store_layout;
-        auto payload_buf = build_post_ops(c_layout.map(store_plan.tile),
+        auto payload_buf = build_post_ops(c_layout.sub(store_plan.tile),
                 c_coord + coord, c_reg_buf + off, payload_layout);
         payload_buf = reorder(payload_layout, store_layout, payload_buf);
         store(store_plan.c_store, c_mem_buf, payload_buf, coord,

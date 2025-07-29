@@ -713,7 +713,7 @@ bool try_div_mod(const expr_t &a, int b, const var_range_info_t &range_info,
     return true;
 }
 
-layout_t layout_t::map(const dim_mapper_t &dim_mapper, const coord_t &coord,
+layout_t layout_t::sub(const dim_mapper_t &dim_mapper, const coord_t &coord,
         const tile_t &tile, const var_range_info_t &var_range_info) const {
     auto idxs = coord;
     auto rem_sizes = tile;
@@ -744,7 +744,7 @@ layout_t layout_t::map(const dim_mapper_t &dim_mapper, const coord_t &coord,
                         dim_t inner = cur_size;
                         dim_t outer = b_size / cur_size;
                         return split_block(&b, inner, outer)
-                                .map(dim_mapper, coord, tile, var_range_info);
+                                .sub(dim_mapper, coord, tile, var_range_info);
                     }
                 }
                 if (!is_outer) mapped_size = b_size;
@@ -1305,7 +1305,7 @@ view_t::view_t(const dim_mapper_t &dim_mapper, const layout_t &base_layout,
     , coord_(coord)
     , tile_(tile) {
     mask_desc_t base_mask_desc(dim_mapper, base_layout);
-    layout_ = base_layout.map(dim_mapper, coord, tile, var_range_info);
+    layout_ = base_layout.sub(dim_mapper, coord, tile, var_range_info);
     mask_desc_ = base_mask_desc.map(coord);
     plane_ = plane_t(layout_, mask_desc_);
 }
@@ -1419,7 +1419,7 @@ view_t view_t::split(const dim_mapper_t &dim_mapper,
     dim_t inner_elems = tile.elems() / outer_elems;
     std::vector<int> inner_idxs;
     std::vector<int> outer_idxs;
-    auto layout = split_layout(base_layout.map(dim_mapper, coord, tile),
+    auto layout = split_layout(base_layout.sub(dim_mapper, coord, tile),
             inner_elems, outer_elems, inner_idxs, outer_idxs);
     tile_t inner_dims;
     for (int i = 0; i < layout.nblocks(); i++) {

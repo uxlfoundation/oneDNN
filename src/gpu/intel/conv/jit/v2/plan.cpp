@@ -771,7 +771,7 @@ private:
         if (!load) return false;
 
         auto &load_layout = load.reg_layout();
-        auto reduced_layout = load_layout.map(split_view.tile());
+        auto reduced_layout = load_layout.sub(split_view.tile());
         auto reduce = reduce_plan_t(hw_, load_layout, reduced_layout);
         auto c_post_layout = std::move(reduced_layout);
         c_post_layout.remove(k_dim);
@@ -799,8 +799,8 @@ private:
         auto &tile = store.entry_tile();
         plan.tile = tile;
         plan.c_store = store;
-        auto c_reg_tile_layout = c_reg_layout.map(tile);
-        auto store_layout = store.reg_layout().map(tile);
+        auto c_reg_tile_layout = c_reg_layout.sub(tile);
+        auto store_layout = store.reg_layout().sub(tile);
         if (c_reg_tile_layout != store_layout) {
             plan.reorder = reorder_plan_t(hw_);
             plan.reorder.src = std::move(c_reg_tile_layout);

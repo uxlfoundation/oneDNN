@@ -39,12 +39,20 @@ struct send_hint_t {
 };
 
 struct tensor_t {
+    tensor_t sub(const icoord_t &coord, const tile_t &tile) const {
+        // coord is not measured relative to tile size
+        for (auto &var : coord)
+            gpu_assert(coord[var] % tile[var] == 0);
+        return {buf[layout.offset_in_bytes(coord)], layout.sub(tile)};
+    }
+
     std::string str() const {
         std::ostringstream oss;
         oss << "buffer:    " << buf.str();
         oss << "layout: " << layout.str();
         return oss.str();
     }
+
     IR_DEFINE_DUMP()
     expr_t buf;
     v2::layout_t layout;

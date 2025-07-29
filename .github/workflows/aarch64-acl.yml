@@ -48,6 +48,8 @@ jobs:
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
+    env:
+      SAFE_ACL_ROOT_DIR: ${{ inputs.acl_root_dir != '' && inputs.acl_root_dir || format('{0}/ComputeLibrary', github.workspace) }}
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
@@ -66,12 +68,14 @@ jobs:
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
         env:
           ACL_ACTION: clone
-          ACL_ROOT_DIR: ${{ inputs.acl_root_dir || format('{0}/ComputeLibrary', github.workspace) }}
+          ACL_ROOT_DIR: ${{ env.SAFE_ACL_ROOT_DIR }}
           ACL_VERSION: ${{ inputs.acl_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
 
       - name: Get ACL commit hash for cache key
         id: get_acl_commit_hash
-        run: (cd ${{ inputs.acl_root_dir || format('{0}/ComputeLibrary', github.workspace) }} && echo "ACLCommitHash=$(git rev-parse --short HEAD)") >> $GITHUB_OUTPUT
+        run: |
+          cd "${{ env.SAFE_ACL_ROOT_DIR }}"
+          echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT 
 
       - name: Get system name
         id: get_system_name
@@ -81,8 +85,8 @@ jobs:
         id: cache-acl-restore
         uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
-          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}-${{ inputs.acl_root_dir || 'ComputeLibrary' }}
-          path: ${{ inputs.acl_root_dir || format('{0}/ComputeLibrary', github.workspace) }}/build
+          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}-${{ env.SAFE_ACL_ROOT_DIR }}
+          path: ${{ env.SAFE_ACL_ROOT_DIR }}/build
 
       - name: Install Scons (MacOS)
         if: ${{ matrix.config.name == 'MacOS' && (steps.cache-acl-restore.outputs.cache-hit != 'true') }}
@@ -117,7 +121,7 @@ jobs:
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
         env:
           ACL_ACTION: build
-          ACL_ROOT_DIR: ${{ inputs.acl_root_dir || format('{0}/ComputeLibrary', github.workspace) }}
+          ACL_ROOT_DIR: ${{ env.SAFE_ACL_ROOT_DIR }}
           ACL_THREADING: ${{ matrix.config.threading }}
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           ACL_BUILD_TYPE: ${{ matrix.config.build }}
@@ -129,4 +133,4 @@ jobs:
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
-          path: ${{ github.workspace }}/ComputeLibrary/build
+          path: ${{ env.SAFE_ACL_ROOT_DIR }}/build

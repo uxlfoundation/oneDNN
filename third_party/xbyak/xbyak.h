@@ -681,12 +681,12 @@ public:
 	void setBit(int bit);
 	void setOpmaskIdx(int idx, bool /*ignore_idx0*/ = true)
 	{
-		if (mask_ && (mask_ != idx)) XBYAK_THROW(ERR_OPMASK_IS_ALREADY_SET)
+		if (mask_ && (mask_ != unsigned(idx))) XBYAK_THROW(ERR_OPMASK_IS_ALREADY_SET)
 		mask_ = idx;
 	}
 	void setRounding(int idx)
 	{
-		if (rounding_) XBYAK_THROW(ERR_ROUNDING_IS_ALREADY_SET)
+		if (mask_ && (mask_ != unsigned(idx))) XBYAK_THROW(ERR_OPMASK_IS_ALREADY_SET)
 		rounding_ = idx;
 	}
 	void setZero() { zero_ = true; }
@@ -1885,12 +1885,11 @@ private:
 	static const uint64_t T_0F = 1ull << 8;
 	static const uint64_t T_0F38 = 1ull << 9;
 	static const uint64_t T_0F3A = 1ull << 10;
-	static const uint64_t T_L0 = 1ull << 11;
+	static const uint64_t T_MAP5 = 1ull << 11;
 	static const uint64_t T_L1 = 1ull << 12;
-	static const uint64_t T_W0 = 1ull << 13;
-	static const uint64_t T_W1 = 1ull << 14;
-	static const uint64_t T_EW0 = 1ull << 15;
-	static const uint64_t T_EW1 = 1ull << 16;
+	static const uint64_t T_W0 = 1ull << 13; // T_EW0 = T_W0
+	static const uint64_t T_W1 = 1ull << 14; // for VEX
+	static const uint64_t T_EW1 = 1ull << 16; // for EVEX
 	static const uint64_t T_YMM = 1ull << 17; // support YMM, ZMM
 	static const uint64_t T_EVEX = 1ull << 18;
 	static const uint64_t T_ER_X = 1ull << 19; // xmm{er}
@@ -1906,25 +1905,28 @@ private:
 	static const uint64_t T_M_K = 1ull << 28; // mem{k}
 	static const uint64_t T_VSIB = 1ull << 29;
 	static const uint64_t T_MEM_EVEX = 1ull << 30; // use evex if mem
-	static const uint64_t T_FP16 = 1ull << 31; // avx512-fp16
-	static const uint64_t T_MAP5 = T_FP16 | T_0F;
-	static const uint64_t T_MAP6 = T_FP16 | T_0F38;
+	static const uint64_t T_MAP6 = 1ull << 31;
 	static const uint64_t T_NF = 1ull << 32; // T_nf
 	static const uint64_t T_CODE1_IF1 = 1ull << 33; // code|=1 if !r.isBit(8)
 
 	static const uint64_t T_ND1 = 1ull << 35; // ND=1
 	static const uint64_t T_ZU = 1ull << 36; // ND=ZU
 	static const uint64_t T_F2 = 1ull << 37; // pp = 3
-	static const uint64_t T_FP8 = 1ull << 38; // amx bf8 and hf8
+	static const uint64_t T_FP8 = 1ull << 40; // amx bf8 and hf8
 	// T_66 = 1, T_F3 = 2, T_F2 = 3
 	static const uint64_t T_ALLOW_DIFF_SIZE = 1ull << 38; // allow difference reg size
 	static inline uint32_t getPP(uint64_t type) { return (type & T_66) ? 1 : (type & T_F3) ? 2 : (type & T_F2) ? 3 : 0; }
 	// @@@end of avx_type_def.h
-	static inline uint32_t getMap(uint64_t type) { return (type & T_0F) ? 1 : (type & T_0F38) ? 2 : (type & T_0F3A) ? 3 : (type & T_FP8) ? 5 : 0; }
+	static inline uint32_t getMap(uint64_t type)
+	{
+		if (type & T_MAP6) return 6;
+		if (type & T_MAP5) return 5;
+		return (type & T_0F) ? 1 : (type & T_0F38) ? 2 : (type & T_0F3A) ? 3 : 0;
+	}
 	void vex(const Reg& reg, const Reg& base, const Operand *v, uint64_t type, int code, bool x = false)
 	{
 		int w = (type & T_W1) ? 1 : 0;
-		bool is256 = (type & T_L1) ? true : (type & T_L0) ? false : reg.isYMM();
+		bool is256 = (type & T_L1) ? true : reg.isYMM();
 		bool r = reg.isExtIdx();
 		bool b = base.isExtIdx();
 		int idx = v ? v->getIdx() : 0;
@@ -1939,19 +1941,16 @@ private:
 		}
 		db(code);
 	}
-	// Allow YMM embedded rounding for AVX10.2 to minimize flag modifications
-	bool verifySAE(const Reg& r, const Reg& b, uint64_t type) const
+	void verifySAE(const Reg& r, uint64_t type) const
 	{
-		if (((type & T_SAE_X) && (r.isYMM() && b.isXMM())) || ((type & T_SAE_Y) && b.isXMM()) || ((type & T_SAE_Z) && b.isYMM())) return true;
-		if (((type & T_SAE_X) && b.isXMM()) || ((type & T_SAE_Y) && b.isYMM()) || ((type & T_SAE_Z) && b.isZMM())) return false;
-		XBYAK_THROW_RET(ERR_SAE_IS_INVALID, false)
+		if (((type & T_SAE_X) && r.isXMM()) || ((type & T_SAE_Y) && r.isYMM()) || ((type & T_SAE_Z) && r.isZMM())) return;
+		XBYAK_THROW(ERR_SAE_IS_INVALID)
 	}
-	bool verifyER(const Reg& r, const Reg& b, uint64_t type) const
+	void verifyER(const Reg& r, uint64_t type) const
 	{
-		if ((type & T_ER_R) && b.isREG(32|64)) return false;
-		if (((type & T_ER_X) && (r.isYMM() && b.isXMM())) || ((type & T_ER_Y) && b.isXMM()) || ((type & T_ER_Z) && b.isYMM())) return true;
-		if (((type & T_ER_X) && b.isXMM()) || ((type & T_ER_Y) && b.isYMM()) || ((type & T_ER_Z) && b.isZMM())) return false;
-		XBYAK_THROW_RET(ERR_SAE_IS_INVALID, false)
+		if ((type & T_ER_R) && r.isREG(32|64)) return;
+		if (((type & T_ER_X) && r.isXMM()) || ((type & T_ER_Y) && r.isYMM()) || ((type & T_ER_Z) && r.isZMM())) return;
+		XBYAK_THROW(ERR_ER_IS_INVALID)
 	}
 	// (a, b, c) contains non zero two or three values then err
 	int verifyDuplicate(int a, int b, int c, int err)
@@ -1965,7 +1964,6 @@ private:
 		if (!(type & (T_EVEX | T_MUST_EVEX))) XBYAK_THROW_RET(ERR_EVEX_IS_INVALID, 0)
 		int w = (type & T_EW1) ? 1 : 0;
 		uint32_t mmm = getMap(type);
-		if (type & T_FP16) mmm |= 4;
 		uint32_t pp = getPP(type);
 		int idx = v ? v->getIdx() : 0;
 		uint32_t vvvv = ~idx;
@@ -1980,18 +1978,16 @@ private:
 		int rounding = verifyDuplicate(reg.getRounding(), base.getRounding(), v ? v->getRounding() : 0, ERR_ROUNDING_IS_ALREADY_SET);
 		int disp8N = 1;
 		if (rounding) {
-			bool isUzero = false;
 			if (rounding == EvexModifierRounding::T_SAE) {
-				isUzero = verifySAE(reg, base, type); LL = 0;
+					verifySAE(base, type); LL = 0;
 			} else {
-				isUzero = verifyER(reg, base, type); LL = rounding - 1;
+					verifyER(base, type); LL = rounding - 1;
 			}
-			if (isUzero) U = 0; // avx10.2 Evex.U
 			b = true;
 		} else {
 			if (v) VL = (std::max)(VL, v->getBit());
 			VL = (std::max)((std::max)(reg.getBit(), base.getBit()), VL);
-			LL = (VL == 512) ? 2 : (VL == 256) ? 1 : 0;
+			LL = (VL >= 512 /* tmm */) ? 2 : (VL == 256) ? 1 : 0;
 			if (b) {
 				disp8N = ((type & T_B16) == T_B16) ? 2 : (type & T_B32) ? 4 : 8;
 			} else if ((type & T_NX_MASK) == T_DUP) {
@@ -2309,7 +2305,7 @@ private:
 		int opBit = op.getBit();
 		if (disableRex && opBit == 64) opBit = 32;
 		const Reg r(ext, Operand::REG, opBit);
-		if ((type & T_APX) && op.hasRex2NFZU() && opROO(d ? *d : Reg(0, Operand::REG, opBit), op, r, type, code)) return;
+		if ((type & T_APX) && (d != 0 || op.hasRex2NFZU()) && opROO(d ? *d : Reg(0, Operand::REG, opBit), op, r, type, code)) return;
 		if (op.isMEM()) {
 			opMR(op.getAddress(immSize), r, type, code);
 		} else if (op.isREG(bit)) {
@@ -2816,10 +2812,12 @@ private:
 #ifdef XBYAK64
 	void opAMX(const Tmm& t1, const Address& addr, uint64_t type, int code)
 	{
-		// require both base and index
 		Address addr2 = addr.cloneNoOptimize();
-		const RegExp exp = addr2.getRegExp();
-		if (exp.getBase().getBit() == 0 || exp.getIndex().getBit() == 0) XBYAK_THROW(ERR_NOT_SUPPORTED)
+		// require both base and index for all but opcode 0x49 (ldtilecfg/sttilecfg)
+		if (code != 0x49) {
+			const RegExp exp = addr2.getRegExp();
+			if (exp.getBase().getBit() == 0 || exp.getIndex().getBit() == 0) XBYAK_THROW(ERR_NOT_SUPPORTED)
+		}
 		if (opROO(Reg(), addr2, t1, T_APX|type, code)) return;
 		opVex(t1, &tmm0, addr2, type, code);
 	}
@@ -2846,7 +2844,7 @@ private:
 		const Operand *p1 = &k, *p2 = &op;
 		if (code == 0x93) { std::swap(p1, p2); }
 		if (opROO(Reg(), *p2, *p1, T_APX|type, code)) return;
-		opVex(static_cast<const Reg&>(*p1), 0, *p2, T_L0|type, code);
+		opVex(static_cast<const Reg&>(*p1), 0, *p2, type, code);
 	}
 	void opEncodeKey(const Reg32& r1, const Reg32& r2, uint8_t code1, uint8_t code2)
 	{
@@ -3302,7 +3300,7 @@ public:
 	{
 		const uint64_t typeTbl[] = {
 			T_EVEX|T_66|T_0F|T_W0|T_N4, T_EVEX|T_66|T_0F|T_W0|T_N4, // legacy, avx, avx512
-			T_MUST_EVEX|T_66|T_0F|T_EW0|T_N4, T_MUST_EVEX|T_F3|T_0F|T_EW0|T_N4, // avx10.2
+			T_MUST_EVEX|T_66|T_0F|T_N4, T_MUST_EVEX|T_F3|T_0F|T_N4, // avx10.2
 		};
 		const int codeTbl[] = { 0x7E, 0x6E, 0xD6, 0x7E };
 		opAVX10ZeroExt(op1, op2, typeTbl, codeTbl, enc, 32);
@@ -3311,7 +3309,7 @@ public:
 	{
 		const uint64_t typeTbl[] = {
 			T_MUST_EVEX|T_66|T_MAP5|T_N2, T_MUST_EVEX|T_66|T_MAP5|T_N2, // avx512-fp16
-			T_MUST_EVEX|T_F3|T_MAP5|T_EW0|T_N2, T_MUST_EVEX|T_F3|T_MAP5|T_EW0|T_N2, // avx10.2
+			T_MUST_EVEX|T_F3|T_MAP5|T_N2, T_MUST_EVEX|T_F3|T_MAP5|T_N2, // avx10.2
 		};
 		const int codeTbl[] = { 0x7E, 0x6E, 0x7E, 0x6E };
 		opAVX10ZeroExt(op1, op2, typeTbl, codeTbl, enc, 16|32|64);

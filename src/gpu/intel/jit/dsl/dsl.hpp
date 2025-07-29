@@ -312,6 +312,9 @@ void while_(expr_t cond, F body) {
 template <>
 void while_(expr_t cond, stmt_t body);
 
+void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
+        const tensor_t &src1);
+
 } // namespace dsl
 } // namespace jit
 } // namespace intel

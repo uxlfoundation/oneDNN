@@ -115,10 +115,8 @@ protected:
     virtual value_t get_or_add(const key_t &key, const value_t &value) = 0;
     virtual void remove_if_invalidated(const key_t &key) = 0;
     virtual void update_entry(const key_t &key, const object_t &p) = 0;
-    static utils::rw_mutex_t &rw_mutex() {
-        static utils::rw_mutex_t mutex;
-        return mutex;
-    }
+    utils::rw_mutex_t &rw_mutex() const { return rw_mutex_; }
+    mutable utils::rw_mutex_t rw_mutex_;
 };
 
 // The cache uses LRU replacement policy

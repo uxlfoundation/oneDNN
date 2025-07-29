@@ -251,7 +251,7 @@ public:
     expr_t var;
 };
 
-expr_t arg(const std::string &name);
+expr_t arg(const std::string &name, bool allow_empty = false);
 lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);

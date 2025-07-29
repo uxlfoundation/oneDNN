@@ -69,10 +69,10 @@ struct ctx_t {
     const std::array<expr_t, 3> &local_sizes() const { return local_sizes_; }
     const expr_t &local_size(int idx) const { return local_sizes_[idx]; }
 
-    expr_t arg(const std::string &name) {
-        auto a = interface_.find_arg(name);
+    expr_t arg(const std::string &name, bool allow_empty = false) {
+        auto a = interface_.find_arg(name, allow_empty);
         expr_t value;
-        if (ctx_->cset().is_single_value(a, value)) { return value; }
+        if (a && ctx_->cset().is_single_value(a, value)) { return value; }
         return a;
     }
 
@@ -257,8 +257,8 @@ const expr_t &local_size(int idx) {
     return default_ctx().local_size(idx);
 }
 
-expr_t arg(const std::string &name) {
-    return default_ctx().arg(name);
+expr_t arg(const std::string &name, bool allow_empty) {
+    return default_ctx().arg(name, allow_empty);
 }
 
 lval_t def(type_t type, const std::string &name, const expr_t &value,

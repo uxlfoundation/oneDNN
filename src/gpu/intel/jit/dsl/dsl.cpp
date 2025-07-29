@@ -62,6 +62,8 @@ struct ctx_t {
         return pop_scope();
     }
 
+    int simd() const { return ctx_->exec_cfg().simd(); }
+
     const std::array<expr_t, 3> &group_ids() const { return group_ids_; }
     const expr_t &group_id(int idx) const { return group_ids_[idx]; }
     const std::array<expr_t, 3> &local_ids() const { return local_ids_; }
@@ -546,6 +548,51 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             append(mad.as<mad_t>()(dst, dst, src1, src2));
         });
     }
+}
+
+void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
+        const tensor_t &src1) {
+    tile_t tile = dst.layout.int_dim_sizes();
+    tile_t matching_subtile = [&] {
+        tile_t ret;
+        for (auto &var : tile) {
+            ret[var] = 1;
+        }
+
+        auto &bd = dst.layout.blocks();
+        auto &b0 = src0.layout.blocks();
+        auto &b1 = src1.layout.blocks();
+        for (size_t i = 0; i < bd.size(); i++) {
+            if (b0.size() >= i) break;
+            if (b1.size() >= i) break;
+            if (bd[i] == b0[i] && bd[i] == b1[i] && bd[i].has_const_size()
+                    && bd[i].has_const_stride())
+                ret[bd[i].dim] *= bd[i].int_size();
+            else
+                break;
+        }
+
+        return ret;
+    }();
+
+    auto subtile_elems = matching_subtile.elems();
+
+    v2::for_each(tile, matching_subtile, [&](const icoord_t &coord) {
+        auto offd = dst.layout.offset_in_bytes(coord);
+        auto off0 = src0.layout.offset_in_bytes(coord);
+        auto off1 = src1.layout.offset_in_bytes(coord);
+
+        dim_t simd = default_ctx().simd();
+        for (int idx = 0; idx < subtile_elems; idx += simd) {
+            int elems = into<int>(std::min(subtile_elems - idx, simd));
+            auto s0 = load_t::make(src0.layout.type().with_elems(elems),
+                    src0.buffer, off0 + idx * src0.layout.type().size());
+            auto s1 = load_t::make(src1.layout.type().with_elems(elems),
+                    src1.buffer, off1 + idx * src1.layout.type().size());
+            assign(dst.buffer[offd + dst.layout.type().size() * idx],
+                    binary_op_t::make(op, s0, s1));
+        }
+    });
 }
 
 } // namespace dsl

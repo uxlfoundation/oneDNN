@@ -233,6 +233,10 @@ stmt_t pop_scope() {
     return default_ctx().pop_scope();
 }
 
+void append(const stmt_t &stmt) {
+    default_ctx().append(stmt);
+}
+
 void assume(const expr_t &e) {
     default_ctx().assume(e);
 }
@@ -295,24 +299,24 @@ expr_t let(const std::string &name, const expr_t &value) {
 template <>
 void if_(const expr_t &cond, const stmt_t &if_body) {
     if (is_const(cond))
-        default_ctx().append(to_cpp<bool>(cond) ? if_body : stmt_t());
+        append(to_cpp<bool>(cond) ? if_body : stmt_t());
     else
-        default_ctx().append(if_t::make(cond, if_body));
+        append(if_t::make(cond, if_body));
 }
 template <>
 void if_(const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body) {
     if (is_const(cond))
-        default_ctx().append(to_cpp<bool>(cond) ? if_body : else_body);
+        append(to_cpp<bool>(cond) ? if_body : else_body);
     else
-        default_ctx().append(if_t::make(cond, if_body, else_body));
+        append(if_t::make(cond, if_body, else_body));
 }
 template <>
 void while_(const expr_t &cond, const stmt_t &body) {
-    default_ctx().append(while_t::make(cond, body));
+    append(while_t::make(cond, body));
 }
 
 void assign(const expr_t &var, const expr_t &value) {
-    default_ctx().append(store_t::make(var, 0, value));
+    append(store_t::make(var, 0, value));
 }
 
 enum class send_kind_t { load, prefetch, store };
@@ -360,7 +364,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
 
             auto send_func = send_t::make({}, send_kind, send_address_t::a64,
                     send_type, 1, true, true, transform.cache_hint);
-            default_ctx().append(send_func.as<send_t>()(
+            append(send_func.as<send_t>()(
                     g.buf, g.offset(base + coord_local), buf, {}));
             width_bytes -= send_type.size();
             coord_local[w_dim] += send_type.size() / type.size();
@@ -406,7 +410,7 @@ void block_2d_send(const tensor_t &t, const global_tensor_t &g,
                 transform.kind == transform_t::kind_t::transpose_vnni,
                 /*zero_out=*/true, transform.cache_hint);
 
-        default_ctx().append(send_func.as<send_t>()(g.buf,
+        append(send_func.as<send_t>()(g.buf,
                 g.base_offset * type.size(), buf, {}, width_idx, height_idx));
     });
 }
@@ -498,7 +502,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto src2 = B.buf[b_off];
             dpas_stmts.emplace_back(dpas.as<dpas_t>()(dst, dst, src1, src2));
         });
-        default_ctx().append(inject_dpas_atomic(stmt_seq_t::make(dpas_stmts),
+        append(inject_dpas_atomic(stmt_seq_t::make(dpas_stmts),
                 /*filter_by_label=*/false));
     } else {
         auto max_simd = 32;
@@ -538,7 +542,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto src1 = A.buf[a_off];
             auto src2 = B.buf[b_off];
 
-            default_ctx().append(mad.as<mad_t>()(dst, dst, src1, src2));
+            append(mad.as<mad_t>()(dst, dst, src1, src2));
         });
     }
 }

@@ -223,13 +223,13 @@ jobs:
         run: |
           python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
 
-    #* This job adds a check named "Nightly Performance AArch64" that represents overall
-    #* workflow status and can be used in branch rulesets
-    status:
-      needs: build-and-test-performance
-      runs-on: ubuntu-latest
-      name: "Nightly Performance AArch64"
-      steps:
-        - name: Print success
-          run: echo Success
+  #* This job adds a check named "Nightly Performance AArch64" that represents overall
+  #* workflow status and can be used in branch rulesets
+  status:
+    needs: build-and-test-performance
+    runs-on: ubuntu-latest
+    name: "Nightly Performance AArch64"
+    steps:
+      - name: Print success
+        run: echo Success
         

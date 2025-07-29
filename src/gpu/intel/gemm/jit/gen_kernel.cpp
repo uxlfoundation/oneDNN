@@ -643,24 +643,25 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
 
-    auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
-        if (!has_mode) return;
-        auto &def = base.selector.precisions;
+    auto add_matches = [&](MatchParams start, const char *(*match)(Type)) {
         if (match(problem_.Ta)) {
-            match_params.push_back(base);
+            match_params.push_back(start);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
-            match_params.back().selector.precisions[1] = def[1];
         }
         if (match(problem_.Tb)) {
-            match_params.push_back(base);
-            match_params.back().selector.precisions[0] = def[0];
+            match_params.push_back(start);
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
         if (match(problem_.Ta) && match(problem_.Tb)) {
-            match_params.push_back(base);
+            match_params.push_back(start);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
+    };
+
+    auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
+        if (!has_mode) return;
+        add_matches(base, match);
     };
 
     add_mode_matches(fpmath_tf32, [](Type dt) -> const char * {
@@ -687,8 +688,18 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         return nullptr;
     });
 
-    add_mode_matches(true, [](Type dt) -> const char * {
-        if (dt.isF4()) return "E";
+    // Add allowed variants of each valid kernel.
+    // Should be used after all valid kernels are added to match_params
+    auto add_variants = [&](const char *(*match)(Type)) {
+        size_t npatterns = match_params.size();
+        for (size_t i = 0; i < npatterns; i++) {
+            add_matches(match_params[i], match);
+        }
+    };
+
+    add_variants([](Type dt) -> const char * {
+        // fp16 -> bf16
+        if (dt == Type::bf16) return "H";
         return nullptr;
     });
 
@@ -729,6 +740,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     auto update_type = [](Type &T, Type T_new, bool sz_change = false) {
         if ((T.bits() != T_new.bits()) && !sz_change) return;
         if (T.isF8() && T_new.isF8()) return;
+        if (T.isFP() && T.bits() == 16 && T_new.isFP() && T_new.bits() == 16)
+            return;
         if (T.isF4() && (T_new.isF4() || T_new.isInt4())) return;
         T = T.isSigned() ? T_new.asSigned() : T_new.asUnsigned();
     };

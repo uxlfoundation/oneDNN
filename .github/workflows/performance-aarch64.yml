@@ -198,8 +198,6 @@ jobs:
         shell: bash
         run: |
           OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
-        env:
-          # DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
 
       - name: Compare 16 threads performance test results
         run: |
@@ -208,8 +206,6 @@ jobs:
       - name: Run user-provided benchdnn command on both builds
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
-        env:
-          # DYLD_LIBRARY_PATH: ${{ inputs.acl_new_hash != '' && format('{0}/ComputeLibrary_new/build', github.workspace) || format('{0}/ComputeLibrary/build', github.workspace) }}
         run: |
           bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \

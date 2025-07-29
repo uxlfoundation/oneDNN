@@ -888,9 +888,16 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
                     rnn.is_cell_dt_bf16(), !x64::mayiuse(x64::avx512_core))
             && IMPLICATION(rnn.is_cell_dt_f32() || rnn.is_cell_dt_int8(),
                     x64::mayiuse(x64::avx2)
-                            && utils::one_of(rd.cell_kind,
-                                    alg_kind::vanilla_gru,
-                                    alg_kind::vanilla_augru));
+                            && (utils::one_of(rd.cell_kind,
+                                        alg_kind::vanilla_gru,
+                                        alg_kind::vanilla_augru)
+                                    || (rnn.is_cell_dt_f32()
+                                            && x64::mayiuse(x64::avx512_core)
+                                            && utils::one_of(rd.cell_kind,
+                                                    alg_kind::lbr_gru,
+                                                    alg_kind::lbr_augru,
+                                                    alg_kind::vanilla_rnn,
+                                                    alg_kind::vanilla_lstm))));
 #else
             && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
 #endif

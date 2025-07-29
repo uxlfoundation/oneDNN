@@ -483,6 +483,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
 
         gpu_assert(tile[dim_simd] % simd == 0);
         gpu_assert(tile[dim_sdepth] % (sdepth_pack * sdepth) == 0);
+        gpu_assert(C.layout.blocks()[0].size == simd);
         std::vector<stmt_t> dpas_stmts;
 
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {

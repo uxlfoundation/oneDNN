@@ -691,7 +691,9 @@ void CopyPlan::split2DRegions()
     for (auto &i: insns) {
         if ((is2D(i.dst) && !is4(i.dst.type)) || is2D(i.src1) || is2D(i.src2))
             stub("Unsupported 2D region");
-        if (is2D(i.src0) && i.dst.stride < 4) {
+        if (is2D(i.src0)){
+	    if(i.dst.stride > 4)
+                continue;
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
 #if XE3P
@@ -1309,6 +1311,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
         }
     } else {
         bool even = (i.src0.offset % 2 == 0);
+	if ( i.dst.stride > 4 ) stub("Unsupported stride.");
         i.src0.stride /= 2;
         i.src0.offset /= 2;
 	if ( getBits(i.dst.type) < 8 ) {
@@ -1353,7 +1356,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     int simd = i.simd;
 
     auto ie = splitMultiple<6>(i);
-    auto tmp = newTemp(DataType::uw, simd, 1);
+    auto tmp = newTemp(DataType::ud, simd, 1);
 
     auto ddst = CopyOperand(i.dst);
     auto ssrc = CopyOperand(i.src0);
@@ -1369,18 +1372,10 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     bool tempSrc = ((ssrc.stride > 1 && ssrc.type == DataType::uw) || (ssrc.stride == 1 && ssrc.type == DataType::ub));
     int idx = 0;
 
-
     if(ddst.stride >= sStride && sStride > 1){
-	bool oddOff = ddst.offset % 2;
-        auto ddst_mask = !oddOff ? (ddst.stride > 2 ? Immediate::uw(0xf) : Immediate::uw(0xf0f))
-	                        : (ddst.stride > 2 ? Immediate::uw(0xf0) : Immediate::uw(0xf0f0));
-	auto dUwStride = std::max(ddst.stride / 4, 1);
-
-        ie[idx]->invalidate();
-        ++idx;
         if(ddst.stride > sStride){
             ie[idx]->op = Opcode::mov;
-            ie[idx]->simd = simd / 2;
+            ie[idx]->simd = simd;
             ie[idx]->dst = tmp;
             ie[idx]->dst.type = DataType::ud;
             ie[idx]->dst.stride = 1;
@@ -1430,17 +1425,21 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[idx]->simd = simd;
         ie[idx]->dst = ddst;
         ie[idx]->dst.type = DataType::uw;
-        ie[idx]->dst.stride = ssrc.stride; //sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->dst.stride = ssrc.stride;
         ie[idx]->dst.offset = ddst.offset/4;
-					   //
         ie[idx]->src0 = ssrc;
         ie[idx]->src0.type = DataType::uw;
-        ie[idx]->src0.stride = ssrc.stride; // sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->src0.stride = ssrc.stride;
         ie[idx]->src0.offset = tmp_off;
         ie[idx]->src1 = ddst;
         ie[idx]->src1.type = DataType::uw;
-        ie[idx]->src1.stride = ssrc.stride; //sUw ? ssrc.stride : ssrc.stride / 2;
+        ie[idx]->src1.stride = ssrc.stride;
         ie[idx]->src1.offset = ddst.offset/4;
+        ++idx;
+
+        ie[idx]->invalidate();
+        ++idx;
+        ie[idx]->invalidate();
         ++idx;
     }else{
         if(tempSrc){
@@ -1509,9 +1508,9 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[idx]->dst = ddst;
         ie[idx]->dst.type = DataType::ub;
         if (ddst.vs != 0)
-            ie[idx]->dst.stride = ddst.vs / ddst.width;
+            ie[idx]->dst.stride = std::max(1, ddst.vs / ddst.width);
         else if (ie[idx]->dst.stride != 0)
-            ie[idx]->dst.stride /= 2;
+            ie[idx]->dst.stride = std::max(1, ddst.stride / 2);
         if (ie[idx]->dst.offset != 0)
                 ie[idx]->dst.offset /= 2;
         ie[idx]->src0 = tmp;
@@ -1959,86 +1958,157 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         return;
     }
 
-    auto ie = splitMultiple<11>(i);
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        auto t0 = newTemp(DataType::hf, i.simd/2, 1);
+        auto t1 = newTemp(DataType::hf, i.simd/2, 1);
+        auto ie = splitMultiple<5>(i);
+	    int simd = i.simd;
+	    int dstStride = y.stride;
+	    bool needPack = (y.stride > 1 || y.width > 2);
 
-    auto t0 = newTemp(DataType::hf, i.simd, 1);
-    auto t1 = newTemp(DataType::hf, i.simd, 1);
-    auto t0UW = t0, t1UW = t1;
-    t0UW.type = t1UW.type = DataType::uw;
+        ie[0]->op = Opcode::mov;
+	    ie[0]->simd = simd / 4;
+        ie[0]->dst = t0;
+	    ie[0]->dst.stride = 1;
+        ie[0]->dst.type = DataType::ud;
+        ie[0]->src0 = x;
+        ie[0]->src0.type = DataType::ud;
+	    ie[0]->src0.stride = 2;
 
-    auto flag = newFlag(i.simd);
+        ie[1]->op = Opcode::mov;
+	    ie[1]->simd = simd / 4;
+        ie[1]->dst = t1;
+        ie[1]->dst.type = DataType::ud;
+	    ie[1]->dst.stride = 1;
+        ie[1]->src0 = x;
+        ie[1]->src0.type = DataType::ud;
+        ie[1]->src0.offset = 1;
+        ie[1]->src0.stride = 2;
 
-    // Clamp and round.
-    ie[0]->op = Opcode::mad;
-    ie[0]->cmod = ConditionModifier::lt;
-    ie[0]->flag = flag;
-    ie[0]->dst = t1;
-    ie[0]->src0 = Immediate::hf(e2m1 ? 0x8004 : 0x8002);
-    ie[0]->src1 = abs(x);
-    ie[0]->src2 = Immediate::hf(e2m1 ? 0x0002 : 0x0004);
+        ie[2]->op = Opcode::dnscl;
+	    ie[2]->simd = simd / 4;
+        ie[2]->dst = t0;
+        ie[2]->dst.type = y.type;
+        ie[2]->dst.stride = 1;
+        ie[2]->src0 = t0;
+        ie[2]->src0.type = x.type;
+        ie[2]->src0.stride = 1;
+        ie[2]->src1 = t1;
+        ie[2]->src1.type = x.type;
+        ie[2]->src1.stride = 1;
+        ie[2]->src2.type = DataType::ud;
+	
+        ie[3]->op = Opcode::mov;
+	    ie[3]->simd = simd / 2;
+        ie[3]->dst = needPack ? t0 : y;
+        ie[3]->dst.type = DataType::ub;
+        ie[3]->dst.offset = needPack ? 0 : y.offset / 2;
+        ie[3]->dst.stride = needPack ? 1 : std::max(y.vs / 2, 1);
+        ie[3]->src0 = t0;
+        ie[3]->src0.type = DataType::ub;
+        ie[3]->src0.stride = 2;
 
-    ie[1]->op = Opcode::sel;
-    ie[1]->cmod = ConditionModifier::lt;
-    ie[1]->dst = t0;
-    ie[1]->src0.abs = true;
-    ie[1]->src1 = Immediate::hf(e2m1 ? 0x4600 : 0x4C00);
+        if ( needPack ){
+            ie[4]->op = Opcode::mov;
+            ie[4]->dst = y;
+            ie[4]->dst.type = DataType::u4;
+            ie[4]->dst.stride = dstStride;
+            ie[4]->src0 = t0;
+            ie[4]->src0.type = DataType::u4;
+            ie[4]->src0.stride = 1;
+	    } else {
+            ie[4]->invalidate();
+	    }
 
-    ie[2]->op = Opcode::mul;
-    ie[2]->src0 = ie[2]->dst = t0;
-    ie[2]->src1 = Immediate::hf(e2m1 ? 0x0400 : 0x0C00);
+    } else 
+#endif
+    {
+        auto ie = splitMultiple<11>(i);
 
-    ie[3]->op = Opcode::mad;
-    ie[3]->flag = flag;
-    ie[3]->dst = t0;
-    ie[3]->src0 = Immediate::hf(0x0800);
-    ie[3]->src1 = t1;
-    ie[3]->src2 = Immediate::hf(e2m1 ? 0x6000 : 0x6400);
+        auto t0 = newTemp(DataType::hf, i.simd, 1);
+        auto t1 = newTemp(DataType::hf, i.simd, 1);
+        auto t0UW = t0, t1UW = t1;
+        t0UW.type = t1UW.type = DataType::uw;
 
-    ie[4]->op = Opcode::add;
-    ie[4]->src0 = ie[4]->dst = t0UW;
-    ie[4]->src1 = Immediate::w(e2m1 ? -0x0100 : -0x200);
+        auto flag = newFlag(i.simd);
 
-    ie[5]->op = Opcode::and_;
-    ie[5]->flag = flag;
-    ie[5]->cmod = ConditionModifier::nz;
-    ie[5]->dst = CopyOperand();
-    ie[5]->dst.type = DataType::uw;
-    ie[5]->src0 = t0UW;
-    ie[5]->src1 = Immediate::uw(e2m1 ? 0x03FF : 0x07FF);
+        // Clamp and round.
+        ie[0]->op = Opcode::mad;
+        ie[0]->cmod = ConditionModifier::lt;
+        ie[0]->flag = flag;
+        ie[0]->dst = t1;
+        ie[0]->src0 = Immediate::hf(e2m1 ? 0x8004 : 0x8002);
+        ie[0]->src1 = abs(x);
+        ie[0]->src2 = Immediate::hf(e2m1 ? 0x0002 : 0x0004);
 
-    ie[6]->op = Opcode::add;
-    ie[6]->flag = flag;
-    ie[6]->src0 = ie[6]->dst = t0UW;
-    ie[6]->src1 = Immediate::uw(e2m1 ? 0x0200 : 0x0400);
+        ie[1]->op = Opcode::sel;
+        ie[1]->cmod = ConditionModifier::lt;
+        ie[1]->dst = t0;
+        ie[1]->src0.abs = true;
+        ie[1]->src1 = Immediate::hf(e2m1 ? 0x4600 : 0x4C00);
 
-    ie[7]->op = Opcode::shl;
-    ie[7]->src0 = ie[7]->dst = t0UW;
-    ie[7]->src1 = Immediate::uw(e2m1 ? 3 : 2);
+        ie[2]->op = Opcode::mul;
+        ie[2]->src0 = ie[2]->dst = t0;
+        ie[2]->src1 = Immediate::hf(e2m1 ? 0x0400 : 0x0C00);
 
-    // Restore sign.
-    ie[8]->op = Opcode::bfn;
-    ie[8]->src0 = ie[8]->dst = t0UW;
-    ie[8]->src1 = x;
-    ie[8]->src1.type = DataType::uw;
-    ie[8]->src2 = 0x8000;
-    ie[8]->ctrl = 0xCA;
+        ie[3]->op = Opcode::mad;
+        ie[3]->flag = flag;
+        ie[3]->dst = t0;
+        ie[3]->src0 = Immediate::hf(0x0800);
+        ie[3]->src1 = t1;
+        ie[3]->src2 = Immediate::hf(e2m1 ? 0x6000 : 0x6400);
 
-    // Pack into bytes.
-    ie[9]->op = Opcode::shr;
-    ie[9]->src0 = ie[9]->dst = t0UW;
-    ie[9]->src1 = Immediate::uw(12);
+        ie[4]->op = Opcode::add;
+        ie[4]->src0 = ie[4]->dst = t0UW;
+        ie[4]->src1 = Immediate::w(e2m1 ? -0x0100 : -0x200);
 
-    ie[10]->op = Opcode::mov;
-    ie[10]->dst = y;
-    ie[10]->dst.type = DataType::u4;
-    ie[10]->src0 = t0UW;
+        ie[5]->op = Opcode::and_;
+        ie[5]->flag = flag;
+        ie[5]->cmod = ConditionModifier::nz;
+        ie[5]->dst = CopyOperand();
+        ie[5]->dst.type = DataType::uw;
+        ie[5]->src0 = t0UW;
+        ie[5]->src1 = Immediate::uw(e2m1 ? 0x03FF : 0x07FF);
+
+        ie[6]->op = Opcode::add;
+        ie[6]->flag = flag;
+        ie[6]->src0 = ie[6]->dst = t0UW;
+        ie[6]->src1 = Immediate::uw(e2m1 ? 0x0200 : 0x0400);
+
+        ie[7]->op = Opcode::shl;
+        ie[7]->src0 = ie[7]->dst = t0UW;
+        ie[7]->src1 = Immediate::uw(e2m1 ? 3 : 2);
+
+        // Restore sign.
+        ie[8]->op = Opcode::bfn;
+        ie[8]->src0 = ie[8]->dst = t0UW;
+        ie[8]->src1 = x;
+        ie[8]->src1.type = DataType::uw;
+        ie[8]->src2 = 0x8000;
+        ie[8]->ctrl = 0xCA;
+
+        // Pack into bytes.
+        ie[9]->op = Opcode::shr;
+        ie[9]->src0 = ie[9]->dst = t0UW;
+        ie[9]->src1 = Immediate::uw(12);
+
+        ie[10]->op = Opcode::mov;
+        ie[10]->dst = y;
+        ie[10]->dst.type = DataType::u4;
+        ie[10]->src0 = t0UW;
+    }
 }
 
 // Check that no types smaller than a byte are present.
 void CopyPlan::checkNoSubbytes()
 {
     for (auto &i: insns)
+#if XE3P
+        if ((is4(i.dst.type) && i.op != Opcode::dnscl) || is4(i.src0.type) || is4(i.src1.type) || is4(i.src2.type))
+#else
         if (is4(i.dst.type) || is4(i.src0.type) || is4(i.src1.type) || is4(i.src2.type))
+#endif
             stub("Unexpected 4-bit type");
 }
 
@@ -2250,6 +2320,8 @@ void CopyPlan::legalizeRegions()
         auto dt = i.dst.type;
 
         if (!i.dst && (hw < ngen::HW::XeHPC || i.op != Opcode::cmp)) continue;
+	    if(i.dst.stride == 0) stub("Illegal dst stride");
+        if (isFP4(dt)) continue;
 
         /* Check for special packed conversion cases */
         if (i.op == Opcode::mov && ((s0t == DataType::hf && isFP8(dt))

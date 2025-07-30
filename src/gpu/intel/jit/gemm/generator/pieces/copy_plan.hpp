@@ -320,6 +320,13 @@ void CopyInstruction::execute(Generator &g)
                 g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngen());
             break;
         }
+#if XE3P
+        case Opcode::dnscl: {
+            uint8_t mode = 0;
+            g.dnscl(ngenModifiers(), mode, RoundingType::rne, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
+            break;
+	    }
+#endif
         default: stub("Unsupported opcode");
     }
 

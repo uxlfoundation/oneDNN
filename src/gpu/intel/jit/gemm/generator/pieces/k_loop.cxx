@@ -969,11 +969,14 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         if (dequantizeA)
             gemmDequantizeAB(true, sublayout, Ar_sublayout, regs, state.Ar_regs, har, hq, problem, strategy, state, s4Shift);
         else
-        if (repackA)
+        if (repackA) {
             copyRegisters(sublayout, Ar_sublayout, regs, state.Ar_regs, 0, har, false, strategy, state, false, s4Shift);
-        else if (convertA)
+	    } else if (convertA)
             convert(regs, Ta_load, Ta, strategy, state);
     };
+    if (state.repackA && state.Ar_layout.type().isF4()) ls.schedule({
+		    {reqRepackA, [&](Iteration h) { zeroMatrix(state.Ar_regs, strategy);}},
+		    {reqRepackA, nothing}});
 
     if (scheduleRepackA && readA) ls.schedule({
         {reqRepackA,    [&](Iteration h) { doRepackA(state.A_layout,    A_regs(h), state.repackA,    h, ka_loadMain, ka_repackMain); }},
@@ -991,11 +994,14 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         if (dequantizeB)
             gemmDequantizeAB(false, layout, state.Br_layout, regs, state.Br_regs, hb, h % kbq_load, problem, strategy, state);
         else
-        if (repackB)
+        if (repackB) {
             copyRegisters(layout, state.Br_layout, regs, state.Br_regs, hb, 0, false, strategy, state);
-        else if (convertB)
+	    } else if (convertB)
             convert(regs, Tb_load, Tb, strategy, state);
     };
+    if (state.repackB && state.Br_layout.type().isF4()) ls.schedule({
+		    {reqRepackB, [&](Iteration h) { zeroMatrix(state.Br_regs, strategy);}},
+		    {reqRepackB, nothing}});
 
     if (scheduleRepackB && readB) ls.schedule({
         {reqRepackB,    [&](Iteration h) { doRepackB(state.B_layout,    B_regs(h), state.repackB,    h, 0);                                   }},

@@ -1038,10 +1038,9 @@ public:
             const stmt_t &root, const conv_config_t &cfg, ir_context_t &ir_ctx)
         : root_(root), cfg_(cfg), ir_ctx_(ir_ctx) {}
     stmt_t inject() {
-        auto compute_loop_stmt
+        auto compute_loop
                 = find_stmt_group(root_, stmt_label_t::compute_loop());
-        if (!compute_loop_stmt.has_value()) return root_;
-        const auto &compute_loop = compute_loop_stmt.value();
+        if (!compute_loop) return root_;
         auto loop_nest = compute_loop_nest_t(compute_loop, ir_ctx_);
         auto &loops = loop_nest.loops();
 
@@ -1049,10 +1048,8 @@ public:
         if (loops.empty()) return root_;
         auto &loop_body = loops[0].body();
 
-        auto A_block_stmt
-                = find_stmt_group(loop_body, stmt_label_t::prefetch());
-        if (!A_block_stmt.has_value()) return root_;
-        auto A_block = A_block_stmt.value();
+        auto A_block = find_stmt_group(loop_body, stmt_label_t::prefetch());
+        if (!A_block) return root_;
         auto B_block = remove_stmt_group(loop_body, stmt_label_t::prefetch());
         size_t prefetch_count = 0;
         size_t max_nested_prefetch = 2;

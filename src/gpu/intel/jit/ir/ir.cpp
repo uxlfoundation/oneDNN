@@ -825,13 +825,12 @@ std::vector<stmt_t> find_stmt_groups(
     return ret;
 }
 
-utils::optional_t<stmt_t> find_stmt_group(
-        const object_t &root, const stmt_label_t &label) {
+stmt_t find_stmt_group(const object_t &root, const stmt_label_t &label) {
     auto groups = find_stmt_groups(root, label);
     if (groups.size() == 1)
         return groups[0];
     else
-        return utils::nullopt;
+        return {};
 }
 
 class stmt_group_remover_t : public ir_mutator_t {

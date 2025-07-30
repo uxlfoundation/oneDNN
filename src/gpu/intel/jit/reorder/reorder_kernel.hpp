@@ -17,7 +17,6 @@
 #ifndef GPU_INTEL_JIT_REORDER_REORDER_KERNEL_HPP
 #define GPU_INTEL_JIT_REORDER_REORDER_KERNEL_HPP
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
@@ -34,15 +33,12 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-template <ngen::HW hw = ngen::HW::Unknown>
-class reorder_kernel_t : public ir_kernel_t<hw> {
+class reorder_kernel_t : public ir_kernel_t {
 public:
-    IR_KERNEL_FORWARD(hw)
-
     reorder_kernel_t(const reorder_config_t &cfg,
             const std::string &kernel_name, const kernel_info_t &kernel_info,
             bool require_dpas, const primitive_desc_t *pd = nullptr)
-        : ir_kernel_t<hw>(kernel_name, cfg.exec_cfg(),
+        : ir_kernel_t(kernel_name, cfg.exec_cfg(),
                 kernel_info.nd_range().local_range(), require_dpas,
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;
@@ -51,9 +47,7 @@ public:
         reorder_ir_builder_t builder(cfg, kernel_info, attr, dst_md);
         const stmt_t &body = builder.stmt();
         setup_interface(body);
-
-        // Generate assembly from IR.
-        convert_ir_to_ngen<ir_kernel_t<hw>>(body, this);
+        generate_from_ir(body);
     }
 };
 

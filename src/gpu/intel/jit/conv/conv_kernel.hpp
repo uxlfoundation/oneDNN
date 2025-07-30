@@ -19,7 +19,6 @@
 
 #include "common/cpp_compat.hpp"
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
@@ -38,69 +37,64 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-template <ngen::HW hw>
-class conv_kernel_t : public ir_kernel_t<hw> {
+class conv_kernel_t : public ir_kernel_t {
 public:
-    IR_KERNEL_FORWARD(hw)
-
     conv_kernel_t(const conv_config_t &cfg, const kernel_info_t &kernel_info,
-            const compute::range_t &local_range, const layout_t &zp_dst);
+            const compute::range_t &local_range, const layout_t &zp_dst)
+        : ir_kernel_t("gen_conv", cfg.exec_cfg(), local_range,
+                utils::one_of(
+                        cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
+                {GENERATOR_NAME, GENERATOR_LINE})
+        , prb_(cfg.prb())
+        , cfg_(cfg) {
+
+        set_kernel_iface(kernel_info.iface());
+
+        // XXX: BWD_W does 32x32 multiplication in the inner loop which may cause
+        // hangs when using with split barrier. Switch to emulation to work around
+        // the issue.
+        if (prb_.is_bwd_w && exec_cfg().hw() < ngen::HW::XeHPC)
+            force_emulate64();
+
+        ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");
+        // Build IR for the kernel.
+        conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
+        const stmt_t &body = builder.stmt();
+        profile.stamp("Kernel Builder");
+
+        alloc_manager_t alloc_mgr(body);
+        profile.stamp("Alloc_Mgr Construct");
+
+        setup_interface(body);
+
+#ifdef DNNL_DEV_MODE
+        profile.stop();
+        verify_grf_usage(cfg, body, 0);
+        profile.start();
+#endif
+
+        generate_from_ir(
+                body, &cfg_.plan().gemm_schedule.kernel_grid_walk_order());
+        profile.stop("Generate Assembly");
+
+#ifdef DNNL_DEV_MODE
+        gpu_perf_no_trace() << profile;
+
+        gpu_trace() << "Actual register usage:           " << peak_regs();
+        int estimated_peak_regs = estimate_register_count(cfg_);
+        if (peak_regs() > estimated_peak_regs) {
+            gpu_warning() << "conv_kernel_t register usage underestimated: "
+                             "estimate = "
+                          << estimated_peak_regs
+                          << ", actual = " << peak_regs();
+        }
+#endif
+    }
 
 private:
     const conv_problem_t &prb_;
     const conv_config_t &cfg_;
 };
-
-template <ngen::HW hw>
-conv_kernel_t<hw>::conv_kernel_t(const conv_config_t &cfg,
-        const kernel_info_t &kernel_info, const compute::range_t &local_range,
-        const layout_t &zp_dst)
-    : ir_kernel_t<hw>("gen_conv", cfg.exec_cfg(), local_range,
-            utils::one_of(cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
-            {GENERATOR_NAME, GENERATOR_LINE})
-    , prb_(cfg.prb())
-    , cfg_(cfg) {
-
-    set_kernel_iface(kernel_info.iface());
-
-    // XXX: BWD_W does 32x32 multiplication in the inner loop which may cause
-    // hangs when using with split barrier. Switch to emulation to work around
-    // the issue.
-    if (prb_.is_bwd_w && hw < ngen::HW::XeHPC) emu_strategy.emulate64 = true;
-
-    ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");
-    // Build IR for the kernel.
-    conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
-    const stmt_t &body = builder.stmt();
-    profile.stamp("Kernel Builder");
-
-    alloc_manager_t alloc_mgr(body);
-    profile.stamp("Alloc_Mgr Construct");
-
-    setup_interface(body);
-#ifdef DNNL_DEV_MODE
-    profile.stop();
-    verify_grf_usage(cfg, body, ra().get_alloced_regs());
-    profile.start();
-#endif
-
-    // Generate assembly from IR.
-    convert_ir_to_ngen<ir_kernel_t<hw>>(
-            body, this, &cfg_.plan().gemm_schedule.kernel_grid_walk_order());
-    profile.stop("Generate Assembly");
-
-#ifdef DNNL_DEV_MODE
-    gpu_perf_no_trace() << profile;
-
-    gpu_trace() << "Actual register usage:           " << ra().get_peak_regs();
-    int estimated_peak_regs = estimate_register_count(cfg_);
-    if (ra().get_peak_regs() > estimated_peak_regs) {
-        gpu_warning()
-                << "conv_kernel_t register usage underestimated: estimate = "
-                << estimated_peak_regs << ", actual = " << ra().get_peak_regs();
-    }
-#endif
-}
 
 } // namespace jit
 } // namespace intel

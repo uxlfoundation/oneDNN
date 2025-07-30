@@ -19,7 +19,6 @@
 
 #include "common/cpp_compat.hpp"
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
@@ -35,31 +34,23 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-template <ngen::HW hw>
-class kernel_t : public ir_kernel_t<hw> {
+class kernel_t : public ir_kernel_t {
 public:
-    IR_KERNEL_FORWARD(hw)
+    kernel_t(const kernel_desc_base_t &_desc,
+            const compute::compute_engine_t *engine)
+        : ir_kernel_t(_desc, engine, {GENERATOR_NAME, GENERATOR_LINE}) {
 
-    kernel_t(const kernel_desc_base_t &_desc, const impl::engine_t *engine);
+        auto &desc = static_cast<const kernel_desc_t &>(_desc);
+
+        // Build IR for the kernel.
+        var_manager_t var_mgr(kernel_iface());
+        stmt_t body = build_ir(exec_cfg(), desc, var_mgr);
+
+        alloc_manager_t alloc_mgr(body);
+        setup_interface(body);
+        generate_from_ir(body);
+    }
 };
-
-template <ngen::HW hw>
-kernel_t<hw>::kernel_t(
-        const kernel_desc_base_t &_desc, const impl::engine_t *engine)
-    : ir_kernel_t<hw>(_desc, engine, {GENERATOR_NAME, GENERATOR_LINE}) {
-
-    auto &desc = static_cast<const kernel_desc_t &>(_desc);
-
-    // Build IR for the kernel.
-    var_manager_t var_mgr(kernel_iface());
-    stmt_t body = build_ir(exec_cfg(), desc, var_mgr);
-
-    alloc_manager_t alloc_mgr(body);
-    setup_interface(body);
-
-    // Generate assembly from IR.
-    convert_ir_to_ngen<ir_kernel_t<hw>>(body, this);
-}
 
 } // namespace conv
 } // namespace v2

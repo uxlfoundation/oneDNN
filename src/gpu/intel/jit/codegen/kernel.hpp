@@ -49,7 +49,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-template <template <ngen::HW> class KernelT>
+template <typename KernelT>
 struct ir_generator_t : public generator_base_t {
     ir_generator_t(const kernel_desc_base_t &kernel_desc)
         : kernel_name_(kernel_desc.kernel_name()), kernel_desc_(kernel_desc) {}
@@ -59,27 +59,11 @@ struct ir_generator_t : public generator_base_t {
     status_t get_kernel(compute::kernel_t &kernel,
             const compute::compute_engine_t *engine) override {
         try {
-#define CASE(hw) \
-    case ngen::HW::hw: { \
-        KernelT<ngen::HW::hw> _kernel(kernel_desc_, engine); \
-        return _kernel.get_kernel(kernel, engine); \
-    }
-            auto *device_info = engine->device_info();
-            auto hw = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
-            switch (hw) {
-                REG_XELP_ISA(CASE(XeLP));
-                REG_XEHP_ISA(CASE(XeHP));
-                REG_XEHPG_ISA(CASE(XeHPG));
-                REG_XEHPC_ISA(CASE(XeHPC));
-                REG_XE2_ISA(CASE(Xe2));
-                REG_XE3_ISA(CASE(Xe3));
-                default: gpu_assert(false) << "Unexpected GPU architecture";
-            }
-#undef CASE
+            KernelT _kernel(kernel_desc_, engine);
+            return _kernel.get_kernel(kernel, engine);
         } catch (ngen::out_of_registers_exception &) {
             return status::runtime_error;
         }
-        return status::runtime_error;
     }
 
 private:
@@ -174,10 +158,10 @@ private:
     object_map_t<expr_t, ngen_operand_t> expr2operand_;
 };
 
-template <typename ngen_generator_t>
+template <typename GeneratorT>
 class expr_evaluator_t;
 
-template <typename ngen_generator_t>
+template <typename GeneratorT>
 class ir_to_ngen_t;
 
 struct setup_flags_t {
@@ -188,58 +172,56 @@ struct setup_flags_t {
 
 setup_flags_t get_setup_flags(const stmt_t &s);
 
-template <typename ngen_generator_t>
-class ir_kernel_base_t : public ngen_generator_t {
+template <typename BaseGeneratorT>
+class ir_to_ngen_generator_t : public BaseGeneratorT {
 public:
-    NGEN_FORWARD_SCOPE(ngen_generator_t)
+    NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
-    friend class send_impl_t;
-
-    template <typename... ngen_generator_args>
-    ir_kernel_base_t(const kernel_desc_base_t &desc,
-            const exec_config_t &exec_cfg, ngen_generator_args... args)
-        : ngen_generator_t(exec_cfg.hw().product(),
-                std::forward<ngen_generator_args>(args)...)
-        , exec_cfg_(exec_cfg)
-        , ra_(getHardware())
-        , emu_strategy(getHardware(), exec_cfg_.hw().stepping_id()) {
-        desc.init_kernel_iface(kernel_iface_);
-        ra_.setRegisterCount(exec_cfg_.regs());
-    }
-
-    template <typename... ngen_generator_args>
-    ir_kernel_base_t(const exec_config_t &exec_cfg,
-            const kernel_iface_t &kernel_iface, ngen_generator_args &&...args)
-        : ngen_generator_t(exec_cfg.hw().product(),
-                std::forward<ngen_generator_args>(args)...)
+    ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
+            const exec_config_t &exec_cfg, const debug_config_t &debug_config,
+            const ngen::InterfaceHandler &neo_interface)
+        : BaseGeneratorT(exec_cfg.hw().product(), debug_config)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)
+        , debug_config_(debug_config)
         , ra_(getHardware())
-        , emu_strategy(getHardware(), exec_cfg.hw().stepping_id()) {
-        ngen_generator_t::setStepping(exec_cfg.hw().stepping_id());
+        , emu_strategy_(getHardware(), exec_cfg_.hw().stepping_id()) {
+        BaseGeneratorT::interface_ = neo_interface;
+        BaseGeneratorT::setStepping(exec_cfg.hw().stepping_id());
         ra_.setRegisterCount(exec_cfg_.regs());
     }
 
-    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
-    const exec_config_t &exec_cfg() const { return exec_cfg_; }
-    const hw_t &hw_info() const { return exec_cfg_.hw(); }
+    ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
+            const exec_config_t &exec_cfg, const debug_config_t &debug_config)
+        : ir_to_ngen_generator_t(kernel_iface, exec_cfg, debug_config,
+                ngen::InterfaceHandler(exec_cfg.hw())) {}
+
+    void force_emulate64() { emu_strategy_.emulate64 = true; }
 
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
-    void generate_prologue() {
-        ngen_generator_t::setDefaultNoMask();
-        ngen_generator_t::setDefaultAutoSWSB(true);
+    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
+    const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const debug_config_t &debug_config() const { return debug_config_; }
+    const ngen::InterfaceHandler &neo_interface() const {
+        return BaseGeneratorT::interface_;
+    }
+    const hw_t &hw_info() const { return exec_cfg_.hw(); }
 
-        ngen_generator_t::prologue();
+    void generate_prologue() {
+        BaseGeneratorT::setDefaultNoMask();
+        BaseGeneratorT::setDefaultAutoSWSB(true);
+
+        BaseGeneratorT::prologue();
 
         // Data in r0 is necessary for epilogue generation
-        ra_.claim(ngen_generator_t::r0);
+        ra_.claim(BaseGeneratorT::r0);
 
         // Enable IEEE f32 -> s32 rounding and f64/f32/f16 denormals.
-        or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
+        or_(1, BaseGeneratorT::cr0, BaseGeneratorT::cr0, uint16_t(0x14C0));
     }
 
     void bind_external_vars(
@@ -250,14 +232,14 @@ public:
         for (int i = 0; i < 3; i++) {
             auto local_id = alloc_mgr.find_let(ir_builder_t::local_id(i), true);
             if (!local_id.is_empty()) {
-                auto local_id_reg = ngen_generator_t::getLocalID(i).uw(0);
+                auto local_id_reg = BaseGeneratorT::getLocalID(i).uw(0);
                 ra_.claim(local_id_reg);
                 expr_binding.bind(local_id, local_id_reg);
             }
             auto local_size
                     = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
             if (!local_size.is_empty()) {
-                auto local_size_reg = ngen_generator_t::getLocalSize(i).uw(0);
+                auto local_size_reg = BaseGeneratorT::getLocalSize(i).uw(0);
                 ra_.claim(local_size_reg);
                 expr_binding.bind(local_size, local_size_reg);
             }
@@ -276,7 +258,7 @@ public:
                 }
                 gpu_assert(alloc_buf.is_same(arg_var));
             }
-            auto arg_reg = ngen_generator_t::getArgument(name);
+            auto arg_reg = BaseGeneratorT::getArgument(name);
             ra_.claim(arg_reg);
             expr_binding.bind(arg_var, arg_reg);
         }
@@ -288,7 +270,7 @@ public:
         // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
         // suppression bug results in incorrect results when using r0. This
         // disables the use of r0 to avoid the issue.
-        ngen::GRF r0_info = ngen_generator_t::r0;
+        ngen::GRF r0_info = BaseGeneratorT::r0;
         if (utils::one_of(getProductFamily(), ngen::ProductFamily::MTL,
                     ngen::ProductFamily::ARL)) {
             r0_info = ra_.alloc();
@@ -312,16 +294,16 @@ public:
             }
         }
 
-        if (emu_strategy.emulate64) {
-            emu_state.temp[0] = ra_.alloc();
-            emu_state.temp[1] = ra_.alloc();
+        if (emu_strategy_.emulate64) {
+            emu_state_.temp[0] = ra_.alloc();
+            emu_state_.temp[1] = ra_.alloc();
         }
 
         auto setup_flags = get_setup_flags(kernel_body);
         // Allocate and initialize signal header for future use.
         if (setup_flags.has_signal_header) {
             signal_header_ = ra_.alloc();
-            ngen_generator_t::barrierheader(signal_header_);
+            BaseGeneratorT::barrierheader(signal_header_);
         }
     }
 
@@ -455,7 +437,7 @@ public:
     }
 
     void generate_epilogue() {
-        ngen_generator_t::epilogue(r0);
+        BaseGeneratorT::epilogue(r0);
         pad_kernel();
     }
 
@@ -709,10 +691,10 @@ public:
             auto src0_rd = r_spill(s0, div_esize, s0_spill);
             auto src1_rd = r_spill(s1, div_esize, s1_spill);
             // Enable mask as fdiv_ieee relies on masked if/endif flow.
-            ngen_generator_t::setDefaultNoMask(false);
+            BaseGeneratorT::setDefaultNoMask(false);
             fdiv_ieee(div_mod, f0[0], dst_rd(), src0_rd(), src1_rd(), zero, one,
                     tmp);
-            ngen_generator_t::setDefaultNoMask(true);
+            BaseGeneratorT::setDefaultNoMask(true);
         }
 
         ra_.safeRelease(one);
@@ -985,25 +967,25 @@ public:
     void emov(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0) {
         ngen::EmulationImplementation::emov<DT>(
-                *this, mod, dst, src0, emu_strategy);
+                *this, mod, dst, src0, emu_strategy_);
     }
     template <typename DT = void>
     void emov(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::Immediate src0) {
         ngen::EmulationImplementation::emov<DT>(
-                *this, mod, dst, src0, emu_strategy);
+                *this, mod, dst, src0, emu_strategy_);
     }
     template <typename DT = void>
     void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0, const ngen::RegData &src1) {
         ngen::EmulationImplementation::eadd<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
     template <typename DT = void>
     void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0, ngen::Immediate src1) {
         ngen::EmulationImplementation::eadd<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
     template <typename DT = void>
     void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
@@ -1013,7 +995,7 @@ public:
             return;
         }
         ngen::EmulationImplementation::emul<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
     template <typename DT = void>
     void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
@@ -1023,19 +1005,19 @@ public:
             return;
         }
         ngen::EmulationImplementation::emul<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
     template <typename DT = void>
     void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0, uint16_t src1) {
         ngen::EmulationImplementation::eshl<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
     template <typename DT = void>
     void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst,
             ngen::RegData src0, uint16_t src1) {
         ngen::EmulationImplementation::eshr<DT>(
-                *this, mod, dst, src0, src1, emu_strategy, emu_state);
+                *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
     }
 
     void esel(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
@@ -1062,8 +1044,8 @@ protected:
         // read - whether operand is to be used as input (needs pre-copy)
         // write - whether operand is to be used as output (needs post-copy)
         // force_copy - always copy the region (even if it's aligned)
-        spiller_t(ir_kernel_base_t *host, const ngen::RegData &rd, int esize,
-                bool read, bool write, bool force_copy)
+        spiller_t(ir_to_ngen_generator_t *host, const ngen::RegData &rd,
+                int esize, bool read, bool write, bool force_copy)
             : host_(host), rd_(rd), esize_(esize), read_(read), write_(write) {
             if (rd.getOffset() == 0 && !force_copy) return;
 
@@ -1107,7 +1089,7 @@ protected:
             return ret;
         }
 
-        ir_kernel_base_t *host_ = nullptr;
+        ir_to_ngen_generator_t *host_ = nullptr;
         ngen::RegData rd_;
         int esize_;
         bool read_ = false;
@@ -1156,70 +1138,85 @@ protected:
 
     kernel_iface_t kernel_iface_;
     exec_config_t exec_cfg_;
+    debug_config_t debug_config_;
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
 
-    ngen::EmulationStrategy emu_strategy;
-    ngen::EmulationState emu_state;
+    ngen::EmulationStrategy emu_strategy_;
+    ngen::EmulationState emu_state_;
 };
 
-template <ngen::HW hw>
-class ir_kernel_t : public ir_kernel_base_t<generator_t<hw>> {
-public:
-    using base = ir_kernel_base_t<generator_t<hw>>;
-    using elf_generator_t = ngen::ELFCodeGenerator<hw>;
-    friend class expr_evaluator_t<ir_kernel_t>;
-    friend class ir_to_ngen_t<ir_kernel_t>;
+#define IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::emov; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::eadd; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::emul; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::eshl; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::eshr;
 
+#define IR_TO_NGEN_GENERATOR_FORWARD(BaseGeneratorT) \
+    NGEN_FORWARD_ELF(BaseGeneratorT::hardware) \
+    IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::exec_cfg; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::kernel_iface; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_prologue; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_epilogue; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::ra;
+
+class ir_kernel_t : public generator_base_t {
+public:
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
-        : base(desc, desc.exec_cfg(engine), debug_config)
-        , kernel_name_(desc.kernel_name())
-        , require_dpas_(desc.with_dpas())
-        , local_range_(desc.local_range()) {}
+        : kernel_desc_(&desc)
+        , exec_cfg_(desc.exec_cfg(engine))
+        , local_range_(desc.local_range())
+        , interface_(exec_cfg_.hw())
+        , debug_config_(debug_config) {
+        interface_.externalName(kernel_desc_->kernel_name());
+        if (kernel_desc_->with_dpas()) interface_.requireDPAS();
+        kernel_desc_->init_kernel_iface(kernel_iface_);
+    }
 
+    // On XeHPG hardware, there is some setup overhead when switching
+    // between dpas and non-dpas kernels. The require_dpas parameter is to
+    // enable better kernel chaining on this platform.
     ir_kernel_t(const std::string &kernel_name, const exec_config_t &exec_cfg,
             const compute::range_t &local_range, bool require_dpas,
             const debug_config_t &debug_config)
-        : base(exec_cfg, {}, debug_config)
-        , kernel_name_(kernel_name)
-        , require_dpas_(require_dpas)
-        , local_range_(local_range) {}
-
-    const ngen::NEOInterfaceHandler &neo_interface() const {
-        return elf_generator_t::interface_;
+        : exec_cfg_(exec_cfg)
+        , local_range_(local_range)
+        , interface_(exec_cfg_.hw())
+        , debug_config_(debug_config) {
+        interface_.externalName(kernel_name);
+        if (require_dpas) interface_.requireDPAS();
     }
 
+    const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
+
     void set_kernel_iface(const kernel_iface_t &kernel_iface) {
-        base::kernel_iface_ = kernel_iface;
+        kernel_iface_ = kernel_iface;
     }
 
     void setup_interface(const stmt_t &kernel_body = stmt_t()) {
-        elf_generator_t::externalName(kernel_name_);
-        elf_generator_t::requireLocalID(3);
-        elf_generator_t::requireLocalSize();
-        elf_generator_t::requireGRF(base::exec_cfg().regs());
-        elf_generator_t::requireSIMD(base::exec_cfg().simd());
-        elf_generator_t::requireBarrier();
+        interface_.requireLocalID(3);
+        interface_.requireLocalSize();
+        interface_.requireGRF(exec_cfg_.regs());
+        interface_.requireSIMD(exec_cfg_.simd());
+        interface_.requireBarrier();
         auto setup_flags = get_setup_flags(kernel_body);
 
-        // On XeHPG hardware, there is some setup overhead when switching
-        // between dpas and non-dpas kernels. The require_dpas_ parameter is to
-        // enable better kernel chaining on this platform.
-        if (require_dpas_ || setup_flags.has_dpas)
-            elf_generator_t::requireDPAS();
-        if (setup_flags.has_send_atomics)
-            elf_generator_t::requireGlobalAtomics();
+        if (setup_flags.has_dpas) interface_.requireDPAS();
+        if (setup_flags.has_send_atomics) interface_.requireGlobalAtomics();
 
-        for (int i = 0; i < base::kernel_iface().nargs(); i++) {
-            auto &name = base::kernel_iface().arg_name(i);
-            auto &type = base::kernel_iface().arg_type(i);
+        for (int i = 0; i < kernel_iface_.nargs(); i++) {
+            auto &name = kernel_iface_.arg_name(i);
+            auto &type = kernel_iface_.arg_type(i);
             if (type.is_ptr()) {
-                elf_generator_t::newArgument(name,
+                interface_.newArgument(name,
                         ngen::ExternalArgumentType::GlobalPtr,
                         ngen::GlobalAccessType::Stateless);
             } else {
-                elf_generator_t::newArgument(name, to_ngen(type));
+                interface_.newArgument(name, to_ngen(type));
             }
         }
 
@@ -1227,62 +1224,69 @@ public:
             int slm_size = alloc_manager_t(kernel_body)
                                    .total_size(alloc_kind_t::slm);
             int max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                    convert_ngen_arch_to_dnnl(hw), thread_group_size(),
-                    base::exec_cfg().regs() > 128);
+                    convert_ngen_arch_to_dnnl(exec_cfg_.hw()),
+                    thread_group_size(), exec_cfg_.regs() > 128);
             if (slm_size > max_slm_size) {
                 // TODO: Use status code for this check.
                 gpu_except_not_implemented("SLM size limit is exceeded.");
             }
-            elf_generator_t::requireSLM(slm_size);
+            interface_.requireSLM(slm_size);
         }
 
-        elf_generator_t::finalizeInterface();
+        interface_.finalize();
     }
 
+    void force_emulate64() { force_emulate64_ = true; }
+
+    int peak_regs() const { return peak_regs_; }
+
+    void generate_from_ir(const stmt_t &kernel_body,
+            const walk_order_t *kernel_grid_walk_order = nullptr);
+
+    const char *kernel_name() const override {
+        return interface_.getExternalName().c_str();
+    }
+
+    status_t get_kernel(compute::kernel_t &kernel,
+            const compute::compute_engine_t *engine) override {
+        return generator_->get_kernel(kernel, engine);
+    }
+
+private:
     int thread_group_size() const {
         gpu_assert(local_range_);
         int local_size = 1;
         for (int i = 0; i < (int)local_range_.ndims(); i++) {
             local_size *= (int)local_range_[i];
         }
-        return ir_utils::safe_divide(local_size, base::exec_cfg_.simd());
+        return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }
 
-private:
-    std::string kernel_name_;
-    bool require_dpas_;
+    const kernel_desc_base_t *kernel_desc_ = nullptr;
+    kernel_iface_t kernel_iface_;
+    exec_config_t exec_cfg_;
     compute::range_t local_range_;
+
+    ngen::InterfaceHandler interface_;
+    debug_config_t debug_config_;
+
+    bool force_emulate64_ = false;
+    int peak_regs_ = 0;
+
+    std::unique_ptr<generator_base_t> generator_;
 };
 
-#define IR_KERNEL_EMULATION_FORWARD(hw) \
-    using ir_kernel_t<hw>::emov; \
-    using ir_kernel_t<hw>::eadd; \
-    using ir_kernel_t<hw>::emul; \
-    using ir_kernel_t<hw>::eshl; \
-    using ir_kernel_t<hw>::eshr;
-
-#define IR_KERNEL_FORWARD(hw) \
-    NGEN_FORWARD_ELF(hw) \
-    IR_KERNEL_EMULATION_FORWARD(hw) \
-    using ir_kernel_t<hw>::exec_cfg; \
-    using ir_kernel_t<hw>::kernel_iface; \
-    using ir_kernel_t<hw>::set_kernel_iface; \
-    using ir_kernel_t<hw>::setup_interface; \
-    using ir_kernel_t<hw>::bind_external_vars; \
-    using ir_kernel_t<hw>::generate_prologue; \
-    using ir_kernel_t<hw>::generate_epilogue; \
-    using ir_kernel_t<hw>::emu_strategy; \
-    using ir_kernel_t<hw>::ra;
-
 #ifdef NGEN_ASM
-class ir_asm_generator_t : public ngen::AsmCodeGenerator {
+class ngen_asm_code_generator_with_interface_t : public ngen::AsmCodeGenerator {
 public:
-    ir_asm_generator_t(const ngen::Product &product,
-            const ngen::NEOInterfaceHandler &interface)
-        : ngen::AsmCodeGenerator(product), interface_(interface) {}
+    ngen_asm_code_generator_with_interface_t(
+            const ngen::Product &product, const ngen::DebugConfig &)
+        : ngen::AsmCodeGenerator(product)
+        , interface_(ngen::getCore(product.family)) {}
 
     NGEN_FORWARD_SCOPE(ngen::AsmCodeGenerator)
 
+    const ngen::NEOInterfaceHandler &getInterface() const { return interface_; }
     int getSIMD() const { return interface_.getSIMD(); }
     void prologue() { interface_.generatePrologue(*this); }
     void epilogue(ngen::RegData r0_info) {
@@ -1304,28 +1308,8 @@ public:
         return oss.str();
     }
 
-private:
+protected:
     ngen::NEOInterfaceHandler interface_;
-};
-
-class ir_asm_kernel_t : public ir_kernel_base_t<ir_asm_generator_t> {
-public:
-    using base = ir_kernel_base_t<ir_asm_generator_t>;
-
-    friend class expr_evaluator_t<ir_asm_kernel_t>;
-    friend class ir_to_ngen_t<ir_asm_kernel_t>;
-
-    template <ngen::HW hw>
-    ir_asm_kernel_t(const ir_kernel_t<hw> &k)
-        : base(k.exec_cfg(), k.kernel_iface(), k.neo_interface()) {}
-};
-#else
-class ir_asm_kernel_t {
-public:
-    template <ngen::HW hw>
-    ir_asm_kernel_t(const ir_kernel_t<hw> &k) {
-        MAYBE_UNUSED(k);
-    }
 };
 #endif
 

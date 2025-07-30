@@ -1646,8 +1646,8 @@ setup_flags_t get_setup_flags(const stmt_t &s) {
     return visitor.flags;
 }
 
-template <typename ngen_generator_t>
-void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,
+template <typename GeneratorT>
+void convert_ir_to_ngen(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
     expr_binding_t expr_binding(host->getHardware());
     host->comment("Prologue");
@@ -1659,19 +1659,24 @@ void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,
                 *kernel_grid_walk_order, expr_binding);
 
     host->comment("IR");
-    ir_to_ngen_t<ngen_generator_t> visitor(host, expr_binding);
+    ir_to_ngen_t<GeneratorT> visitor(host, expr_binding);
     visitor.visit(body);
 
     host->comment("Epilogue");
     host->generate_epilogue();
 }
 
-std::string get_ngen_str(const stmt_t &body, ir_asm_kernel_t host,
+template <typename GeneratorT>
+std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
+    ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t> host_asm(
+            host->kernel_iface(), host->exec_cfg(), host->debug_config(),
+            host->neo_interface());
+
     try {
-        convert_ir_to_ngen_impl(body, &host, kernel_grid_walk_order);
-        return host.str();
+        convert_ir_to_ngen(body, &host_asm, kernel_grid_walk_order);
+        return host_asm.str();
     } catch (std::runtime_error &e) {
         return "IR to nGEN Exception: " + std::string(e.what());
     }
@@ -1680,31 +1685,33 @@ std::string get_ngen_str(const stmt_t &body, ir_asm_kernel_t host,
 #endif
 }
 
-template <typename ngen_generator_t>
-void convert_ir_to_ngen(const stmt_t &body, ngen_generator_t *host,
-        const walk_order_t *kernel_grid_walk_order) {
-    gpu_trace() << get_ngen_str(body, *host, kernel_grid_walk_order);
-    convert_ir_to_ngen_impl(body, host, kernel_grid_walk_order);
+template <typename GeneratorT>
+void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
+        const walk_order_t *kernel_grid_walk_order, int &peak_regs) {
+    gpu_trace() << get_ngen_str(kernel_body, host, kernel_grid_walk_order);
+    convert_ir_to_ngen(kernel_body, host, kernel_grid_walk_order);
+#ifdef DNNL_DEV_MODE
+    peak_regs = host->ra().get_peak_regs();
+#endif
 }
 
-REG_XELP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeLP> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHP> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHPG_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHPG> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHPC_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHPC> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XE2_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe2> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XE3_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe3> *host,
-        const walk_order_t *kernel_grid_walk_order));
+void ir_kernel_t::generate_from_ir(
+        const stmt_t &kernel_body, const walk_order_t *kernel_grid_walk_order) {
+    gpu_assert(!generator_)
+            << "ir_kernel_t::generate_from_ir() was called already.";
+
+#define GPU_HW_CASE(hw) \
+    using gen_type = ir_to_ngen_generator_t<generator_t<(hw)>>; \
+    generator_ = utils::make_unique<gen_type>( \
+            kernel_iface_, exec_cfg_, debug_config_, interface_); \
+    auto *gen = static_cast<gen_type *>(generator_.get()); \
+    if (force_emulate64_) gen->force_emulate64(); \
+    jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
+
+    GPU_HW_SWITCH(exec_cfg_.hw().to_ngen());
+
+#undef GPU_HW_CASE
+}
 
 } // namespace jit
 } // namespace intel

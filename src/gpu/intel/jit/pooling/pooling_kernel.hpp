@@ -17,7 +17,6 @@
 #ifndef GPU_INTEL_JIT_POOLING_POOLING_KERNEL_HPP
 #define GPU_INTEL_JIT_POOLING_POOLING_KERNEL_HPP
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
@@ -33,23 +32,18 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-template <ngen::HW hw = ngen::HW::Unknown>
-class pooling_kernel_t : public ir_kernel_t<hw> {
+class pooling_kernel_t : public ir_kernel_t {
 public:
-    IR_KERNEL_FORWARD(hw)
-
     pooling_kernel_t(pooling_config_t &cfg, const std::string &kernel_name,
             const kernel_info_t &kernel_info, const primitive_desc_t &pd)
-        : ir_kernel_t<hw>(kernel_name, cfg.exec_cfg(),
+        : ir_kernel_t(kernel_name, cfg.exec_cfg(),
                 kernel_info.nd_range().local_range(), /*require_dpas=*/false,
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         set_kernel_iface(kernel_info.iface());
         pooling_ir_builder_t builder(cfg, kernel_info, pd);
         const stmt_t &body = builder.stmt();
         setup_interface(body);
-
-        // Generate assembly from IR.
-        convert_ir_to_ngen<ir_kernel_t<hw>>(body, this);
+        generate_from_ir(body);
     }
 };
 

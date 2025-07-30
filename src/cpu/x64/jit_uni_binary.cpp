@@ -1221,7 +1221,8 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
         execute_no_bcast_strategy(src0, src1, src2, dst, scales[0], scales[1],
                 post_ops_binary_rhs_arg_vec, bcast_type);
     else if (bcast_type == bcast_t::per_batch
-            && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
+            && !postops_per_oc_broadcast_exists && !blocked_oc_tail
+            && !postops_per_w_broadcast_exists)
         execute_bcast_per_batch_strategy(src0, src1, src2, dst, scales[0],
                 scales[1], post_ops_binary_rhs_arg_vec);
     else if (bcast_type == bcast_t::per_w)

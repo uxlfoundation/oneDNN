@@ -108,6 +108,15 @@ protected:
     void update_driver_info();
 };
 
+struct quant_params {
+    data_type_t scales_type;
+    data_type_t zp_type;
+    int zp_ndims;
+    int scale_ndims;
+    int group_k;
+    int group_mn;
+};
+
 struct gen_nocopy_desc_t : public gen_desc_t {
     enum compute_mode {
         mode_default = 0,
@@ -127,12 +136,10 @@ struct gen_nocopy_desc_t : public gen_desc_t {
     status_t select_kernel(compute::gpu_arch_t arch, int stepping, int eu_count,
             bool has_systolic, bool is_integrated, compute_mode mode,
             int batch_dims, bool trans_a, bool trans_b, bool trans_co,
-            bool swap_ab, int ao_dims, int bo_dims, int asc_dims, int bsc_dims,
-            bool dst_sround, int a_q2d_group_k, int b_q2d_group_k,
-            bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha,
-            float beta, data_type_t a_type, data_type_t b_type,
-            data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
-            data_type_t a_scales_type, data_type_t b_scales_type,
+            bool swap_ab, const quant_params &a_quant,
+            const quant_params &b_quant, bool dst_sround, bool c_offset,
+            bool bias, sum_ab_t reduce_ab, float alpha, float beta,
+            data_type_t a_type, data_type_t b_type, data_type_t c_type,
             data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
             int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb,
             dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);

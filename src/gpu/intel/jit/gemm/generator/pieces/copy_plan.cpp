@@ -282,7 +282,9 @@ void CopyPlan::transform()
     sort(SortType::PhaseOnly);
 
     legalizeImmediateTypes();
-
+#if XE3P
+    legalizeShfl();
+#endif
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     if (getVerbose(GEMMVerbose::DebugInfo) >= 170)
         dump();
@@ -402,6 +404,27 @@ int CopyPlan::tempFlagBytes() const
         if (t.flag)
             bytes += t.bytes;
     return bytes;
+}
+
+CopyOperand CopyPlan::getResource(CopyResource::Kind kind)
+{
+    CopyResource *res = nullptr;
+    if (kind == CopyResource::Kind::null)
+        return CopyOperand();
+    for (auto &r: resources) if (r.kind == kind) {
+        res = &r; break;
+    }
+    if (!res) {
+        resources.push_back(kind);
+        res = &resources.back();
+    }
+    if (!res->src) {
+        auto data = res->getData();
+        res->preinitialized = false;
+        if (int n = std::get<1>(data))
+            res->src = newTemp(DataType::ud, (n + 3) >> 2, 1);
+    }
+    return res->src;
 }
 
 // Split an instruction into two.
@@ -756,6 +779,12 @@ void CopyPlan::planTypeConversions()
         if (asSigned(st) == asSigned(dt) && st != dt && !i.sat)
             dt = st;
 
+#if XE3P
+        if (hw >= HW::Xe3p && is4(st) && one_of(getBits(dt), 8, 16))
+            if (planShflUpconvertXe3p(i))
+                continue;
+#endif
+
         if (isInt4(st) && isInt(dt)) {
             planInt4Upconversion(i);
             rerun = true;
@@ -929,6 +958,96 @@ void CopyPlan::planTypeConversions()
     }
 }
 
+#if XE3P
+// Upconvert 4-bit types to 8/16 bits using shfl.idx4.
+bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
+{
+    // Cases handled:     (with 16-bit upconversion; 8-bit similar)
+    // 1a)
+    //     mov  y:uw<1>    x:u4<8;2,1>      -->  shfl.idx4  y.0:ud<1>  lut:ud  x.(n/2):ub<4>
+    // 1b)
+    //     mov  y.0:uw<2>  x.n:u4<8>        -->  same as 1a
+    //     mov  y.1:uw<2>  x.(n+1):u4<8>
+    // 2)
+    //     mov  y:uw<1>    x:u4<1>          -->  mov  y:ub<4>  x:ub<1>
+    //                                           mov  y:uw<1>  x:u4<8;2,1> (--> case 1a)
+    // 3)
+    //     mov  y:uw<n>    x:u4<1>          -->  mov  t:uw<1>  x:u4<1>     (--> case 2 (<1>), 1a (<8;2,1>))
+    //                      OR <8;2,1>           mov  y:uw<n>  t:uw<1>
+    //
+    // If dst is integral, only use shfl.idx4 in case 1 and only when src and dst have valid offsets for shfl.idx4.
+
+    auto st = i.src0.type, dt = i.dst.type;
+    bool _16 = (getBytes(dt) == 2);
+
+    bool laneAligned = (i.src0.vs == 8 && i.src0.width * getBytes(dt) == 8 && i.src0.stride == 1);
+    if ((i.src0.vs || i.src0.width) && !laneAligned)
+        return false;       /* unsupported 2D region */
+    if (!laneAligned && i.src0.stride != 1)
+        return false;       /* expect stride 1 */
+    if (i.src0.offset & (_16 ? 1 : 3))
+        return false;       /* unaligned input */
+
+    auto x = i.src0, y = i.dst;
+    bool copySrc = !laneAligned || x.byteOffset() >= 4;
+    bool copyDst = (y.stride != 1 || y.offset != 0);
+
+    if (isInt(dt) && (copySrc || copyDst))
+        return false;       /* use normal sequence */
+
+    auto lut = getResource(CopyResource::makeShflLUT(st, dt));
+    if (!lut)
+        return false;       /* no LUT available */
+    lut.type = DataType::ud;
+    lut.stride = 0;         /* will be fixed up later */
+
+    auto ie = splitMultiple<3>(i);
+
+    x.offset >>= (_16 ? 1 : 2);
+    x.type = (_16 ? DataType::ub : DataType::uw);
+
+    if (copyDst)
+        y = newTemp(dt, i.simd, 1);
+
+    if (copySrc) {
+        ie[0]->op = Opcode::mov;
+        ie[0]->src0 = x;
+        x = y;
+        x.type = (_16 ? DataType::ub : DataType::uw);
+        x.stride = (_16 ? 4 : 2);
+        ie[0]->dst = x;
+    }
+
+    ie[1]->op = Opcode::shfl;
+    ie[1]->dst = y;
+    ie[1]->dst.type = DataType::ud;
+    ie[1]->src0 = lut;
+    ie[1]->src1 = x;
+
+    if (copyDst) {
+        ie[2]->op = Opcode::mov;
+        ie[2]->src0 = y;
+    } else
+        ie[2]->invalidate();
+
+    return true;
+}
+
+void CopyPlan::legalizeShfl()
+{
+    for (auto &i: insns) {
+        if (i.op != Opcode::shfl) continue;
+        if (i.src0.stride == 0) {
+            i.src0.stride = 1;
+            if (i.simd > 16) {
+                i.src0.width = 16;
+                i.src0.vs = 0;
+            }
+        }
+    }
+}
+#endif
+
 // Unpack 4-bit src type into 16 bits (zero extended), used in many conversion sequences.
 void CopyPlan::planUnpack4To16(CopyInstruction &i)
 {
@@ -1044,6 +1163,13 @@ void CopyPlan::planSmallUWToHF(CopyInstruction &i)
 // uw->bf sequence when source range is uint8 or smaller.
 void CopyPlan::planSmallUWToBF(CopyInstruction &i)
 {
+#if XE3P
+    if (hw >= HW::Xe3p) {
+        planSmallUWToBFXe3p(i);
+        return;
+    }
+#endif
+
     if (i.src0.neg || i.sat || i.hasCMod()) return;
 
     auto st = i.src0.type;
@@ -1090,6 +1216,34 @@ void CopyPlan::planSmallUWToBF(CopyInstruction &i)
     ie[3]->dst = ie[3]->src0;
     ie[3]->flag = ie[0]->flag;
 }
+
+#if XE3P
+// Xe3p uw->bf sequence when source range is uint8 or smaller.
+void CopyPlan::planSmallUWToBFXe3p(CopyInstruction &i)
+{
+    if (i.src0.neg || i.sat || i.hasCMod()) return;
+
+    auto ie = splitMultiple<2>(i);
+    auto st = i.src0.type;
+
+    // Reinterpret as bf16 denormal and multiply by 2^133 to scale to correct range.
+    ie[0]->op = Opcode::mul;
+    ie[0]->src0.type = DataType::bf;
+    ie[0]->src1 = Immediate::bf(0x7F00);       // bf16(2^127)
+
+    ie[1]->op = Opcode::mul;
+    ie[1]->src0 = ie[0]->dst;
+    ie[1]->src1 = Immediate::bf(0x4280);       // bf16(2^6)
+
+    if (st == ngen_uw_ss4() || st == ngen_uw_sb()) {
+        // Adjust for shift.
+        ie[1]->op = Opcode::mad;
+        ie[1]->src0 = Immediate::bf((st == ngen_uw_sb()) ? 0xC300 : 0xC100);       // -128/-8
+        ie[1]->src1 = ie[0]->dst;
+        ie[1]->src2 = Immediate::bf(0x4280);
+    }
+}
+#endif /* XE3P */
 
 // b->hf sequence.
 void CopyPlan::planBToHF(CopyInstruction &i)
@@ -1262,6 +1416,12 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     i.sat = false;
+
+#if XE3P
+    if (hw >= HW::Xe3p && getBytes(i.dst.type) <= 2)
+        if (planShflUpconvertXe3p(i))
+            return;
+#endif
 
     bool s4 = (i.src0.type == DataType::s4);
 
@@ -3209,8 +3369,70 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
         }
     }
 
+    for (auto &r: resources) if (r.src.temp) {
+        r.src.temp = false;
+        r.src.grf += temps[r.src.value].assignment;
+    }
+
     temps.clear();
 }
+
+std::tuple<const uint8_t*, int> CopyResource::getData() const
+{
+    const uint8_t *base = nullptr;
+    size_t n = 0;
+
+    switch (kind) {
+        case null: break;
+#if XE3P
+        default: {
+            DataType st, dt;
+            if (!decodeShflLUT(st, dt)) break;
+
+#define LUT16(ST, DT, V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, VA, VB, VC, VD, VE, VF)  \
+            if (st == DataType::ST && dt == DataType::DT) {                            \
+                static const uint16_t table[32] = {V0, V0, V1, V1, V2, V2, V3, V3,     \
+                                                   V4, V4, V5, V5, V6, V6, V7, V7,     \
+                                                   V8, V8, V9, V9, VA, VA, VB, VB,     \
+                                                   VC, VC, VD, VD, VE, VE, VF, VF};    \
+                base = (const uint8_t *) table;                                        \
+                n = sizeof(table);                                                     \
+            }
+
+            LUT16(e2m1, hf, 0x0, 0x3800, 0x3c00, 0x3e00, 0x4000, 0x4200, 0x4400, 0x4600, 0x8000, 0xb800, 0xbc00, 0xbe00, 0xc000, 0xc200, 0xc400, 0xc600)
+            LUT16(e3m0, hf, 0x0, 0x3400, 0x3800, 0x3c00, 0x4000, 0x4400, 0x4800, 0x4c00, 0x8000, 0xb400, 0xb800, 0xbc00, 0xc000, 0xc400, 0xc800, 0xcc00)
+            LUT16(e2m1, bf, 0x0, 0x3f00, 0x3f80, 0x3fc0, 0x4000, 0x4040, 0x4080, 0x40c0, 0x8000, 0xbf00, 0xbf80, 0xbfc0, 0xc000, 0xc040, 0xc080, 0xc0c0)
+            LUT16(e3m0, bf, 0x0, 0x3e80, 0x3f00, 0x3f80, 0x4000, 0x4080, 0x4100, 0x4180, 0x8000, 0xbe80, 0xbf00, 0xbf80, 0xc000, 0xc080, 0xc100, 0xc180)
+
+            LUT16(u4, hf, 0x0, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800, 0x4880, 0x4900, 0x4980, 0x4a00, 0x4a80, 0x4b00, 0x4b80)
+            LUT16(s4, hf, 0x0, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0xc800, 0xc700, 0xc600, 0xc500, 0xc400, 0xc200, 0xc000, 0xbc00)
+            LUT16(u4, bf, 0x0, 0x3f80, 0x4000, 0x4040, 0x4080, 0x40a0, 0x40c0, 0x40e0, 0x4100, 0x4110, 0x4120, 0x4130, 0x4140, 0x4150, 0x4160, 0x4170)
+            LUT16(s4, bf, 0x0, 0x3f80, 0x4000, 0x4040, 0x4080, 0x40a0, 0x40c0, 0x40e0, 0xc100, 0xc0e0, 0xc0c0, 0xc0a0, 0xc080, 0xc040, 0xc000, 0xbf80)
+
+            break;
+        }
+#endif
+    }
+
+    return std::make_tuple(base, n / sizeof(*base));
+}
+
+#if XE3P
+CopyResource::Kind CopyResource::makeShflLUT(DataType from, DataType to)
+{
+    return static_cast<Kind>(shflLUTBase | static_cast<uint32_t>(from) | (static_cast<uint32_t>(to) << 8));
+}
+
+bool CopyResource::decodeShflLUT(DataType &from, DataType &to) const
+{
+    if (kind & shflLUTBase) {
+        from = static_cast<DataType>(kind);
+        to   = static_cast<DataType>(kind >> 8);
+        return true;
+    }
+    return false;
+}
+#endif
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
 int CopyPlan::cycleCount() const
@@ -3237,6 +3459,11 @@ void CopyInstruction::dump(const CopyPlan &plan) const
         std::cout << ")\t";
     }
 
+#if XE3P
+    if (op == Opcode::shfl)
+        std::cout << "shfl.idx4";
+    else
+#endif
     std::cout << getMnemonic(op, HW::Gen9);
     switch (op) {
         case Opcode::bfn:  std::cout << '.' << std::hex << int(ctrl) << std::dec; break;

@@ -141,6 +141,33 @@ private:
     CopyTemporary() {}
 };
 
+struct CopyResource
+{
+    friend class CopyPlan;
+
+    enum Kind : uint32_t {
+        null = 0,
+#if XE3P
+        shflLUTBase = 0x80000000,
+#endif
+    } kind;
+    CopyOperand src;
+    bool preinitialized = true;
+
+    CopyResource(Kind kind_) : kind(kind_) {}
+
+    template <typename Generator>
+    inline void initialize(Generator &g);
+
+#if XE3P
+    static Kind makeShflLUT(ngen::DataType from, ngen::DataType to);
+    bool decodeShflLUT(ngen::DataType &from, ngen::DataType &to) const;
+#endif
+
+protected:
+    std::tuple<const uint8_t*, int> getData() const;
+};
+
 class CopyPlan
 {
 public:
@@ -177,6 +204,7 @@ protected:
     std::vector<CopyInstruction> insns, newInsns;
     std::vector<CopyTemporary> temps;
     CopyInstruction invalidInsn;
+    std::vector<CopyResource> resources;
 
     enum class SortType {
         PhaseOnly, Register, SourceOrder
@@ -184,6 +212,8 @@ protected:
 
     CopyOperand newTemp(ngen::DataType type, int elems, int stride, int align = 0, int offset = 0);
     CopyOperand newFlag(int bits = 16);
+
+    CopyOperand getResource(CopyResource::Kind kind);
 
     CopyInstruction &split(CopyInstruction &i, bool sequenced = true);
     template <int n>
@@ -226,6 +256,11 @@ protected:
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
     void emulateBooleanFunction();
+#if XE3P
+    void planSmallUWToBFXe3p(CopyInstruction &i);
+    bool planShflUpconvertXe3p(CopyInstruction &i);
+    void legalizeShfl();
+#endif
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();
@@ -246,6 +281,7 @@ protected:
 template <typename Generator>
 void CopyPlan::execute(Generator &g)
 {
+    for (auto &r: resources) if (!r.preinitialized) r.initialize(g);
     for (auto &i: insns) i.execute(g);
 }
 
@@ -327,12 +363,45 @@ void CopyInstruction::execute(Generator &g)
             break;
 	    }
 #endif
+#if XE3P
+        case Opcode::shfl:
+            g.shfl.idx4(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen());
+            break;
+#endif
         default: stub("Unsupported opcode");
     }
 
 #undef UNARY_OP_CASE
 #undef BINARY_OP_CASE
 #undef TERNARY_OP_CASE
+}
+
+template <typename Generator>
+void CopyResource::initialize(Generator &g)
+{
+    using namespace ngen;
+
+    const uint8_t *data;
+    int n;
+    std::tie(data, n) = getData();
+
+    auto dataUQ = (const uint64_t *) data;
+    auto dataDF = (const double *)   data;
+    auto dataUD = (const uint32_t *) data;
+    auto dataF = (const float *)     data;
+    int n64 = (n + 7) >> 3;
+
+    bool do64 = (g.getHardware() >= HW::XeHPC);
+    GRF r(src.ngen().getBase());
+    for (int i = 0; i < n64; i++) {
+        if (do64) {
+            (i & 1) ? g.mov(1, r.uq(i), Immediate::uq(dataUQ[i]))
+                    : g.mov(1, r.df(i), Immediate::df(dataDF[i]));
+        } else {
+            g.mov(1, r.ud(2*i),    Immediate::ud(dataUD[2*i]));
+            g.mov(1, r.f(2*i + 1), Immediate::f(dataF[2*i + 1]));
+        }
+    }
 }
 
 GEMMSTONE_NAMESPACE_END

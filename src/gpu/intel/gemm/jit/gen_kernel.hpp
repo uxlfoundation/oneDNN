@@ -119,6 +119,7 @@ struct quant_params {
     int gs_ndims;
     int group_k;
     int group_mn;
+    bool force_gs;
 };
 
 struct gen_nocopy_desc_t : public gen_desc_t {

@@ -348,12 +348,15 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            jit::quant_params a_quant
-                    = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
-                            ag_dims_, a_q2d_group_k(), a_q2d_group_m()};
-            jit::quant_params b_quant
-                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
-                            bg_dims_, b_q2d_group_k(), b_q2d_group_n()};
+            auto has_gs = [&](int idx) {
+                return !attr()->precomputed_reductions_.has_default_values(idx);
+            };
+            jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
+                    asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
+                    a_q2d_group_m(), has_gs(DNNL_ARG_A)};
+            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
+                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(),
+                    b_q2d_group_n(), has_gs(DNNL_ARG_B)};
 
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,

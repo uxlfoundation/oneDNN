@@ -616,7 +616,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     mod_match(base,
             ((a_quant.scale_ndims >= 2 || b_quant.scale_ndims >= 2)
                     && a_quant.zp_ndims > -1 && problem_.Ta_ext.isInt8()
-                    && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()),
+                    && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
+                    && !a_quant.force_gs && !b_quant.force_gs),
             [](Type dt) -> const char * {
                 if (dt.isInt8()) return "[OH]";
                 return nullptr;

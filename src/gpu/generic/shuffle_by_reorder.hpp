@@ -14,30 +14,30 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SHUFFLE_BY_REORDER_HPP
-#define GPU_INTEL_SHUFFLE_BY_REORDER_HPP
+#ifndef GPU_GENERIC_SHUFFLE_BY_REORDER_HPP
+#define GPU_GENERIC_SHUFFLE_BY_REORDER_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/reorder.hpp"
+#include "gpu/gpu_primitive.hpp"
 #include "gpu/gpu_shuffle_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
-namespace intel {
+namespace generic {
 
 // Implements shuffle using reorder kernel.
 // Pretends that instead of the one dimension to be shuffled there are two
 // smaller dimensions, then reorders the tensor to swap those two.
 // Reorder kernel is used more often so is expected to be better optimized.
-struct shuffle_by_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct shuffle_by_reorder_t : public gpu::primitive_t {
+    using gpu::primitive_t::primitive_t;
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reorder:any", shuffle_by_reorder_t);
+        DECLARE_COMMON_PD_T("reorder:any", shuffle_by_reorder_t);
 
         status_t init(impl::engine_t *engine) {
             const auto &md_src = is_fwd() ? src_md() : diff_src_md();
@@ -132,7 +132,7 @@ private:
     std::shared_ptr<impl::primitive_t> reorder_;
 };
 
-} // namespace intel
+} // namespace generic
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl

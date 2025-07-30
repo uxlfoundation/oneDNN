@@ -156,7 +156,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     memory::desc sub_src1_md, sub_wei1_user_md, sub_wei1_md, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_softmax_dst_md,
             sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md,
-            sub_dst_user_md, sub_select_cond_md, sub_select_src0_md;
+            sub_dst_user_md, sub_select_cond_md, sub_select_src_md;
     std::vector<memory::desc> sub_mm1_post_md, sub_softmax_post_md;
 
     // must use user mode to support concurrent execution
@@ -209,18 +209,56 @@ impl::status_t sdp_decomp_config_t::construct_params(
         if (mm1_ori_dnnl_pops.get()->entry_[i].is_binary()) {
             auto alg = static_cast<algorithm>(
                     mm1_ori_dnnl_pops.get()->entry_[i].binary.alg);
-            const dnnl::impl::memory_desc_t &ori_desc
-                    = mm1_ori_dnnl_pops.get()->entry_[i].binary.user_src1_desc;
-            auto post_shape = ori_desc.dims;
-            auto post_stride = ori_desc.format_desc.blocking.strides;
-            auto post_dt = static_cast<memory::data_type>(ori_desc.data_type);
-            dims post_stride_dims
-                    = {post_stride[second_last_dim], post_stride[last_dim]};
-            auto new_sub_md = memory::desc(
-                    {post_shape[second_last_dim], post_shape[last_dim]},
-                    post_dt, post_stride_dims);
-            sub_mm1_post_md.emplace_back(new_sub_md);
-            dnnl_pops.append_binary(alg, new_sub_md);
+            if (alg == algorithm::binary_select) {
+                const dnnl::impl::memory_desc_t &src1_desc
+                        = mm1_ori_dnnl_pops.get()
+                                  ->entry_[i]
+                                  .binary.user_src1_desc;
+                auto post_src1_shape = src1_desc.dims;
+                auto post_src1_stride = src1_desc.format_desc.blocking.strides;
+                auto post_src1_dt
+                        = static_cast<memory::data_type>(src1_desc.data_type);
+                dims post_src1_stride_dims = {post_src1_stride[second_last_dim],
+                        post_src1_stride[last_dim]};
+                auto select_sub_src1_md
+                        = memory::desc({post_src1_shape[second_last_dim],
+                                               post_src1_shape[last_dim]},
+                                post_src1_dt, post_src1_stride_dims);
+                sub_mm1_post_md.emplace_back(select_sub_src1_md);
+                const dnnl::impl::memory_desc_t &cond_desc
+                        = mm1_ori_dnnl_pops.get()
+                                  ->entry_[i]
+                                  .binary.user_src2_desc;
+                auto post_cond_shape = cond_desc.dims;
+                auto post_cond_stride = cond_desc.format_desc.blocking.strides;
+                auto post_cond_dt
+                        = static_cast<memory::data_type>(cond_desc.data_type);
+                dims post_cond_stride_dims = {post_cond_stride[second_last_dim],
+                        post_cond_stride[last_dim]};
+                auto select_sub_cond_md
+                        = memory::desc({post_cond_shape[second_last_dim],
+                                               post_cond_shape[last_dim]},
+                                post_cond_dt, post_cond_stride_dims);
+                sub_mm1_post_md.emplace_back(select_sub_cond_md);
+                dnnl_pops.append_binary(
+                        alg, select_sub_src1_md, select_sub_cond_md);
+            } else {
+                const dnnl::impl::memory_desc_t &ori_desc
+                        = mm1_ori_dnnl_pops.get()
+                                  ->entry_[i]
+                                  .binary.user_src1_desc;
+                auto post_shape = ori_desc.dims;
+                auto post_stride = ori_desc.format_desc.blocking.strides;
+                auto post_dt
+                        = static_cast<memory::data_type>(ori_desc.data_type);
+                dims post_stride_dims
+                        = {post_stride[second_last_dim], post_stride[last_dim]};
+                auto new_sub_md = memory::desc(
+                        {post_shape[second_last_dim], post_shape[last_dim]},
+                        post_dt, post_stride_dims);
+                sub_mm1_post_md.emplace_back(new_sub_md);
+                dnnl_pops.append_binary(alg, new_sub_md);
+            }
         } else if (mm1_ori_dnnl_pops.get()->entry_[i].is_eltwise()) {
             auto alg = static_cast<algorithm>(
                     mm1_ori_dnnl_pops.get()->entry_[i].eltwise.alg);
@@ -235,7 +273,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_mm1_prim = matmul(sub_mm1_pd);
 
     //select
-    if (has_select) {
+    if (has_select && !select_fusiable) {
         dnnl::primitive_attr sub_select_attr
                 = make_primitive_attr(sdp_op[5], mgr);
         auto select_cond_lt
@@ -250,14 +288,14 @@ impl::status_t sdp_decomp_config_t::construct_params(
                 static_cast<memory::data_type>(select_cond_ltw.data_type()),
                 {select_cond_ltw.vstrides()[second_last_dim],
                         select_cond_ltw.vstrides()[last_dim]});
-        sub_select_src0_md = memory::desc(
+        sub_select_src_md = memory::desc(
                 {select_src0_ltw.vdims()[second_last_dim],
                         select_src0_ltw.vdims()[last_dim]},
                 static_cast<memory::data_type>(select_src0_ltw.data_type()),
                 {select_src0_ltw.vstrides()[second_last_dim],
                         select_src0_ltw.vstrides()[last_dim]});
         auto sub_select_pd = binary::primitive_desc(p_engine,
-                algorithm::binary_select, sub_select_src0_md, sub_mm1_dst_md,
+                algorithm::binary_select, sub_select_src_md, sub_mm1_dst_md,
                 sub_select_cond_md, sub_mm1_dst_md, sub_select_attr);
         sub_select_prim = binary(sub_select_pd);
     }
@@ -383,13 +421,14 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_mm1_src = memory(sub_mm1_src_md, p_engine, nullptr);
     sub_mm1_wei = memory(sub_mm1_wei_md, p_engine, nullptr);
     sub_mm1_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
+
     for (size_t i = 0; i < sub_mm1_post_md.size(); i++) {
         sub_mm1_post_mem.emplace_back(sub_mm1_post_md[i], p_engine, nullptr);
     }
     //select
-    if (has_select) {
+    if (has_select && !select_fusiable) {
         sub_select_cond = memory(sub_select_cond_md, p_engine, nullptr);
-        sub_select_src0 = memory(sub_select_src0_md, p_engine, nullptr);
+        sub_select_src = memory(sub_select_src_md, p_engine, nullptr);
         sub_select_dst = memory(sub_mm1_dst_md, p_engine, nullptr);
     }
     // softmax
@@ -433,19 +472,36 @@ impl::status_t sdp_decomp_config_t::construct_params(
             {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
     int index = 0;
     for (int i = 0; i < mm1_ori_dnnl_pops.get()->len(); i++) {
-        if (mm1_ori_dnnl_pops.get()->entry_[i].is_binary())
-            sub_mm1_args.insert(
-                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
-                            sub_mm1_post_mem[index++]});
+        if (mm1_ori_dnnl_pops.get()->entry_[i].is_binary()) {
+            if (static_cast<algorithm>(
+                        mm1_ori_dnnl_pops.get()->entry_[i].binary.alg)
+                    == algorithm::binary_select) {
+                sub_mm1_args.insert(
+                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+                                sub_mm1_post_mem[index++]});
+                sub_mm1_args.insert(
+                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_2,
+                                sub_mm1_post_mem[index++]});
+            } else {
+                sub_mm1_args.insert(
+                        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+                                sub_mm1_post_mem[index++]});
+            }
+        }
     }
 
-    sub_select_args = {{DNNL_ARG_SRC_0, sub_select_src0},
-            {DNNL_ARG_SRC_1, sub_mm1_dst}, {DNNL_ARG_SRC_2, sub_select_cond},
-            {DNNL_ARG_DST, sub_select_dst},
-            {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+    if (has_select && !select_fusiable) {
+        sub_select_args = {{DNNL_ARG_SRC_0, sub_select_src},
+                {DNNL_ARG_SRC_1, sub_mm1_dst},
+                {DNNL_ARG_SRC_2, sub_select_cond},
+                {DNNL_ARG_DST, sub_select_dst},
+                {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+    }
 
     sub_softmax_args
-            = {{DNNL_ARG_SRC, has_select ? sub_select_dst : sub_mm1_dst},
+            = {{DNNL_ARG_SRC,
+                       (has_select && !select_fusiable) ? sub_select_dst
+                                                        : sub_mm1_dst},
                     {DNNL_ARG_DST, sub_softmax_dst},
                     {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
@@ -616,29 +672,17 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
     }
 
     if (has_select) {
-        // Note: Currently, decompose kernel only supports the pattern1 where
-        // input1 is an external graph input and input2 comes from the output of
-        // preceding op, and doesn't suppoort pattern which swaps input1 and
-        // input2. May need to extend support if requested by user.
-        ///                             |                     |
-        ///                         Preceding_op         Preceding_op
-        ///                             |                     |
-        ///    input0     input1     input2       input0    input1     input2
-        ///  (condition) (graph in)  (inter)    (condition) (inter)  (graph in)
-        ///          \      |        /                \      |        /
-        ///            \    |      /                    \    |       /
-        ///               Select                           Select
-        ///                 |                                |
-        ///               output                           output
-        ///                 |                                 |
-        ///             Succeeding_op                    Succeeding_op
-        ///              (pattern1)                      (pattern2)
         int cond_id = find_graph_inport(select->get_input_value(0));
         int src0_id = find_graph_inport(select->get_input_value(1));
-        VCHECK_SDP_DECOMP(src0_id != -1 && cond_id != -1, status::invalid_graph,
-                "failed to find graph inport, unsupported select input order");
+        int src1_id = find_graph_inport(select->get_input_value(2));
+        VCHECK_SDP_DECOMP((src0_id != -1 || src1_id != -1) && cond_id != -1,
+                status::invalid_graph, "failed to find graph inport");
+        if (src1_id != -1) select_fusiable = true;
         graph_inport.emplace_back(cond_id);
-        graph_inport.emplace_back(src0_id);
+        if (src0_id != -1)
+            graph_inport.emplace_back(src0_id);
+        else
+            graph_inport.emplace_back(src1_id);
     } else {
         //placeholder
         graph_inport.emplace_back(-1);
@@ -672,7 +716,7 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
         if (!cur_op || cur_op->get_kind() != op_kind::dnnl_matmul) continue;
         auto post_op = get_post_op(cur_op);
         op_ptr select;
-        if (has_select) {
+        if (has_select && !select_fusiable) {
             if (!post_op || post_op->get_kind() != op_kind::dnnl_binary
                     || post_op->get_attr<int64_t>(op_attr::alg_kind)
                             != alg_kind::binary_select)
@@ -722,7 +766,7 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
             sub_max_dst1_wei2.get_desc().get_size());
     temporary_registrar.book(
             mem_key_map[sub_mm2_dst.get()], sub_mm2_dst.get_desc().get_size());
-    if (has_select)
+    if (has_select && !select_fusiable)
         temporary_registrar.book(mem_key_map[sub_select_dst.get()],
                 sub_select_dst.get_desc().get_size());
     temporary_registrar.book(mem_key_map[sub_scratchpad.get()],
@@ -871,7 +915,8 @@ impl::status_t sdp_decomp_config_t::reset_engine(const dnnl::engine &p_engine) {
     DECLARE_RESET_ENGINE(sub_mm1_prim, matmul);
     DECLARE_RESET_ENGINE(sub_softmax_prim, softmax_forward);
     DECLARE_RESET_ENGINE(sub_mm2_prim, matmul);
-    if (has_select) DECLARE_RESET_ENGINE(sub_select_prim, binary);
+    if (has_select && !select_fusiable)
+        DECLARE_RESET_ENGINE(sub_select_prim, binary);
     sub_reorder0.reset_engine(p_engine);
     sub_reorder1.reset_engine(p_engine);
     sub_reorder2.reset_engine(p_engine);

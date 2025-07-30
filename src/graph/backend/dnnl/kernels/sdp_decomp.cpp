@@ -130,7 +130,7 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
                     sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
             + size_offset);
     //select
-    if (sdp_cfg_.has_select) {
+    if (sdp_cfg_.has_select && !sdp_cfg_.select_fusiable) {
         mem_map[sdp_cfg_.sub_select_dst.get()][id].set_data_handle(
                 var_grantor.get(
                         sdp_cfg_.mem_key_map[sdp_cfg_.sub_select_dst.get()])
@@ -260,8 +260,41 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     + mask_offset * get_mem_dt_size(sub_mm1_post_add_tid));
         }
         if (sdp_cfg_.has_select) {
-            auto &sub_select_cond_tid
-                    = res->mem_map[sdp_cfg_.sub_select_cond.get()][tid];
+            auto &sub_select_src_tid = sdp_cfg_.select_fusiable
+                    ? res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
+                                           .get()][tid]
+                    : res->mem_map[sdp_cfg_.sub_select_src.get()][tid];
+            const auto &select_src_input
+                    = inputs[sdp_cfg_.graph_inport
+                                     [sdp_decomp_config_t::select_other_input]];
+            const auto select_src_strides
+                    = ltw(select_src_input.get_logical_tensor()).vstrides();
+            const auto select_src_dims
+                    = ltw(select_src_input.get_logical_tensor()).vdims();
+
+            size_t select_src_offset = 0;
+            if (select_src_dims.size() == 4) {
+                if (select_src_dims[0] != 1)
+                    select_src_offset += bo * select_src_strides[0];
+                if (select_src_dims[1] != 1)
+                    select_src_offset += bi * select_src_strides[1];
+            } else if (select_src_dims.size() == 5) {
+                if (select_src_dims[0] != 1)
+                    select_src_offset += bo * select_src_strides[0];
+                if (select_src_dims[1] != 1)
+                    select_src_offset
+                            += wei_head_offset * select_src_strides[1];
+                if (select_src_dims[2] != 1)
+                    select_src_offset += group_id * select_src_strides[2];
+            }
+            sub_select_src_tid.set_data_handle(
+                    static_cast<char *>(select_src_input.get_data_handle())
+                    + select_src_offset * get_mem_dt_size(sub_select_src_tid));
+
+            auto &sub_select_cond_tid = sdp_cfg_.select_fusiable
+                    ? res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
+                                           .get()][tid]
+                    : res->mem_map[sdp_cfg_.sub_select_cond.get()][tid];
             const auto &select_cond_input
                     = inputs[sdp_cfg_.graph_inport
                                      [sdp_decomp_config_t::select_condition]];
@@ -289,36 +322,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     static_cast<char *>(select_cond_input.get_data_handle())
                     + select_cond_offset
                             * get_mem_dt_size(sub_select_cond_tid));
-
-            auto &sub_select_src0_tid
-                    = res->mem_map[sdp_cfg_.sub_select_src0.get()][tid];
-            const auto &select_src0_input
-                    = inputs[sdp_cfg_.graph_inport
-                                     [sdp_decomp_config_t::select_other_input]];
-            const auto select_src0_strides
-                    = ltw(select_src0_input.get_logical_tensor()).vstrides();
-            const auto select_src0_dims
-                    = ltw(select_src0_input.get_logical_tensor()).vdims();
-
-            size_t select_src0_offset = 0;
-            if (select_src0_dims.size() == 4) {
-                if (select_src0_dims[0] != 1)
-                    select_src0_offset += bo * select_src0_strides[0];
-                if (select_src0_dims[1] != 1)
-                    select_src0_offset += bi * select_src0_strides[1];
-            } else if (select_src0_dims.size() == 5) {
-                if (select_src0_dims[0] != 1)
-                    select_src0_offset += bo * select_src0_strides[0];
-                if (select_src0_dims[1] != 1)
-                    select_src0_offset
-                            += wei_head_offset * select_src0_strides[1];
-                if (select_src0_dims[2] != 1)
-                    select_src0_offset += group_id * select_src0_strides[2];
-            }
-            sub_select_src0_tid.set_data_handle(
-                    static_cast<char *>(select_src0_input.get_data_handle())
-                    + select_src0_offset
-                            * get_mem_dt_size(sub_select_src0_tid));
         }
         // reorder2:
         auto &sub_wei2_user_tid
@@ -373,7 +376,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         sdp_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
         sdp_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
         sdp_cfg_.sub_mm1_prim.execute(strm, res->sub_mm1_args[tid]);
-        if (sdp_cfg_.has_select)
+        if (sdp_cfg_.has_select && !sdp_cfg_.select_fusiable)
             sdp_cfg_.sub_select_prim.execute(strm, res->sub_select_args[tid]);
         sdp_cfg_.sub_softmax_prim.execute(strm, res->sub_softmax_args[tid]);
 

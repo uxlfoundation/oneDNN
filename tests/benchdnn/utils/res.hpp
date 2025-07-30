@@ -36,6 +36,7 @@ enum res_state_t {
     LISTED,
     INITIALIZED,
     EXECUTED,
+    DEFERRED,
 };
 
 enum dir_t {

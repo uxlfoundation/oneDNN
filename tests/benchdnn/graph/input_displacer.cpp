@@ -222,8 +222,10 @@ partition_data_displacer_t::partition_data_displacer_t(
             }
         }
 
-        if (dg.get_recognized_pattern() == graph_recognized_pattern_t::sdpa) {
-            // Alternatively, looking for Add->SoftMax chain, which represents
+        if (dg.get_recognized_pattern() == graph_recognized_pattern_t::sdpa
+                || dg.get_recognized_pattern()
+                        == graph_recognized_pattern_t::sdpa_bwd) {
+            // Alternatively, looking for Add with floating-point dtype, which represents
             // explicit SDPA mask, and should be filled with upper-corner with -inf:
             // 0 -inf -inf -inf
             // 0    0 -inf -inf
@@ -233,12 +235,16 @@ partition_data_displacer_t::partition_data_displacer_t(
             // influencing SoftMax input values.
             while (aop.kind_ == "Add" || aop.kind_ == "Select") {
                 auto *aop_out_lt = &aop.out_lts_[0];
-                auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-                if (child_op->kind_ != "SoftMax") break;
+                // s32 add is a case for bottom-right causal mask
+                if (aop_out_lt->data_type_ == "s32") break;
 
-                // Softmax must be a part of same partition as the mask. This is to
-                // avoid cases, where mask is the last op in the partition, from
-                // being modified.
+                // The following op (Softmax or Subtract) must be a part of same
+                // partition as the mask. This is to avoid cases, where mask is the
+                // last op in the partition, from being modified.
+                auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_op->kind_ != "SoftMax"
+                        && child_op->kind_ != "Subtract")
+                    break;
                 if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
 
                 // Search for an input lt without a parent, this is the one to
@@ -357,6 +363,7 @@ partition_data_displacer_t::partition_data_displacer_t(
             // Fill proper data for bottom-right implicit casual mask
             while (aop.kind_ == "Add") {
                 auto *aop_out_lt = &aop.out_lts_[0];
+                if (aop_out_lt->data_type_ != "s32") break;
                 auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
                 if (child_sub_op->kind_ != "Subtract") break;
 
@@ -424,24 +431,26 @@ partition_data_displacer_t::partition_data_displacer_t(
         }
 
         // Fill proper data for softmax stats in sdpa backward graph.
-        // TODO: check if it's a known sdpa pattern before doing the data filling
-        while (aop.kind_ == "Subtract") {
-            // for softmax stats, it's used as P = exp(S-stats)
-            // stats should be an input of the whole backward graph, so it should
-            // have no producer.
-            auto *aop_in_lt = &aop.in_lts_[1];
-            auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
-            if (!parent_op->empty()) break;
+        if (dg.get_recognized_pattern()
+                == graph_recognized_pattern_t::sdpa_bwd) {
+            while (aop.kind_ == "Subtract") {
+                // for softmax stats, it's used as P = exp(S-stats)
+                // stats should be an input of the whole backward graph, so it should
+                // have no producer.
+                auto *aop_in_lt = &aop.in_lts_[1];
+                auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+                if (!parent_op->empty()) break;
 
-            // subtract should be followed by exp to resume a softmax functionality.
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_exp_op->kind_ != "Exp") break;
+                // subtract should be followed by exp to resume a softmax functionality.
+                auto *aop_out_lt = &aop.out_lts_[0];
+                auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_exp_op->kind_ != "Exp") break;
 
-            displace_args_.emplace(aop_in_lt->id_,
-                    displace_args_t {
-                            aop, 1, *aop_in_lt, filling_type_t::softmax_stats});
-            break;
+                displace_args_.emplace(aop_in_lt->id_,
+                        displace_args_t {aop, 1, *aop_in_lt,
+                                filling_type_t::softmax_stats});
+                break;
+            }
         }
     }
 }

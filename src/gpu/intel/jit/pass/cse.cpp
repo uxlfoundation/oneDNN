@@ -390,10 +390,14 @@ private:
             return;
         }
 
-        // Support for mutable expressions is unimplemented
-        if (obj.type.is_mutable()) {
-            ir_visitor_t::_visit(obj);
-            return;
+        // Support for expressions with mutable variables is unimplemented due
+        // hoisting logic not accounting for mutation.
+        auto vars = find_objects<var_t>(obj);
+        for (auto &v : vars) {
+            if (v.template as<var_t>().type.is_mutable()) {
+                ir_visitor_t::_visit(obj);
+                return;
+            }
         }
 
         if (std::is_same<T, shuffle_t>::value) {

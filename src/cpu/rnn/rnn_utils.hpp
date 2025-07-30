@@ -880,6 +880,9 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[0] = rnn.n_bias;
     rnn.parts_bias[1] = 0;
 
+    const bool use_matmul_for_avx512_f32_fwd_d = !rnn.is_brgemm && rnn.is_fwd
+            && rnn.is_training && rnn.is_cell_dt_f32()
+            && x64::mayiuse(x64::avx512_core);
     rnn.use_matmul = !rnn.is_brgemm && rnn.is_fwd // TODO: Enable BWD
     // TODO: Below checks are for legacy and a performance study is
     // required to avoid regressions.
@@ -887,17 +890,11 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
             && IMPLICATION(
                     rnn.is_cell_dt_bf16(), !x64::mayiuse(x64::avx512_core))
             && IMPLICATION(rnn.is_cell_dt_f32() || rnn.is_cell_dt_int8(),
-                    x64::mayiuse(x64::avx2)
-                            && (utils::one_of(rd.cell_kind,
-                                        alg_kind::vanilla_gru,
-                                        alg_kind::vanilla_augru)
-                                    || (rnn.is_cell_dt_f32()
-                                            && x64::mayiuse(x64::avx512_core)
-                                            && utils::one_of(rd.cell_kind,
-                                                    alg_kind::lbr_gru,
-                                                    alg_kind::lbr_augru,
-                                                    alg_kind::vanilla_rnn,
-                                                    alg_kind::vanilla_lstm))));
+                    (x64::mayiuse(x64::avx2)
+                            && utils::one_of(rd.cell_kind,
+                                    alg_kind::vanilla_gru,
+                                    alg_kind::vanilla_augru))
+                            || use_matmul_for_avx512_f32_fwd_d);
 #else
             && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
 #endif
@@ -918,6 +915,7 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
             == (rnn.dst_layer_ld_ * rnn.mb);
 
     rnn.merge_gemm_layer = !(rnn.is_brgemm || rnn.use_matmul)
+                    || use_matmul_for_avx512_f32_fwd_d
             ? ((rnn.is_fwd && rnn.src_layer_is_trivial_stride)
                       || ((rd.prop_kind == prop_kind::backward)
                               && rnn.dst_layer_is_trivial_stride))

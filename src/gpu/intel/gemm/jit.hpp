@@ -341,10 +341,12 @@ struct gen_t : public primitive_t {
 
             jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
                     asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k_,
-                    a_q2d_group_m_};
-            jit::quant_params b_quant
-                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
-                            bg_dims_, b_q2d_group_k_, b_q2d_group_n_};
+                    a_q2d_group_m_,
+                    !attr()->placeholder_.has_default_values(DNNL_ARG_A)};
+            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
+                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k_,
+                    b_q2d_group_n_,
+                    !attr()->placeholder_.has_default_values(DNNL_ARG_B)};
 
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,

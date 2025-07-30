@@ -60,13 +60,11 @@ jobs:
     uses: ./.github/workflows/aarch64-acl.yml
     with:
       acl_hash: ${{ inputs.acl_base_hash }}
-      acl_root_dir: ${{ github.workspace }}/ComputeLibrary_base
 
   build-acl-new:
     uses: ./.github/workflows/aarch64-acl.yml
     with:
       acl_hash: ${{ inputs.acl_new_hash }}
-      acl_root_dir: ${{ github.workspace }}/ComputeLibrary_new
 
   build-and-test-performance:
     needs: [build-acl-base, build-acl-new]

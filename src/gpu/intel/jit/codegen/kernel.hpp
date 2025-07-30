@@ -1318,6 +1318,11 @@ public:
     template <ngen::HW hw>
     ir_asm_kernel_t(const ir_kernel_t<hw> &k)
         : base(k.exec_cfg(), k.kernel_iface(), k.neo_interface()) {}
+
+    ir_asm_kernel_t(const exec_config_t &exec_config,
+            const kernel_iface_t &kernel_iface,
+            const ngen::NEOInterfaceHandler &neo_interface)
+        : base(exec_config, kernel_iface, neo_interface) {}
 };
 #else
 class ir_asm_kernel_t {
@@ -1325,6 +1330,14 @@ public:
     template <ngen::HW hw>
     ir_asm_kernel_t(const ir_kernel_t<hw> &k) {
         MAYBE_UNUSED(k);
+    }
+
+    ir_asm_kernel_t(const exec_config_t &exec_config,
+            const kernel_iface_t &kernel_iface,
+            const ngen::NEOInterfaceHandler &neo_interface) {
+        MAYBE_UNUSED(exec_config);
+        MAYBE_UNUSED(kernel_iface);
+        MAYBE_UNUSED(neo_interface);
     }
 };
 #endif

@@ -134,9 +134,10 @@ struct gen_gemm_nocopy_kernel_desc_t : public gen_gemm_kernel_desc_t {
             float beta, data_type_t a_type, data_type_t b_type,
             data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
             data_type_t a_scales_type, data_type_t b_scales_type,
-            data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
-            int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb,
-            dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);
+            data_type_t co_type, data_type_t acc_type, bool force_ags,
+            bool force_bgs, int align_a, int align_b, int align_c, dim_t m,
+            dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+            gpu_post_ops_t &&post_ops);
 };
 
 struct gen_gemm_xe_systolic_kernel_desc_t : public gen_gemm_kernel_desc_t {

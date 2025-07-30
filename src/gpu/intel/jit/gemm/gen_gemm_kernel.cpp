@@ -376,8 +376,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t a_type, data_type_t b_type, data_type_t c_type,
         data_type_t ao_type, data_type_t bo_type, data_type_t a_scales_type,
         data_type_t b_scales_type, data_type_t co_type, data_type_t acc_type,
-        int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
-        dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+        bool force_ags, bool force_bgs, int align_a, int align_b, int align_c,
+        dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
@@ -570,7 +570,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     mod_match(base,
             ((asc_dims >= 2 || bsc_dims >= 2) && ao_dims > -1
                     && problem_.Ta_ext.isInt8() && problem_.Tb_ext.isInt8()
-                    && problem_.Tc.isFP()),
+                    && problem_.Tc.isFP() && !force_ags && !force_bgs),
             [](Type dt) -> const char * {
                 if (dt.isInt8()) return "[OH]";
                 return nullptr;

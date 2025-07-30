@@ -18,6 +18,7 @@
 #define GPU_INTEL_JIT_IR_PRIMITIVE_PLAN_HPP
 
 #include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {
 namespace impl {

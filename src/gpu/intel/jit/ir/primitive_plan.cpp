@@ -74,7 +74,7 @@ primitive_init_plan_t::buffer_entry_t primitive_init_plan_t::find_buf(
 kernel_info_t primitive_init_plan_t::create_kernel_info(
         const kernel_desc_base_t &desc,
         const std::unordered_map<std::string, std::string> &buf_map) const {
-    kernel_iface_t iface;
+    kernel_iface_t iface(desc.kernel_name());
     desc.init_kernel_iface(iface);
     kernel_info_t info;
     for (int i = 0; i < iface.nargs(); i++) {

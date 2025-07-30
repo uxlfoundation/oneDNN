@@ -36,13 +36,11 @@ class pooling_kernel_t : public ir_kernel_t {
 public:
     pooling_kernel_t(pooling_config_t &cfg, const std::string &kernel_name,
             const kernel_info_t &kernel_info, const primitive_desc_t &pd)
-        : ir_kernel_t(kernel_name, cfg.exec_cfg(),
-                kernel_info.nd_range().local_range(), /*require_dpas=*/false,
-                {GENERATOR_NAME, GENERATOR_LINE}) {
-        set_kernel_iface(kernel_info.iface());
+        : ir_kernel_t(kernel_info.iface(kernel_name), cfg.exec_cfg(),
+                kernel_info.nd_range().local_range(),
+                /*require_dpas=*/false, {GENERATOR_NAME, GENERATOR_LINE}) {
         pooling_ir_builder_t builder(cfg, kernel_info, pd);
         const stmt_t &body = builder.stmt();
-        setup_interface(body);
         generate_from_ir(body);
     }
 };

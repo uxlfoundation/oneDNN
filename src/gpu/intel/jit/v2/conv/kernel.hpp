@@ -45,9 +45,6 @@ public:
         // Build IR for the kernel.
         var_manager_t var_mgr(kernel_iface());
         stmt_t body = build_ir(exec_cfg(), desc, var_mgr);
-
-        alloc_manager_t alloc_mgr(body);
-        setup_interface(body);
         generate_from_ir(body);
     }
 };

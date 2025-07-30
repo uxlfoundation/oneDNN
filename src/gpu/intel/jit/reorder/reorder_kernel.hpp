@@ -38,15 +38,13 @@ public:
     reorder_kernel_t(const reorder_config_t &cfg,
             const std::string &kernel_name, const kernel_info_t &kernel_info,
             bool require_dpas, const primitive_desc_t *pd = nullptr)
-        : ir_kernel_t(kernel_name, cfg.exec_cfg(),
+        : ir_kernel_t(kernel_info.iface(kernel_name), cfg.exec_cfg(),
                 kernel_info.nd_range().local_range(), require_dpas,
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;
-        set_kernel_iface(kernel_info.iface());
         reorder_ir_builder_t builder(cfg, kernel_info, attr, dst_md);
         const stmt_t &body = builder.stmt();
-        setup_interface(body);
         generate_from_ir(body);
     }
 };

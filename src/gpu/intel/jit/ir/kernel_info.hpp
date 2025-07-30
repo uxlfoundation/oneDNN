@@ -74,8 +74,9 @@ private:
 
 class kernel_iface_t {
 public:
-    kernel_iface_t() = default;
-    kernel_iface_t(const ngen::InterfaceHandler &iface) {
+    kernel_iface_t(std::string name) : kernel_name_(std::move(name)) {}
+    kernel_iface_t(const ngen::InterfaceHandler &iface)
+        : kernel_name_(iface.getExternalName()) {
         for (unsigned int i = 0; i < iface.numAssignments(); i++) {
             auto &a = iface.getAssignment(i);
             if (a.exttype == ngen::ExternalArgumentType::Scalar) {
@@ -91,6 +92,7 @@ public:
     }
 
     int nargs() const { return int(args_.size()); }
+    const std::string &kernel_name() const { return kernel_name_; }
     const expr_t &arg_var(int idx) const {
         gpu_assert(idx >= 0 && idx < nargs());
         return args_[idx].var;
@@ -132,6 +134,7 @@ private:
         return nullptr;
     }
 
+    std::string kernel_name_;
     std::vector<arg_t> args_;
 };
 
@@ -252,8 +255,8 @@ public:
 
     bool is_output(int idx) const { return !is_input(idx); }
 
-    kernel_iface_t iface() const {
-        kernel_iface_t iface;
+    kernel_iface_t iface(const std::string &name) const {
+        kernel_iface_t iface(name);
         for (int i = 0; i < nargs(); i++) {
             iface.register_arg(args_[i].var);
         }

@@ -41,14 +41,13 @@ class conv_kernel_t : public ir_kernel_t {
 public:
     conv_kernel_t(const conv_config_t &cfg, const kernel_info_t &kernel_info,
             const compute::range_t &local_range, const layout_t &zp_dst)
-        : ir_kernel_t("gen_conv", cfg.exec_cfg(), local_range,
+        : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.exec_cfg(),
+                local_range,
                 utils::one_of(
                         cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
                 {GENERATOR_NAME, GENERATOR_LINE})
         , prb_(cfg.prb())
         , cfg_(cfg) {
-
-        set_kernel_iface(kernel_info.iface());
 
         // XXX: BWD_W does 32x32 multiplication in the inner loop which may cause
         // hangs when using with split barrier. Switch to emulation to work around
@@ -61,18 +60,6 @@ public:
         conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
         const stmt_t &body = builder.stmt();
         profile.stamp("Kernel Builder");
-
-        alloc_manager_t alloc_mgr(body);
-        profile.stamp("Alloc_Mgr Construct");
-
-        setup_interface(body);
-
-#ifdef DNNL_DEV_MODE
-        profile.stop();
-        verify_grf_usage(cfg, body, 0);
-        profile.start();
-#endif
-
         generate_from_ir(
                 body, &cfg_.plan().gemm_schedule.kernel_grid_walk_order());
         profile.stop("Generate Assembly");

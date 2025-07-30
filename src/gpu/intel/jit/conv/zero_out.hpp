@@ -190,7 +190,7 @@ public:
 
 private:
     static kernel_iface_t get_kernel_iface(const kernel_desc_base_t &desc) {
-        kernel_iface_t iface;
+        kernel_iface_t iface(desc.kernel_name());
         desc.init_kernel_iface(iface);
         return iface;
     }

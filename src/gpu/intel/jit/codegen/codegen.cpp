@@ -1671,8 +1671,8 @@ std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
     ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t> host_asm(
-            host->kernel_iface(), host->exec_cfg(), host->debug_config(),
-            host->neo_interface());
+            host->kernel_iface(), host->exec_cfg(), {});
+    host_asm.set_interface(host->getInterface());
 
     try {
         convert_ir_to_ngen(body, &host_asm, kernel_grid_walk_order);
@@ -1695,16 +1695,67 @@ void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
 #endif
 }
 
+ngen::NEOInterfaceHandler generate_ngen_interface(
+        const kernel_iface_t &kernel_iface, const exec_config_t &exec_cfg,
+        bool require_dpas, const stmt_t &kernel_body) {
+
+    ngen::NEOInterfaceHandler interface(exec_cfg.hw());
+    interface.externalName(kernel_iface.kernel_name());
+    interface.requireLocalID(3);
+    interface.requireLocalSize();
+    interface.requireGRF(exec_cfg.regs());
+    interface.requireSIMD(exec_cfg.simd());
+    interface.requireBarrier();
+    auto setup_flags = get_setup_flags(kernel_body);
+
+    // Allow dpas override to avoid context switch overhead on XeHPG
+    if (setup_flags.has_dpas || require_dpas) interface.requireDPAS();
+    if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
+
+    for (int i = 0; i < kernel_iface.nargs(); i++) {
+        auto &name = kernel_iface.arg_name(i);
+        auto &type = kernel_iface.arg_type(i);
+        if (type.is_ptr()) {
+            interface.newArgument(name, ngen::ExternalArgumentType::GlobalPtr,
+                    ngen::GlobalAccessType::Stateless);
+        } else {
+            interface.newArgument(name, to_ngen(type));
+        }
+    }
+
+    int slm_size = alloc_manager_t(kernel_body).total_size(alloc_kind_t::slm);
+    interface.requireSLM(slm_size);
+
+    interface.finalize();
+    return interface;
+}
+
 void ir_kernel_t::generate_from_ir(
         const stmt_t &kernel_body, const walk_order_t *kernel_grid_walk_order) {
     gpu_assert(!generator_)
             << "ir_kernel_t::generate_from_ir() was called already.";
 
+    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
+            kernel_iface_, exec_cfg_, require_dpas_, kernel_body);
+
+    if (local_range_) {
+        size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
+                convert_ngen_arch_to_dnnl(exec_cfg_.hw()), thread_group_size(),
+                exec_cfg_.regs() > 128);
+        if (interface.getSLMSize() > max_slm_size) {
+            gpu_trace() << "SLM size limit exceeded: " << interface.getSLMSize()
+                        << " > " << max_slm_size;
+            gpu_except_not_implemented("SLM size limit is exceeded.");
+        }
+    }
+
 #define GPU_HW_CASE(hw) \
     using gen_type = ir_to_ngen_generator_t<generator_t<(hw)>>; \
     generator_ = utils::make_unique<gen_type>( \
-            kernel_iface_, exec_cfg_, debug_config_, interface_); \
+            kernel_iface_, exec_cfg_, debug_config_); \
     auto *gen = static_cast<gen_type *>(generator_.get()); \
+    gen->setInterface(generate_ngen_interface( \
+            kernel_iface_, exec_cfg_, require_dpas_, kernel_body)); \
     if (force_emulate64_) gen->force_emulate64(); \
     jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
 

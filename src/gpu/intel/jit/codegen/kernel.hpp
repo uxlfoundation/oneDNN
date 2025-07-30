@@ -178,23 +178,14 @@ public:
     NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
     ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
-            const exec_config_t &exec_cfg, const debug_config_t &debug_config,
-            const ngen::InterfaceHandler &neo_interface)
+            const exec_config_t &exec_cfg, const debug_config_t &debug_config)
         : BaseGeneratorT(exec_cfg.hw().product(), debug_config)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)
-        , debug_config_(debug_config)
         , ra_(getHardware())
         , emu_strategy_(getHardware(), exec_cfg_.hw().stepping_id()) {
-        BaseGeneratorT::interface_ = neo_interface;
-        BaseGeneratorT::setStepping(exec_cfg.hw().stepping_id());
         ra_.setRegisterCount(exec_cfg_.regs());
     }
-
-    ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
-            const exec_config_t &exec_cfg, const debug_config_t &debug_config)
-        : ir_to_ngen_generator_t(kernel_iface, exec_cfg, debug_config,
-                ngen::InterfaceHandler(exec_cfg.hw())) {}
 
     void force_emulate64() { emu_strategy_.emulate64 = true; }
 
@@ -205,10 +196,6 @@ public:
 
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
-    const debug_config_t &debug_config() const { return debug_config_; }
-    const ngen::InterfaceHandler &neo_interface() const {
-        return BaseGeneratorT::interface_;
-    }
     const hw_t &hw_info() const { return exec_cfg_.hw(); }
 
     void generate_prologue() {
@@ -1138,7 +1125,6 @@ protected:
 
     kernel_iface_t kernel_iface_;
     exec_config_t exec_cfg_;
-    debug_config_t debug_config_;
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
 
@@ -1166,76 +1152,25 @@ class ir_kernel_t : public generator_base_t {
 public:
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
-        : kernel_desc_(&desc)
+        : kernel_iface_(desc.kernel_name())
         , exec_cfg_(desc.exec_cfg(engine))
         , local_range_(desc.local_range())
-        , interface_(exec_cfg_.hw())
+        , require_dpas_(desc.with_dpas())
         , debug_config_(debug_config) {
-        interface_.externalName(kernel_desc_->kernel_name());
-        if (kernel_desc_->with_dpas()) interface_.requireDPAS();
-        kernel_desc_->init_kernel_iface(kernel_iface_);
+        desc.init_kernel_iface(kernel_iface_);
     }
 
-    // On XeHPG hardware, there is some setup overhead when switching
-    // between dpas and non-dpas kernels. The require_dpas parameter is to
-    // enable better kernel chaining on this platform.
-    ir_kernel_t(const std::string &kernel_name, const exec_config_t &exec_cfg,
-            const compute::range_t &local_range, bool require_dpas,
-            const debug_config_t &debug_config)
-        : exec_cfg_(exec_cfg)
+    ir_kernel_t(const kernel_iface_t &kernel_iface,
+            const exec_config_t &exec_cfg, const compute::range_t &local_range,
+            bool require_dpas, const debug_config_t &debug_config)
+        : kernel_iface_(kernel_iface)
+        , exec_cfg_(exec_cfg)
         , local_range_(local_range)
-        , interface_(exec_cfg_.hw())
-        , debug_config_(debug_config) {
-        interface_.externalName(kernel_name);
-        if (require_dpas) interface_.requireDPAS();
-    }
+        , require_dpas_(require_dpas)
+        , debug_config_(debug_config) {}
 
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
     const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
-
-    void set_kernel_iface(const kernel_iface_t &kernel_iface) {
-        kernel_iface_ = kernel_iface;
-    }
-
-    void setup_interface(const stmt_t &kernel_body = stmt_t()) {
-        interface_.requireLocalID(3);
-        interface_.requireLocalSize();
-        interface_.requireGRF(exec_cfg_.regs());
-        interface_.requireSIMD(exec_cfg_.simd());
-        interface_.requireBarrier();
-        auto setup_flags = get_setup_flags(kernel_body);
-
-        if (setup_flags.has_dpas) interface_.requireDPAS();
-        if (setup_flags.has_send_atomics) interface_.requireGlobalAtomics();
-
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            auto &name = kernel_iface_.arg_name(i);
-            auto &type = kernel_iface_.arg_type(i);
-            if (type.is_ptr()) {
-                interface_.newArgument(name,
-                        ngen::ExternalArgumentType::GlobalPtr,
-                        ngen::GlobalAccessType::Stateless);
-            } else {
-                interface_.newArgument(name, to_ngen(type));
-            }
-        }
-
-        if (kernel_body && local_range_) {
-            int slm_size = alloc_manager_t(kernel_body)
-                                   .total_size(alloc_kind_t::slm);
-            int max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                    convert_ngen_arch_to_dnnl(exec_cfg_.hw()),
-                    thread_group_size(), exec_cfg_.regs() > 128);
-            if (slm_size > max_slm_size) {
-                // TODO: Use status code for this check.
-                gpu_except_not_implemented("SLM size limit is exceeded.");
-            }
-            interface_.requireSLM(slm_size);
-        }
-
-        interface_.finalize();
-    }
-
     void force_emulate64() { force_emulate64_ = true; }
 
     int peak_regs() const { return peak_regs_; }
@@ -1244,7 +1179,7 @@ public:
             const walk_order_t *kernel_grid_walk_order = nullptr);
 
     const char *kernel_name() const override {
-        return interface_.getExternalName().c_str();
+        return kernel_iface().kernel_name().c_str();
     }
 
     status_t get_kernel(compute::kernel_t &kernel,
@@ -1262,12 +1197,11 @@ private:
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }
 
-    const kernel_desc_base_t *kernel_desc_ = nullptr;
     kernel_iface_t kernel_iface_;
     exec_config_t exec_cfg_;
     compute::range_t local_range_;
+    bool require_dpas_;
 
-    ngen::InterfaceHandler interface_;
     debug_config_t debug_config_;
 
     bool force_emulate64_ = false;
@@ -1293,6 +1227,10 @@ public:
         int GRFCount = interface_.getGRFCount();
         bool hasSLM = (interface_.getSLMSize() > 0);
         epilogue(GRFCount, hasSLM, r0_info);
+    }
+
+    void set_interface(const ngen::NEOInterfaceHandler &interface) {
+        interface_ = interface;
     }
 
     ngen::Subregister getArgument(const std::string &name) const {

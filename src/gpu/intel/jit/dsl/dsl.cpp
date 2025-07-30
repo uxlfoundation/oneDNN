@@ -198,7 +198,7 @@ private:
 
     std::vector<stmt_t> &stmts() { return stmts_stack_.top(); }
     std::stack<std::vector<stmt_t>> stmts_stack_;
-    kernel_iface_t interface_;
+    kernel_iface_t interface_ = {"undefined_dsl_kernel"};
     ir_context_t *ctx_ = nullptr;
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;

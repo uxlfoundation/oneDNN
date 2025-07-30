@@ -134,18 +134,23 @@ struct micro_sdpa_t : public gpu_primitive_t {
                 VCHECK_SDPA_COND(
                         attn_mask_md()->dims[mask_k_index] == desc()->keys(),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
-            }
-            if (qry_md()->data_type == data_type::f32) {
-                VCHECK_SDPA_COND(
-                        attn_mask_md()->data_type == qry_md()->data_type,
-                        "Mask data type should match Qry/Dst data type.");
-            } else {
-                VCHECK_SDPA_COND(
-                        (attn_mask_md()->data_type == qry_md()->data_type)
-                                || (attn_mask_md()->data_type
-                                        == data_type::f32),
-                        "Mask data type should be xf16 or f32 when Qry/Dst is "
-                        "xf16.");
+                if (qry_md()->data_type == data_type::f32) {
+                    VCHECK_SDPA_COND(
+                            attn_mask_md()->data_type == qry_md()->data_type,
+                            "Mask data type(%s) should match Qry/Dst data "
+                            "type(%s).",
+                            dnnl_dt2str(attn_mask_md()->data_type),
+                            dnnl_dt2str(qry_md()->data_type));
+                } else {
+                    VCHECK_SDPA_COND(
+                            (attn_mask_md()->data_type == qry_md()->data_type)
+                                    || (attn_mask_md()->data_type
+                                            == data_type::f32),
+                            "Mask data type(%s) should be xf16 or f32 when "
+                            "Qry/Dst(%s) is xf16.",
+                            dnnl_dt2str(attn_mask_md()->data_type),
+                            dnnl_dt2str(qry_md()->data_type));
+                }
             }
             VCHECK_SDPA_COND(
                     (utils::everyone_is(data_type::f16, qry_md()->data_type,

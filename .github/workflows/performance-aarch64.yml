@@ -83,18 +83,18 @@ jobs:
         with:
           path: oneDNN
 
-      - name: Rebuild ACL base from cache
-        uses: ./.github/workflows/aarch64-acl.yml
-        with:
-          acl_hash: ${{ inputs.acl_base_hash }}
+      # - name: Rebuild ACL base from cache
+      #   uses: ./.github/workflows/aarch64-acl.yml
+      #   with:
+      #     acl_hash: ${{ inputs.acl_base_hash }}
 
       - name: Rename to ComputeLibrary_base
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
-      - name: Rebuild ACL new from cache
-        uses: ./.github/workflows/aarch64-acl.yml
-        with:
-          acl_hash: ${{ inputs.acl_new_hash }}
+      # - name: Rebuild ACL new from cache
+      #   uses: ./.github/workflows/aarch64-acl.yml
+      #   with:
+      #     acl_hash: ${{ inputs.acl_new_hash }}
 
       - name: Rename to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new

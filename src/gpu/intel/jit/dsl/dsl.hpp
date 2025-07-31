@@ -85,6 +85,7 @@ stmt_t end_kernel();
 void begin_scope();
 void end_scope();
 stmt_t pop_scope(); // Ends current scope and removes it from the kernel
+void append(stmt_t stmt); // Adds statement to the current scope
 
 void assume(const expr_t &e);
 
@@ -158,36 +159,47 @@ void assign(const expr_t &var, const expr_t &value);
 
 template <typename F>
 void if_(const expr_t &cond, F if_body) {
-    begin_scope();
-    if_body();
-    if_(cond, pop_scope());
+    if (is_const(cond)) {
+        if (to_cpp<bool>(cond)) {
+            begin_scope();
+            if_body();
+            end_scope();
+        }
+    } else {
+        begin_scope();
+        if_body();
+        append(if_t::make(cond, pop_scope()));
+    }
 }
-template <>
-void if_(const expr_t &cond, const stmt_t &if_body);
 
 template <typename F, typename G>
 void if_(const expr_t &cond, const F &if_body, const G &else_body) {
-    begin_scope();
-    if_body();
-    auto if_body_stmt = pop_scope();
+    if (is_const(cond)) {
+        begin_scope();
+        if (to_cpp<bool>(cond)) {
+            if_body();
+        } else {
+            else_body();
+        }
+        end_scope();
+    } else {
+        begin_scope();
+        if_body();
+        auto if_body_stmt = pop_scope();
 
-    begin_scope();
-    else_body();
-    auto else_body_stmt = pop_scope();
-
-    if_(cond, if_body_stmt, else_body_stmt);
+        begin_scope();
+        else_body();
+        append(if_t::make(cond, if_body_stmt, pop_scope()));
+    }
 }
-template <>
-void if_(const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body);
 
 template <typename F>
 void while_(const expr_t &cond, F body) {
+    if (is_const(cond) && !to_cpp<bool>(cond)) return;
     begin_scope();
     body();
-    while_(cond, pop_scope());
+    append(while_t::make(cond, pop_scope()));
 }
-template <>
-void while_(const expr_t &cond, const stmt_t &body);
 
 void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         const tensor_t &src1);

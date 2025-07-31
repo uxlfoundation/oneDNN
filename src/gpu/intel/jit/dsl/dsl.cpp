@@ -142,10 +142,10 @@ struct ctx_t {
         return stmt;
     }
 
-    void append(const stmt_t &stmt) {
+    void append(stmt_t stmt) {
         gpu_assert(!stmts_stack_.empty())
                 << "Cannot instantiate " << stmt << " outside of a kernel";
-        stmts().emplace_back(stmt);
+        stmts().emplace_back(std::move(stmt));
     }
 
     const ir_context_t *ir_ctx() const { return ctx_; }
@@ -240,8 +240,8 @@ stmt_t pop_scope() {
     return default_ctx().pop_scope();
 }
 
-void append(const stmt_t &stmt) {
-    default_ctx().append(stmt);
+void append(stmt_t stmt) {
+    default_ctx().append(std::move(stmt));
 }
 
 void assume(const expr_t &e) {
@@ -301,25 +301,6 @@ expr_t let(type_t type, const std::string &name, const expr_t &value) {
 
 expr_t let(const std::string &name, const expr_t &value) {
     return default_ctx().let(name, value);
-}
-
-template <>
-void if_(const expr_t &cond, const stmt_t &if_body) {
-    if (is_const(cond))
-        append(to_cpp<bool>(cond) ? if_body : stmt_t());
-    else
-        append(if_t::make(cond, if_body));
-}
-template <>
-void if_(const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body) {
-    if (is_const(cond))
-        append(to_cpp<bool>(cond) ? if_body : else_body);
-    else
-        append(if_t::make(cond, if_body, else_body));
-}
-template <>
-void while_(const expr_t &cond, const stmt_t &body) {
-    append(while_t::make(cond, body));
 }
 
 void assign(const expr_t &var, const expr_t &value) {

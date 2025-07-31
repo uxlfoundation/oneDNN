@@ -60,7 +60,7 @@ int getenv(const char *name, char *buffer, int buffer_size) {
     size_t value_length = 0;
 
 #ifdef _WIN32
-    value_length = GetEnvironmentVariable(name, buffer, buffer_size);
+    value_length = GetEnvironmentVariableA(name, buffer, buffer_size);
 #else
     const char *value = ::getenv(name);
     value_length = value == nullptr ? 0 : strlen(value);

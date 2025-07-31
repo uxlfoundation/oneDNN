@@ -357,7 +357,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
 }
 
 void reorder_2d_impl_t::generate_all_layouts_impl(
-        std::vector<layout_t> &layouts, std::vector<block_t> &blocks,
+        std::vector<layout_t> &layouts, std::vector<layout_block_t> &blocks,
         const type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
         layouts.emplace_back(type, 2, 0, blocks);
@@ -369,8 +369,8 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
     // Avoid repeating indices to keep only unique layouts.
     if (!blocks.empty()) {
         auto &last = blocks.back();
-        iterate_a &= (last.dim_idx != 0);
-        iterate_b &= (last.dim_idx != 1);
+        iterate_a &= (last.dim != 0);
+        iterate_b &= (last.dim != 1);
     }
 
     if (iterate_a) {
@@ -467,8 +467,8 @@ int reorder_2d_impl_t::vertex_t::cost(
         if (i > min_log_bytes) {
             gpu_assert(!layout.blocks().empty());
             gpu_assert(!v.layout.blocks().empty());
-            int dim_idx0 = layout.blocks()[0].dim_idx;
-            int dim_idx1 = v.layout.blocks()[0].dim_idx;
+            int dim_idx0 = layout.blocks()[0].dim;
+            int dim_idx1 = v.layout.blocks()[0].dim;
             if (dim_idx0 != dim_idx1) continue;
         }
         min_cost = cur_cost;
@@ -566,7 +566,7 @@ bool reorder_impl_t::layouts_compatible(
         skip_size_1_blocks(b_block_it, b_block_end);
         if (a_block_it == a_block_end || b_block_it == b_block_end) break;
 
-        if (a_block_it->dim_idx != b_block_it->dim_idx) return false;
+        if (a_block_it->dim != b_block_it->dim) return false;
         if (a_block_it->block != b_block_it->block) return false;
         a_block_it++;
         b_block_it++;
@@ -589,7 +589,7 @@ layout_t reorder_impl_t::make_compact_layout(
     const auto grf_elems = grf_size * type.packing() / type.size();
     const auto align_offset = is_source && layout.type().is_hf8();
 
-    std::vector<block_t> blocks;
+    std::vector<layout_block_t> blocks;
     dim_t dense_input_stride = 1;
     dim_t dense_output_stride = 1;
     if (layout.type().is_x8() && type.is_x8() && layout.type() != type)
@@ -712,7 +712,7 @@ std::vector<tile_t> reorder_impl_t::find_2d_dense_tiles(
         for (auto &b : l.blocks()) {
             if (b.block == 1) continue;
             if (count >= max_tile_blocks) break;
-            uint32_t dim_bit = 1u << b.dim_idx;
+            uint32_t dim_bit = 1u << b.dim;
             if ((dim_t)b.stride != stride) break;
             if (!(dim_mask & dim_bit)) {
                 if (ndims >= 2) break;
@@ -721,7 +721,7 @@ std::vector<tile_t> reorder_impl_t::find_2d_dense_tiles(
             }
             auto pow2_block = b.block & ~(b.block - 1);
             for (dim_t d = 1; d < pow2_block; d *= 2) {
-                dims[b.dim_idx] *= 2;
+                dims[b.dim] *= 2;
                 tiles.emplace_back(dims);
             }
             if (b.block != pow2_block) break;
@@ -766,7 +766,7 @@ tile_t reorder_impl_t::find_max_tile_with_fixed_stride(const layout_t &src,
     for (int i = 0; i < min_blocks; i++) {
         auto &ab = a_blocks[i];
         auto &bb = b_blocks[i];
-        if (ab.dim_idx != bb.dim_idx || ab.block != bb.block) break;
+        if (ab.dim != bb.dim || ab.block != bb.block) break;
 
         // Strides are supported for the innermost block only.
         if (src_cur_stride != int(ab.stride)) break;
@@ -774,7 +774,7 @@ tile_t reorder_impl_t::find_max_tile_with_fixed_stride(const layout_t &src,
 
         src_cur_stride = int(ab.block * ab.stride);
         dst_cur_stride = int(bb.block * bb.stride);
-        tile_dims[ab.dim_idx] *= ab.block;
+        tile_dims[ab.dim] *= ab.block;
     }
     return tile_t(tile_dims);
 }

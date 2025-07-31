@@ -87,7 +87,7 @@ bool reorder_ir_builder_t::try_build(
     std::vector<expr_t> vars;
     vars.reserve(ndims);
     for (auto &d : padded_dims) {
-        auto var = var_t::make(type_t::s32(), d.name());
+        auto var = var_t::make(type_t::s32(), d.str());
         vars.emplace_back(var);
     }
 

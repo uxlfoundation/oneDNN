@@ -26,17 +26,35 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+std::vector<layout_block_t> normalize_blocks(
+        const std::vector<layout_block_t> &blocks, bool remove_size_1_blocks) {
+    if (blocks.empty()) return {};
+    std::vector<layout_block_t> res;
+
+    for (const layout_block_t &block : blocks) {
+        if (remove_size_1_blocks && block.block == 1) continue;
+
+        if (!res.empty() && res.back().can_merge(block)) {
+            res.back().block *= block.block;
+        } else {
+            res.emplace_back(block);
+        }
+    }
+
+    return res;
+}
+
 layout_t::layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
-        const std::vector<std::pair<int, dim_t>> &parts,
+        const std::vector<std::pair<pvar_t, dim_t>> &parts,
         const std::vector<dim_t> &dims, bool do_normalize)
     : type_(type), ndims_(ndims), offset_(offset) {
     if (!dims.empty() && ndims_ != dims.size()) {
         gpu_error_not_expected() << "Format and dimensions do not match.";
     }
     for (auto &p : parts) {
-        dim_idx_t dim_idx = p.first;
+        pvar_t dim = p.first;
         dim_t block = p.second;
-        gpu_assert(dim_idx < ndims_);
+        gpu_assert(dim < ndims_);
         if (block == 0 && dims.empty())
             gpu_error_not_expected()
                     << "Dimensions are missing. Can't deduce them from "
@@ -46,17 +64,17 @@ layout_t::layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
     dim_t stride = 1;
     // Iterate from right to left (innermost to outermost).
     for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-        dim_idx_t dim_idx = it->first;
+        auto &dim = it->first;
         dim_t block = it->second;
         if (block == 0) {
             dim_t full_block = 1;
             for (auto &b : blocks_)
-                if (b.dim_idx == dim_idx) full_block *= b.block;
+                if (b.dim == dim) full_block *= b.block;
 
-            block = utils::div_up(dims[dim_idx], full_block);
+            block = utils::div_up(dims[dim], full_block);
         }
 
-        blocks_.emplace_back(dim_idx, block, stride);
+        blocks_.emplace_back(dim, block, stride);
         stride = block * stride;
     }
 
@@ -76,7 +94,7 @@ layout_t::layout_t(const memory_desc_wrapper &mdw, bool do_normalize)
     // TODO: Switch blocks_ from std::vector<block_t> to block_layout_t
     // to avoid this copy
     for (const auto &block : layout) {
-        blocks_.emplace_back(block);
+        blocks_.emplace_back(block.dim_idx, block.block, block.stride);
     }
 
     sanity_check();
@@ -98,16 +116,16 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
 
     for (auto it = blocks_.rbegin(); it != blocks_.rend(); ++it) {
         auto &b = *it;
-        if (!seen[b.dim_idx]) {
+        if (!seen[b.dim]) {
             // Outer block.
             gpu_assert(!in_inner_block);
             MAYBE_UNUSED(in_inner_block);
-            blk.strides[b.dim_idx] = b.stride;
-            md.padded_dims[b.dim_idx] = b.block;
+            blk.strides[b.dim] = b.stride;
+            md.padded_dims[b.dim] = b.block;
         } else {
             // Inner block.
-            md.padded_dims[b.dim_idx] *= b.block;
-            blk.inner_idxs[blk.inner_nblks] = b.dim_idx;
+            md.padded_dims[b.dim] *= b.block;
+            blk.inner_idxs[blk.inner_nblks] = b.dim;
             blk.inner_blks[blk.inner_nblks] = b.block;
             blk.inner_nblks++;
             if (prev_stride > 0) {
@@ -117,7 +135,7 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
             prev_stride = b.stride;
             in_inner_block = true;
         }
-        seen[b.dim_idx] = true;
+        seen[b.dim] = true;
     }
 
     for (dim_idx_t i = 0; i < ndims(); i++) {
@@ -135,19 +153,19 @@ layout_t layout_t::map(const tile_t &tile, const coord_t &start) const {
         gpu_error_not_expected() << "Dimensions do not match.";
 
     std::vector<dim_t> remaining_dims = tile.values();
-    std::vector<block_t> mapped_blocks;
+    std::vector<layout_block_t> mapped_blocks;
 
     for (auto &eb : enumerated_blocks()) {
-        block_t &b = eb.second;
+        layout_block_t &b = eb.second;
         bool b_is_outermost = is_outermost(eb);
 
         dim_t block = b.block;
-        dim_t &rem_dim = remaining_dims[b.dim_idx];
+        dim_t &rem_dim = remaining_dims[b.dim];
         if (rem_dim == 1) {
             if (b_is_outermost) {
                 // This is to have similarity between the current and
                 // mapped layouts.
-                mapped_blocks.emplace_back(b.dim_idx, 1, b.stride);
+                mapped_blocks.emplace_back(b.dim, 1, b.stride);
             }
             continue;
         }
@@ -164,7 +182,7 @@ layout_t layout_t::map(const tile_t &tile, const coord_t &start) const {
             gpu_except_not_implemented("Can't map tensor layout.");
         }
         rem_dim /= block;
-        mapped_blocks.emplace_back(b.dim_idx, block, b.stride);
+        mapped_blocks.emplace_back(b.dim, block, b.stride);
     }
 
     for (auto &d : remaining_dims) {
@@ -237,8 +255,8 @@ layout_t layout_t::reinterpret(
     return layout_t(new_type, ndims(), new_offset, new_blocks, do_normalize);
 }
 
-layout_t layout_t::split_block(
-        const std::pair<int, block_t> &eb, dim_t block0, dim_t block1) const {
+layout_t layout_t::split_block(const std::pair<int, layout_block_t> &eb,
+        dim_t block0, dim_t block1) const {
     int block_idx = eb.first;
     auto &b = eb.second;
     gpu_assert(b.block == block0 * block1) << "Incompatible block sizes.";
@@ -246,8 +264,8 @@ layout_t layout_t::split_block(
 
     auto new_blocks = blocks_;
 
-    block_t &b0 = new_blocks[block_idx];
-    block_t b1 = b0;
+    layout_block_t &b0 = new_blocks[block_idx];
+    layout_block_t b1 = b0;
 
     b0.block = block0;
     b1.block = block1;
@@ -305,7 +323,7 @@ tile_t layout_t::split_into_max_tile(
                 dense_stride = b.block * b.stride;
             }
             cur_elems *= b.block;
-            tile_dims[b.dim_idx] *= b.block;
+            tile_dims[b.dim] *= b.block;
             continue;
         }
         dim_t max_block = utils::max_div(b.block, max_tile_elems / cur_elems);
@@ -327,9 +345,9 @@ void layout_t::align_layouts(layout_t &a, layout_t &b) {
         int b_idx = 0;
 
         for (;;) {
-            while (a_idx < a_max && a_blocks[a_idx].dim_idx != i)
+            while (a_idx < a_max && a_blocks[a_idx].dim != i)
                 a_idx++;
-            while (b_idx < b_max && b_blocks[b_idx].dim_idx != i)
+            while (b_idx < b_max && b_blocks[b_idx].dim != i)
                 b_idx++;
 
             if (a_idx >= a_max || b_idx >= b_max) break;
@@ -378,7 +396,7 @@ std::vector<std::pair<char, dim_t>> layout_t::parse_letter_blocks(
     return ret;
 }
 
-std::vector<std::pair<int, dim_t>> layout_t::parse_format(
+std::vector<std::pair<pvar_t, dim_t>> layout_t::parse_format(
         const std::string &format, int ndims_hint) {
     bool seen_letters[DNNL_MAX_NDIMS] = {};
     int letter_ndims = 0;
@@ -396,7 +414,7 @@ std::vector<std::pair<int, dim_t>> layout_t::parse_format(
 
     auto letter_blocks = parse_letter_blocks(format);
 
-    std::vector<std::pair<int, dim_t>> parts;
+    std::vector<std::pair<pvar_t, dim_t>> parts;
     for (auto &p : letter_blocks) {
         char letter = p.first;
         dim_t block = p.second;
@@ -504,14 +522,14 @@ layout_t view_t::create_pseudo_vlayout(
     gpu_assert(!tlayout.is_empty());
 
     std::vector<dim_t> rem_vdims = vdims_.values();
-    std::vector<block_t> blocks;
+    std::vector<layout_block_t> blocks;
 
     for (auto &teb : tlayout.enumerated_blocks()) {
-        block_t &tb = teb.second;
+        layout_block_t &tb = teb.second;
         bool tb_is_outermost = tlayout.is_outermost(teb);
         dim_t tblock = tb.block;
 
-        auto &tinfo = tdims_[tb.dim_idx];
+        auto &tinfo = tdims_[tb.dim];
         if (tb_is_outermost) {
             // Use innermost dimension with maximum remaining size for first
             // block
@@ -564,7 +582,7 @@ layout_t view_t::create_pseudo_vlayout(
             // TODO: Remove exception usage.
             gpu_except_not_implemented("Can't create pseudo-layout.");
         }
-        blocks.emplace_back(tb.dim_idx, tblock, tb.stride);
+        blocks.emplace_back(tb.dim, tblock, tb.stride);
     }
 
     for (auto &d : rem_vdims) {
@@ -581,12 +599,12 @@ layout_t view_t::create_pseudo_vlayout(
 }
 
 layout_t dim_assignment_t::map(const layout_t &layout) const {
-    std::vector<block_t> new_blocks;
+    std::vector<layout_block_t> new_blocks;
     for (auto &b : layout.blocks()) {
-        int new_idx = assignments_[b.dim_idx];
+        int new_idx = assignments_[b.dim];
         if (new_idx == -1) continue; // Drop this block.
         auto new_b = b;
-        new_b.dim_idx = new_idx;
+        new_b.dim = new_idx;
         new_blocks.push_back(new_b);
     }
     new_blocks = normalize_blocks(new_blocks,

@@ -77,7 +77,7 @@ static bool ends_with(
         const layout_t &layout, dim_idx_t i0, int b0, bool strict = false) {
     if (layout.nblocks() < 1) return false;
     auto &blocks = layout.blocks();
-    if (blocks[0].dim_idx != i0) return false;
+    if (blocks[0].dim != i0) return false;
     if (strict && blocks[0].block != b0) return false;
     if (!strict && blocks[0].block % b0 != 0) return false;
     return true;
@@ -88,7 +88,7 @@ static bool ends_with(
     if (!ends_with(layout, i0, b0, /*strict=*/true)) return false;
     if (layout.nblocks() < 2) return false;
     auto &blocks = layout.blocks();
-    if (blocks[1].dim_idx != i1) return false;
+    if (blocks[1].dim != i1) return false;
     if (blocks[1].block % b1 != 0) return false;
     return true;
 }
@@ -205,10 +205,10 @@ private:
             bmnk_kind_t split_mn
                     = (abc == abc_kind_t::a ? bmnk_kind_t::m : bmnk_kind_t::n);
             dim_t dim = 1;
-            std::vector<block_t> mn_blocks;
+            std::vector<layout_block_t> mn_blocks;
             for (auto &b : c.blocks()) {
                 if (b.block == 1) continue;
-                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.dim_idx);
+                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.dim);
                 if (bmnk != split_mn) continue;
                 dim *= b.block;
                 mn_blocks.push_back(b);
@@ -219,8 +219,8 @@ private:
             dim_idx_t cur_idx = dim_idx::invalid;
             for (auto &b : mn_blocks) {
                 if (cur_idx == dim_idx::invalid) {
-                    cur_idx = b.dim_idx;
-                } else if (b.dim_idx != cur_idx) {
+                    cur_idx = b.dim;
+                } else if (b.dim != cur_idx) {
                     return;
                 }
                 dim_t max_block = std::min(b.block, subtile_dim / cur_dim);
@@ -337,8 +337,8 @@ public:
 
         tile_t tile(b_layout_.ndims());
         for (auto &b : b_layout_.blocks()) {
-            if (b.dim_idx == kw_idx) break;
-            tile[b.dim_idx] *= b.block;
+            if (b.dim == kw_idx) break;
+            tile[b.dim] *= b.block;
         }
         gpu_assert(tile.elems() % sdepth_size == 0);
         wei_load = simd_bcast(load_t::make(
@@ -420,8 +420,8 @@ public:
         auto &b_comp = comp_layout_.blocks().back();
         if (b_wei.block % factor != 0) return false;
         if (b_wei.block != b_comp.block) return false;
-        if (b_wei.dim_idx != b_comp.dim_idx) return false;
-        int dim_idx = b_comp.dim_idx;
+        if (b_wei.dim != b_comp.dim) return false;
+        int dim_idx = b_comp.dim;
         dim_t subtile_dim = comp_layout_.dim(dim_idx);
         if (dim_idx == simd_dim_idx_ && subtile_dim < simd_) return false;
 
@@ -561,7 +561,7 @@ private:
     void init_comp_layout() {
         auto blocks = wei_layout_.blocks();
         for (auto &b : blocks) {
-            if (b.dim_idx == ck_idx_) b.block = 1;
+            if (b.dim == ck_idx_) b.block = 1;
         }
         comp_layout_ = layout_t(type_t::s32(), wei_layout_.ndims(), 0, blocks);
         comp_layout_ = comp_layout_.make_dense();
@@ -665,11 +665,11 @@ private:
         if (split_factor_ == 1) return true;
 
         auto &b = comp_layout_.blocks().back();
-        dim_t subtile_dim = ir_utils::safe_divide(
-                comp_layout_.dim(b.dim_idx), split_factor_);
+        dim_t subtile_dim
+                = ir_utils::safe_divide(comp_layout_.dim(b.dim), split_factor_);
         dim_t beg = subtile_idx * subtile_dim;
         dim_t end = beg + subtile_dim;
-        return start[b.dim_idx] >= beg && start[b.dim_idx] < end;
+        return start[b.dim] >= beg && start[b.dim] < end;
     }
 
     stmt_t create_tile_stmt(const expr_t &zp, const expr_t &wei,

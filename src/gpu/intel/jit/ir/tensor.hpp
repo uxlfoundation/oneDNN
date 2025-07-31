@@ -214,6 +214,49 @@ private:
     dim_t cur_stride_;
 };
 
+struct layout_block_t {
+    layout_block_t() = default;
+
+    layout_block_t(const pvar_t &dim, dim_t block, const stride_t &stride)
+        : dim(dim), block(block), stride(stride) {}
+
+    bool can_merge(
+            const layout_block_t &other, bool same_dim_only = true) const {
+        bool dim_ok = !same_dim_only || (dim == other.dim);
+        bool is_dense = (stride * block == other.stride);
+        return dim_ok && is_dense;
+    }
+
+    bool operator==(const layout_block_t &other) const {
+        return (dim == other.dim) && (block == other.block)
+                && (stride == other.stride);
+    }
+    bool operator!=(const layout_block_t &other) const {
+        return !(*this == other);
+    }
+
+    size_t get_hash() const { return 0; }
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "block_t(dim = " << dim;
+        oss << ", block = " << block;
+        oss << ", stride = " << stride.str();
+        oss << ")";
+        return oss.str();
+    }
+
+    bool is_empty() const { return dim.is_undef(); }
+
+    pvar_t dim;
+    dim_t block = 1; // Block size.
+    stride_t stride; // Stride between elements of the block.
+};
+
+std::vector<layout_block_t> normalize_blocks(
+        const std::vector<layout_block_t> &blocks,
+        bool remove_size_1_blocks = true);
+
 class layout_t {
 public:
     static const dim_idx_t max_ndims = 16;
@@ -223,7 +266,7 @@ public:
     }
 
     layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
-            const std::vector<std::pair<int, dim_t>> &parts,
+            const std::vector<std::pair<pvar_t, dim_t>> &parts,
             const std::vector<dim_t> &dims = {}, bool do_normalize = true);
 
     layout_t(const type_t &type, const expr_t &offset,
@@ -258,7 +301,7 @@ public:
     }
 
     layout_t(const type_t &type, dim_idx_t ndims, const expr_t &offset,
-            const std::vector<block_t> &blocks, bool do_normalize = true)
+            const std::vector<layout_block_t> &blocks, bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
         if (do_normalize) blocks_ = normalize_blocks(blocks_);
         sanity_check();
@@ -315,7 +358,7 @@ public:
         auto _args = args;
         for (auto &eb : enumerated_blocks()) {
             auto &b = eb.second;
-            auto &idx = _args[b.dim_idx];
+            auto &idx = _args[b.dim];
             if (is_zero(idx)) continue;
 
             // Do not use modulus for outermost blocks.
@@ -329,31 +372,34 @@ public:
 
     const type_t &type() const { return type_; }
 
+    // TODO: Rename.
     std::vector<dim_t> dims() const {
         std::vector<dim_t> dims(ndims(), 1);
         for (auto &b : blocks_) {
-            dims[b.dim_idx] *= b.block;
+            dims[b.dim] *= b.block;
         }
         return dims;
     }
 
-    dim_t dim(dim_idx_t dim_idx) const {
+    dim_t dim(const pvar_t &dim) const {
         dim_t ret = 1;
         for (auto &b : blocks_) {
-            if (b.dim_idx == dim_idx) ret *= b.block;
+            if (b.dim == dim) ret *= b.block;
         }
         return ret;
     }
 
+    dim_t dim(dim_idx_t dim_idx) const { return dim(pvar_t(dim_idx)); }
+
     int nblocks() const { return (int)blocks().size(); }
 
-    const std::vector<block_t> &blocks() const { return blocks_; }
+    const std::vector<layout_block_t> &blocks() const { return blocks_; }
 
-    dim_t inner_block(dim_idx_t dim_idx, bool skip_outer = true,
+    dim_t inner_block(const pvar_t &dim, bool skip_outer = true,
             bool inner_only = true) const {
         std::vector<dim_t> dim_blocks;
         for (auto &b : blocks_) {
-            if (b.dim_idx == dim_idx) dim_blocks.push_back(b.block);
+            if (b.dim == dim) dim_blocks.push_back(b.block);
         }
         dim_t ret = 1;
         int nblocks = (int)dim_blocks.size();
@@ -375,7 +421,7 @@ public:
         for (size_t i = 0; i < blocks_.size(); i++) {
             auto &b0 = blocks_[i];
             auto &b1 = other.blocks_[i];
-            if (b0.dim_idx != b1.dim_idx) return false;
+            if (b0.dim != b1.dim) return false;
             if (b0.block != b1.block) return false;
             if (compare_strides && b0.stride != b1.stride) return false;
         }
@@ -396,7 +442,7 @@ public:
         for (; i < (int)self_blocks.size() - 1; i++) {
             if (self_blocks[i] != other_blocks[i]) return false;
         }
-        return (self_blocks[i].dim_idx == other_blocks[i].dim_idx
+        return (self_blocks[i].dim == other_blocks[i].dim
                 && self_blocks[i].stride == other_blocks[i].stride
                 && other_blocks[i].block % self_blocks[i].block == 0);
     }
@@ -430,10 +476,10 @@ public:
             auto &b = eb.second;
             std::string b_str;
             if (dnnl_style && is_outermost(eb)) {
-                b_str.append(1, dim_idx::as_tag(b.dim_idx, seen[b.dim_idx]));
+                b_str.append(1, dim_idx::as_tag(b.dim, seen[b.dim]));
             } else {
                 b_str = std::to_string(b.block);
-                b_str.append(1, dim_idx::as_tag(b.dim_idx));
+                b_str.append(1, dim_idx::as_tag(b.dim));
             }
             if (!dnnl_style) {
                 if (b.stride.is_unknown()) {
@@ -445,7 +491,7 @@ public:
             b_str += ret;
             std::swap(ret, b_str);
             dense_stride = b.stride * b.block;
-            seen[b.dim_idx] = true;
+            seen[b.dim] = true;
         }
         ret += ":" + type().str();
         return ret;
@@ -465,8 +511,8 @@ public:
 
     // Returns a vector of <block index, block> pairs.
     // The innermost block (first) has index 0.
-    std::vector<std::pair<int, block_t>> enumerated_blocks() const {
-        std::vector<std::pair<int, block_t>> ret;
+    std::vector<std::pair<int, layout_block_t>> enumerated_blocks() const {
+        std::vector<std::pair<int, layout_block_t>> ret;
         ret.reserve(blocks_.size());
         for (int i = 0; i < int(blocks_.size()); i++) {
             ret.emplace_back(i, blocks_[i]);
@@ -474,23 +520,23 @@ public:
         return ret;
     }
 
-    std::vector<dim_t> strides(dim_idx_t dim_idx) const {
+    std::vector<dim_t> strides(const pvar_t &dim) const {
         std::vector<dim_t> ret;
         for (auto &b : blocks_)
-            if (b.dim_idx == dim_idx) ret.push_back(b.stride);
+            if (b.dim == dim) ret.push_back(b.stride);
         return ret;
     }
 
     // eb is <block index, block> pair, see enumerated_blocks().
-    bool is_outermost(const std::pair<int, block_t> &eb) const {
+    bool is_outermost(const std::pair<int, layout_block_t> &eb) const {
         return is_outermost(eb, blocks_);
     }
 
     bool is_plain() const {
         std::vector<bool> seen(ndims());
         for (auto &b : blocks_) {
-            if (seen[b.dim_idx]) return false;
-            seen[b.dim_idx] = true;
+            if (seen[b.dim]) return false;
+            seen[b.dim] = true;
         }
         return true;
     }
@@ -514,10 +560,20 @@ public:
     layout_t transpose() const {
         if (ndims() != 2) gpu_error_not_expected();
 
+        pvar_t pdims[2];
+        for (auto &b : blocks_) {
+            int idx = (pdims[0].is_undef() ? 0 : 1);
+            if (pdims[idx].is_undef()) {
+                pdims[idx] = b.dim;
+                continue;
+            }
+            gpu_assert(pdims[idx] == b.dim);
+        }
+
         // Flip: 0 -> 1, 1 -> 0.
         auto blocks = blocks_;
         for (auto &b : blocks)
-            b.dim_idx ^= 1;
+            b.dim = (b.dim == pdims[0] ? pdims[1] : pdims[0]);
 
         return layout_t(type(), ndims(), offset(), blocks);
     }
@@ -551,11 +607,11 @@ public:
         return true;
     }
 
-    bool is_blocked_by(dim_idx_t dim_idx, int block) const {
+    bool is_blocked_by(const pvar_t &dim, int block) const {
         if (block == 1) return true;
         if (nblocks() == 0) return false;
         auto &b0 = blocks()[0];
-        if (b0.dim_idx != dim_idx) return false;
+        if (b0.dim != dim) return false;
         if (b0.block % block != 0) return false;
         return true;
     }
@@ -563,17 +619,17 @@ public:
     layout_t innermost_block_layout() const {
         int block_count[layout_t::max_ndims] = {0};
         for (auto &b : blocks_)
-            block_count[b.dim_idx]++;
+            block_count[b.dim]++;
 
-        std::vector<block_t> inner_blocks;
+        std::vector<layout_block_t> inner_blocks;
 
         stride_t stride = 1;
         for (auto &b : blocks_) {
             if (b.stride != stride) break; // Not dense anymore.
-            if (block_count[b.dim_idx] == 1) break; // Outer block.
+            if (block_count[b.dim] == 1) break; // Outer block.
             stride *= b.block;
-            gpu_assert(block_count[b.dim_idx] > 0);
-            block_count[b.dim_idx]--;
+            gpu_assert(block_count[b.dim] > 0);
+            block_count[b.dim]--;
             inner_blocks.push_back(b);
         }
         return layout_t(type(), ndims(), 0, inner_blocks);
@@ -623,12 +679,12 @@ public:
             rem_tile[i] = ir_utils::safe_divide(dim(i), inner.dim(i));
         auto ret = inner;
         for (auto &b : blocks()) {
-            auto &d = cur_dims[b.dim_idx];
-            auto &r = rem_tile[b.dim_idx];
+            auto &d = cur_dims[b.dim];
+            auto &r = rem_tile[b.dim];
             d = ir_utils::safe_divide(d, b.block);
             if (r <= d) continue;
             auto blk = ir_utils::safe_divide(r, d);
-            ret = ret.add_outer_block(b.dim_idx, blk);
+            ret = ret.add_outer_block(b.dim, blk);
             r = ir_utils::safe_divide(r, blk);
         }
         for (dim_idx_t i = 0; i < ndims(); i++)
@@ -639,7 +695,7 @@ public:
     // Returns an equivalent layout where the specified block is split into two.
     // block0 - inner block size.
     // block1 - outer block size.
-    layout_t split_block(const std::pair<int, block_t> &eb, dim_t block0,
+    layout_t split_block(const std::pair<int, layout_block_t> &eb, dim_t block0,
             dim_t block1) const;
 
     // Splits blocks so that they can be used to form `multi_blocks` without
@@ -718,7 +774,7 @@ public:
         for (auto &b : blocks()) {
             dim_t block
                     = std::min(b.block, elems_per_tile / cur_elems_per_tile);
-            tile[b.dim_idx] *= block;
+            tile[b.dim] *= block;
             cur_elems_per_tile *= block;
         }
         if (cur_elems_per_tile != elems_per_tile) return {};
@@ -731,7 +787,7 @@ public:
         if (elems() % factor != 0) return {};
         dim_t cur_elems = 1;
         dim_t split_elems = elems() / factor;
-        std::vector<block_t> split_blocks;
+        std::vector<layout_block_t> split_blocks;
         for (auto &b : blocks()) {
             if (cur_elems * b.block > split_elems) {
                 if (split_elems % cur_elems != 0) return {};
@@ -747,12 +803,12 @@ public:
         }
         tile_t split_tile(ndims());
         for (auto &b : split_blocks)
-            split_tile[b.dim_idx] *= b.block;
+            split_tile[b.dim] *= b.block;
         return tile_coord_t(split_tile);
     }
 
     tile_coord_t split(const tile_t &tile, const grid_info_t &grid,
-            std::vector<block_t> *outer_blocks = nullptr) const {
+            std::vector<layout_block_t> *outer_blocks = nullptr) const {
         gpu_assert(ndims() == tile.size())
                 << "Number of dimensions doesn't match.";
 
@@ -776,7 +832,7 @@ public:
             auto &b = eb.second;
             if (b.block == 1) continue;
 
-            dim_t &e = rem_tile[b.dim_idx];
+            dim_t &e = rem_tile[b.dim];
             if (e > 1) {
                 if (e % b.block == 0) {
                     e /= b.block;
@@ -791,7 +847,7 @@ public:
                         = math::gcd(b.block, grid_splitter.cur_block());
                 if (b.block == next_chunk) {
                     auto idx = grid_splitter.pop_block(next_chunk);
-                    start[b.dim_idx] += idx * dims[b.dim_idx];
+                    start[b.dim] += idx * dims[b.dim];
                     if (outer_blocks) outer_blocks->push_back(b);
                 } else if (b.block % next_chunk == 0 && next_chunk != 1) {
                     auto tmp_layout
@@ -801,7 +857,7 @@ public:
                     return {};
                 }
             }
-            dims[b.dim_idx] *= b.block;
+            dims[b.dim] *= b.block;
         }
         return tile_coord_t(tile, start);
     }
@@ -825,7 +881,7 @@ public:
             dim_t dim = tile[i];
             for (auto &eb : enumerated_blocks()) {
                 auto &b = eb.second;
-                if (b.dim_idx != i) continue;
+                if (b.dim != i) continue;
                 int block_idx = eb.first;
                 if (b.block >= dim) {
                     gpu_assert(b.block % dim == 0);
@@ -849,8 +905,8 @@ public:
                 auto &b = blocks()[j];
                 dim_t k = sub_block_idxs[j]
                         * (blocks()[j].block / sub_blocks[j]);
-                start[b.dim_idx] += dims[b.dim_idx] * k;
-                dims[b.dim_idx] *= b.block;
+                start[b.dim] += dims[b.dim] * k;
+                dims[b.dim] *= b.block;
             }
 
             // Pass dimension offsets to the callback.
@@ -872,7 +928,7 @@ public:
         if (block == 1) return true;
         if (blocks().empty()) return false;
         auto &b = blocks().back();
-        if (dim_idx != dim_idx::invalid && b.dim_idx != dim_idx) return false;
+        if (dim_idx != dim_idx::invalid && b.dim != dim_idx) return false;
         if (b.block % block != 0) return false;
         return true;
     }
@@ -883,11 +939,11 @@ public:
     }
 
     // eb is <block index, block> pair, see enumerated_blocks().
-    static bool is_outermost(const std::pair<int, block_t> &eb,
-            const std::vector<block_t> &blocks) {
-        dim_idx_t dim_idx = eb.second.dim_idx;
+    static bool is_outermost(const std::pair<int, layout_block_t> &eb,
+            const std::vector<layout_block_t> &blocks) {
+        dim_idx_t dim_idx = eb.second.dim;
         for (int i = 0; i < int(blocks.size()); i++) {
-            if (blocks[i].dim_idx == dim_idx && i > eb.first) return false;
+            if (blocks[i].dim == dim_idx && i > eb.first) return false;
         }
         return true;
     }
@@ -905,7 +961,7 @@ public:
 
         auto &s0 = src.blocks()[0];
         auto &d0 = dst.blocks()[0];
-        if (s0.dim_idx != d0.dim_idx) return false;
+        if (s0.dim != d0.dim) return false;
         if (int(s0.stride) != 1) return false;
         if (int(d0.stride) != 1) return false;
 
@@ -920,7 +976,7 @@ public:
         auto tile_ok = [&](const layout_t &l) {
             if (tile.is_empty()) return true;
             int factor = new_size / old_size;
-            if (tile[l.blocks()[0].dim_idx] % factor != 0) return false;
+            if (tile[l.blocks()[0].dim] % factor != 0) return false;
             return true;
         };
 
@@ -951,7 +1007,7 @@ public:
 
 private:
     // Returns vector of <dimension index, block size> pairs.
-    static std::vector<std::pair<int, dim_t>> parse_format(
+    static std::vector<std::pair<pvar_t, dim_t>> parse_format(
             const std::string &format, int ndims_hint);
 
     // Returns vector of <dimension letter, block size> pairs.
@@ -970,7 +1026,7 @@ private:
     expr_t offset_;
 
     // Blocks ordered from innermost to outermost.
-    std::vector<block_t> blocks_;
+    std::vector<layout_block_t> blocks_;
 };
 
 // Helper class to incrementally increase a sub-layout of the given layout.
@@ -1016,7 +1072,7 @@ public:
             auto &b = l_.blocks()[i];
             dim_t b_block = b.block;
             if (i == block_idx_) b_block /= block_;
-            dims[b.dim_idx] *= b_block;
+            dims[b.dim] *= b_block;
         }
         return tile_t(dims);
     }
@@ -1025,7 +1081,7 @@ public:
 
     layout_t outer_layout() const {
         auto &blocks = l_.blocks();
-        std::vector<block_t> outer_blocks;
+        std::vector<layout_block_t> outer_blocks;
         if (block_ > 1) {
             auto &b = blocks[block_idx_];
             outer_blocks.push_back(b);
@@ -1215,7 +1271,7 @@ public:
         return ret;
     }
 
-    dim_idx_t vidx(dim_idx_t arg_idx) const {
+    const pvar_t &vidx(dim_idx_t arg_idx) const {
         gpu_assert(arg_idx < nvargs());
         return vidxs_[arg_idx];
     }
@@ -1234,7 +1290,7 @@ public:
         return vstrides_[arg_idx].is_fixed();
     }
 
-    void add_vvar(dim_idx_t vidx, const expr_t &varg) {
+    void add_vvar(const pvar_t &vidx, const expr_t &varg) {
         gpu_assert(nvargs_ + 1 <= max_nvargs);
         vidxs_[nvargs_] = vidx;
         vstrides_[nvargs_] = compute_stride(expr_, nvargs_, varg);
@@ -1265,7 +1321,7 @@ private:
 
     dim_idx_t nvargs_ = 0;
     std::array<stride_t, max_nvargs> vstrides_;
-    std::array<dim_idx_t, max_nvargs> vidxs_;
+    std::array<pvar_t, max_nvargs> vidxs_;
     expr_t mask_;
 };
 
@@ -1347,7 +1403,8 @@ public:
 
         tdim_t tdim(texpr, mask);
         for (dim_idx_t i = 0; i < nvdims(); i++) {
-            if (contains_object(texpr, vvars_[i])) tdim.add_vvar(i, vvars_[i]);
+            if (contains_object(texpr, vvars_[i]))
+                tdim.add_vvar(pvar_t(i), vvars_[i]);
         }
         if (!is_const(texpr)) {
             gpu_assert(tdim.nvargs() > 0)
@@ -1746,11 +1803,11 @@ private:
         }
     }
 
-    std::vector<block_t> move_size_1_blocks_outer() const {
-        std::vector<block_t> new_blocks;
-        std::vector<block_t> size_1_blocks;
+    std::vector<layout_block_t> move_size_1_blocks_outer() const {
+        std::vector<layout_block_t> new_blocks;
+        std::vector<layout_block_t> size_1_blocks;
         for (auto &b : tlayout_.blocks()) {
-            if (b.block == 1 && vdims_[b.dim_idx] == 1) {
+            if (b.block == 1 && vdims_[b.dim] == 1) {
                 size_1_blocks.emplace_back(b);
             } else {
                 new_blocks.emplace_back(b);

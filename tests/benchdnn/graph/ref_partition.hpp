@@ -64,6 +64,14 @@ public:
         return partition_ops_ref_;
     }
 
+    bool has_mem(size_t lt_id) const {
+        return lt_id_2_mems_.find(lt_id) != lt_id_2_mems_.end();
+    }
+
+    const dnn_mem_t &get_mem(size_t lt_id) const {
+        return lt_id_2_mems_.at(lt_id);
+    }
+
 private:
     // Returns `true` if an `op` has a parent op in the partition for any of
     // its logical tensors.

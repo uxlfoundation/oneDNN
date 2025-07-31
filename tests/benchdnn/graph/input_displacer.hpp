@@ -23,6 +23,7 @@
 #include "utils/fill.hpp"
 
 namespace graph {
+class ref_partition_t; // Forward declaration
 
 enum class filling_type_t {
     undef = 0,
@@ -61,23 +62,14 @@ public:
     partition_data_displacer_t() = default;
     partition_data_displacer_t(
             const deserialized_graph_t &dg, const dnnl::graph::partition &par);
-    // TODO: some arguments of displace_input_data() are redundant
-    // and can be removed in the future.
-    int displace_input_data(size_t lt_id, dnn_mem_t &mem,
-            const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
-            res_t *res);
-    filling_type_t get_filling_type(size_t lt_id) const {
-        auto it = displace_args_.find(lt_id);
-        if (it == displace_args_.end()) return filling_type_t::undef;
-        return it->second.filling_type_;
-    }
+    int displace_input_data(ref_partition_t &ref_partition, res_t *res);
 
 private:
     const deserialized_graph_t *dg_ = nullptr;
     // A set of op_id values from a partition came to a displacer. Used to
     // identify at displacement stage if Deq is the starting point or not.
     std::unordered_set<size_t> op_ids_set_;
-    ::std::unordered_map<size_t, displace_args_t> displace_args_;
+    std::vector<std::pair<size_t, displace_args_t>> displace_args_;
 
     int gen_quantize_filling(const ::graph::deserialized_op_t &main_op, int arg,
             dnn_mem_t &mem, const ::std::string &dt, res_t *res);

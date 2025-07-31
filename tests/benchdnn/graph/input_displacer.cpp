@@ -136,7 +136,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                                 2.f, 4.f, 8.f};
                         // There's a special case for Divide, when second (user)
                         // input should be displaced with power-of-2 values.
-                        displace_args_.emplace(lt->id_,
+                        displace_args_.emplace_back(lt->id_,
                                 displace_args_t {aop, i, *lt,
                                         filling_type_t::fixed_setting,
                                         {user_set, "Div displacer"}});
@@ -144,7 +144,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                         // Multiplication has values <= 1.f to reduce final values.
                         static const std::vector<float> user_set {
                                 0.25f, 0.5f, 1.f};
-                        displace_args_.emplace(lt->id_,
+                        displace_args_.emplace_back(lt->id_,
                                 displace_args_t {aop, i, *lt,
                                         filling_type_t::fixed_setting,
                                         {user_set, "Mul displacer"}});
@@ -163,7 +163,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
 
-                        displace_args_.emplace(parent_op_in_lt.id_,
+                        displace_args_.emplace_back(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
                                         filling_type_t::compressed_sdpa});
                         break;
@@ -191,7 +191,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                                         == f8_main_op_kind.end()))
                             break;
 
-                        displace_args_.emplace(parent_op_in_lt.id_,
+                        displace_args_.emplace_back(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
                                         filling_type_t::quantization});
                         break;
@@ -207,7 +207,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
                         if (aop.kind_ == "MatMul") {
-                            displace_args_.emplace(parent_op_in_lt.id_,
+                            displace_args_.emplace_back(parent_op_in_lt.id_,
                                     displace_args_t {aop, i, parent_op_in_lt,
                                             filling_type_t::quantization});
                         }
@@ -347,13 +347,13 @@ partition_data_displacer_t::partition_data_displacer_t(
                             7, "%s\n", "[DISPLACE]: Filling type was not set");
                     break;
                 } else if (filling_type == filling_type_t::fixed_setting) {
-                    displace_args_.emplace(causal_mask_lt->id_,
+                    displace_args_.emplace_back(causal_mask_lt->id_,
                             displace_args_t {aop, offset, *causal_mask_lt,
                                     filling_type,
                                     {{user_set_value}, cfg_name}});
                 } else if (filling_type == filling_type_t::causal_mask) {
                     // Causal mask filling
-                    displace_args_.emplace(causal_mask_lt->id_,
+                    displace_args_.emplace_back(causal_mask_lt->id_,
                             displace_args_t {aop, offset, *causal_mask_lt,
                                     filling_type});
                 }
@@ -401,7 +401,8 @@ partition_data_displacer_t::partition_data_displacer_t(
                                     float user_set_value = static_cast<float>(
                                             op->in_lts_[1 - i]
                                                     .shape_[seq_len_idx]);
-                                    displace_args_.emplace(op->in_lts_[i].id_,
+                                    displace_args_.emplace_back(
+                                            op->in_lts_[i].id_,
                                             displace_args_t {*op, i,
                                                     op->in_lts_[i],
                                                     filling_type_t::
@@ -446,7 +447,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                 auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
                 if (child_exp_op->kind_ != "Exp") break;
 
-                displace_args_.emplace(aop_in_lt->id_,
+                displace_args_.emplace_back(aop_in_lt->id_,
                         displace_args_t {aop, 1, *aop_in_lt,
                                 filling_type_t::softmax_stats});
                 break;
@@ -455,180 +456,198 @@ partition_data_displacer_t::partition_data_displacer_t(
     }
 }
 
-int partition_data_displacer_t::displace_input_data(size_t lt_id,
-        dnn_mem_t &mem,
-        const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
-        res_t *res) {
+int partition_data_displacer_t::displace_input_data(
+        ref_partition_t &ref_partition, res_t *res) {
     if (!dg_) {
         res->state = FAILED;
         return FAIL;
     }
 
-    if (displace_args_.find(lt_id) == displace_args_.end()) {
-        // no need to displace the data of this tensor
-        return OK;
-    }
-    const displace_args_t &d_args = displace_args_.at(lt_id);
-    const auto &main_op = d_args.main_op_;
-    const auto &main_op_offset = d_args.main_op_offset_;
-    const auto &tensor = d_args.tensor_;
-    const auto &fill_cfg = d_args.fill_cfg_;
-    const auto filling_type = d_args.filling_type_;
+    for (const auto &d_arg : displace_args_) {
+        const auto &lt_id = d_arg.first;
+        const auto &main_op = d_arg.second.main_op_;
+        const auto &main_op_offset = d_arg.second.main_op_offset_;
+        const auto &tensor = d_arg.second.tensor_;
+        const auto &fill_cfg = d_arg.second.fill_cfg_;
+        const auto filling_type = d_arg.second.filling_type_;
 
-    auto opkind = opstr2kind(main_op.kind_);
-    int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
-            opkind, main_op_offset);
+        auto opkind = opstr2kind(main_op.kind_);
+        int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
+                opkind, main_op_offset);
 
-    const auto &get_name = [&filling_type, &fill_cfg]() {
-        std::string s;
-        if (filling_type == filling_type_t::fixed_setting) {
-            s = fill_cfg.name_;
-        } else if (filling_type == filling_type_t::causal_mask) {
-            s = "Explicit causal mask";
-        } else if (filling_type == filling_type_t::quantization) {
-            s = "Quantization";
-        } else if (filling_type == filling_type_t::compressed_sdpa) {
-            s = "Compressed SDPA";
-        }
-        return s;
-    };
-    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
-            main_op.kind_.c_str(),
-            data_kind2str(exec_arg2data_kind(main_op_arg)), get_name().c_str());
-
-    dnn_mem_t mem_replace;
-    if (filling_type == filling_type_t::quantization) {
-        SAFE(gen_quantize_filling(
-                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
-                WARN);
-    } else if (filling_type == filling_type_t::compressed_sdpa) {
-        SAFE(gen_compressed_sdpa_filling(
-                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
-                WARN);
-    } else if (filling_type == filling_type_t::causal_mask) {
-        SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
-    } else if (filling_type == filling_type_t::fixed_setting) {
-        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
-    } else if (filling_type == filling_type_t::softmax_stats) {
-        const auto *softmax_src_lt = &main_op.in_lts_[0];
-        const dnn_mem_t &softmax_src_mem = lt_id_2_mems.at(softmax_src_lt->id_);
-        SAFE(gen_softmax_stats_filling(main_op, main_op_arg, softmax_src_mem,
-                     mem_replace, mem.md_, res),
-                WARN);
-    } else {
-        assert(!"unexpected filling type");
-    }
-
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
-
-    // do the reverse job
-    auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
-    bool backward_path_launched = false;
-    while (filling_type == filling_type_t::quantization && !parent_op->empty()
-            && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
-        backward_path_launched = true;
-        // generate the reverse op based on OP kind
-        // make a copy of deserialized_op_t to avoid impact on graph execution
-        // Currently, we support the following OPs' reverse execution:
-        // All of the execution need to swap the input lt and output lt first
-
-        // 1. StaticTranspose: re-permute the 'order' attr to get an inversed effect
-        // 2. TypeCast: Do nothing special because the type is already swapped
-        // 3. StaticReshape: Do nothing special because the shape is already swapped
-        // 4. Quantize: change opkind to Dequantize and keep scales and zps
-        // 5. Dequantize: change opkind to Quantize and keep scales and zps
-
-        auto op = dg_->get_op_by_out_lt(tensor.id_);
-        BENCHDNN_PRINT(
-                3, "[DISPLACE]: Backward path for Op:%s;\n", op.kind_.c_str());
-
-        ::std::swap(op.in_lts_, op.out_lts_);
-
-        auto opkind = opstr2kind(op.kind_);
-
-        switch (opkind) {
-            case ::graph::op::kind::Quantize: op.kind_ = "Dequantize"; break;
-            case ::graph::op::kind::Dequantize: op.kind_ = "Quantize"; break;
-            case ::graph::op::kind::StaticTranspose: {
-                ::std::vector<int64_t> order;
-                op.get_attr_s64_vector(order, "order");
-                size_t ndims = order.size();
-                ::std::vector<int64_t> new_order(ndims, 0);
-                for (size_t i = 0; i < ndims; i++) {
-                    new_order[(order[i] + ndims) % ndims] = i;
-                }
-                op.attrs_["order"].s64_vector_ = new_order;
-                break;
+        const auto &get_name = [&filling_type, &fill_cfg]() {
+            std::string s;
+            if (filling_type == filling_type_t::fixed_setting) {
+                s = fill_cfg.name_;
+            } else if (filling_type == filling_type_t::causal_mask) {
+                s = "Explicit causal mask";
+            } else if (filling_type == filling_type_t::quantization) {
+                s = "Quantization";
+            } else if (filling_type == filling_type_t::compressed_sdpa) {
+                s = "Compressed SDPA";
             }
-            case ::graph::op::kind::TypeCast:
-            case ::graph::op::kind::StaticReshape: break;
-            default:
-                assert(!"not support opkind for reverse execution");
-                return FAIL;
+            return s;
+        };
+        BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
+                main_op.kind_.c_str(),
+                data_kind2str(exec_arg2data_kind(main_op_arg)),
+                get_name().c_str());
+
+        if (!ref_partition.has_mem(lt_id)) {
+            res->state = INVALID_ARGUMENTS;
+            return FAIL;
+        }
+        dnn_mem_t &mem = const_cast<dnn_mem_t &>(ref_partition.get_mem(lt_id));
+        dnn_mem_t mem_replace;
+        if (filling_type == filling_type_t::quantization) {
+            SAFE(gen_quantize_filling(main_op, main_op_arg, mem_replace,
+                         tensor.data_type_, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::compressed_sdpa) {
+            SAFE(gen_compressed_sdpa_filling(main_op, main_op_arg, mem_replace,
+                         tensor.data_type_, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::causal_mask) {
+            SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
+        } else if (filling_type == filling_type_t::fixed_setting) {
+            SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::softmax_stats) {
+            // for softmax stats, we need to displace the input data
+            // based on softmax input, which needs to be generated by executing
+            // previous ops.
+            res_t temp_res;
+            ref_partition.exec_ops(&temp_res);
+            const auto *softmax_src_lt = &main_op.in_lts_[0];
+            const dnn_mem_t &softmax_src_mem
+                    = ref_partition.get_mem(softmax_src_lt->id_);
+
+            SAFE(gen_softmax_stats_filling(main_op, main_op_arg,
+                         softmax_src_mem, mem_replace, mem.md_, res),
+                    WARN);
+        } else {
+            assert(!"unexpected filling type");
         }
 
-        // execute the reverse op
-        res_t res {};
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) continue;
 
-        ref_primitive_t ref_prim(op);
-        ref_prim.init_prb(&res);
-        if (res.state == INVALID_ARGUMENTS) return FAIL;
-        SAFE_V(ref_prim.init_prim(
-                get_cpu_engine(), &res, /* force_override = */ true));
+        // do the reverse job
+        auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
+        bool backward_path_launched = false;
+        while (filling_type == filling_type_t::quantization
+                && !parent_op->empty()
+                && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
+            backward_path_launched = true;
+            // generate the reverse op based on OP kind
+            // make a copy of deserialized_op_t to avoid impact on graph execution
+            // Currently, we support the following OPs' reverse execution:
+            // All of the execution need to swap the input lt and output lt first
 
-        ref_prim.init_memory_args(get_cpu_engine());
-        SAFE_V(ref_prim.init_ref_memory_args(get_cpu_engine(), &res));
+            // 1. StaticTranspose: re-permute the 'order' attr to get an inversed effect
+            // 2. TypeCast: Do nothing special because the type is already swapped
+            // 3. StaticReshape: Do nothing special because the shape is already swapped
+            // 4. Quantize: change opkind to Dequantize and keep scales and zps
+            // 5. Dequantize: change opkind to Quantize and keep scales and zps
 
-        const auto &src_mem = ref_prim.get_arg(DNNL_ARG_SRC);
+            auto op = dg_->get_op_by_out_lt(tensor.id_);
+            BENCHDNN_PRINT(3, "[DISPLACE]: Backward path for Op:%s;\n",
+                    op.kind_.c_str());
+
+            ::std::swap(op.in_lts_, op.out_lts_);
+
+            auto opkind = opstr2kind(op.kind_);
+
+            switch (opkind) {
+                case ::graph::op::kind::Quantize:
+                    op.kind_ = "Dequantize";
+                    break;
+                case ::graph::op::kind::Dequantize:
+                    op.kind_ = "Quantize";
+                    break;
+                case ::graph::op::kind::StaticTranspose: {
+                    ::std::vector<int64_t> order;
+                    op.get_attr_s64_vector(order, "order");
+                    size_t ndims = order.size();
+                    ::std::vector<int64_t> new_order(ndims, 0);
+                    for (size_t i = 0; i < ndims; i++) {
+                        new_order[(order[i] + ndims) % ndims] = i;
+                    }
+                    op.attrs_["order"].s64_vector_ = new_order;
+                    break;
+                }
+                case ::graph::op::kind::TypeCast:
+                case ::graph::op::kind::StaticReshape: break;
+                default:
+                    assert(!"not support opkind for reverse execution");
+                    return FAIL;
+            }
+
+            // execute the reverse op
+            res_t res {};
+
+            ref_primitive_t ref_prim(op);
+            ref_prim.init_prb(&res);
+            if (res.state == INVALID_ARGUMENTS) return FAIL;
+            SAFE_V(ref_prim.init_prim(
+                    get_cpu_engine(), &res, /* force_override = */ true));
+
+            ref_prim.init_memory_args(get_cpu_engine());
+            SAFE_V(ref_prim.init_ref_memory_args(get_cpu_engine(), &res));
+
+            const auto &src_mem = ref_prim.get_arg(DNNL_ARG_SRC);
+            bool mds_are_equal
+                    = dnnl_memory_desc_equal(mem_replace.md_, src_mem.md_) == 1;
+            SAFE(mds_are_equal ? OK : FAIL, WARN);
+
+            // Always use the md generated by current reversed op. E.g., a matmul op
+            // will unsqeeze 1 to fit the dimension so the md generated by matmul
+            // prb_t will not be the same as defined in graph.
+            dnnl_memory_desc_destroy(mem_replace.md_);
+            dnnl_memory_desc_clone(&mem_replace.md_, src_mem.md_);
+            ref_prim.replace_arg(DNNL_ARG_SRC, mem_replace);
+            SAFE_V(ref_prim.execute_prim(&res));
+
+            mem_replace = ::std::move(
+                    const_cast<dnn_mem_t &>(ref_prim.get_arg(DNNL_ARG_DST)));
+            parent_op = &dg_->get_op_by_out_lt(op.out_lts_[0].id_);
+        }
+
+        if (backward_path_launched) {
+            BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
+        }
+
         bool mds_are_equal
-                = dnnl_memory_desc_equal(mem_replace.md_, src_mem.md_) == 1;
-        SAFE(mds_are_equal ? OK : FAIL, WARN);
+                = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
+        bool mds_are_int8 = is_integral_dt(mem_replace.dt())
+                && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
+                && mem.sizeof_dt() == 1;
+        bool is_grouped_conv = false;
+        if (main_op.kind_ == "Convolution"
+                || main_op.kind_ == "ConvTranspose") {
+            int64_t groups;
+            main_op.get_attr_s64(groups, "groups");
+            is_grouped_conv = groups > 1;
+        }
 
-        // Always use the md generated by current reversed op. E.g., a matmul op
-        // will unsqeeze 1 to fit the dimension so the md generated by matmul
-        // prb_t will not be the same as defined in graph.
+        bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
+                && mem_replace.ndims() != mem.ndims();
+
+        bool mds_ok = IMPLICATION(!mds_are_equal,
+                mds_are_int8 || is_grouped_conv || is_reshaped_dims);
+        SAFE(mds_ok ? OK : FAIL, WARN);
+
+        dnnl_memory_desc_t md = mem.md_;
+        if (is_reshaped_dims) {
+            DNN_SAFE_V(dnnl_memory_desc_create_with_strides(&md, mem.ndims(),
+                    mem.dims(), mem_replace.dt(), mem.strides()));
+        }
         dnnl_memory_desc_destroy(mem_replace.md_);
-        dnnl_memory_desc_clone(&mem_replace.md_, src_mem.md_);
-        ref_prim.replace_arg(DNNL_ARG_SRC, mem_replace);
-        SAFE_V(ref_prim.execute_prim(&res));
+        dnnl_memory_desc_clone(&mem_replace.md_, md);
+        SAFE(mem.reorder(mem_replace), WARN);
 
-        mem_replace = ::std::move(
-                const_cast<dnn_mem_t &>(ref_prim.get_arg(DNNL_ARG_DST)));
-        parent_op = &dg_->get_op_by_out_lt(op.out_lts_[0].id_);
+        if (is_reshaped_dims) dnnl_memory_desc_destroy(md);
     }
 
-    if (backward_path_launched) {
-        BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
-    }
-
-    bool mds_are_equal = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
-    bool mds_are_int8 = is_integral_dt(mem_replace.dt())
-            && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
-            && mem.sizeof_dt() == 1;
-    bool is_grouped_conv = false;
-    if (main_op.kind_ == "Convolution" || main_op.kind_ == "ConvTranspose") {
-        int64_t groups;
-        main_op.get_attr_s64(groups, "groups");
-        is_grouped_conv = groups > 1;
-    }
-
-    bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
-            && mem_replace.ndims() != mem.ndims();
-
-    bool mds_ok = IMPLICATION(!mds_are_equal,
-            mds_are_int8 || is_grouped_conv || is_reshaped_dims);
-    SAFE(mds_ok ? OK : FAIL, WARN);
-
-    dnnl_memory_desc_t md = mem.md_;
-    if (is_reshaped_dims) {
-        DNN_SAFE_V(dnnl_memory_desc_create_with_strides(
-                &md, mem.ndims(), mem.dims(), mem_replace.dt(), mem.strides()));
-    }
-    dnnl_memory_desc_destroy(mem_replace.md_);
-    dnnl_memory_desc_clone(&mem_replace.md_, md);
-    SAFE(mem.reorder(mem_replace), WARN);
-
-    if (is_reshaped_dims) dnnl_memory_desc_destroy(md);
     return OK;
 }
 

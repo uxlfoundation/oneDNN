@@ -151,20 +151,7 @@ int ref_partition_t::init_ref(
     }
 
     // displace data if needed, with topo order
-    for (const auto &par_op_ref : partition_ops_ref_) {
-        for (size_t i = 0; i < par_op_ref.get().in_lts_.size(); i++) {
-            size_t lt_id = par_op_ref.get().in_lts_[i].id_;
-            if (lt_id_2_mems_.find(lt_id) == lt_id_2_mems_.end()) continue;
-            if (data_displacer.get_filling_type(lt_id)
-                    == filling_type_t::softmax_stats) {
-                res_t temp_res;
-                exec_ops(&temp_res);
-            }
-            const dnn_mem_t &mem = lt_id_2_mems_.at(lt_id);
-            SAFE_V(data_displacer.displace_input_data(
-                    lt_id, const_cast<dnn_mem_t &>(mem), lt_id_2_mems_, res));
-        }
-    }
+    SAFE_V(data_displacer.displace_input_data(*this, res));
 
     return OK;
 }

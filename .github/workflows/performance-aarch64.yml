@@ -141,7 +141,7 @@ jobs:
           path: ${{ github.workspace }}/ComputeLibrary/build
 
       - name: Rename to ComputeLibrary_base
-        run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
+        run: cp -r ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
       - name: Rename to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new

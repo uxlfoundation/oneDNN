@@ -36,6 +36,13 @@ void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
         float scale_adjust_factor, bool req_transpose) {
     if (req_copy_scales(attr_scales, scale_adjust_factor, req_transpose)) {
         const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+        // Current infrastructure relies on the fact the precomputed scales
+        // output will be float values. However, changes in this commit update
+        // the expectation for matmul grouped scaling.
+        // TODO: once precompute scales infrastructure remains to be used in
+        // brgemm_matmul only (for x64), update the interface with requested
+        // data type for scales, since it'll be no longer true that float values
+        // are expected.
         const size_t precomputed_scales_size = wei_mask > 0
                 ? nstl::max(static_cast<size_t>(wei_scale_count), scales_simd_w)
                 : scales_simd_w;

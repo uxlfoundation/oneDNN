@@ -125,7 +125,6 @@ struct brgemm_kernel_post_ops_args_t {
     void *ptr_in;
     void *ptr_out;
     void *ptr_bias;
-    void *ptr_scales;
     const void *ptr_binary_post_ops_rhs;
     size_t apply_comp = 0;
     int32_t a_comp_val = 1;
@@ -133,7 +132,9 @@ struct brgemm_kernel_post_ops_args_t {
     const int32_t *c_zp_values;
     int32_t *s8s8_compensation;
     const void *dst_orig;
-    void *ptr_dst_scales;
+    const void *ptr_src_scales = nullptr;
+    const void *ptr_wei_scales = nullptr;
+    const void *ptr_dst_scales = nullptr;
 };
 
 // This is a shim user interface that allows to create a template-free object
@@ -226,8 +227,8 @@ private:
     const reg64_t reg_bias = r11;
     const reg64_t aux_reg_bias = r10;
 
-    const reg64_t reg_scales = r9;
-    const reg64_t aux_reg_scales = r8;
+    const reg64_t reg_wei_scales = r9;
+    const reg64_t aux_reg_wei_scales = r8;
 
     const reg64_t reg_ptr_sum_scale = rdx;
     const reg64_t reg_ptr_sum_zp = rsi;
@@ -240,8 +241,11 @@ private:
     const reg64_t aux_reg_s8s8_comp = rbx;
     const reg64_t reg_zp_a_val = rbx;
     const reg64_t reg_apply_comp = rbx;
+    const reg64_t reg_src_scales = rbx;
+    const reg64_t aux_reg_src_scales = rbx;
     const reg64_t reg_dst_scales = rbx;
     const reg64_t aux_reg_dst_scales = rbx;
+    const reg64_t aux_reg_scale_adjust = rbx;
     const reg64_t reg_tmp = abi_not_param1;
 
     constexpr static int reg_zp_c_values_offs_ = 0;
@@ -252,8 +256,9 @@ private:
     constexpr static int aux_reg_s8s8_comp_offs_ = 40;
     constexpr static int reg_zp_a_val_offs_ = 48;
     constexpr static int reg_apply_comp_offs_ = 56;
-    constexpr static int reg_dst_scales_offs_ = 64;
-    constexpr static int stack_space_needed_ = 72;
+    constexpr static int reg_src_scales_offs_ = 64;
+    constexpr static int reg_dst_scales_offs_ = 72;
+    constexpr static int stack_space_needed_ = 80;
 
     /* bf16 emulation */
     Xbyak::Zmm emu_reserv_1 = Xbyak::Zmm(27);

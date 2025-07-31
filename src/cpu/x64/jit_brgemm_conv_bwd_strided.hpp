@@ -29,7 +29,6 @@
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_brgemm_conv_bwd_copy_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_bwd_trans_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_comp_pad_kernel.hpp"
@@ -151,7 +150,8 @@ private:
             , iwb(0)
             , occ(0)
             , sw(0)
-            , oscales(nullptr)
+            , src_scales(nullptr)
+            , wei_scales(nullptr)
             , dst_scales(nullptr)
             , src_zp_val(0)
             , src_zp_comp_ptr(nullptr)
@@ -169,8 +169,9 @@ private:
         int id, idb, ih, ihb, iwb;
         int occ;
         int sw;
-        const float *oscales;
-        const float *dst_scales;
+        const void *src_scales;
+        const void *wei_scales;
+        const void *dst_scales;
         int32_t src_zp_val;
         int32_t *src_zp_comp_ptr;
         const int32_t *dst_zp_vals;
@@ -192,11 +193,12 @@ private:
     void perform_outwork(char *dst_base, char *dst, char *c_buffer,
             const char *bias_w, int od, int oh, int ow, int iw_raw, int g_oc,
             bool is_oc_tail, int ker_ow_s, int ker_ow_f, int kd_l, int kh_l,
-            const void *post_ops_binary_rhs_arg_vec, const float *oscales,
-            int32_t src_zp_val, int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
+            const void *post_ops_binary_rhs_arg_vec, int32_t src_zp_val,
+            int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
             int32_t *s8s8_compensation, size_t comp_ker_offs,
             bool maybe_do_init, bool do_postwork, bool do_post_comp,
-            const float *dst_scales) const;
+            const void *src_scales, const void *wei_scales,
+            const void *dst_scales) const;
 
     void call_brgemm_kernel(brgemm_bwd_thread_ctx_t &btc, int brg_idx,
             int batch_size, char *ptr_C, char *ptr_D, const char *bias_w,
@@ -243,7 +245,6 @@ private:
                     jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>>
             copy_to_output_buffer_;
     std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;
 

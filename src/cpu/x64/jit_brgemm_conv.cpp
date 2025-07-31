@@ -19,7 +19,6 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/cpu_primitive.hpp"
-#include "cpu/scale_utils.hpp"
 
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/jit_brgemm_conv.hpp"
@@ -559,7 +558,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || jcp_.with_scales || jcp_.with_dst_scales || need_compensation
+            || jcp_.with_src_scales || jcp_.with_wei_scales
+            || jcp_.with_dst_scales || need_compensation
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum || jcp_.use_M_mask
             || jcp_.src_zero_point || jcp_.dst_zero_point;
 
@@ -677,9 +677,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     brgemm_convolution_utils::set_amx_wsp_per_thread(jcp_);
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
-    if (jcp_.with_scales)
-        book_precomputed_scales(
-                scratchpad, attr()->scales_, OC(), jcp_.scale_adjust_factor);
 
     return status::success;
 }
@@ -932,21 +929,6 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         CHECK(safe_ptr_assign(copy_to_pbuffer_,
                 new jit_avx512_core_brgemm_conv_trans_kernel_t(jcp)));
         CHECK(copy_to_pbuffer_->create_kernel());
-    }
-
-    // JIT to precompute scales
-    const bool is_jit_supported = mayiuse(avx512_core);
-    const auto attr = pd()->attr();
-    const auto &attr_scales = attr->scales_;
-    if (is_jit_supported && pd()->OC() > 1
-            && req_copy_scales(attr_scales, jcp.scale_adjust_factor)) {
-        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_scale_mask > 0) {
-            CHECK(safe_ptr_assign(jit_scale_precompute_,
-                    new jit_avx512_core_scale_precompute_t(
-                            attr, jcp.scale_adjust_factor)));
-            CHECK(jit_scale_precompute_->create_kernel());
-        }
     }
 
     if (jcp.is_relo_whi()) {
@@ -1255,12 +1237,13 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     int g {-1}, n {-1}, ocb {-1};
     int od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
     int icc {-1};
-    const float *__restrict oscales {nullptr};
     int32_t src_zp_val {0};
     int32_t *__restrict src_zp_comp_ptr {nullptr};
     const int32_t *__restrict dst_zp_vals {nullptr};
     int32_t *__restrict s8s8_comp_ptr {nullptr};
-    const float *__restrict dst_scales {nullptr};
+    const void *__restrict src_scales {nullptr};
+    const void *__restrict wei_scales {nullptr};
+    const void *__restrict dst_scales {nullptr};
     char *__restrict inp_buffer {nullptr};
     const char *__restrict input {nullptr};
     uint8_t *__restrict inp_buffer_mask {nullptr};
@@ -1278,17 +1261,14 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(scratchpad,
-            src_scales, wei_scales, pd()->IC(), pd()->OC(), false,
-            wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
-            jcp.scale_adjust_factor);
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, _pd);
 
@@ -1369,6 +1349,16 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                 brgemm_ctx, ithr, brg_batch, c_buffer, wsp_tile, wei);
         brgemm_thread_ctx_t last_btc = btc;
 
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = scratchpad.template get<float>(key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
+
         assert(IMPLICATION(!jcp.copy_input, !jcp.copy_block_only));
         btc.inp_buffer = (jcp.exec_type == exec_trans && jcp.copy_input)
                 ? inp_p_buffer + src_dsz * ithr * jcp.inp_buffer_size
@@ -1399,14 +1389,15 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
             btc.odb = odb;
             btc.ohb = ohb;
             btc.owb = owb;
-            btc.oscales = oscales;
             btc.src_zp_val = src_zero_points ? src_zero_points[0] : 0;
             btc.dst_zp_vals = dst_zero_points;
             btc.src_zp_comp_ptr
                     = jcp.src_zero_point ? src_zp_comp_base : nullptr;
             btc.s8s8_comp_ptr
                     = jcp.s8s8_compensation_required ? s8s8_comp_base : nullptr;
-            btc.dst_scales = dst_scales;
+            btc.src_scales = src_scales;
+            btc.wei_scales = wei_scales;
+            btc.dst_scales = dst_scales_inv_ptr;
 
             if (jcp.exec_type == exec_trans
                     && (last_btc.n != n || last_btc.g != g)) {
@@ -1596,13 +1587,17 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
     brgemm_kernel_post_ops_args_t p;
     if (do_postwork) {
         p.ptr_bias = (void *)(bias_w);
-        p.ptr_scales = (void *)(&btc.oscales[jcp.is_oc_scale * g_oc]);
         p.ptr_binary_post_ops_rhs
                 = btc.brgemm_ctx.post_ops_binary_rhs_arg_vec.data();
         p.dst_orig = btc.brgemm_ctx.dst;
         p.c_zp_values = btc.dst_zp_vals;
         p.a_comp_val = btc.src_zp_val;
-        p.ptr_dst_scales = (void *)btc.dst_scales;
+        p.ptr_src_scales = btc.src_scales;
+        p.ptr_wei_scales = btc.wei_scales
+                ? static_cast<const char *>(btc.wei_scales)
+                        + jcp.is_oc_scale * g_oc * sizeof(float)
+                : nullptr;
+        p.ptr_dst_scales = btc.dst_scales;
     }
 
     auto call_outwork_ker = [&](bool is_postwork, bool has_postcomp,
@@ -1685,11 +1680,14 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
                 : nullptr;
         const brgemm_post_ops_data_t post_ops_data {
                 static_cast<const char *>(bias_w),
-                &btc.oscales[jcp.is_oc_scale * g_oc],
                 btc.brgemm_ctx.post_ops_binary_rhs_arg_vec.data(),
                 static_cast<size_t>(g_oc), 0, btc.brgemm_ctx.dst, 0,
                 static_cast<void *>(src_zp_ptr), nullptr, btc.dst_zp_vals,
                 false, btc.src_zp_val, do_only_comp, do_only_pass_comp,
+                btc.src_scales,
+                btc.wei_scales ? static_cast<const char *>(btc.wei_scales)
+                                + jcp.is_oc_scale * g_oc * sizeof(float)
+                               : nullptr,
                 btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)

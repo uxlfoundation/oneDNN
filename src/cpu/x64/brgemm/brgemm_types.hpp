@@ -283,17 +283,26 @@ struct brgemm_desc_t {
     impl::data_type_t sum_dt = data_type::undef;
     bool with_eltwise = false;
     bool with_binary = false;
-    bool with_scales = false;
     bool skip_zp_b_compensation = false;
-    bool skip_scales = false;
     bool n_bcast_1_load = false;
 
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_c = brgemm_broadcast_t::none;
 
+    // `skip_scales` is controlled by the implementation and not by kernel API.
+    bool skip_scales = false;
     int is_oc_scale = 0;
+    bool with_src_scales = false;
+    bool with_wei_scales = false;
+    // `dst_scales` passed as a bare pointer making kernel change multiplication
+    // to division was proved to be significantly slower, both for pure divps
+    // instruction, or for emulation through rcpps. Therefore, each
+    // implementation dealing with `dst_scales` must prepare a per thread
+    // scratchpad memory and inverse values (usually, just one) inside a
+    // parallel task.
     bool with_dst_scales = false;
+    data_type_t dt_wei_scales = data_type::undef;
     // Grouping in batch used by brdgmm kernel
     int bs_group {0};
 
@@ -335,6 +344,8 @@ struct brgemm_desc_t {
     bool embd_bcst = false;
     bool with_bias = false;
     bool req_s8s8_compensation = false;
+    // `with_weights_scale_adjust` is controlled by the implementation and not
+    // by kernel API.
     bool with_weights_scale_adjust = false;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
     int is_M_tail = false;
@@ -494,9 +505,9 @@ struct brgemm_desc_t {
     bool are_post_ops_applicable() const {
         const bool has_zero_points = !utils::everyone_is(
                 brgemm_broadcast_t::none, zp_type_a, zp_type_b, zp_type_c);
-        return dt_c != dt_d || with_eltwise || with_binary || with_scales
-                || with_bias || with_sum || req_s8s8_compensation
-                || has_zero_points || with_dst_scales;
+        return dt_c != dt_d || with_eltwise || with_binary || with_bias
+                || with_sum || req_s8s8_compensation || has_zero_points
+                || with_src_scales || with_wei_scales || with_dst_scales;
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }
@@ -572,12 +583,9 @@ struct brgemm_kernel_params_t {
     const void *ptr_bias;
     void *ptr_D;
 
-    /* kernel takes single pointer scales, but configuration relies on a
-     * combination of arg scales. This helps to reuse attributes from
-     * primitives, but requires them to pre-compute
-     * scales = src_scale * wei_scale[:]
-     */
-    const void *ptr_scales;
+    const void *ptr_src_scales = nullptr;
+    const void *ptr_wei_scales = nullptr;
+    const void *ptr_dst_scales = nullptr;
     void *ptr_buf;
 
     size_t do_post_ops;
@@ -601,7 +609,6 @@ struct brgemm_kernel_params_t {
     const void *c_zp_values = nullptr;
     size_t skip_accm = 0;
     int32_t zp_a_val = 1;
-    const void *ptr_dst_scales = nullptr;
     dim_t dynamic_LDA = 0;
     dim_t dynamic_LDB = 0;
     dim_t dynamic_LDC = 0;
@@ -715,19 +722,18 @@ private:
 ///
 struct brgemm_post_ops_data_t {
     brgemm_post_ops_data_t() = default;
-    brgemm_post_ops_data_t(const void *bias, const float *scales,
-            const void *binary_post_ops_rhs, size_t oc_logical_off,
-            const size_t dst_row_logical_off = 0,
+    brgemm_post_ops_data_t(const void *bias, const void *binary_post_ops_rhs,
+            size_t oc_logical_off, const size_t dst_row_logical_off = 0,
             const char *data_C_ptr_ = nullptr,
             const size_t first_mb_matrix_addr_off = 0,
             const void *a_zp_compensations = nullptr,
             const void *b_zp_compensations = nullptr,
             const void *c_zp_values = nullptr, bool skip_accumulation = false,
             int32_t zp_a_val = 1, bool do_only_comp = false,
-            bool do_only_zp_a_val = false, const float *dst_scales = nullptr,
+            bool do_only_zp_a_val = false, const void *src_scales = nullptr,
+            const void *wei_scales = nullptr, const void *dst_scales = nullptr,
             const void *a_zp_values = nullptr)
         : bias(bias)
-        , scales(scales)
         , binary_post_ops_rhs(binary_post_ops_rhs)
         , oc_logical_off(oc_logical_off)
         , dst_row_logical_off(dst_row_logical_off)
@@ -740,11 +746,12 @@ struct brgemm_post_ops_data_t {
         , zp_a_val {zp_a_val}
         , do_only_comp {do_only_comp}
         , do_only_zp_a_val {do_only_zp_a_val}
+        , src_scales(src_scales)
+        , wei_scales(wei_scales)
         , dst_scales(dst_scales)
         , a_zp_values(a_zp_values) {}
 
     const void *bias = nullptr;
-    const float *scales = nullptr;
     const void *binary_post_ops_rhs = nullptr;
     size_t oc_logical_off = 0;
     size_t dst_row_logical_off = 0;
@@ -757,7 +764,9 @@ struct brgemm_post_ops_data_t {
     int32_t zp_a_val = 1;
     const bool do_only_comp = false;
     const bool do_only_zp_a_val = false;
-    const float *dst_scales = nullptr;
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
     const void *a_zp_values = nullptr;
 };
 

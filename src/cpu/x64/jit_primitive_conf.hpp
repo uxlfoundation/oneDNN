@@ -666,8 +666,8 @@ struct jit_brdgmm_conv_conf_t {
 
     bool with_bias;
     bool with_post_ops;
-    bool with_scale;
     bool is_oc_scale;
+    bool with_dst_scales;
 
     data_type_t src_dt;
     data_type_t wei_dt;
@@ -784,9 +784,10 @@ struct jit_brgemm_conv_conf_t {
     dim_t comp_a_buffer_size;
     dim_t s8s8_comp_buffer_size;
 
-    bool with_scales;
-    int is_ic_scale, is_oc_scale;
+    bool with_src_scales;
+    bool with_wei_scales;
     bool with_dst_scales;
+    int is_ic_scale, is_oc_scale;
 
     int LDA, LDB, LDC, LDD;
 

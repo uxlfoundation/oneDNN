@@ -444,7 +444,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     jbgp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
     const memory_desc_wrapper dst_d(&dst_md);
     if (!post_ops_ok(attr, dst_d)) return status::unimplemented;
-    if (jbgp.with_scales) {
+    if (jbgp.with_wei_scales) {
         jbgp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
     }
 
@@ -1386,8 +1386,12 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
         return status::unimplemented;
     if (is_int8) {
         jbgp.acc_dt = s32;
-        jbgp.with_scales = true;
-        jbgp.with_dst_scales = true;
+        jbgp.with_src_scales
+                = !attr.scales_.get(DNNL_ARG_SRC).has_default_values();
+        jbgp.with_wei_scales
+                = !attr.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+        jbgp.with_dst_scales
+                = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
     } else
         jbgp.acc_dt = f32;
 
@@ -1550,6 +1554,12 @@ void jit_brgemm_ip_fwd_conf_t::init_scratchpad(
                 (size_t)jbgp.nthr * jbgp.LDA * jbgp.os_block
                         * jbgp.nb_os_blocking,
                 buf_dt_size(jbgp.src_dt, jbgp.isa));
+    }
+
+    if (jbgp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_iprod_dst_scales,
+                static_cast<size_t>(jbgp.nthr) * sizeof(float), sizeof(float));
     }
 }
 

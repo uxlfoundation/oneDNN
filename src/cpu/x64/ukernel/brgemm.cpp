@@ -243,63 +243,23 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     // It's exactly what `attr_params` stores when gets a pointer from the user.
     post_ops_data.binary_post_ops_rhs = attr_params->get_post_ops_args();
 
-    // Scales (quantization case, happens after accumulation). Require manual
-    // combining when both are present, and extending to full simd broadcast,
-    // when single values are provided.
-    // Note: this piece is pretty close to what `precompute_scales` does.
-    // TODO: switch to `precompute_scales` directly.
-    alignas(64) float scales_buf[16] = {0};
-    // TODO: delegate extra memory to scratchpad?
-    std::vector<float> wei_scales_v(N_);
-
-    const bool has_src_scales = !attr_.scales_.has_default_values(DNNL_ARG_SRC);
-    const bool has_wei_scales
-            = !attr_.scales_.has_default_values(DNNL_ARG_WEIGHTS);
-
-    // Save src scale value to re-use it.
-    float src_scale_val = 1.f;
-    if (has_src_scales) {
+    if (!attr_.scales_.has_default_values(DNNL_ARG_SRC)) {
         const void *src_scales_ptr = attr_params->get_scales(DNNL_ARG_SRC);
         if (src_scales_ptr == nullptr) return status::invalid_arguments;
-
-        src_scale_val
-                = cpu::io::load_float_value(data_type::f32, src_scales_ptr, 0);
+        post_ops_data.src_scales = src_scales_ptr;
     }
-    if (has_wei_scales) {
-        // Handle weights entirely here to avoid duplicating the logic.
-
+    if (!attr_.scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
         const void *wei_scales_ptr = attr_params->get_scales(DNNL_ARG_WEIGHTS);
         if (wei_scales_ptr == nullptr) return status::invalid_arguments;
-
-        int wei_mask = attr_.scales_.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_mask > 0) {
-            for (dim_t i = 0; i < N_; i++) {
-                const float wei_scale_val = cpu::io::load_float_value(
-                        data_type::f32, wei_scales_ptr, i);
-                wei_scales_v[i] = wei_scale_val * src_scale_val;
-            }
-            post_ops_data.scales = wei_scales_v.data();
-        } else {
-            const float s = cpu::io::load_float_value(
-                    data_type::f32, wei_scales_ptr, 0);
-            utils::array_set(scales_buf, s * src_scale_val, 16);
-            post_ops_data.scales = scales_buf;
-        }
-    } else if (has_src_scales) {
-        utils::array_set(scales_buf, src_scale_val, 16);
-        post_ops_data.scales = scales_buf;
+        post_ops_data.wei_scales = wei_scales_ptr;
     }
-
-    // Destination scales. Require manual extending to full simd broadcast.
-    alignas(64) float dst_scales_buf[16] = {0};
     if (!attr_.scales_.has_default_values(DNNL_ARG_DST)) {
         const void *dst_scales_ptr = attr_params->get_scales(DNNL_ARG_DST);
         if (dst_scales_ptr == nullptr) return status::invalid_arguments;
 
-        const float s
-                = cpu::io::load_float_value(data_type::f32, dst_scales_ptr, 0);
-        utils::array_set(dst_scales_buf, 1.f / s, 16);
-        post_ops_data.dst_scales = dst_scales_buf;
+        const float dst_scale_inv
+                = 1.f / static_cast<const float *>(dst_scales_ptr)[0];
+        post_ops_data.dst_scales = &dst_scale_inv;
     }
 
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {

@@ -33,7 +33,6 @@
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/cpu_reducer.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_brgemm_conv_trans_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
@@ -123,20 +122,22 @@ private:
             brgemm_batch_element_t *const __restrict brg_batch,
             char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
             int od, int oh, int ow, int icc, int *last_brg_idx,
-            const float *oscales, const int32_t *src_zero_points,
-            int32_t *src_zp_comp, const int32_t *dst_zero_points,
-            int32_t *s8s8_compensation, const float *dst_scales,
-            const bool is_last_os = false) const;
+            const int32_t *src_zero_points, int32_t *src_zp_comp,
+            const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+            const void *src_scales, const void *wei_scales,
+            const void *dst_scales_inv, const bool is_last_os = false) const;
     void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
-            const float *dst_scales, const float *oscales,
+            const void *src_scales, const void *wei_scales,
+            const void *dst_scales, void *dst_scales_inv,
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             char *const c_buffer_global, char *inp_buffer_base,
             uint8_t *inp_buffer_mask_base) const;
     void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
-            const float *dst_scales, const float *oscales,
+            const void *src_scales, const void *wei_scales,
+            const void *dst_scales, void *dst_scales_inv,
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             char *const c_buffer_global) const;
@@ -188,7 +189,6 @@ private:
     std::unique_ptr<jit_avx512_core_brgemm_conv_trans_kernel::
                     jit_avx512_core_brgemm_conv_rtus_kernel_t>
             rtus_kernel_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     const memory_desc_wrapper bias_d;
 

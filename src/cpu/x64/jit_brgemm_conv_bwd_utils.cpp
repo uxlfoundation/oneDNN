@@ -2074,8 +2074,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
         const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
         const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-        jcp.with_scales = !src_scales.has_default_values()
-                || !wei_scales.has_default_values()
+        jcp.with_src_scales = !src_scales.has_default_values();
+        jcp.with_wei_scales = !wei_scales.has_default_values()
                 || jcp.scale_adjust_factor != 1.0f;
         jcp.is_ic_scale = wei_scales.get_mask() > 0;
         jcp.with_dst_scales = !dst_scales.has_default_values();
@@ -2147,6 +2147,12 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (jcp.src_zero_point && jcp.req_cal_comp_pad) {
         scratchpad.book(key_brgemm_primitive_zp_comp_a, jcp.comp_a_buffer_size,
                 sizeof(int32_t), 0, P4K);
+    }
+
+    if (jcp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_conv_dst_scales,
+                static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
     }
 }
 

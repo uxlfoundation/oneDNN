@@ -38,7 +38,7 @@ static status_t normalize_reusable_simple_concat(
 
     const auto concat_dim = pd->concat_dim();
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
     dim_t max_write_size = normalize.max_write_size();
     dim_t max_read_size = normalize.max_read_size();
@@ -165,7 +165,7 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
 
     const auto concat_dim = pd->concat_dim();
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
 
     normalize.set_pessimistic_chunk_size();

@@ -39,8 +39,7 @@ struct xe_softmax_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             auto arch = compute_engine->device_info()->gpu_arch();
             const memory_desc_wrapper src_d(src_md());
@@ -250,8 +249,7 @@ struct xe_softmax_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());

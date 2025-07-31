@@ -54,8 +54,7 @@ struct ref_eltwise_fwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_eltwise_fwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -130,8 +129,7 @@ struct ref_eltwise_bwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace utils;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);

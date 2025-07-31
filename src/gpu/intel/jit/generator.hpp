@@ -103,7 +103,7 @@ public:
     }
 
     status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+            const compute::engine_t *engine) override {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
         auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
@@ -145,7 +145,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         return kernel;
     }
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
     auto arch = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
 

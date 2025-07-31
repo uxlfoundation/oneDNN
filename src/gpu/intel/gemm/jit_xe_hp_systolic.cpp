@@ -17,15 +17,11 @@
 #include "gpu/intel/gemm/jit_xe_hp_systolic.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_traits.hpp"
-#include "common/float16.hpp"
-#include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
 #include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/xe_systolic_copy_kernel.hpp"
 #include "gpu/intel/jit/gemm/walk_orders.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -43,7 +39,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     using arch_t = compute::gpu_arch_t;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");
@@ -556,7 +552,7 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
 status_t xe_hp_systolic_gemm_t::init_compute(impl::engine_t *engine) {
     using kd_t = jit::gen_gemm_xe_systolic_kernel_desc_t;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     int stepping = compute_engine->device_info()->stepping_id();
 
     const auto d = pd()->desc();

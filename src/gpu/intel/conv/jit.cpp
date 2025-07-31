@@ -65,8 +65,8 @@ public:
     template <typename T>
     static status_t init_pd(T *pd, impl::engine_t *engine) {
         try {
-            using compute::compute_engine_t;
-            auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+            using compute::engine_t;
+            auto *compute_engine = utils::downcast<engine_t *>(engine);
 
             VDISPATCH_CONV_IC(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_BAD_ENGINE_KIND);

@@ -41,8 +41,7 @@ struct xe_binary_t : public gpu_primitive_t {
             using namespace format_tag;
             using sm = primitive_attr_t::skip_mask_t;
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const auto attr_skip_mask = sm::post_ops | sm::scales;
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);

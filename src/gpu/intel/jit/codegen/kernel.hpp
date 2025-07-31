@@ -57,7 +57,7 @@ struct ir_generator_t : public generator_base_t {
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
     status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+            const compute::engine_t *engine) override {
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \

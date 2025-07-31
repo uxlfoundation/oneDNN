@@ -151,7 +151,7 @@ constexpr size_t cell_fwd = 7;
 } // namespace kernel_id
 
 struct ocl_conf_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
 
         compute::kernel_ctx_t kernel_ctx;

@@ -114,7 +114,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     // TODO: create flags() accessor that returns the correct type
     bn_conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
@@ -316,7 +316,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
     if (cmpl_conf.calculate_stats && rt_conf.use_fused_atomics_reduction) {
         // Atomics-based reduction requires zeroing mean and variance
-        // Single kernel runs faster than two compute_stream_t::fill
+        // Single kernel runs faster than two stream_t::fill
         compute::kernel_arg_list_t arg_list;
         arg_list.append(mean);
         arg_list.append(variance);

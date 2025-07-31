@@ -47,8 +47,8 @@ public:
             const impl::engine_t *engine) const override;
     status_t create_kernel(compute::kernel_t &kernel,
             gpu_primitive_t *primitive, impl::engine_t *engine) const override;
-    status_t create_generator(const compute::compute_engine_t &engine,
-            compute::kernel_t &kernel) const;
+    status_t create_generator(
+            const compute::engine_t &engine, compute::kernel_t &kernel) const;
     serialization_stream_t serialize() const override;
     static zero_out_kernel_desc_t deserialize(const serialization_stream_t &s);
 

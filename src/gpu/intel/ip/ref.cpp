@@ -74,7 +74,7 @@ static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
     conf.is_backward_data = ipd.prop_kind == prop_kind::backward_data;
     conf.is_backward_weights = ipd.prop_kind == prop_kind::backward_weights;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     if (conf.is_forward) {
         conf.with_bias = ipd.bias_desc.format_kind != format_kind::undef;
         conf.bia_dt = conf.with_bias ? ipd.bias_desc.data_type : data_type::f32;

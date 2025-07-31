@@ -41,7 +41,7 @@ enum softmax_algorithm_id_t {
 };
 
 struct reusable_softmax_params_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -97,8 +97,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using arch_t = compute::gpu_arch_t;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
             const arch_t arch = compute_engine->device_info()->gpu_arch();
 
             const memory_desc_wrapper src_mdw(src_md());

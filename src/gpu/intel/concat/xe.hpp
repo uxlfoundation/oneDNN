@@ -67,10 +67,8 @@ struct xe_concat_t : public gpu_primitive_t {
 
     protected:
         bool can_use_sub_group_size(
-                const compute::compute_engine_t *compute_engine,
-                int sub_group_size);
-        int calculate_sub_group_size(
-                const compute::compute_engine_t *compute_engine);
+                const compute::engine_t *compute_engine, int sub_group_size);
+        int calculate_sub_group_size(const compute::engine_t *compute_engine);
         std::pair<int, int> calculate_iter_dim_idx_chunk(int num_threads) const;
     };
 

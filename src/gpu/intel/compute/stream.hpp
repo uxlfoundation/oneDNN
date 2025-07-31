@@ -18,8 +18,6 @@
 #define GPU_INTEL_COMPUTE_STREAM_HPP
 
 #include "gpu/gpu_stream.hpp"
-#include "xpu/context.hpp"
-#include "xpu/stream_profiler.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,9 +28,9 @@ namespace compute {
 class nd_range_t;
 class kernel_arg_list_t;
 
-class compute_stream_t : public gpu::stream_t {
+class stream_t : public gpu::stream_t {
 public:
-    using stream_t::stream_t;
+    using gpu::stream_t::stream_t;
 
     status_t notify_profiling_complete() const override;
 

@@ -47,7 +47,7 @@ struct ref_pooling_fwd_t : public gpu_primitive_t {
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(utils::one_of(desc()->prop_kind, forward_training,
@@ -156,7 +156,7 @@ struct ref_pooling_bwd_t : public gpu_primitive_t {
             using namespace alg_kind;
 
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(utils::one_of(desc()->prop_kind, backward_data),

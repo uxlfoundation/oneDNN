@@ -41,7 +41,7 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
             using namespace data_type;
 
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             const bool is_int8 = utils::one_of(src_md_.data_type, s8, u8);
             const bool is_fp8
@@ -180,7 +180,7 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
             }
             using namespace data_type;
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -288,7 +288,7 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);

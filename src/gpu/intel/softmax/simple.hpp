@@ -43,8 +43,7 @@ struct simple_softmax_fwd_t : public gpu_primitive_t {
         }
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
@@ -204,8 +203,7 @@ struct simple_softmax_bwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_softmax_bwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
             const memory_desc_wrapper diff_src_d(diff_src_md());

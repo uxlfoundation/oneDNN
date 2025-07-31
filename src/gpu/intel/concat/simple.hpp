@@ -39,7 +39,7 @@ struct reusable_simple_concat_params_t
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());

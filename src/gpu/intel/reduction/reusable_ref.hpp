@@ -35,7 +35,7 @@ namespace reduction {
 
 struct ref_reduction_key_params_t
     : trivially_serializable_t<ref_reduction_key_params_t> {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
         CHECK(get_kernel_ctx(kernel_ctx));
@@ -66,8 +66,7 @@ struct ref_reduction_conf_t {
             const compute::device_info_t &device_info,
             gpu_primitive_attr_t *gpu_attr);
     status_t init_dispatcher(const reduction_subproblem_t &subprb,
-            const compute::compute_engine_t &engine,
-            gpu_primitive_attr_t *gpu_attr);
+            const compute::engine_t &engine, gpu_primitive_attr_t *gpu_attr);
     ref_reduction_key_params_t conf;
     stride_t reduction_stride;
     dim_t reduction_size;

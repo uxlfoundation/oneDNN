@@ -35,7 +35,7 @@ static bool use_fused_atomics_reduction(lookup_table::params_t &conf,
         const batch_normalization_pd_t *pd, impl::engine_t *engine) {
     // Currently the fused atomics reduction is targeting to PVC only.
     // Heuristics experimentally selected, based on PVC perf data
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
     const size_t sp = conf.mb * conf.id * conf.ih * conf.iw;
     return !pd->attr()->deterministic_
@@ -60,7 +60,7 @@ static size_t get_slm_buff_size(
 static void adjust_lws_calc_kernel(lookup_table::params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
         bool large_grf_mode) {
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto eu_count = compute_engine->device_info()->eu_count();
     auto max_lws = compute_engine->device_info()->max_wg_size(large_grf_mode);
     auto eus_per_ss = compute_engine->device_info()->max_eus_per_wg();
@@ -146,7 +146,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
 
     conf.mb_block = 1;

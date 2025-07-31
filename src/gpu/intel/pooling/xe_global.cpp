@@ -23,7 +23,7 @@ namespace intel {
 namespace pooling {
 
 dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     const int hw_threads = compute_engine->device_info()->hw_threads();
     const bool is_xe_hp_plus = compute_engine->is_xe_hp()
             || compute_engine->is_xe_hpg() || compute_engine->is_xe_hpc();
@@ -83,7 +83,7 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     conf.is_plain = src_mdw.is_plain();
     conf.global_pool_spatial_chunk = calculate_spatial_chunk(conf, engine);

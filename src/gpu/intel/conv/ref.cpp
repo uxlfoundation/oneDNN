@@ -35,7 +35,7 @@ static status_t init_conf_common(
     set_default_conf(conf, cd, src_md, weights_md, dst_md, bias_md, attr);
 
     int oc_idx = (int)conf.with_groups;
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     switch (cd.prop_kind) {
         case prop_kind::forward_training:
         case prop_kind::forward_inference: {

@@ -31,7 +31,7 @@ namespace eltwise {
 
 struct xe_eltwise_jit_params_t
     : public trivially_serializable_t<xe_eltwise_jit_params_t> {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         return engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -65,8 +65,7 @@ struct xe_eltwise_fwd_t : public gpu_primitive_t {
         DECLARE_COMMON_PD_T("ocl:xe:any", xe_eltwise_fwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -125,8 +124,7 @@ struct xe_eltwise_bwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace utils;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);

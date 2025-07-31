@@ -119,8 +119,8 @@ status_t simple_batch_normalization_fwd_t::pd_t::init_conf(
     const memory_desc_wrapper data_mdw(src_md());
     const dim_idx_t ndims = into<dim_idx_t>(data_mdw.ndims());
 
-    compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    compute::engine_t *compute_engine
+            = utils::downcast<compute::engine_t *>(engine);
 
     dispatch_calc_stat = compute_engine->create_dispatch(data_mdw.md_);
     dim_t calc_dims[5];
@@ -287,8 +287,8 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
         impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     CHECK(init_conf_common(conf, off, this));
-    compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    compute::engine_t *compute_engine
+            = utils::downcast<compute::engine_t *>(engine);
     const memory_desc_wrapper data_mdw(diff_src_md());
 
     const bool has_padding = !data_mdw.is_dense();

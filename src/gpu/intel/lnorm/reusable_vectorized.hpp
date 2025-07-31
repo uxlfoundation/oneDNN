@@ -43,7 +43,7 @@ struct reusable_vectorized_lnorm_params_t
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -96,8 +96,7 @@ struct reusable_vectorized_layer_normalization_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             data_type_t src_dt = src_md()->data_type;
             data_type_t dst_dt = dst_md()->data_type;

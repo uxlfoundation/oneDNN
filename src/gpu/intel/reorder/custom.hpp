@@ -56,7 +56,7 @@ struct custom_reorder_t : public gpu_primitive_t {
                                               .has_runtime_dims_or_strides()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
+            auto *compute_engine = utils::downcast<compute::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
             using namespace data_type;

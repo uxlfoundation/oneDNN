@@ -39,7 +39,7 @@ status_t ref_shuffle_t::pd_t::init_conf(impl::engine_t *engine) {
 
     set_offsets(input_mdw, off.src_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     conf.dispatch = compute_engine->create_dispatch(input_mdw.md_);
     for (int i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);

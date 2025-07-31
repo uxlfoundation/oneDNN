@@ -48,7 +48,7 @@ static size_t get_slm_buff_size(
 static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
         bool large_grf_mode = false) {
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto eu_count = compute_engine->device_info()->eu_count();
     auto max_lws = compute_engine->device_info()->max_wg_size(large_grf_mode);
     auto eus_per_ss = compute_engine->device_info()->max_eus_per_wg();
@@ -204,7 +204,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
     // TODO: create flags() accessor that returns the correct type
     conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet

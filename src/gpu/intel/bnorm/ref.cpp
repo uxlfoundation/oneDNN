@@ -34,7 +34,7 @@ static void init_calculate_stats_conf(bnorm_conf_t &conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     const int ndims = conf.ndims;
     dispatch_calc_stat = compute_engine->create_dispatch(data_mdw.md_);
     dim_t calc_dims[5];
@@ -108,7 +108,7 @@ static void init_conf_common(bnorm_conf_t &conf, compute::dispatch_t &dispatch,
 
     set_offsets(data_mdw, off.src_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     dispatch = compute_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.mb);

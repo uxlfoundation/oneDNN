@@ -38,17 +38,21 @@
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
-#include "gpu/intel/jit/generator_base.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+
+namespace jit {
+struct generator_base_t;
+}
+
 namespace compute {
 
-class compute_engine_t : public gpu::engine_t {
+class engine_t : public gpu::engine_t {
 public:
-    compute_engine_t(impl::engine_impl_t *impl) : engine_t(impl) {}
+    engine_t(impl::engine_impl_t *impl) : gpu::engine_t(impl) {}
 
     virtual status_t init();
     status_t init(const std::vector<uint8_t> &cache_blob);
@@ -174,7 +178,7 @@ protected:
         return status::runtime_error;
     }
 
-    ~compute_engine_t() override = default;
+    ~engine_t() override = default;
 
     std::shared_ptr<device_info_t> device_info_;
 
@@ -189,7 +193,7 @@ private:
 };
 
 extern const char *cl_microkernels_check_kernel_code;
-bool mayiuse_microkernels(const compute_engine_t *engine);
+bool mayiuse_microkernels(const engine_t *engine);
 
 } // namespace compute
 } // namespace intel

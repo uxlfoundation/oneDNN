@@ -151,8 +151,7 @@ struct xe_global_pooling_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace alg_kind;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             auto diff_dst_dt = diff_dst_md()->data_type;
             auto diff_src_dt = diff_src_md()->data_type;

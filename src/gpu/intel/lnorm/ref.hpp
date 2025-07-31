@@ -42,7 +42,7 @@ struct ref_layer_normalization_fwd_t : public gpu_primitive_t {
             using namespace data_type;
 
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto dst_dt = dst_md()->data_type;
@@ -125,7 +125,7 @@ struct ref_layer_normalization_bwd_t : public gpu_primitive_t {
             using namespace data_type;
 
             const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+                    = utils::downcast<compute::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto diff_dst_dt = diff_dst_md()->data_type;

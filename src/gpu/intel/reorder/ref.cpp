@@ -45,7 +45,7 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = src_mdw.ndims();
     conf.nelems = utils::array_product(padded_dims, conf.ndims);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
     int sub_group_size = 1;
     if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;

@@ -52,8 +52,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             using arch_t = compute::gpu_arch_t;
 
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -568,8 +567,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto zg_max = pd()->dev_info_->hw_threads(false);
             zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
             CHECK(lookup_zero_pool(compute_engine, nullptr,
                     zero_pool_chunk_size_, &zero_pool_));
 
@@ -582,7 +580,7 @@ struct gen_gemm_t : public gpu_gemm_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
-    status_t launch_nocopy(const exec_ctx_t &ctx, compute::compute_stream_t *s,
+    status_t launch_nocopy(const exec_ctx_t &ctx, compute::stream_t *s,
             zero_pool_t *zero_pool, const memory_storage_t &a,
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,

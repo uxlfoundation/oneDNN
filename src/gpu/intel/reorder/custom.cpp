@@ -532,7 +532,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_idx_t last = conf.ndims - 1;
     size_t last_dim = padded_dims[last];
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     conf.implementation = select_kernel(
             conf, src_mdw, dst_mdw, compute_engine->device_info());

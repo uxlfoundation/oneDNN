@@ -810,7 +810,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.sub_group_size = 1;
     if (conf.nelems == 0) { return status::success; }
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     // Theoretically, bursts should be at least big enough to span whole
     // cache line and bigger bursts should give better perf as long as

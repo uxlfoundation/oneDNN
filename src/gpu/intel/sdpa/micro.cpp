@@ -100,7 +100,7 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto *dev_info = compute_engine->device_info();
     arch_ = dev_info->gpu_arch();
     auto *d = desc();

@@ -39,8 +39,7 @@ struct simple_batch_normalization_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -136,8 +135,7 @@ struct simple_batch_normalization_bwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),

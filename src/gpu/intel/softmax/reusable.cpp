@@ -108,7 +108,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
     compute::named_buffer_t src_buf("SRC", *src_md(), src_dim_ids);
     compute::named_buffer_t dst_buf("DST", src_buf);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
             compute_engine, std::move(dispatch_dim_ids));
     CHECK(dispatch_config.register_buffer(src_buf));
@@ -179,7 +179,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     std::vector<dim_idx_t> dispatch_dims = std::move(dims_ids);
     dispatch_dims[softmax_axis] = softmax_dims_t::workers;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
             compute_engine, std::move(dispatch_dims));
     CHECK(dispatch_config.register_buffer(src_buf));

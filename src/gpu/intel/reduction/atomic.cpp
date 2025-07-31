@@ -216,8 +216,7 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
 }
 
 status_t atomic_reduction_conf_t::init_dispatcher(
-        const compute::compute_engine_t *engine,
-        const gpu_primitive_attr_t *gpu_attr) {
+        const compute::engine_t *engine, const gpu_primitive_attr_t *gpu_attr) {
     std::vector<dim_idx_t> dispatch_dims = {
             reduction_dims::outer,
             reduction_dims::local,
@@ -368,8 +367,8 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const compute::engine_t *compute_engine
+            = utils::downcast<compute::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
@@ -532,9 +531,8 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
             const size_t num_dst_elems = into<size_t>(
                     phase.outer_block.block * phase.inner_block.block);
             size_t dst_size = num_dst_elems * dst_data_size;
-            compute::compute_stream_t *compute_stream
-                    = utils::downcast<compute::compute_stream_t *>(
-                            ctx.stream());
+            compute::stream_t *compute_stream
+                    = utils::downcast<compute::stream_t *>(ctx.stream());
             CHECK(compute_stream->fill(dst_mem, pattern, dst_size,
                     compute_stream->ctx().get_deps(),
                     compute_stream->ctx().get_deps()));

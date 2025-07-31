@@ -17,11 +17,8 @@
 #ifndef GPU_INTEL_SYCL_STREAM_HPP
 #define GPU_INTEL_SYCL_STREAM_HPP
 
-#include <algorithm>
 #include <cstring>
-#include <map>
 #include <memory>
-#include <utility>
 #include <CL/cl.h>
 
 #include "common/c_types_map.hpp"
@@ -38,15 +35,13 @@
 #include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/stream.hpp"
 
-#include "gpu/intel/ocl/utils.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
 
-struct stream_t : public gpu::intel::compute::compute_stream_t {
+struct stream_t : public gpu::intel::compute::stream_t {
     static status_t create_stream(impl::stream_t **stream,
             impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
         std::unique_ptr<intel::sycl::stream_t> s(
@@ -131,7 +126,7 @@ protected:
     }
 
     stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
-        : gpu::intel::compute::compute_stream_t(engine, stream_impl) {}
+        : gpu::intel::compute::stream_t(engine, stream_impl) {}
 
 private:
     status_t init();

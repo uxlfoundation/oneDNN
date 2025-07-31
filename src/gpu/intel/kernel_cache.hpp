@@ -176,8 +176,7 @@ struct gpu_kernel_key_container_t final : public gpu_kernel_key_impl_t {
         auto g = std::make_shared<gpu_kernel_value_container_t<value_type>>(
                 value_type());
 
-        auto *compute_engine
-                = utils::downcast<compute::compute_engine_t *>(engine);
+        auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
         auto status = key.create_generator(*compute_engine, g->value);
         generator = std::static_pointer_cast<kernel_cache::value_impl_t>(g);
         return status;

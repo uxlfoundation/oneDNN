@@ -42,8 +42,7 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             auto src_data_t = this->desc()->src_desc.data_type;
             auto dst_data_t = this->desc()->dst_desc.data_type;
@@ -100,7 +99,7 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(compute::compute_engine_t *engine);
+        status_t init_conf(compute::engine_t *engine);
         void init_scratchpad();
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 

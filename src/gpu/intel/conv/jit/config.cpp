@@ -911,8 +911,7 @@ bool data_types_ok(
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
-    auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<const compute::engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;

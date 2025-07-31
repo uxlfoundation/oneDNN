@@ -46,7 +46,7 @@ struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
         CHECK(get_kernel_ctx(kernel_ctx));

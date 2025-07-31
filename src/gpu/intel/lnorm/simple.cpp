@@ -73,7 +73,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
         c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     }
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     conf.dispatch_scaleshift = compute_engine->create_dispatch();
     conf.dispatch_scaleshift_finalize = compute_engine->create_dispatch();
     conf.dispatch = compute_engine->create_dispatch(

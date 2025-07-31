@@ -83,7 +83,7 @@ struct ref_reorder_t : public gpu_primitive_t {
                             f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
-            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
+            auto *compute_engine = utils::downcast<compute::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
 

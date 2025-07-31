@@ -2738,7 +2738,7 @@ struct genindex_executable_t : public op_executable_t {
                         dnnl::impl::utils::format("S%d", d), stride);
             }
             auto *compute_engine
-                    = dnnl::impl::utils::downcast<compute::compute_engine_t *>(
+                    = dnnl::impl::utils::downcast<compute::engine_t *>(
                             p_engine.get());
             std::vector<compute::kernel_t> kernels(1);
             compute_engine->create_kernels(&kernels, {"gen_index"}, kernel_ctx);
@@ -2771,9 +2771,8 @@ struct genindex_executable_t : public op_executable_t {
         }
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
-        auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
-                        stream.get());
+        auto compute_stream = dnnl::impl::utils::downcast<compute::stream_t *>(
+                stream.get());
         compute::range_t gws = {static_cast<size_t>(nelems_)};
         auto nd_range = compute::nd_range_t(gws);
         compute::kernel_arg_list_t arg_list;
@@ -2806,9 +2805,8 @@ struct genindex_executable_t : public op_executable_t {
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-        auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
-                        stream.get());
+        auto compute_stream = dnnl::impl::utils::downcast<compute::stream_t *>(
+                stream.get());
 
         compute::range_t gws = {static_cast<size_t>(nelems_)};
 

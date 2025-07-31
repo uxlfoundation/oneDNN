@@ -85,7 +85,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     if (!it_gemm_with_po.is_initialized()) return status::invalid_arguments;
     gemm_pd_ = *(++it_gemm_with_po);
     // exit if gemm kernel support post ops
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto arch = compute_engine->device_info()->gpu_arch();
     bool is_xe_hp = arch >= compute::gpu_arch_t::xe_hp;
     auto skip_impl = is_xe_hp ? "ocl" : "ref";

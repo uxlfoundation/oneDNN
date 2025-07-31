@@ -52,7 +52,7 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
                     VERBOSE_BAD_ENGINE_KIND);
 
             auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(dst_engine);
+                    = utils::downcast<compute::engine_t *>(dst_engine);
 
             VDISPATCH_REORDER(compute_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),

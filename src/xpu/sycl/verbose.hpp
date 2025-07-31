@@ -64,8 +64,7 @@ inline void print_verbose_header(engine_kind_t kind) {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
             if (kind == engine_kind::gpu) {
                 auto *dev_info = eng
-                        ? utils::downcast<
-                                gpu::intel::compute::compute_engine_t *>(
+                        ? utils::downcast<gpu::intel::compute::engine_t *>(
                                 eng.get())
                                   ->device_info()
                         : nullptr;

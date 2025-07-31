@@ -40,8 +40,7 @@ struct simple_zero_pad_t : public gpu_primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_zero_pad_t);
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
             VDISPATCH_ZERO_PAD(compute_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup(16)");
             return status::success;

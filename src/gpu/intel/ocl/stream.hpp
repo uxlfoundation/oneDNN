@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "common/thread_local_storage.hpp"
 
 #include "xpu/stream_profiler.hpp"
 
@@ -29,7 +28,6 @@
 
 #include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/ocl/mdapi_utils.hpp"
-#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -37,7 +35,7 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-struct stream_t : public compute::compute_stream_t {
+struct stream_t : public compute::stream_t {
     static status_t create_stream(impl::stream_t **stream,
             impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
 
@@ -108,7 +106,7 @@ private:
     }
 
     stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
-        : compute_stream_t(engine, stream_impl) {}
+        : compute::stream_t(engine, stream_impl) {}
 
     status_t init();
 

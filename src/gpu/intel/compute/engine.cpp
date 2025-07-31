@@ -56,7 +56,7 @@ device_info_cache_t &device_info_cache() {
 bool device_info_cache_get(
         std::shared_ptr<device_info_t> *result, impl::engine_t *engine) {
     utils::lock_read_t lock(device_info_cache_mutex());
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<engine_t *>(engine);
     auto it = device_info_cache().find(compute_engine->device_id());
     if (it == device_info_cache().end()) return false;
     if (result) *result = it->second;
@@ -67,7 +67,7 @@ void device_info_cache_set(impl::engine_t *engine,
         const std::shared_ptr<device_info_t> &device_info) {
     utils::lock_write_t lock(device_info_cache_mutex());
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<engine_t *>(engine);
     // Clear the cache to avoid hypothetically large growth.
     const int cache_size_threshold = 1024;
     if (device_info_cache().size() > cache_size_threshold)
@@ -76,11 +76,11 @@ void device_info_cache_set(impl::engine_t *engine,
     device_info_cache().insert({compute_engine->device_id(), device_info});
 }
 
-status_t compute_engine_t::init() {
+status_t engine_t::init() {
     return init({});
 }
 
-status_t compute_engine_t::init(const std::vector<uint8_t> &cache_blob) {
+status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
     if (device_info_cache_get(&device_info_, this)) return status::success;
     // Since init_device_info that takes a cache blob is only defined for
     // OpenCL we need to do manual dispatching here.
@@ -105,12 +105,12 @@ kernel void igc_check() {
 }
 )"""";
 
-bool mayiuse_microkernels(const compute_engine_t *engine) {
+bool mayiuse_microkernels(const engine_t *engine) {
     auto *device_info = engine->device_info();
     if (device_info->runtime_version() >= xpu::runtime_version_t(24, 22, 29735))
         return true;
 
-    auto mayiuse_mk = [](const compute_engine_t *engine) {
+    auto mayiuse_mk = [](const engine_t *engine) {
         switch (engine->runtime_kind()) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             case runtime_kind::ocl: {
@@ -147,8 +147,8 @@ bool mayiuse_microkernels(const compute_engine_t *engine) {
 
 bool dnnl_impl_gpu_mayiuse_ngen_kernels(dnnl::impl::engine_t *engine) {
     using namespace dnnl::impl;
-    using namespace dnnl::impl::gpu::intel::compute;
+    using namespace dnnl::impl::gpu::intel;
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     return compute_engine->mayiuse_ngen_kernels();
 }

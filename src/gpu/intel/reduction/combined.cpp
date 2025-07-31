@@ -73,7 +73,7 @@ bool reduction_phase_conf_t::can_use_block_reads() {
 
 reduction_phase_conf_t::reduction_phase_conf_t(
         const reduction_subproblem_t &subprb, data_type_t src_type,
-        data_type_t dst_type, const compute::compute_engine_t *compute_engine,
+        data_type_t dst_type, const compute::engine_t *compute_engine,
         bool large_grf_mode)
     : reduction_subproblem_t(subprb)
     , src_type(src_type)
@@ -183,8 +183,7 @@ std::array<reduction_subproblem_t, 2> subdivide_subproblem(
 }
 
 status_t split_into_phases(const reduction_subproblem_t &subprb,
-        data_type_t accum_data_type,
-        const compute::compute_engine_t *compute_engine,
+        data_type_t accum_data_type, const compute::engine_t *compute_engine,
         std::vector<reduction_phase_conf_t> &phases, bool large_grf_mode) {
     const dim_t reduction_elems = subprb.reduction_block.block;
     reduction_phase_conf_t try_phase(subprb, accum_data_type, accum_data_type,
@@ -296,8 +295,8 @@ status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         return status::unimplemented;
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const compute::engine_t *compute_engine
+            = utils::downcast<compute::engine_t *>(engine);
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());

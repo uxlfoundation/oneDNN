@@ -139,8 +139,8 @@ public:
     static status_t init_pd(T *pd, impl::engine_t *engine, prop_kind_t prop) {
         if (!is_supported(pd, prop)) return status::unimplemented;
 
-        using compute::compute_engine_t;
-        auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+        using compute::engine_t;
+        auto *compute_engine = utils::downcast<engine_t *>(engine);
         if (!compute_engine->mayiuse_ngen_kernels())
             return status::unimplemented;
         if (!pd->set_default_alg_kind(alg_kind::convolution_direct))

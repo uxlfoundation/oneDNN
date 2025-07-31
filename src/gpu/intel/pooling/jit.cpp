@@ -40,7 +40,7 @@ status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
     using namespace prop_kind;
     using namespace alg_kind;
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto arch = compute_engine->device_info()->gpu_arch();
     auto src_data_t = src_md()->data_type;
     auto dst_data_t = dst_md()->data_type;

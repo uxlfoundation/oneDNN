@@ -41,8 +41,7 @@ struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
             auto src_data_t = src_md()->data_type;
             auto dst_data_t = dst_md()->data_type;
 
@@ -120,8 +119,7 @@ struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto diff_dst_dt = diff_dst_md()->data_type;

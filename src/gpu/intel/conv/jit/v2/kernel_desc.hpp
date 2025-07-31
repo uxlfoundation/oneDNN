@@ -364,8 +364,8 @@ public:
             const impl::engine_t *engine) const override;
     status_t create_kernel(compute::kernel_t &kernel,
             gpu_primitive_t *primitive, impl::engine_t *engine) const override;
-    status_t create_generator(const compute::compute_engine_t &engine,
-            compute::kernel_t &kernel) const;
+    status_t create_generator(
+            const compute::engine_t &engine, compute::kernel_t &kernel) const;
     status_t init_primitive_plan(primitive_init_plan_t &plan,
             const problem_t &prb, convolution_pd_t *pd) const;
     serialization_stream_t serialize() const override;

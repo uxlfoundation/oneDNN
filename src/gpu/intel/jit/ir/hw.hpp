@@ -37,7 +37,7 @@ public:
     explicit hw_t(ngen::HW hw) : hw_(hw) {}
     explicit hw_t(const impl::engine_t *engine) {
         using namespace compute;
-        auto compute_engine = utils::downcast<const compute_engine_t *>(engine);
+        auto compute_engine = utils::downcast<const engine_t *>(engine);
 
         auto *device_info = compute_engine->device_info();
         gpu_arch_t gpu_arch = device_info->gpu_arch();

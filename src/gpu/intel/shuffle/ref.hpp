@@ -38,8 +38,7 @@ struct ref_shuffle_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace format_tag;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const auto &md_src = is_fwd() ? src_md() : diff_src_md();
             const auto &md_dst = is_fwd() ? dst_md() : diff_dst_md();

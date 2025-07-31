@@ -63,8 +63,7 @@ status_t zero_out_kernel_desc_t::create_kernel(compute::kernel_t &kernel,
 }
 
 status_t zero_out_kernel_desc_t::create_generator(
-        const compute::compute_engine_t &engine,
-        compute::kernel_t &kernel) const {
+        const compute::engine_t &engine, compute::kernel_t &kernel) const {
     ir_generator_t<zero_out_kernel_t> ir_gen(*this);
     return engine.create_kernel(&kernel, &ir_gen);
 }

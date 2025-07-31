@@ -56,7 +56,7 @@ std::pair<int, int> xe_concat_t::pd_t::calculate_iter_dim_idx_chunk(
 }
 
 bool xe_concat_t::pd_t::can_use_sub_group_size(
-        const compute::compute_engine_t *compute_engine, int sub_group_size) {
+        const compute::engine_t *compute_engine, int sub_group_size) {
     auto is_dim_dense = [](const memory_desc_wrapper &mdw, int dim_idx) {
         return mdw.blocking_desc().strides[dim_idx] == 1;
     };
@@ -96,7 +96,7 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
 }
 
 int xe_concat_t::pd_t::calculate_sub_group_size(
-        const compute::compute_engine_t *compute_engine) {
+        const compute::engine_t *compute_engine) {
     // Subgroups are used only for concatenation over C dimension
     if (conf.concat_axis != 1) return 1;
     for (int sub_group_size : {32, 16, 8}) {
@@ -118,8 +118,7 @@ status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_offset0 = dst_mdw.offset0();
     conf.src_type = memory_desc_wrapper(pd->src_md(0)).data_type();
     conf.ndims = dst_mdw.ndims();
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
     conf.n = pd->n_inputs();
     conf.concat_axis = pd->concat_dim();

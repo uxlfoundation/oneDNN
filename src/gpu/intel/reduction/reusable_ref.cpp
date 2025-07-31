@@ -71,8 +71,7 @@ ref_reduction_conf_t::ref_reduction_conf_t(const reduction_subproblem_t &subprb,
 }
 
 status_t ref_reduction_conf_t::init_dispatcher(
-        const reduction_subproblem_t &subprb,
-        const compute::compute_engine_t &engine,
+        const reduction_subproblem_t &subprb, const compute::engine_t &engine,
         gpu_primitive_attr_t *gpu_attr) {
 
     compute::named_buffer_t src_buf("SRC");
@@ -167,8 +166,8 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const compute::engine_t *compute_engine
+            = utils::downcast<compute::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 

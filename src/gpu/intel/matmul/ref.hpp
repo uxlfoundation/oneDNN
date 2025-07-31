@@ -50,8 +50,7 @@ struct ref_matmul_t : public gpu_primitive_t {
             dst_dt_ = dst_md()->data_type;
             wei_dt_ = weights_md(0)->data_type;
             bia_dt_ = with_bias() ? weights_md(1)->data_type : data_type::f32;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             auto dev_info_ = compute_engine->device_info();
 

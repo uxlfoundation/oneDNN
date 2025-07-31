@@ -28,7 +28,7 @@ namespace eltwise {
 status_t xe_eltwise_jit_params_t::init(impl::engine_t *engine,
         const memory_desc_wrapper data_d, alg_kind_t alg_kind_) {
     *this = {};
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     arch = compute_engine->device_info()->gpu_arch();
     data_type = data_d.data_type();

@@ -56,8 +56,7 @@ static status_t init_conf_common(
 
     const auto &ndims = dst_mdw.ndims();
 
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     conf.dispatch = compute_engine->create_dispatch(src_mdw.md_);
 
     for (int i = 0; i < MAX_NDIMS; ++i) {

@@ -76,7 +76,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
             pd->attr()->gpu_attr_.get());
 
     const auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+            = utils::downcast<const compute::engine_t *>(engine);
 
     // Norm dispatch: all dimensions
     auto lws_strategy
@@ -165,7 +165,7 @@ status_t reusable_layer_normalization_fwd_t::pd_t::init_conf(
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto lws_strategy
             = compute::default_lws_strategy_t(compute_engine, gpu_attr);
 

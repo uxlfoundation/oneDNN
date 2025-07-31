@@ -57,7 +57,7 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
         reusable_bnorm_runtime_params_t &rt_conf, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw,
         const gpu_primitive_attr_t *gpu_attr) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     const size_t ndims = static_cast<size_t>(data_mdw.ndims());
     dim_t calc_dims[MAX_DIMS];
     auto &dims = data_mdw.dims();
@@ -162,7 +162,7 @@ static status_t init_conf_common(reusable_bnorm_params_t &conf,
 
     conf.with_leaky_relu = conf.with_relu && rt_conf.relu_negative_slope != 0.f;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);

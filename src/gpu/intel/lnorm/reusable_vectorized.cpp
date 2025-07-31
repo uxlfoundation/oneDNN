@@ -42,7 +42,7 @@ namespace lnorm {
 using namespace dnnl::impl::gpu::intel::compute;
 struct single_subgroup_lws_strategy_t : public lws_strategy_t {
     size_t desired_sg_size = 32;
-    single_subgroup_lws_strategy_t(const compute_engine_t *engine,
+    single_subgroup_lws_strategy_t(const engine_t *engine,
             const gpu_primitive_attr_t *gpu_attr, size_t _desired_sg_size)
         : lws_strategy_t(engine, gpu_attr)
         , desired_sg_size(_desired_sg_size) {};
@@ -60,7 +60,7 @@ struct single_subgroup_lws_strategy_t : public lws_strategy_t {
 };
 
 bool is_sg_and_vector_size_compatible(
-        const compute_engine_t *engine, int sg_size, int vector_size) {
+        const engine_t *engine, int sg_size, int vector_size) {
     // Check if subgroup size is supported
     if (!engine->mayiuse_sub_group(sg_size)) return false;
 
@@ -127,7 +127,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
             pd->attr()->gpu_attr_.get());
 
     const auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+            = utils::downcast<const compute::engine_t *>(engine);
 
     conf->sg_size = 0;
     conf->vector_size = 0;

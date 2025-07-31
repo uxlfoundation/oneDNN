@@ -64,8 +64,7 @@ status_t jit_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_t inner_nelems = reduction_stride;
     int dt_size = into<int>(sizeof(float));
 
-    auto &compute_engine
-            = *utils::downcast<compute::compute_engine_t *>(engine);
+    auto &compute_engine = *utils::downcast<compute::engine_t *>(engine);
     const compute::device_info_t &device_info = *compute_engine.device_info();
     int reg_size = device_info.grf_size();
     int elems_per_reg = reg_size / dt_size;

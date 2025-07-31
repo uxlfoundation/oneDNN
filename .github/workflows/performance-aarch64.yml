@@ -56,7 +56,18 @@ concurrency:
 permissions: read-all
 
 jobs:
+  build-acl-base:
+    uses: ./.github/workflows/aarch64-acl.yml
+    with:
+      acl_hash: ${{ inputs.acl_base_hash }}
+
+  build-acl-new:
+    uses: ./.github/workflows/aarch64-acl.yml
+    with:
+      acl_hash: ${{ inputs.acl_new_hash }}
+
   build-and-test-performance:
+    needs: [build-acl-base, build-acl-new]
     strategy:
       matrix:
         config: [
@@ -72,20 +83,20 @@ jobs:
         with:
           path: oneDNN
 
-      - name: Build ACL base
+      - name: Rebuild ACL base from cache
         uses: ./.github/workflows/aarch64-acl.yml
         with:
           acl_hash: ${{ inputs.acl_base_hash }}
 
-      - name: Rename ComputeLibrary to ComputeLibrary_base
+      - name: Rename to ComputeLibrary_base
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
-      - name: Build ACL new
+      - name: Rebuild ACL new from cache
         uses: ./.github/workflows/aarch64-acl.yml
         with:
           acl_hash: ${{ inputs.acl_new_hash }}
 
-      - name: Rename ComputeLibrary to ComputeLibrary_new
+      - name: Rename to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new
 
       # Note: This will create a github actions cache

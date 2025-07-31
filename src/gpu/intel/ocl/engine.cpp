@@ -25,6 +25,7 @@
 
 #include "xpu/ocl/memory_storage.hpp"
 
+#include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/engine.hpp"
@@ -103,7 +104,7 @@ status_t engine_t::init() {
 
 status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
     CHECK(init_impl());
-    CHECK(compute::compute_engine_t::init(cache_blob));
+    CHECK(intel::engine_t::init(cache_blob));
     return status::success;
 }
 

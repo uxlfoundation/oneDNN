@@ -30,7 +30,7 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-class gen_pooling_fwd_t : public gpu_primitive_t {
+class gen_pooling_fwd_t : public primitive_t {
 public:
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
@@ -45,7 +45,7 @@ public:
         std::shared_ptr<jit::layout_t> dst;
     };
 
-    using gpu_primitive_t::gpu_primitive_t;
+    using primitive_t::primitive_t;
 
     status_t init(impl::engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;

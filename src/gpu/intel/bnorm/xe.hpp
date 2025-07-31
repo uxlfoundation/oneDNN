@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-struct xe_batch_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_batch_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
@@ -42,8 +42,7 @@ struct xe_batch_normalization_fwd_t : public gpu_primitive_t {
         }
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -53,7 +52,7 @@ struct xe_batch_normalization_fwd_t : public gpu_primitive_t {
                     utils::one_of(src_md()->data_type, f32, bf16, f16, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(f16 == src_md()->data_type,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_BNORM(src_md()->data_type == dst_md()->data_type,
@@ -76,7 +75,7 @@ struct xe_batch_normalization_fwd_t : public gpu_primitive_t {
             VDISPATCH_BNORM(memory_desc_wrapper(src_md())
                             == memory_desc_wrapper(dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "src", "dst");
-            VDISPATCH_BNORM(compute_engine->mayiuse(
+            VDISPATCH_BNORM(intel_engine->mayiuse(
                                     compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 
@@ -182,8 +181,8 @@ private:
     compute::kernel_t reduce_final_kernel_;
 };
 
-struct xe_batch_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_batch_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_bwd_pd_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;
@@ -193,8 +192,7 @@ struct xe_batch_normalization_bwd_t : public gpu_primitive_t {
         const char *impl_name() const { return "ocl:xe"; }
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
             using namespace data_type;
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -202,7 +200,7 @@ struct xe_batch_normalization_bwd_t : public gpu_primitive_t {
             VDISPATCH_BNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(f16 == src_md()->data_type,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_BNORM(src_md()->data_type == diff_src_md()->data_type,
@@ -220,7 +218,7 @@ struct xe_batch_normalization_bwd_t : public gpu_primitive_t {
             VDISPATCH_BNORM(memory_desc_wrapper(diff_src_md())
                             == memory_desc_wrapper(diff_dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
-            VDISPATCH_BNORM(compute_engine->mayiuse(
+            VDISPATCH_BNORM(intel_engine->mayiuse(
                                     compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 

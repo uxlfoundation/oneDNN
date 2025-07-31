@@ -45,15 +45,15 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = src_mdw.ndims();
     conf.nelems = utils::array_product(padded_dims, conf.ndims);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *device_info = intel_engine->device_info();
     int sub_group_size = 1;
     if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;
     conf.sub_group_size = sub_group_size;
 
     if (conf.nelems == 0) return status::success;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     conf.subbyte_pack
             = utils::one_of(dst_mdw.data_type(), u4, s4, f4_e2m1, f4_e3m0);
 

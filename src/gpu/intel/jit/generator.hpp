@@ -25,7 +25,7 @@
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -92,7 +92,7 @@ using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
 #endif
 
 void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
-        const compute::compute_engine_t *engine);
+        const intel::engine_t *engine);
 
 template <gpu_gen_t hw>
 class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
@@ -108,8 +108,8 @@ public:
         return ngen_code_generator_t<hw>::getExternalName().c_str();
     }
 
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override {
         check_kernel_size(kernel_name(),
                 ngen_code_generator_t<hw>::getRootStreamLength(), engine);
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -128,9 +128,8 @@ public:
 };
 
 inline ngen::HW to_ngen_hw(const impl::engine_t *engine) {
-    auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
+    auto *device_info = intel_engine->device_info();
     return convert_dnnl_arch_to_ngen(device_info->gpu_arch());
 }
 
@@ -139,7 +138,7 @@ inline ngen::HW to_ngen_hw(const impl::engine_t &engine) {
 }
 
 template <class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
+compute::kernel_t make_kernel(primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
     using namespace compute;
     kernel_t kernel;
@@ -160,13 +159,13 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 
 template <class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(
-        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
+        primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
     return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
             std::forward<ArgsT>(args)...);
 }
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
+compute::kernel_t make_kernel(primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
 #define GPU_HW_CASE(hw) \
     return make_kernel<KernelT<(hw)>>( \
@@ -180,7 +179,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(
-        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
+        primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
     return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
             std::forward<ArgsT>(args)...);
 }

@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace sum {
 
-struct multi_po_reorder_sum_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct multi_po_reorder_sum_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_sum_pd_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 

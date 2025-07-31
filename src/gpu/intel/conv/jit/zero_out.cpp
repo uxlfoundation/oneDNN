@@ -58,14 +58,13 @@ void zero_out_kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,
 }
 
 status_t zero_out_kernel_desc_t::create_kernel(compute::kernel_t &kernel,
-        gpu_primitive_t *primitive, impl::engine_t *engine) const {
+        primitive_t *primitive, impl::engine_t *engine) const {
     return primitive->create_kernel(
             engine, kernel, kernel_name().c_str(), *this);
 }
 
 status_t zero_out_kernel_desc_t::create_generator(
-        const compute::compute_engine_t &engine,
-        compute::kernel_t &kernel) const {
+        const intel::engine_t &engine, compute::kernel_t &kernel) const {
 #define GPU_HW_CASE(hw) \
     ir_generator_t<zero_out_kernel_t<(hw)>> ir_gen(*this); \
     return engine.create_kernel(&kernel, &ir_gen);

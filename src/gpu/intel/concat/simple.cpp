@@ -38,8 +38,8 @@ static status_t normalize_reusable_simple_concat(
 
     const auto concat_dim = pd->concat_dim();
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *device_info = intel_engine->device_info();
     dim_t max_write_size = normalize.max_write_size();
     dim_t max_read_size = normalize.max_read_size();
 
@@ -56,7 +56,7 @@ static status_t normalize_reusable_simple_concat(
     std::vector<prb_info_t> infos;
     for (int simd : {32, 16, 8, 1}) {
         if (simd > max_sg_size) continue;
-        if (simd > 1 && !compute_engine->mayiuse_sub_group(simd)) continue;
+        if (simd > 1 && !intel_engine->mayiuse_sub_group(simd)) continue;
         for (int bytes : {8, 4, 2, 1}) {
             if (has_scales && bytes < (int)data_type_size) break;
             if (max_write_size % bytes) continue;
@@ -165,8 +165,8 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
 
     const auto concat_dim = pd->concat_dim();
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *device_info = intel_engine->device_info();
 
     normalize.set_pessimistic_chunk_size();
 
@@ -233,7 +233,7 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
     size_t bytes_per_workitem = preferred_bytes_per_workitem;
     for (int simd : {32, 16, 8, 1}) {
         if (simd > max_sg_size) continue;
-        if (simd > 1 && !compute_engine->mayiuse_sub_group(simd)) continue;
+        if (simd > 1 && !intel_engine->mayiuse_sub_group(simd)) continue;
         const dim_t total_elems = dst_bytes / data_type_size;
         if (simd > total_elems) continue;
 

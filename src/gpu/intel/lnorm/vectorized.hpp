@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct vectorized_lnorm_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_fwd_pd_t {
         using gpu_layer_normalization_fwd_pd_t::
                 gpu_layer_normalization_fwd_pd_t;
@@ -41,8 +41,7 @@ struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
             auto src_data_t = src_md()->data_type;
             auto dst_data_t = dst_md()->data_type;
 
@@ -56,7 +55,7 @@ struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
                             || utils::everyone_is(f32, src_data_t, dst_data_t)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(IMPLICATION(f16 == src_data_t,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(
@@ -110,8 +109,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct vectorized_lnorm_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_bwd_pd_t {
         using gpu_layer_normalization_bwd_pd_t::
                 gpu_layer_normalization_bwd_pd_t;
@@ -120,8 +119,7 @@ struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto diff_dst_dt = diff_dst_md()->data_type;
@@ -137,7 +135,7 @@ struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
                                     f16, src_dt, diff_dst_dt, diff_src_dt)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(IMPLICATION(f16 == src_dt,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(

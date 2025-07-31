@@ -90,9 +90,8 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
     CHECK(attr_.set_default_formats(
             dst_md(0))); // can't use attr() due to it is const
 
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
-    dispatch = compute_engine->create_dispatch(src_md());
+    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    dispatch = intel_engine->create_dispatch(src_md());
 
     dispatch.define_dim("BATCH", MB());
     // number of goups provided by the user
@@ -182,9 +181,8 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
 
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
-    dispatch = compute_engine->create_dispatch(diff_src_md());
+    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    dispatch = intel_engine->create_dispatch(diff_src_md());
     // put parallelization dimension
     dispatch.define_dim("CHANNEL", C());
     dispatch.generate();

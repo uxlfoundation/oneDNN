@@ -28,9 +28,9 @@ namespace eltwise {
 status_t xe_eltwise_jit_params_t::init(impl::engine_t *engine,
         const memory_desc_wrapper data_d, alg_kind_t alg_kind_) {
     *this = {};
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    arch = compute_engine->device_info()->gpu_arch();
+    arch = intel_engine->device_info()->gpu_arch();
     data_type = data_d.data_type();
     alg_kind = alg_kind_;
 
@@ -50,7 +50,7 @@ status_t xe_eltwise_jit_params_t::init(impl::engine_t *engine,
     const int load_size = load_unroll * max_load_size;
 
     // Set simd size
-    sub_group_size = compute_engine->device_info()->max_subgroup_size(
+    sub_group_size = intel_engine->device_info()->max_subgroup_size(
             data_d.data_type());
 
     // VECT_DATA_T only supports vector sizes up to 8

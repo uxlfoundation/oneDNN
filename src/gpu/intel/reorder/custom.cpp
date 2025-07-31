@@ -532,19 +532,19 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_idx_t last = conf.ndims - 1;
     size_t last_dim = padded_dims[last];
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     conf.implementation = select_kernel(
-            conf, src_mdw, dst_mdw, compute_engine->device_info());
+            conf, src_mdw, dst_mdw, intel_engine->device_info());
 
     dim_t blocks[MAX_NDIMS] = {1, 1, 1, 1, 1, 1};
     int vect_size = 1;
     dim_idx_t vect_dim = 0;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     int temp_block = 1;
 
-    const bool may_use_sg8 = compute_engine->mayiuse_sub_group(8);
+    const bool may_use_sg8 = intel_engine->mayiuse_sub_group(8);
     int mask = conf.src_quant.scale_mask() | conf.src_quant.zp_mask()
             | conf.dst_quant.scale_mask() | conf.dst_quant.zp_mask();
 

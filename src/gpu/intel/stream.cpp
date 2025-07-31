@@ -14,21 +14,18 @@
  * limitations under the License.
  *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
-
 #include "xpu/stream_profiler.hpp"
 
-#include "gpu/intel/compute/engine.hpp"
-#include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/compute/types_interop.hpp"
+#include "gpu/intel/engine.hpp"
+#include "gpu/intel/stream.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace compute {
-status_t compute_stream_t::zero_pad(
-        const memory_t *memory, const exec_ctx_t &ctx) {
+
+status_t stream_t::zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     memory_desc_wrapper mdw(memory->md());
 
     if (mdw.format_kind() != format_kind::blocked) return status::unimplemented;
@@ -57,7 +54,7 @@ status_t compute_stream_t::zero_pad(
 
     primitive_t *zero_pad_primitive;
     const resource_mapper_t *mapper;
-    CHECK(utils::downcast<compute_engine_t *>(engine)->get_zero_pad_primitive(
+    CHECK(utils::downcast<engine_t *>(engine)->get_zero_pad_primitive(
             zero_pad_primitive, mapper));
 
     exec_args_t zero_pad_args;
@@ -92,10 +89,10 @@ status_t compute_stream_t::zero_pad(
     }
 };
 
-status_t compute_stream_t::notify_profiling_complete() const {
+status_t stream_t::notify_profiling_complete() const {
     return profiler().notify_profiling_complete();
 }
-} // namespace compute
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

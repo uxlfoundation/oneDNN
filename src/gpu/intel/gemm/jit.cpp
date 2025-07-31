@@ -16,9 +16,6 @@
 
 #include "gpu/intel/gemm/jit.hpp"
 #include "common/c_types_map.hpp"
-#include "common/dnnl_traits.hpp"
-#include "common/float16.hpp"
-#include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -35,7 +32,7 @@ namespace intel {
 namespace gemm {
 
 status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, zero_pool_t *zero_pool,
+        intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
         const memory_storage_t *bo, const memory_storage_t *a_scales,
@@ -236,8 +233,7 @@ status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
 }
 
 status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
-    auto *compute_stream
-            = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+    auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto zero_pool = zero_pool_;
 
@@ -248,9 +244,9 @@ status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
                     compute_stream);
 
     if (need_zero_pool() && sycl_stream->recording()) {
-        auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
-                compute_stream->engine());
-        CHECK(lookup_zero_pool(compute_engine, compute_stream,
+        auto *intel_engine
+                = utils::downcast<intel::engine_t *>(compute_stream->engine());
+        CHECK(lookup_zero_pool(intel_engine, compute_stream,
                 zero_pool_chunk_size_, &zero_pool));
         release_zp = true;
     }

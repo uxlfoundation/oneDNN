@@ -39,7 +39,7 @@ struct reusable_simple_concat_params_t
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -85,8 +85,8 @@ struct reusable_simple_concat_runtime_params_t {
     compute::range_t lws_d;
 };
 
-struct reusable_simple_concat_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_simple_concat_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_concat_pd_t {
         using gpu_concat_pd_t::gpu_concat_pd_t;
 

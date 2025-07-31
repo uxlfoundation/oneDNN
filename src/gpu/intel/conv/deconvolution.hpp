@@ -83,8 +83,8 @@ static status_t conv_descr_create(
             dd->strides, dd->dilates, dd->padding[0], dd->padding[1]);
 }
 
-struct convolution_deconvolution_bwd_weights_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct convolution_deconvolution_bwd_weights_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_deconvolution_bwd_weights_pd_t {
         using gpu_deconvolution_bwd_weights_pd_t::
                 gpu_deconvolution_bwd_weights_pd_t;

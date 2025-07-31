@@ -54,8 +54,8 @@ enum gemm_kind_t {
 };
 
 template <prop_kind_t aprop>
-struct simple_rnn_common_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_rnn_common_t : public primitive_t {
+    using primitive_t::primitive_t;
 
     using class_name = simple_rnn_common_t<aprop>;
 
@@ -178,23 +178,23 @@ private:
     float (*activation_func)(float dd, float s, float alpha, float cliping)
             = nullptr;
     status_t bias_prepare(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t n_bias, dim_t n_gates, dim_t dhc,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t n_bias, dim_t n_gates, dim_t dhc,
             const memory_storage_t &ws_bias, const memory_storage_t &scales,
             const memory_storage_t &wei_layer, const memory_storage_t &wei_iter,
             const memory_storage_t &bias) const;
     status_t copy_init_layer(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, bool lr, bool rl,
-            dim_t n_iter, dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer,
-            dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-            dim_t scratch_diff_states_ld, const memory_storage_t &ws_states,
+            intel::stream_t *compute_stream, bool lr, bool rl, dim_t n_iter,
+            dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir,
+            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            const memory_storage_t &ws_states,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &input,
             const memory_storage_t &diff_dst_layer) const;
     status_t copy_init_iter(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter,
-            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
+            dim_t states_ws_ld, dim_t scratch_diff_states_ld,
             const rnn_utils::workspace_t &ws,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &firstit_states,
@@ -203,19 +203,18 @@ private:
             const memory_storage_t &diff_dst_iter_c, const float shift,
             const float scale, const bool quantize) const;
     status_t copy_res_layer(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, bool lr, bool rl,
-            dim_t n_iter, dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer,
-            dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-            dim_t scratch_diff_states_ld,
+            intel::stream_t *compute_stream, bool lr, bool rl, dim_t n_iter,
+            dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir,
+            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &dst_last_layer,
             const memory_storage_t &diff_src_layer,
             const memory_storage_t &ws_states, const float shift,
             const float scale, const bool dequantize) const;
     status_t copy_res_iter(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter,
-            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
+            dim_t states_ws_ld, dim_t scratch_diff_states_ld,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &dst_last_iter,
             const memory_storage_t &dst_last_iter_c,

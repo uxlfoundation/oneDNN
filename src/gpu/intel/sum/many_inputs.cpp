@@ -35,8 +35,7 @@ status_t many_inputs_sum_t::execute(const exec_ctx_t &ctx) const {
     auto &input0 = CTX_IN_STORAGE(DNNL_ARG_MULTIPLE_SRC);
     const bool is_inplace = (output.data_handle() == input0.data_handle());
     if (!is_inplace) {
-        auto *compute_stream
-                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
         CHECK(compute_stream->copy(input0, output, o_d.size(),
                 compute_stream->ctx().get_deps(),
                 compute_stream->ctx().get_deps()));

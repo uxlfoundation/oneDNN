@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,32 +14,37 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_GENERATOR_BASE_HPP
-#define GPU_INTEL_JIT_GENERATOR_BASE_HPP
+#ifndef GPU_INTEL_STREAM_HPP
+#define GPU_INTEL_STREAM_HPP
 
-#include <CL/cl.h>
-
-#include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/engine.hpp"
+#include "gpu/gpu_stream.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace jit {
 
-struct generator_base_t {
-    virtual ~generator_base_t() = default;
-    virtual const char *kernel_name() const = 0;
-    virtual status_t get_kernel(
-            compute::kernel_t &kernel, const intel::engine_t *engine)
-            = 0;
+class stream_t : public gpu::stream_t {
+public:
+    using gpu::stream_t::stream_t;
+
+    status_t notify_profiling_complete() const override;
+
+    virtual status_t barrier() = 0;
+    virtual status_t enter_immediate_mode() { return status::success; }
+    virtual status_t exit_immediate_mode() { return status::success; }
+
+protected:
+    bool has_zero_pad_primitive() const {
+        return engine()->kind() == dnnl_gpu;
+    };
+
+    status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) override;
 };
 
-} // namespace jit
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_GENERATOR_BASE_HPP
+#endif

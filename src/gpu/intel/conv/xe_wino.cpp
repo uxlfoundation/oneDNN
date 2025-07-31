@@ -111,8 +111,7 @@ static void fwd_compute_block_sizes(
     conf.wino_oc = utils::rnd_up(conf.oc, conf.wino_oc_block);
 }
 
-status_t xe_wino_convolution_fwd_t::pd_t::init_conf(
-        compute::compute_engine_t *engine) {
+status_t xe_wino_convolution_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
 
     const convolution_desc_t &cd = *desc();
     const memory_desc_wrapper src_mdw(src_md());

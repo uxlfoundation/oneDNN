@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-struct simple_softmax_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_softmax_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_fwd_pd_t {
         using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
 
@@ -43,8 +43,7 @@ struct simple_softmax_fwd_t : public gpu_primitive_t {
         }
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
@@ -61,16 +60,16 @@ struct simple_softmax_fwd_t : public gpu_primitive_t {
                     utils::one_of(dst_dt, f32, f16, f64, bf16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
                                                   dst_md()->data_type,
                                                   src_md()->data_type),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(compute_engine->mayiuse_sub_group(subgroup_size),
+            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(!memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
@@ -196,16 +195,15 @@ protected:
     compute::kernel_t kernel_;
 };
 
-struct simple_softmax_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_softmax_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_bwd_pd_t {
         using gpu_softmax_bwd_pd_t::gpu_softmax_bwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_softmax_bwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
             const memory_desc_wrapper diff_src_d(diff_src_md());
@@ -222,16 +220,16 @@ struct simple_softmax_bwd_t : public gpu_primitive_t {
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
                                                   diff_dst_md()->data_type,
                                                   diff_src_md()->data_type),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f16,
                                                   diff_dst_md()->data_type,
                                                   diff_src_md()->data_type),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(compute_engine->mayiuse_sub_group(16),
+            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(!memory_desc_ndims_ok(
                                       dst_md(), diff_src_md(), diff_dst_md()),

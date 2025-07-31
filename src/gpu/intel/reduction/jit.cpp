@@ -22,8 +22,8 @@
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/reduction/jit.hpp"
 
 namespace dnnl {
@@ -64,9 +64,8 @@ status_t reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_t inner_nelems = reduction_stride;
     int dt_size = into<int>(sizeof(float));
 
-    auto &compute_engine
-            = *utils::downcast<compute::compute_engine_t *>(engine);
-    const compute::device_info_t &device_info = *compute_engine.device_info();
+    auto &intel_engine = *utils::downcast<intel::engine_t *>(engine);
+    const compute::device_info_t &device_info = *intel_engine.device_info();
     int reg_size = device_info.grf_size();
     int elems_per_reg = reg_size / dt_size;
     int default_nregs

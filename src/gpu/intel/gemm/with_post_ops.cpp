@@ -85,8 +85,8 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     if (!it_gemm_with_po.is_initialized()) return status::invalid_arguments;
     gemm_pd_ = *(++it_gemm_with_po);
     // exit if gemm kernel support post ops
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto arch = intel_engine->device_info()->gpu_arch();
     bool is_xe_hp = arch >= compute::gpu_arch_t::xe_hp;
     auto skip_impl = is_xe_hp ? "ocl" : "ref";
     VDISPATCH_GEMM(
@@ -142,7 +142,7 @@ status_t gemm_with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)
                     != -1;
     auto ndims = gemm_pd_->dst_md()->ndims;
-    dispatch_ = compute_engine->create_dispatch(gemm_pd_->dst_md());
+    dispatch_ = intel_engine->create_dispatch(gemm_pd_->dst_md());
     dispatch_.define_dim("D0", 0, gemm_pd_->dst_md()->padded_dims[0]);
     dispatch_.define_dim("D1", 1, gemm_pd_->dst_md()->padded_dims[1]);
     dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,

@@ -35,7 +35,7 @@ namespace reduction {
 
 struct atomic_reduction_key_params_t
     : trivially_serializable_t<atomic_reduction_key_params_t> {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
         CHECK(get_kernel_ctx(kernel_ctx));
@@ -74,15 +74,15 @@ struct atomic_reduction_conf_t : public reduction_subproblem_t {
             data_type_t src_type, data_type_t dst_type,
             const compute::device_info_t &device_info,
             gpu_primitive_attr_t *gpu_attr);
-    status_t init_dispatcher(const compute::compute_engine_t *engine,
+    status_t init_dispatcher(const intel::engine_t *engine,
             const gpu_primitive_attr_t *gpu_attr);
 
     atomic_reduction_key_params_t conf;
     compute::dispatch_runtime_params_t rt_conf;
 };
 
-struct atomic_reduction_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct atomic_reduction_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reduction_pd_t {
         using gpu_reduction_pd_t::gpu_reduction_pd_t;
 

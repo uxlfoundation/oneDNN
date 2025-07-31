@@ -35,8 +35,8 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch = intel_engine->create_dispatch(
             conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
     conf.dispatch.define_dim("OC", 1, conf.c_padded);

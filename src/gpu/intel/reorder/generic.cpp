@@ -810,7 +810,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.sub_group_size = 1;
     if (conf.nelems == 0) { return status::success; }
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     // Theoretically, bursts should be at least big enough to span whole
     // cache line and bigger bursts should give better perf as long as
@@ -831,7 +831,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.sub_group_size = vect_size;
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
 
     for (dim_idx_t i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);

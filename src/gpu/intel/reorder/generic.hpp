@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
-struct generic_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct generic_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reorder_pd_t {
         using gpu_reorder_pd_t::gpu_reorder_pd_t;
 
@@ -54,11 +54,11 @@ struct generic_reorder_t : public gpu_primitive_t {
                                               .has_runtime_dims_or_strides()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
+            auto *intel_engine = utils::downcast<intel::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
 
-            VDISPATCH_REORDER(compute_engine->mayiuse(
+            VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_FEATURE, "subgroups");
             VDISPATCH_REORDER(!memory_desc_ndims_ok(src_md(), dst_md()),
@@ -67,16 +67,16 @@ struct generic_reorder_t : public gpu_primitive_t {
                     IMPLICATION(
                             utils::one_of(data_type::f16, src_md()->data_type,
                                     dst_md()->data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(IMPLICATION(utils::one_of(data_type::f64,
                                                   src_md()->data_type,
                                                   dst_md()->data_type),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 

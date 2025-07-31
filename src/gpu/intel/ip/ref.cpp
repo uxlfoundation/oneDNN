@@ -74,11 +74,11 @@ static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
     conf.is_backward_data = ipd.prop_kind == prop_kind::backward_data;
     conf.is_backward_weights = ipd.prop_kind == prop_kind::backward_weights;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     if (conf.is_forward) {
         conf.with_bias = ipd.bias_desc.format_kind != format_kind::undef;
         conf.bia_dt = conf.with_bias ? ipd.bias_desc.data_type : data_type::f32;
-        conf.dispatch = compute_engine->create_dispatch(dst_d.md_);
+        conf.dispatch = intel_engine->create_dispatch(dst_d.md_);
         conf.dispatch.define_dim("MB", 0, conf.mb);
         conf.dispatch.define_dim("OC", 1, conf.oc);
         conf.dispatch.generate();
@@ -86,7 +86,7 @@ static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
         conf.with_bias = ipd.diff_bias_desc.format_kind != format_kind::undef;
         conf.bia_dt = conf.with_bias ? ipd.diff_bias_desc.data_type
                                      : data_type::f32;
-        conf.dispatch = compute_engine->create_dispatch(wei_d.md_);
+        conf.dispatch = intel_engine->create_dispatch(wei_d.md_);
         conf.dispatch.define_dim("OC", 0, conf.oc);
         conf.dispatch.define_dim("IC", 1, conf.ic);
         conf.dispatch.define_dim("KD", nstl::max(1, ndims - 3), conf.kd);
@@ -96,7 +96,7 @@ static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
     } else {
         conf.with_bias = false;
         conf.bia_dt = data_type::f32;
-        conf.dispatch = compute_engine->create_dispatch(src_d.md_);
+        conf.dispatch = intel_engine->create_dispatch(src_d.md_);
         conf.dispatch.define_dim("MB_IC", 0, conf.mb * conf.ic);
         conf.dispatch.define_dim("KD", nstl::max(1, ndims - 3), conf.kd);
         conf.dispatch.define_dim("KH", nstl::max(1, ndims - 2), conf.kh);

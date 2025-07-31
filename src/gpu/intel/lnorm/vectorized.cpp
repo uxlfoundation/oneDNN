@@ -29,25 +29,24 @@ using namespace compute;
 using namespace dnnl::impl::format_tag;
 
 bool mayiuse_sg(const int sg_size, impl::engine_t *engine) {
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
-    return compute_engine->mayiuse_sub_group(sg_size)
-            && compute_engine->mayiuse_block_reads_writes_with_sub_group(
-                    sg_size);
+    auto *intel_engine = utils::downcast<engine_t *>(engine);
+    return intel_engine->mayiuse_sub_group(sg_size)
+            && intel_engine->mayiuse_block_reads_writes_with_sub_group(sg_size);
 };
 
 bool is_fused_kernel_applicable(lnorm_conf_t &conf,
         const layer_normalization_pd_t *pd, impl::engine_t *engine,
         bool large_grf_mode) {
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<engine_t *>(engine);
 
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     memory_desc_wrapper src_mdw(pd->src_md());
     memory_desc_wrapper stat_mdw(pd->stat_md());
-    auto eu_count = compute_engine->device_info()->eu_count();
+    auto eu_count = intel_engine->device_info()->eu_count();
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
     const size_t max_wg_size
-            = compute_engine->device_info()->max_wg_size(large_grf_mode);
+            = intel_engine->device_info()->max_wg_size(large_grf_mode);
     const size_t max_slm_size = device_info_t::max_slm_size(gpu_arch);
 
     // Plain layout only
@@ -175,8 +174,8 @@ bool is_fused_kernel_applicable(lnorm_conf_t &conf,
 static status_t init_conf_common(lnorm_conf_t &conf,
         const layer_normalization_pd_t *pd, impl::engine_t *engine) {
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = utils::downcast<engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     // Limited due to performance reasons
     // Vectorized implementation can be used for FWD on DG2+, for BWD on PVC+
@@ -231,24 +230,24 @@ static status_t init_conf_common(lnorm_conf_t &conf,
     if (!(src_mdw.is_dense() && c_is_last_physical && ndims < 4))
         return status::unimplemented;
 
-    conf.dispatch_scaleshift = compute_engine->create_dispatch();
-    conf.dispatch_scaleshift_finalize = compute_engine->create_dispatch();
-    conf.dispatch = compute_engine->create_dispatch(
+    conf.dispatch_scaleshift = intel_engine->create_dispatch();
+    conf.dispatch_scaleshift_finalize = intel_engine->create_dispatch();
+    conf.dispatch = intel_engine->create_dispatch(
             conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
-    conf.dispatch_fused = compute_engine->create_dispatch(
+    conf.dispatch_fused = intel_engine->create_dispatch(
             conf.is_fwd ? dst_mdw.md_ : src_mdw.md_);
     const auto &dims = conf.is_fwd ? src_mdw.padded_dims() : dst_mdw.dims();
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
     bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
-    auto eu_count = compute_engine->device_info()->eu_count();
+    auto eu_count = intel_engine->device_info()->eu_count();
     auto threads_per_eu
             = device_info_t::threads_per_eu(gpu_arch, large_grf_mode);
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
     const size_t max_wg_size
-            = compute_engine->device_info()->max_wg_size(large_grf_mode);
+            = intel_engine->device_info()->max_wg_size(large_grf_mode);
 
     // Vectorized vs Reference heuristics.
     // PVC, FWD:

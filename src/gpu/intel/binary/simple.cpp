@@ -98,8 +98,8 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(dst_d.md_);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch = intel_engine->create_dispatch(dst_d.md_);
     if (conf.is_tensor_op && conf.is_dense && conf.is_same_md
             && !conf.with_binary_post_op) {
         conf.dispatch.define_dim("IDX", 0, dst_d.nelems());

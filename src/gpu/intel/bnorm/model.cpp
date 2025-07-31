@@ -81,15 +81,15 @@ dim_t get_nhwc_calc_stat_ic(dim_t ic, int ic_block, int sg_size) {
 
 void init_hw_params(hw_params_t &hw_params, impl::engine_t *engine) {
     const bool large_grf_mode = false;
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     hw_params.gpu_arch = gpu_arch;
-    hw_params.eu_count = compute_engine->device_info()->eu_count();
+    hw_params.eu_count = intel_engine->device_info()->eu_count();
     hw_params.threads_per_eu
             = compute::device_info_t::threads_per_eu(gpu_arch, false);
     hw_params.max_lws
-            = compute_engine->device_info()->max_wg_size(large_grf_mode);
-    hw_params.eus_per_ss = compute_engine->device_info()->max_eus_per_wg();
+            = intel_engine->device_info()->max_wg_size(large_grf_mode);
+    hw_params.eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     hw_params.max_ss = div_up(hw_params.eu_count, hw_params.eus_per_ss);
     hw_params.max_slm_size = compute::device_info_t::max_slm_size(gpu_arch);
     hw_params.engine = engine;
@@ -730,10 +730,9 @@ void dump_params(std::vector<model_params_t> &params) {
 status_t get_estimated_hw_utilization(model_params_t &p,
         nhwc_bnorm_params_t &conf, hw_params_t &hw_params,
         kernel_desc_t &desc) {
-    auto *compute_engine
-            = downcast<compute::compute_engine_t *>(hw_params.engine);
+    auto *intel_engine = downcast<intel::engine_t *>(hw_params.engine);
     compute::dispatch_t dry_run_dispatch // to get auto-generated lws
-            = compute_engine->create_dispatch();
+            = intel_engine->create_dispatch();
 
     nhwc_bnorm_params_t conf_dry_run {conf};
     conf_dry_run.set_use_fused_atomics_reduction(p.use_fused_atomics_reduction);

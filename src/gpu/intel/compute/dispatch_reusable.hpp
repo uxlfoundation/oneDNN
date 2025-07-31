@@ -28,9 +28,9 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/block_manipulation.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/include/types_interop.h"
 
 namespace dnnl {
@@ -312,8 +312,7 @@ public:
 class gws_bin_mapping_t;
 
 struct lws_strategy_t {
-    lws_strategy_t(const compute_engine_t *engine,
-            const gpu_primitive_attr_t *gpu_attr)
+    lws_strategy_t(const engine_t *engine, const gpu_primitive_attr_t *gpu_attr)
         : engine(engine), gpu_attr(gpu_attr) {};
     virtual ~lws_strategy_t() = default;
 
@@ -332,14 +331,14 @@ struct lws_strategy_t {
     }
 
 protected:
-    const compute_engine_t *engine;
+    const engine_t *engine;
     const gpu_primitive_attr_t *gpu_attr;
 };
 
 // Balance lws size with occupation
 struct default_lws_strategy_t : public lws_strategy_t {
-    default_lws_strategy_t(const compute_engine_t *engine,
-            const gpu_primitive_attr_t *gpu_attr)
+    default_lws_strategy_t(
+            const engine_t *engine, const gpu_primitive_attr_t *gpu_attr)
         : lws_strategy_t(engine, gpu_attr) {};
     range_t create_lws(
             range_t &gws, const gws_bin_mapping_t &mapper) const override {
@@ -646,7 +645,7 @@ private:
 class reusable_dispatch_config_t {
 public:
     reusable_dispatch_config_t(
-            const compute_engine_t *engine, std::vector<dim_idx_t> dims)
+            const engine_t *engine, std::vector<dim_idx_t> dims)
         : dispatched_dims(std::move(dims)), engine(engine) {};
     status_t generate(
             reusable_dispatch_t &dispatch, const lws_strategy_t &lws_strategy);
@@ -661,7 +660,7 @@ private:
     std::unordered_map<dim_idx_t, dim_t, dim_id_hash_t> dim_sizes;
 
     subgroup_data_t subgroup;
-    const compute_engine_t *engine;
+    const engine_t *engine;
 };
 
 } // namespace compute

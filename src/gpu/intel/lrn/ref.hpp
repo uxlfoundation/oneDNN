@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace lrn {
 
-struct ref_lrn_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_lrn_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_lrn_fwd_pd_t {
         using gpu_lrn_fwd_pd_t::gpu_lrn_fwd_pd_t;
 
@@ -40,8 +40,7 @@ struct ref_lrn_fwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_LRN(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LRN(utils::one_of(src_md()->data_type, f32, f16, bf16),
@@ -51,7 +50,7 @@ struct ref_lrn_fwd_t : public gpu_primitive_t {
             VDISPATCH_LRN(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LRN(IMPLICATION(src_md()->data_type == f16,
-                                  compute_engine->mayiuse(
+                                  intel_engine->mayiuse(
                                           compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LRN(
@@ -67,7 +66,7 @@ struct ref_lrn_fwd_t : public gpu_primitive_t {
                     ws_md_.data_type = data_type::f32;
             }
 
-            dispatch = compute_engine->create_dispatch(src_md());
+            dispatch = intel_engine->create_dispatch(src_md());
             dispatch.define_dim("MB", 0, MB());
             dispatch.define_dim("IC", 1, C());
             dispatch.define_dim("ID", nstl::max(1, src_md()->ndims - 3), D());
@@ -158,8 +157,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_lrn_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_lrn_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_lrn_bwd_pd_t {
         using gpu_lrn_bwd_pd_t::gpu_lrn_bwd_pd_t;
 
@@ -168,8 +167,7 @@ struct ref_lrn_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
             VDISPATCH_LRN(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LRN(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
@@ -192,7 +190,7 @@ struct ref_lrn_bwd_t : public gpu_primitive_t {
 
             VDISPATCH_LRN(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
-            dispatch = compute_engine->create_dispatch(diff_src_md());
+            dispatch = intel_engine->create_dispatch(diff_src_md());
             dispatch.define_dim("MB", 0, MB());
             dispatch.define_dim("IC", 1, C());
             dispatch.define_dim("ID", nstl::max(1, src_md()->ndims - 3), D());

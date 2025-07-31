@@ -1702,7 +1702,7 @@ void conv_tiler_t::before_exec_hook(
     if (!stream->is_profiling_enabled()) return;
     auto &info = conv_tuner_t::get_primitive_info(primitive);
     auto *tuner = conv_tuner_t::get_tuner(info.key);
-    auto *compute_stream = utils::downcast<compute::compute_stream_t *>(stream);
+    auto *compute_stream = utils::downcast<intel::stream_t *>(stream);
     auto &profiler = compute_stream->profiler();
     tuner->set_profile_info(profiler.stamp(), info.params);
     profiler.set_callback(conv_tuner_t::profile_callback);

@@ -34,8 +34,7 @@ status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     const int ndims = src_mdw.ndims();
     const auto src_dims = src_mdw.md_->dims;
     const auto dst_dims = dst_mdw.md_->dims;
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     conf.alg = pd->desc()->alg_kind;
     conf.src_md_info = memory_desc_info_t::create(src_mdw);
@@ -45,7 +44,7 @@ status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = ndims;
     conf.power = pd->desc()->p;
     conf.eps = pd->desc()->eps;
-    conf.dispatch = compute_engine->create_dispatch(src_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(src_mdw.md_);
     conf.div = 1;
 
     for (int d = 0; d < ndims; d++) {

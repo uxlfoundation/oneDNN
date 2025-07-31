@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct ref_convolution_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_fwd_pd_t {
         using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
 
@@ -40,8 +40,8 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             const bool is_int8 = utils::one_of(src_md_.data_type, s8, u8);
             const bool is_fp8
@@ -69,14 +69,14 @@ struct ref_convolution_fwd_t : public gpu_primitive_t {
             VDISPATCH_CONV(IMPLICATION(utils::one_of(f16, src_md_.data_type,
                                                weights_md_.data_type,
                                                dst_md_.data_type),
-                                   compute_engine->mayiuse(
+                                   intel_engine->mayiuse(
                                            compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_CONV(
                     IMPLICATION(
                             utils::one_of(f64, src_md_.data_type,
                                     weights_md_.data_type, dst_md_.data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -164,8 +164,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_data_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_bwd_data_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_bwd_data_pd_t {
         using gpu_convolution_bwd_data_pd_t::gpu_convolution_bwd_data_pd_t;
 
@@ -179,8 +179,8 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
                 attr_skip_mask |= sm::zero_points_data_type;
             }
             using namespace data_type;
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -193,7 +193,7 @@ struct ref_convolution_bwd_data_t : public gpu_primitive_t {
             VDISPATCH_CONV(
                     IMPLICATION(utils::one_of(f64, diff_src_md()->data_type,
                                         dst_md()->data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -277,8 +277,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_bwd_weights_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_bwd_weights_pd_t {
         using gpu_convolution_bwd_weights_pd_t::
                 gpu_convolution_bwd_weights_pd_t;
@@ -287,8 +287,8 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -301,13 +301,13 @@ struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
                     IMPLICATION(utils::one_of(f16, desc()->src_desc.data_type,
                                         desc()->diff_weights_desc.data_type,
                                         desc()->diff_dst_desc.data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_CONV(
                     IMPLICATION(utils::one_of(f64, desc()->src_desc.data_type,
                                         desc()->diff_dst_desc.data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);

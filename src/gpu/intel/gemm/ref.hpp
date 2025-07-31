@@ -30,7 +30,7 @@ namespace gemm {
 
 struct ref_gemm_jit_params_t
     : public trivially_serializable_t<ref_gemm_jit_params_t> {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         return engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());

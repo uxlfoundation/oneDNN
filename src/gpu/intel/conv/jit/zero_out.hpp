@@ -46,10 +46,10 @@ public:
     void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const override;
-    status_t create_kernel(compute::kernel_t &kernel,
-            gpu_primitive_t *primitive, impl::engine_t *engine) const override;
-    status_t create_generator(const compute::compute_engine_t &engine,
-            compute::kernel_t &kernel) const;
+    status_t create_kernel(compute::kernel_t &kernel, primitive_t *primitive,
+            impl::engine_t *engine) const override;
+    status_t create_generator(
+            const intel::engine_t &engine, compute::kernel_t &kernel) const;
     serialization_stream_t serialize() const override;
     static zero_out_kernel_desc_t deserialize(const serialization_stream_t &s);
 

@@ -20,8 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/serialization.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 #define OFF6(i0, d0, i1, d1, i2, d2, i3, d3, i4, d4, i5, d5) \
@@ -151,7 +151,7 @@ constexpr size_t cell_fwd = 7;
 } // namespace kernel_id
 
 struct ocl_conf_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
 
         compute::kernel_ctx_t kernel_ctx;

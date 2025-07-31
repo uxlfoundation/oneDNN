@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-struct multi_po_reorder_binary_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct multi_po_reorder_binary_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
 

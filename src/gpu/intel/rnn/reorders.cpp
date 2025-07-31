@@ -37,9 +37,9 @@ status_t rnn_weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.sub_group_size = 1;
 
     // only for LDIGO
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     conf.dispatch.define_dim("D0", 0, dims[0]);
     conf.dispatch.define_dim("D1", 1, dims[1]);
     conf.dispatch.define_dim("D3", 3, dims[3]);
@@ -114,8 +114,7 @@ status_t rnn_weights_reorder_t::pd_t::init_kernel_ctx(
 
 status_t rnn_weights_reorder_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
-    auto *compute_stream
-            = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+    auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto &input = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &output = CTX_OUT_STORAGE(DNNL_ARG_TO);

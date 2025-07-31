@@ -46,7 +46,7 @@ struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
         CHECK(get_kernel_ctx(kernel_ctx));
@@ -97,8 +97,8 @@ struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_sdpa_params_t);
 
-struct micro_sdpa_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct micro_sdpa_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public sdpa_pd_t {
         using sdpa_pd_t::sdpa_pd_t;
         static constexpr int mask_mb_index = 0;

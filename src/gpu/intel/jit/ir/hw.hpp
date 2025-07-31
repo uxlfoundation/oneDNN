@@ -18,7 +18,7 @@
 #define GPU_INTEL_JIT_IR_HW_HPP
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -37,16 +37,16 @@ public:
     explicit hw_t(ngen::HW hw) : hw_(hw) {}
     explicit hw_t(const impl::engine_t *engine) {
         using namespace compute;
-        auto compute_engine = utils::downcast<const compute_engine_t *>(engine);
+        auto intel_engine = utils::downcast<const engine_t *>(engine);
 
-        auto *device_info = compute_engine->device_info();
+        auto *device_info = intel_engine->device_info();
         gpu_arch_t gpu_arch = device_info->gpu_arch();
         product_ = get_ngen_product(*device_info);
         eu_count_ = device_info->eu_count();
         max_wg_size_ = static_cast<int>(
                 device_info->max_wg_size(/*large_grf_mode=*/false));
         l3_cache_size_ = device_info->l3_cache_size();
-        large_grf_support_ = compute_engine->mayiuse_large_grf_mode();
+        large_grf_support_ = intel_engine->mayiuse_large_grf_mode();
         systolic_support_ = device_info->mayiuse_systolic();
         with_atomic_fp64_
                 = device_info->mayiuse_float_atomic_add(data_type::f64);

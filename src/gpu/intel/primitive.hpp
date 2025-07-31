@@ -23,14 +23,12 @@
 #include "common/cache_blob.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_primitive.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/compute/types_interop.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
-#include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
+#include "gpu/intel/stream.hpp"
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
 
@@ -39,8 +37,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-struct gpu_primitive_t : public gpu::primitive_t {
-    using primitive_t::primitive_t;
+struct primitive_t : public gpu::primitive_t {
+    using gpu::primitive_t::primitive_t;
 
     struct compute_block_t : public gpu::primitive_t::compute_block_t {
         compute_block_t(const compute::kernel_t &kernel)
@@ -89,67 +87,23 @@ struct gpu_primitive_t : public gpu::primitive_t {
     }
 
     status_t create_kernel(impl::engine_t *engine, compute::kernel_t *kernel,
-            jit::generator_base_t *jitter, bool register_kernel = true) {
-        auto *compute_engine
-                = utils::downcast<compute::compute_engine_t *>(engine);
-        if (cache_blob()) {
-            VCHECK_KERNEL(
-                    compute_engine->create_kernel_from_cache_blob(cache_blob(),
-                            *kernel, jitter ? jitter->kernel_name() : nullptr),
-                    VERBOSE_KERNEL_CREATION_FAIL,
-                    jitter ? jitter->kernel_name() : "cached");
-            kernel->hash_dump("blob");
-            CHECK(register_kernels({*kernel}));
-            return status::success;
-        }
-        VCHECK_KERNEL(compute_engine->create_kernel(kernel, jitter),
-                VERBOSE_KERNEL_CREATION_FAIL,
-                jitter ? jitter->kernel_name() : "");
-        kernel->hash_dump("real");
-        if (register_kernel) CHECK(register_kernels({*kernel}));
-        return status::success;
-    }
+            jit::generator_base_t *jitter, bool register_kernel = true);
 
     status_t create_kernels(impl::engine_t *engine,
             std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,
-            const compute::kernel_ctx_t &kernel_ctx) {
-        auto *compute_engine
-                = utils::downcast<compute::compute_engine_t *>(engine);
-        if (cache_blob()) {
-            CHECK(compute_engine->create_kernels_from_cache_blob(
-                    cache_blob(), *kernels, kernel_names));
-            for (auto &k : *kernels)
-                k.hash_dump("blob");
-            CHECK(register_kernels(*kernels));
-            return status::success;
-        }
-        CHECK(compute_engine->create_kernels(
-                kernels, kernel_names, kernel_ctx));
-        for (auto &k : *kernels)
-            k.hash_dump("real");
-        CHECK(register_kernels(*kernels));
-        return status::success;
-    }
+            const compute::kernel_ctx_t &kernel_ctx);
 
     status_t create_kernel(impl::engine_t *engine, compute::kernel_t *kernel,
-            const char *kernel_name, const compute::kernel_ctx_t &kernel_ctx) {
-        std::vector<compute::kernel_t> kernels(1);
-        VCHECK_KERNEL(
-                create_kernels(engine, &kernels, {kernel_name}, kernel_ctx),
-                VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
-        *kernel = kernels[0];
-        return status::success;
-    }
+            const char *kernel_name, const compute::kernel_ctx_t &kernel_ctx);
 
     template <typename T>
     status_t create_kernels(impl::engine_t *engine,
             std::vector<compute::kernel_t> &kernels,
             const std::vector<const char *> &kernel_names, const T &params) {
-        auto *compute_engine
-                = utils::downcast<compute::compute_engine_t *>(engine);
+        auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
         if (cache_blob()) {
-            CHECK(compute_engine->create_kernels_from_cache_blob(
+            CHECK(intel_engine->create_kernels_from_cache_blob(
                     cache_blob(), kernels, kernel_names));
             for (auto &k : kernels)
                 k.hash_dump("blob");
@@ -158,7 +112,7 @@ struct gpu_primitive_t : public gpu::primitive_t {
         }
 
         auto key = std::make_shared<trivial_key_container_t<T>>(
-                params, compute_engine->engine_id());
+                params, intel_engine->engine_id());
         gpu_assert(key->key.is_valid());
 
         cache_state_t kernel_cache_status;
@@ -190,8 +144,7 @@ struct gpu_primitive_t : public gpu::primitive_t {
     static status_t parallel_for(const gemm::exec_ctx_t &ctx,
             const compute::nd_range_t &range, const compute::kernel_t &kernel,
             const compute::kernel_arg_list_t &arg_list) {
-        auto compute_stream
-                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
         return parallel_for(*compute_stream, range, kernel, arg_list,
                 compute_stream->ctx().get_deps(),
                 compute_stream->ctx().get_deps());
@@ -200,8 +153,7 @@ struct gpu_primitive_t : public gpu::primitive_t {
     static status_t parallel_for(const exec_ctx_t &ctx,
             const compute::nd_range_t &range, const compute::kernel_t &kernel,
             const compute::kernel_arg_list_t &arg_list) {
-        auto compute_stream
-                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
         return parallel_for(*compute_stream, range, kernel, arg_list,
                 compute_stream->ctx().get_deps(),
                 compute_stream->ctx().get_deps());
@@ -214,47 +166,7 @@ struct gpu_primitive_t : public gpu::primitive_t {
     static status_t large_parallel_for(const exec_ctx_t &ctx,
             const compute::nd_range_t &nd_range,
             const compute::kernel_t &kernel,
-            compute::kernel_arg_list_t &arg_list, int offset_idx) {
-
-        auto global_range = nd_range.global_range();
-        auto local_range = nd_range.local_range();
-
-        // Convert global_range to an equivalent 3D nd_range_t
-        constexpr size_t range_ndims = 3;
-        assert(global_range.ndims() <= range_ndims);
-        auto gws = compute::range_t::one(range_ndims);
-        for (size_t i = 0; i < global_range.ndims(); i++) {
-            gws[i] = global_range[i];
-        }
-
-        compute::range_t off_inc(UINT32_MAX, UINT32_MAX, UINT32_MAX);
-        if (local_range) {
-            for (size_t i = 0; i < local_range.ndims(); i++) {
-                off_inc[i] *= local_range[i];
-            }
-        }
-
-        int64x3_t offset_arg = {};
-        auto &offset = offset_arg.array;
-        static_assert(range_ndims == 3,
-                "Large parallel for loop doesn't match ndims.");
-        for_(offset[2] = 0; static_cast<size_t>(offset[2]) < gws[2];
-                offset[2] += off_inc[2])
-        for_(offset[1] = 0; static_cast<size_t>(offset[1]) < gws[1];
-                offset[1] += off_inc[1])
-        for_(offset[0] = 0; static_cast<size_t>(offset[0]) < gws[0];
-                offset[0] += off_inc[0])
-        {
-            arg_list.set(offset_idx, offset_arg);
-            auto range = compute::range_t::empty(range_ndims);
-            for (size_t i = 0; i < range_ndims; i++)
-                range[i] = std::min(off_inc[i], gws[i] - offset[i]);
-
-            CHECK(parallel_for(ctx, compute::nd_range_t(range, local_range),
-                    kernel, arg_list));
-        }
-        return status::success;
-    }
+            compute::kernel_arg_list_t &arg_list, int offset_idx);
 
 protected:
     int32_t version() const { return version_; }

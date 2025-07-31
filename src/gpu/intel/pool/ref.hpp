@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-struct ref_pooling_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_pooling_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
 
@@ -46,8 +46,8 @@ struct ref_pooling_fwd_t : public gpu_primitive_t {
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(utils::one_of(desc()->prop_kind, forward_training,
@@ -87,12 +87,12 @@ struct ref_pooling_fwd_t : public gpu_primitive_t {
                     VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
             VDISPATCH_POOLING(
                     IMPLICATION(utils::one_of(f16, src_data_t, dst_data_t),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_POOLING(
                     IMPLICATION(utils::one_of(f64, src_data_t, dst_data_t),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_POOLING(attr()->has_default_values(attr_skip_mask),
@@ -144,8 +144,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_pooling_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_pooling_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
 
@@ -155,8 +155,8 @@ struct ref_pooling_bwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace alg_kind;
 
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(utils::one_of(desc()->prop_kind, backward_data),
@@ -174,12 +174,12 @@ struct ref_pooling_bwd_t : public gpu_primitive_t {
                             || (utils::everyone_is(data_type::f16,
                                         diff_dst_md()->data_type,
                                         diff_src_md()->data_type)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16))
                             || (utils::everyone_is(data_type::f64,
                                         diff_dst_md()->data_type,
                                         diff_src_md()->data_type)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp64))),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(

@@ -32,8 +32,7 @@ namespace reduction {
 struct reduction_phase_conf_t : public reduction_subproblem_t {
     reduction_phase_conf_t(const reduction_subproblem_t &subprb,
             data_type_t src_type, data_type_t dst_type,
-            const compute::compute_engine_t *compute_engine,
-            bool large_grf_mode);
+            const intel::engine_t *intel_engine, bool large_grf_mode);
     bool can_use_block_reads();
     data_type_t src_type, dst_type;
     compute::nd_range_t nd_range;
@@ -44,8 +43,8 @@ struct reduction_phase_conf_t : public reduction_subproblem_t {
     bool with_block_reads;
 };
 
-struct combined_reduction_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct combined_reduction_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reduction_pd_t {
         using gpu_reduction_pd_t::gpu_reduction_pd_t;
 

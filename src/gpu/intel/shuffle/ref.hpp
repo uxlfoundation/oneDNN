@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace shuffle {
 
-struct ref_shuffle_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_shuffle_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 
@@ -38,8 +38,7 @@ struct ref_shuffle_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace format_tag;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto &md_src = is_fwd() ? src_md() : diff_src_md();
             const auto &md_dst = is_fwd() ? dst_md() : diff_dst_md();
@@ -57,7 +56,7 @@ struct ref_shuffle_t : public gpu_primitive_t {
             VDISPATCH_SHUFFLE(
                     src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_SHUFFLE(IMPLICATION(src_md()->data_type == data_type::f16,
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 

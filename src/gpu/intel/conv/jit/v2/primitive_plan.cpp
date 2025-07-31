@@ -28,7 +28,7 @@ namespace jit {
 namespace v2 {
 
 status_t primitive_init_plan_t::create_exec_plan(
-        primitive_exec_plan_t &exec_plan, gpu_primitive_t *primitive,
+        primitive_exec_plan_t &exec_plan, primitive_t *primitive,
         impl::engine_t *engine) const {
     // Zero-out required buffers.
     for (auto &b : buf_entries_) {
@@ -97,7 +97,7 @@ kernel_info_t primitive_init_plan_t::create_kernel_info(
 
 status_t primitive_init_plan_t::add_kernel(primitive_exec_plan_t &exec_plan,
         const kernel_desc_base_t &desc, const kernel_params_base_t &params,
-        gpu_primitive_t *primitive, impl::engine_t *engine,
+        primitive_t *primitive, impl::engine_t *engine,
         const std::unordered_map<std::string, std::string> &buf_map) const {
     compute::kernel_t kernel;
     CHECK(desc.create_kernel(kernel, primitive, engine));
@@ -109,7 +109,7 @@ status_t primitive_init_plan_t::add_kernel(primitive_exec_plan_t &exec_plan,
 
 status_t primitive_init_plan_t::add_zero_out_kernel(
         primitive_exec_plan_t &exec_plan, const buffer_entry_t &buf,
-        gpu_primitive_t *primitive, impl::engine_t *engine) const {
+        primitive_t *primitive, impl::engine_t *engine) const {
     auto desc = std::make_shared<conv::jit::zero_out_kernel_desc_t>(
             regs_, simd_, dpas_);
     auto params = std::make_shared<conv::jit::zero_out_kernel_params_t>(
@@ -121,7 +121,7 @@ status_t primitive_init_plan_t::add_zero_out_kernel(
 
 status_t primitive_init_plan_t::add_reorder_kernel(
         primitive_exec_plan_t &exec_plan, const buffer_entry_t &src,
-        const buffer_entry_t &dst, gpu_primitive_t *primitive,
+        const buffer_entry_t &dst, primitive_t *primitive,
         impl::engine_t *engine) const {
     kernel_info_t kernel_info;
     for (auto *e : {&src, &dst}) {

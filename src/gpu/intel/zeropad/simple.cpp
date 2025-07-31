@@ -35,9 +35,8 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
     const auto &pdims = mdw.padded_dims();
     const blocking_desc_t blocking_desc = mdw.blocking_desc();
     const ptrdiff_t nelems = (ptrdiff_t)mdw.nelems(true);
-    const compute::compute_engine_t *engine
-            = utils::downcast<compute::compute_engine_t *>(
-                    ctx.stream()->engine());
+    const intel::engine_t *engine
+            = utils::downcast<intel::engine_t *>(ctx.stream()->engine());
     const compute::device_info_t *device = engine->device_info();
     const unsigned int hw_threads = device->hw_threads();
 
@@ -302,9 +301,8 @@ status_t simple_zero_pad_t::execute_subg_16_mask_and_clear_dt_1B(
     const memory_t *memory = ctx.input(DNNL_ARG_SRC);
     const memory_storage_t *mem_storage = memory->memory_storage();
 
-    const compute::compute_engine_t *engine
-            = utils::downcast<compute::compute_engine_t *>(
-                    ctx.stream()->engine());
+    const intel::engine_t *engine
+            = utils::downcast<intel::engine_t *>(ctx.stream()->engine());
     const compute::device_info_t *device = engine->device_info();
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(

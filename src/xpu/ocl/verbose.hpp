@@ -54,10 +54,8 @@ inline void print_verbose_header() {
         auto s_ver = engine_impl->runtime_version().str();
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-        auto *compute_engine
-                = utils::downcast<gpu::intel::compute::compute_engine_t *>(
-                        eng_ptr);
-        auto *dev_info = compute_engine->device_info();
+        auto *intel_engine = utils::downcast<gpu::intel::engine_t *>(eng_ptr);
+        auto *dev_info = intel_engine->device_info();
         verbose_printf(
                 "info,gpu,engine,%d,name:%s,driver_version:%s,binary_kernels:%"
                 "s\n",

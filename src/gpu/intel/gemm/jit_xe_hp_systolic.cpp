@@ -17,9 +17,6 @@
 #include "gpu/intel/gemm/jit_xe_hp_systolic.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_traits.hpp"
-#include "common/float16.hpp"
-#include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
 #include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -42,14 +39,14 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     using arch_t = compute::gpu_arch_t;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
+    VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");
-    VDISPATCH_GEMM(compute_engine->mayiuse_large_grf_mode(),
+    VDISPATCH_GEMM(intel_engine->mayiuse_large_grf_mode(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "large grf mode");
 
-    dev_info_ = compute_engine->device_info();
+    dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
     init_attrs();
@@ -109,7 +106,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM((dt_float_ok || dt_int_ok), VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
     VDISPATCH_GEMM(
-            compute_engine->mayiuse(compute::device_ext_t::
+            intel_engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "systolic array");
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
@@ -555,8 +552,8 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
 status_t xe_hp_systolic_gemm_t::init_compute(impl::engine_t *engine) {
     using kd_t = jit::gen_gemm_xe_systolic_kernel_desc_t;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    int stepping = compute_engine->device_info()->stepping_id();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    int stepping = intel_engine->device_info()->stepping_id();
 
     const auto d = pd()->desc();
 
@@ -581,7 +578,7 @@ status_t xe_hp_systolic_gemm_t::init_compute(impl::engine_t *engine) {
 
     kd_t kd_full;
 
-    bool is_integrated = compute_engine->device_info()->is_integrated();
+    bool is_integrated = intel_engine->device_info()->is_integrated();
 
     auto status = kd_full.select_kernel(arch_, stepping, eu_count_,
             is_integrated, pd()->with_batch(), pd()->packed_c(), trans_co,

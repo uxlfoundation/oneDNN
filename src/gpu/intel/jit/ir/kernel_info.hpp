@@ -264,7 +264,7 @@ public:
     }
 
     memory_storage_wrapper_t arg_storage(int idx, const exec_ctx_t &ctx,
-            const gpu_primitive_t *primitive) const {
+            const primitive_t *primitive) const {
         gpu_assert(idx >= 0 && idx < nargs());
         bool is_input = args_[idx].is_input;
         int key = args_[idx].key;
@@ -282,7 +282,7 @@ public:
         return memory_storage_wrapper_t();
     }
 
-    size_t arg_size(int idx, const gpu_primitive_t *primitive) const {
+    size_t arg_size(int idx, const primitive_t *primitive) const {
         switch (args_[idx].kind) {
             case arg_kind_t::user: {
                 auto *md = primitive->pd()->arg_md(key(idx));
@@ -295,7 +295,7 @@ public:
     }
 
     void init_memory_storage_list(std::vector<memory_storage_wrapper_t> &list,
-            const exec_ctx_t &ctx, const gpu_primitive_t *primitive) const {
+            const exec_ctx_t &ctx, const primitive_t *primitive) const {
         list = std::vector<memory_storage_wrapper_t>(nargs());
         for (int i = 0; i < nargs(); i++) {
             list[i] = arg_storage(i, ctx, primitive);

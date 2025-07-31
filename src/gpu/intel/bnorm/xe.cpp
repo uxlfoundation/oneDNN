@@ -35,8 +35,8 @@ static bool use_fused_atomics_reduction(lookup_table::params_t &conf,
         const batch_normalization_pd_t *pd, impl::engine_t *engine) {
     // Currently the fused atomics reduction is targeting to PVC only.
     // Heuristics experimentally selected, based on PVC perf data
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     const size_t sp = conf.mb * conf.id * conf.ih * conf.iw;
     return !pd->attr()->deterministic_
             && gpu_arch >= compute::gpu_arch_t::xe_hpc
@@ -60,13 +60,13 @@ static size_t get_slm_buff_size(
 static void adjust_lws_calc_kernel(lookup_table::params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
         bool large_grf_mode) {
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto eu_count = compute_engine->device_info()->eu_count();
-    auto max_lws = compute_engine->device_info()->max_wg_size(large_grf_mode);
-    auto eus_per_ss = compute_engine->device_info()->max_eus_per_wg();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto eu_count = intel_engine->device_info()->eu_count();
+    auto max_lws = intel_engine->device_info()->max_wg_size(large_grf_mode);
+    auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     const int max_ss = div_up(eu_count, eus_per_ss);
 
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     const int max_slm_size = compute::device_info_t::max_slm_size(gpu_arch);
     auto generated_nd = dispatch.nd_range();
     const compute::range_t &base_gws = generated_nd.global_range();
@@ -146,8 +146,8 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     conf.mb_block = 1;
 
@@ -230,7 +230,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
 
     conf.calc_stat_ic = rnd_up(conf.ic, 16);
 
-    auto eu_count = compute_engine->device_info()->eu_count();
+    auto eu_count = intel_engine->device_info()->eu_count();
     const dim_t max_sp_block_size = get_block_size(conf.is_backward, eu_count,
             conf.nn, rnd_up(conf.ic, conf.sub_group_size), conf.sp,
             conf.sub_group_size);
@@ -265,7 +265,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
 
     conf.vect_size = 8;
 
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = intel_engine->create_dispatch();
     dispatch_calc_stat.define_dim("STAT_MB", 0, conf.nn);
     dispatch_calc_stat.define_dim("STAT_SP", 1, conf.stat_sp_nblocks);
     dispatch_calc_stat.define_dim_with_nesting_level(
@@ -278,15 +278,14 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
                 = downcast<gpu_primitive_attr_t *>(pd->attr()->gpu_attr_.get());
         bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
         adjust_lws_calc_kernel(
-                conf, dispatch_calc_stat, compute_engine, large_grf_mode);
+                conf, dispatch_calc_stat, intel_engine, large_grf_mode);
 
-        if (!compute_engine->mayiuse(
-                    compute::device_ext_t::ext_float_atomics)) {
+        if (!intel_engine->mayiuse(compute::device_ext_t::ext_float_atomics)) {
             return status::unimplemented;
         }
     }
 
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     int reduce_sub_group_count = 1;
     while (conf.reduce_stat_nblocks % (2 * reduce_sub_group_count) == 0
             && 2 * reduce_sub_group_count * conf.sub_group_size <= 256) {
@@ -304,14 +303,14 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     const dim_t sp_pad = rnd_up(conf.sp, conf.vect_size);
     conf.sp_tail = rnd_dn(conf.sp, conf.vect_size);
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.nn);
     dispatch.define_dim("SP", 1, sp_pad / conf.vect_size);
     dispatch.define_dim_with_nesting_level("IC", 1024, conf.calc_stat_ic);
     CHECK(dispatch.vectorize_dim("IC", conf.sub_group_size));
     dispatch.generate();
 
-    dispatch_reduce_aux = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_reduce_aux = intel_engine->create_dispatch(data_mdw.md_);
     dispatch_reduce_aux.define_dim("IC_AUX", 0, conf.ic);
     dispatch_reduce_aux.set_kernel_attr_suffix("AUX");
     dispatch_reduce_aux.generate();

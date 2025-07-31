@@ -53,8 +53,8 @@ struct ir_generator_t : public generator_base_t {
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override {
         try {
             KernelT _kernel(kernel_desc_, engine);
             return _kernel.get_kernel(kernel, engine);
@@ -1188,8 +1188,8 @@ public:
         return kernel_iface().kernel_name().c_str();
     }
 
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override {
         return generator_->get_kernel(kernel, engine);
     }
 

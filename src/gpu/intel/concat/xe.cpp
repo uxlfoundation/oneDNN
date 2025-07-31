@@ -56,7 +56,7 @@ std::pair<int, int> xe_concat_t::pd_t::calculate_iter_dim_idx_chunk(
 }
 
 bool xe_concat_t::pd_t::can_use_sub_group_size(
-        const compute::compute_engine_t *compute_engine, int sub_group_size) {
+        const intel::engine_t *intel_engine, int sub_group_size) {
     auto is_dim_dense = [](const memory_desc_wrapper &mdw, int dim_idx) {
         return mdw.blocking_desc().strides[dim_idx] == 1;
     };
@@ -73,7 +73,7 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
     const memory_desc_wrapper dst_mdw(pd->dst_md());
     const bool is_dst_blocked = dst_mdw.blocking_desc().inner_nblks > 0;
     const int max_sub_group_size
-            = compute_engine->device_info()->max_subgroup_size();
+            = intel_engine->device_info()->max_subgroup_size();
     bool is_concat_axis_aligned = true;
     bool layouts_compatible = is_dst_blocked
             ? get_dim_block(dst_mdw, c_idx) % sub_group_size == 0
@@ -92,15 +92,15 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
     }
     return is_concat_axis_aligned && layouts_compatible
             && sub_group_size <= max_sub_group_size
-            && compute_engine->mayiuse_sub_group(sub_group_size);
+            && intel_engine->mayiuse_sub_group(sub_group_size);
 }
 
 int xe_concat_t::pd_t::calculate_sub_group_size(
-        const compute::compute_engine_t *compute_engine) {
+        const intel::engine_t *intel_engine) {
     // Subgroups are used only for concatenation over C dimension
     if (conf.concat_axis != 1) return 1;
     for (int sub_group_size : {32, 16, 8}) {
-        if (can_use_sub_group_size(compute_engine, sub_group_size)) {
+        if (can_use_sub_group_size(intel_engine, sub_group_size)) {
             return sub_group_size;
         }
     }
@@ -118,9 +118,8 @@ status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_offset0 = dst_mdw.offset0();
     conf.src_type = memory_desc_wrapper(pd->src_md(0)).data_type();
     conf.ndims = dst_mdw.ndims();
-    const auto *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(dst_mdw.md_);
+    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     conf.n = pd->n_inputs();
     conf.concat_axis = pd->concat_dim();
 
@@ -140,10 +139,10 @@ status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.use_large_index = (max_bytes > std::numeric_limits<int>::max());
 
-    conf.sub_group_size = calculate_sub_group_size(compute_engine);
+    conf.sub_group_size = calculate_sub_group_size(intel_engine);
     std::tie(conf.iter_dim_idx, conf.iter_dim_chunk)
             = calculate_iter_dim_idx_chunk(
-                    compute_engine->device_info()->hw_threads());
+                    intel_engine->device_info()->hw_threads());
 
     int sg_chunk = conf.iter_dim_chunk * conf.sub_group_size;
     dim_t chunks = dst_mdw.nelems(true) / sg_chunk;

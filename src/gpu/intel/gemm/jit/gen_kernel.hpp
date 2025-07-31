@@ -75,8 +75,8 @@ struct gen_gemm_kernel_desc_t {
 
     compute::scalar_type_t scalar_type() const;
 
-    status_t create_generator(const compute::compute_engine_t &engine,
-            compute::kernel_t &kernel) const;
+    status_t create_generator(
+            const intel::engine_t &engine, compute::kernel_t &kernel) const;
 
     serialization_stream_t serialize() const {
         return serialization_stream_t(problem_, strategy_);
@@ -164,8 +164,8 @@ struct gen_gemm_kernel_t : public intel::jit::generator_base_t {
         : desc_(desc) {}
 
     const char *kernel_name() const override { return "gemm_kernel"; }
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override;
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override;
 
     const gen_gemm_kernel_desc_t *desc() const { return &desc_; }
 

@@ -17,13 +17,11 @@
 #include <algorithm>
 #include <iomanip>
 #include <limits>
-#include <sstream>
 
-#include "common/math_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -108,7 +106,7 @@ compute::range_t get_optimal_lws(compute::range_t &gws,
     return ret_lws;
 }
 
-dispatch_t::dispatch_t(const compute_engine_t *engine, const memory_desc_t *md)
+dispatch_t::dispatch_t(const engine_t *engine, const memory_desc_t *md)
     : engine_(engine) {
 
     if (md && md->format_kind == dnnl_blocked) {

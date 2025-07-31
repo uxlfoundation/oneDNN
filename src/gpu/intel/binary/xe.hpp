@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-struct xe_binary_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_binary_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
 
@@ -41,8 +41,7 @@ struct xe_binary_t : public gpu_primitive_t {
             using namespace format_tag;
             using sm = primitive_attr_t::skip_mask_t;
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = sm::post_ops | sm::scales;
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
@@ -79,16 +78,16 @@ struct xe_binary_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_BINARY(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_BINARY(compute_engine->mayiuse(
+            VDISPATCH_BINARY(intel_engine->mayiuse(
                                      compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_BINARY(
                     IMPLICATION(
                             utils::one_of(f16, src_md(1)->data_type,
                                     src_md(0)->data_type, dst_md()->data_type),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);

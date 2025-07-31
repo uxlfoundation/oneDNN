@@ -31,7 +31,7 @@ namespace eltwise {
 
 struct xe_eltwise_jit_params_t
     : public trivially_serializable_t<xe_eltwise_jit_params_t> {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         return engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -57,16 +57,15 @@ struct xe_eltwise_jit_params_t
     uint8_t pad0[3] = {};
 };
 
-struct xe_eltwise_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_eltwise_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_fwd_pd_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:xe:any", xe_eltwise_fwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -80,14 +79,14 @@ struct xe_eltwise_fwd_t : public gpu_primitive_t {
                             == memory_desc_wrapper(dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f16,
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f64,
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_ELTWISE(compute_engine->mayiuse_sub_group(16),
+            VDISPATCH_ELTWISE(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 
             VDISPATCH_ELTWISE_SC(init_conf(engine),
@@ -114,8 +113,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct xe_eltwise_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_eltwise_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_bwd_pd_t {
         using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
 
@@ -125,8 +124,7 @@ struct xe_eltwise_bwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace utils;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -144,12 +142,12 @@ struct xe_eltwise_bwd_t : public gpu_primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(
                     IMPLICATION(data_md()->data_type == data_type::f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(
                     IMPLICATION(data_md()->data_type == data_type::f64,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())

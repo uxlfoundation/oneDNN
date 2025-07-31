@@ -46,16 +46,15 @@ struct ref_eltwise_conf_t {
     attr_info_t attr_info;
 };
 
-struct ref_eltwise_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_eltwise_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_fwd_pd_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_eltwise_fwd_t);
 
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -79,11 +78,11 @@ struct ref_eltwise_fwd_t : public gpu_primitive_t {
             VDISPATCH_ELTWISE_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f64,
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f16,
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
@@ -119,8 +118,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_eltwise_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_eltwise_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_bwd_pd_t {
         using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
 
@@ -130,8 +129,7 @@ struct ref_eltwise_bwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace utils;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -149,14 +147,14 @@ struct ref_eltwise_bwd_t : public gpu_primitive_t {
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_ELTWISE(
                     IMPLICATION(data_md()->data_type == data_type::f64,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(
                     IMPLICATION(data_md()->data_type == data_type::f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())

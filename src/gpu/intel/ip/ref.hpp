@@ -31,8 +31,8 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct ref_inner_product_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_inner_product_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_inner_product_fwd_pd_t {
         using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
 
@@ -43,8 +43,7 @@ struct ref_inner_product_fwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops;
@@ -95,7 +94,7 @@ struct ref_inner_product_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(desc()->src_desc.data_type == f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
@@ -132,8 +131,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_inner_product_bwd_data_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_inner_product_bwd_data_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_inner_product_bwd_data_pd_t {
         using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
 
@@ -198,8 +197,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_inner_product_bwd_weights_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_inner_product_bwd_weights_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_inner_product_bwd_weights_pd_t {
         using gpu_inner_product_bwd_weights_pd_t::
                 gpu_inner_product_bwd_weights_pd_t;

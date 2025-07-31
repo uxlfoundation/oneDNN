@@ -47,8 +47,7 @@ void entryObserver(
 } // anonymous namespace
 
 status_t gen_gemm_kernel_desc_t::create_generator(
-        const compute::compute_engine_t &engine,
-        compute::kernel_t &kernel) const {
+        const intel::engine_t &engine, compute::kernel_t &kernel) const {
     gen_gemm_kernel_t kd(*this);
     return engine.create_kernel(&kernel, &kd);
 }
@@ -978,7 +977,7 @@ void gen_gemm_kernel_t::init_interface() {
 }
 
 status_t gen_gemm_kernel_t::get_kernel(
-        compute::kernel_t &kernel, const compute::compute_engine_t *engine) {
+        compute::kernel_t &kernel, const intel::engine_t *engine) {
     init_interface();
     maybe_print_verbose();
 

@@ -23,9 +23,9 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/reduction/atomic.hpp"
 #include "gpu/intel/reduction/utils.hpp"
@@ -216,8 +216,7 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
 }
 
 status_t atomic_reduction_conf_t::init_dispatcher(
-        const compute::compute_engine_t *engine,
-        const gpu_primitive_attr_t *gpu_attr) {
+        const intel::engine_t *engine, const gpu_primitive_attr_t *gpu_attr) {
     std::vector<dim_idx_t> dispatch_dims = {
             reduction_dims::outer,
             reduction_dims::local,
@@ -368,8 +367,8 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const intel::engine_t *intel_engine
+            = utils::downcast<intel::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
@@ -386,17 +385,17 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
                 = from_alg(desc()->alg_kind, false, is_final);
 
         phases.emplace_back(subprbs[i], alg, secondary_alg, src_dt, dst_dt,
-                *compute_engine->device_info(), gpu_attr);
+                *intel_engine->device_info(), gpu_attr);
         atomic_reduction_conf_t &phase = phases.back();
         if (phase.inner_block.block % phase.conf.subgroup_size != 0) {
             return status::unimplemented;
         }
-        CHECK(phase.init_dispatcher(compute_engine, gpu_attr));
+        CHECK(phase.init_dispatcher(intel_engine, gpu_attr));
     }
 
     for (atomic_reduction_conf_t &phase : phases) {
         if (phase.conf.global_acc > 1) {
-            bool ok = compute_engine->mayiuse(
+            bool ok = intel_engine->mayiuse(
                     compute::device_ext_t::ext_float_atomics);
 
             // Due to hardware support and initialization logic, only
@@ -532,9 +531,8 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
             const size_t num_dst_elems = into<size_t>(
                     phase.outer_block.block * phase.inner_block.block);
             size_t dst_size = num_dst_elems * dst_data_size;
-            compute::compute_stream_t *compute_stream
-                    = utils::downcast<compute::compute_stream_t *>(
-                            ctx.stream());
+            intel::stream_t *compute_stream
+                    = utils::downcast<intel::stream_t *>(ctx.stream());
             CHECK(compute_stream->fill(dst_mem, pattern, dst_size,
                     compute_stream->ctx().get_deps(),
                     compute_stream->ctx().get_deps()));

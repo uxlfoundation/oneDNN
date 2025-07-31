@@ -217,7 +217,7 @@ private:
 
     gemmstone::GEMMProblem problem_;
 
-    const pd_t *pd() const { return (const pd_t *)gpu_primitive_t::pd().get(); }
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
 } // namespace gemm

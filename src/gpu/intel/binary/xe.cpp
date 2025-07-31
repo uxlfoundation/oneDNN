@@ -113,8 +113,8 @@ status_t xe_binary_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(dst_d.md_);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch = intel_engine->create_dispatch(dst_d.md_);
 
     format_tag_t dst_tag = dst_d.matches_one_of_tag(nc, ncw, nchw, ncdhw);
     conf.is_plain_layout = dst_tag;

@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-struct xe_global_pooling_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_global_pooling_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
 
@@ -141,8 +141,8 @@ private:
     std::shared_ptr<impl::primitive_t> reduction_p_;
 };
 
-struct xe_global_pooling_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_global_pooling_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
 
@@ -151,8 +151,7 @@ struct xe_global_pooling_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace alg_kind;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             auto diff_dst_dt = diff_dst_md()->data_type;
             auto diff_src_dt = diff_src_md()->data_type;
@@ -179,9 +178,9 @@ struct xe_global_pooling_bwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     IMPLICATION(diff_src_md()->data_type == data_type::f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);

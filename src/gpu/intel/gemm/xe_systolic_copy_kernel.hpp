@@ -20,8 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/serialization.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel.hpp"
+#include "gpu/intel/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -43,7 +43,7 @@ struct xe_systolic_gemm_copy_kernel_t {
         return status::success;
     };
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t ctx;
         CHECK(init_kernel_ctx(ctx));

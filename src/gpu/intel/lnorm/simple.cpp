@@ -73,17 +73,17 @@ static status_t init_conf_common(lnorm_conf_t &conf,
         c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     }
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch_scaleshift = compute_engine->create_dispatch();
-    conf.dispatch_scaleshift_finalize = compute_engine->create_dispatch();
-    conf.dispatch = compute_engine->create_dispatch(
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch_scaleshift = intel_engine->create_dispatch();
+    conf.dispatch_scaleshift_finalize = intel_engine->create_dispatch();
+    conf.dispatch = intel_engine->create_dispatch(
             pd->is_fwd() ? dst_mdw.md_ : src_mdw.md_);
     const auto &dims = pd->is_fwd() ? src_mdw.padded_dims() : dst_mdw.dims();
 
     const int desired_sg_size = 32;
     auto mayiuse_sg = [=](const int sg_size) {
-        return compute_engine->mayiuse_sub_group(sg_size)
-                && compute_engine->mayiuse_block_reads_writes_with_sub_group(
+        return intel_engine->mayiuse_sub_group(sg_size)
+                && intel_engine->mayiuse_block_reads_writes_with_sub_group(
                         sg_size);
     };
 

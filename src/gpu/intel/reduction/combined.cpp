@@ -73,12 +73,12 @@ bool reduction_phase_conf_t::can_use_block_reads() {
 
 reduction_phase_conf_t::reduction_phase_conf_t(
         const reduction_subproblem_t &subprb, data_type_t src_type,
-        data_type_t dst_type, const compute::compute_engine_t *compute_engine,
+        data_type_t dst_type, const intel::engine_t *intel_engine,
         bool large_grf_mode)
     : reduction_subproblem_t(subprb)
     , src_type(src_type)
     , dst_type(dst_type)
-    , subgroup_size(compute_engine->device_info()->max_subgroup_size()) {
+    , subgroup_size(intel_engine->device_info()->max_subgroup_size()) {
     // Short-circuit if zero-dim is present
     gpu_assert(reduction_block.block != 0) << "Reducing over 0 elements";
     if (outer_block.block == 0 || inner_block.block == 0) {
@@ -88,10 +88,10 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     }
     with_block_reads = can_use_block_reads();
 
-    const int num_EU = compute_engine->device_info()->eu_count();
+    const int num_EU = intel_engine->device_info()->eu_count();
     const int max_wg_size = static_cast<int>(
-            compute_engine->device_info()->max_wg_size(large_grf_mode));
-    compute::gpu_arch_t arch = compute_engine->device_info()->gpu_arch();
+            intel_engine->device_info()->max_wg_size(large_grf_mode));
+    compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
     int threads_per_eu
             = large_grf_mode ? 4 : compute::device_info_t::threads_per_eu(arch);
     int num_threads = num_EU * threads_per_eu;
@@ -183,12 +183,11 @@ std::array<reduction_subproblem_t, 2> subdivide_subproblem(
 }
 
 status_t split_into_phases(const reduction_subproblem_t &subprb,
-        data_type_t accum_data_type,
-        const compute::compute_engine_t *compute_engine,
+        data_type_t accum_data_type, const intel::engine_t *intel_engine,
         std::vector<reduction_phase_conf_t> &phases, bool large_grf_mode) {
     const dim_t reduction_elems = subprb.reduction_block.block;
     reduction_phase_conf_t try_phase(subprb, accum_data_type, accum_data_type,
-            compute_engine, large_grf_mode);
+            intel_engine, large_grf_mode);
     // Zero-dim short circuit
     if (try_phase.outer_block.block == 0 || try_phase.inner_block.block == 0) {
         phases.emplace_back(try_phase);
@@ -198,13 +197,13 @@ status_t split_into_phases(const reduction_subproblem_t &subprb,
     //Heuristic:
     // subsplitting has a high cost due to launching multiple sequential threads,
     // so only split when parallelism is low and reductions per thread is large
-    const bool low_parallelism = [&compute_engine, &large_grf_mode,
+    const bool low_parallelism = [&intel_engine, &large_grf_mode,
                                          &try_phase]() {
-        compute::gpu_arch_t arch = compute_engine->device_info()->gpu_arch();
+        compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
         int threads_per_EU = large_grf_mode
                 ? 4
                 : compute::device_info_t::threads_per_eu(arch);
-        const int num_EU = compute_engine->device_info()->eu_count();
+        const int num_EU = intel_engine->device_info()->eu_count();
         const int min_threads = gpu_utils::dev_getenv(
                 "combined_reduction_occ_thresh", threads_per_EU * num_EU / 2);
         const int dispatched_threads
@@ -236,10 +235,10 @@ status_t split_into_phases(const reduction_subproblem_t &subprb,
     auto subdivided
             = subdivide_subproblem(subprb, reduction_elems / reduction_end);
     phases.emplace_back(subdivided[0], accum_data_type, accum_data_type,
-            compute_engine, large_grf_mode);
+            intel_engine, large_grf_mode);
     if (reduction_end > 1) {
         phases.emplace_back(subdivided[1], accum_data_type, accum_data_type,
-                compute_engine, large_grf_mode);
+                intel_engine, large_grf_mode);
     }
     return status::success;
 }
@@ -296,8 +295,8 @@ status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         return status::unimplemented;
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const intel::engine_t *intel_engine
+            = utils::downcast<intel::engine_t *>(engine);
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
@@ -306,8 +305,8 @@ status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     data_type_t accum_data_type = types::default_accum_data_type(
             src_mdw.data_type(), data_type::undef);
     for (auto &subprb : subprbs) {
-        CHECK(split_into_phases(subprb, accum_data_type, compute_engine, phases,
-                large_grf_mode));
+        CHECK(split_into_phases(
+                subprb, accum_data_type, intel_engine, phases, large_grf_mode));
     }
 
     // Compute div from basic mdw dims

@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-struct simple_layer_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_layer_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_fwd_pd_t {
         using gpu_layer_normalization_fwd_pd_t::
                 gpu_layer_normalization_fwd_pd_t;
@@ -42,8 +42,8 @@ struct simple_layer_normalization_fwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto dst_dt = dst_md()->data_type;
@@ -54,10 +54,10 @@ struct simple_layer_normalization_fwd_t : public gpu_primitive_t {
             bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(IMPLICATION(uses_f16,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16))
                             && IMPLICATION(uses_f64,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(
@@ -112,8 +112,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct simple_layer_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_layer_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_bwd_pd_t {
         using gpu_layer_normalization_bwd_pd_t::
                 gpu_layer_normalization_bwd_pd_t;
@@ -124,8 +124,8 @@ struct simple_layer_normalization_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            const auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<intel::engine_t *>(engine);
 
             auto src_dt = src_md()->data_type;
             auto diff_dst_dt = diff_dst_md()->data_type;
@@ -138,10 +138,10 @@ struct simple_layer_normalization_bwd_t : public gpu_primitive_t {
 
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(IMPLICATION(uses_f16,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16))
                             && IMPLICATION(uses_f64,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(

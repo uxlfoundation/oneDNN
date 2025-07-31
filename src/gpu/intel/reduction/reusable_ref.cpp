@@ -21,8 +21,8 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/reduction/reusable_ref.hpp"
 #include "gpu/intel/reduction/utils.hpp"
@@ -71,8 +71,7 @@ ref_reduction_conf_t::ref_reduction_conf_t(const reduction_subproblem_t &subprb,
 }
 
 status_t ref_reduction_conf_t::init_dispatcher(
-        const reduction_subproblem_t &subprb,
-        const compute::compute_engine_t &engine,
+        const reduction_subproblem_t &subprb, const intel::engine_t &engine,
         gpu_primitive_attr_t *gpu_attr) {
 
     compute::named_buffer_t src_buf("SRC");
@@ -167,8 +166,8 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    const compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    const intel::engine_t *intel_engine
+            = utils::downcast<intel::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
@@ -183,9 +182,9 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         data_type_t dst_dt = is_final ? dst_mdw.data_type() : accum_data_type;
 
         phases.emplace_back(subprbs[i], phase_alg, src_dt, dst_dt,
-                *compute_engine->device_info(), gpu_attr);
+                *intel_engine->device_info(), gpu_attr);
         auto &phase = phases.back();
-        CHECK(phase.init_dispatcher(subprbs[i], *compute_engine, gpu_attr));
+        CHECK(phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr));
     }
 
     // Compute div from basic mdw dims

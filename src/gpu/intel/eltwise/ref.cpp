@@ -48,8 +48,8 @@ static status_t init_conf_common(ref_eltwise_conf_t &conf,
     conf.with_zero_padding = src_d.nelems(false) != src_d.nelems(true);
 
     int max_ndims = 6;
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    conf.dispatch = compute_engine->create_dispatch(
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    conf.dispatch = intel_engine->create_dispatch(
             is_forward ? src_d.md_ : diff_data_d.md_);
     for (int i = 0; i < max_ndims; ++i) {
         if (i < ndims)

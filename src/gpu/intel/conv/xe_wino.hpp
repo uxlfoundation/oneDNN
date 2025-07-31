@@ -31,8 +31,8 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_wino_convolution_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_fwd_pd_t {
         using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
 
@@ -42,8 +42,7 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             auto src_data_t = this->desc()->src_desc.data_type;
             auto dst_data_t = this->desc()->dst_desc.data_type;
@@ -62,15 +61,15 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
                                    expect_data_types(f32, f32, f32, f32, f32),
                                    expect_data_types(f16, f16, f16, f16, f32)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_CONV(compute_engine->mayiuse(
+            VDISPATCH_CONV(intel_engine->mayiuse(
                                    compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_CONV(
                     IMPLICATION(src_data_t == f16,
                             true
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
@@ -81,11 +80,11 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
             VDISPATCH_CONV(post_ops_with_binary_ok(attr(), desc()->dst_desc),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            VDISPATCH_CONV_SC(init_conf(compute_engine),
+            VDISPATCH_CONV_SC(init_conf(intel_engine),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "convolution");
 
             int sub_group_size = conf.wino_ic_block / 2; // LWX
-            VDISPATCH_CONV(compute_engine->mayiuse_sub_group(sub_group_size),
+            VDISPATCH_CONV(intel_engine->mayiuse_sub_group(sub_group_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 
             init_scratchpad();
@@ -100,7 +99,7 @@ struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
             return status::success;
         }
 
-        status_t init_conf(compute::compute_engine_t *engine);
+        status_t init_conf(intel::engine_t *engine);
         void init_scratchpad();
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 

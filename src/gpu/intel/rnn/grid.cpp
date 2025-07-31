@@ -570,11 +570,9 @@ status_t simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     using namespace format_tag;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
-    const compute::device_info_t &device_info
-            = *(compute_engine->device_info());
+    const compute::device_info_t &device_info = *(intel_engine->device_info());
     max_eus_per_wg = device_info.max_eus_per_wg();
 
     const alg_kind_t cell_kind = this->desc()->cell_kind;
@@ -630,15 +628,14 @@ status_t simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_RNN(IMPLICATION(src_layer_dt == data_type::u8,
                           this->desc()->prop_kind == forward_inference),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_RNN(
-            compute_engine->mayiuse(compute::device_ext_t::intel_subgroups),
+    VDISPATCH_RNN(intel_engine->mayiuse(compute::device_ext_t::intel_subgroups),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
     VDISPATCH_RNN(
             IMPLICATION(src_layer_dt == data_type::f16,
                     true
-                            && compute_engine->mayiuse(
+                            && intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                            && compute_engine->mayiuse(compute::device_ext_t::
+                            && intel_engine->mayiuse(compute::device_ext_t::
                                             intel_subgroups_short)),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
@@ -1177,8 +1174,8 @@ grid_execution_sig((simple_rnn_common_t<aprop>::linear_execution)) {
     dim_t n_iter = rnn.n_iter;
 
     if (aprop == prop_kind::backward && pd()->diff_weights_overwrite()) {
-        compute::compute_stream_t *compute_stream
-                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        intel::stream_t *compute_stream
+                = utils::downcast<intel::stream_t *>(ctx.stream());
         auto zero = [&](const memory_storage_t &data, int arg_id) {
             auto mdw = memory_desc_wrapper(pd()->arg_md(arg_id));
             return compute_stream->fill(data, 0, mdw.size(),
@@ -1257,7 +1254,7 @@ grid_execution_sig((simple_rnn_common_t<aprop>::linear_execution)) {
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+        intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
         dim_t n_bias, dim_t n_gates, dim_t dhc, const memory_storage_t &ws_bias,
         const memory_storage_t &scales, const memory_storage_t &wei_layer,
         const memory_storage_t &wei_iter, const memory_storage_t &bias) const {
@@ -1289,10 +1286,10 @@ status_t simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, bool lr, bool rl,
-        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
-        dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-        dim_t scratch_diff_states_ld, const memory_storage_t &ws_states,
+        intel::stream_t *compute_stream, bool lr, bool rl, dim_t batch,
+        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+        dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+        const memory_storage_t &ws_states,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &input,
         const memory_storage_t &diff_dst_layer) const {
@@ -1348,8 +1345,8 @@ status_t simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t batch, dim_t dhc,
-        dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
+        intel::stream_t *compute_stream, dim_t batch, dim_t dhc, dim_t sic,
+        dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
         dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const rnn_utils::workspace_t &ws,
         const memory_storage_t *scratch_diff_states,
@@ -1420,10 +1417,9 @@ status_t simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, bool lr, bool rl,
-        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
-        dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-        dim_t scratch_diff_states_ld,
+        intel::stream_t *compute_stream, bool lr, bool rl, dim_t batch,
+        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+        dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &dst_last_layer,
         const memory_storage_t &diff_src_layer,
@@ -1482,8 +1478,8 @@ status_t simple_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t batch, dim_t dhc,
-        dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
+        intel::stream_t *compute_stream, dim_t batch, dim_t dhc, dim_t sic,
+        dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
         dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &dst_last_iter,
@@ -1559,8 +1555,7 @@ template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
 
     impl::engine_t *engine = ctx.stream()->engine();
-    auto *compute_stream
-            = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+    auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     const conf_t &rnn = this->pd()->rnn_conf;
 

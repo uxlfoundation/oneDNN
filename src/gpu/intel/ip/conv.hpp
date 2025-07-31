@@ -31,7 +31,7 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct convolution_inner_product_fwd_t : public gpu_primitive_t {
+struct convolution_inner_product_fwd_t : public primitive_t {
     struct pd_t : public gpu_inner_product_fwd_pd_t {
         using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
 
@@ -44,8 +44,7 @@ struct convolution_inner_product_fwd_t : public gpu_primitive_t {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops;
@@ -71,7 +70,7 @@ struct convolution_inner_product_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(desc()->src_desc.data_type == f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
@@ -104,7 +103,7 @@ struct convolution_inner_product_fwd_t : public gpu_primitive_t {
         status_t init_scratchpad();
     };
 
-    convolution_inner_product_fwd_t(const pd_t *apd) : gpu_primitive_t(apd) {}
+    convolution_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(impl::engine_t *engine) override {
         CHECK(create_nested_primitive(conv_, pd()->cpd_, engine));

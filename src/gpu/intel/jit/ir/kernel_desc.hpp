@@ -26,7 +26,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-struct gpu_primitive_t;
+struct primitive_t;
 
 namespace compute {
 class kernel_t;
@@ -50,7 +50,7 @@ public:
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const = 0;
     virtual status_t create_kernel(compute::kernel_t &kernel,
-            gpu_primitive_t *primitive, impl::engine_t *engine) const = 0;
+            primitive_t *primitive, impl::engine_t *engine) const = 0;
     virtual serialization_stream_t serialize() const = 0;
 };
 

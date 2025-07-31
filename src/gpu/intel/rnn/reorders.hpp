@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-struct rnn_weights_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct rnn_weights_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public reorder_pd_t {
         using reorder_pd_t::reorder_pd_t;
 
@@ -51,10 +51,9 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
             VDISPATCH_REORDER(dst_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(dst_engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(dst_engine);
 
-            VDISPATCH_REORDER(compute_engine->mayiuse(
+            VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_REORDER(
@@ -62,9 +61,9 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
                             utils::one_of(data_type::f16, src_md()->data_type,
                                     dst_md()->data_type),
                             true
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);

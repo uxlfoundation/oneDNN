@@ -16,7 +16,6 @@
 #ifndef GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
 #define GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
 
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -53,8 +52,8 @@
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
 
-#include "gpu/intel/compute/engine.hpp"
-#include "gpu/intel/compute/stream.hpp"
+#include "gpu/intel/engine.hpp"
+#include "gpu/intel/stream.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif
@@ -2737,11 +2736,11 @@ struct genindex_executable_t : public op_executable_t {
                 kernel_ctx.define_int(
                         dnnl::impl::utils::format("S%d", d), stride);
             }
-            auto *compute_engine
-                    = dnnl::impl::utils::downcast<compute::compute_engine_t *>(
+            auto *intel_engine
+                    = dnnl::impl::utils::downcast<gpu::intel::engine_t *>(
                             p_engine.get());
             std::vector<compute::kernel_t> kernels(1);
-            compute_engine->create_kernels(&kernels, {"gen_index"}, kernel_ctx);
+            intel_engine->create_kernels(&kernels, {"gen_index"}, kernel_ctx);
             kernel_ = kernels[0];
         }
 #endif
@@ -2772,7 +2771,7 @@ struct genindex_executable_t : public op_executable_t {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
         auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
+                = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
                         stream.get());
         compute::range_t gws = {static_cast<size_t>(nelems_)};
         auto nd_range = compute::nd_range_t(gws);
@@ -2807,7 +2806,7 @@ struct genindex_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
         auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
+                = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
                         stream.get());
 
         compute::range_t gws = {static_cast<size_t>(nelems_)};

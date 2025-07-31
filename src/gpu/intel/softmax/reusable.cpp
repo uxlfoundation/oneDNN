@@ -108,17 +108,17 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
     compute::named_buffer_t src_buf("SRC", *src_md(), src_dim_ids);
     compute::named_buffer_t dst_buf("DST", src_buf);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
-            compute_engine, std::move(dispatch_dim_ids));
+            intel_engine, std::move(dispatch_dim_ids));
     CHECK(dispatch_config.register_buffer(src_buf));
     CHECK(dispatch_config.register_buffer(dst_buf));
 
     compute::reusable_dispatch_t dispatch;
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    CHECK(dispatch_config.generate(dispatch,
-            compute::default_lws_strategy_t(compute_engine, gpu_attr)));
+    CHECK(dispatch_config.generate(
+            dispatch, compute::default_lws_strategy_t(intel_engine, gpu_attr)));
 
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
@@ -179,9 +179,9 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     std::vector<dim_idx_t> dispatch_dims = std::move(dims_ids);
     dispatch_dims[softmax_axis] = softmax_dims_t::workers;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
-            compute_engine, std::move(dispatch_dims));
+            intel_engine, std::move(dispatch_dims));
     CHECK(dispatch_config.register_buffer(src_buf));
     CHECK(dispatch_config.register_buffer(dst_buf));
     CHECK(dispatch_config.register_buffer(ori_buf));
@@ -189,7 +189,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
     compute::reusable_dispatch_t dispatch;
-    auto lws_strat = softmax_lws_strategy_t(compute_engine, gpu_attr);
+    auto lws_strat = softmax_lws_strategy_t(intel_engine, gpu_attr);
     lws_strat.include(softmax_dims_t::workers, num_workers_per_workgroup);
     CHECK(dispatch_config.generate(dispatch, lws_strat));
     conf.gws_params = dispatch.get_compile_params();
@@ -198,7 +198,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     auto dispatch_lws = dispatch.get_runtime_params().nd_range.local_range();
     auto dispatch_gws = dispatch.get_runtime_params().nd_range.global_range();
 
-    auto *device_info = compute_engine->device_info();
+    auto *device_info = intel_engine->device_info();
     const size_t multiple_of_sg_lws
             = utils::rnd_up(dispatch_lws[0], device_info->max_subgroup_size());
 

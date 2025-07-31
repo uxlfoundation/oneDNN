@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-struct xe_pooling_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_pooling_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
 
@@ -41,8 +41,7 @@ struct xe_pooling_fwd_t : public gpu_primitive_t {
             using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
             auto src_data_t = src_md()->data_type;
             auto dst_data_t = dst_md()->data_type;
             auto acc_data_t = desc()->accum_data_type;
@@ -74,14 +73,14 @@ struct xe_pooling_fwd_t : public gpu_primitive_t {
                     "does not support dilations");
             VDISPATCH_POOLING(!utils::one_of(f64, src_data_t, dst_data_t),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(compute_engine->mayiuse(
+            VDISPATCH_POOLING(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_POOLING(
                     IMPLICATION(src_data_t == f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -128,8 +127,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct xe_pooling_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_pooling_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
 
@@ -138,8 +137,7 @@ struct xe_pooling_bwd_t : public gpu_primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace alg_kind;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(utils::one_of(desc()->prop_kind, backward_data),
@@ -168,13 +166,13 @@ struct xe_pooling_bwd_t : public gpu_primitive_t {
                     "does not support dilations");
             VDISPATCH_POOLING(
                     IMPLICATION(diff_src_md()->data_type == data_type::f16,
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(compute_engine->mayiuse(
+            VDISPATCH_POOLING(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 

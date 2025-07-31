@@ -22,10 +22,10 @@
 #include "gpu/intel/jit/binary_format.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/compute/engine.hpp"
-#include "gpu/intel/compute/stream.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/stream.hpp"
 
 #define MAGIC0 0xBEEFCAFEu
 #define MAGIC1 0x3141592653589793ull
@@ -156,7 +156,7 @@ public:
     }
 
     static compute::kernel_t make_kernel(
-            compute::compute_engine_t *engine, bool *skip_check) {
+            intel::engine_t *engine, bool *skip_check) {
         compute::kernel_t kernel;
 
         *skip_check = false;
@@ -221,7 +221,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     }
 #endif
 
-    auto gpu_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto gpu_engine = utils::downcast<intel::engine_t *>(engine);
 
     if (!gpu_engine) {
         VERROR(common, runtime, "bad engine kind, expected a gpu engine");
@@ -232,7 +232,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     auto status = gpu_engine->get_service_stream(stream_generic);
     if (status != status::success) return status::runtime_error;
 
-    auto stream = utils::downcast<compute::compute_stream_t *>(stream_generic);
+    auto stream = utils::downcast<intel::stream_t *>(stream_generic);
     if (!stream) return status::invalid_arguments;
 
     bool skip_check = false;
@@ -314,7 +314,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     auto nd_range = compute::nd_range_t(gws, lws);
 
-    auto compute_stream = utils::downcast<compute::compute_stream_t *>(stream);
+    auto compute_stream = utils::downcast<intel::stream_t *>(stream);
     status = kernel.parallel_for(*stream, nd_range, arg_list,
             compute_stream->ctx().get_deps(), compute_stream->ctx().get_deps());
 

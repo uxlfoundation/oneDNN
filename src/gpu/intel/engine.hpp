@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_ENGINE_HPP
-#define GPU_INTEL_COMPUTE_ENGINE_HPP
+#ifndef GPU_INTEL_ENGINE_HPP
+#define GPU_INTEL_ENGINE_HPP
 
 #include <cassert>
 #include <memory>
@@ -47,16 +47,16 @@ namespace jit {
 struct generator_base_t;
 }
 
-namespace compute {
-
-class compute_engine_t : public gpu::engine_t {
+class engine_t : public gpu::engine_t {
 public:
-    compute_engine_t(impl::engine_impl_t *impl) : engine_t(impl) {}
+    engine_t(impl::engine_impl_t *impl) : gpu::engine_t(impl) {}
 
     virtual status_t init();
     status_t init(const std::vector<uint8_t> &cache_blob);
 
-    const device_info_t *device_info() const { return device_info_.get(); }
+    const compute::device_info_t *device_info() const {
+        return device_info_.get();
+    }
 
     virtual status_t create_kernel(
             compute::kernel_t *kernel, jit::generator_base_t *jitter) const = 0;
@@ -65,18 +65,18 @@ public:
             const std::vector<const char *> &kernel_names,
             const compute::kernel_ctx_t &kernel_ctx) const = 0;
 
-    status_t create_kernel_bundle(kernel_bundle_t &bundle,
+    status_t create_kernel_bundle(compute::kernel_bundle_t &bundle,
             const std::vector<const char *> &kernel_names,
             const compute::kernel_ctx_t &kernel_ctx) const {
-        std::vector<kernel_t> kernels;
+        std::vector<compute::kernel_t> kernels;
         CHECK(create_kernels(&kernels, kernel_names, kernel_ctx));
-        bundle = kernel_bundle_t(std::move(kernels), kernel_names);
+        bundle = compute::kernel_bundle_t(std::move(kernels), kernel_names);
         return status::success;
     }
 
     virtual status_t create_kernel_from_binary(compute::kernel_t &kernel,
             const xpu::binary_t &binary, const char *kernel_name,
-            const program_src_t &src) const = 0;
+            const compute::program_src_t &src) const = 0;
 
     virtual status_t create_kernels_from_cache_blob(
             const cache_blob_t &cache_blob,
@@ -116,26 +116,28 @@ public:
     bool mayiuse_f16_accumulator_with_f16() const override {
         // XeHPC+ must use f32 accumulation with f16 operations as documented.
         switch (device_info_->gpu_arch()) {
-            case gpu_arch_t::xe_lp:
-            case gpu_arch_t::xe_hp:
-            case gpu_arch_t::xe_hpg: return true;
+            case compute::gpu_arch_t::xe_lp:
+            case compute::gpu_arch_t::xe_hp:
+            case compute::gpu_arch_t::xe_hpg: return true;
             default: return false;
         }
     }
 
-    bool mayiuse(device_ext_t ext) const { return device_info_->has(ext); }
+    bool mayiuse(compute::device_ext_t ext) const {
+        return device_info_->has(ext);
+    }
 
     bool is_xe_lp() const {
-        return device_info_->gpu_arch() == gpu_arch_t::xe_lp;
+        return device_info_->gpu_arch() == compute::gpu_arch_t::xe_lp;
     }
     bool is_xe_hp() const {
-        return device_info_->gpu_arch() == gpu_arch_t::xe_hp;
+        return device_info_->gpu_arch() == compute::gpu_arch_t::xe_hp;
     }
     bool is_xe_hpg() const {
-        return device_info_->gpu_arch() == gpu_arch_t::xe_hpg;
+        return device_info_->gpu_arch() == compute::gpu_arch_t::xe_hpg;
     }
     bool is_xe_hpc() const {
-        return device_info_->gpu_arch() == gpu_arch_t::xe_hpc;
+        return device_info_->gpu_arch() == compute::gpu_arch_t::xe_hpc;
     }
     bool mayiuse_ngen_kernels() const {
         return device_info_->mayiuse_ngen_kernels();
@@ -164,8 +166,9 @@ public:
         return device_info()->mayiuse_systolic();
     }
 
-    dispatch_t create_dispatch(const memory_desc_t *md = nullptr) const {
-        return dispatch_t(this, md);
+    compute::dispatch_t create_dispatch(
+            const memory_desc_t *md = nullptr) const {
+        return compute::dispatch_t(this, md);
     }
 
     virtual gpu_utils::device_id_t device_id() const = 0;
@@ -177,9 +180,9 @@ protected:
         return status::runtime_error;
     }
 
-    ~compute_engine_t() override = default;
+    ~engine_t() override = default;
 
-    std::shared_ptr<device_info_t> device_info_;
+    std::shared_ptr<compute::device_info_t> device_info_;
 
 private:
     // Implement a zero_pad_primitive shared across the engine. The purpose is
@@ -191,10 +194,6 @@ private:
     std::once_flag zero_pad_init_;
 };
 
-extern const char *cl_microkernels_check_kernel_code;
-bool mayiuse_microkernels(const compute_engine_t *engine);
-
-} // namespace compute
 } // namespace intel
 } // namespace gpu
 } // namespace impl

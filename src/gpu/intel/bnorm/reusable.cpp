@@ -57,7 +57,7 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
         reusable_bnorm_runtime_params_t &rt_conf, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw,
         const gpu_primitive_attr_t *gpu_attr) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     const size_t ndims = static_cast<size_t>(data_mdw.ndims());
     dim_t calc_dims[MAX_DIMS];
     auto &dims = data_mdw.dims();
@@ -109,15 +109,14 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
         }
     }
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
-            compute_engine, dim_ids);
+            intel_engine, dim_ids);
     CHECK(calc_stat_dispatch_config.register_buffer(src_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(dst_buf));
     CHECK(calc_stat_dispatch_config.define_dim_index(
             "IC_DIM", bnorm_dims_t::ic, rt_conf.ic));
 
     compute::reusable_dispatch_t dispatch_calc_stat;
-    auto lws_strategy
-            = compute::default_lws_strategy_t(compute_engine, gpu_attr);
+    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
     CHECK(calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy));
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf.calc_stat_params = dispatch_calc_stat.get_runtime_params();
@@ -129,7 +128,7 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
 
     // Reduce kernels dispatch to ic dim only
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
-            compute_engine, {bnorm_dims_t::ic});
+            intel_engine, {bnorm_dims_t::ic});
     CHECK(reduce_stat_dispatch_config.register_buffer(reduce_buffer));
 
     compute::reusable_dispatch_t dispatch_reduce_stat;
@@ -162,21 +161,21 @@ static status_t init_conf_common(reusable_bnorm_params_t &conf,
 
     conf.with_leaky_relu = conf.with_relu && rt_conf.relu_negative_slope != 0.f;
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);
     compute::named_buffer_t buffer("BUFFER", *data_mdw.md_, dims);
 
     // Dispatch to all dims
-    compute::reusable_dispatch_config_t dispatch_config(compute_engine, dims);
+    compute::reusable_dispatch_config_t dispatch_config(intel_engine, dims);
     CHECK(dispatch_config.register_buffer(buffer));
     CHECK(dispatch_config.define_dim_index(
             "IC_DIM", bnorm_dims_t::ic, rt_conf.ic));
 
     compute::reusable_dispatch_t dispatch;
-    CHECK(dispatch_config.generate(dispatch,
-            compute::default_lws_strategy_t(compute_engine, gpu_attr)));
+    CHECK(dispatch_config.generate(
+            dispatch, compute::default_lws_strategy_t(intel_engine, gpu_attr)));
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
 

@@ -52,8 +52,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             using arch_t = compute::gpu_arch_t;
 
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -68,7 +67,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto &attr_zps = attr()->zero_points_;
             auto &attr_scales = attr()->scales_;
 
-            dev_info_ = compute_engine->device_info();
+            dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
             init_attrs();
@@ -192,7 +191,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     IMPLICATION(with_bias(),
                             (d->c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
+            VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
                                    !with_bias()
@@ -234,12 +233,12 @@ struct gen_gemm_t : public gpu_gemm_t {
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
 
             bool has_systolic
-                    = compute_engine->mayiuse(compute::device_ext_t::
+                    = intel_engine->mayiuse(compute::device_ext_t::
                                       intel_subgroup_matrix_multiply_accumulate)
-                    || compute_engine->mayiuse(compute::device_ext_t::
+                    || intel_engine->mayiuse(compute::device_ext_t::
                                     intel_subgroup_split_matrix_multiply_accumulate);
 
-            bool is_integrated = compute_engine->device_info()->is_integrated();
+            bool is_integrated = intel_engine->device_info()->is_integrated();
 
             // Size checks for fused reduction kernels.
             if (with_sum_ab()) {
@@ -568,10 +567,9 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto zg_max = pd()->dev_info_->hw_threads(false);
             zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
-            CHECK(lookup_zero_pool(compute_engine, nullptr,
-                    zero_pool_chunk_size_, &zero_pool_));
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            CHECK(lookup_zero_pool(
+                    intel_engine, nullptr, zero_pool_chunk_size_, &zero_pool_));
 
             nocopy_kernel_.save_output_events();
         }
@@ -582,7 +580,7 @@ struct gen_gemm_t : public gpu_gemm_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
-    status_t launch_nocopy(const exec_ctx_t &ctx, compute::compute_stream_t *s,
+    status_t launch_nocopy(const exec_ctx_t &ctx, intel::stream_t *s,
             zero_pool_t *zero_pool, const memory_storage_t &a,
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,

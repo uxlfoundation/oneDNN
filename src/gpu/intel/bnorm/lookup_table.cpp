@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/bnorm/lookup_table.hpp"
-#include "gpu/intel/compute/engine.hpp"
+#include "gpu/intel/engine.hpp"
 
 #include <string>
 #include <vector>
@@ -43,8 +43,8 @@ void maybe_override_bn_conf_params_env(params_t &conf) {
 void maybe_override_bn_conf_params_table(
         params_t &conf, impl::engine_t *engine) {
     assert(!conf.bn_tuning);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     static bnorm_lookup_table_t table(conf.use_stats_one_pass);
     auto *s_params = table.find(conf, gpu_arch);
     if (s_params) {

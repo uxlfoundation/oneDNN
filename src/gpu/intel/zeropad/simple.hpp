@@ -33,16 +33,15 @@ namespace zeropad {
             status::unimplemented, "%s," msg, this->info(engine), \
             ##__VA_ARGS__)
 
-struct simple_zero_pad_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_zero_pad_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_zero_pad_pd_t {
         using gpu_zero_pad_pd_t::gpu_zero_pad_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_zero_pad_t);
         status_t init(impl::engine_t *engine) {
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
-            VDISPATCH_ZERO_PAD(compute_engine->mayiuse_sub_group(16),
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            VDISPATCH_ZERO_PAD(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup(16)");
             return status::success;
         }

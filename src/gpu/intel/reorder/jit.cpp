@@ -42,8 +42,8 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
         impl::engine_t *src_engine, impl::engine_t *dst_engine) {
     const auto src_dt = src_md()->data_type;
     const auto dst_dt = dst_md()->data_type;
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *device_info = intel_engine->device_info();
     using namespace data_type;
 
     auto post_ops_ok = [&]() {
@@ -136,7 +136,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
             check_layout(src_layout), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
     VDISPATCH_REORDER(
             check_layout(dst_layout), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
-    VDISPATCH_REORDER(compute_engine->mayiuse_ngen_kernels(),
+    VDISPATCH_REORDER(intel_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
 
     auto *gpu_attr

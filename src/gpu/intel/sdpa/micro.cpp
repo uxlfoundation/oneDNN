@@ -22,10 +22,10 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/microkernel_provider.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 
-#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <vector>
@@ -101,12 +101,12 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using gemm::jit::convert_dnnl_to_kernel_type;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto *dev_info = compute_engine->device_info();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *dev_info = intel_engine->device_info();
     arch_ = dev_info->gpu_arch();
     auto *d = desc();
 
-    VCHECK_SDPA_COND(compute::mayiuse_microkernels(compute_engine),
+    VCHECK_SDPA_COND(compute::mayiuse_microkernels(intel_engine),
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
@@ -115,10 +115,10 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool thin_q = (d->queries() <= thin_q_threshold);
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
-    bool is_integrated = compute_engine->device_info()->is_integrated();
+    bool is_integrated = intel_engine->device_info()->is_integrated();
     bool is_f32 = (qry_md()->data_type == data_type::f32);
     use_systolic_ukernel_
-            = compute_engine->mayiuse(compute::device_ext_t::
+            = intel_engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)
             && !is_f32; // f32 -> non-systolic kernel only
 

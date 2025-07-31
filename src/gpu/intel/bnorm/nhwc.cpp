@@ -48,12 +48,12 @@ static size_t get_slm_buff_size(
 static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
         bool large_grf_mode = false) {
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto eu_count = compute_engine->device_info()->eu_count();
-    auto max_lws = compute_engine->device_info()->max_wg_size(large_grf_mode);
-    auto eus_per_ss = compute_engine->device_info()->max_eus_per_wg();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto eu_count = intel_engine->device_info()->eu_count();
+    auto max_lws = intel_engine->device_info()->max_wg_size(large_grf_mode);
+    auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     const int max_ss = div_up(eu_count, eus_per_ss);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
     const int max_slm_size = compute::device_info_t::max_slm_size(gpu_arch);
 
     auto generated_nd = dispatch.nd_range();
@@ -204,8 +204,8 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
     // TODO: create flags() accessor that returns the correct type
     conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
     // and was tuned for XeHPG+ only
@@ -276,18 +276,18 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
     conf.sp_tail = rnd_dn(conf.sp, conf.vect_size);
 
     // Set dispatching
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = intel_engine->create_dispatch();
     CHECK(nhwc_bnorm_kernel_dispatching(
             calc_mean_ker, conf, engine, dispatch_calc_stat));
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     CHECK(nhwc_bnorm_kernel_dispatching(
             reduce_stats_fwd_ker, conf, engine, dispatch_reduce_stat));
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             default_fwd_ker, conf, engine, dispatch));
 
-    dispatch_reduce_aux = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_reduce_aux = intel_engine->create_dispatch(data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             reduce_aux_init_ker, conf, engine, dispatch_reduce_aux));
 

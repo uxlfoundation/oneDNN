@@ -34,9 +34,9 @@ static void init_calculate_stats_conf(bnorm_conf_t &conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     const int ndims = conf.ndims;
-    dispatch_calc_stat = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_calc_stat = intel_engine->create_dispatch(data_mdw.md_);
     dim_t calc_dims[5];
     auto &dims = data_mdw.dims();
     calc_dims[0] = dims[0];
@@ -69,7 +69,7 @@ static void init_calculate_stats_conf(bnorm_conf_t &conf,
     dispatch_calc_stat.set_kernel_attr_suffix("CALC");
     dispatch_calc_stat.generate();
 
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     dispatch_reduce_stat.define_dim("REDUCE_STAT_IC", conf.ic);
     dispatch_reduce_stat.set_kernel_attr_suffix("REDUCE");
     dispatch_reduce_stat.generate();
@@ -108,9 +108,9 @@ static void init_conf_common(bnorm_conf_t &conf, compute::dispatch_t &dispatch,
 
     set_offsets(data_mdw, off.src_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.mb);
     dispatch.define_dim("IC", 1, conf.ic);
     dispatch.define_dim("ID", nstl::max(1, ndims - 3), conf.id);

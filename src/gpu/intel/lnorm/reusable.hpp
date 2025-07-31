@@ -44,7 +44,7 @@ struct reusable_lnorm_params_t
         return kernel_names;
     }
 
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -78,8 +78,8 @@ struct reusable_lnorm_runtime_params_t {
 
 //************* FWD implementation *************//
 
-struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_layer_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_fwd_pd_t {
         using gpu_layer_normalization_fwd_pd_t::
                 gpu_layer_normalization_fwd_pd_t;
@@ -89,8 +89,7 @@ struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             data_type_t src_dt = src_md()->data_type;
             data_type_t dst_dt = dst_md()->data_type;
@@ -99,9 +98,9 @@ struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
             const bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
 
             const bool f16_ok = IMPLICATION(uses_f16,
-                    compute_engine->mayiuse(compute::device_ext_t::khr_fp16));
+                    intel_engine->mayiuse(compute::device_ext_t::khr_fp16));
             const bool f64_ok = IMPLICATION(uses_f64,
-                    compute_engine->mayiuse(compute::device_ext_t::khr_fp64));
+                    intel_engine->mayiuse(compute::device_ext_t::khr_fp64));
 
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(f16_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp16");
@@ -156,8 +155,8 @@ private:
 
 //************* BWD implementation *************//
 
-struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_layer_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_bwd_pd_t {
         using gpu_layer_normalization_bwd_pd_t::
                 gpu_layer_normalization_bwd_pd_t;
@@ -167,8 +166,7 @@ struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             data_type_t src_dt = diff_src_md()->data_type;
             data_type_t dst_dt = diff_dst_md()->data_type;
@@ -177,9 +175,9 @@ struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
             const bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
 
             const bool f16_ok = IMPLICATION(uses_f16,
-                    compute_engine->mayiuse(compute::device_ext_t::khr_fp16));
+                    intel_engine->mayiuse(compute::device_ext_t::khr_fp16));
             const bool f64_ok = IMPLICATION(uses_f64,
-                    compute_engine->mayiuse(compute::device_ext_t::khr_fp64));
+                    intel_engine->mayiuse(compute::device_ext_t::khr_fp64));
 
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(f16_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp16");

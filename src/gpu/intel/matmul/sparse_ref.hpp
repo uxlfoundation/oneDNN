@@ -34,8 +34,8 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-struct ref_sparse_matmul_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_sparse_matmul_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_matmul_pd_t {
         using gpu_matmul_pd_t::gpu_matmul_pd_t;
 

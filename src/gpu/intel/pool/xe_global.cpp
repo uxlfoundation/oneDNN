@@ -23,10 +23,10 @@ namespace intel {
 namespace pool {
 
 dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    const int hw_threads = compute_engine->device_info()->hw_threads();
-    const bool is_xe_hp_plus = compute_engine->is_xe_hp()
-            || compute_engine->is_xe_hpg() || compute_engine->is_xe_hpc();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const int hw_threads = intel_engine->device_info()->hw_threads();
+    const bool is_xe_hp_plus = intel_engine->is_xe_hp()
+            || intel_engine->is_xe_hpg() || intel_engine->is_xe_hpc();
 
     const dim_t spatial_dim = conf.id * conf.ih * conf.iw;
     dim_t chunk_size = spatial_dim;
@@ -83,20 +83,20 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     conf.is_plain = src_mdw.is_plain();
     conf.global_pool_spatial_chunk = calculate_spatial_chunk(conf, engine);
 
     const dim_t spatial_dim_padded = utils::rnd_up(
             conf.id * conf.ih * conf.iw, conf.global_pool_spatial_chunk);
-    conf.dispatch = compute_engine->create_dispatch(src_mdw.md_);
+    conf.dispatch = intel_engine->create_dispatch(src_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
     conf.dispatch.define_dim("C", 1, conf.c_padded);
     if (conf.is_backward) {
         conf.dispatch.define_dim("SPATIAL", 2, spatial_dim_padded,
                 conf.global_pool_spatial_chunk);
-        conf.sub_group_size = compute_engine->device_info()->max_subgroup_size(
+        conf.sub_group_size = intel_engine->device_info()->max_subgroup_size(
                 src_mdw.data_type());
         if (conf.c % conf.sub_group_size != 0) conf.vectorize = false;
         if ((src_mdw.blocking_desc().strides[1] != 1) || !src_mdw.is_plain()

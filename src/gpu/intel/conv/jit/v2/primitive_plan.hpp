@@ -34,7 +34,7 @@ namespace v2 {
 class primitive_exec_plan_t {
 public:
     status_t execute(
-            const gpu_primitive_t *primitive, const exec_ctx_t &ctx) const {
+            const primitive_t *primitive, const exec_ctx_t &ctx) const {
         for (auto &e : kernel_entries_) {
             std::vector<memory_storage_wrapper_t> storage_list;
             e.kernel_info.init_memory_storage_list(
@@ -102,7 +102,7 @@ public:
     }
 
     status_t create_exec_plan(primitive_exec_plan_t &exec_plan,
-            gpu_primitive_t *primitive, impl::engine_t *engine) const;
+            primitive_t *primitive, impl::engine_t *engine) const;
 
 private:
     struct buffer_entry_t {
@@ -133,15 +133,15 @@ private:
             const std::unordered_map<std::string, std::string> &buf_map) const;
     status_t add_kernel(primitive_exec_plan_t &exec_plan,
             const kernel_desc_base_t &desc, const kernel_params_base_t &params,
-            gpu_primitive_t *primitive, impl::engine_t *engine,
+            primitive_t *primitive, impl::engine_t *engine,
             const std::unordered_map<std::string, std::string> &buf_map
             = {}) const;
     status_t add_zero_out_kernel(primitive_exec_plan_t &exec_plan,
-            const buffer_entry_t &buf, gpu_primitive_t *primitive,
+            const buffer_entry_t &buf, primitive_t *primitive,
             impl::engine_t *engine) const;
     status_t add_reorder_kernel(primitive_exec_plan_t &exec_plan,
             const buffer_entry_t &src, const buffer_entry_t &dst,
-            gpu_primitive_t *primitive, impl::engine_t *engine) const;
+            primitive_t *primitive, impl::engine_t *engine) const;
 
     std::vector<kernel_entry_t> kernel_entries_;
     std::vector<buffer_entry_t> buf_entries_;

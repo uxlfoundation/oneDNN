@@ -41,7 +41,7 @@ enum softmax_algorithm_id_t {
 };
 
 struct reusable_softmax_params_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -88,8 +88,8 @@ struct reusable_softmax_runtime_params_t {
     compute::dispatch_runtime_params_t gws_params;
 };
 
-struct reusable_softmax_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_softmax_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_fwd_pd_t {
         using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
 
@@ -97,9 +97,8 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using arch_t = compute::gpu_arch_t;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
-            const arch_t arch = compute_engine->device_info()->gpu_arch();
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const arch_t arch = intel_engine->device_info()->gpu_arch();
 
             const memory_desc_wrapper src_mdw(src_md());
             const memory_desc_wrapper dst_mdw(dst_md());
@@ -125,12 +124,12 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
-                                      compute_engine->mayiuse(
+                                      intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(
                     IMPLICATION(utils::one_of(data_type::f64, dst_dt, src_dt),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(attr()->has_default_values(
@@ -177,8 +176,8 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             // utilize largest supported subgroup size
             conf.subgroup_size = [=] {
                 for (int size : {16, 8}) {
-                    if (compute_engine->mayiuse_sub_group(size)
-                            && compute_engine
+                    if (intel_engine->mayiuse_sub_group(size)
+                            && intel_engine
                                        ->mayiuse_block_reads_writes_with_sub_group(
                                                size))
                         return size;
@@ -236,7 +235,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
             const size_t max_wg_size = [&]() {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                         attr()->gpu_attr_.get());
-                return compute_engine->device_info()->max_wg_size(
+                return intel_engine->device_info()->max_wg_size(
                         gpu_attr && gpu_attr->threads_per_eu() == 4);
             }();
 
@@ -248,7 +247,7 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
 
             switch (conf.algorithm_number) {
                 case many_reductions_per_workgroup:
-                    CHECK(init_dispatch_default_reusable(compute_engine));
+                    CHECK(init_dispatch_default_reusable(intel_engine));
                     break;
                 case one_reduction_per_workgroup:
                     // do not solve problems beyond hardware workgroup limit
@@ -256,15 +255,15 @@ struct reusable_softmax_fwd_t : public gpu_primitive_t {
                             "softmax axis size too large");
 
                     CHECK(init_dispatch_workgroup_per_reduction(
-                            compute_engine, num_workers_per_workgroup));
+                            intel_engine, num_workers_per_workgroup));
                     break;
                 case one_reduction_per_subgroup:
                     CHECK(init_dispatch_workgroup_per_reduction(
-                            compute_engine, conf.subgroup_size));
+                            intel_engine, conf.subgroup_size));
                     break;
                 case vectorized:
                 case small:
-                    CHECK(init_dispatch_subgroup_per_reduction(compute_engine));
+                    CHECK(init_dispatch_subgroup_per_reduction(intel_engine));
                     break;
             }
 

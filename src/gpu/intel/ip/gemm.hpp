@@ -36,8 +36,8 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct gemm_inner_product_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct gemm_inner_product_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_inner_product_fwd_pd_t {
         using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
 
@@ -144,8 +144,8 @@ private:
     std::shared_ptr<impl::primitive_t> gemm_;
 };
 
-struct gemm_inner_product_bwd_data_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct gemm_inner_product_bwd_data_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_inner_product_bwd_data_pd_t {
         using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
 
@@ -229,8 +229,8 @@ private:
     std::shared_ptr<impl::primitive_t> gemm_;
 };
 
-struct gemm_inner_product_bwd_weights_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct gemm_inner_product_bwd_weights_t : public primitive_t {
+    using primitive_t::primitive_t;
     using gpu_ip_bwd_weights_pd_t = gpu_inner_product_bwd_weights_pd_t;
     struct pd_t : public gpu_ip_bwd_weights_pd_t {
         using gpu_ip_bwd_weights_pd_t::gpu_ip_bwd_weights_pd_t;

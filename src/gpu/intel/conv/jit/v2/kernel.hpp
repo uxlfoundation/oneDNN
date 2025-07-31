@@ -38,8 +38,7 @@ using namespace intel::jit::v2;
 
 class kernel_t : public ir_kernel_t {
 public:
-    kernel_t(const kernel_desc_base_t &_desc,
-            const compute::compute_engine_t *engine)
+    kernel_t(const kernel_desc_base_t &_desc, const intel::engine_t *engine)
         : ir_kernel_t(_desc, engine, {GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto &desc = static_cast<const kernel_desc_t &>(_desc);

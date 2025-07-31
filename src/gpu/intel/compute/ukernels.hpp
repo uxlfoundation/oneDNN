@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_COMPUTE_STREAM_HPP
-#define GPU_INTEL_COMPUTE_STREAM_HPP
+#ifndef GPU_INTEL_COMPUTE_UKERNELS_HPP
+#define GPU_INTEL_COMPUTE_UKERNELS_HPP
 
-#include "gpu/gpu_stream.hpp"
-#include "xpu/context.hpp"
-#include "xpu/stream_profiler.hpp"
+#include "common/engine.hpp"
+#include "gpu/intel/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,26 +26,8 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
-class nd_range_t;
-class kernel_arg_list_t;
-
-class compute_stream_t : public gpu::stream_t {
-public:
-    using stream_t::stream_t;
-
-    status_t notify_profiling_complete() const override;
-
-    virtual status_t barrier() = 0;
-    virtual status_t enter_immediate_mode() { return status::success; }
-    virtual status_t exit_immediate_mode() { return status::success; }
-
-protected:
-    bool has_zero_pad_primitive() const {
-        return engine()->kind() == dnnl_gpu;
-    };
-
-    status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) override;
-};
+extern const char *cl_microkernels_check_kernel_code;
+bool mayiuse_microkernels(const engine_t *engine);
 
 } // namespace compute
 } // namespace intel
@@ -54,4 +35,4 @@ protected:
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // GPU_INTEL_COMPUTE_UKERNELS_HPP

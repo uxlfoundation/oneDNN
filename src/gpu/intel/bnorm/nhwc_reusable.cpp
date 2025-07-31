@@ -114,8 +114,8 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     // TODO: create flags() accessor that returns the correct type
     bn_conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
-    auto gpu_arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
     // and was tuned for XeHPG+ only
@@ -188,16 +188,16 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
 
     // Set dispatching
 
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = intel_engine->create_dispatch();
     CHECK(nhwc_bnorm_kernel_dispatching(
             calc_mean_ker, bn_conf, engine, dispatch_calc_stat));
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     CHECK(nhwc_bnorm_kernel_dispatching(reusable_reduce_stats_fwd_ker, bn_conf,
             engine, dispatch_reduce_stat));
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             default_fwd_ker, bn_conf, engine, dispatch));
-    dispatch_reduce_aux = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_reduce_aux = intel_engine->create_dispatch(data_mdw.md_);
     CHECK(nhwc_bnorm_kernel_dispatching(
             reduce_aux_init_ker, bn_conf, engine, dispatch_reduce_aux));
 
@@ -316,7 +316,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
     if (cmpl_conf.calculate_stats && rt_conf.use_fused_atomics_reduction) {
         // Atomics-based reduction requires zeroing mean and variance
-        // Single kernel runs faster than two compute_stream_t::fill
+        // Single kernel runs faster than two stream_t::fill
         compute::kernel_arg_list_t arg_list;
         arg_list.append(mean);
         arg_list.append(variance);

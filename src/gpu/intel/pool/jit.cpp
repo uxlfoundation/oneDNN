@@ -40,8 +40,8 @@ status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
     using namespace prop_kind;
     using namespace alg_kind;
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto arch = compute_engine->device_info()->gpu_arch();
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto arch = intel_engine->device_info()->gpu_arch();
     auto src_data_t = src_md()->data_type;
     auto dst_data_t = dst_md()->data_type;
     auto acc_data_t = desc()->accum_data_type;
@@ -72,12 +72,12 @@ status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_POOLING(!utils::one_of(f64, src_data_t, dst_data_t),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_POOLING(
-            compute_engine->mayiuse(compute::device_ext_t::intel_subgroups),
+            intel_engine->mayiuse(compute::device_ext_t::intel_subgroups),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
     VDISPATCH_POOLING(
             IMPLICATION(src_data_t == f16,
-                    compute_engine->mayiuse(compute::device_ext_t::khr_fp16)
-                            && compute_engine->mayiuse(compute::device_ext_t::
+                    intel_engine->mayiuse(compute::device_ext_t::khr_fp16)
+                            && intel_engine->mayiuse(compute::device_ext_t::
                                             intel_subgroups_short)),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_POOLING(IMPLICATION(src_data_t == bf16,

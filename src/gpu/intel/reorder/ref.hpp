@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
-struct ref_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reorder_pd_t {
         using gpu_reorder_pd_t::gpu_reorder_pd_t;
 
@@ -83,22 +83,22 @@ struct ref_reorder_t : public gpu_primitive_t {
                             f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
-            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
+            auto *intel_engine = utils::downcast<intel::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
 
-            VDISPATCH_REORDER(compute_engine->mayiuse(
+            VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_REORDER(
                     IMPLICATION(utils::one_of(data_type::f16, sdt, ddt),
-                            compute_engine->mayiuse(device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(device_ext_t::
+                            intel_engine->mayiuse(device_ext_t::khr_fp16)
+                                    && intel_engine->mayiuse(device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(
                     IMPLICATION(utils::one_of(data_type::f64, sdt, ddt),
-                            compute_engine->mayiuse(device_ext_t::khr_fp64)
+                            intel_engine->mayiuse(device_ext_t::khr_fp64)
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(

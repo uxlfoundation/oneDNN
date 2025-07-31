@@ -35,8 +35,8 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-struct ref_matmul_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_matmul_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_matmul_pd_t {
         using gpu_matmul_pd_t::gpu_matmul_pd_t;
 
@@ -50,10 +50,9 @@ struct ref_matmul_t : public gpu_primitive_t {
             dst_dt_ = dst_md()->data_type;
             wei_dt_ = weights_md(0)->data_type;
             bia_dt_ = with_bias() ? weights_md(1)->data_type : data_type::f32;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-            auto dev_info_ = compute_engine->device_info();
+            auto dev_info_ = intel_engine->device_info();
 
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);

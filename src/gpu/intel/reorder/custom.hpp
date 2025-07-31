@@ -34,8 +34,8 @@ namespace reorder {
 
 // Collection of custom reorder implementations that are highly optimized
 // but only applicable to specific scenarios.
-struct custom_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct custom_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reorder_pd_t {
         using gpu_reorder_pd_t::gpu_reorder_pd_t;
 
@@ -56,7 +56,7 @@ struct custom_reorder_t : public gpu_primitive_t {
                                               .has_runtime_dims_or_strides()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(
+            auto *intel_engine = utils::downcast<intel::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
             using namespace data_type;
@@ -77,14 +77,14 @@ struct custom_reorder_t : public gpu_primitive_t {
 
             VDISPATCH_REORDER(!memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
-            VDISPATCH_REORDER(compute_engine->mayiuse(
+            VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_REORDER(
                     IMPLICATION(utils::one_of(f16, sdt, ddt),
-                            compute_engine->mayiuse(
+                            intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);

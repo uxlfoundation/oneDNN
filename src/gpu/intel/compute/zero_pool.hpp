@@ -21,8 +21,8 @@
 #include <mutex>
 
 #include "common/c_types_map.hpp"
-#include "gpu/intel/compute/engine.hpp"
-#include "gpu/intel/compute/stream.hpp"
+#include "gpu/intel/engine.hpp"
+#include "gpu/intel/stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,12 +31,12 @@ namespace intel {
 
 class zero_pool_t {
 public:
-    zero_pool_t(compute::compute_engine_t *engine, size_t chunk_size,
+    zero_pool_t(intel::engine_t *engine, size_t chunk_size,
             bool stream_private = false, bool in_order = false);
 
     status_t init();
 
-    status_t claim(compute::compute_stream_t *stream, size_t len,
+    status_t claim(intel::stream_t *stream, size_t len,
             std::unique_ptr<memory_storage_t> &out_mem, int *out_token);
     void async_release(int token, const xpu::event_t &ev);
 
@@ -47,7 +47,7 @@ public:
     std::mutex &mutex() { return mutex_; }
 
 private:
-    compute::compute_engine_t *engine_ = nullptr;
+    intel::engine_t *engine_ = nullptr;
 
     static constexpr int max_chunks = 64;
 
@@ -64,13 +64,12 @@ private:
     std::array<std::unique_ptr<xpu::event_t>, max_chunks> events_ = {nullptr};
     std::mutex mutex_;
 
-    status_t claim_unpooled(compute::compute_stream_t *stream, size_t len,
+    status_t claim_unpooled(intel::stream_t *stream, size_t len,
             std::unique_ptr<memory_storage_t> &out_mem);
 };
 
-status_t lookup_zero_pool(compute::compute_engine_t *engine,
-        compute::compute_stream_t *stream, size_t chunk_size,
-        zero_pool_t **out_pool);
+status_t lookup_zero_pool(intel::engine_t *engine, intel::stream_t *stream,
+        size_t chunk_size, zero_pool_t **out_pool);
 void release_zero_pool(zero_pool_t *pool);
 
 } // namespace intel

@@ -75,13 +75,11 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
 
-    const auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     // Norm dispatch: all dimensions
-    auto lws_strategy
-            = compute::default_lws_strategy_t(compute_engine, gpu_attr);
-    compute::reusable_dispatch_config_t dispatch_config(compute_engine, dims);
+    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
+    compute::reusable_dispatch_config_t dispatch_config(intel_engine, dims);
     CHECK(dispatch_config.register_buffer(src_buf));
     CHECK(dispatch_config.register_buffer(dst_buf));
     CHECK(dispatch_config.register_buffer(stat_buf));
@@ -94,7 +92,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
 
     // stat calculation dispatch: all stat dimensions
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
-            compute_engine, stat_buf.get_dim_ids());
+            intel_engine, stat_buf.get_dim_ids());
     CHECK(calc_stat_dispatch_config.register_buffer(src_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(dst_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(stat_buf));
@@ -123,7 +121,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
 
     // scaleshift dispatch: just the norm axis
     compute::reusable_dispatch_config_t ss_dispatch_config(
-            compute_engine, ss_buf.get_dim_ids());
+            intel_engine, ss_buf.get_dim_ids());
     CHECK(ss_dispatch_config.register_buffer(src_buf));
     CHECK(ss_dispatch_config.register_buffer(dst_buf));
     CHECK(ss_dispatch_config.register_buffer(ss_buf));
@@ -165,9 +163,8 @@ status_t reusable_layer_normalization_fwd_t::pd_t::init_conf(
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
-    auto lws_strategy
-            = compute::default_lws_strategy_t(compute_engine, gpu_attr);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
 
     return status::success;
 }

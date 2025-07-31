@@ -119,10 +119,9 @@ status_t simple_batch_normalization_fwd_t::pd_t::init_conf(
     const memory_desc_wrapper data_mdw(src_md());
     const dim_idx_t ndims = into<dim_idx_t>(data_mdw.ndims());
 
-    compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    intel::engine_t *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    dispatch_calc_stat = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch_calc_stat = intel_engine->create_dispatch(data_mdw.md_);
     dim_t calc_dims[5];
     auto &dims = data_mdw.dims();
     calc_dims[0] = dims[0];
@@ -187,12 +186,12 @@ status_t simple_batch_normalization_fwd_t::pd_t::init_conf(
     dispatch_calc_stat.set_kernel_attr_suffix("CALC");
     dispatch_calc_stat.generate();
 
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     dispatch_reduce_stat.define_dim("REDUCE_STAT_IC", conf.ic);
     dispatch_reduce_stat.set_kernel_attr_suffix("REDUCE");
     dispatch_reduce_stat.generate();
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.mb);
     dispatch.define_dim("IC", 1, conf.ic);
     dispatch.define_dim("ID", nstl::max(1u, ndims - 3u), conf.id);
@@ -287,8 +286,7 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
         impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     CHECK(init_conf_common(conf, off, this));
-    compute::compute_engine_t *compute_engine
-            = utils::downcast<compute::compute_engine_t *>(engine);
+    intel::engine_t *intel_engine = utils::downcast<intel::engine_t *>(engine);
     const memory_desc_wrapper data_mdw(diff_src_md());
 
     const bool has_padding = !data_mdw.is_dense();
@@ -319,7 +317,7 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
 
     conf.reduce_stat_nblocks = stat_mb_nblocks * stat_sp_nblocks;
 
-    dispatch_calc_stat = compute_engine->create_dispatch();
+    dispatch_calc_stat = intel_engine->create_dispatch();
     dispatch_calc_stat.define_dim_with_nesting_level(
             "STAT_SP", 2, conf.id * conf.ih * conf.iw, stat_sp_block);
     dispatch_calc_stat.define_dim_with_nesting_level("STAT_IC", 1, conf.ic);
@@ -329,12 +327,12 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
     dispatch_calc_stat.set_kernel_attr_suffix("CALC");
     dispatch_calc_stat.generate();
 
-    dispatch_reduce_stat = compute_engine->create_dispatch();
+    dispatch_reduce_stat = intel_engine->create_dispatch();
     dispatch_reduce_stat.define_dim("REDUCE_STAT_IC", conf.ic);
     dispatch_reduce_stat.set_kernel_attr_suffix("REDUCE");
     dispatch_reduce_stat.generate();
 
-    dispatch = compute_engine->create_dispatch(data_mdw.md_);
+    dispatch = intel_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.mb, conf.mb_block);
     dispatch.define_dim("IC", 1, conf.ic);
     dispatch.define_dim("ID", nstl::max(1u, conf.ndims - 3u), conf.id);

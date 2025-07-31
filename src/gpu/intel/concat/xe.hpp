@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-struct xe_concat_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_concat_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_concat_pd_t {
         pd_t(const primitive_attr_t *attr, const memory_desc_t *dst_md, int n,
                 int concat_dim, const memory_desc_t *const *src_mds)
@@ -67,10 +67,8 @@ struct xe_concat_t : public gpu_primitive_t {
 
     protected:
         bool can_use_sub_group_size(
-                const compute::compute_engine_t *compute_engine,
-                int sub_group_size);
-        int calculate_sub_group_size(
-                const compute::compute_engine_t *compute_engine);
+                const intel::engine_t *intel_engine, int sub_group_size);
+        int calculate_sub_group_size(const intel::engine_t *intel_engine);
         std::pair<int, int> calculate_iter_dim_idx_chunk(int num_threads) const;
     };
 

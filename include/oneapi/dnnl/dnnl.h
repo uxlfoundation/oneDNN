@@ -448,6 +448,22 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
 
+/// Sets a scaling factor as a single host-side scalar value for primitive
+/// operations for a given memory argument. The host-side scale must be
+/// provided as a host scalar memory object at execution time as an argument
+/// with index #DNNL_ARG_ATTR_SCALES | arg.
+///
+/// @sa dnnl_primitive_attr_set_host_scale
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_host_scale(
+        dnnl_primitive_attr_t attr, int arg);
+
 /// Sets primitive attributes zero points for primitive operations for a given
 /// memory argument. The zero points must be passed at execution time
 /// as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
@@ -494,6 +510,22 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets zero point for primitive operations for a given memory
+/// argument as a single host-side scalar value.
+/// The host-side zero point must be provided as a host scalar memory object at
+/// execution time as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+///
+/// @sa dnnl_primitive_attr_set_host_zero_point
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_host_zero_point(
+        dnnl_primitive_attr_t attr, int arg);
 
 /// Sets the rounding mode attribute value for a given argument
 ///
@@ -1469,6 +1501,31 @@ dnnl_status_t DNNL_API dnnl_memory_get_data_handle_v2(
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_memory_set_data_handle_v2(
         dnnl_memory_t memory, void *handle, int index);
+
+/// Returns the value stored in a scalar memory object as a host pointer.
+///
+/// @param memory Memory object.
+/// @param value Output pointer to the scalar value. The type of the value
+///     depends on the data type of the memory object.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_get_host_scalar_value(
+        const_dnnl_memory_t memory, void *value);
+
+/// Sets the value of a scalar memory object from a host pointer.
+///
+/// @note The value would be copied from the provided pointer into the
+///     memory object, so the user does not need to manage the lifetime of the
+///     original scalar data.
+///
+/// @param memory Memory object.
+/// @param value Pointer to the scalar value to be copied into the
+///     memory object. The type of the value must match the data type of the
+///     memory object.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_set_host_scalar_value(
+        dnnl_memory_t memory, const void *value);
 
 /// Destroys a memory object.
 ///

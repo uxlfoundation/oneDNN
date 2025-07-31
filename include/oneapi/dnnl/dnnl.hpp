@@ -3479,6 +3479,26 @@ struct memory : public handle<dnnl_memory_t> {
                 "could not set native handle of a memory object");
     }
 
+    /// Returns the scalar value stored in the memory object as type T.
+    /// @tparam T Type to cast the scalar value to.
+    template <typename T>
+    T get_host_scalar_value() const {
+        T value;
+        error::wrap_c_api(dnnl_memory_get_host_scalar_value(get(), &value),
+                "could not get host scalar value from a memory object");
+        return value;
+    }
+
+    /// Sets the scalar value stored in the memory object.
+    ///
+    /// @param value Pointer to the scalar value to set.
+    /// @note The scalar value is copied into the memory storage, so the user
+    ///     does not need to manage the lifetime of the original scalar data.
+    void set_host_scalar_value(const void *value) const {
+        error::wrap_c_api(dnnl_memory_set_host_scalar_value(get(), value),
+                "could not set host scalar value to a memory object");
+    }
+
     /// Maps a memory object and returns a host-side pointer to a memory
     /// buffer with a copy of its contents. The memory buffer corresponds to
     /// the given index.
@@ -4157,6 +4177,20 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                 "could not set scales primitive attribute");
     }
 
+    /// Sets a scaling factor as a single host-side scalar value for primitive
+    /// operations for a given memory argument. The host-side scale must be
+    /// provided as a host scalar memory object at execution time as an argument
+    /// with index #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_host_scale
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    void set_host_scale(int arg) {
+        error::wrap_c_api(dnnl_primitive_attr_set_host_scale(get(), arg),
+                "could not set host scale primitive attribute");
+    }
+
     /// Sets zero points for primitive operations for a given memory argument.
     /// The zero points must be passed at execution time as an argument with
     /// index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
@@ -4200,6 +4234,20 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                                   (int)groups.size(), groups.data(),
                                   memory::convert_to_c(data_type)),
                 "could not set zero points primitive attribute");
+    }
+
+    /// Sets zero point for primitive operations for a given memory
+    /// argument as a single host-side scalar value.
+    /// The host-side zero point must be provided as a host scalar memory object at
+    /// execution time as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_host_zero_point
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    void set_host_zero_point(int arg) {
+        error::wrap_c_api(dnnl_primitive_attr_set_host_zero_point(get(), arg),
+                "could not set host zero point primitive attribute");
     }
 
     /// Returns post-ops previously set via set_post_ops().

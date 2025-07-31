@@ -588,6 +588,14 @@ status_t dnnl_primitive_attr_set_scales(primitive_attr_t *attr, int arg,
     return attr->scales_.set(arg, mask, data_type, ndims, group_dims);
 }
 
+status_t dnnl_primitive_attr_set_host_scale(
+        dnnl_primitive_attr_t attr, int arg) {
+    using namespace data_type;
+    VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
+    VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
+    return attr->scales_.set_host_scalar(arg);
+}
+
 status_t dnnl_primitive_attr_set_zero_points_mask(
         primitive_attr_t *attr, int arg, int mask) {
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
@@ -614,6 +622,14 @@ status_t dnnl_primitive_attr_set_zero_points(dnnl_primitive_attr_t attr,
             VERBOSE_BAD_PARAM, "group_dims");
 
     return attr->zero_points_.set(arg, mask, data_type, ndims, group_dims);
+}
+
+status_t dnnl_primitive_attr_set_host_zero_point(
+        dnnl_primitive_attr_t attr, int arg) {
+    using namespace data_type;
+    VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
+    VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
+    return attr->zero_points_.set_host_scalar(arg);
 }
 
 status_t dnnl_primitive_attr_get_rounding(

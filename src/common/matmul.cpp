@@ -312,6 +312,10 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL(
             IMPLICATION(bias_desc, !reduce_desc), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
+    VCHECK_MATMUL(!any_memory_desc_host_scalar(src_desc, weights_desc,
+                          bias_desc, dst_desc, reduce_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     auto op_d = matmul_desc_t();
     op_d.primitive_kind = primitive_kind::matmul;
 

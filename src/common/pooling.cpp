@@ -54,6 +54,8 @@ status_t pooling_desc_init(pooling_desc_t *pool_desc, prop_kind_t prop_kind,
             IMPLICATION(one_of(prop_kind, forward_training, forward_inference),
                     !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_POOLING(!any_memory_desc_host_scalar(src_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     if (padding_r == nullptr) padding_r = padding_l;
 

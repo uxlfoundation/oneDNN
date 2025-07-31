@@ -76,7 +76,6 @@ jobs:
         uses: ./.github/workflows/aarch64-acl.yml
         with:
           acl_hash: ${{ inputs.acl_base_hash }}
-        secrets: inherit
 
       - name: Rename ComputeLibrary to ComputeLibrary_base
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
@@ -85,7 +84,6 @@ jobs:
         uses: ./.github/workflows/aarch64-acl.yml
         with:
           acl_hash: ${{ inputs.acl_new_hash }}
-        secrets: inherit
 
       - name: Rename ComputeLibrary to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new

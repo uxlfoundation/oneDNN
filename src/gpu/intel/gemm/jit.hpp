@@ -441,7 +441,7 @@ struct gen_gemm_t : public gpu_gemm_t {
 
                 auto kernel_type
                         = jit::convert_dnnl_to_kernel_type(md.data_type);
-                size_t stride = [&](int dim) {
+                size_t stride = [&](dim_t dim) {
                     auto stride = dim * kernel_type;
 
                     // Prefer cache line aligned sizes

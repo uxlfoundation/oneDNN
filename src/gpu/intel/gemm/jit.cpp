@@ -83,17 +83,17 @@ status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
     if (problem->aoPtrDims == 2 || problem->aScale2D()) {
         auto layout = problem->aScale2D() ? problem->A_scale.layout
                                           : problem->AO.layout;
-        int32_t ldaq = isColMajor(layout)
-                ? pd()->eff_m()
-                : utils::div_up(pd()->desc()->k(), problem->aqGroupK);
+        auto ldaq = into<int32_t>(isColMajor(layout)
+                        ? pd()->eff_m()
+                        : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
     if (problem->boPtrDims == 2 || problem->bScale2D()) {
         auto layout = problem->bScale2D() ? problem->B_scale.layout
                                           : problem->BO.layout;
-        int32_t ldbq = !isColMajor(layout)
-                ? pd()->eff_n()
-                : utils::div_up(pd()->desc()->k(), problem->bqGroupK);
+        auto ldbq = into<int32_t>(!isColMajor(layout)
+                        ? pd()->eff_n()
+                        : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
@@ -101,7 +101,7 @@ status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
-            int32_t ldco = pd()->desc()->ld_bias();
+            auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             arg_list.set(argn++, ldco);
         }
     }
@@ -261,17 +261,17 @@ status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
     auto b_type = pd()->eff_b_type();
     auto c_type = d->c_type();
 
-    const auto m = pd()->eff_m();
-    const auto n = pd()->eff_n();
-    auto k = d->k();
+    const auto m = into<int32_t>(pd()->eff_m());
+    const auto n = into<int32_t>(pd()->eff_n());
+    auto k = into<int32_t>(d->k());
 
     const bool transa = pd()->eff_transa();
     const bool transb = pd()->eff_transb();
 
-    const auto lda = pd()->eff_lda();
-    const auto ldb = pd()->eff_ldb();
-    auto ldc = d->ldc();
-    auto ldco = pd()->with_bias() ? d->ld_bias() : 0;
+    const auto lda = into<int32_t>(pd()->eff_lda());
+    const auto ldb = into<int32_t>(pd()->eff_ldb());
+    auto ldc = into<int32_t>(d->ldc());
+    auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
@@ -406,7 +406,8 @@ status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
             && pd()->post_ops()->entry_[0].kind != primitive_kind::sum)
         block_k = k;
 
-    if (k_parallel_fixed) block_k = pd()->kernel_desc()->aux_params()->k0;
+    if (k_parallel_fixed)
+        block_k = into<int32_t>(pd()->kernel_desc()->aux_params()->k0);
 
     block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(gemmstone::LoopM));
     block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(gemmstone::LoopN));
@@ -414,10 +415,10 @@ status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
     int32_t k0 = 1;
     if (k_parallel_fixed) {
         k0 = block_k;
-        block_k = nstl::max<dim_t>(k, 1);
+        block_k = std::max(k, 1);
 
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
-                && (k > dim_t(k0) * pd()->kernel_desc()->aux_params()->wgK)) {
+                && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
                     bo, a_scales, b_scales, *co, nullptr, sround_seed, po_count,
                     po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0, off_co0,
@@ -485,7 +486,8 @@ status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
                         ao, bo, a_scales, b_scales, *co, c_temp.get(),
                         sround_seed, po_count, po_srcs, off_a_src, off_b_src,
                         off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
-                        ldc, size_m, size_n, size_k, k0, alpha, eff_beta, cmask,
+                        ldc, into<int32_t>(size_m), into<int32_t>(size_n),
+                        into<int32_t>(size_k), k0, alpha, eff_beta, cmask,
                         last_k_block, swapab, disable_hilbert);
 
                 if (status) return status;

@@ -179,7 +179,7 @@ inline void gemm_linear_order_args(compute::kernel_arg_list_t &arg_list,
             k_total = int64_t(k_padded) * tiles_per_phase;
             if (k_total == 0) break;
 
-            k0 = utils::div_up(k_total, concurrent_tg);
+            k0 = into<int32_t>(utils::div_up(k_total, concurrent_tg));
             k0 = utils::rnd_up(k0, info.unroll[LoopK]);
 
             old_k_padding = k_padding;

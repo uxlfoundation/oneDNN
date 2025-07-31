@@ -847,7 +847,7 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
-            int32_t ldco = pd()->desc()->ld_bias();
+            auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             arg_list.set(argn++, ldco);
         }
     }
@@ -931,7 +931,7 @@ status_t xe_hp_systolic_gemm_t::execute(const exec_ctx_t &ctx) const {
     auto m = pd()->desc()->m();
     auto n = pd()->desc()->n();
     auto k = pd()->desc()->k();
-    auto batch = pd()->desc()->batch();
+    auto batch = into<int32_t>(pd()->desc()->batch());
 
     bool packed_a = pd()->packed_a();
     bool packed_b = pd()->packed_b();
@@ -939,12 +939,13 @@ status_t xe_hp_systolic_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     auto lda = packed_a ? 0 : pd()->desc()->lda();
     auto ldb = packed_b ? 0 : pd()->desc()->ldb();
-    auto ldc = packed_c ? pd()->ldc_packed() : pd()->desc()->ldc();
-    auto ldco = pd()->with_bias() ? pd()->desc()->ld_bias() : 0;
+    auto ldc = into<int32_t>(
+            packed_c ? pd()->ldc_packed() : pd()->desc()->ldc());
+    auto ldco = into<int32_t>(pd()->with_bias() ? pd()->desc()->ld_bias() : 0);
 
-    auto stride_a = pd()->desc()->stride_a();
-    auto stride_b = pd()->desc()->stride_b();
-    auto stride_c = pd()->desc()->stride_c();
+    auto stride_a = into<int32_t>(pd()->desc()->stride_a());
+    auto stride_b = into<int32_t>(pd()->desc()->stride_b());
+    auto stride_c = into<int32_t>(pd()->desc()->stride_c());
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
@@ -1041,8 +1042,8 @@ status_t xe_hp_systolic_gemm_t::execute(const exec_ctx_t &ctx) const {
     int64_t block_m = 0, block_n = 0, block_k = 0;
     std::tie(block_m, block_n, block_k) = get_blocking();
 
-    auto lda_packed = pd()->lda_packed(k);
-    auto ldb_packed = pd()->ldb_packed(k);
+    auto lda_packed = into<int32_t>(pd()->lda_packed(k));
+    auto ldb_packed = into<int32_t>(pd()->ldb_packed(k));
 
     status_t status;
 
@@ -1109,7 +1110,8 @@ status_t xe_hp_systolic_gemm_t::execute(const exec_ctx_t &ctx) const {
                 }
 
                 float this_beta = first_k_block ? beta : 1.0f;
-                status = launch_compute(ctx, size_m, size_n, size_k, a_packed,
+                status = launch_compute(ctx, into<int32_t>(size_m),
+                        into<int32_t>(size_n), into<int32_t>(size_k), a_packed,
                         off_a_packed, lda_packed, b_packed, off_b_packed,
                         ldb_packed, c, off_c, ldc, alpha, this_beta, ao, bo,
                         *co, off_co, po_count, po_srcs, po_offsets,

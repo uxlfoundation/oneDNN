@@ -62,7 +62,7 @@ struct jit_brdgmm_kernel_base_t : public jit_base_brgemm_kernel_t {
             , idx_vmm_bcast_(-1)
             , idx_vmm_s8s8_comp_(-1) {
 
-            if (brg.with_sum || brg.with_scales) vmm_tmp_count_ = 2;
+            if (brg.with_sum || brg.with_wei_scales) vmm_tmp_count_ = 2;
 
             // assign aux vmms
             if (is_fast_vnni_int8(brg)) idx_vmm_permute_ = aux_vmm_count_++;
@@ -204,7 +204,8 @@ private:
     const reg64_t reg_tmp = reg_table_base;
     const reg64_t reg_total_padding = reg_table_base;
     const reg64_t reg_aux_bias = reg_table_base;
-    const reg64_t reg_aux_scales = reg_table_base;
+    const reg64_t reg_aux_src_scales = reg_table_base;
+    const reg64_t reg_aux_wei_scales = reg_table_base;
     const reg64_t reg_aux_dst_scales = reg_table_base;
     const reg64_t reg_dst_zero_point = reg_table_base;
     const reg64_t reg_src_zero_point = reg_table_base;
@@ -242,7 +243,7 @@ private:
 
     constexpr static int reg_batch0_addr_offs_ = 0;
     constexpr static int reg_bias_offs_ = 8;
-    constexpr static int reg_scales_offs_ = 16;
+    constexpr static int reg_wei_scales_offs_ = 16;
     constexpr static int reg_A_offs_ = 24; // brgemm_strd
     constexpr static int reg_B_offs_ = 32; // brgemm_strd
     constexpr static int abi_param1_offs_ = 40;
@@ -251,7 +252,8 @@ private:
     constexpr static int dst_zp_value_ = 64;
     constexpr static int src_zp_value_ = 72;
     constexpr static int zp_compensation_ = 80;
-    constexpr static int stack_space_needed_ = 88;
+    constexpr static int reg_src_scales_offs_ = 88;
+    constexpr static int stack_space_needed_ = 96;
 
     bool with_binary_non_scalar_bcast_ = false;
 
@@ -386,7 +388,7 @@ private:
     int bias_offset(int n, int v) {
         return brg.typesize_bias * (n * n_block1() + v * simd_w_);
     }
-    int scales_offset(int n, int v) {
+    int wei_scales_offset(int n, int v) {
         return sizeof(float) * brg.is_oc_scale * (n * n_block1() + v * simd_w_);
     }
     size_t comp_offset(int n) { return sizeof(int32_t) * n * n_block1(); }

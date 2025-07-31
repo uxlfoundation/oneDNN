@@ -84,7 +84,10 @@ void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
     brg->with_weights_scale_adjust = false;
     brg->sum_scale = 0;
     brg->sum_zp = 0;
-    brg->with_scales = false;
+    brg->with_src_scales = false;
+    brg->with_wei_scales = false;
+    brg->with_dst_scales = false;
+    brg->dt_wei_scales = data_type::undef;
 
     if (strides != nullptr) {
         brg->stride_a = strides->stride_a;

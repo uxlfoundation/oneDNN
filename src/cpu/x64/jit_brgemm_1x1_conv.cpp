@@ -21,7 +21,6 @@
 #include "common/utils.hpp"
 
 #include "cpu/cpu_primitive.hpp"
-#include "cpu/scale_utils.hpp"
 
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
@@ -95,7 +94,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     ic_chunks_ = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork_ = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
-            || jcp_.with_scales || jcp_.with_dst_scales || need_compensation
+            || jcp_.with_src_scales || jcp_.with_wei_scales
+            || jcp_.with_dst_scales || need_compensation
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum;
 
     const bool need_extra_m_kernel = get_extra_m_kernel_req(jcp_);
@@ -159,9 +159,6 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     brgemm_convolution_utils::set_amx_wsp_per_thread(jcp_);
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
-    if (jcp_.with_scales)
-        book_precomputed_scales(
-                scratchpad, attr()->scales_, OC(), jcp_.scale_adjust_factor);
 
     return status::success;
 }
@@ -289,21 +286,6 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
         CHECK(rtus_kernel_->create_kernel());
     }
 
-    // JIT to precompute scales
-    const bool is_jit_supported = mayiuse(avx512_core);
-    const auto attr = pd()->attr();
-    const auto &attr_scales = attr->scales_;
-    if (is_jit_supported && pd()->OC() > 1
-            && req_copy_scales(attr_scales, jcp.scale_adjust_factor)) {
-        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_scale_mask > 0) {
-            CHECK(safe_ptr_assign(jit_scale_precompute_,
-                    new jit_avx512_core_scale_precompute_t(
-                            attr, jcp.scale_adjust_factor)));
-            CHECK(jit_scale_precompute_->create_kernel());
-        }
-    }
-
     for (auto &params : pd()->brgemm_init_params_) {
         const auto brg_idx = get_brg_idx(jcp, params);
         const auto &brgs = *(pd()->brgs_);
@@ -411,9 +393,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         brgemm_batch_element_t *const __restrict brg_batch,
         char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
         int od, int oh, int ow, int icc, int *last_brg_idx,
-        const float *oscales, const int32_t *src_zero_points,
-        int32_t *src_zp_comp, const int32_t *dst_zero_points,
-        int32_t *s8s8_compensation, const float *dst_scales,
+        const int32_t *src_zero_points, int32_t *src_zp_comp,
+        const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+        const void *src_scales, const void *wei_scales, const void *dst_scales,
         const bool is_last_os) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -538,11 +520,14 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
             const int32_t src_zp_val = src_zero_points ? src_zero_points[0] : 0;
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(bias_w),
-                    &oscales[jcp.is_oc_scale * g_oc],
                     post_ops_binary_rhs_arg_vec.data(),
                     static_cast<size_t>(g_oc), 0, dst, 0,
                     static_cast<void *>(src_zp_comp_ptr), nullptr,
                     dst_zero_points, false, src_zp_val, false, false,
+                    src_scales,
+                    wei_scales ? static_cast<const char *>(wei_scales)
+                                    + jcp.is_oc_scale * g_oc * sizeof(float)
+                               : nullptr,
                     dst_scales};
 
             void *scratch = is_amx ? static_cast<void *>(wsp_tile)
@@ -582,11 +567,12 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         const brgemm_exec_ctx_t &brgemm_ctx,
-        brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
-        const float *oscales, const int32_t *src_zero_points,
-        int32_t *src_zp_comp, const int32_t *dst_zero_points,
-        int32_t *s8s8_compensation, char *const c_buffer_global,
-        char *inp_buffer_base, uint8_t *inp_buffer_mask_base) const {
+        brgemm_batch_element_t *const brg_batch_global, const void *src_scales,
+        const void *wei_scales, const void *dst_scales,
+        const int32_t *src_zero_points, int32_t *src_zp_comp,
+        const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+        char *const c_buffer_global, char *inp_buffer_base,
+        uint8_t *inp_buffer_mask_base) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -645,9 +631,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                     const bool is_last_os = (osb_start + osb) == jcp.nb_os - 1;
                     exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer,
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
-                            &last_brg_idx, oscales, src_zero_points,
-                            src_zp_comp, dst_zero_points, s8s8_compensation,
-                            dst_scales, is_last_os);
+                            &last_brg_idx, src_zero_points, src_zp_comp,
+                            dst_zero_points, s8s8_compensation, src_scales,
+                            wei_scales, dst_scales, is_last_os);
                 }
             }
             last_n = n;
@@ -668,10 +654,11 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
 template <cpu_isa_t isa>
 void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         const brgemm_exec_ctx_t &brgemm_ctx,
-        brgemm_batch_element_t *const brg_batch_global, const float *dst_scales,
-        const float *oscales, const int32_t *src_zero_points,
-        int32_t *src_zp_comp, const int32_t *dst_zero_points,
-        int32_t *s8s8_compensation, char *const c_buffer_global) const {
+        brgemm_batch_element_t *const brg_batch_global, const void *src_scales,
+        const void *wei_scales, const void *dst_scales,
+        const int32_t *src_zero_points, int32_t *src_zp_comp,
+        const int32_t *dst_zero_points, int32_t *s8s8_compensation,
+        char *const c_buffer_global) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -702,9 +689,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
             for (int icc = 0; icc < pd()->ic_chunks_; icc++) {
                 const int ow = owb * jcp.ow_block;
                 exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
-                        ocb, od, oh, ow, icc, &last_brg_idx, oscales,
-                        src_zero_points, src_zp_comp, dst_zero_points,
-                        s8s8_compensation, dst_scales);
+                        ocb, od, oh, ow, icc, &last_brg_idx, src_zero_points,
+                        src_zp_comp, dst_zero_points, s8s8_compensation,
+                        src_scales, wei_scales, dst_scales);
             }
             if (jcp.loop_order == loop_ndhwgc)
                 nd_iterator_step(n, jcp.mb, od, OD, oh, OH, owb, jcp.nb_ow, g,
@@ -730,15 +717,12 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(scratchpad,
-            src_scales, wei_scales, pd()->IC(), pd()->OC(), false,
-            wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
-            jcp.scale_adjust_factor);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int32_t *src_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
@@ -774,14 +758,14 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
             : nullptr;
 
     if (jcp.is_os_blocking) {
-        execute_os_blocking(brgemm_ctx, brg_batch_global, dst_scales, oscales,
-                src_zero_points, zp_compensation, dst_zero_points,
-                s8s8_compensation, c_buffer_global, inp_buffer_base,
-                inp_buffer_mask_base);
+        execute_os_blocking(brgemm_ctx, brg_batch_global, src_scales,
+                wei_scales, dst_scales, src_zero_points, zp_compensation,
+                dst_zero_points, s8s8_compensation, c_buffer_global,
+                inp_buffer_base, inp_buffer_mask_base);
     } else {
-        execute_full_spatial(brgemm_ctx, brg_batch_global, dst_scales, oscales,
-                src_zero_points, zp_compensation, dst_zero_points,
-                s8s8_compensation, c_buffer_global);
+        execute_full_spatial(brgemm_ctx, brg_batch_global, src_scales,
+                wei_scales, dst_scales, src_zero_points, zp_compensation,
+                dst_zero_points, s8s8_compensation, c_buffer_global);
     }
 
     return status::success;

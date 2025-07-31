@@ -36,6 +36,9 @@ void book_precomputed_scales(memory_tracking::registrar_t &scratchpad,
         float scale_adjust_factor, bool req_transpose) {
     if (req_copy_scales(attr_scales, scale_adjust_factor, req_transpose)) {
         const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+        // TODO: if this kernel stays for a while and used primarily in
+        // brgemm_matmul, then the total size must be adjusted by multiplying on
+        // `scales_dt_size` but be allocated in bytes instead.
         const size_t precomputed_scales_size = wei_mask > 0
                 ? nstl::max(static_cast<size_t>(wei_scale_count), scales_simd_w)
                 : scales_simd_w;

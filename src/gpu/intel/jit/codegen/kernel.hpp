@@ -227,7 +227,7 @@ public:
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };
 
-    ngen::GRF r0_info = ngen_generator_t::r0;
+    ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
     void generate_prologue() {
         ngen_generator_t::setDefaultNoMask();
@@ -235,32 +235,9 @@ public:
 
         ngen_generator_t::prologue();
 
-        // Claim registers.
+        // Data in r0 is necessary for epilogue generation
         ra_.claim(ngen_generator_t::r0);
-        for (int i = 0; i < 3; i++) {
-            ra_.claim(ngen_generator_t::getLocalID(i));
-            ra_.claim(ngen_generator_t::getLocalSize(i));
-        }
 
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            ra_.claim(ngen_generator_t::getArgument(kernel_iface_.arg_name(i)));
-        }
-
-        // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
-        // suppression bug results in incorrect results when using r0. This
-        // disables the use of r0 to avoid the issue.
-        if (utils::one_of(getProductFamily(), ngen::ProductFamily::MTL,
-                    ngen::ProductFamily::ARL)) {
-            r0_info = ra_.alloc();
-            int grf_size = ngen::GRF::bytes(getHardware());
-            ra_.claim(r0_info);
-            mov(grf_size / 4, r0_info.ud(), r0.ud());
-        }
-
-        if (emu_strategy.emulate64) {
-            emu_state.temp[0] = ra_.alloc();
-            emu_state.temp[1] = ra_.alloc();
-        }
         // Enable IEEE f32 -> s32 rounding and f64/f32/f16 denormals.
         or_(1, ngen_generator_t::cr0, ngen_generator_t::cr0, uint16_t(0x14C0));
     }
@@ -269,27 +246,20 @@ public:
             const stmt_t &kernel_body, expr_binding_t &expr_binding) {
         alloc_manager_t alloc_mgr(kernel_body);
 
-        // Bind grid indices.
-        int r0_sub_idxs[] = {1, 6, 7};
-        for (int i = 0; i < 3; i++) {
-            auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
-            if (tg_idx) {
-                expr_binding.bind(tg_idx, r0_info.ud(r0_sub_idxs[i]));
-            }
-        }
-
         // Bind local IDs.
         for (int i = 0; i < 3; i++) {
             auto local_id = alloc_mgr.find_let(ir_builder_t::local_id(i), true);
-            if (local_id) {
-                expr_binding.bind(
-                        local_id, ngen_generator_t::getLocalID(i).uw(0));
+            if (!local_id.is_empty()) {
+                auto local_id_reg = ngen_generator_t::getLocalID(i).uw(0);
+                ra_.claim(local_id_reg);
+                expr_binding.bind(local_id, local_id_reg);
             }
             auto local_size
                     = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
-            if (local_size) {
-                expr_binding.bind(
-                        local_size, ngen_generator_t::getLocalSize(i).uw(0));
+            if (!local_size.is_empty()) {
+                auto local_size_reg = ngen_generator_t::getLocalSize(i).uw(0);
+                ra_.claim(local_size_reg);
+                expr_binding.bind(local_size, local_size_reg);
             }
         }
 
@@ -306,12 +276,46 @@ public:
                 }
                 gpu_assert(alloc_buf.is_same(arg_var));
             }
-            expr_binding.bind(arg_var, ngen_generator_t::getArgument(name));
+            auto arg_reg = ngen_generator_t::getArgument(name);
+            ra_.claim(arg_reg);
+            expr_binding.bind(arg_var, arg_reg);
         }
 
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
         if (slm_buf) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+
+        // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
+        // suppression bug results in incorrect results when using r0. This
+        // disables the use of r0 to avoid the issue.
+        ngen::GRF r0_info = ngen_generator_t::r0;
+        if (utils::one_of(getProductFamily(), ngen::ProductFamily::MTL,
+                    ngen::ProductFamily::ARL)) {
+            r0_info = ra_.alloc();
+            int grf_size = ngen::GRF::bytes(getHardware());
+            ra_.claim(r0_info);
+            mov(grf_size / 4, r0_info.ud(), r0.ud());
+
+            // grid ids to be reclaimed below to reduce register usage
+            ra_.release(r0_info);
+        }
+
+        // Bind grid indices.
+        int r0_sub_idxs[] = {1, 6, 7};
+        for (int i = 0; i < 3; i++) {
+            auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
+            if (tg_idx) {
+                ngen::Subregister tg_reg = r0_info.ud(r0_sub_idxs[i]);
+                expr_binding.bind(tg_idx, tg_reg);
+                ra_.claim(tg_reg);
+                grid_ids[i] = tg_reg;
+            }
+        }
+
+        if (emu_strategy.emulate64) {
+            emu_state.temp[0] = ra_.alloc();
+            emu_state.temp[1] = ra_.alloc();
+        }
 
         auto setup_flags = get_setup_flags(kernel_body);
         // Allocate and initialize signal header for future use.
@@ -418,8 +422,6 @@ public:
     void bind_kernel_grid_walk_order(
             const walk_order_t &walk_order, expr_binding_t &expr_binding) {
         const int grid_ndims = 3;
-        ngen::Subregister grid_ids[grid_ndims]
-                = {r0_info.ud(1), r0_info.ud(6), r0_info.ud(7)};
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
             std::unordered_map<pvar_t, int> dim_map;
@@ -453,7 +455,7 @@ public:
     }
 
     void generate_epilogue() {
-        ngen_generator_t::epilogue(r0_info);
+        ngen_generator_t::epilogue(r0);
         pad_kernel();
     }
 

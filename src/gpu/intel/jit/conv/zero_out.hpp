@@ -86,11 +86,16 @@ public:
         setup_interface();
         generate_prologue();
 
+        ra().claim(getLocalSize(0));
+        ra().claim(getLocalID(0));
+
         int simd_size = getSIMD();
         bool use_lsc = (hw >= ngen::HW::XeHPG);
 
         auto size = getArgument(kernel_iface().arg_name(0));
+        ra().claim(size);
         auto ptr = getArgument(kernel_iface().arg_name(1));
+        ra().claim(ptr);
         auto global_id = ra().template alloc_sub<uint32_t>();
         auto off0 = ra().template alloc_sub<uint32_t>();
         const int bytes_per_thr

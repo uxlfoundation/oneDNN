@@ -32,6 +32,10 @@ const alg_kind_t binary_prelu = eltwise_relu;
 namespace gpu {
 namespace intel {
 
+namespace jit {
+class expr_t;
+} // namespace jit
+
 namespace post_op {
 
 // Wrapper structure to enable extending specializations without requiring
@@ -226,54 +230,10 @@ struct relative_md_t {
     }
 
     std::string ocl_defines(const std::string &prefix,
-            const std::array<std::string, MAX_NDIMS> &strides,
-            int ndims) const {
-        std::array<int, MAX_NDIMS> current_alignment = {1, 1, 1, 1, 1, 1};
-        std::array<const char *, MAX_NDIMS> args
-                = {"(x0)", "(x1)", "(x2)", "(x3)", "(x4)", "(x5)"};
-        std::string offset;
-        int inner_stride = 1;
-        for (int i = 0; i < blocking_t::max_dims; i++) {
-            const idx_t idx = inner_layout.idxs[i];
-            const uint8_t block = inner_layout.blocks[i];
-            if (!idx.is_unset()) {
-                auto md_idx = to_md_idx(idx, ndims);
-                auto &align = current_alignment[md_idx];
-                auto total_block = align * block;
+            const std::array<std::string, MAX_NDIMS> &strides, int ndims) const;
 
-                if (!offset.empty()) offset += "+";
-
-                offset += args[md_idx];
-
-                if (total_block != 1)
-                    offset += "%" + std::to_string(total_block);
-                if (align != 1) offset += "/" + std::to_string(align);
-                if (align * inner_stride != 1)
-                    offset += "*" + std::to_string(align * inner_stride);
-
-                align = total_block;
-                inner_stride *= block;
-            }
-        }
-
-        for (int i = 0; i < MAX_NDIMS; i++) {
-            if (!is_broadcast(i, ndims)) {
-                auto &align = current_alignment[i];
-                if (!offset.empty()) offset += "+";
-                offset += args[i];
-                if (align != 1) offset += "/" + std::to_string(align);
-                offset += "*"
-                        + (is_inner_dim(i, ndims) ? std::to_string(inner_stride)
-                                                  : strides[i]);
-            }
-        }
-
-        std::string offset_macro = " -D" + prefix
-                + "_RMD_OFF(x0,x1,x2,x3,x4,x5)="
-                + (offset.empty() ? "0" : offset) + "";
-
-        return offset_macro;
-    }
+    jit::expr_t get_offset(const std::vector<jit::expr_t> &dim_idxs,
+            const std::vector<jit::expr_t> &strides) const;
 
     bool is_broadcast(int idx, int ndims) const {
         idx_t norm = from_md_idx(idx, ndims, {});

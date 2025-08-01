@@ -1810,7 +1810,7 @@ public:
     }
 
 private:
-    static op_kind_t flip_cmp_op(op_kind_t op_kind) {
+    static op_kind_t flip_op(op_kind_t op_kind) {
         switch (op_kind) {
             case op_kind_t::_eq: return op_kind_t::_ne;
             case op_kind_t::_ge: return op_kind_t::_lt;
@@ -1818,6 +1818,8 @@ private:
             case op_kind_t::_le: return op_kind_t::_gt;
             case op_kind_t::_lt: return op_kind_t::_ge;
             case op_kind_t::_ne: return op_kind_t::_eq;
+            case op_kind_t::_and: return op_kind_t::_or;
+            case op_kind_t::_or: return op_kind_t::_and;
             default: gpu_error_not_expected();
         }
         return op_kind_t::undef;
@@ -1831,7 +1833,13 @@ private:
             auto &a = binary_op->a;
             auto &b = binary_op->b;
             auto op_kind = binary_op->op_kind;
-            return binary_op_t::make(flip_cmp_op(op_kind), a, b);
+            if (is_cmp_op(op_kind))
+                return binary_op_t::make(flip_op(op_kind), a, b);
+            if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+                auto a_neg = flip_condition(a);
+                auto b_neg = flip_condition(b);
+                return binary_op_t::make(flip_op(op_kind), a_neg, b_neg);
+            }
         }
 
         auto *shuffle = cond.as_ptr<shuffle_t>();

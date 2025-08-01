@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #define XPU_CONTEXT_HPP
 
 #include <memory>
+#include <string>
 
 namespace dnnl {
 namespace impl {
@@ -38,6 +39,16 @@ public:
 
     virtual void append_deps(const event_t &event) = 0;
     virtual ~context_t() = default;
+};
+
+// container for holding timing data for asynchronous verbose mode
+struct async_timing_data_t {
+    double start_ms = 0; // event start timestamp (ms)
+    double end_ms = 0; // event end timestamp (ms)
+    double duration_ms = 0; // event duration (ms)
+    bool profiler_enabled = false; // whether stream profiling is enabled
+    bool timing_stat = true; // event registration status
+    std::string vinfo; // verbose info for the event
 };
 
 } // namespace xpu

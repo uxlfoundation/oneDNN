@@ -73,6 +73,29 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
+    // initializes stream parameters for the async tracker -
+    // parameters differ depending on runtime
+    virtual dnnl::impl::status_t init_async_tracking(
+            std::string &vinfo, double *start_ms) {
+        CHECK(wait());
+        *start_ms = dnnl::impl::get_msec();
+        return dnnl::impl::status::success;
+    }
+
+    // This ensures that the verbose profiling info is printed for
+    // the operation in case of failures / disabled functionalities
+    // for the asynchronous mode. The operation here falls back to
+    // using the default blocking stream.wait() calls.
+    virtual dnnl::impl::status_t check_async_exec_times(
+            std::string &vinfo, double *start_ms) {
+        CHECK(wait());
+        double duration_ms = dnnl::impl::get_msec() - *start_ms;
+        VPROF(static_cast<int>(*start_ms), primitive, exec, VERBOSE_profile,
+                vinfo.c_str(), duration_ms);
+
+        return dnnl::impl::status::success;
+    }
+
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 

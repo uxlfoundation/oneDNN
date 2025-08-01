@@ -84,23 +84,23 @@ public:
 
             instructions_.emplace_back(obj);
         } else if (is_load) {
-            // Returns minimal 2^B so that there is x such that:
-            //   x * 2^B <= a <= b < (x + 1) * 2^B
-            auto min_pow2_span = [](int a, int b) {
-                int same_left_bits = 0;
-                for (int i = 31; i >= 0; i--) {
-                    int b0 = ((uint32_t)a >> i) & 0x1;
-                    int b1 = ((uint32_t)b >> i) & 0x1;
-                    if (b0 != b1) break;
-                    same_left_bits++;
-                }
-                return 1 << (32 - same_left_bits);
-            };
             auto &buf = send_t::arg_reg_buf(obj);
             auto &base = (is_var(buf) ? buf : buf.as<ptr_t>().base);
             int off = (is_var(buf) ? 0 : to_cpp<int>(buf.as<ptr_t>().off));
             int size = send->payload_size();
-            int span = min_pow2_span(off, off + size - 1);
+            auto span = [](int a, int b) {
+                // Returns minimal 2^B so that there is x such that:
+                //   x * 2^B <= a <= b < (x + 1) * 2^B
+                int mask = a ^ b;
+                // Neither of the highest two bits may be set
+                //  - 32nd bit set: a is negative, b is nonnegative, 2^B does
+                //                  not exist for integer x
+                //  - 31st bit set: requested span is 0x80000000 < 0 in
+                //                  integer precision
+                gpu_assert(!(mask & 0xc0000000))
+                        << "span cannot be represented in integer precision";
+                return utils::rnd_up_pow2(mask + 1);
+            }(off, off + size - 1);
             int &min_block_size = all_buf_min_block_sizes[base];
             min_block_size = std::max(min_block_size, span);
         }

@@ -53,16 +53,15 @@ quant_entry_t quant_entry_t::deserialize(deserializer_t &d) {
     return e;
 }
 
-std::string quant_entry_t::get_verbose(bool user_precomp) const {
+std::string quant_entry_t::get_verbose() const {
     std::string s;
     s.append(std::to_string(mask_));
     s.append(":").append(dnnl_dt2str(data_type_));
-    if (group_ndims_ > 0 || user_precomp) {
+    if (group_ndims_ > 0) {
         s.append(":")
                 .append(std::to_string(group_dims_[0]))
                 .append("x")
                 .append(std::to_string(group_dims_[1]));
-        if (user_precomp) s.append(":true");
     }
     return s;
 }
@@ -113,7 +112,7 @@ std::string quant_entries_t::get_verbose() const {
         s.append(delim)
                 .append(arg2str(arg))
                 .append(":")
-                .append(q.get_verbose(arg & DNNL_ARG_ATTR_USER_PRECOMP));
+                .append(q.get_verbose());
         delim = attr_delim;
     }
     return s;

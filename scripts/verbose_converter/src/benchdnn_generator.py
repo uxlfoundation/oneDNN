@@ -197,13 +197,10 @@ class Converter(metaclass=ConverterMeta):
                 result += f":{def_value}"
             dt = param.data_type
             groups = param.groups
-            user_zp_precomp = param.user_zp_precomp
-            if dt != def_type or groups or user_zp_precomp:
+            if dt != def_type or groups:
                 result += f":{dt}"
-            if groups or user_zp_precomp:
+            if groups:
                 result += f":{groups}"
-            if user_zp_precomp:
-                result += ":true"
             results.append(result)
         return "+".join(results)
 

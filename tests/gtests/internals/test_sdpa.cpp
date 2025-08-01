@@ -1318,7 +1318,7 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
 
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
-    bool verbose = false;
+    const bool verbose = false;
     for_(int l = 0; l < dims[0]; l++)
     for_(int k = 0; k < dims[1]; k++)
     for_(int j = 0; j < dims[2]; j++)
@@ -1506,7 +1506,7 @@ public:
 
     byte_t(memory::data_type dt)
         : value(dnnl_data_type_size((dnnl_data_type_t)dt)
-                / ((dt == mdt::s4 || dt == mdt::u4) ? 2 : 1)) {}
+                / ((dt == mdt::s4 || dt == mdt::u4) ? 2.f : 1.f)) {}
 
     template <typename OR>
     byte_t(byte_t<OR> o) : value(magnitude_cast<Unit>(o).value) {}

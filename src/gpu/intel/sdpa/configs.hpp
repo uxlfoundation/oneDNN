@@ -17,7 +17,6 @@
 #ifndef GPU_INTEL_SDPA_CONFIGS_HPP
 #define GPU_INTEL_SDPA_CONFIGS_HPP
 
-#include <string>
 #include "common/c_types_map.hpp"
 #include "gemmstone/microkernel_provider.hpp"
 
@@ -214,13 +213,10 @@ struct ukernel_serialized_problem_t
     int aoPtrDims;
     int aqGroupM;
     int aqGroupK;
-
-    bool with_scales, with_zp, with_common_scales;
-    uint8_t padding1[1] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
-static_assert(sizeof(ukernel_serialized_problem_t) == 96,
-        "Expected sizeof(ukernel_serialized_problem_t) == 96");
+static_assert(sizeof(ukernel_serialized_problem_t) == 92,
+        "Expected sizeof(ukernel_serialized_problem_t) == 92");
 
 struct micro_sdpa_ukernel_params_t
     : trivially_serializable_t<micro_sdpa_ukernel_params_t> {

@@ -32,7 +32,7 @@ namespace conv {
 class gen_convolution_t;
 struct conv_pd_data_t;
 
-class gen_convolution_fwd_t : public gpu_primitive_t {
+class gen_convolution_fwd_t : public primitive_t {
 public:
     friend gen_convolution_t;
 
@@ -48,7 +48,7 @@ public:
         std::shared_ptr<conv_pd_data_t> data;
     };
 
-    using gpu_primitive_t::gpu_primitive_t;
+    using primitive_t::primitive_t;
 
     status_t init(impl::engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -59,7 +59,7 @@ private:
     std::shared_ptr<gen_convolution_t> impl_;
 };
 
-class gen_convolution_bwd_data_t : public gpu_primitive_t {
+class gen_convolution_bwd_data_t : public primitive_t {
 public:
     friend gen_convolution_t;
 
@@ -75,7 +75,7 @@ public:
         std::shared_ptr<conv_pd_data_t> data;
     };
 
-    using gpu_primitive_t::gpu_primitive_t;
+    using primitive_t::primitive_t;
 
     status_t init(impl::engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -86,7 +86,7 @@ private:
     std::shared_ptr<gen_convolution_t> impl_;
 };
 
-class gen_convolution_bwd_weights_t : public gpu_primitive_t {
+class gen_convolution_bwd_weights_t : public primitive_t {
 public:
     friend gen_convolution_t;
 
@@ -103,7 +103,7 @@ public:
         std::shared_ptr<conv_pd_data_t> data;
     };
 
-    using gpu_primitive_t::gpu_primitive_t;
+    using primitive_t::primitive_t;
 
     status_t init(impl::engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;

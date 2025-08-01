@@ -103,8 +103,8 @@ struct reusable_bnorm_runtime_params_t {
     dim_t stat_ic, reduction_nelems, div, ic;
 };
 
-struct reusable_batch_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_batch_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
@@ -204,8 +204,8 @@ private:
     compute::kernel_t calculate_mean_variance_kernel_;
 };
 
-struct reusable_batch_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_batch_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_bwd_pd_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;

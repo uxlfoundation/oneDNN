@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-struct xe_softmax_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_softmax_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_fwd_pd_t {
         using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
 
@@ -239,8 +239,8 @@ protected:
     compute::kernel_t kernel_;
 };
 
-struct xe_softmax_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_softmax_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_bwd_pd_t {
         using gpu_softmax_bwd_pd_t::gpu_softmax_bwd_pd_t;
 

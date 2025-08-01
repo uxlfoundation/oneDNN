@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-struct vectorized_lnorm_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct vectorized_lnorm_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_fwd_pd_t {
         using gpu_layer_normalization_fwd_pd_t::
                 gpu_layer_normalization_fwd_pd_t;
@@ -109,8 +109,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct vectorized_lnorm_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct vectorized_lnorm_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_bwd_pd_t {
         using gpu_layer_normalization_bwd_pd_t::
                 gpu_layer_normalization_bwd_pd_t;

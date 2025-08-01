@@ -37,8 +37,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-struct gpu_primitive_t : public gpu::primitive_t {
-    using primitive_t::primitive_t;
+struct primitive_t : public gpu::primitive_t {
+    using gpu::primitive_t::primitive_t;
 
     struct compute_block_t : public gpu::primitive_t::compute_block_t {
         compute_block_t(const compute::kernel_t &kernel)

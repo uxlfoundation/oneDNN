@@ -57,8 +57,8 @@ struct xe_eltwise_jit_params_t
     uint8_t pad0[3] = {};
 };
 
-struct xe_eltwise_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_eltwise_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_fwd_pd_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
@@ -113,8 +113,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct xe_eltwise_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_eltwise_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_bwd_pd_t {
         using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
 

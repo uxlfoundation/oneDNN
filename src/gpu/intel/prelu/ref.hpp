@@ -31,8 +31,8 @@ namespace gpu {
 namespace intel {
 namespace prelu {
 
-struct ref_prelu_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_prelu_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_prelu_fwd_pd_t {
         using gpu_prelu_fwd_pd_t::gpu_prelu_fwd_pd_t;
 
@@ -86,8 +86,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_prelu_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_prelu_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_prelu_bwd_pd_t {
         using gpu_prelu_bwd_pd_t::gpu_prelu_bwd_pd_t;
 

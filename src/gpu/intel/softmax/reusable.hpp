@@ -88,8 +88,8 @@ struct reusable_softmax_runtime_params_t {
     compute::dispatch_runtime_params_t gws_params;
 };
 
-struct reusable_softmax_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_softmax_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_softmax_fwd_pd_t {
         using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
 

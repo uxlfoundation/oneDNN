@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace pooling {
 
-struct ref_pooling_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_pooling_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
 
@@ -144,8 +144,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_pooling_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_pooling_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
 

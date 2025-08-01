@@ -81,8 +81,8 @@ struct atomic_reduction_conf_t : public reduction_subproblem_t {
     compute::dispatch_runtime_params_t rt_conf;
 };
 
-struct atomic_reduction_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct atomic_reduction_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reduction_pd_t {
         using gpu_reduction_pd_t::gpu_reduction_pd_t;
 

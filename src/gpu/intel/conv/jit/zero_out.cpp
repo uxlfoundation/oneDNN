@@ -57,7 +57,7 @@ void zero_out_kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,
 }
 
 status_t zero_out_kernel_desc_t::create_kernel(compute::kernel_t &kernel,
-        gpu_primitive_t *primitive, impl::engine_t *engine) const {
+        primitive_t *primitive, impl::engine_t *engine) const {
     return primitive->create_kernel(
             engine, kernel, kernel_name().c_str(), *this);
 }

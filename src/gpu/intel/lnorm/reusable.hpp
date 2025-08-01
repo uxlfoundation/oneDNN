@@ -78,8 +78,8 @@ struct reusable_lnorm_runtime_params_t {
 
 //************* FWD implementation *************//
 
-struct reusable_layer_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_layer_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_fwd_pd_t {
         using gpu_layer_normalization_fwd_pd_t::
                 gpu_layer_normalization_fwd_pd_t;
@@ -155,8 +155,8 @@ private:
 
 //************* BWD implementation *************//
 
-struct reusable_layer_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_layer_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_layer_normalization_bwd_pd_t {
         using gpu_layer_normalization_bwd_pd_t::
                 gpu_layer_normalization_bwd_pd_t;

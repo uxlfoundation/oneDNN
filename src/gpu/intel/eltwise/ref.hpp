@@ -46,8 +46,8 @@ struct ref_eltwise_conf_t {
     attr_info_t attr_info;
 };
 
-struct ref_eltwise_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_eltwise_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_fwd_pd_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
@@ -118,8 +118,8 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_eltwise_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_eltwise_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_bwd_pd_t {
         using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
 

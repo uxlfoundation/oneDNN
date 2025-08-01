@@ -34,8 +34,8 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct ref_sdpa_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_sdpa_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public sdpa_pd_t {
         using sdpa_pd_t::sdpa_pd_t;
 

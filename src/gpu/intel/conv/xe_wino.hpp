@@ -31,8 +31,8 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct xe_wino_convolution_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_wino_convolution_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_fwd_pd_t {
         using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
 

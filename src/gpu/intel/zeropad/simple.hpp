@@ -33,8 +33,8 @@ namespace zeropad {
             status::unimplemented, "%s," msg, this->info(engine), \
             ##__VA_ARGS__)
 
-struct simple_zero_pad_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_zero_pad_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_zero_pad_pd_t {
         using gpu_zero_pad_pd_t::gpu_zero_pad_pd_t;
 

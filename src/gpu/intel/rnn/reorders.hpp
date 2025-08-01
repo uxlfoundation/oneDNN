@@ -32,8 +32,8 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-struct rnn_weights_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct rnn_weights_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public reorder_pd_t {
         using reorder_pd_t::reorder_pd_t;
 

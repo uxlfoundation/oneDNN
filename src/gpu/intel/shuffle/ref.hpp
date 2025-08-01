@@ -29,8 +29,8 @@ namespace gpu {
 namespace intel {
 namespace shuffle {
 
-struct ref_shuffle_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_shuffle_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 

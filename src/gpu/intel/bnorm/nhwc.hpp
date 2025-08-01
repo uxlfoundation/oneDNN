@@ -54,8 +54,8 @@ status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
         nhwc_bnorm_params_t &conf, impl::engine_t *engine,
         compute::dispatch_t &dispatch);
 
-struct nhwc_batch_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct nhwc_batch_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
@@ -205,8 +205,8 @@ private:
     compute::kernel_t reduce_final_kernel_;
 };
 
-struct nhwc_batch_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct nhwc_batch_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_bwd_pd_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;

@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace pooling {
 
-struct xe_global_pooling_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_global_pooling_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_fwd_pd_t {
         using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
 
@@ -141,8 +141,8 @@ private:
     std::shared_ptr<impl::primitive_t> reduction_p_;
 };
 
-struct xe_global_pooling_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct xe_global_pooling_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_pooling_bwd_pd_t {
         using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
 

@@ -133,7 +133,7 @@ std::unique_ptr<jit::generator_base_t> make_generator(
 }
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
+compute::kernel_t make_kernel(primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
     using namespace compute;
     kernel_t kernel;
@@ -176,7 +176,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(
-        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
+        primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
     return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
             std::forward<ArgsT>(args)...);
 }

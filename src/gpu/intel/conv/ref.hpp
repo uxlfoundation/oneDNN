@@ -30,8 +30,8 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct ref_convolution_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_fwd_pd_t {
         using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
 
@@ -164,8 +164,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_data_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_bwd_data_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_bwd_data_pd_t {
         using gpu_convolution_bwd_data_pd_t::gpu_convolution_bwd_data_pd_t;
 
@@ -277,8 +277,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_weights_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct ref_convolution_bwd_weights_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_convolution_bwd_weights_pd_t {
         using gpu_convolution_bwd_weights_pd_t::
                 gpu_convolution_bwd_weights_pd_t;

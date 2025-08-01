@@ -31,7 +31,7 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct convolution_inner_product_fwd_t : public gpu_primitive_t {
+struct convolution_inner_product_fwd_t : public primitive_t {
     struct pd_t : public gpu_inner_product_fwd_pd_t {
         using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
 
@@ -103,7 +103,7 @@ struct convolution_inner_product_fwd_t : public gpu_primitive_t {
         status_t init_scratchpad();
     };
 
-    convolution_inner_product_fwd_t(const pd_t *apd) : gpu_primitive_t(apd) {}
+    convolution_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(impl::engine_t *engine) override {
         CHECK(create_nested_primitive(conv_, pd()->cpd_, engine));

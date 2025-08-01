@@ -54,8 +54,8 @@ enum gemm_kind_t {
 };
 
 template <prop_kind_t aprop>
-struct simple_rnn_common_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_rnn_common_t : public primitive_t {
+    using primitive_t::primitive_t;
 
     using class_name = simple_rnn_common_t<aprop>;
 

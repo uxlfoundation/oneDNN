@@ -28,8 +28,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct gpu_gemm_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct gpu_gemm_t : public primitive_t {
+    using primitive_t::primitive_t;
     virtual status_t execute(const exec_ctx_t &ctx) const = 0;
     status_t execute(const impl::exec_ctx_t &ctx) const override {
         exec_args_t gemm_args;

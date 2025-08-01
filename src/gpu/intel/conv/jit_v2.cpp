@@ -190,7 +190,7 @@ public:
     }
 
     status_t execute(
-            const gpu_primitive_t *primitive, const exec_ctx_t &ctx) const {
+            const primitive_t *primitive, const exec_ctx_t &ctx) const {
         return exec_plan_.execute(primitive, ctx);
     }
 

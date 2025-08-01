@@ -85,8 +85,8 @@ struct reusable_simple_concat_runtime_params_t {
     compute::range_t lws_d;
 };
 
-struct reusable_simple_concat_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct reusable_simple_concat_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_concat_pd_t {
         using gpu_concat_pd_t::gpu_concat_pd_t;
 

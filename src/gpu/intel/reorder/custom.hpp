@@ -34,8 +34,8 @@ namespace reorder {
 
 // Collection of custom reorder implementations that are highly optimized
 // but only applicable to specific scenarios.
-struct custom_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct custom_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_reorder_pd_t {
         using gpu_reorder_pd_t::gpu_reorder_pd_t;
 

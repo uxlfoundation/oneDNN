@@ -22,7 +22,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-status_t gpu_primitive_t::create_kernel(impl::engine_t *engine,
+status_t primitive_t::create_kernel(impl::engine_t *engine,
         compute::kernel_t *kernel, jit::generator_base_t *jitter,
         bool register_kernel) {
     auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
@@ -43,7 +43,7 @@ status_t gpu_primitive_t::create_kernel(impl::engine_t *engine,
     return status::success;
 }
 
-status_t gpu_primitive_t::create_kernels(impl::engine_t *engine,
+status_t primitive_t::create_kernels(impl::engine_t *engine,
         std::vector<compute::kernel_t> *kernels,
         const std::vector<const char *> &kernel_names,
         const compute::kernel_ctx_t &kernel_ctx) {
@@ -63,7 +63,7 @@ status_t gpu_primitive_t::create_kernels(impl::engine_t *engine,
     return status::success;
 }
 
-status_t gpu_primitive_t::create_kernel(impl::engine_t *engine,
+status_t primitive_t::create_kernel(impl::engine_t *engine,
         compute::kernel_t *kernel, const char *kernel_name,
         const compute::kernel_ctx_t &kernel_ctx) {
     std::vector<compute::kernel_t> kernels(1);
@@ -77,7 +77,7 @@ status_t gpu_primitive_t::create_kernel(impl::engine_t *engine,
 // be at most uint32_t. This function works around that by passing an offset
 // argument. The OpenCL native offset cannot be used due to lack of SYCL
 // interop support.
-status_t gpu_primitive_t::large_parallel_for(const exec_ctx_t &ctx,
+status_t primitive_t::large_parallel_for(const exec_ctx_t &ctx,
         const compute::nd_range_t &nd_range, const compute::kernel_t &kernel,
         compute::kernel_arg_list_t &arg_list, int offset_idx) {
 

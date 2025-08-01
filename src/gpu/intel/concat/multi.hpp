@@ -31,8 +31,8 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-struct multi_concat_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct multi_concat_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_concat_pd_t {
         static constexpr int batch_failure = -1;
 

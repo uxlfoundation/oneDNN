@@ -449,6 +449,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.bsPtrDims = b_quant.scale_ndims;
         problem_.aqGroupK = a_quant.group_k;
         problem_.bqGroupK = b_quant.group_k;
+        problem_.aqGroupM = a_quant.group_mn;
+        problem_.bqGroupN = b_quant.group_mn;
         if (a_quant.scales_type != data_type::undef) {
             problem_.Ta_scale
                     = convert_dnnl_to_kernel_type(a_quant.scales_type);

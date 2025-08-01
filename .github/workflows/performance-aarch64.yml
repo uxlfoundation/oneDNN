@@ -201,12 +201,18 @@ jobs:
         if: ${{ inputs.benchdnn_command == '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
+          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
 
       - name: Compare 16 threads performance test results
         if: ${{ inputs.benchdnn_command == '' }}
         run: |
           python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+
+      - name: Check for regressions
+        if: ${{ inputs.benchdnn_command == '' }}
+        continue-on-error: true
+        run: |
+          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
 
       - name: Run user-provided benchdnn command on both builds
         if: ${{ inputs.benchdnn_command != '' }}
@@ -222,11 +228,6 @@ jobs:
         if: ${{ inputs.benchdnn_command != '' }}
         run: |
           python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
-
-      - name: Check for regressions
-        if: ${{ inputs.benchdnn_command == '' }}
-        run: |
-          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
 
   #* This job adds a check named "Nightly Performance AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

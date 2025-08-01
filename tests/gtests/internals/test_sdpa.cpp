@@ -1249,15 +1249,15 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     if (scale_dt != mdt::undef) {
         bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
-                = scale_f32;
+                = std::move(scale_f32);
         if (p.mask != mask_type::no_mask) {
             bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
-                    = mask_f32;
+                    = std::move(mask_f32);
         }
     } else {
         if (p.mask != mask_type::no_mask) {
             bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
-                    = mask_f32;
+                    = std::move(mask_f32);
         }
     }
 

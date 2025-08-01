@@ -181,7 +181,7 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
         if (tag.is_strided() && i < tag.raw_tag().nentries() - 1) {
             stride_t s_stride(1);
             s_stride *= prb_stride(dim, tensor_kind);
-            strides[dim] = s_stride;
+            strides[dim] = std::move(s_stride);
         } else {
             strides[dim] = stride;
             stride *= dim;

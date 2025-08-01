@@ -201,7 +201,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     if (conf.use_fused_atomics_reduction()
             && conf.use_fused_atomics_reduction_param().is_overridden()
             && pd->attr()->deterministic_)
-        conf = default_conf;
+        conf = std::move(default_conf);
 
     if (!conf.use_fused_atomics_reduction_param().is_overridden())
         conf.set_use_fused_atomics_reduction(

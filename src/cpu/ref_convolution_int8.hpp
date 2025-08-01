@@ -130,7 +130,8 @@ struct ref_convolution_int8_bwd_data_t : public primitive_t {
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(utils::one_of(diff_dst_type, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(wei_type == s8, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(wei_type, s8, f32, bf16),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(utils::one_of(diff_src_type, f32, bf16, s32, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);

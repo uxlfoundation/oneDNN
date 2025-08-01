@@ -13,7 +13,7 @@
 --dt=f64
 --batch=shapes_ci
 
---dt=f32,bf16,f16,f32:f16:f32,f32:bf16:f32
+--dt=f32,bf16,f16,f32:f16:f32,f32:bf16:f32,f32:f32:u8,f32:f32:s8,bf16:bf16:u8,bf16:bf16:s8
 --attr-post-ops=, \
                 sum:0.5, \
                 linear:2:1, \
@@ -23,7 +23,7 @@
 --batch=shapes_ci
 ## Backward
 --dir=BWD_D,BWD_W,BWD_WB
---dt=f64,f32,f16
+--dt=f64,f32,f16,f32:f32:u8,f32:f32:s8,bf16:bf16:u8,bf16:bf16:s8
 --attr-post-ops=
 --batch=shapes_ci
 

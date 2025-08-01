@@ -258,6 +258,38 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_fused_convolution_fwd_t)
             nullptr,
         }},
+        {{forward, f32, f32, u8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, f32, f32, s8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, bf16, bf16, u8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, bf16, bf16, s8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, u8, f32, f32}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, s8, f32, f32}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, u8, bf16, bf16}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, s8, bf16, bf16}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f32),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, bf16),
@@ -386,6 +418,22 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_convolution_bwd_data_t)
             nullptr,
         })},
+        {{backward_data, s8, f32, f32}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, u8, f32, f32}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, s8, bf16, bf16}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, u8, bf16, bf16}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e5m2, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e5m2, f8_e4m3, f8_e5m2),
@@ -460,6 +508,38 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{backward_weights, f16, f16, f16}, REG_BWD_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_weights_t)
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t)
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, f32, f32, u8}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, f32, f32, s8}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, bf16, bf16, u8}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, bf16, bf16, s8}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, u8, f32, f32}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, s8, f32, f32}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, u8, bf16, bf16}, REG_BWD_PK({
+            CPU_INSTANCE(ref_convolution_bwd_weights_t)
+            nullptr,
+        })},
+        {{backward_weights, s8, bf16, bf16}, REG_BWD_PK({
             CPU_INSTANCE(ref_convolution_bwd_weights_t)
             nullptr,
         })},
@@ -832,6 +912,16 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
             nullptr,
         })},
+        {{backward_data, f32, f32, u8}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, bf16, bf16, u8}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
         // BWD int8 (diff_dst:s8)
         {{backward_data, f32, s8, s8}, REG_BWD_D_PK({
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx512_core_amx>)
@@ -880,6 +970,16 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_convolution_bwd_strided_t<avx2_vnni>)
             CPU_INSTANCE(gemm_x8s8s32x_convolution_bwd_data_t)
             CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, f32, f32, s8}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, bf16, bf16, s8}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
             nullptr,
         })},
     });

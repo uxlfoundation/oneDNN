@@ -225,6 +225,8 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 range.local_range() ? range.local_range().data() : nullptr, 0,
                 nullptr, save_event ? &event.unwrap() : nullptr);
         OCL_CHECK(err);
+
+        OCL_CHECK(ocl_stream->register_async_tracker(event));
     }
 
     if (stream.is_profiling_enabled()) {

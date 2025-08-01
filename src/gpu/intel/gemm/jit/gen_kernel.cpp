@@ -19,6 +19,7 @@
 #include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
+#include "common/utils.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
@@ -276,6 +277,20 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.boPtrDims == 2 || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
+
+    // If the M/N group size is equal to M or N, align up to a multiple of unroll size
+    // XXX: Increase group size to a large value before aligning to increase reusability
+    constexpr int perMNGroupSize = 1 << 24;
+    if (problem_.aqGroupM == m_) {
+        problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
+        problem_.aqGroupM
+                = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
+    }
+    if (problem_.bqGroupN == n_) {
+        problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
+        problem_.bqGroupN
+                = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
+    }
 
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);

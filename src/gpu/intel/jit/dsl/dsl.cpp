@@ -17,9 +17,10 @@
 
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
+#include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/message_patterns.hpp"
 #include "gpu/intel/jit/pass/dpas.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -547,11 +548,11 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
     } else {
         auto max_simd = 32;
 
-        auto dim_simd = C.layout.blocks()[0].dim;
-        auto dim_rcount = C.layout.blocks()[1].dim;
-        auto m_dim = dim_simd;
-        auto n_dim = dim_rcount;
-        auto k_dim
+        const auto &dim_simd = C.layout.blocks()[0].dim;
+        const auto &dim_rcount = C.layout.blocks()[1].dim;
+        const auto &m_dim = dim_simd;
+        const auto &n_dim = dim_rcount;
+        const auto &k_dim
                 = utils::one_of(A.layout.blocks()[1].dim, dim_simd, dim_rcount)
                 ? A.layout.blocks()[0].dim
                 : A.layout.blocks()[1].dim;

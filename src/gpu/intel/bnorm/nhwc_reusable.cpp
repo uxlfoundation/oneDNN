@@ -167,7 +167,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     if (bn_conf.use_fused_atomics_reduction()
             && bn_conf.use_fused_atomics_reduction_param().is_overridden()
             && pd->attr()->deterministic_)
-        bn_conf = default_conf;
+        bn_conf = std::move(default_conf);
 
     // Get non-overridden parameters, performance modeling way
     hw_params_t hw_params;

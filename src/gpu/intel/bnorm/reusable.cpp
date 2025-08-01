@@ -168,7 +168,8 @@ static status_t init_conf_common(reusable_bnorm_params_t &conf,
     compute::named_buffer_t buffer("BUFFER", *data_mdw.md_, dims);
 
     // Dispatch to all dims
-    compute::reusable_dispatch_config_t dispatch_config(intel_engine, dims);
+    compute::reusable_dispatch_config_t dispatch_config(
+            intel_engine, std::move(dims));
     CHECK(dispatch_config.register_buffer(buffer));
     CHECK(dispatch_config.define_dim_index(
             "IC_DIM", bnorm_dims_t::ic, rt_conf.ic));

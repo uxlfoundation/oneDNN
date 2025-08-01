@@ -72,10 +72,10 @@ public:
 
     void add_kernel(const std::shared_ptr<kernel_desc_base_t> &desc,
             const std::shared_ptr<kernel_params_base_t> &params) {
-        kernel_entry_t e;
+        kernel_entries_.emplace_back();
+        kernel_entry_t &e = kernel_entries_.back();
         e.desc = desc;
         e.params = params;
-        kernel_entries_.push_back(e);
     }
 
     void add_user_buffer(const std::string &name, const layout_t &layout,

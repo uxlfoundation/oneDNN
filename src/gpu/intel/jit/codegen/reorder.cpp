@@ -189,7 +189,7 @@ void reorder_2d_impl_t::emit(
 
         dst_layout.for_each_tile(tile, swizzle);
         prev_layout = next_layout;
-        prev_op = next_op;
+        prev_op = std::move(next_op);
         ++plan.phase;
     }
 }
@@ -526,23 +526,26 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         // Pure conversion or pure swizzle
         emit(plan, dst_op, src_op);
     } else if (do_pre_conv && do_post_conv) {
-        auto tmp_op = init_operand(up_layout, from_temp);
+        const bool has_swizzle = up_layout != down_layout;
+        auto tmp_op = init_operand(std::move(up_layout), from_temp);
         emit(plan, tmp_op, src_op);
-        if (up_layout != down_layout) {
+        if (has_swizzle) {
             // Integer swizzle
-            auto tmp2_op = in_place ? init_operand(down_layout, from_op(dst_op))
-                                    : init_operand(down_layout, from_temp);
+            auto tmp2_op = in_place
+                    ? init_operand(std::move(down_layout), from_op(dst_op))
+                    : init_operand(std::move(down_layout), from_temp);
             emit(plan, tmp2_op, tmp_op);
             std::swap(tmp_op, tmp2_op);
         }
         emit(plan, dst_op, tmp_op);
     } else if (do_pre_conv) {
-        auto tmp_op = init_operand(up_layout, from_temp);
+        auto tmp_op = init_operand(std::move(up_layout), from_temp);
         emit(plan, tmp_op, src_op);
         emit(plan, dst_op, tmp_op);
     } else if (do_post_conv) {
-        auto tmp_op = in_place ? init_operand(down_layout, from_op(dst_op))
-                               : init_operand(down_layout, from_temp);
+        const auto &tmp_op = in_place
+                ? init_operand(std::move(down_layout), from_op(dst_op))
+                : init_operand(std::move(down_layout), from_temp);
         emit(plan, tmp_op, src_op);
         emit(plan, dst_op, tmp_op);
     }

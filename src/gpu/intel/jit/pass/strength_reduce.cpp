@@ -125,7 +125,7 @@ public:
         // Move this store up, remove from here.
         loops_[init_store_level].init_stores.push_back(init_store_stmt);
         if (!post_inc_store.is_empty()) {
-            post_inc_stores_.push_back(post_inc_store);
+            post_inc_stores_.push_back(std::move(post_inc_store));
         }
         return stmt_t();
     }

@@ -1695,7 +1695,8 @@ walk_order_t compute_walk_order(const conv_config_t &cfg) {
                             grid_tile[b.dim], grid_inner.get(b.dim, 1));
                     if (rem == 1) continue;
                     auto bmnk = to_gemm(b.dim, prb);
-                    bool is_bk = utils::one_of(bmnk, pvars::b, pvars::k);
+                    bool is_bk = utils::one_of(
+                            std::move(bmnk), pvars::b, pvars::k);
                     if ((step == 2) != is_bk) continue;
                     walk_order.add(b.dim, rem, 0);
                     break;

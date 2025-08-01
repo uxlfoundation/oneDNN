@@ -99,6 +99,8 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
             = utils::downcast<const xpu::sycl::engine_impl_t *>(
                     stream.engine()->impl());
 
+    auto *sycl_stream = utils::downcast<gpu::intel::sycl::stream_t *>(&stream);
+
     // XXX: DPCPP/L0 does not support non-uniform work-groups and does not
     // provide any diagnostics. This is to catch potential issues on oneDNN
     // side.
@@ -172,6 +174,8 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
             cgh.parallel_for(sycl_range, sycl_kernel_);
         }
     });
+
+    sycl_stream->register_async_tracker(event);
 
     if (stream.is_profiling_enabled()) {
         auto sycl_event = utils::make_unique<xpu::sycl::event_t>(

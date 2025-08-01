@@ -57,9 +57,7 @@ struct model_params_t {
         float step = 0;
 
         param_t(const std::string &name, float val, float lo, float hi)
-            : name(name), val(val), lo(lo), hi(hi) {
-            step = (hi - lo) / 5;
-        }
+            : name(name), val(val), lo(lo), hi(hi), step((hi - lo) / 5) {}
 
         void set(float v) { val = std::min(hi, std::max(lo, v)); }
 
@@ -70,7 +68,7 @@ struct model_params_t {
     model_params_t(model_kind_t kind) : kind(kind) {}
 
     void add(const std::string &name, float val, float lo, float hi) {
-        vec.emplace_back(param_t(name, val, lo, hi));
+        vec.emplace_back(name, val, lo, hi);
     }
 
     param_t &operator[](int idx) { return vec[idx]; }

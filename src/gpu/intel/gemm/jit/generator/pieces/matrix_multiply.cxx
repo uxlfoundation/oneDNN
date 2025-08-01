@@ -663,24 +663,30 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
                 Cr = state.Bsr_layout.find(0, xr, state.Bsr_regs, &ner, &Cr_block);
             } else stub();
 
+            ne = std::min({ne, ner, xchunk});
+
             std::array<Subregister, 2> scale;
             std::array<int, 2> scaleStride = {0, 0};
             int nscale = 0;
             if (scaleA && !doBSum) {
                 // TODO: handle non-repacked case correctly.
+                // TODO: handle M/N grouping < M/N unroll correctly.
                 int hs = (h / problem.aqGroupK) % state.kaqLate;
-                scale[nscale] = state.Ar_scaleLayout.find(i, hs, state.Ar_scaleRegs, &nes[nscale]);
+                int is = i / problem.aqGroupM;
+                scale[nscale] = state.Ar_scaleLayout.find(is, hs, state.Ar_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 1 : 0;
+                if (nes[nscale] < ne) scaleStride[nscale] = 0;
                 nscale++;
             }
             if (scaleB && !doASum) {
                 int hs = (h / problem.bqGroupK) % state.kbqLate;
-                scale[nscale] = state.Br_scaleLayout.find(hs, j, state.Br_scaleRegs, &nes[nscale]);
+                int js = j / problem.bqGroupN;
+                scale[nscale] = state.Br_scaleLayout.find(hs, js, state.Br_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 0 : 1;
+                if (nes[nscale] < ne) scaleStride[nscale] = 0;
                 nscale++;
             }
 
-            ne = std::min({ne, ner, xchunk});
             if (scaleStride[0] == 1) ne = std::min(ne, nes[0]);
             if (scaleStride[1] == 1) ne = std::min(ne, nes[1]);
 

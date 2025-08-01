@@ -385,7 +385,7 @@ void Generator<hw>::dequantizeInt4Shift(Type Tsrc, GRFMultirange src, const Comm
     });
 }
 
-// Optimized int4 -> f16/bf16/f32 dequantization sequence.
+// Optimized int4 -> f16/f32 dequantization sequence.
 template <HW hw>
 void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                                    const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale,
@@ -399,13 +399,12 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
 
     bool s4 = Tsrc.isSigned();
     bool f32 = (Tdst == Type::f32);
-    bool bf16 = (Tdst == Type::bf16);
 
     RegisterLayout layoutDstF16;
     const RegisterLayout *effLayoutDst = &layoutDst;
     GRFMultirange dstF16;
     const GRFMultirange *effDst = &dst;
-    if (f32 || bf16) {
+    if (f32) {
         layoutDstF16 = RegisterLayout(hw, Type::f16, layoutSrc.rows(), layoutSrc.cols(), layoutDst.colMajor(), layoutDst.crosspack(), 0, 0, (hw < HW::XeHP));
         for (auto &block: layoutDstF16) {
             block.offsetR += layoutDst[0].offsetR;
@@ -449,7 +448,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     }
 
     // 6) Convert to dst type if needed.
-    if (f32 || bf16) {
+    if (f32) {
         copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst, offR, offC, false, strategy, state);
         safeReleaseRanges(dstF16, state);
     }

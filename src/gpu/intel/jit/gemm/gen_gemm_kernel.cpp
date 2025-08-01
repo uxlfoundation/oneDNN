@@ -18,6 +18,7 @@
 #include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
+#include "common/utils.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
@@ -274,6 +275,14 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     if (problem_.boPtrDims == 2 || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
+
+    // If the M/N group size is equal to M or N, align up to the next power of 2
+    if (problem_.aqGroupM == m_) {
+        problem_.aqGroupM = utils::rnd_up_pow2(problem_.aqGroupM);
+    }
+    if (problem_.bqGroupN == n_) {
+        problem_.bqGroupN = utils::rnd_up_pow2(problem_.bqGroupN);
+    }
 
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);

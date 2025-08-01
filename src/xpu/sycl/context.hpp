@@ -91,8 +91,15 @@ struct context_t final : public xpu::context_t {
         events_.append(event);
     }
 
+    void set_timing_data(const async_timing_data_t &td) {
+        stream_timing_data_ = td;
+    }
+
+    async_timing_data_t *get_timing_data() { return &stream_timing_data_; }
+
 private:
     event_t events_;
+    async_timing_data_t stream_timing_data_;
 };
 
 } // namespace sycl

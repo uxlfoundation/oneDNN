@@ -591,6 +591,17 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
     for (auto &concat_op : fusion_ops) {
         for (size_t i = 0; i < concat_op->num_inputs(); ++i) {
+// Avoid the assertion caused by concat with 0-dim src on NV GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+            const auto src_lt
+                    = concat_op->get_input_value(i)->get_logical_tensor();
+            const auto src_dims = ltw(src_lt).vdims();
+            if (std::any_of(src_dims.begin(), src_dims.end(),
+                        [](dim_t src_dim) { return src_dim == 0; })) {
+                return status::unimplemented;
+            }
+#endif
             op_t &scale_op = concat_op->get_input_value(i)->get_producer();
             op_t &zp_op = scale_op.get_input_value(0)->get_producer();
             rewriter.fuse_op_to_successor(zp_op.shared_from_this());

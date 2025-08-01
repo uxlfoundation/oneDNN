@@ -31,7 +31,6 @@
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/cpu_reducer.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_brgemm_inner_product_utils.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
 #include "cpu/x64/jit_brgemm_transpose_utils.hpp"
@@ -97,9 +96,10 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                     bias_md_, attr_, dnnl_get_max_threads()));
 
             bool are_post_ops_applicable = one_of(true, jbgp_.with_sum,
-                    jbgp_.with_bias, jbgp_.with_scales, jbgp_.with_eltwise,
-                    jbgp_.with_binary, jbgp_.acc_dt != jbgp_.dst_dt,
-                    jbgp_.req_s8s8_compensation, jbgp_.with_dst_scales);
+                    jbgp_.with_bias, jbgp_.with_src_scales,
+                    jbgp_.with_wei_scales, jbgp_.with_dst_scales,
+                    jbgp_.with_eltwise, jbgp_.with_binary,
+                    jbgp_.acc_dt != jbgp_.dst_dt, jbgp_.req_s8s8_compensation);
 
             const float alpha = 1.0;
             const float beta = 1.0;
@@ -153,8 +153,6 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
 
             auto scratchpad = scratchpad_registry().registrar();
             jbgp_.init_scratchpad(scratchpad);
-            if (jbgp_.with_scales)
-                book_precomputed_scales(scratchpad, attr()->scales_, OC());
 
             return status::success;
         }
@@ -220,20 +218,6 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
             CHECK(acc_ker_->create_kernel());
         }
 
-        // JIT to precompute scales
-        const bool is_jit_supported = mayiuse(avx512_core);
-        const auto attr = pd()->attr();
-        const auto &attr_scales = attr->scales_;
-        if (is_jit_supported && pd()->OC() > 1
-                && req_copy_scales(attr_scales)) {
-            int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-            if (wei_scale_mask > 0) {
-                CHECK(safe_ptr_assign(jit_scale_precompute_,
-                        new jit_avx512_core_scale_precompute_t(attr)));
-                CHECK(jit_scale_precompute_->create_kernel());
-            }
-        }
-
         return status::success;
     }
 
@@ -249,7 +233,6 @@ private:
             brg_kernels_[brgemm_inner_product_utils::max_num_brg_kernels_ip];
     std::unique_ptr<jit_brgemm_copy_to_coarse_t> copy_src_kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
     brgemm_containers::brgemm_palette_container_t brgemm_palettes_ {
             brgemm_inner_product_utils::max_num_brg_kernels_ip};
 };

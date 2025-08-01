@@ -45,7 +45,6 @@ struct jit_brgemm_primitive_conf_t {
     bool with_sum;
     bool with_eltwise;
     bool with_binary;
-    bool with_scales;
     bool req_s8s8_compensation;
     int nb_ic, ic_block, ic_block_ext;
     int nb_oc, oc_block, oc_block_ext;
@@ -69,6 +68,9 @@ struct jit_brgemm_primitive_conf_t {
     bool is_bf32;
     bool is_tf32;
 
+    bool with_src_scales;
+    bool with_wei_scales;
+    bool with_dst_scales;
     int is_oc_scale;
 
     int LDA, LDB, LDC, LDD;
@@ -84,7 +86,6 @@ struct jit_brgemm_primitive_conf_t {
     int amx_buf_size_per_thread;
     brgemm_kernel_prefetching_t hint_prefetching
             = brgemm_kernel_prefetching_t::brgemm_prf_default;
-    bool with_dst_scales;
 
     // Compute kernel-spatial dimension size.
     int ks() const;

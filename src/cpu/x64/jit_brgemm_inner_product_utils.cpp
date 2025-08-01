@@ -444,7 +444,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     jbgp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
     const memory_desc_wrapper dst_d(&dst_md);
     if (!post_ops_ok(attr, dst_d)) return status::unimplemented;
-    if (jbgp.with_scales) {
+    if (jbgp.with_wei_scales) {
         jbgp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
     }
 
@@ -1386,7 +1386,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
         return status::unimplemented;
     if (is_int8) {
         jbgp.acc_dt = s32;
-        jbgp.with_scales = true;
+        jbgp.with_src_scales = true;
+        jbgp.with_wei_scales = true;
         jbgp.with_dst_scales = true;
     } else
         jbgp.acc_dt = f32;

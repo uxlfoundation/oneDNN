@@ -27,7 +27,6 @@
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
 #include "cpu/x64/brgemm/brgemm_utils.hpp"
 #include "cpu/x64/cpu_reducer.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_avx512_sparse_decompress_kernel.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
@@ -118,7 +117,6 @@ private:
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
             typename cpu_isa_traits_t<isa>::Vmm>;

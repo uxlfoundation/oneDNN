@@ -19,7 +19,6 @@
 #include "common/utils.hpp"
 
 #include "cpu/cpu_primitive.hpp"
-#include "cpu/scale_utils.hpp"
 
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_brdgmm_dw_conv.hpp"
@@ -251,10 +250,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
                            && cd.weights_desc.format_kind != format_kind::any),
             "compensation required for current datatype combination");
 
-    const auto &src_scales = attr_.scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr_.scales_.get(DNNL_ARG_WEIGHTS);
-    jcp.with_scale = !src_scales.has_default_values()
-            || !wei_scales.has_default_values();
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
 
     CHECK(attr_scales_ok());
@@ -284,10 +280,6 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     jcp.adjusted_batch_size
             = div_up(rnd_up(jcp.kd * jcp.kh * jcp.kw * sc_size, 4096), sc_size);
     CHECK(init_brdgmm_conf());
-    if (jcp.with_scale) {
-        auto scratchpad = scratchpad_registry().registrar();
-        book_precomputed_scales(scratchpad, attr_.scales_, OC());
-    }
 
     init_batch_elements();
     return status::success;
@@ -557,19 +549,6 @@ status_t brdgmm_dw_convolution_fwd_t::init(engine_t *engine) {
         CHECK(safe_ptr_assign(brdgmm_kernels_[idx], brg_kernel));
     }
 
-    // JIT to precompute scales
-    const bool is_jit_supported = mayiuse(avx512_core);
-    const auto attr = pd()->attr();
-    const auto &attr_scales = attr->scales_;
-    if (is_jit_supported && pd()->OC() > 1 && req_copy_scales(attr_scales)) {
-        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_scale_mask > 0) {
-            CHECK(safe_ptr_assign(jit_scale_precompute_,
-                    new jit_avx512_core_scale_precompute_t(attr)));
-            CHECK(jit_scale_precompute_->create_kernel());
-        }
-    }
-
     return status::success;
 }
 
@@ -586,20 +565,17 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto &jcp = pd()->jcp_;
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int32_t *src_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
-            pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
-            jit_scale_precompute_.get());
 
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const size_t wei_size = weights_d.size();
@@ -758,9 +734,13 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
             while (chb_loop_work) {
                 post_ops_data.bias = bias + ch * jcp.bia_dsz;
-                post_ops_data.scales = &oscales[jcp.is_oc_scale * ch];
-                post_ops_data.oc_logical_off = ch;
+                post_ops_data.src_scales = src_scales;
+                post_ops_data.wei_scales = wei_scales
+                        ? static_cast<const char *>(wei_scales)
+                                + jcp.is_oc_scale * ch * sizeof(float)
+                        : nullptr;
                 post_ops_data.dst_scales = dst_scales;
+                post_ops_data.oc_logical_off = ch;
                 const bool is_bcast_zp
                         = pd()->attr()->zero_points_.get_mask(DNNL_ARG_SRC)
                         == 0;

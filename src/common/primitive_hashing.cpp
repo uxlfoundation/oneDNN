@@ -122,7 +122,8 @@ size_t get_md_hash(const memory_desc_t &md) {
     // format desc
     switch ((int)md.format_kind) {
         case format_kind::undef:
-        case format_kind::any: break;
+        case format_kind::any:
+        case format_kind::host_scalar: break; // no additional data to hash
         case format_kind::blocked:
             for (int i = 0; i < md.ndims; i++) {
                 if (md.dims[i] == 1 && md.padded_dims[i] == 1) continue;

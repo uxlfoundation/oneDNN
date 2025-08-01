@@ -672,6 +672,30 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
     }
+    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+        if (!prb->attr.scales.is_def(arg)
+                && prb->attr.scales.get(arg).policy == attr_t::HOST_SCALAR
+                && (is_nvidia_gpu() || is_amd_gpu())) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Scales as host-side scalars are not "
+                    "supported on NVIDIA and AMD GPUs.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+        if (!prb->attr.zero_points.is_def(arg)
+                && prb->attr.zero_points.get(arg).policy == attr_t::HOST_SCALAR
+                && (is_nvidia_gpu() || is_amd_gpu())) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Zero-points as host-side scalars are not "
+                    "supported on NVIDIA and AMD GPUs.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

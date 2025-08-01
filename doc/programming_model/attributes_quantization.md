@@ -350,3 +350,19 @@ channel scaling.
            attr);   // the attributes describe the quantization flow
 // ...
 ~~~
+
+### Special Case: Host-side Scales and Zero-points
+
+When using the GPU engine, host-side scalar scales and zero-points are
+supported to reduce copying of data from host to device. A memory object
+for scale or zero-point host value should be created as a host-side scalar
+(see @ref dev_guide_host_side_scalars for details) and passed to the primitive
+execution function. The host scales or zero-points attributes should also
+be set using the following API:
+
+~~~cpp
+dnnl::primitive_attr attr;
+attr.set_host_scale(DNNL_ARG_DST);
+attr.set_host_zero_point(DNNL_ARG_DST);
+~~~
+

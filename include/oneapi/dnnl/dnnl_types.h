@@ -55,6 +55,8 @@ typedef enum {
     dnnl_format_kind_opaque,
     /// Format kind for sparse tensors.
     dnnl_format_kind_sparse,
+    /// Format kind for host scalars.
+    dnnl_format_kind_host_scalar,
 
     // Max value to prevent UB for internal-use-only values.
     dnnl_format_kind_max = 0x7fff,

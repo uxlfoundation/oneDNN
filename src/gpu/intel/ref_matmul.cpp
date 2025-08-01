@@ -221,32 +221,38 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, b);
     arg_list.set(arg_idx++, subbyte_pack ? *tmp : c);
     arg_list.set(arg_idx++, bias);
-    arg_list.set(arg_idx++, a0);
+    arg_list.set_mem_or_host_scalar<int>(arg_idx++, a0,
+            pd()->attr()->zero_points_.get(DNNL_ARG_SRC).is_host_scalar());
     arg_list.set(arg_idx++, src_zp_stride_k);
     arg_list.set(arg_idx++, src_zp_stride_m);
     arg_list.set(arg_idx++, src_zp_group_k);
-    arg_list.set(arg_idx++, b0);
+    arg_list.set_mem_or_host_scalar<int>(arg_idx++, b0,
+            pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS).is_host_scalar());
     arg_list.set(arg_idx++, wei_zp_stride_n);
     arg_list.set(arg_idx++, wei_zp_stride_k);
     arg_list.set(arg_idx++, wei_zp_stride_b0);
     arg_list.set(arg_idx++, wei_zp_stride_b1);
     arg_list.set(arg_idx++, wei_zp_group_n);
     arg_list.set(arg_idx++, wei_zp_group_k);
-    arg_list.set(arg_idx++, c0);
-    arg_list.set(arg_idx++, src_scales);
+    arg_list.set_mem_or_host_scalar<int>(arg_idx++, c0,
+            pd()->attr()->zero_points_.get(DNNL_ARG_DST).is_host_scalar());
+    arg_list.set_mem_or_host_scalar<float>(arg_idx++, src_scales,
+            pd()->attr()->scales_.get(DNNL_ARG_SRC).is_host_scalar());
     arg_list.set(arg_idx++, src_scale_stride_k);
     arg_list.set(arg_idx++, src_scale_stride_m);
     arg_list.set(arg_idx++, src_scale_stride_b0);
     arg_list.set(arg_idx++, src_scale_stride_b1);
     arg_list.set(arg_idx++, src_scale_group_k);
-    arg_list.set(arg_idx++, wei_scales);
+    arg_list.set_mem_or_host_scalar<float>(arg_idx++, wei_scales,
+            pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).is_host_scalar());
     arg_list.set(arg_idx++, wei_scale_stride_n);
     arg_list.set(arg_idx++, wei_scale_stride_k);
     arg_list.set(arg_idx++, wei_scale_stride_b0);
     arg_list.set(arg_idx++, wei_scale_stride_b1);
     arg_list.set(arg_idx++, wei_scale_group_n);
     arg_list.set(arg_idx++, wei_scale_group_k);
-    arg_list.set(arg_idx++, dst_scales);
+    arg_list.set_mem_or_host_scalar<float>(arg_idx++, dst_scales,
+            pd()->attr()->scales_.get(DNNL_ARG_DST).is_host_scalar());
     arg_list.set(arg_idx++, group_K);
     arg_list.set(arg_idx++, K);
     arg_list.set(arg_idx++, N);

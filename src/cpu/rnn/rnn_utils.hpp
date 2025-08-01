@@ -104,7 +104,7 @@
 #else
 
 #define rnn_merged_layer_execution_sig_args \
-    const rnn_utils::rnn_conf_t &rnn, \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_
@@ -914,8 +914,18 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.dst_layer_is_trivial_stride = dst_layer_d.blocking_desc().strides[0]
             == (rnn.dst_layer_ld_ * rnn.mb);
 
+    // if rnn.skip_dst_iter_copy() == false we might need to reduce number of
+    // merged cells by 1 (rnn.n_iter - 1)
+    // but if in addition rnn.skip_src_layer_copy() == true then on cell
+    // position 'first_layer' we still should merge for all the n_iter cells
+    // so current Matmul support is limited by the case when layer computation is
+    // merged for all rnn.n_iter cells
+    const bool mlc_m_dim_adjustment_not_required
+            = IMPLICATION(rnn.skip_dst_iter_copy(),
+                    rnn.skip_src_layer_copy() && rnn.n_layer == 1);
     rnn.merge_gemm_layer = !(rnn.is_brgemm || rnn.use_matmul)
-                    || use_matmul_for_avx512_f32_fwd_d
+                    || (use_matmul_for_avx512_f32_fwd_d
+                            && mlc_m_dim_adjustment_not_required)
             ? ((rnn.is_fwd && rnn.src_layer_is_trivial_stride)
                       || ((rd.prop_kind == prop_kind::backward)
                               && rnn.dst_layer_is_trivial_stride))

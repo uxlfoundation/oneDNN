@@ -669,13 +669,15 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
             if (scaleA && !doBSum) {
                 // TODO: handle non-repacked case correctly.
                 int hs = (h / problem.aqGroupK) % state.kaqLate;
-                scale[nscale] = state.Ar_scaleLayout.find(i, hs, state.Ar_scaleRegs, &nes[nscale]);
+                int is = i / problem.aqGroupM;
+                scale[nscale] = state.Ar_scaleLayout.find(is, hs, state.Ar_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 1 : 0;
                 nscale++;
             }
             if (scaleB && !doASum) {
                 int hs = (h / problem.bqGroupK) % state.kbqLate;
-                scale[nscale] = state.Br_scaleLayout.find(hs, j, state.Br_scaleRegs, &nes[nscale]);
+                int js = j / problem.bqGroupN;
+                scale[nscale] = state.Br_scaleLayout.find(hs, js, state.Br_scaleRegs, &nes[nscale]);
                 scaleStride[nscale] = globalCM ? 0 : 1;
                 nscale++;
             }

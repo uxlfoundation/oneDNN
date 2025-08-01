@@ -20,11 +20,7 @@
 #include <memory>
 #include <type_traits>
 
-#include "common/c_types_map.hpp"
-#include "common/memory.hpp"
 #include "common/memory_storage.hpp"
-#include "common/stream.hpp"
-#include "common/utils.hpp"
 
 /**
  * @class host_scalar_memory_storage_t

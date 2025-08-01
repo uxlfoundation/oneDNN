@@ -18,9 +18,9 @@
 #define GPU_INTEL_JIT_POST_OP_INJECTOR_HPP
 
 #include "common/primitive_attr.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/post_ops.hpp"
 
 namespace dnnl {
 namespace impl {

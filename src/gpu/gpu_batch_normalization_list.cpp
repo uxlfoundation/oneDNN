@@ -17,11 +17,11 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
-#include "gpu/intel/bnorm/ref_batch_normalization.hpp"
-#include "gpu/intel/bnorm/reusable_bnorm.hpp"
-#include "gpu/intel/bnorm/simple_bnorm.hpp"
-#include "gpu/intel/bnorm/xe_batch_normalization.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
+#include "gpu/intel/bnorm/ref.hpp"
+#include "gpu/intel/bnorm/reusable.hpp"
+#include "gpu/intel/bnorm/simple.hpp"
+#include "gpu/intel/bnorm/xe.hpp"
 
 #ifdef DNNL_DEV_MODE
 #include "gpu/intel/bnorm/nhwc_reusable.hpp"
@@ -52,24 +52,24 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_BNORM_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL_DEVMODE(intel::nhwc_reusable_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::nhwc_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::xe_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::simple_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::reusable_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::ref_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::xe_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::simple_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::reusable_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::ref_batch_normalization_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_batch_normalization_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_batch_normalization_fwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_batch_normalization_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL_DEVMODE(intel::nhwc_reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::nhwc_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::xe_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::simple_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::ref_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::xe_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::simple_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::reusable_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::ref_batch_normalization_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_batch_normalization_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_batch_normalization_bwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_batch_normalization_bwd_t)

@@ -32,12 +32,13 @@
 #include "common/gemm_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/gemm/gpu_gemm.hpp"
-#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
@@ -569,8 +570,7 @@ status_t simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     using namespace format_tag;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *compute_engine
-            = utils::downcast<const compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<const compute::engine_t *>(engine);
 
     const compute::device_info_t &device_info
             = *(compute_engine->device_info());
@@ -1087,12 +1087,12 @@ template <prop_kind_t aprop>
 gemm_sig((simple_rnn_common_t<aprop>::gemm_primitive)) {
     // We flip A and B here since the GEMM API is row major but the
     // RNN code describes GEMM in column major fashion
-    gemm_exec_args_t gemm_args;
+    gemm::exec_args_t gemm_args;
     gemm_args.a = b.get();
     gemm_args.b = a.get();
     gemm_args.c = c.get();
 
-    auto gemm_ctx = gemm_exec_ctx_t(ctx, gemm_args);
+    auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
 
     std::unique_ptr<nested_scratchpad_t> ns;
     const auto init_gemm_nested_scratchpad
@@ -1105,62 +1105,62 @@ gemm_sig((simple_rnn_common_t<aprop>::gemm_primitive)) {
         case gemm_iter_fwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_fwd_, rnn_utils::scratch_t::key_gemm_iter_fwd);
-            CHECK(gpu_gemm(gemm_iter_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_fwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_fwd_2:
             init_gemm_nested_scratchpad(gemm_iter_fwd_2_,
                     rnn_utils::scratch_t::key_gemm_iter_fwd_2);
-            CHECK(gpu_gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_fwd_, rnn_utils::scratch_t::key_gemm_layer_fwd);
-            CHECK(gpu_gemm(gemm_layer_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_fwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd_src:
             init_gemm_nested_scratchpad(gemm_layer_fwd_src_,
                     rnn_utils::scratch_t::key_gemm_layer_fwd_src);
-            CHECK(gpu_gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_bwd_, rnn_utils::scratch_t::key_gemm_iter_bwd);
-            CHECK(gpu_gemm(gemm_iter_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_bwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd_2:
             init_gemm_nested_scratchpad(gemm_iter_bwd_2_,
                     rnn_utils::scratch_t::key_gemm_iter_bwd_2);
-            CHECK(gpu_gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_bwd_, rnn_utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd_src:
             init_gemm_nested_scratchpad(gemm_layer_bwd_src_,
                     rnn_utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_iter);
-            CHECK(gpu_gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_layer);
-            CHECK(gpu_gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer_src:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_src_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_layer_src);
-            CHECK(gpu_gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter_2:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_2_,
                     rnn_utils::scratch_t::key_gemm_diff_wei_iter_2);
-            CHECK(gpu_gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
+            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
             break;
         default: assert(!"unknown gemm_kind"); return status::runtime_error;
     }
@@ -1176,8 +1176,8 @@ grid_execution_sig((simple_rnn_common_t<aprop>::linear_execution)) {
     dim_t n_iter = rnn.n_iter;
 
     if (aprop == prop_kind::backward && pd()->diff_weights_overwrite()) {
-        compute::compute_stream_t *compute_stream
-                = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+        compute::stream_t *compute_stream
+                = utils::downcast<compute::stream_t *>(ctx.stream());
         auto zero = [&](const memory_storage_t &data, int arg_id) {
             auto mdw = memory_desc_wrapper(pd()->arg_md(arg_id));
             return compute_stream->fill(data, 0, mdw.size(),
@@ -1256,7 +1256,7 @@ grid_execution_sig((simple_rnn_common_t<aprop>::linear_execution)) {
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+        compute::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
         dim_t n_bias, dim_t n_gates, dim_t dhc, const memory_storage_t &ws_bias,
         const memory_storage_t &scales, const memory_storage_t &wei_layer,
         const memory_storage_t &wei_iter, const memory_storage_t &bias) const {
@@ -1288,10 +1288,10 @@ status_t simple_rnn_common_t<aprop>::bias_prepare(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, bool lr, bool rl,
-        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
-        dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-        dim_t scratch_diff_states_ld, const memory_storage_t &ws_states,
+        compute::stream_t *compute_stream, bool lr, bool rl, dim_t batch,
+        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+        dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+        const memory_storage_t &ws_states,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &input,
         const memory_storage_t &diff_dst_layer) const {
@@ -1347,8 +1347,8 @@ status_t simple_rnn_common_t<aprop>::copy_init_layer(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t batch, dim_t dhc,
-        dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
+        compute::stream_t *compute_stream, dim_t batch, dim_t dhc, dim_t sic,
+        dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
         dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const rnn_utils::workspace_t &ws,
         const memory_storage_t *scratch_diff_states,
@@ -1419,10 +1419,9 @@ status_t simple_rnn_common_t<aprop>::copy_init_iter(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, bool lr, bool rl,
-        dim_t batch, dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer,
-        dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-        dim_t scratch_diff_states_ld,
+        compute::stream_t *compute_stream, bool lr, bool rl, dim_t batch,
+        dim_t dhc, dim_t slc, dim_t n_iter, dim_t n_layer, dim_t n_dir,
+        dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &dst_last_layer,
         const memory_storage_t &diff_src_layer,
@@ -1481,8 +1480,8 @@ status_t simple_rnn_common_t<aprop>::copy_res_layer(const exec_ctx_t &ctx,
 
 template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::copy_res_iter(const exec_ctx_t &ctx,
-        compute::compute_stream_t *compute_stream, dim_t batch, dim_t dhc,
-        dim_t sic, dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
+        compute::stream_t *compute_stream, dim_t batch, dim_t dhc, dim_t sic,
+        dim_t n_iter, dim_t n_layer, dim_t n_dir, dim_t n_states,
         dim_t states_ws_ld, dim_t scratch_diff_states_ld,
         const memory_storage_t *scratch_diff_states,
         const memory_storage_t &dst_last_iter,
@@ -1558,8 +1557,7 @@ template <prop_kind_t aprop>
 status_t simple_rnn_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
 
     impl::engine_t *engine = ctx.stream()->engine();
-    auto *compute_stream
-            = utils::downcast<compute::compute_stream_t *>(ctx.stream());
+    auto *compute_stream = utils::downcast<compute::stream_t *>(ctx.stream());
 
     const conf_t &rnn = this->pd()->rnn_conf;
 
@@ -1723,6 +1721,7 @@ elemwise_sig_gru(simple_rnn_bwd_t::gru_elemwise);
 template struct simple_rnn_common_t<prop_kind::forward>;
 template struct simple_rnn_common_t<prop_kind::backward>;
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

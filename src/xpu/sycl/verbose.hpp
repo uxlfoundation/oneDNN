@@ -24,7 +24,7 @@
 #include "xpu/sycl/engine_impl.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #endif
 
 #include "xpu/sycl/engine_factory.hpp"
@@ -64,8 +64,7 @@ inline void print_verbose_header(engine_kind_t kind) {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
             if (kind == engine_kind::gpu) {
                 auto *dev_info = eng
-                        ? utils::downcast<
-                                gpu::intel::compute::compute_engine_t *>(
+                        ? utils::downcast<gpu::intel::compute::engine_t *>(
                                 eng.get())
                                   ->device_info()
                         : nullptr;

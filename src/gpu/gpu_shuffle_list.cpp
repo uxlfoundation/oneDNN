@@ -18,7 +18,7 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ref_shuffle.hpp"
+#include "gpu/intel/shuffle/ref.hpp"
 #endif
 
 #ifdef GENERIC_SYCL_KERNELS_ENABLED
@@ -34,7 +34,7 @@ namespace {
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_SHUFFLE_P({
         GPU_INSTANCE_GENERIC(generic::shuffle_by_reorder_t)
-        GPU_INSTANCE_INTEL(intel::ref_shuffle_t)
+        GPU_INSTANCE_INTEL(intel::shuffle::ref_shuffle_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_shuffle_t)
         nullptr,
 });

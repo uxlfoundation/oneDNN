@@ -21,8 +21,8 @@
 #define MAY_HAVE_IC_TAIL (MAX_IC_TAIL_SGROUPS > 0)
 
 #define VECT_DT_N VECT_SIZE
-#include "gpu/intel/dispatch.h"
-#include "gpu/intel/ocl_types.h"
+#include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/types.h"
 
 #define LOAD_FLOAT_1x16(ptr) \
     as_float(intel_sub_group_block_read((const __global uint *)(ptr)))

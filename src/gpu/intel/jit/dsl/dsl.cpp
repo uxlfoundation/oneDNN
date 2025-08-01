@@ -326,8 +326,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
     bool is_prefetch = t.buf.is_empty();
-    auto w_dim = transform.dims[0];
-    auto h_dim = transform.dims[1];
+    const auto &w_dim = transform.dims[0];
     auto type = g.type;
 
     tile_t tile = transform.get_block_tile(type);
@@ -371,8 +370,8 @@ void block_2d_send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
     bool is_prefetch = t.buf.is_empty();
-    auto w_dim = transform.dims[0];
-    auto h_dim = transform.dims[1];
+    const auto &w_dim = transform.dims[0];
+    const auto &h_dim = transform.dims[1];
     auto type = g.type;
     auto tile = transform.get_2d_tile(type);
 
@@ -414,8 +413,7 @@ void send(const tensor_t &t, const global_tensor_t &g,
     auto tensor_height = g.sizes[transform.dims[1]];
     auto tensor_pitch = g.strides[transform.dims[1]];
     bool is_prefetch = t.buf.is_empty();
-    auto w_dim = transform.dims[0];
-    auto h_dim = transform.dims[1];
+    const auto &w_dim = transform.dims[0];
     auto type = g.type;
     gpu_assert(is_prefetch || type == t.layout.type());
 
@@ -499,11 +497,11 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
     } else {
         auto max_simd = 32;
 
-        auto dim_simd = C.layout.blocks()[0].dim;
-        auto dim_rcount = C.layout.blocks()[1].dim;
-        auto m_dim = dim_simd;
-        auto n_dim = dim_rcount;
-        auto k_dim
+        const auto &dim_simd = C.layout.blocks()[0].dim;
+        const auto &dim_rcount = C.layout.blocks()[1].dim;
+        const auto &m_dim = dim_simd;
+        const auto &n_dim = dim_rcount;
+        const auto &k_dim
                 = utils::one_of(A.layout.blocks()[1].dim, dim_simd, dim_rcount)
                 ? A.layout.blocks()[0].dim
                 : A.layout.blocks()[1].dim;

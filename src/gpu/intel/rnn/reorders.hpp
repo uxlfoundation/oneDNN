@@ -23,16 +23,17 @@
 #include "common/utils.hpp"
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
-struct rnn_weights_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct rnn_weights_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public reorder_pd_t {
         using reorder_pd_t::reorder_pd_t;
 
@@ -51,7 +52,7 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
                     VERBOSE_BAD_ENGINE_KIND);
 
             auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(dst_engine);
+                    = utils::downcast<compute::engine_t *>(dst_engine);
 
             VDISPATCH_REORDER(compute_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
@@ -131,6 +132,7 @@ private:
     enum { SCALES_ = 0 };
 };
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

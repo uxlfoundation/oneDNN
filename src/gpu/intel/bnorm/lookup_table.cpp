@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/bnorm/lookup_table.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
+#include "gpu/intel/compute/engine.hpp"
 
 #include <string>
 #include <vector>
@@ -24,7 +24,8 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_lookup_table {
+namespace bnorm {
+namespace lookup_table {
 
 using namespace compute;
 
@@ -42,7 +43,7 @@ void maybe_override_bn_conf_params_env(params_t &conf) {
 void maybe_override_bn_conf_params_table(
         params_t &conf, impl::engine_t *engine) {
     assert(!conf.bn_tuning);
-    auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
     static bnorm_lookup_table_t table(conf.use_stats_one_pass);
     auto *s_params = table.find(conf, gpu_arch);
@@ -645,7 +646,8 @@ std::string params_t::str() const {
     return oss.str();
 }
 
-} // namespace bn_lookup_table
+} // namespace lookup_table
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

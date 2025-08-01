@@ -359,7 +359,7 @@ private:
         auto dt = to_ngen(layout.type());
         auto buffer = init(into<int>(elems), dt);
         buffer.stride = (uint8_t)1;
-        return {layout, buffer};
+        return {std::move(layout), buffer};
     }
 
     layout_t make_retyped_layout(

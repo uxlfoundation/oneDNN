@@ -23,17 +23,17 @@
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/gpu_primitive_attr.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace bnorm {
 
-using namespace bn_lookup_table;
-using namespace bn_utils;
-using namespace bn_model;
-using namespace bn_utils::kernel_id;
+using namespace lookup_table;
+using namespace model;
+using namespace kernel_id;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
@@ -114,7 +114,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     // TODO: create flags() accessor that returns the correct type
     bn_conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *compute_engine = downcast<compute::compute_engine_t *>(engine);
+    auto *compute_engine = downcast<compute::engine_t *>(engine);
     auto gpu_arch = compute_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
@@ -167,7 +167,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     if (bn_conf.use_fused_atomics_reduction()
             && bn_conf.use_fused_atomics_reduction_param().is_overridden()
             && pd->attr()->deterministic_)
-        bn_conf = default_conf;
+        bn_conf = std::move(default_conf);
 
     // Get non-overridden parameters, performance modeling way
     hw_params_t hw_params;
@@ -316,7 +316,7 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
 
     if (cmpl_conf.calculate_stats && rt_conf.use_fused_atomics_reduction) {
         // Atomics-based reduction requires zeroing mean and variance
-        // Single kernel runs faster than two compute_stream_t::fill
+        // Single kernel runs faster than two stream_t::fill
         compute::kernel_arg_list_t arg_list;
         arg_list.append(mean);
         arg_list.append(variance);
@@ -669,6 +669,7 @@ status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
             arg_list);
 }
 
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

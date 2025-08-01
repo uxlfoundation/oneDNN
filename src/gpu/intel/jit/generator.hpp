@@ -24,11 +24,11 @@
 
 #include "common/impl_registration.hpp"
 #include "common/nstl.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/compute/engine.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "xpu/utils.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -103,7 +103,7 @@ public:
     }
 
     status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+            const compute::engine_t *engine) override {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
         auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
@@ -133,7 +133,7 @@ std::unique_ptr<jit::generator_base_t> make_generator(
 }
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
-compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
+compute::kernel_t make_kernel(primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
     using namespace compute;
     kernel_t kernel;
@@ -145,7 +145,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         return kernel;
     }
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
+    auto *compute_engine = utils::downcast<engine_t *>(engine);
     auto *device_info = compute_engine->device_info();
     auto arch = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
 
@@ -176,7 +176,7 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(
-        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
+        primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
     return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
             std::forward<ArgsT>(args)...);
 }

@@ -26,20 +26,21 @@
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 #include "common/experimental.hpp"
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/bnorm/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace bnorm {
 
 struct nhwc_reusable_bnorm_compile_params_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+    status_t create_generator(const compute::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -108,8 +109,8 @@ struct nhwc_reusable_bnorm_runtime_params_t {
     compute::range_t calc_adj_lws;
 };
 
-struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct nhwc_reusable_batch_normalization_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
@@ -123,8 +124,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -201,8 +201,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct nhwc_reusable_batch_normalization_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
     struct pd_t : public gpu_batch_normalization_bwd_pd_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;
@@ -212,8 +212,7 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *compute_engine = utils::downcast<compute::engine_t *>(engine);
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
@@ -283,6 +282,7 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

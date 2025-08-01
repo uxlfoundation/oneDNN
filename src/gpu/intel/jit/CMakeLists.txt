@@ -16,7 +16,7 @@
 
 set(CMAKE_CXX_CLANG_TIDY "")
 
-set(DIRS "codegen;config;conv;dsl;ir;pass;pooling;reorder;utils;v2")
+set(DIRS "codegen;config;dsl;ir;pass;utils;v2")
 
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
@@ -29,8 +29,6 @@ foreach(d ${DIRS})
         )
     list(APPEND SOURCES "${d_sources}")
 endforeach()
-
-list(FILTER SOURCES EXCLUDE REGEX "planner")
 
 add_subdirectory(gemm)
 

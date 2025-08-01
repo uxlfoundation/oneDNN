@@ -20,15 +20,15 @@
 #include <stack>
 
 #include "gpu/intel/jit/ir/blocking.hpp"
+#include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/message_patterns.hpp"
+#include "gpu/intel/jit/ir/v2/bridge.hpp"
+#include "gpu/intel/jit/ir/v2/tensor.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/v2/ir/bridge.hpp"
-#include "gpu/intel/jit/v2/ir/tensor.hpp"
 #include "ngen_core.hpp"
 
 namespace dnnl {

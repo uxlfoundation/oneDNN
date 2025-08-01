@@ -31,8 +31,8 @@
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
@@ -57,7 +57,7 @@ struct ir_generator_t : public generator_base_t {
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
     status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+            const compute::engine_t *engine) override {
         try {
 #define CASE(hw) \
     case ngen::HW::hw: { \

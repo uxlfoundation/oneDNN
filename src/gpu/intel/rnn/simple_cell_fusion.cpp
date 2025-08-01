@@ -20,6 +20,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 using namespace rnn_utils;
 using namespace dnnl::impl::utils;
@@ -122,9 +123,10 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
 
     arg_list.append(into<dim_t>(dhc_loop));
 
-    return gpu_primitive_t::parallel_for(ctx, nd_range, kernel, arg_list.args);
+    return primitive_t::parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

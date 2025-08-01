@@ -625,7 +625,7 @@ public:
     }
 
 private:
-    int vec_size_;
+    int vec_size_ = 0;
     std::shared_ptr<conv_plan_t> plan_;
     std::shared_ptr<conv_tiler_t> tiler_;
 

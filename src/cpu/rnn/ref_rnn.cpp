@@ -228,7 +228,8 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
 
     if (rnn_.use_matmul) {
         { // init layer matmuls
-            const dim_t M = rnn_.mb;
+            const dim_t M
+                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
             const dim_t N = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
             const dim_t K = rnn_.slc;
             const dim_t LDA1 = rnn_.src_layer_ld_;
@@ -1031,7 +1032,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                 SAFE_PTR(diff_weights_layer, lay, dir, 0), amx_scratchpad,
                 addr_batch_global));
 #else
-        CHECK((this->*merged_layer_func)(rnn, cell_position,
+        CHECK((this->*merged_layer_func)(ctx, rnn, cell_position,
                 SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
                 SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
                 SAFE_PTR(diff_weights_layer, lay, dir, 0)));

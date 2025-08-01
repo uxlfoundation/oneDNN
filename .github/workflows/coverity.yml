@@ -19,7 +19,7 @@ name: Coverity Scan
 
 on:
   schedule:
-    #* set to run each Friday at 12:00 UCT
+    #* set to run each Friday at 12:00 UTC
     - cron: '0 12 * * 5'
   #* allows this workflow to be invoked by another workflow
   workflow_call:
@@ -30,6 +30,7 @@ permissions: read-all
 
 env:
   COVERITY_PROJECT: uxlfoundation%2FoneDNN
+  COVERITY_PROJECT_ID: 32045
 
 jobs:
   coverity_linux:
@@ -56,7 +57,6 @@ jobs:
           cov-build --dir cov-int cmake --build . --parallel $(nproc)
 
       - name: Archive Coverity build results
-        id: check_size
         run: |
           cd build
           tar -czvf cov-int.tgz cov-int
@@ -65,20 +65,6 @@ jobs:
           echo "size=$size" >> $GITHUB_OUTPUT
 
       - name: Submit Coverity results for analysis
-        #* if condition is related to Coverity limitation for archives that exceed 500MB
-        if: ${{steps.check_size.outputs.size <= 500}}
-        run: |
-          cd build
-          curl \
-            --form token="${{secrets.COVERITY_TOKEN}}" \
-            --form email="${{secrets.COVERITY_EMAIL}}" \
-            --form file=@cov-int.tgz \
-            --form version="${GITHUB_SHA}" \
-            --form description="" \
-            "https://scan.coverity.com/builds?project=${{env.COVERITY_PROJECT}}"
-
-      - name: Submit Coverity results for analysis
-        if: ${{steps.check_size.outputs.size > 500}}
         run: |
           cd build
           curl -X POST \
@@ -87,9 +73,14 @@ jobs:
             -d email="${{secrets.COVERITY_EMAIL}}" \
             -d token="${{secrets.COVERITY_TOKEN}}" \
             -d file_name=@cov-int.tgz \
-            https://scan.coverity.com/projects/30384/builds/init \
+            https://scan.coverity.com/projects/${{env.COVERITY_PROJECT_ID}}/builds/init \
             | tee response
           upload_url=$(jq -r '.url' response)
+          if [ -z "$upload_url" ] || [ "$upload_url" == "null" ]; then
+            echo "Error: Failed to extract 'url' from API response." >&2
+            cat response >&2
+            exit 1
+          fi
           build_id=$(jq -r '.build_id' response)
           curl -X PUT \
             --header 'Content-Type: application/json' \

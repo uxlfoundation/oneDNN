@@ -235,20 +235,21 @@ status_t pd_t::init_attrs() {
     asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
 
-    a_scales_group_k_ = a_scales.get_group(0);
-    b_scales_group_k_ = b_scales.get_group(1);
-
     a_scales_type_ = a_scales.get_data_type();
     if (a_zp_2d()) {
         a_q2d_group_k_ = a_zps.get_group(0);
+        a_q2d_group_m_ = a_zps.get_group(1);
     } else if (a_scales_2d()) {
         a_q2d_group_k_ = a_scales.get_group(0);
+        a_q2d_group_m_ = a_scales.get_group(1);
     }
 
     b_scales_type_ = b_scales.get_data_type();
     if (b_zp_2d()) {
+        b_q2d_group_n_ = b_zps.get_group(0);
         b_q2d_group_k_ = b_zps.get_group(1);
     } else if (b_scales_2d()) {
+        b_q2d_group_n_ = b_scales.get_group(0);
         b_q2d_group_k_ = b_scales.get_group(1);
     }
     return status::success;

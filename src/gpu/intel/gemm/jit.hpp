@@ -318,9 +318,9 @@ struct gen_t : public primitive_t {
                     get_post_op_specializations()));
 
             jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k_, 1};
+                    asc_dims_, a_q2d_group_k_, a_q2d_group_m_};
             jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k_, 1};
+                    bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
 
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,

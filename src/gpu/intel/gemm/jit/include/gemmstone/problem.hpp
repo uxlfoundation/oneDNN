@@ -278,7 +278,8 @@ struct GEMMProblem : public CommonProblem {
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims);
         s.append(asPtrDims, bsPtrDims);
-        s.append(aqGroupK, bqGroupK);
+        s.append(aqGroupM, aqGroupK);
+        s.append(bqGroupN, bqGroupK);
         s.append(cOffset);
         s.append(batch);
         s.append(batchDims);

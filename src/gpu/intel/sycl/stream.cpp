@@ -174,6 +174,82 @@ status_t stream_t::resume_recording() {
     return status::success;
 }
 
+status_t stream_t::init_async_tracking(std::string &vinfo, double *start_ms) {
+    auto td = xpu::async_timing_data_t {};
+
+    td.start_ms = get_msec();
+    td.profiler_enabled = is_profiling_enabled();
+    td.vinfo = vinfo;
+    sycl_ctx().set_timing_data(td);
+
+    return status::success;
+}
+
+status_t stream_t::register_async_tracker(const ::sycl::event &event) {
+
+    if ((flags() & stream_flags::out_of_order)) {
+        VWARN(common, ocl,
+                "asynchronous verbose mode is not supported for out-of-order "
+                "queues - falling back to blocking verbose mode.");
+        return status::success;
+    }
+
+    if (!sycl_ctx().get_timing_data()) return status::runtime_error;
+
+    if (sycl_ctx().get_timing_data()->timing_stat) {
+        VWARN(common, ocl,
+                "asynchronous verbose mode is not supported for multiple "
+                "kernel tracking - falling back to blocking verbose mode.");
+        return status::success;
+    }
+
+    impl()->queue()->submit([&](::sycl::handler &cgh) {
+        cgh.depends_on(event);
+        auto td = sycl_ctx().get_timing_data();
+        cgh.host_task([td, event]() {
+            try {
+                if (td->profiler_enabled) {
+                    auto start_ms = event.get_profiling_info<
+                            ::sycl::info::event_profiling::command_start>();
+                    auto end_ms = event.get_profiling_info<
+                            ::sycl::info::event_profiling::command_end>();
+                    td->start_ms = start_ms * 1e-6;
+                    td->end_ms = end_ms * 1e-6;
+                    td->duration_ms = (end_ms - start_ms) * 1e-6;
+                } else {
+                    td->end_ms = get_msec();
+                    td->duration_ms = td->end_ms - td->start_ms;
+                }
+
+                VPROF(td->start_ms, primitive, exec, VERBOSE_profile,
+                        td->vinfo.c_str(), td->duration_ms);
+
+            } catch (const std::exception &e) {
+                VERROR(common, sycl, "%s", e.what());
+            }
+        });
+    });
+
+    sycl_ctx().get_timing_data()->timing_stat = true;
+    return status::success;
+}
+
+status_t stream_t::check_async_exec_times(
+        std::string &vinfo, double *start_ms) {
+
+    if (!sycl_ctx().get_timing_data()) return status::runtime_error;
+    if (sycl_ctx().get_timing_data()->timing_stat) return status::success;
+
+    CHECK(wait());
+    double duration_ms = get_msec() - sycl_ctx().get_timing_data()->start_ms;
+
+    VPROF(static_cast<int>(sycl_ctx().get_timing_data()->start_ms), primitive,
+            exec, VERBOSE_profile, sycl_ctx().get_timing_data()->vinfo.c_str(),
+            duration_ms);
+
+    return status::success;
+}
+
 } // namespace sycl
 } // namespace intel
 } // namespace gpu

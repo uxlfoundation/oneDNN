@@ -263,6 +263,7 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
 
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
+    problem_.autoTypeConversions(hw_, strategy_.systolicAvailable);
     try {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }
@@ -375,8 +376,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t a_type, data_type_t b_type, data_type_t c_type,
         data_type_t ao_type, data_type_t bo_type, data_type_t a_scales_type,
         data_type_t b_scales_type, data_type_t co_type, data_type_t acc_type,
-        int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
-        dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+        bool force_ags, bool force_bgs, int align_a, int align_b, int align_c,
+        dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
@@ -440,8 +441,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     problem_.BO.layout = MatrixLayout::T;
     problem_.AO.crosspack = problem_.BO.crosspack = 1;
     problem_.AO.packSize = problem_.BO.packSize = 0;
-    problem_.A_scale = problem_.AO;
-    problem_.B_scale = problem_.BO;
+    problem_.A_scale = problem_.Ag = problem_.AO;
+    problem_.B_scale = problem_.Bg = problem_.BO;
     if (ao_type != data_type::undef)
         problem_.AO.setAlignment(int(types::data_type_size(ao_type)));
     if (bo_type != data_type::undef)
@@ -507,6 +508,21 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     problem_.postOps.cStochasticRound = dst_sround;
 
+    problem_.autoTypeConversions(hw_, has_systolic);
+
+    if (problem_.needsAGroupSums()) {
+        problem_.Tag = Type::s32;
+        problem_.Ag.layout = MatrixLayout::N;
+        problem_.Ag.setAlignment(problem_.Tag.paddedSize());
+        if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
+    }
+    if (problem_.needsBGroupSums()) {
+        problem_.Tbg = Type::s32;
+        problem_.Bg.layout = MatrixLayout::N;
+        problem_.Bg.setAlignment(problem_.Tbg.paddedSize());
+        if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
+    }
+
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem_);
@@ -554,7 +570,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     mod_match(base,
             ((asc_dims >= 2 || bsc_dims >= 2) && ao_dims > -1
                     && problem_.Ta_ext.isInt8() && problem_.Tb_ext.isInt8()
-                    && problem_.Tc.isFP()),
+                    && problem_.Tc.isFP() && !force_ags && !force_bgs),
             [](Type dt) -> const char * {
                 if (dt.isInt8()) return "[OH]";
                 return nullptr;
@@ -851,6 +867,8 @@ void gen_gemm_kernel_t::init_interface() {
     auto co_access = strategy.CO.getGlobalAccessType();
     auto as_access = strategy.A_scale.getGlobalAccessType();
     auto bs_access = strategy.B_scale.getGlobalAccessType();
+    auto ag_access = strategy.Ag.getGlobalAccessType();
+    auto bg_access = strategy.Bg.getGlobalAccessType();
 
     interface_.newArgument("A", ExternalArgumentType::GlobalPtr, a_access);
     interface_.newArgument("B", ExternalArgumentType::GlobalPtr, b_access);
@@ -878,9 +896,17 @@ void gen_gemm_kernel_t::init_interface() {
     if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.aoPtrDims == 2 || problem.aScale2D())
+    if (problem.needsAGroupSums())
+        interface_.newArgument(
+                "ag_ptr", ExternalArgumentType::GlobalPtr, ag_access);
+    if (problem.needsBGroupSums())
+        interface_.newArgument(
+                "bg_ptr", ExternalArgumentType::GlobalPtr, bg_access);
+    if (problem.aoPtrDims == 2 || problem.aScale2D()
+            || problem.needsAGroupSums())
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.boPtrDims == 2 || problem.bScale2D())
+    if (problem.boPtrDims == 2 || problem.bScale2D()
+            || problem.needsBGroupSums())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(

@@ -1307,6 +1307,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
     bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
 
+    const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
+    const auto &zp = attr.zero_points_;
+
+    VCONDCHECK_BG(zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_SRC)
+                    && zp.has_default_values(user_precomp | DNNL_ARG_DST),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
     VCONDCHECK_BG(
             IMPLICATION(!(bm_conf_utils.is_int8()
                                 || bm_conf_utils.with_weights_decompression()),

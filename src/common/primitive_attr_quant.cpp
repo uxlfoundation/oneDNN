@@ -126,5 +126,9 @@ zero_points_t zero_points_t::deserialize(deserializer_t &d) {
     return deserialize_entries<zero_points_t>(d);
 }
 
+placeholder_t placeholder_t::deserialize(deserializer_t &d) {
+    return deserialize_entries<placeholder_t>(d);
+}
+
 } // namespace impl
 } // namespace dnnl

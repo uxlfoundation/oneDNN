@@ -740,6 +740,11 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
         ss << field_delim() << "attr-zero-points:" << zero_points.get_verbose();
     }
 
+    const placeholder_t &placeholder = attr->placeholder_;
+    if (!placeholder.has_default_values()) {
+        ss << field_delim() << "attr-placeholder:" << placeholder.get_verbose();
+    }
+
     const post_ops_t &po = attr->post_ops_;
     if (!po.has_default_values()) {
         std::string delim = empty_delim;

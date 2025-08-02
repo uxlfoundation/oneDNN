@@ -333,7 +333,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPG:   selector.hw = kcatalog::HWTagXeHPG;   break;
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
-        case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXeHPC;   break;
+        case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;   break;
     }
 
     auto &C = problem.C;

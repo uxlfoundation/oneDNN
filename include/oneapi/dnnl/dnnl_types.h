@@ -2707,6 +2707,8 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 #define DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) \
     (DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE * ((idx) + 1))
 
+#define DNNL_ARG_ATTR_PLACEHOLDER 1048576
+
 /// A structure that contains an index and a memory object, and is used to pass
 /// arguments to dnnl_primitive_execute().
 typedef struct {

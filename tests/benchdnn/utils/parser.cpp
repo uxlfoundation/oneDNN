@@ -731,6 +731,16 @@ bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
     return parse_subattr(zp, str, option_name, help);
 }
 
+bool parse_attr_placeholder(std::vector<attr_t::placeholder_t> &pl,
+        const char *str, const std::string &option_name = "attr-placeholder") {
+    static const std::string help
+            = "ARG:DATA_TYPE:GROUPS[+...]\n    Specifies placeholder "
+              "attribute.\n    More details at "
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
+    return parse_subattr(pl, str, option_name, help);
+}
+
 bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
         const char *str,
         const std::string &option_name = "attr-rounding-mode") {
@@ -809,6 +819,7 @@ bool parse_attributes(
         base_settings_t &s, const base_settings_t &def, const char *str) {
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
             || parse_attr_zero_points(s.zero_points, str)
+            || parse_attr_placeholder(s.placeholder, str)
             || parse_attr_post_ops(s.post_ops, str)
             || parse_attr_dropout(s.dropout, def.dropout, str)
             || parse_attr_scratchpad_mode(

@@ -136,7 +136,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                                 2.f, 4.f, 8.f};
                         // There's a special case for Divide, when second (user)
                         // input should be displaced with power-of-2 values.
-                        displace_args_.emplace(lt->id_,
+                        displace_args_.emplace_back(lt->id_,
                                 displace_args_t {aop, i, *lt,
                                         filling_type_t::fixed_setting,
                                         {user_set, "Div displacer"}});
@@ -144,7 +144,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                         // Multiplication has values <= 1.f to reduce final values.
                         static const std::vector<float> user_set {
                                 0.25f, 0.5f, 1.f};
-                        displace_args_.emplace(lt->id_,
+                        displace_args_.emplace_back(lt->id_,
                                 displace_args_t {aop, i, *lt,
                                         filling_type_t::fixed_setting,
                                         {user_set, "Mul displacer"}});
@@ -163,7 +163,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
 
-                        displace_args_.emplace(parent_op_in_lt.id_,
+                        displace_args_.emplace_back(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
                                         filling_type_t::compressed_sdpa});
                         break;
@@ -191,7 +191,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                                         == f8_main_op_kind.end()))
                             break;
 
-                        displace_args_.emplace(parent_op_in_lt.id_,
+                        displace_args_.emplace_back(parent_op_in_lt.id_,
                                 displace_args_t {aop, i, parent_op_in_lt,
                                         filling_type_t::quantization});
                         break;
@@ -207,7 +207,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                             || op_ids_set_.find(prev_parent_op.id_)
                                     == op_ids_set_.end()) {
                         if (aop.kind_ == "MatMul") {
-                            displace_args_.emplace(parent_op_in_lt.id_,
+                            displace_args_.emplace_back(parent_op_in_lt.id_,
                                     displace_args_t {aop, i, parent_op_in_lt,
                                             filling_type_t::quantization});
                         }
@@ -222,395 +222,432 @@ partition_data_displacer_t::partition_data_displacer_t(
             }
         }
 
-        // Alternatively, looking for Add->SoftMax chain, which represents
-        // explicit SDPA mask, and should be filled with upper-corner with -inf:
-        // 0 -inf -inf -inf
-        // 0    0 -inf -inf
-        // 0    0    0 -inf
-        // 0    0    0    0
-        // This is done to avoid taking future tokens into account by
-        // influencing SoftMax input values.
-        while (aop.kind_ == "Add" || aop.kind_ == "Select") {
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_op->kind_ != "SoftMax") break;
+        if (dg.get_recognized_pattern() == graph_recognized_pattern_t::sdpa
+                || dg.get_recognized_pattern()
+                        == graph_recognized_pattern_t::sdpa_bwd) {
+            // Alternatively, looking for Add with floating-point dtype, which represents
+            // explicit SDPA mask, and should be filled with upper-corner with -inf:
+            // 0 -inf -inf -inf
+            // 0    0 -inf -inf
+            // 0    0    0 -inf
+            // 0    0    0    0
+            // This is done to avoid taking future tokens into account by
+            // influencing SoftMax input values.
+            while (aop.kind_ == "Add" || aop.kind_ == "Select") {
+                auto *aop_out_lt = &aop.out_lts_[0];
+                // s32 add is a case for bottom-right causal mask
+                if (aop_out_lt->data_type_ == "s32") break;
 
-            // Softmax must be a part of same partition as the mask. This is to
-            // avoid cases, where mask is the last op in the partition, from
-            // being modified.
-            if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
-
-            // Search for an input lt without a parent, this is the one to
-            // modify for both explicit and implicit masks.
-            const deserialized_lt_t *causal_mask_lt = nullptr;
-            size_t offset = SIZE_MAX;
-            size_t qk_data_offset = SIZE_MAX;
-            // Select condition having a parent or not is the only reliable
-            // difference between explicit and implicit causal mask.
-            bool select_cond_has_parent = false;
-            // Need to iterate over all inputs to handle padding mask expressed
-            // through Select op.
-            for (size_t i = 0; i < aop.in_lts_.size(); i++) {
-                auto *aop_in_lt = &aop.in_lts_[i];
-                auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
-                if (!parent_op->empty()) {
-                    if (aop_in_lt->get_data_type()
-                            != logical_tensor::data_type::boolean) {
-                        // This is the qk_data, need to know its offset to
-                        // properly fill condition for padding mask.
-                        qk_data_offset = i;
-                    } else {
-                        // This means it's implicit causal mask.
-                        select_cond_has_parent = true;
-                    }
-                    continue;
-                }
-
-                // Explicit padding mask expressed through the Select op would
-                // have two user inputs: condition, hinting where padding
-                // occurred and a special value (-inf) to use. In such scenario,
-                // unlike for implicit causal mask, it's required to update the
-                // condition to always take qk values instead of a special one.
-                //
-                // Checking for data type to make sure that in case of two user
-                // inputs, the condition one will be updated. For implicit
-                // causal mask, the condition would have a parent and a check
-                // for `causal_mask_lt` being non-empty will fail.
-                if (causal_mask_lt
-                        && aop_in_lt->get_data_type()
-                                != logical_tensor::data_type::boolean)
-                    continue;
-
-                causal_mask_lt = aop_in_lt;
-                offset = i;
-            }
-            // No suitable tensor/subgraph for a mask displacement.
-            if (!causal_mask_lt) break;
-
-            filling_type_t filling_type = filling_type_t::undef;
-            std::string cfg_name;
-            float user_set_value = 0.f;
-            if (aop.kind_ == "Add") {
-                const auto ndims = causal_mask_lt->shape_.size();
-                if (ndims < 2) {
-                    BENCHDNN_PRINT(7, "%s\n",
-                            "[DISPLACE]: Causal mask ndims is less than 2");
+                // The following op (Softmax or Subtract) must be a part of same
+                // partition as the mask. This is to avoid cases, where mask is the
+                // last op in the partition, from being modified.
+                auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_op->kind_ != "SoftMax"
+                        && child_op->kind_ != "Subtract")
                     break;
-                }
+                if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
 
-                const auto M = causal_mask_lt->shape_[ndims - 2];
-                if (M == 1) {
-                    // This is a padding mask case, when padded tokens should
-                    // be removed from the final computations. In case of
-                    // benchdnn, there's no such thing as padding as all tokens
-                    // are computed. To avoid numerical instabilities, a zero
-                    // mask can be applied without compromising validation
-                    // capabilities.
-                    filling_type = filling_type_t::fixed_setting;
-                    cfg_name = "Explicit_padding_mask";
-                } else {
-                    // This is a look-ahead (or causal) mask case, when future
-                    // tokens (row < col) are set to infinity to remove all
-                    // connections of current tokens to unissued ones.
-                    filling_type = filling_type_t::causal_mask;
-                }
-            } else if (aop.kind_ == "Select") {
-                if (select_cond_has_parent) {
-                    // Implicit causal mask case.
-                    filling_type = filling_type_t::fixed_setting;
-                    user_set_value = -INFINITY;
-                    cfg_name = "Implicit_causal_mask";
-                } else {
-                    // Padding mask.
-                    assert(qk_data_offset == 1 || qk_data_offset == 2);
-                    // Fill condition depending on qk values tensor to use only
-                    // its values, which is equivalent of not using a mask.
-                    filling_type = filling_type_t::fixed_setting;
-                    if (qk_data_offset == 1) {
-                        user_set_value = 1.f;
-                    } else if (qk_data_offset == 2) {
-                        user_set_value = 0.f;
-                    }
-                    cfg_name = "Explicit_padding_mask";
-                }
-            }
-
-            if (filling_type == filling_type_t::undef) {
-                BENCHDNN_PRINT(
-                        7, "%s\n", "[DISPLACE]: Filling type was not set");
-                break;
-            } else if (filling_type == filling_type_t::fixed_setting) {
-                displace_args_.emplace(causal_mask_lt->id_,
-                        displace_args_t {aop, offset, *causal_mask_lt,
-                                filling_type, {{user_set_value}, cfg_name}});
-            } else if (filling_type == filling_type_t::causal_mask) {
-                // Causal mask filling
-                displace_args_.emplace(causal_mask_lt->id_,
-                        displace_args_t {
-                                aop, offset, *causal_mask_lt, filling_type});
-            }
-            break;
-        }
-
-        // Fill proper data for bottom-right implicit casual mask
-        while (aop.kind_ == "Add") {
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_sub_op->kind_ != "Subtract") break;
-
-            auto *child_op_out_lt = &child_sub_op->out_lts_[0];
-            auto *next_child_op = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
-            if (next_child_op->kind_ != "GreaterEqual") break;
-
-            const std::string cfg_name = "Bottom_right_implicit_padding_mask";
-            static constexpr int seq_len_q = 0;
-            static constexpr int seq_len_kv = 1;
-
-            // The following subtract and greaterEqual must also be a part of
-            // the partition.
-            if (op_ids_set_.find(child_sub_op->id_) == op_ids_set_.end()
-                    || op_ids_set_.find(next_child_op->id_)
-                            == op_ids_set_.end())
-                break;
-
-            const auto set_seq_len_displace_args =
-                    [&](const deserialized_op_t *op, int which_seq_len) {
-                        const size_t ndims = op->out_lts_[0].shape_.size();
-                        const size_t seq_len_idx = (which_seq_len == seq_len_q)
-                                ? ndims - 2
-                                : ndims - 1;
-
-                        for (size_t i = 0; i < op->in_lts_.size(); i++) {
-                            auto *parent_op = &dg_->get_op_by_out_lt(
-                                    op->in_lts_[i].id_);
-                            // For add->sub->ge, we consider the inputs of add
-                            // and sub as scalars if they have no parent
-                            // tensors.
-                            if (parent_op->empty()) {
-                                float user_set_value = static_cast<float>(
-                                        op->in_lts_[1 - i].shape_[seq_len_idx]);
-                                displace_args_.emplace(op->in_lts_[i].id_,
-                                        displace_args_t {*op, i, op->in_lts_[i],
-                                                filling_type_t::fixed_setting,
-                                                {{user_set_value}, cfg_name}});
-                            }
+                // Search for an input lt without a parent, this is the one to
+                // modify for both explicit and implicit masks.
+                const deserialized_lt_t *causal_mask_lt = nullptr;
+                size_t offset = SIZE_MAX;
+                size_t qk_data_offset = SIZE_MAX;
+                // Select condition having a parent or not is the only reliable
+                // difference between explicit and implicit causal mask.
+                bool select_cond_has_parent = false;
+                // Need to iterate over all inputs to handle padding mask expressed
+                // through Select op.
+                for (size_t i = 0; i < aop.in_lts_.size(); i++) {
+                    auto *aop_in_lt = &aop.in_lts_[i];
+                    auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+                    if (!parent_op->empty()) {
+                        if (aop_in_lt->get_data_type()
+                                != logical_tensor::data_type::boolean) {
+                            // This is the qk_data, need to know its offset to
+                            // properly fill condition for padding mask.
+                            qk_data_offset = i;
+                        } else {
+                            // This means it's implicit causal mask.
+                            select_cond_has_parent = true;
                         }
-                    };
+                        continue;
+                    }
 
-            // The bottom-right implicit causal mask handles future tokens
-            // differently compared to the top-left casual mask. To support
-            // it, the result of `GenIndex` on rows should subtract `seq_len_q`
-            // and add `seq_len_kv` to generate masks such as:
-            // # s_q=2, s_kv=5            |    # s_q=5, s_kv=2
-            //  0    0    0    0  -inf    |      -inf  -inf
-            //  0    0    0    0    0     |      -inf  -inf
-            //                            |      -inf  -inf
-            //                            |        0   -inf
-            //                            |        0    0
-            // Add the sequence length of Key and Value.
-            set_seq_len_displace_args(&aop, seq_len_kv);
-            // Subtract the sequence lenght of Query.
-            set_seq_len_displace_args(child_sub_op, seq_len_q);
-            break;
+                    // Explicit padding mask expressed through the Select op would
+                    // have two user inputs: condition, hinting where padding
+                    // occurred and a special value (-inf) to use. In such scenario,
+                    // unlike for implicit causal mask, it's required to update the
+                    // condition to always take qk values instead of a special one.
+                    //
+                    // Checking for data type to make sure that in case of two user
+                    // inputs, the condition one will be updated. For implicit
+                    // causal mask, the condition would have a parent and a check
+                    // for `causal_mask_lt` being non-empty will fail.
+                    if (causal_mask_lt
+                            && aop_in_lt->get_data_type()
+                                    != logical_tensor::data_type::boolean)
+                        continue;
+
+                    causal_mask_lt = aop_in_lt;
+                    offset = i;
+                }
+                // No suitable tensor/subgraph for a mask displacement.
+                if (!causal_mask_lt) break;
+
+                filling_type_t filling_type = filling_type_t::undef;
+                std::string cfg_name;
+                float user_set_value = 0.f;
+                if (aop.kind_ == "Add") {
+                    const auto ndims = causal_mask_lt->shape_.size();
+                    if (ndims < 2) {
+                        BENCHDNN_PRINT(7, "%s\n",
+                                "[DISPLACE]: Causal mask ndims is less than 2");
+                        break;
+                    }
+
+                    const auto M = causal_mask_lt->shape_[ndims - 2];
+                    if (M == 1) {
+                        // This is a padding mask case, when padded tokens should
+                        // be removed from the final computations. In case of
+                        // benchdnn, there's no such thing as padding as all tokens
+                        // are computed. To avoid numerical instabilities, a zero
+                        // mask can be applied without compromising validation
+                        // capabilities.
+                        filling_type = filling_type_t::fixed_setting;
+                        cfg_name = "Explicit_padding_mask";
+                    } else {
+                        // This is a look-ahead (or causal) mask case, when future
+                        // tokens (row < col) are set to infinity to remove all
+                        // connections of current tokens to unissued ones.
+                        filling_type = filling_type_t::causal_mask;
+                    }
+                } else if (aop.kind_ == "Select") {
+                    if (select_cond_has_parent) {
+                        // Implicit causal mask case.
+                        filling_type = filling_type_t::fixed_setting;
+                        user_set_value = -INFINITY;
+                        cfg_name = "Implicit_causal_mask";
+                    } else {
+                        // Padding mask.
+                        assert(qk_data_offset == 1 || qk_data_offset == 2);
+                        // Fill condition depending on qk values tensor to use only
+                        // its values, which is equivalent of not using a mask.
+                        filling_type = filling_type_t::fixed_setting;
+                        if (qk_data_offset == 1) {
+                            user_set_value = 1.f;
+                        } else if (qk_data_offset == 2) {
+                            user_set_value = 0.f;
+                        }
+                        cfg_name = "Explicit_padding_mask";
+                    }
+                }
+
+                if (filling_type == filling_type_t::undef) {
+                    BENCHDNN_PRINT(
+                            7, "%s\n", "[DISPLACE]: Filling type was not set");
+                    break;
+                } else if (filling_type == filling_type_t::fixed_setting) {
+                    displace_args_.emplace_back(causal_mask_lt->id_,
+                            displace_args_t {aop, offset, *causal_mask_lt,
+                                    filling_type,
+                                    {{user_set_value}, cfg_name}});
+                } else if (filling_type == filling_type_t::causal_mask) {
+                    // Causal mask filling
+                    displace_args_.emplace_back(causal_mask_lt->id_,
+                            displace_args_t {aop, offset, *causal_mask_lt,
+                                    filling_type});
+                }
+                break;
+            }
+
+            // Fill proper data for bottom-right implicit casual mask
+            while (aop.kind_ == "Add") {
+                auto *aop_out_lt = &aop.out_lts_[0];
+                if (aop_out_lt->data_type_ != "s32") break;
+                auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_sub_op->kind_ != "Subtract") break;
+
+                auto *child_op_out_lt = &child_sub_op->out_lts_[0];
+                auto *next_child_op
+                        = &dg_->get_op_by_in_lt(child_op_out_lt->id_);
+                if (next_child_op->kind_ != "GreaterEqual") break;
+
+                const std::string cfg_name
+                        = "Bottom_right_implicit_padding_mask";
+                static constexpr int seq_len_q = 0;
+                static constexpr int seq_len_kv = 1;
+
+                // The following subtract and greaterEqual must also be a part of
+                // the partition.
+                if (op_ids_set_.find(child_sub_op->id_) == op_ids_set_.end()
+                        || op_ids_set_.find(next_child_op->id_)
+                                == op_ids_set_.end())
+                    break;
+
+                const auto set_seq_len_displace_args =
+                        [&](const deserialized_op_t *op, int which_seq_len) {
+                            const size_t ndims = op->out_lts_[0].shape_.size();
+                            const size_t seq_len_idx
+                                    = (which_seq_len == seq_len_q) ? ndims - 2
+                                                                   : ndims - 1;
+
+                            for (size_t i = 0; i < op->in_lts_.size(); i++) {
+                                auto *parent_op = &dg_->get_op_by_out_lt(
+                                        op->in_lts_[i].id_);
+                                // For add->sub->ge, we consider the inputs of add
+                                // and sub as scalars if they have no parent
+                                // tensors.
+                                if (parent_op->empty()) {
+                                    float user_set_value = static_cast<float>(
+                                            op->in_lts_[1 - i]
+                                                    .shape_[seq_len_idx]);
+                                    displace_args_.emplace_back(
+                                            op->in_lts_[i].id_,
+                                            displace_args_t {*op, i,
+                                                    op->in_lts_[i],
+                                                    filling_type_t::
+                                                            fixed_setting,
+                                                    {{user_set_value},
+                                                            cfg_name}});
+                                }
+                            }
+                        };
+
+                // The bottom-right implicit causal mask handles future tokens
+                // differently compared to the top-left casual mask. To support
+                // it, the result of `GenIndex` on rows should subtract `seq_len_q`
+                // and add `seq_len_kv` to generate masks such as:
+                // # s_q=2, s_kv=5            |    # s_q=5, s_kv=2
+                //  0    0    0    0  -inf    |      -inf  -inf
+                //  0    0    0    0    0     |      -inf  -inf
+                //                            |      -inf  -inf
+                //                            |        0   -inf
+                //                            |        0    0
+                // Add the sequence length of Key and Value.
+                set_seq_len_displace_args(&aop, seq_len_kv);
+                // Subtract the sequence lenght of Query.
+                set_seq_len_displace_args(child_sub_op, seq_len_q);
+                break;
+            }
         }
 
         // Fill proper data for softmax stats in sdpa backward graph.
-        // TODO: check if it's a known sdpa pattern before doing the data filling
-        while (aop.kind_ == "Subtract") {
-            // for softmax stats, it's used as P = exp(S-stats)
-            // stats should be an input of the whole backward graph, so it should
-            // have no producer.
-            auto *aop_in_lt = &aop.in_lts_[1];
-            auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
-            if (!parent_op->empty()) break;
+        if (dg.get_recognized_pattern()
+                == graph_recognized_pattern_t::sdpa_bwd) {
+            while (aop.kind_ == "Subtract") {
+                // for softmax stats, it's used as P = exp(S-stats)
+                // stats should be an input of the whole backward graph, so it should
+                // have no producer.
+                auto *aop_in_lt = &aop.in_lts_[1];
+                auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+                if (!parent_op->empty()) break;
 
-            // subtract should be followed by exp to resume a softmax functionality.
-            auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_exp_op->kind_ != "Exp") break;
+                // subtract should be followed by exp to resume a softmax functionality.
+                auto *aop_out_lt = &aop.out_lts_[0];
+                auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+                if (child_exp_op->kind_ != "Exp") break;
 
-            displace_args_.emplace(aop_in_lt->id_,
-                    displace_args_t {
-                            aop, 1, *aop_in_lt, filling_type_t::softmax_stats});
-            break;
+                displace_args_.emplace_back(aop_in_lt->id_,
+                        displace_args_t {aop, 1, *aop_in_lt,
+                                filling_type_t::softmax_stats});
+                break;
+            }
         }
     }
 }
 
-int partition_data_displacer_t::displace_input_data(size_t lt_id,
-        dnn_mem_t &mem,
-        const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
-        res_t *res) {
+int partition_data_displacer_t::displace_input_data(
+        ref_partition_t &ref_partition, res_t *res) {
     if (!dg_) {
         res->state = FAILED;
         return FAIL;
     }
 
-    if (displace_args_.find(lt_id) == displace_args_.end()) {
-        // no need to displace the data of this tensor
-        return OK;
-    }
-    const displace_args_t &d_args = displace_args_.at(lt_id);
-    const auto &main_op = d_args.main_op_;
-    const auto &main_op_offset = d_args.main_op_offset_;
-    const auto &tensor = d_args.tensor_;
-    const auto &fill_cfg = d_args.fill_cfg_;
-    const auto filling_type = d_args.filling_type_;
+    for (const auto &d_arg : displace_args_) {
+        const auto &lt_id = d_arg.first;
+        const auto &main_op = d_arg.second.main_op_;
+        const auto &main_op_offset = d_arg.second.main_op_offset_;
+        const auto &tensor = d_arg.second.tensor_;
+        const auto &fill_cfg = d_arg.second.fill_cfg_;
+        const auto filling_type = d_arg.second.filling_type_;
 
-    auto opkind = opstr2kind(main_op.kind_);
-    int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
-            opkind, main_op_offset);
+        auto opkind = opstr2kind(main_op.kind_);
+        int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
+                opkind, main_op_offset);
 
-    const auto &get_name = [&filling_type, &fill_cfg]() {
-        std::string s;
-        if (filling_type == filling_type_t::fixed_setting) {
-            s = fill_cfg.name_;
-        } else if (filling_type == filling_type_t::causal_mask) {
-            s = "Explicit causal mask";
-        } else if (filling_type == filling_type_t::quantization) {
-            s = "Quantization";
-        } else if (filling_type == filling_type_t::compressed_sdpa) {
-            s = "Compressed SDPA";
-        }
-        return s;
-    };
-    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
-            main_op.kind_.c_str(),
-            data_kind2str(exec_arg2data_kind(main_op_arg)), get_name().c_str());
-
-    dnn_mem_t mem_replace;
-    if (filling_type == filling_type_t::quantization) {
-        SAFE(gen_quantize_filling(
-                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
-                WARN);
-    } else if (filling_type == filling_type_t::compressed_sdpa) {
-        SAFE(gen_compressed_sdpa_filling(
-                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
-                WARN);
-    } else if (filling_type == filling_type_t::causal_mask) {
-        SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
-    } else if (filling_type == filling_type_t::fixed_setting) {
-        SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
-    } else if (filling_type == filling_type_t::softmax_stats) {
-        const auto *softmax_src_lt = &main_op.in_lts_[0];
-        const dnn_mem_t &softmax_src_mem = lt_id_2_mems.at(softmax_src_lt->id_);
-        SAFE(gen_softmax_stats_filling(main_op, main_op_arg, softmax_src_mem,
-                     mem_replace, mem.md_, res),
-                WARN);
-    } else {
-        assert(!"unexpected filling type");
-    }
-
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
-
-    // do the reverse job
-    auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
-    bool backward_path_launched = false;
-    while (filling_type == filling_type_t::quantization && !parent_op->empty()
-            && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
-        backward_path_launched = true;
-        // generate the reverse op based on OP kind
-        // make a copy of deserialized_op_t to avoid impact on graph execution
-        // Currently, we support the following OPs' reverse execution:
-        // All of the execution need to swap the input lt and output lt first
-
-        // 1. StaticTranspose: re-permute the 'order' attr to get an inversed effect
-        // 2. TypeCast: Do nothing special because the type is already swapped
-        // 3. StaticReshape: Do nothing special because the shape is already swapped
-        // 4. Quantize: change opkind to Dequantize and keep scales and zps
-        // 5. Dequantize: change opkind to Quantize and keep scales and zps
-
-        auto op = dg_->get_op_by_out_lt(tensor.id_);
-        BENCHDNN_PRINT(
-                3, "[DISPLACE]: Backward path for Op:%s;\n", op.kind_.c_str());
-
-        ::std::swap(op.in_lts_, op.out_lts_);
-
-        auto opkind = opstr2kind(op.kind_);
-
-        switch (opkind) {
-            case ::graph::op::kind::Quantize: op.kind_ = "Dequantize"; break;
-            case ::graph::op::kind::Dequantize: op.kind_ = "Quantize"; break;
-            case ::graph::op::kind::StaticTranspose: {
-                ::std::vector<int64_t> order;
-                op.get_attr_s64_vector(order, "order");
-                size_t ndims = order.size();
-                ::std::vector<int64_t> new_order(ndims, 0);
-                for (size_t i = 0; i < ndims; i++) {
-                    new_order[(order[i] + ndims) % ndims] = i;
-                }
-                op.attrs_["order"].s64_vector_ = new_order;
-                break;
+        const auto &get_name = [&filling_type, &fill_cfg]() {
+            std::string s;
+            if (filling_type == filling_type_t::fixed_setting) {
+                s = fill_cfg.name_;
+            } else if (filling_type == filling_type_t::causal_mask) {
+                s = "Explicit causal mask";
+            } else if (filling_type == filling_type_t::quantization) {
+                s = "Quantization";
+            } else if (filling_type == filling_type_t::compressed_sdpa) {
+                s = "Compressed SDPA";
             }
-            case ::graph::op::kind::TypeCast:
-            case ::graph::op::kind::StaticReshape: break;
-            default:
-                assert(!"not support opkind for reverse execution");
-                return FAIL;
+            return s;
+        };
+        BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
+                main_op.kind_.c_str(),
+                data_kind2str(exec_arg2data_kind(main_op_arg)),
+                get_name().c_str());
+
+        if (!ref_partition.has_mem(lt_id)) {
+            res->state = INVALID_ARGUMENTS;
+            return FAIL;
+        }
+        dnn_mem_t &mem = const_cast<dnn_mem_t &>(ref_partition.get_mem(lt_id));
+        dnn_mem_t mem_replace;
+        if (filling_type == filling_type_t::quantization) {
+            SAFE(gen_quantize_filling(main_op, main_op_arg, mem_replace,
+                         tensor.data_type_, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::compressed_sdpa) {
+            SAFE(gen_compressed_sdpa_filling(main_op, main_op_arg, mem_replace,
+                         tensor.data_type_, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::causal_mask) {
+            SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
+        } else if (filling_type == filling_type_t::fixed_setting) {
+            SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res),
+                    WARN);
+        } else if (filling_type == filling_type_t::softmax_stats) {
+            // for softmax stats, we need to displace the input data
+            // based on softmax input, which needs to be generated by executing
+            // previous ops.
+            res_t temp_res;
+            ref_partition.exec_ops(&temp_res);
+            const auto *softmax_src_lt = &main_op.in_lts_[0];
+            const dnn_mem_t &softmax_src_mem
+                    = ref_partition.get_mem(softmax_src_lt->id_);
+
+            SAFE(gen_softmax_stats_filling(main_op, main_op_arg,
+                         softmax_src_mem, mem_replace, mem.md_, res),
+                    WARN);
+        } else {
+            assert(!"unexpected filling type");
         }
 
-        // execute the reverse op
-        res_t res {};
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) continue;
 
-        ref_primitive_t ref_prim(op);
-        ref_prim.init_prb(&res);
-        if (res.state == INVALID_ARGUMENTS) return FAIL;
-        SAFE_V(ref_prim.init_prim(
-                get_cpu_engine(), &res, /* force_override = */ true));
+        // do the reverse job
+        auto *parent_op = &dg_->get_op_by_out_lt(tensor.id_);
+        bool backward_path_launched = false;
+        while (filling_type == filling_type_t::quantization
+                && !parent_op->empty()
+                && op_ids_set_.find(parent_op->id_) != op_ids_set_.end()) {
+            backward_path_launched = true;
+            // generate the reverse op based on OP kind
+            // make a copy of deserialized_op_t to avoid impact on graph execution
+            // Currently, we support the following OPs' reverse execution:
+            // All of the execution need to swap the input lt and output lt first
 
-        ref_prim.init_memory_args(get_cpu_engine());
-        SAFE_V(ref_prim.init_ref_memory_args(get_cpu_engine(), &res));
+            // 1. StaticTranspose: re-permute the 'order' attr to get an inversed effect
+            // 2. TypeCast: Do nothing special because the type is already swapped
+            // 3. StaticReshape: Do nothing special because the shape is already swapped
+            // 4. Quantize: change opkind to Dequantize and keep scales and zps
+            // 5. Dequantize: change opkind to Quantize and keep scales and zps
 
-        const auto &src_mem = ref_prim.get_arg(DNNL_ARG_SRC);
+            auto op = dg_->get_op_by_out_lt(tensor.id_);
+            BENCHDNN_PRINT(3, "[DISPLACE]: Backward path for Op:%s;\n",
+                    op.kind_.c_str());
+
+            ::std::swap(op.in_lts_, op.out_lts_);
+
+            auto opkind = opstr2kind(op.kind_);
+
+            switch (opkind) {
+                case ::graph::op::kind::Quantize:
+                    op.kind_ = "Dequantize";
+                    break;
+                case ::graph::op::kind::Dequantize:
+                    op.kind_ = "Quantize";
+                    break;
+                case ::graph::op::kind::StaticTranspose: {
+                    ::std::vector<int64_t> order;
+                    op.get_attr_s64_vector(order, "order");
+                    size_t ndims = order.size();
+                    ::std::vector<int64_t> new_order(ndims, 0);
+                    for (size_t i = 0; i < ndims; i++) {
+                        new_order[(order[i] + ndims) % ndims] = i;
+                    }
+                    op.attrs_["order"].s64_vector_ = new_order;
+                    break;
+                }
+                case ::graph::op::kind::TypeCast:
+                case ::graph::op::kind::StaticReshape: break;
+                default:
+                    assert(!"not support opkind for reverse execution");
+                    return FAIL;
+            }
+
+            // execute the reverse op
+            res_t res {};
+
+            ref_primitive_t ref_prim(op);
+            ref_prim.init_prb(&res);
+            if (res.state == INVALID_ARGUMENTS) return FAIL;
+            SAFE_V(ref_prim.init_prim(
+                    get_cpu_engine(), &res, /* force_override = */ true));
+
+            ref_prim.init_memory_args(get_cpu_engine());
+            SAFE_V(ref_prim.init_ref_memory_args(get_cpu_engine(), &res));
+
+            const auto &src_mem = ref_prim.get_arg(DNNL_ARG_SRC);
+            bool mds_are_equal
+                    = dnnl_memory_desc_equal(mem_replace.md_, src_mem.md_) == 1;
+            SAFE(mds_are_equal ? OK : FAIL, WARN);
+
+            // Always use the md generated by current reversed op. E.g., a matmul op
+            // will unsqeeze 1 to fit the dimension so the md generated by matmul
+            // prb_t will not be the same as defined in graph.
+            dnnl_memory_desc_destroy(mem_replace.md_);
+            dnnl_memory_desc_clone(&mem_replace.md_, src_mem.md_);
+            ref_prim.replace_arg(DNNL_ARG_SRC, mem_replace);
+            SAFE_V(ref_prim.execute_prim(&res));
+
+            mem_replace = ::std::move(
+                    const_cast<dnn_mem_t &>(ref_prim.get_arg(DNNL_ARG_DST)));
+            parent_op = &dg_->get_op_by_out_lt(op.out_lts_[0].id_);
+        }
+
+        if (backward_path_launched) {
+            BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
+        }
+
         bool mds_are_equal
-                = dnnl_memory_desc_equal(mem_replace.md_, src_mem.md_) == 1;
-        SAFE(mds_are_equal ? OK : FAIL, WARN);
+                = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
+        bool mds_are_int8 = is_integral_dt(mem_replace.dt())
+                && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
+                && mem.sizeof_dt() == 1;
+        bool is_grouped_conv = false;
+        if (main_op.kind_ == "Convolution"
+                || main_op.kind_ == "ConvTranspose") {
+            int64_t groups;
+            main_op.get_attr_s64(groups, "groups");
+            is_grouped_conv = groups > 1;
+        }
 
-        // Always use the md generated by current reversed op. E.g., a matmul op
-        // will unsqeeze 1 to fit the dimension so the md generated by matmul
-        // prb_t will not be the same as defined in graph.
+        bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
+                && mem_replace.ndims() != mem.ndims();
+
+        bool mds_ok = IMPLICATION(!mds_are_equal,
+                mds_are_int8 || is_grouped_conv || is_reshaped_dims);
+        SAFE(mds_ok ? OK : FAIL, WARN);
+
+        dnnl_memory_desc_t md = mem.md_;
+        if (is_reshaped_dims) {
+            DNN_SAFE_V(dnnl_memory_desc_create_with_strides(&md, mem.ndims(),
+                    mem.dims(), mem_replace.dt(), mem.strides()));
+        }
         dnnl_memory_desc_destroy(mem_replace.md_);
-        dnnl_memory_desc_clone(&mem_replace.md_, src_mem.md_);
-        ref_prim.replace_arg(DNNL_ARG_SRC, mem_replace);
-        SAFE_V(ref_prim.execute_prim(&res));
+        dnnl_memory_desc_clone(&mem_replace.md_, md);
+        SAFE(mem.reorder(mem_replace), WARN);
 
-        mem_replace = ::std::move(
-                const_cast<dnn_mem_t &>(ref_prim.get_arg(DNNL_ARG_DST)));
-        parent_op = &dg_->get_op_by_out_lt(op.out_lts_[0].id_);
+        if (is_reshaped_dims) dnnl_memory_desc_destroy(md);
     }
 
-    if (backward_path_launched) {
-        BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
-    }
-
-    bool mds_are_equal = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
-    bool mds_are_int8 = is_integral_dt(mem_replace.dt())
-            && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
-            && mem.sizeof_dt() == 1;
-    bool is_grouped_conv = false;
-    if (main_op.kind_ == "Convolution" || main_op.kind_ == "ConvTranspose") {
-        int64_t groups;
-        main_op.get_attr_s64(groups, "groups");
-        is_grouped_conv = groups > 1;
-    }
-
-    bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
-            && mem_replace.ndims() != mem.ndims();
-
-    bool mds_ok = IMPLICATION(!mds_are_equal,
-            mds_are_int8 || is_grouped_conv || is_reshaped_dims);
-    SAFE(mds_ok ? OK : FAIL, WARN);
-
-    dnnl_memory_desc_t md = mem.md_;
-    if (is_reshaped_dims) {
-        DNN_SAFE_V(dnnl_memory_desc_create_with_strides(
-                &md, mem.ndims(), mem.dims(), mem_replace.dt(), mem.strides()));
-    }
-    dnnl_memory_desc_destroy(mem_replace.md_);
-    dnnl_memory_desc_clone(&mem_replace.md_, md);
-    SAFE(mem.reorder(mem_replace), WARN);
-
-    if (is_reshaped_dims) dnnl_memory_desc_destroy(md);
     return OK;
 }
 

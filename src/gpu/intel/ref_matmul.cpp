@@ -31,18 +31,16 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     auto &c = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
-    const auto has_src_up_zp = !pd()->attr()->zero_points_.has_default_values(
-            DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC);
-    const auto src_zp_idx = DNNL_ARG_SRC
-            | ((has_src_up_zp) ? DNNL_ARG_ATTR_USER_PRECOMP : DNNL_ARG_UNDEF);
-
     auto &src_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     auto &wei_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     auto &dst_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | src_zp_idx);
+    const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const auto &b0
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const auto &c0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
+    const auto &src_zp_idx
+            = CTX_IN_STORAGE(DNNL_ARG_ATTR_PLACEHOLDER | DNNL_ARG_SRC);
 
     const auto a_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto b_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());

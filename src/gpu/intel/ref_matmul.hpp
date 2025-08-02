@@ -65,6 +65,7 @@ struct ref_matmul_t : public gpu_primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            VDISPATCH_MATMUL(placeholder_ok(), VERBOSE_UNSUPPORTED_PL_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(IMPLICATION(has_blocks(), dst_md()->ndims < 6),
                     VERBOSE_BAD_NDIMS, "dst", dst_md()->ndims);
@@ -187,14 +188,13 @@ struct ref_matmul_t : public gpu_primitive_t {
                 bool ok = mask_dst == 0;
                 if (!ok) return false;
             }
-            const auto user_precomp = DNNL_ARG_ATTR_USER_PRECOMP;
-            if (!zp.has_default_values(user_precomp | DNNL_ARG_WEIGHTS)
-                    || !zp.has_default_values(user_precomp | DNNL_ARG_DST))
-                return false;
-            if (!zp.has_default_values(user_precomp | DNNL_ARG_SRC)) {
-                // no precomputed src zp without wei
-                if (zp.has_default_values(DNNL_ARG_WEIGHTS)) return false;
+            return true;
+        }
+        bool placeholder_ok() const {
+            const auto &pl = attr()->placeholder_;
+            if (!pl.has_default_values(DNNL_ARG_SRC)) {
                 const auto &sc = attr()->scales_;
+                const auto &zp = attr()->zero_points_;
                 auto sgw = (!sc.has_default_groups(DNNL_ARG_WEIGHTS))
                         ? sc.get(DNNL_ARG_WEIGHTS).get_group(0)
                         : K();
@@ -204,11 +204,11 @@ struct ref_matmul_t : public gpu_primitive_t {
                 auto zgw = (!zp.has_default_groups(DNNL_ARG_WEIGHTS))
                         ? zp.get(DNNL_ARG_WEIGHTS).get_group(0)
                         : K();
-                auto zgs = (!zp.has_default_groups(user_precomp | DNNL_ARG_SRC))
-                        ? zp.get(user_precomp | DNNL_ARG_SRC).get_group(1)
+                auto pgs = (!pl.has_default_groups(DNNL_ARG_SRC))
+                        ? pl.get(DNNL_ARG_SRC).get_group(1)
                         : K();
                 // all other groups should be divisible by the precomp group
-                return (sgw % zgs == 0) && (sgs % zgs == 0) && (zgw % zgs == 0);
+                return (sgw % pgs == 0) && (sgs % pgs == 0) && (zgw % pgs == 0);
             }
             return true;
         }
@@ -234,9 +234,10 @@ struct ref_matmul_t : public gpu_primitive_t {
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
 
-        if (!pd()->attr()->zero_points_.has_default_values(
-                    DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC))
+        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
+            // TODO: check if this is still a good name.
             kernel_ctx.define_int("WITH_USER_PRECOMP_SRC_ZPOINTS", 1);
+        }
 
         bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
         if (!runtime_dims) {
@@ -268,11 +269,10 @@ struct ref_matmul_t : public gpu_primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC),
                 "SRC_SCALES");
-        if (!pd()->attr()->zero_points_.has_default_values(
-                    DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC)) {
+        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
+            // TODO: check if `SRC_ZP` is still a good name.
             def_data_type(kernel_ctx,
-                    pd()->attr()->zero_points_.get_data_type(
-                            DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_SRC),
+                    pd()->attr()->placeholder_.get_data_type(DNNL_ARG_SRC),
                     "SRC_ZP");
         } else {
             def_data_type(kernel_ctx,

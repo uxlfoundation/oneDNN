@@ -53,7 +53,7 @@ status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = compute_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    init_attrs();
+    VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()

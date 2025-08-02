@@ -71,7 +71,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             dev_info_ = compute_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
-            init_attrs();
+            VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             // If we have both grouped scales and grouped zero-points, they must
             // have the same group size
@@ -318,16 +318,19 @@ struct gen_gemm_t : public gpu_gemm_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
+            quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
+                    asc_dims_, a_q2d_group_k_, a_q2d_group_m_};
+            quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
+                    bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
+
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,
                             dev_info_->eu_count(), has_systolic, is_integrated,
                             mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), ao_dims_, bo_dims_,
-                            asc_dims_, bsc_dims_, with_sround_, a_q2d_group_k_,
-                            b_q2d_group_k_, with_c_zero_points(), with_bias(),
+                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
+                            with_sround_, with_c_zero_points(), with_bias(),
                             eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                            eff_b_type(), desc()->c_type(), ao_type, bo_type,
-                            a_scales_type_, b_scales_type_, co_type, acc_type,
+                            eff_b_type(), desc()->c_type(), co_type, acc_type,
                             eff_align_a(), eff_align_b(), align_c(), eff_m(),
                             eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
                             d->batch(), std::move(gpu_post_ops)),

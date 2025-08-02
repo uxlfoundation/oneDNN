@@ -4297,6 +4297,35 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                 "could not set zero points primitive attribute");
     }
 
+    /// Sets precomputed reductions for primitive operations for a given memory
+    /// argument. The precomputed reductions must be passed at execution time as
+    /// an argument with index #DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_precomputed_reductions
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param mask Precomputed reductions correspondence mask that defines the
+    ///     correspondence between the tensor dimensions and the precomputed
+    ///     reductions vector. The set i-th bit indicates that a dedicated
+    ///     precomputed reduction point is used for each index along that
+    ///     dimension.
+    /// @param groups Precomputed reduction factors correspondence groups that
+    ///     define the correspondence between the tensor dimensions and the
+    ///     precomputed reductions array.
+    ///     The set i-th dimension indicates a number of groups of precomputed
+    ///     reduction factors used for that logical dimension in a memory
+    ///     indicated by @p arg.
+    /// @param data_type Precomputed reduction factors data_type.
+    void set_precomputed_reductions(int arg, int mask,
+            const memory::dims &groups,
+            memory::data_type data_type = memory::data_type::s32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_precomputed_reductions(get(),
+                                  arg, mask, (int)groups.size(), groups.data(),
+                                  memory::convert_to_c(data_type)),
+                "could not set precomputed reductions primitive attribute");
+    }
+
     /// Returns post-ops previously set via set_post_ops().
     ///
     /// @returns Post-ops.

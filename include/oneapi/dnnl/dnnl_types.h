@@ -2680,9 +2680,8 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 /// Dropout RNG seed value passed via a buffer.
 #define DNNL_ARG_ATTR_DROPOUT_SEED 511
 
-/// Output scaling factors provided at execution time.
-/// Deprecated value.
-#define DNNL_ARG_ATTR_OUTPUT_SCALES 513
+/// Precomputed reductions provided at execution time.
+#define DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS 512
 
 /// Starting index for source arguments for primitives that take a variable
 /// number of source arguments.

@@ -130,5 +130,10 @@ zero_points_t zero_points_t::deserialize(deserializer_t &d) {
     return deserialize_entries<zero_points_t>(d);
 }
 
+precomputed_reductions_t precomputed_reductions_t::deserialize(
+        deserializer_t &d) {
+    return deserialize_entries<precomputed_reductions_t>(d);
+}
+
 } // namespace impl
 } // namespace dnnl

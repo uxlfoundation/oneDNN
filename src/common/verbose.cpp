@@ -740,6 +740,12 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
         ss << field_delim() << "attr-zero-points:" << zero_points.get_verbose();
     }
 
+    const precomputed_reductions_t &pr = attr->precomputed_reductions_;
+    if (!pr.has_default_values()) {
+        ss << field_delim()
+           << "attr-precomputed-reductions:" << pr.get_verbose();
+    }
+
     const post_ops_t &po = attr->post_ops_;
     if (!po.has_default_values()) {
         std::string delim = empty_delim;

@@ -633,6 +633,22 @@
 #define DST_DATA_FMAX convert_float(INT_MAX)
 #define DST_DATA_FMIN 1
 #define DST_DATA_FLOW -DST_DATA_FMAX
+#elif DST_DT_S16
+#define TO_DST(x) convert_short_sat_rte(x)
+#define TO_DST2(x) convert_short2_sat_rte(x)
+#define TO_DST4(x) convert_short4_sat_rte(x)
+#define TO_DST8(x) convert_short8_sat_rte(x)
+#define DST_DATA_FMAX convert_float(SHORT_MAX)
+#define DST_DATA_FMIN 1
+#define DST_DATA_FLOW -DST_DATA_FMAX
+#elif DST_DT_U16
+#define TO_DST(x) convert_ushort_sat_rte(x)
+#define TO_DST2(x) convert_ushort2_sat_rte(x)
+#define TO_DST4(x) convert_ushort4_sat_rte(x)
+#define TO_DST8(x) convert_ushort8_sat_rte(x)
+#define DST_DATA_FMAX convert_float(USHORT_MAX)
+#define DST_DATA_FMIN 1
+#define DST_DATA_FLOW 0
 #elif DST_DT_F32
 #define TO_DST(x) convert_float(x)
 #define TO_DST2(x) convert_float2(x)

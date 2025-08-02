@@ -1247,6 +1247,23 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
     constexpr bool any(E a) { return a != static_cast<E>(0); }
 // NOLINTEND(bugprone-macro-parentheses)
 
+#define GPU_HW_CASE_(hw) \
+    case ngen::HW::hw: { \
+        GPU_HW_CASE(ngen::HW::hw); \
+        break; \
+    }
+
+#define GPU_HW_SWITCH(hw) \
+    switch (hw) { \
+        REG_XELP_ISA(GPU_HW_CASE_(XeLP)); \
+        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
+        REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
+        REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
+        REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \
+        REG_XE3_ISA(GPU_HW_CASE_(Xe3)); \
+        default: gpu_assert(false) << "Unexpected GPU architecture"; \
+    }
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

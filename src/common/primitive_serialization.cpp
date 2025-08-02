@@ -197,6 +197,11 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
         attr.zero_points_.serialize(sstream);
     }
 
+    if (!attr.precomputed_reductions_.has_default_values()) {
+        sstream.append('p');
+        attr.precomputed_reductions_.serialize(sstream);
+    }
+
     // Rounding modes
     if (!attr.rounding_mode_.has_default_values()) sstream.append('r');
     for (const auto &e : attr.rounding_mode_.rounding_modes_map_) {

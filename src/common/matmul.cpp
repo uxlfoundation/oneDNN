@@ -59,6 +59,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     const bool src_is_fp8
             = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
     if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points;
+    if (src_is_int8) attr_mask |= smask_t::precomputed_reductions;
 
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
@@ -98,6 +99,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int dst_qmask_N = wei_qmask_N;
 
     int full_tensor_mask = (1 << ndims_src) - 1;
+
+    const auto &quant_groups_are_divisible = [](dim_t g1, dim_t g2) -> bool {
+        return IMPLICATION(g1 > 1 && g2 > 1, (g1 % g2 == 0) || (g2 % g1 == 0));
+    };
 
     // Check scales
     if (!attr->scales_.has_default_values()) {
@@ -175,10 +180,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         // Check dependency between scales.
         // Source scales groups are supported for int8 source and must divide
         // or be divided by weights groups when both are greater than 1.
-        const bool groups_are_divisible = IMPLICATION(
-                src_scale_group_k > 1 && wei_scale_group_k > 1,
-                (src_scale_group_k % wei_scale_group_k == 0)
-                        || (wei_scale_group_k % src_scale_group_k == 0));
+        const bool groups_are_divisible = quant_groups_are_divisible(
+                src_scale_group_k, wei_scale_group_k);
         VCHECK_MATMUL_UNIMPL(
                 IMPLICATION(src_scale_group_k > 1,
                         (src_is_int8 || src_is_fp8) && groups_are_divisible),
@@ -266,14 +269,57 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         // Check dependency between zero_points.
         // Source zero_points groups are supported for int8 source and must
         // divide or be divided by weights groups when both are greater than 1.
-        const bool groups_are_divisible = IMPLICATION(
-                src_zero_point_group_k > 1 && wei_zero_point_group_k > 1,
-                (src_zero_point_group_k % wei_zero_point_group_k == 0)
-                        || (wei_zero_point_group_k % src_zero_point_group_k
-                                == 0));
+        const bool groups_are_divisible = quant_groups_are_divisible(
+                src_zero_point_group_k, wei_zero_point_group_k);
         VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1,
                                      src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+
+    // Check precomputed reductions
+    if (!attr->precomputed_reductions_.has_default_values()) {
+        const auto &pr = attr->precomputed_reductions_;
+
+        // Only SRC argument is supported so far.
+        std::vector<int> supported_args = {DNNL_ARG_SRC};
+        VCHECK_MATMUL_UNIMPL(pr.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_PR_CFG);
+
+        if (!pr.has_default_values(DNNL_ARG_SRC)) {
+            const auto &zp = attr->zero_points_;
+            // Weights zero points must be specified.
+            VCHECK_MATMUL_UNIMPL(!zp.get(DNNL_ARG_WEIGHTS).has_default_values(),
+                    VERBOSE_UNSUPPORTED_PR_CFG);
+
+            // Mask must be defined for a full tensor, no broadcasts.
+            const int pr_mask_src = pr.get_mask(DNNL_ARG_SRC);
+            VCHECK_MATMUL_UNIMPL(pr_mask_src == full_tensor_mask,
+                    VERBOSE_UNSUPPORTED_PR_CFG);
+
+            // Data type must be s32 so far.
+            const auto pr_dt = pr.get_data_type(DNNL_ARG_SRC);
+            VCHECK_MATMUL_UNIMPL(
+                    pr_dt == data_type::s32, VERBOSE_UNSUPPORTED_PR_CFG);
+
+            if (!pr.get(DNNL_ARG_SRC).has_default_groups()) {
+                const dim_t src_pr_group_k = pr.get_group(DNNL_ARG_SRC, 1);
+
+                dim_t wei_zero_point_group_k = 1;
+                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
+                    if (mask_wei & wei_qmask_K)
+                        wei_zero_point_group_k
+                                = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                }
+
+                const bool groups_are_divisible = quant_groups_are_divisible(
+                        src_pr_group_k, wei_zero_point_group_k);
+                VCHECK_MATMUL_UNIMPL(
+                        IMPLICATION(src_pr_group_k > 1,
+                                src_is_int8 && groups_are_divisible),
+                        VERBOSE_UNSUPPORTED_PR_CFG);
+            }
+        }
     }
 
     // Check post-ops

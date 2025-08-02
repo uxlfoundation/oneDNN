@@ -436,7 +436,7 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_mask(
 ///     The set i-th bit indicates that a dedicated scaling factor is used for
 ///     each index along that dimension. Set the mask to 0 to use a common
 ///     scaling factor for the whole output tensor.
-/// @param ndims Number of group dimensions.
+/// @param group_ndims Number of group dimensions.
 /// @param group_dims Scaling factors correspondence groups that define the
 ///     correspondence between the tensor dimensions and the scales array.
 ///     The group dimensions should only be provided for each logical dimension
@@ -445,7 +445,7 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_mask(
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
-        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
 
 /// Sets primitive attributes scaling factors for primitive operations for a
@@ -509,20 +509,48 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 /// @param arg Parameter argument index as passed to the
 ///     dnnl_primitive_execute() call.
 /// @param mask Zero point correspondence mask that defines the
-///     correspondence between the tensor dimensions and the @p
-///     zero_points array. The set i-th bit indicates that a dedicated
+///     correspondence between the tensor dimensions and the
+///     zero points array. The set i-th bit indicates that a dedicated
 ///     zero point is used for each index along that dimension. Set the
 ///     mask to 0 to use a common zero point for the whole output tensor.
-/// @param ndims Number of group dimensions.
+/// @param group_ndims Number of group dimensions.
 /// @param group_dims Zero point factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the zero_points array.
+///     correspondence between the tensor dimensions and the zero points array.
 ///     The group dimensions should be only provided for each logical dimension
 ///     that has the bit set correspondence mask @p mask set.
 /// @param data_type Zero points factors data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
-        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets primitive attributes precomputed reductions for primitive operations
+/// for a given memory argument. The precomputed reductions must be passed at
+/// execution time as an argument with index
+/// #DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | arg.
+///
+/// @sa dnnl_primitive_attr_set_precomputed_reductions
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Precomputed reductions correspondence mask that defines the
+///     correspondence between the tensor dimensions and the precomputed
+///     reductions array. The set i-th bit indicates that a dedicated
+///     precomputed reductions is used for each index along that dimension.
+/// @param group_ndims Number of group dimensions.
+/// @param group_dims Precomputed reduction factors correspondence groups that
+///     define the correspondence between the tensor dimensions and the
+///     precomputed reductions array.
+///     The group dimensions should be only provided for each logical dimension
+///     that has the bit set correspondence mask @p mask set.
+/// @param data_type Precomputed reduction factors data_type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_precomputed_reductions(
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
 
 /// Sets primitive attributes zero points for primitive operations for a given

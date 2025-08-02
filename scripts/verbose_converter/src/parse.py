@@ -288,6 +288,10 @@ class ParserImpl:
                 exts.scratchpad = self.parse_scratchpad_mode(args)
             elif name == "attr-zero-points":
                 exts.zero_points = self.parse_zero_points(args)
+            elif name == "attr-precomputed-reductions":
+                exts.precomputed_reductions = self.parse_precomputed_reductions(
+                    args
+                )
         return exts
 
     def parse_post_ops(self, post_ops: str):
@@ -440,6 +444,16 @@ class ParserImpl:
 
     def parse_zero_point(self, spec) -> ir.ZeroPoint:
         return self.parse_quantization_param(spec, spec.read_int, ir.ZeroPoint)
+
+    def parse_precomputed_reductions(self, prs: str):
+        return self.parse_per_argument(
+            prs, "precomputed reduction", self.parse_precomputed_reduction
+        )
+
+    def parse_precomputed_reduction(self, spec) -> ir.PrecomputedReduction:
+        return self.parse_quantization_param(
+            spec, spec.read_int, ir.PrecomputedReduction
+        )
 
     @staticmethod
     def parse_fpmath_mode(mathmode: str) -> ir.FPMathMode:

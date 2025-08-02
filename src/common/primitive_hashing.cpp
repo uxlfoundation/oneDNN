@@ -246,6 +246,10 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
         seed = hash_combine(seed, attr.zero_points_.get_hash());
     }
 
+    if (!attr.precomputed_reductions_.has_default_values()) {
+        seed = hash_combine(seed, attr.precomputed_reductions_.get_hash());
+    }
+
     // post_ops: entry[:]
     for (int i = 0; i < attr.post_ops_.len(); i++) {
         const auto &entry = attr.post_ops_.entry_[i];

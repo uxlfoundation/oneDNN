@@ -40,7 +40,7 @@ struct gemm_t : public primitive_t {
     struct pd_t : public matmul::pd_t {
         using matmul::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T(gemm_pd_->name(), gemm_t);
+        DECLARE_COMMON_PD_T(gemm_pd_ ? gemm_pd_->name() : "gemm_t", gemm_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -57,9 +57,12 @@ struct gemm_t : public primitive_t {
                 return status::unimplemented;
             }
             gemm_attr.post_ops_ = attr()->post_ops_;
-            if (!attr()->dropout_.has_default_values()) {
-                return status::unimplemented;
-            }
+            VDISPATCH_MATMUL(attr()->dropout_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(
+                    attr()->precomputed_reductions_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
             auto a_md = src_md(), b_md = weights_md(), c_md = dst_md(),
                  bias_md = weights_md(1);
             const auto acc_dt = desc()->accum_data_type;

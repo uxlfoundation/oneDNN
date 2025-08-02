@@ -154,6 +154,9 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    overload_quant_mask(
+            prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).policy,
+            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));
@@ -973,6 +976,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+            case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
+                // Fill it separately down below.
+                // TODO: introduce an order of processing arguments to avoid
+                // post filling manipulations.
+                break;
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
                 ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
                         /* prefill = */ false);
@@ -990,6 +998,34 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();
+    }
+
+    if (ref_mem_map.count(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC)) {
+        auto &mem = mem_map.at(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+        const auto &ref_mem = ref_mem_map.at(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+        const auto &ref_mem_src = ref_mem_map.at(DNNL_ARG_SRC);
+        const auto src_precomputed_reductions_gs
+                = prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).groups[1];
+
+        // Reducing original `ref_src` by group size specified.
+        //
+        // Assumption that `ref_src` didn't change its `abx` format which can be
+        // changed in `update_ref_mem_map_from_prim`.
+        for (int64_t i = 0;
+                i < ref_mem_src.nelems() / src_precomputed_reductions_gs; i++) {
+            float val = 0;
+            for (int64_t k = 0; k < src_precomputed_reductions_gs; k++) {
+                const auto offset = i * src_precomputed_reductions_gs + k;
+                const auto s = ref_mem_src.get_elem(offset);
+                val += s;
+            }
+            ref_mem.set_elem(i, val);
+        }
+
+        SAFE(mem.reorder(ref_mem), WARN);
     }
 
     return OK;

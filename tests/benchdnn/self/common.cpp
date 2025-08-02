@@ -311,6 +311,27 @@ static int check_attr() {
         SELF_CHECK_EQ(rm[0].get(DNNL_ARG_SRC), dnnl_rounding_mode_environment);
     }
 
+    {
+        base_settings_t s;
+        std::vector<attr_t::precomputed_reductions_t> &pr
+                = s.precomputed_reductions;
+        std::string content_to_parse(
+                "--attr-precomputed-reductions=src:per_tensor:s32:1x1024");
+        auto st = parse_attributes(s, def, content_to_parse.c_str());
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).policy, policy_t::PER_TENSOR);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).dt, dnnl_s32);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[0], 1);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[1], 1024);
+
+        content_to_parse = std::string("--attr-precomputed-reductions=");
+        st = parse_attributes(s, def, content_to_parse.c_str());
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).policy, policy_t::COMMON);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).dt, dnnl_s32);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups.empty(), true);
+    }
+
 #undef SELF_CHECK_ATTR_ZP
 
     return OK;

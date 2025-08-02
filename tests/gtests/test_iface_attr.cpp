@@ -258,6 +258,29 @@ TEST_F(attr_test_t, TestZeroPointsExpectFailure) {
     }
 }
 
+TEST_F(attr_test_t, TestPrecomputedReductionsWithGroups) {
+    dnnl::primitive_attr attr;
+
+    const std::vector<int> supported_args = {DNNL_ARG_SRC};
+    const std::vector<int> unsupported_args = {DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
+
+    for (auto arg : supported_args) {
+        // single precomputed_reductions (not supported, but valid).
+        attr.set_precomputed_reductions(arg, 0, {});
+        // multiple precomputed_reductions for supported arg.
+        attr.set_precomputed_reductions(arg, 1 << 0, {4});
+        // multiple precomputed_reductions for supported arg with data type
+        // specified. Anything but s32 is unsupported so far.
+        EXPECT_ANY_THROW(attr.set_precomputed_reductions(
+                arg, 1 << 0, {4}, data_type::s8));
+    }
+
+    for (auto arg : unsupported_args) {
+        // multiple zero_points for supported arg with data type specified
+        EXPECT_ANY_THROW(attr.set_precomputed_reductions(arg, 1 << 0, {4}));
+    }
+}
+
 HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestScales) {
     dnnl::primitive_attr attr;
     const std::vector<int> supported_args = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1,

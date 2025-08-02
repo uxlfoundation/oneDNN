@@ -76,6 +76,8 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #else
         __global DST_SCALES_DATA_T *dst_scales,
 #endif
+        __global SRC_GS_DATA_T *ag, long src_gs_stride_k, long src_gs_stride_m,
+        long src_gs_stride_d0, long src_gs_stride_d1, long src_gs_group_k,
         long group_K, long K, long N, long M, long D0, long D1, long D2,
         long bia_stride_d3, long bia_stride_d2, long bia_stride_d1,
         long bia_stride_d0, long bia_stride_m, long bia_stride_n,
@@ -179,14 +181,14 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
 #endif
                 int wei_zp = 0;
-#if WITH_WEI_ZPOINTS
+#if WITH_WEI_ZPOINTS && !WITH_SRC_GROUP_SUMS
                 long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
                         + wei_zp_stride_k * (k / wei_zp_group_k)
                         + wei_zp_stride_d0 * d0 + wei_zp_stride_d1 * d1;
                 wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
 #endif
                 int src_zp = 0;
-#if WITH_SRC_ZPOINTS
+#if WITH_SRC_ZPOINTS && !WITH_SRC_GROUP_SUMS
                 long src_zp_off = src_zp_stride_k * (k / src_zp_group_k)
                         + src_zp_stride_m * m;
                 src_zp = SRC_ZP_TO_REF(a0, src_zp_off);
@@ -224,7 +226,34 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
                     = ACC_TO_REF(acc_g) * src_scale * wei_scale;
             acc += acc_g_to_f;
         }
-
+#if WITH_SRC_GROUP_SUMS
+        for (int g = 0, gend = K / src_gs_group_k; g < gend; g++) {
+            FLT_ACC_DATA_T src_scale = 1.f;
+            FLT_ACC_DATA_T wei_scale = 1.f;
+#if WITH_SRC_SCALES
+            long src_scale_g = g * src_gs_group_k / src_scale_group_k;
+            long src_scale_off = src_scale_stride_m * m
+                    + src_scale_stride_k * src_scale_g
+                    + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
+            src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
+#endif
+#if WITH_WEI_SCALES
+            long wei_scale_g = g * src_gs_group_k / wei_scale_group_k;
+            long wei_scale_off = wei_scale_stride_n * (n / wei_scale_group_n)
+                    + wei_scale_stride_k * wei_scale_g
+                    + wei_scale_stride_d0 * d0 + wei_scale_stride_d1 * d1;
+            wei_scale = WEI_SCALES_TO_REF(wei_scales[wei_scale_off]);
+#endif
+            long src_gs_off = src_gs_stride_m * m + src_gs_stride_k * g
+                    + src_gs_stride_d0 * d0 + src_gs_stride_d1 * d1;
+            int src_gs = SRC_ZP_TO_REF(ag, src_gs_off);
+            long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
+                    + wei_zp_stride_k * (g * src_gs_group_k / wei_zp_group_k)
+                    + wei_zp_stride_d0 * d0 + wei_zp_stride_d1 * d1;
+            int wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
+            acc -= src_scale * wei_scale * TO_ACC(src_gs) * TO_ACC(wei_zp);
+        }
+#endif
 #if RUNTIME_DIMS
         long dst_off = offset6D(m, n, d0, d1, d2, d3, c_stride_m, c_stride_n,
                 c_stride_d0, c_stride_d1, c_stride_d2, c_stride_d3);

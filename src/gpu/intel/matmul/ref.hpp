@@ -61,10 +61,13 @@ struct ref_t : public primitive_t {
                             | smask_t::scales_groups | smask_t::dropout
                             | smask_t::zero_points_data_type
                             | smask_t::zero_points_groups | smask_t::post_ops
-                            | smask_t::fpmath_mode | smask_t::rounding_mode),
+                            | smask_t::fpmath_mode | smask_t::rounding_mode
+                            | smask_t::precomputed_reductions),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            VDISPATCH_MATMUL(
+                    precomputed_reductions_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(IMPLICATION(has_blocks(), dst_md()->ndims < 6),
                     VERBOSE_BAD_NDIMS, "dst", dst_md()->ndims);
@@ -189,6 +192,27 @@ struct ref_t : public primitive_t {
             }
             return true;
         }
+        bool precomputed_reductions_ok() const {
+            const auto &pr = attr()->precomputed_reductions_;
+            if (pr.has_default_values(DNNL_ARG_SRC)) return true;
+
+            const auto &sc = attr()->scales_;
+            const auto &zp = attr()->zero_points_;
+            auto sgw = (!sc.has_default_groups(DNNL_ARG_WEIGHTS))
+                    ? sc.get(DNNL_ARG_WEIGHTS).get_group(0)
+                    : K();
+            auto sgs = (!sc.has_default_groups(DNNL_ARG_SRC))
+                    ? sc.get(DNNL_ARG_SRC).get_group(1)
+                    : K();
+            auto zgw = (!zp.has_default_groups(DNNL_ARG_WEIGHTS))
+                    ? zp.get(DNNL_ARG_WEIGHTS).get_group(0)
+                    : K();
+            auto pgs = (!pr.has_default_groups(DNNL_ARG_SRC))
+                    ? pr.get(DNNL_ARG_SRC).get_group(1)
+                    : K();
+            // all other groups should be divisible by the precomp group
+            return (sgw % pgs == 0) && (sgs % pgs == 0) && (zgw % pgs == 0);
+        }
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -210,6 +234,10 @@ struct ref_t : public primitive_t {
         kernel_ctx.set_data_type(pd()->dst_dt_);
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
+
+        if (!pd()->attr()->precomputed_reductions_.has_default_values(
+                    DNNL_ARG_SRC))
+            kernel_ctx.define_int("WITH_SRC_GROUP_SUMS", 1);
 
         bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
         if (!runtime_dims) {
@@ -258,6 +286,10 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
                 "SRC_ZP");
+        def_data_type(kernel_ctx,
+                pd()->attr()->precomputed_reductions_.get_data_type(
+                        DNNL_ARG_SRC),
+                "SRC_GS");
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
                 "DST_SCALES");

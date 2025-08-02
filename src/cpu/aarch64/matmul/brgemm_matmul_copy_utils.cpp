@@ -227,6 +227,7 @@ void jit_brgemm_matmul_copy_a_impl_t<isa>::generate() {
 
 template struct jit_brgemm_matmul_copy_a_impl_t<sve_512>;
 template struct jit_brgemm_matmul_copy_a_impl_t<sve_256>;
+template struct jit_brgemm_matmul_copy_a_impl_t<sve_128>;
 
 struct jit_brgemm_matmul_copy_a_transposed_impl_t
     : public jit_brgemm_matmul_copy_a_t,
@@ -1138,10 +1139,14 @@ status_t create_brgemm_matmul_copy_a(
         if (is_superset(conf->isa, sve_512))
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_a_impl_t<sve_512>(conf)));
-        else {
+        else if(is_superset(conf->isa, sve_256)) {
             assert(one_of(conf->isa, sve_256));
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_a_impl_t<sve_256>(conf)));
+        } else {
+            assert(one_of(conf->isa, sve_128));
+            CHECK(safe_ptr_assign(copy_ker,
+                    new jit_brgemm_matmul_copy_a_impl_t<sve_128>(conf)));
         }
     }
 

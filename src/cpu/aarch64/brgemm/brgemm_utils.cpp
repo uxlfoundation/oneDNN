@@ -276,6 +276,9 @@ status_t brgemm_blocking(brgemm_t *brg) {
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 
+    if (brg->is_bf16){
+        brg->pad_reduce_dim = (brg->reduce_dim + brg->rd_block - 1) & ~(brg->rd_block - 1);
+    }
     brg->is_M_tail = false;
     return status::success;
 }

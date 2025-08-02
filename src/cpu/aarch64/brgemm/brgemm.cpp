@@ -41,6 +41,27 @@ using namespace data_type;
 using namespace brgemm_utils;
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+        const brgemm_batch_element_t *batch, void *ptr_C, const void *addr_A, const void *addr_B, void *scratch) {
+    brgemm_kernel_params_t brgemm_p;
+
+    brgemm_p.batch = batch;
+    brgemm_p.ptr_A = addr_A;
+    brgemm_p.ptr_B = addr_B;
+    brgemm_p.ptr_C = ptr_C;
+    brgemm_p.ptr_D = ptr_C;
+    brgemm_p.ptr_buf = scratch;
+    brgemm_p.ptr_bias = nullptr;
+    brgemm_p.do_post_ops = 0;
+    brgemm_p.do_apply_comp = 0;
+    brgemm_p.skip_accm = 0;
+    brgemm_p.BS = bs;
+
+    assert(brg_kernel);
+
+    (*brg_kernel)(&brgemm_p);
+}
+
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch) {
     brgemm_kernel_params_t brgemm_p;
 
@@ -62,8 +83,9 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
 }
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+        const brgemm_batch_element_t *batch,
         const void *addr_A, const void *addr_B,
-        const brgemm_batch_element_t *batch, void *ptr_C, void *scratch) {
+         void *ptr_C, void *scratch) {
     brgemm_kernel_params_t brgemm_p;
 
     brgemm_p.batch = batch;

@@ -447,8 +447,13 @@ void brgemm_matmul_t<isa>::compute_kernel(
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch);
         } else {
-            brgemm_kernel_execute(
+            if (bgmmc.is_bf16){
+                brgemm_kernel_execute(
+                    brg_kernel, gemm_batch, addr_batch, (void *)ptr_A, (void *)ptr_B , (void *)ptr_C, nullptr); 
+            } else {
+                brgemm_kernel_execute(
                     brg_kernel, gemm_batch, addr_batch, (void *)ptr_C, nullptr);
+            }
         }
     }
     if (is_K_tail) {
@@ -747,7 +752,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 key_brgemm_primitive_batch);
 
         const bool use_buffer_a
-                = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
+                = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only || bgmmc.is_bf16;
         buf_A_ptr_ = (use_buffer_a)
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_a)
                 : nullptr;
@@ -1483,6 +1488,7 @@ private:
 
 template struct brgemm_matmul_t<sve_512>;
 template struct brgemm_matmul_t<sve_256>;
+template struct brgemm_matmul_t<sve_128>;
 
 } // namespace matmul
 } // namespace aarch64

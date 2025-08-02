@@ -174,6 +174,11 @@ private:
     const XReg reg_aux1_A = x5;
     const XReg reg_aux1_B = x7; //from jit_generator.hpp in x64
 
+    // use for pack matrix also uses reg_a_offset;
+    const XReg reg_src_row = reg_aux_A;
+    const XReg reg_src_col = reg_aux_B;
+    const XReg reg_dst = reg_b_offset;
+
     const XReg reg_offs_batch = reg_aux1_A;
     const XReg reg_strd_batch = reg_rdb_loop;
 
@@ -252,6 +257,14 @@ private:
                     - (bd * ld_block + ld * 2 + half_idx));
         }
         return ZReg(max_effective_vregs - 1 - (bd * ld_block + ld));
+    }
+
+    ZReg pack_load(int idx) {
+        return ZReg(max_effective_vregs - 1 - (idx));
+    }
+
+    ZReg pack_res(int bd, int rd, int rdb){
+        return ZReg(bd * rdb + rd); 
     }
 
     // in fmmla case, a register contains bd_block * ld_block size element;
@@ -341,6 +354,9 @@ private:
     void dot_product(ZReg z1, ZReg z2, ZReg z3);
     void gemm_microkernel_sve512(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
+    
+    void pack_matrix_b(int padded_rd);
+    void pack_matrix_a(int padded_rd);
 
     void sbgemm_microkernel_sve128(int bd_block2,
         bool is_bdb_tail, int ld_block2, bool is_rd2_tail, bool is_rd_tail, bool is_ld_tail);
@@ -1793,7 +1809,7 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
         }
     };
 
-    if (is_bdb_tail) eor(load1.h, load1.h, load1.h);
+    if (is_bdb_tail) eor(load1, load1, load1);
     // inner most loop computes A ( 2 * 8 ) * B (8 * 8) = C ( 2 * 8)
     for (int bd2 = 0; bd2 <  num_bd_block2 ; bd2 ++ ) {
         for (int ld2 = 0; ld2 <  num_ld_block2 ; ld2++) {
@@ -1847,6 +1863,284 @@ void jit_brgemm_kernel_t::sbgemm_microkernel_sve128(
 
         }
     }
+}
+
+// pack full matrix a for each batch
+// input matrix a is of [bz, bd, rd]
+// output matrix a is grouped into
+// [bd_block2, bdb, rdb] blocks 
+// where each blocks is of layout continguous subblock of size [bd_block, rd_block]
+// the rd_tail case shall be padding to rdb
+// intputs:
+//     src_addr:
+//     bdb2, bdb
+//     rd, rdb
+// outputs:
+//     write to dst_addr: ptr_a
+//     each batch is contiguous of block [bd2, ld2] and tile blocks.
+void jit_brgemm_kernel_t::pack_matrix_a(int pad_rd){
+    // get start addr of a for each batch
+    if (brg.type == brgemm_addr){
+        mov(reg_aux1_batch, reg_addr_batch);
+        LDR_IMM(reg_dst, param1, GET_OFF(ptr_A));
+    } else {
+        assert("unsupported!");
+    } 
+
+    // Note: for one bd_block2 == 1, so bdb2_tail is not considered for now.
+    bool is_bdb2_tail = false;
+
+    auto rd_loop_body_sve128 = [=] (int bd_block2,
+                                    int bd_block,
+                                    bool is_bdb2_tail,
+                                    bool is_bdb_tai,
+                                    int rd_block2, 
+                                    bool is_rd2_tail,
+                                    bool is_rd_tail){
+        
+        PReg mask = P_ALL_ONE;
+        if (is_rd2_tail){
+            mask = ld_tail_mask ;
+            set_preg(mask.h , rd_block2 * brg.bd_block2, X_TMP_0, X_TMP_1);   
+        }
+
+        if (is_rd_tail) {
+            mask = ld_tail_mask ;
+            set_preg(mask.h , brg.bdb_tail, X_TMP_0, X_TMP_1);   
+        }
+
+        if (is_bdb_tai){
+           bd_block2 = 1; 
+        }
+
+        int num_load_reg = bd_block2 * brg.bd_block;
+        // this loop is specified for sve = 128, bfmmla (2 * 4) case.
+        // todo: how to make it more universial?
+        assert( brg.bd_block == 2 );
+        for (int bdb2 = 0; bdb2 < bd_block2; bdb2 ++){
+            for (int bd = 0; bd < bd_block; bd ++) {
+                auto z_load = pack_load(bd);
+                ld1h(z_load.h, mask, ptr(reg_src_col, A_offset(bdb2 * bd_block2 + bd, 0)));
+            }
+
+            zip1(pack_res(bdb2, 0, rd_block2).d, pack_load(0).d, pack_load(1).d);
+            zip2(pack_res(bdb2, 1, rd_block2).d, pack_load(0).d, pack_load(1).d);
+        }
+
+        // store regs
+        for (int rd2 = 0; rd2 < rd_block2; rd2 ++){
+            for (int bd2 = 0; bd2 < bd_block2; bd2 ++){
+                ST_MUL_VL(st1h, pack_res(bd2, rd2, rd_block2).h, P_ALL_ONE, reg_dst, bd2 * brg.bd_block * brg.ld_block, brg.bd_block * brg.ld_block);
+            }
+            add_imm(reg_dst, reg_dst,  brg.typesize_A * brg.bd_block * rd_block2 * brg.rd_block, X_TMP_0);
+        }
+    };
+    
+    auto bd_loop = [=](int bd_block2, int bd_block, bool is_bdb2_tail, bool is_bdb_tai) {
+        Label RD_loop_label;
+
+        int rd_block2 = get_sve_length() / brg.rd_block;
+        int rdb2 = brg.rd_block / rd_block2;
+        int rdb2_tail =  brg.rd_block % rd_block2;
+
+        mov_imm(reg_rdb_loop, rdb2);
+        L_aligned(RD_loop_label, 64);
+        {
+            rd_loop_body_sve128(bd_block2, bd_block, is_bdb2_tail,is_bdb_tai, rd_block2, false, false);
+            add_imm(reg_src_col, reg_src_col, rd_block2 * rdb_A_offset(), X_TMP_0);
+            sub(reg_rdb_loop, reg_rdb_loop, 1);
+            cmp_imm(reg_rdb_loop, 0, X_TMP_0);
+            b(GT, RD_loop_label);
+        }
+
+        if (rdb2_tail) {
+            rd_loop_body_sve128(bd_block2, bd_block, is_bdb2_tail,is_bdb_tai, rdb2_tail, true, false);
+            add_imm(reg_src_col, reg_src_col, rdb2_tail * rdb_A_offset(), X_TMP_0); 
+        }
+
+        if (brg.rdb_tail){
+            rd_loop_body_sve128(bd_block2, bd_block, is_bdb2_tail,is_bdb_tai, rdb2_tail, false, true);
+        }
+    };
+
+    auto bs_loop = [=]() {
+        ldr(reg_src_row, ptr(reg_aux1_batch, GET_OFF_BATCH_ELEMENT(ptr.A)));
+        Label BD_loop_label;
+        mov_imm(reg_bdb_loop, brg.bdb2);
+        L_aligned(BD_loop_label, 64);
+        {
+            mov(reg_src_col, reg_src_row);
+            bd_loop(brg.bd_block2, brg.bd_block, false, false);
+            add_imm(reg_src_row, reg_src_row, bdb_A_offset(brg.bd_block2), X_TMP_0);
+            sub(reg_bdb_loop, reg_bdb_loop, 1);
+            cmp_imm(reg_bdb_loop, 0, X_TMP_0);
+            b(GT, BD_loop_label);
+        }
+
+        if (brg.bdb2_tail){
+            bd_loop(brg.bdb2_tail, brg.bd_block, true, false);
+            add_imm(reg_src_row, reg_src_row, bdb_A_offset(brg.bdb2_tail), X_TMP_0); 
+        }
+
+        if (brg.bdb_tail){
+           bd_loop(1, brg.bdb_tail, false, true);
+        }
+    };
+
+    Label BS_loop_label;
+    mov(reg_BS_loop, reg_BS);
+    L_aligned(BS_loop_label, 64);
+    {
+        bs_loop(); 
+        add_imm(reg_aux1_batch, reg_aux1_batch, sizeof(brgemm_batch_element_t), X_TMP_0);
+        sub(reg_BS_loop, reg_BS_loop, 1);
+        cmp_imm(reg_BS_loop, 0, X_TMP_0);
+        b(GT, BS_loop_label);
+    }
+    LDR_IMM(reg_addr_batch, param1, GET_OFF(batch));
+}
+
+
+// pack full matrix b for each batch
+// input matrix a is of [bz, rd, ld]
+// output matrix b is grouped into
+// [rdb, ld_blod2 * ld_block] blocks 
+// where each blocks is of layout continguous subblock of size [rd_block, ld_block]
+// the rd_tail case shall be padding to rdb
+// intputs:
+//     src_addr:
+//     bdb2, bdb
+//     rd, rdb
+// outputs:
+//     write to dst_addr: ptr_a
+void jit_brgemm_kernel_t::pack_matrix_b(int pad_rd){
+    // get start addr of a for each batch
+    if (brg.type == brgemm_addr){
+        mov(reg_aux1_batch, reg_addr_batch);
+        LDR_IMM(reg_dst, param1, GET_OFF(ptr_B));
+    } else {
+        assert("unsupported!");
+    } 
+
+    auto ld_loop_body_sve128 = [=] (int rd_block, bool is_rd_tail, 
+        int ld_block2, bool is_ld2_tail, bool is_ld_tail){
+        
+        PReg mask = P_ALL_ONE;
+        if (is_ld2_tail) {
+            mask =  P_TMP_0;
+            set_preg(mask.h , brg.ldb2_tail * brg.ld_block2, X_TMP_0, X_TMP_1);   
+        }
+        if (is_rd_tail){
+            mask =  P_TMP_0;
+            set_preg(mask.h , brg.ldb_tail, X_TMP_0, X_TMP_1);  
+        }
+
+            for (int rd = 0; rd < brg.rd_block; rd ++){
+                auto z_load = pack_load(rd);
+                if (rd < rd_block) {
+                    ld1h(pack_load(0).h, mask / T_z,  ptr(reg_src_col, B_offset(0, rd))); 
+                } else {
+                    eor(z_load, z_load, z_load);
+                }
+            }
+
+            auto mb0 = pack_res(0, 0, 1); 
+            auto mb1 = pack_res(0, 1, 1); 
+            auto mb2 = pack_res(0, 2, 1); 
+            auto mb3 = pack_res(0, 3, 1); 
+
+            auto trans_tmp0 = pack_res(0, 4, 1); 
+            auto trans_tmp1 = pack_res(0, 5, 1); 
+            auto trans_tmp2 = pack_res(0, 6, 1); 
+            auto trans_tmp3 = pack_res(0, 7, 1);
+            auto trans_tmp4 = pack_res(0, 8, 1); 
+            auto trans_tmp5 = pack_res(0, 9, 1); 
+            auto trans_tmp6 = pack_res(0, 10, 1); 
+            auto trans_tmp7 = pack_res(0, 11, 1); 
+
+            zip1(trans_tmp0.h, pack_load(0).h, pack_load(1).h);
+            zip1(trans_tmp1.h, pack_load(2).h, pack_load(3).h);
+            zip1(trans_tmp2.s, trans_tmp0.s, trans_tmp1.s);
+            zip2(trans_tmp3.s, trans_tmp0.s, trans_tmp1.s);
+            zip2(trans_tmp4.h, pack_load(0).h, pack_load(1).h);
+            zip2(trans_tmp5.h, pack_load(2).h, pack_load(3).h);
+            zip1(trans_tmp6.s, trans_tmp4.s, trans_tmp5.s);
+            zip2(trans_tmp7.s, trans_tmp4.s, trans_tmp6.s); 
+            zip1(mb0.d, trans_tmp2.d, trans_tmp6.d);
+            zip1(mb1.d, trans_tmp3.d, trans_tmp7.d);
+            zip2(mb2.d, trans_tmp2.d, trans_tmp6.d);
+            zip2(mb3.d, trans_tmp3.d, trans_tmp7.d);
+
+        if (is_ld_tail) ld_block2 = 1;
+        
+        for (int ldb2 = 0; ldb2 < ld_block2; ldb2 ++){
+            ST_MUL_VL(st1h, 
+                pack_res(0, ldb2, 1).h, mask, 
+                reg_dst, 
+                0,
+                brg.rd_block * brg.ld_block); 
+            add_imm(reg_dst, reg_dst,  brg.typesize_B * brg.rd_block * brg.ld_block, X_TMP_0);
+        }
+    };
+    
+    auto rd_loop = [=](int rd_block, bool is_rd_tail) {
+        Label LD_loop_label;
+
+        assert(brg.ld_block2 == get_sve_length() / brg.ld_block);
+
+        mov_imm(reg_ldb_loop, brg.ldb2);
+        L_aligned(LD_loop_label, 64);
+        {
+            ld_loop_body_sve128(rd_block, is_rd_tail, brg.ld_block2, false, false);
+            add_imm(reg_src_col, reg_src_col,  ldb_B_offset(brg.ld_block2, false), X_TMP_0);
+            sub(reg_ldb_loop, reg_ldb_loop, 1);
+            cmp_imm(reg_ldb_loop, 0, X_TMP_0);
+            b(GT, LD_loop_label);
+        }
+
+        if (brg.ldb2_tail){
+            ld_loop_body_sve128(rd_block, is_rd_tail, brg.ldb2_tail, true, false);
+            add_imm(reg_src_col, reg_src_col, ldb_B_offset(brg.ldb2_tail, false), X_TMP_0);
+        }
+
+        if (brg.ldb_tail){
+            ld_loop_body_sve128(rd_block, is_rd_tail, 0, false, true);
+            add_imm(reg_src_col, reg_src_col, ldb_B_offset(0, true), X_TMP_0);
+        }
+
+    };
+
+    auto bs_loop = [=]() {
+        ldr(reg_src_row, ptr(reg_aux1_batch, GET_OFF_BATCH_ELEMENT(ptr.B)));
+        Label RD_loop_label;
+
+        mov_imm(reg_rdb_loop, brg.rdb);
+        L_aligned(RD_loop_label, 64);
+        {
+            mov(reg_src_col, reg_src_row);
+            rd_loop(brg.rd_block, false);
+            add_imm(reg_src_row, reg_src_row, rdb_B_offset(), X_TMP_0);
+            sub(reg_rdb_loop, reg_rdb_loop, 1);
+            cmp_imm(reg_rdb_loop, 0, X_TMP_0);
+            b(GT, RD_loop_label);
+        }
+
+        if (brg.rdb_tail){
+            rd_loop(brg.rdb_tail, true);
+        }
+    };
+
+    Label BS_loop_label;
+    mov(reg_BS_loop, reg_BS);
+    L_aligned(BS_loop_label, 64);
+    {
+        bs_loop(); 
+        add_imm(reg_aux1_batch, reg_aux1_batch, sizeof(brgemm_batch_element_t), X_TMP_0);
+        sub(reg_BS_loop, reg_BS_loop, 1);
+        cmp_imm(reg_BS_loop, 0, X_TMP_0);
+        b(GT, BS_loop_label);
+    }
+    LDR_IMM(reg_addr_batch, param1, GET_OFF(batch));
 }
 
 void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
@@ -2078,6 +2372,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
     auto do_ldb_loop = [=](int bd_block2, bool is_bdb_tail, bool check_top_vpad,
                                bool check_bottom_vpad, int rows_for_rd_tail,
                                bool skip_accumulation) {
+
         if (brg.ldb2 > 0) {
             const bool is_ld_reg_tail = false;
             const bool is_ld_tail = false;
@@ -2144,7 +2439,9 @@ void jit_brgemm_kernel_t::bdb_loop() {
     
     auto bdb_loop_bf16 = [=](bool skip_accumulation) {
         if (vpad_exist) assert(!"unsupported vpad for bf16");
-        
+        pack_matrix_a(brg.pad_reduce_dim);
+        pack_matrix_b(brg.pad_reduce_dim);
+
         //here brg.bd_block2 is set as 1.
         // we can bypass that logic now.
         if (brg.bdb > 0) {

@@ -189,6 +189,7 @@ struct brgemm_t {
     int bcast_dim = 0; // M;
     int load_dim = 0; // N;
     int reduce_dim = 0; // K;
+    int pad_reduce_dim = 0;
     int LDA = 0;
     int LDB = 0;
     int LDC = 0;

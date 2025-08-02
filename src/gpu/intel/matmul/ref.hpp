@@ -64,6 +64,7 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            VDISPATCH_MATMUL(placeholder_ok(), VERBOSE_UNSUPPORTED_PL_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(IMPLICATION(has_blocks(), dst_md()->ndims < 6),
                     VERBOSE_BAD_NDIMS, "dst", dst_md()->ndims);
@@ -188,6 +189,28 @@ struct ref_t : public primitive_t {
             }
             return true;
         }
+        bool placeholder_ok() const {
+            const auto &pl = attr()->placeholder_;
+            if (!pl.has_default_values(DNNL_ARG_SRC)) {
+                const auto &sc = attr()->scales_;
+                const auto &zp = attr()->zero_points_;
+                auto sgw = (!sc.has_default_groups(DNNL_ARG_WEIGHTS))
+                        ? sc.get(DNNL_ARG_WEIGHTS).get_group(0)
+                        : K();
+                auto sgs = (!sc.has_default_groups(DNNL_ARG_SRC))
+                        ? sc.get(DNNL_ARG_SRC).get_group(1)
+                        : K();
+                auto zgw = (!zp.has_default_groups(DNNL_ARG_WEIGHTS))
+                        ? zp.get(DNNL_ARG_WEIGHTS).get_group(0)
+                        : K();
+                auto pgs = (!pl.has_default_groups(DNNL_ARG_SRC))
+                        ? pl.get(DNNL_ARG_SRC).get_group(1)
+                        : K();
+                // all other groups should be divisible by the precomp group
+                return (sgw % pgs == 0) && (sgs % pgs == 0) && (zgw % pgs == 0);
+            }
+            return true;
+        }
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -209,6 +232,11 @@ struct ref_t : public primitive_t {
         kernel_ctx.set_data_type(pd()->dst_dt_);
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
+
+        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
+            // TODO: check if this is still a good name.
+            kernel_ctx.define_int("WITH_USER_PRECOMP_SRC_ZPOINTS", 1);
+        }
 
         bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
         if (!runtime_dims) {
@@ -240,9 +268,16 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC),
                 "SRC_SCALES");
-        def_data_type(kernel_ctx,
-                pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
-                "SRC_ZP");
+        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
+            // TODO: check if `SRC_ZP` is still a good name.
+            def_data_type(kernel_ctx,
+                    pd()->attr()->placeholder_.get_data_type(DNNL_ARG_SRC),
+                    "SRC_ZP");
+        } else {
+            def_data_type(kernel_ctx,
+                    pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
+                    "SRC_ZP");
+        }
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
                 "DST_SCALES");

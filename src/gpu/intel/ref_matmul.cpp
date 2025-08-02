@@ -39,6 +39,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const auto &c0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    const auto &src_zp_idx
+            = CTX_IN_STORAGE(DNNL_ARG_ATTR_PLACEHOLDER | DNNL_ARG_SRC);
+
     const auto a_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto b_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto c_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());

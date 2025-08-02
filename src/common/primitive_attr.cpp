@@ -104,6 +104,7 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
             zero_points_.has_default_groups()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::zero_points_data_type),
             zero_points_.has_default_data_type()));
+    CHECK_MASK(smask_t::placeholder, placeholder_);
     CHECK_MASK(smask_t::post_ops, post_ops_);
     CHECK_MASK(smask_t::rnn_data_qparams, rnn_data_qparams_);
     CHECK_MASK(smask_t::rnn_weights_qparams, rnn_weights_qparams_);
@@ -614,6 +615,25 @@ status_t dnnl_primitive_attr_set_zero_points(dnnl_primitive_attr_t attr,
             VERBOSE_BAD_PARAM, "group_dims");
 
     return attr->zero_points_.set(arg, mask, data_type, ndims, group_dims);
+}
+
+status_t dnnl_primitive_attr_set_placeholder(dnnl_primitive_attr_t attr,
+        int arg, int mask, int group_ndims, const dnnl_dims_t group_dims,
+        dnnl_data_type_t data_type) {
+    using namespace data_type;
+    VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
+    VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
+    VCHECK_ATTR(utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS),
+            VERBOSE_BAD_PARAM, "arg");
+    VCHECK_ATTR(group_ndims >= 0, VERBOSE_BAD_PARAM, "ndims");
+    VCHECK_ATTR(utils::one_of(data_type, s32), VERBOSE_INVALID_DATATYPE,
+            "placeholder");
+    VCHECK_ATTR(
+            IMPLICATION(group_ndims, validate_dims(group_ndims, group_dims)),
+            VERBOSE_BAD_PARAM, "group_dims");
+
+    return attr->placeholder_.set(
+            arg, mask, data_type, group_ndims, group_dims);
 }
 
 status_t dnnl_primitive_attr_get_rounding(

@@ -483,7 +483,7 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 ///     zero_points array. The set i-th bit indicates that a dedicated
 ///     zero point is used for each index along that dimension. Set the
 ///     mask to 0 to use a common zero point for the whole output tensor.
-/// @param ndims Number of group dimensions.
+/// @param group_ndims Number of group dimensions.
 /// @param group_dims Zero point factors correspondence groups that define the
 ///     correspondence between the tensor dimensions and the zero_points array.
 ///     The group dimensions should be only provided for each logical dimension
@@ -492,6 +492,15 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+// Copied from zero-points.
+// TODO: add doc.
+// TODO: mask? Would a single dimension number be enough? `-1` is an option
+// indicating the last dim. In that case, should groups accept a single value
+// as well?
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_placeholder(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
 

@@ -43,6 +43,8 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
         CASE(s32);
         CASE(s8);
         CASE(u8);
+        CASE(f32);
+        CASE(bf16);
         case s4: {
             const nibble2_t nibble_pair(
                     reinterpret_cast<const uint8_t *>(ptr)[idx / 2]);

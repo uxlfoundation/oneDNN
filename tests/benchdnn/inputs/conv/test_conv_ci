@@ -7,7 +7,7 @@
 --dir=FWD_B,FWD_D
 ### Direct
 --alg=direct
---dt=f32,bf16,f8_e5m2,f8_e4m3,f16,f32:f16:f32,f32:bf16:f32
+--dt=f32,bf16,f8_e5m2,f8_e4m3,f16,f32:f16:f32,f32:bf16:f32,f32:f32:u8,f32:f32:s8,bf16:bf16:s8,bf16:bf16:u8
 --stag=any,axb
 --dtag=any,axb
 --attr-post-ops=, \
@@ -33,7 +33,7 @@
 --attr-post-ops=
 ### Direct
 --alg=direct
---dt=f32,bf16,f16,f8_e5m2,f8_e4m3
+--dt=f32,bf16,f16,f8_e5m2,f8_e4m3,f32:f32:u8,f32:f32:s8,bf16:bf16:s8,bf16:bf16:u8
 --stag=any,axb
 --dtag=any,axb
 --batch=shapes_basic

@@ -54,14 +54,15 @@ struct ref_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(src_type, f32, bf16, f16, f8_e5m2,
+                                   f8_e4m3, u8, s8),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(
-                    utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3),
+                    IMPLICATION(src_type != wei_type,
+                            utils::one_of(wei_type, f16, bf16, f32)
+                                    && utils::one_of(src_type, f32, u8, s8)),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(IMPLICATION(src_type != wei_type,
-                                   utils::one_of(wei_type, f16, bf16)
-                                           && src_type == f32),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(dst_type, src_type, f32),
+            VDISPATCH_CONV(utils::one_of(dst_type, src_type, f32, s8, u8, bf16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(
                     utils::one_of(bia_type, data_type::undef, src_type, f32),
@@ -138,13 +139,15 @@ struct ref_convolution_bwd_data_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(platform::has_data_type_support(diff_dst_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(diff_dst_type, f32, bf16, f16),
+            VDISPATCH_CONV(utils::one_of(diff_dst_type, f32, bf16, f16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(IMPLICATION(wei_type != diff_dst_type,
-                                   utils::one_of(wei_type, f16, bf16)
-                                           && diff_dst_type == f32),
+                                   utils::one_of(wei_type, f16, bf16, f32)
+                                           && utils::one_of(
+                                                   diff_dst_type, f32, u8, s8)),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(diff_src_type, f32, diff_dst_type),
+            VDISPATCH_CONV(
+                    utils::one_of(diff_src_type, f32, diff_dst_type, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(
@@ -197,10 +200,13 @@ struct ref_convolution_bwd_weights_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(platform::has_data_type_support(diff_wei_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(src_type, f32, bf16, f16),
+            VDISPATCH_CONV(utils::one_of(src_type, f32, bf16, f16, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(diff_dst_type == src_type, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(diff_wei_type, f32, src_type),
+            VDISPATCH_CONV(
+                    IMPLICATION(diff_dst_type != src_type,
+                            utils::one_of(diff_dst_type, s8, u8, f32, bf16)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(diff_wei_type, f32, bf16, src_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(utils::one_of(diff_bia_type, data_type::undef, f32,
                                    src_type),

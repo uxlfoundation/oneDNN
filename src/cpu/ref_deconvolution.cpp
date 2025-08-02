@@ -741,6 +741,14 @@ status_t ref_deconvolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
             compute_bias<f16, f16>(ctx);
         else if (dbia_type == f32 && ddst_type == f16)
             compute_bias<f32, f16>(ctx);
+        else if (dbia_type == f32 && ddst_type == u8)
+            compute_bias<f32, u8>(ctx);
+        else if (dbia_type == f32 && ddst_type == s8)
+            compute_bias<f32, s8>(ctx);
+        else if (dbia_type == bf16 && ddst_type == u8)
+            compute_bias<bf16, u8>(ctx);
+        else if (dbia_type == bf16 && ddst_type == s8)
+            compute_bias<bf16, s8>(ctx);
         else {
             assert(!"unsupported data type");
             return status::runtime_error;

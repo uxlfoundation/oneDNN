@@ -368,9 +368,11 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_DECONVOLUTION(utils::one_of(wei_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_DECONVOLUTION(IMPLICATION(ddst_type != wei_type,
-                                            utils::one_of(wei_type, bf16, f16)
-                                                    && ddst_type == f32),
+            VDISPATCH_DECONVOLUTION(
+                    IMPLICATION(ddst_type != wei_type,
+                            utils::one_of(wei_type, bf16, f16, f32)
+                                    && (ddst_type == f32 || ddst_type == s8
+                                            || ddst_type == u8)),
                     VERBOSE_INCONSISTENT_DT, "diff_dst", "weights");
             VDISPATCH_DECONVOLUTION(utils::one_of(dsrc_type, wei_type, f32),
                     VERBOSE_UNSUPPORTED_DT);
@@ -487,7 +489,8 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_DECONVOLUTION(utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_DECONVOLUTION(dst_type == src_type,
+            VDISPATCH_DECONVOLUTION(IMPLICATION(dst_type != src_type,
+                                            utils::one_of(dst_type, s8, u8)),
                     VERBOSE_INCONSISTENT_DT, "diff_dst", "src");
             VDISPATCH_DECONVOLUTION(utils::one_of(wei_type, src_type, f32),
                     VERBOSE_UNSUPPORTED_DT);
@@ -500,8 +503,8 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
                 VDISPATCH_DECONVOLUTION(utils::one_of(bia_type, f32, bf16, f16)
                                 && (bia_type == dst_type
                                         || (bia_type == f32
-                                                && utils::one_of(
-                                                        dst_type, bf16, f16))),
+                                                && utils::one_of(dst_type, bf16,
+                                                        f16, u8, s8))),
                         VERBOSE_UNSUPPORTED_DT);
             }
             VDISPATCH_DECONVOLUTION(utils::one_of(desc()->alg_kind,

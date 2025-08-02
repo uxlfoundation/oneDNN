@@ -385,15 +385,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (is_cpu()) {
         // Specific configurations are not supported.
-        const bool is_f32_src = prb->get_dt(SRC) == dnnl_f32;
-        const bool is_f32_wei = prb->get_dt(WEI) == dnnl_f32;
         const bool is_f16 = prb->get_dt(WEI) == dnnl_f16;
-        const bool is_bf16_src = prb->get_dt(SRC) == dnnl_bf16;
-        const bool is_bf16_wei = prb->get_dt(WEI) == dnnl_bf16;
-        const bool is_int8_dst
-                = prb->get_dt(DST) == dnnl_s8 || prb->get_dt(DST) == dnnl_u8;
-        const bool is_f32f32x8 = is_f32_src && is_f32_wei && is_int8_dst;
-        const bool is_bf16bf16x8 = is_bf16_src && is_bf16_wei && is_int8_dst;
         const bool is_valid_f16 = IMPLICATION(is_f16,
                 prb->get_dt(DST) == dnnl_f32 || prb->get_dt(DST) == dnnl_f16);
         const bool is_int8_src
@@ -410,8 +402,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 && prb->attr.scales.get_mask(DNNL_ARG_DST, dnnl_convolution)
                         > 0;
 
-        if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
-                || is_wei_zp || is_non_s32_src_zp || is_non_unit_dst_scale) {
+        if (is_x8x8f16 || !is_valid_f16 || is_wei_zp || is_non_s32_src_zp
+                || is_non_unit_dst_scale) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

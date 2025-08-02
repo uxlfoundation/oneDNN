@@ -2680,8 +2680,13 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 /// Dropout RNG seed value passed via a buffer.
 #define DNNL_ARG_ATTR_DROPOUT_SEED 511
 
-/// Output scaling factors provided at execution time.
+/// Precomputed reductions argument.
+#define DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS 512
+
 /// Deprecated value.
+/// Output scaling factors provided at execution time.
+/// Note: there's a collision with
+/// `DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC`.
 #define DNNL_ARG_ATTR_OUTPUT_SCALES 513
 
 /// Starting index for source arguments for primitives that take a variable
@@ -2708,6 +2713,9 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 /// See @ref dev_guide_attributes_post_ops_binary_fusion
 #define DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) \
     (DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE * ((idx) + 1))
+
+// Dev note: `idx=31` for `DNNL_ARG_ATTR_MULTIPLE_POST_OP` stands right on
+// `1 << 20` (or `1048576`), thus, this value can't be used until future rework.
 
 /// A structure that contains an index and a memory object, and is used to pass
 /// arguments to dnnl_primitive_execute().

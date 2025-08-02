@@ -8,8 +8,9 @@
     --attr-rounding-mode=ARG:MODE[+...]
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG]]
-    --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]
-    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]
+    --attr-scales=ARG:POLICY[:SCALE][:DATA_TYPE[:GROUPS]][+...]
+    --attr-zero-points=ARG:POLICY[:ZEROPOINT][:DATA_TYPE[:GROUPS]][+...]
+    --attr-precomputed-reductions=ARG:POLICY:DATA_TYPE:GROUPS[+...]
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
                     DW:KkSsPp[:DST_DT]
@@ -157,6 +158,28 @@ policies will trigger an error.
 
 `GROUPS` specifies how zero points are grouped along dimensions where multiple
 zero points factors are used.
+
+To specify more than one memory argument for this attribute, `+` delimiter is
+used.
+
+## --attr-precomputed-reductions
+`--attr-precomputed-reductions` defines precomputed reductions per memory
+argument primitive attribute. This attribute is supported only for integer data
+types as of now.
+
+`ARG` specifies which memory argument will be modified. Supported values are:
+  - `src` corresponds to `DNNL_ARG_SRC`
+  - `wei` corresponds to `DNNL_ARG_WEIGHTS`
+
+`POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
+values are:
+  - `per_tensor`
+
+`DATA_TYPE` specifies data type for precomputed reductions. Supported values are
+`s32` (the default), `s8`, `u8`.
+
+`GROUPS` specifies how precomputed reductions are grouped along dimensions where
+multiple precomputed reduction factors are used.
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.

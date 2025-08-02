@@ -731,6 +731,17 @@ bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
     return parse_subattr(zp, str, option_name, help);
 }
 
+bool parse_attr_precomputed_reductions(
+        std::vector<attr_t::precomputed_reductions_t> &pr, const char *str,
+        const std::string &option_name = "attr-precomputed-reductions") {
+    static const std::string help
+            = "ARG:POLICY:DATA_TYPE:GROUPS[+...]\n    Specifies precomputed "
+              "reductions attribute.\n    More details at "
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
+    return parse_subattr(pr, str, option_name, help);
+}
+
 bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
         const char *str,
         const std::string &option_name = "attr-rounding-mode") {
@@ -809,6 +820,7 @@ bool parse_attributes(
         base_settings_t &s, const base_settings_t &def, const char *str) {
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
             || parse_attr_zero_points(s.zero_points, str)
+            || parse_attr_precomputed_reductions(s.precomputed_reductions, str)
             || parse_attr_post_ops(s.post_ops, str)
             || parse_attr_dropout(s.dropout, def.dropout, str)
             || parse_attr_scratchpad_mode(

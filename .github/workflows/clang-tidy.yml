@@ -54,7 +54,7 @@ jobs:
         run: |
           echo -e "Checking Clang-Tidy $(clang-tidy --version)\n"
           touch clang-tidy.log
-          for file in $(git diff --name-only ${{ github.event.pull_request.head.sha }} ${{ github.event.pull_request.base.sha }} | grep -E '\.cpp$'); 
+          for file in $(git diff --name-only ${{ github.event.pull_request.base.sha }} | grep -E '\.cpp$');
           do
             if grep -q "$file" "build/compile_commands.json"; then
               echo -e "\nAnalyzing $file"

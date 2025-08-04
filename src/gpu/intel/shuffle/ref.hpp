@@ -49,7 +49,7 @@ struct ref_shuffle_t : public primitive_t {
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_SHUFFLE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_SHUFFLE(!memory_desc_ndims_ok(src_d.md_, dst_d.md_),
+            VDISPATCH_SHUFFLE(memory_desc_ndims_ok(src_d.md_, dst_d.md_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_SHUFFLE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);

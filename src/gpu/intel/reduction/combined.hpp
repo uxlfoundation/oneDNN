@@ -57,7 +57,7 @@ struct combined_reduction_t : public primitive_t {
                     set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_REDUCTION(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_REDUCTION(!memory_desc_ndims_ok(src_md(), dst_md()),
+            VDISPATCH_REDUCTION(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_REDUCTION(post_ops_with_binary_ok(attr(), *dst_md(), 5),
                     VERBOSE_UNSUPPORTED_POSTOP);

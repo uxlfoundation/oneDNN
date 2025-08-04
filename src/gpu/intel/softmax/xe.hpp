@@ -58,7 +58,7 @@ struct xe_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     IMPLICATION(is_blocked, axis_size() % buffer_size == 0),
                     VERBOSE_BAD_AXIS);
-            VDISPATCH_SOFTMAX(!memory_desc_ndims_ok(src_md(), dst_md()),
+            VDISPATCH_SOFTMAX(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_SOFTMAX(axis() == src_d.ndims() - 1, VERBOSE_BAD_AXIS);
             VDISPATCH_SOFTMAX((src_d.is_plain() || is_blocked || is_nhwc),
@@ -258,7 +258,7 @@ struct xe_softmax_bwd_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(axis_size() % buffer_size == 0, VERBOSE_BAD_AXIS);
-            VDISPATCH_SOFTMAX(!memory_desc_ndims_ok(
+            VDISPATCH_SOFTMAX(memory_desc_ndims_ok(
                                       dst_md(), diff_src_md(), diff_dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "dst, dst_src", "diff_dst");
             VDISPATCH_SOFTMAX(

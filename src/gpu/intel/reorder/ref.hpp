@@ -49,7 +49,7 @@ struct ref_reorder_t : public primitive_t {
 
             VDISPATCH_REORDER(
                     src_engine == dst_engine, VERBOSE_BAD_ENGINE_KIND);
-            VDISPATCH_REORDER(!memory_desc_ndims_ok(src_md(), dst_md()),
+            VDISPATCH_REORDER(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_REORDER(src_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);

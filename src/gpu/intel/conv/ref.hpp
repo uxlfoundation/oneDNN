@@ -82,7 +82,7 @@ struct ref_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(
-                    !memory_desc_ndims_ok(src_md(), weights_md(), dst_md()),
+                    memory_desc_ndims_ok(src_md(), weights_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src, wei", "dst");
             VDISPATCH_CONV(
                     this->set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
@@ -198,7 +198,7 @@ struct ref_convolution_bwd_data_t : public primitive_t {
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
-            VDISPATCH_CONV(!memory_desc_ndims_ok(diff_src_md(), diff_dst_md()),
+            VDISPATCH_CONV(memory_desc_ndims_ok(diff_src_md(), diff_dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "diff_dst");
 
             VDISPATCH_CONV(attr()->has_default_values(attr_skip_mask),
@@ -312,7 +312,7 @@ struct ref_convolution_bwd_weights_t : public primitive_t {
                                     && attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
-            VDISPATCH_CONV(!memory_desc_ndims_ok(src_md(), diff_dst_md()),
+            VDISPATCH_CONV(memory_desc_ndims_ok(src_md(), diff_dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "diff_dst");
 
             VDISPATCH_CONV(utils::one_of(desc()->diff_weights_desc.data_type,

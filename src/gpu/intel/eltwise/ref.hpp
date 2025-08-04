@@ -63,8 +63,8 @@ struct ref_eltwise_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
 
-            VDISPATCH_ELTWISE(!memory_desc_ndims_ok(dst_md()),
-                    VERBOSE_BAD_NDIMS, "dst_md", dst_md()->ndims);
+            VDISPATCH_ELTWISE(memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
+                    "dst_md", dst_md()->ndims);
             VDISPATCH_ELTWISE(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(
@@ -133,7 +133,7 @@ struct ref_eltwise_bwd_t : public primitive_t {
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_ELTWISE(!memory_desc_ndims_ok(data_md(), diff_dst_md()),
+            VDISPATCH_ELTWISE(memory_desc_ndims_ok(data_md(), diff_dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "data_md", "diff_dst_md");
             VDISPATCH_ELTWISE(
                     utils::one_of(data_md()->data_type, data_type::f32,

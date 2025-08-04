@@ -52,7 +52,7 @@ struct xe_concat_t : public primitive_t {
             VDISPATCH_CONCAT(attr()->has_default_values(sm::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONCAT_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONCAT(!memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
+            VDISPATCH_CONCAT(memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
                     "dst", dst_md()->ndims);
 
             VDISPATCH_CONCAT_SC(init_conf(engine),

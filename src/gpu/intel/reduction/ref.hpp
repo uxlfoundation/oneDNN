@@ -43,7 +43,7 @@ struct ref_reduction_t : public primitive_t {
 
             VDISPATCH_REDUCTION_SC(
                     set_default_params(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_REDUCTION(!memory_desc_ndims_ok(src_md(), dst_md()),
+            VDISPATCH_REDUCTION(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_REDUCTION(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);

@@ -50,7 +50,7 @@ struct xe_sum_t : public primitive_t {
 
             VDISPATCH_SUM_SC(
                     gpu_sum_pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
-            VDISPATCH_SUM(!memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
+            VDISPATCH_SUM(memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
                     "dst", dst_md()->ndims);
 
             for (int i = 0; i < n; ++i) {

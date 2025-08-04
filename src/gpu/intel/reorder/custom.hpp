@@ -75,7 +75,7 @@ struct custom_reorder_t : public primitive_t {
                                       utils::one_of(ddt, f32, f16, bf16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
-            VDISPATCH_REORDER(!memory_desc_ndims_ok(src_md(), dst_md()),
+            VDISPATCH_REORDER(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),

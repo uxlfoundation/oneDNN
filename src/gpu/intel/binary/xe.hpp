@@ -46,7 +46,7 @@ struct xe_binary_t : public primitive_t {
             const auto attr_skip_mask = sm::post_ops | sm::scales;
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_BINARY(
-                    !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
+                    memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
             VDISPATCH_BINARY(
                     ((utils::everyone_is(

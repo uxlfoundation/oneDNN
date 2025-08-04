@@ -66,7 +66,7 @@ struct simple_binary_t : public primitive_t {
                                      utils::one_of(src_md(2)->data_type, s8)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
-                    !memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
+                    memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src_0", "dst");
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),

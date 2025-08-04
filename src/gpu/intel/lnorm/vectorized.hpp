@@ -58,8 +58,7 @@ struct vectorized_lnorm_fwd_t : public primitive_t {
                                     intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_LNORM(
-                    !memory_desc_ndims_ok(src_md(), dst_md(), stat_md()),
+            VDISPATCH_LNORM(memory_desc_ndims_ok(src_md(), dst_md(), stat_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst stat");
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT_CFG);

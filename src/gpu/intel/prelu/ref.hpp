@@ -47,7 +47,7 @@ struct ref_prelu_fwd_t : public primitive_t {
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_PRELU(
-                    !memory_desc_ndims_ok(src_md(0), dst_md(0), weights_md(0)),
+                    memory_desc_ndims_ok(src_md(0), dst_md(0), weights_md(0)),
                     VERBOSE_INCONSISTENT_NDIMS, "src", "dst weights");
             VDISPATCH_PRELU(memory_desc_wrapper(src_md())
                             == memory_desc_wrapper(dst_md()),
@@ -102,8 +102,8 @@ struct ref_prelu_bwd_t : public primitive_t {
             VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_PRELU(!memory_desc_ndims_ok(diff_src_md(0),
-                                    diff_dst_md(0), diff_weights_md(0)),
+            VDISPATCH_PRELU(memory_desc_ndims_ok(diff_src_md(0), diff_dst_md(0),
+                                    diff_weights_md(0)),
                     VERBOSE_INCONSISTENT_NDIMS, "diff_src",
                     "diff_dst diff_weights");
             VDISPATCH_PRELU(memory_desc_wrapper(diff_dst_md())

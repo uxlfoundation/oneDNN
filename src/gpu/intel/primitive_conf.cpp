@@ -26,7 +26,7 @@ namespace gpu {
 namespace intel {
 
 bool memory_desc_ndims_ok(const memory_desc_t *md) {
-    return md->ndims > MAX_NDIMS;
+    return md->ndims <= MAX_NDIMS;
 }
 
 memory_desc_info_t memory_desc_info_t::create(const memory_desc_wrapper &mdw) {

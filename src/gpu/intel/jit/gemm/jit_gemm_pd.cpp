@@ -331,20 +331,25 @@ bool jit_gemm_pd_t::zp_ok() {
 }
 
 bool jit_gemm_pd_t::scales_ok() {
-    const auto &a_scales = attr()->scales_.get(DNNL_ARG_A);
-    const auto &b_scales = attr()->scales_.get(DNNL_ARG_B);
+    const auto &scales = attr()->scales_;
     int ndims = desc()->a_desc.ndims;
     using namespace data_type;
 
     for (auto s : {DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C}) {
-        if (attr()->scales_.has_default_values(s)) continue;
+        if (scales.has_default_values(s)) continue;
+        const auto &x_scales = scales.get(s);
 
-        auto mask = attr()->scales_.get_mask(s);
+        auto mask = x_scales.get_mask();
         if (!(utils::one_of(mask, 0, mask_scalar, mask_per_oc, mask_per_ic)
-                    || (s == DNNL_ARG_A && !a_scales.has_default_groups()
-                            && valid_2d_mask(mask, ndims))
-                    || (s == DNNL_ARG_B && !b_scales.has_default_groups()
+                    || (utils::one_of(s, DNNL_ARG_A, DNNL_ARG_B)
+                            && !x_scales.has_default_groups()
                             && valid_2d_mask(mask, ndims))))
+            return false;
+
+        // Groups are only supported across one GEMM dimension.
+        if (!x_scales.has_default_groups()
+                && !utils::one_of(
+                        1, x_scales.get_group(0), x_scales.get_group(1)))
             return false;
     }
 

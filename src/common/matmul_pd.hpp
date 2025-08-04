@@ -201,12 +201,7 @@ struct matmul_pd_t : public primitive_desc_t {
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g1 == 0);
                 const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g0 == 0);
 
-                // Any group is allowed to be greater than 1 but only one at a
-                // time, not both.
-                ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                utils::one_of(1, g0, g1) && wei_k_group_ok
-                                        && wei_n_group_ok);
+                ok = ok && wei_k_group_ok && wei_n_group_ok;
 
                 // Mask over K dim is allowed for decompression feature only.
                 const bool is_decompression_or_dynquant

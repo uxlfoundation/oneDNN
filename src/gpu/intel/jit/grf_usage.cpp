@@ -273,6 +273,7 @@ private:
         if (is_invalid_) return;
         gpu_assert(is_buffer(src));
         gpu_assert(is_buffer(dst));
+        if (src.is_same(dst)) return;
         set_label(dst, grf_usage_label_t::reorder);
     }
 

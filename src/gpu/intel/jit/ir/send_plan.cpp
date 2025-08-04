@@ -26,6 +26,7 @@
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/logging.hpp"
 
@@ -43,8 +44,6 @@ public:
     virtual bool is_scattered() const = 0;
     virtual const layout_t &reg_layout() const = 0;
     virtual int reg_buf_size() const = 0;
-    virtual stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
-            int subtile_idx, const expr_t &pattern) const = 0;
     virtual bool can_split(int factor) const = 0;
     virtual void set_split(int factor) = 0;
     virtual int split_factor() const = 0;
@@ -60,6 +59,53 @@ public:
         return estimate_regs(with_buffer, /*with_headers=*/true);
     }
     int estimate_regs() const { return estimate_regs(/*with_buffer=*/true); }
+
+    stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
+            int subtile_idx, const expr_t &pattern) const {
+        const auto &op = send_params().send_op;
+        auto stmt = do_create_stmt(mem_buf, reg_buf, subtile_idx, pattern);
+
+        if (!is_scattered()) return stmt;
+        const auto &reg = reg_layout();
+        const auto &msg = message_layout();
+        if (reg == msg) return stmt;
+
+        if (op == send_op_t::load) {
+            auto reorder = create_reorder_stmt(msg, reg, reg_buf, reg_buf);
+            return stmt_seq_t::make({stmt, reorder});
+        }
+        if (op == send_op_t::store) {
+            auto reorder = create_reorder_stmt(reg, msg, reg_buf, reg_buf);
+            return stmt_seq_t::make({reorder, stmt});
+        }
+        return stmt;
+    }
+
+protected:
+    bool try_restride_layout(layout_t &layout) const {
+        if (!is_scattered()) return false;
+        const auto &op = send_params().send_op;
+        if (!utils::one_of(op, send_op_t::load, send_op_t::store)) return false;
+        auto &type = layout.type();
+        auto blocks = layout.blocks();
+        if (type.size() >= 2) return false;
+        if (blocks.size() < 2) return false;
+        auto &front = blocks[0];
+        auto &second = blocks[1];
+        if ((dim_t)front.stride > 1) return false;
+        if (front.block * type.size() >= 4 * type.packing()) return false;
+        if ((dim_t)second.stride * type.size() < 4 * type.packing())
+            return false;
+
+        front.stride = 4 * type.packing() / (front.block * type.size());
+        layout = {layout.type(), layout.ndims(), layout.offset(), blocks};
+        return true;
+    }
+
+private:
+    virtual const layout_t &message_layout() const { return reg_layout(); }
+    virtual stmt_t do_create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
+            int subtile_idx, const expr_t &pattern) const = 0;
 };
 
 send_op_t to_2d(send_op_t op) {
@@ -1972,6 +2018,7 @@ public:
         , addr_base_(info.addr_base())
         , x_base_(info.x_base())
         , y_base_(info.y_base())
+        , message_layout_(reg_layout)
         , reg_layout_(reg_layout)
         , reg_buf_size_(reg_buf_size)
         , mask_descs_(info.mask_descs()) {}
@@ -1997,6 +2044,7 @@ public:
     }
     void fixup_params() {
         if (!is_2d()) send_params_.hint_2d.enable = false;
+        try_restride_layout(reg_layout_);
     }
 
     std::string str(const std::string &tag) const override {
@@ -2019,64 +2067,6 @@ public:
         return oss.str();
     }
     std::string str() const { return str("send_plan"); }
-
-    stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
-            int subtile_idx, const expr_t &pattern) const override {
-        stmt_t ret;
-        bool is_g1b1 = (send_groups_.size() == 1)
-                && (send_groups_[0].blocks.size() == 1);
-        for (auto &_g : send_groups_) {
-            auto g = (split_factor_ == 1)
-                    ? _g
-                    : _g.split(split_bounds_t(reg_layout(), split_factor_),
-                            subtile_idx, is_g1b1);
-            gpu_assert(!g.is_empty());
-            bool try_legacy = send_params().try_legacy
-                    && (g.hw < ngen::HW::XeHPC) && g.is_block();
-            std::vector<stmt_t> calls;
-            std::vector<send_info_t> send_infos;
-            auto base_mem_off = add(addr_base_, g.addr_inc, g.slots);
-            auto base_x = g.is_2d() ? add(x_base_, g.x_inc, 1) : expr_t();
-            auto base_y = g.is_2d() ? add(y_base_, g.y_inc, 1) : expr_t();
-            auto funcs = g.create_send_funcs(send_params_);
-            for (auto &b : g.blocks) {
-                auto b_mem_off = add(base_mem_off, b.addr_inc, g.slots);
-                auto b_x_off = g.is_2d() ? add(base_x, b.x_inc, 1) : expr_t();
-                auto b_y_off = g.is_2d() ? add(base_y, b.y_inc, 1) : expr_t();
-                auto b_mask = g.create_mask(mask_descs_, b.mask_inc);
-                int byte_off = 0;
-                int slot_off = 0;
-                int reg_off = b.reg_off;
-                auto &p2d = g.send_2d_params;
-                for (int i = 0; i < (int)funcs.size(); i++) {
-                    auto &send = funcs[i].as<send_t>();
-                    auto mem_off = get_mem_off(
-                            g, b_mem_off, send.slots, slot_off, byte_off);
-                    auto mask = get_mask(g, b_mask, send, slot_off);
-                    auto x = g.is_2d() ? add(b_x_off, p2d.x_off(i), 1)
-                                       : expr_t();
-                    auto y = g.is_2d() ? add(b_y_off, p2d.y_off(i), 1)
-                                       : expr_t();
-                    auto call = send(mem_buf, mem_off,
-                            reg_buf.is_empty() ? expr_t() : reg_buf + reg_off,
-                            mask, x, y, pattern);
-                    if (try_legacy) {
-                        send_infos.emplace_back(
-                                g.addr_inc[0] + b.addr_inc + byte_off, reg_off,
-                                send.payload_size());
-                    }
-                    calls.push_back(call);
-                    byte_off += send.access_size();
-                    slot_off += send.slots;
-                    reg_off += send.payload_size();
-                }
-            }
-            if (try_legacy) calls = try_legacy_send(calls, send_infos);
-            for (auto &call : calls)
-                ret = ret.append(call);
-        }
-        return ret;
-    }
 
     bool can_split(int factor) const override {
         if (factor == 1) return true;
@@ -2161,6 +2151,66 @@ public:
     IR_DEFINE_DUMP()
 
 private:
+    const layout_t &message_layout() const override { return message_layout_; }
+
+    stmt_t do_create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
+            int subtile_idx, const expr_t &pattern) const override {
+        stmt_t ret;
+        bool is_g1b1 = (send_groups_.size() == 1)
+                && (send_groups_[0].blocks.size() == 1);
+        for (auto &_g : send_groups_) {
+            auto g = (split_factor_ == 1)
+                    ? _g
+                    : _g.split(split_bounds_t(message_layout_, split_factor_),
+                            subtile_idx, is_g1b1);
+            gpu_assert(!g.is_empty());
+            bool try_legacy = send_params().try_legacy
+                    && (g.hw < ngen::HW::XeHPC) && g.is_block();
+            std::vector<stmt_t> calls;
+            std::vector<send_info_t> send_infos;
+            auto base_mem_off = add(addr_base_, g.addr_inc, g.slots);
+            auto base_x = g.is_2d() ? add(x_base_, g.x_inc, 1) : expr_t();
+            auto base_y = g.is_2d() ? add(y_base_, g.y_inc, 1) : expr_t();
+            auto funcs = g.create_send_funcs(send_params_);
+            for (auto &b : g.blocks) {
+                auto b_mem_off = add(base_mem_off, b.addr_inc, g.slots);
+                auto b_x_off = g.is_2d() ? add(base_x, b.x_inc, 1) : expr_t();
+                auto b_y_off = g.is_2d() ? add(base_y, b.y_inc, 1) : expr_t();
+                auto b_mask = g.create_mask(mask_descs_, b.mask_inc);
+                int byte_off = 0;
+                int slot_off = 0;
+                int reg_off = b.reg_off;
+                auto &p2d = g.send_2d_params;
+                for (int i = 0; i < (int)funcs.size(); i++) {
+                    auto &send = funcs[i].as<send_t>();
+                    auto mem_off = get_mem_off(
+                            g, b_mem_off, send.slots, slot_off, byte_off);
+                    auto mask = get_mask(g, b_mask, send, slot_off);
+                    auto x = g.is_2d() ? add(b_x_off, p2d.x_off(i), 1)
+                                       : expr_t();
+                    auto y = g.is_2d() ? add(b_y_off, p2d.y_off(i), 1)
+                                       : expr_t();
+                    auto call = send(mem_buf, mem_off,
+                            reg_buf.is_empty() ? expr_t() : reg_buf + reg_off,
+                            mask, x, y, pattern);
+                    if (try_legacy) {
+                        send_infos.emplace_back(
+                                g.addr_inc[0] + b.addr_inc + byte_off, reg_off,
+                                send.payload_size());
+                    }
+                    calls.push_back(call);
+                    byte_off += send.access_size();
+                    slot_off += send.slots;
+                    reg_off += send.payload_size();
+                }
+            }
+            if (try_legacy) calls = try_legacy_send(calls, send_infos);
+            for (auto &call : calls)
+                ret = ret.append(call);
+        }
+        return ret;
+    }
+
     struct send_info_t {
         send_info_t(int mem_off, int reg_off, int size)
             : mem_off(mem_off), reg_off(reg_off), size(size) {}
@@ -2274,7 +2324,7 @@ private:
     expr_t addr_base_;
     expr_t x_base_;
     expr_t y_base_;
-    layout_t reg_layout_;
+    layout_t message_layout_, reg_layout_;
     int reg_buf_size_;
     std::vector<mask_desc_t> mask_descs_;
     std::vector<send_group_t> send_groups_;
@@ -2290,7 +2340,8 @@ public:
         , dummy_mem_buf_(var_t::make(type_t::byte_ptr(), "mem"))
         , dummy_reg_buf_(var_t::make(type_t::byte_ptr(), "reg"))
         , access_(make_access_builder(
-                  ir_ctx_, view, dummy_mem_buf_, dummy_reg_buf_, send_params)) {
+                  ir_ctx_, view, dummy_mem_buf_, dummy_reg_buf_, send_params))
+        , reg_layout_(access_.reg_layout()) {
         auto calls = find_objects<func_call_t>(access_.stmt());
         for (auto &c : calls) {
             switch (get_send_kind(c)) {
@@ -2300,6 +2351,7 @@ public:
                 default: gpu_error_not_expected();
             }
         }
+        try_restride_layout(reg_layout_);
     }
 
     ir_send_plan_t(const ir_send_plan_t &) = delete;
@@ -2312,20 +2364,10 @@ public:
 
     bool is_scattered() const override { return is_scattered_; }
 
-    const layout_t &reg_layout() const override { return access_.reg_layout(); }
+    const layout_t &reg_layout() const override { return reg_layout_; }
 
     int reg_buf_size() const override {
         return utils::div_up(access_.reg_buf_size(), split_factor_);
-    }
-
-    stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
-            int subtile_idx, const expr_t &pattern) const override {
-        auto stmt = access_.stmt();
-        if (stmt.is_empty()) return stmt_t();
-        stmt = substitute(stmt, dummy_mem_buf_, mem_buf);
-        stmt = substitute(stmt, dummy_reg_buf_, reg_buf);
-        split_bounds_t bounds(reg_layout(), split_factor_);
-        return split(stmt, bounds, subtile_idx);
     }
 
     bool can_split(int factor) const override {
@@ -2378,6 +2420,20 @@ public:
     }
 
 private:
+    const layout_t &message_layout() const override {
+        return access_.reg_layout();
+    }
+
+    stmt_t do_create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
+            int subtile_idx, const expr_t &pattern) const override {
+        auto stmt = access_.stmt();
+        if (stmt.is_empty()) return stmt_t();
+        stmt = substitute(stmt, dummy_mem_buf_, mem_buf);
+        stmt = substitute(stmt, dummy_reg_buf_, reg_buf);
+        split_bounds_t bounds(reg_layout(), split_factor_);
+        return split(stmt, bounds, subtile_idx);
+    }
+
     static expr_t get_base(const expr_t &e) {
         auto *ptr = e.as_ptr<ptr_t>();
         if (ptr) return ptr->base;
@@ -2421,6 +2477,7 @@ private:
     expr_t dummy_mem_buf_;
     expr_t dummy_reg_buf_;
     access_builder_t access_;
+    layout_t reg_layout_;
     bool is_2d_ = false;
     bool is_scattered_ = false;
     int split_factor_ = 1;

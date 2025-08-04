@@ -159,7 +159,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     // Adjust masks for m/n grouping.
     auto adjustMask = [=](MaskInfo &mask) {
         if (!mask || xqGroupMN <= 1) return;
-        if (!is_zero_or_pow2(xqGroupMN)) stub();
+        if (!is_zero_or_pow2(xqGroupMN)) return;
         if (mask.fixed.isFixed) stub();
         mask.variable.rshift += ilog2(xqGroupMN);
     };

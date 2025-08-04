@@ -12,8 +12,6 @@ python3 synthdnn.py <collect|primitive> [controls]
 ```
 Currently, `primitive` can only be `matmul`.
 
-Report Generation: Not yet implemented.
-
 ### Collect
 Collect data from an existing problem set/batch file.
 ```
@@ -41,6 +39,13 @@ Matmul controls:
 - `--iter-mode|-m <zip|product>`: (default `zip`) Changes the order of problem iteration in the test set, which may affect the problems generated.
 - `--region|-r <pt_min>:<pt_max>:<pt_align>`: Each point has the syntax `([b,]m,n,k)` - selects the region of problem space to sample tests in. Each dimension varies from the `min` size to the `max` size with spacing equal to `align`.
 - `--samples|-s <num>`: (default 1000) Selects the number of sample points, which determines the test set's total size.
+### Matmul
+Generate a report from performance collected data
+```
+python3 synthdnn.py report [report controls] [logs ...]
+```
+Report controls:
+- `--scatter x_idx,[y_idx],metric,[scale]`: Create a 2d or 3d scatter plot of the given metric (bandwidth/flops) and given scale (relative/absolute)
 
 ## Examples
 
@@ -52,5 +57,9 @@ python3 synthdnn.py matmul -r "(64,64,64):(16384,16384,16384):(16,16,16)" -s 100
 python3 synthdnn.py matmul -t *:[su]4:* -b matmul.batch
 python3 synthdnn.py collect --collect corr --engine gpu -b matmul.batch build/tests/benchdnn/benchdnn
 python3 synthdnn.py collect --collect perf --engine gpu -b matmul.batch build/tests/benchdnn/benchdnn
+
+# Generate scatter plots from performance data collected with synthdnn collect
+python3 synthdnn.py report --scatter m,flops --scatter n,flops --scatter k,flops base.log tune.log
+python3 synthdnn.py report --scatter m,bandwidth,absolute --scatter n,bandwidth,absolute --scatter k,bandwidth,absolute base.log tune.log
 
 ```

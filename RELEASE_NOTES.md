@@ -72,7 +72,7 @@
 * Improved benchdnn graph driver performance mode via adding CPU memory pool for allocator.
 
 # Known Limitations
-* The group normalization backward propagation step produces incorrect results when scales are used in oneDNN v3.9 and earlier.
+* The group normalization with `normalization_flags::use_scale` specified produces incorrect results for backward propagation kind in oneDNN v3.9 and earlier.
 
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated and will be removed in future releases. If you are using this API consider switching to [matmul primitive].

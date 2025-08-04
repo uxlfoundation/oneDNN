@@ -17,8 +17,7 @@
 #ifndef GPU_INTEL_BNORM_XE_HPP
 #define GPU_INTEL_BNORM_XE_HPP
 
-#include "common/primitive.hpp"
-#include "gpu/gpu_batch_normalization_pd.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/bnorm/lookup_table.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
@@ -29,13 +28,12 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-struct xe_batch_normalization_fwd_t : public primitive_t {
+struct xe_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_fwd_pd_t {
-        using gpu_batch_normalization_fwd_pd_t::
-                gpu_batch_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), xe_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), xe_fwd_t);
 
         const char *impl_name() const {
             return conf.use_stats_one_pass ? "ocl:xe:onepass" : "ocl:xe";
@@ -181,13 +179,12 @@ private:
     compute::kernel_t reduce_final_kernel_;
 };
 
-struct xe_batch_normalization_bwd_t : public primitive_t {
+struct xe_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_bwd_pd_t {
-        using gpu_batch_normalization_bwd_pd_t::
-                gpu_batch_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), xe_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), xe_bwd_t);
 
         const char *impl_name() const { return "ocl:xe"; }
 

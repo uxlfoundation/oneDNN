@@ -31,8 +31,8 @@ using namespace lookup_table;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
 
-static bool use_fused_atomics_reduction(lookup_table::params_t &conf,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+static bool use_fused_atomics_reduction(
+        lookup_table::params_t &conf, const pd_t *pd, impl::engine_t *engine) {
     // Currently the fused atomics reduction is targeting to PVC only.
     // Heuristics experimentally selected, based on PVC perf data
     auto *intel_engine = downcast<intel::engine_t *>(engine);
@@ -137,11 +137,11 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const pd_t *pd, impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
-    conf.impl = bn_impl_t::xe;
+    conf.impl = impl_t::xe;
 
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
@@ -389,18 +389,18 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t xe_batch_normalization_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
 
-status_t xe_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t xe_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }
 
-void xe_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void xe_fwd_t::pd_t::init_scratchpad() {
     if (conf.calculate_stats) {
         size_t size_coeff = sizeof(double) / sizeof(float);
         size_t size = 2 * size_coeff * conf.reduce_stat_nblocks
@@ -420,8 +420,7 @@ void xe_batch_normalization_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t xe_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t xe_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     const auto &conf = pd()->conf;
@@ -592,18 +591,18 @@ status_t xe_batch_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t xe_batch_normalization_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
 
-status_t xe_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t xe_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }
 
-void xe_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void xe_bwd_t::pd_t::init_scratchpad() {
     size_t size = 2 * rnd_up(conf.ic, conf.sub_group_size)
             * (1 + conf.reduce_stat_nblocks);
     auto scratchpad = scratchpad_registry().registrar();
@@ -611,8 +610,7 @@ void xe_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t xe_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t xe_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
 

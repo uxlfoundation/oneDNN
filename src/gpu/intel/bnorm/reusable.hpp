@@ -17,17 +17,11 @@
 #ifndef GPU_INTEL_BNORM_REUSABLE_HPP
 #define GPU_INTEL_BNORM_REUSABLE_HPP
 
-#include <assert.h>
-
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "common/serialization.hpp"
-#include "gpu/gpu_batch_normalization_pd.hpp"
-#include "gpu/gpu_resource.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,7 +29,7 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-struct reusable_bnorm_params_t {
+struct reusable_params_t {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
@@ -53,16 +47,15 @@ struct reusable_bnorm_params_t {
     }
 
 #if __cplusplus >= 202002L
-    bool operator==(const reusable_bnorm_params_t &) const = default;
+    bool operator==(const reusable_params_t &) const = default;
 #endif
     serialization_stream_t serialize() const {
-        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(reusable_bnorm_params_t);
+        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(reusable_params_t);
         return serialization_stream_t(*this);
     }
 
-    static reusable_bnorm_params_t deserialize(
-            const serialization_stream_t &s) {
-        reusable_bnorm_params_t t {};
+    static reusable_params_t deserialize(const serialization_stream_t &s) {
+        reusable_params_t t {};
         deserializer_t d(s);
         d.pop(t);
         return t;
@@ -91,7 +84,7 @@ struct reusable_bnorm_params_t {
     compute::dispatch_compile_params_t gws_params;
 };
 
-struct reusable_bnorm_runtime_params_t {
+struct reusable_runtime_params_t {
     dim_t reduce_dim_stride;
     compute::dispatch_runtime_params_t calc_stat_params;
     compute::dispatch_runtime_params_t reduce_stat_params;
@@ -103,13 +96,12 @@ struct reusable_bnorm_runtime_params_t {
     dim_t stat_ic, reduction_nelems, div, ic;
 };
 
-struct reusable_batch_normalization_fwd_t : public primitive_t {
+struct reusable_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_fwd_pd_t {
-        using gpu_batch_normalization_fwd_pd_t::
-                gpu_batch_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reusable", reusable_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:reusable", reusable_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -162,8 +154,8 @@ struct reusable_batch_normalization_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        reusable_bnorm_params_t conf;
-        reusable_bnorm_runtime_params_t rt_conf;
+        reusable_params_t conf;
+        reusable_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -204,13 +196,12 @@ private:
     compute::kernel_t calculate_mean_variance_kernel_;
 };
 
-struct reusable_batch_normalization_bwd_t : public primitive_t {
+struct reusable_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_bwd_pd_t {
-        using gpu_batch_normalization_bwd_pd_t::
-                gpu_batch_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reusable", reusable_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:reusable", reusable_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -253,8 +244,8 @@ struct reusable_batch_normalization_bwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        reusable_bnorm_params_t conf;
-        reusable_bnorm_runtime_params_t rt_conf;
+        reusable_params_t conf;
+        reusable_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {

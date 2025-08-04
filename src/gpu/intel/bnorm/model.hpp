@@ -16,6 +16,7 @@
 #ifndef GPU_INTEL_BNORM_MODEL_HPP
 #define GPU_INTEL_BNORM_MODEL_HPP
 
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
@@ -78,23 +79,23 @@ std::string to_string(const kernel_kind_t &kernel);
 std::string to_string(const data_location_t &loc);
 void dump_kernel_descriptor(kernel_desc_t &desc);
 
-std::string to_string(const nhwc_bnorm_params_t &conf);
-int get_ncalls(model_params_t &p, const nhwc_bnorm_params_t &conf,
-        kernel_kind_t kernel);
-size_t get_kernel_input_size(const model_params_t &p,
-        const nhwc_bnorm_params_t &conf, const kernel_desc_t &desc);
+std::string to_string(const nhwc_params_t &conf);
+int get_ncalls(
+        model_params_t &p, const nhwc_params_t &conf, kernel_kind_t kernel);
+size_t get_kernel_input_size(const model_params_t &p, const nhwc_params_t &conf,
+        const kernel_desc_t &desc);
 size_t get_kernel_output_size(const model_params_t &p,
-        const nhwc_bnorm_params_t &conf, const kernel_desc_t &desc);
-void get_expected_data_location(model_params_t &p, nhwc_bnorm_params_t &conf,
+        const nhwc_params_t &conf, const kernel_desc_t &desc);
+void get_expected_data_location(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, kernel_desc_t &desc);
 float solve_2p_line(const float x, const float xa, const float xb,
         const float ya, const float yb);
 float solve_2pieces_linear_function(const float x, const float x0,
         const float x1, const float x2, const float y0, const float y1,
         const float y2);
-void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
+void get_estimated_kernel_time(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, kernel_desc_t &desc);
-void init_kernel_descriptors(model_params_t &p, nhwc_bnorm_params_t &conf,
+void init_kernel_descriptors(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, bool reusable = false);
 void dump_params(std::vector<model_params_t> &params);
 int get_nhwc_vect_size(int ic, int max_vect_size, int simd = 16);
@@ -102,16 +103,15 @@ int get_nhwc_sp_block_size(
         int sp, int ic_dim, int eu_count, int threads_per_eu, int simd = 16);
 dim_t get_nhwc_calc_stat_ic(dim_t ic, int ic_block, int sg_size);
 
-status_t get_estimated_hw_utilization(model_params_t &p,
-        nhwc_bnorm_params_t &conf, hw_params_t &hw_params, kernel_desc_t &desc);
-status_t make_kernel_perf_estimation(model_params_t &p,
-        nhwc_bnorm_params_t &conf, kernel_desc_t &desc, hw_params_t &hw_params);
+status_t get_estimated_hw_utilization(model_params_t &p, nhwc_params_t &conf,
+        hw_params_t &hw_params, kernel_desc_t &desc);
+status_t make_kernel_perf_estimation(model_params_t &p, nhwc_params_t &conf,
+        kernel_desc_t &desc, hw_params_t &hw_params);
 status_t make_perf_estimations(
-        model_params_t &p, nhwc_bnorm_params_t &conf, hw_params_t &hw_params);
+        model_params_t &p, nhwc_params_t &conf, hw_params_t &hw_params);
 
-status_t get_params_by_model(nhwc_bnorm_params_t &conf,
-        const batch_normalization_pd_t *pd, hw_params_t &hw_params,
-        bool reusable_version);
+status_t get_params_by_model(nhwc_params_t &conf, const pd_t *pd,
+        hw_params_t &hw_params, bool reusable_version);
 
 struct appr_formula_t {
     float a;

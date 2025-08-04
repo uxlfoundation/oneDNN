@@ -24,9 +24,8 @@
 //    xe_reduce_stats_nhwc kernel.
 // 2) Atomics-based reduction with SLM use (FUSED_ATOMICS_REDUCTION definition),
 //    implemented as part of calc kernels, see xe_*_fused_reduction()
-//    functions in xe_bnorm.h. This reduction implementation requires
-//    zeroing and finalization steps, see xe_fused_reduce_* kernels
-//    in xe_bnorm_reduce.cl
+//    functions in xe.h. This reduction implementation requires zeroing and
+//    finalization steps, see xe_fused_reduce_* kernels in xe_reduce.cl
 
 NAMED_KERNEL_ATTR(CALC)
 __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,

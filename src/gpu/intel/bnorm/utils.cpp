@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include "common/utils.hpp"
-#include "gpu/intel/bnorm/lookup_table.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/bnorm/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
@@ -38,10 +38,10 @@ float get_thr_utilization(int eu_count, int threads_per_eu, int sg_size,
 }
 
 // Init basic fields of conf structure
-void init_conf_basic(bnorm_conf_t &conf, const batch_normalization_pd_t *pd) {
+void init_conf_basic(conf_t &conf, const pd_t *pd) {
     using namespace dnnl::impl::format_tag;
 
-    const batch_normalization_desc_t &bd = *pd->desc();
+    const desc_t &bd = *pd->desc();
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
     const int ndims = data_mdw.ndims();
@@ -73,7 +73,7 @@ void init_conf_basic(bnorm_conf_t &conf, const batch_normalization_pd_t *pd) {
     conf.diff_scale = (pd->use_scale() && bd.prop_kind == prop_kind::backward);
     conf.diff_shift = (pd->use_shift() && bd.prop_kind == prop_kind::backward);
 }
-std::string get_flags_str(const batch_normalization_pd_t *pd) {
+std::string get_flags_str(const pd_t *pd) {
     std::string s;
     if (pd->stats_is_src() || pd->use_global_stats()) s += 'G';
     if (pd->use_scale()) s += 'C';
@@ -83,7 +83,7 @@ std::string get_flags_str(const batch_normalization_pd_t *pd) {
     return s;
 }
 
-std::string get_dt_str(const batch_normalization_pd_t *pd) {
+std::string get_dt_str(const pd_t *pd) {
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
     auto dt = data_mdw.data_type();
@@ -100,7 +100,7 @@ std::string get_dt_str(const batch_normalization_pd_t *pd) {
         gpu_error_not_expected();
     return s;
 }
-std::string get_dir_str(const batch_normalization_pd_t *pd) {
+std::string get_dir_str(const pd_t *pd) {
     std::string s;
     if (pd->is_fwd() && !pd->is_training())
         s += "FWD_I";
@@ -112,7 +112,7 @@ std::string get_dir_str(const batch_normalization_pd_t *pd) {
         gpu_error_not_expected();
     return s;
 }
-std::string get_desc_str(const batch_normalization_pd_t *pd) {
+std::string get_desc_str(const pd_t *pd) {
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
     const int ndims = data_mdw.ndims();
@@ -129,7 +129,7 @@ std::string get_desc_str(const batch_normalization_pd_t *pd) {
     s += std::to_string(iw);
     return s;
 }
-std::string get_prb_desc_str(const batch_normalization_pd_t *pd) {
+std::string get_prb_desc_str(const pd_t *pd) {
     std::string s;
     s += "axb,";
     s += get_dt_str(pd) + ",";

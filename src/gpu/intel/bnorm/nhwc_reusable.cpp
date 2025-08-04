@@ -18,12 +18,11 @@
 #include "gpu/intel/bnorm/model.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/experimental.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/block_structure.hpp"
+#include "gpu/intel/bnorm/utils.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/compute/dispatch_reusable.hpp"
-#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -39,12 +38,11 @@ using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
 
 static status_t init_reusable_confs_basic(
-        nhwc_reusable_bnorm_compile_params_t &cmpl_conf,
-        nhwc_reusable_bnorm_runtime_params_t &rt_conf,
-        const batch_normalization_pd_t *pd,
+        nhwc_reusable_compile_params_t &cmpl_conf,
+        nhwc_reusable_runtime_params_t &rt_conf, const pd_t *pd,
         const memory_desc_wrapper &data_mdw) {
 
-    const batch_normalization_desc_t &bd = *pd->desc();
+    const desc_t &bd = *pd->desc();
     cmpl_conf = utils::zero<decltype(cmpl_conf)>();
 
     cmpl_conf.data_type = data_mdw.data_type();
@@ -65,8 +63,8 @@ static status_t init_reusable_confs_basic(
     return status::success;
 }
 
-static status_t final_set_rt_params(nhwc_bnorm_params_t &bn_conf,
-        nhwc_reusable_bnorm_runtime_params_t &rt_conf) {
+static status_t final_set_rt_params(
+        nhwc_params_t &bn_conf, nhwc_reusable_runtime_params_t &rt_conf) {
     rt_conf.ic_size = bn_conf.ic;
     rt_conf.ic_block = bn_conf.ic_block();
     rt_conf.sp_size = bn_conf.sp;
@@ -87,18 +85,18 @@ static status_t final_set_rt_params(nhwc_bnorm_params_t &bn_conf,
     return status::success;
 }
 
-static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
-        nhwc_reusable_bnorm_compile_params_t &cmpl_conf,
-        nhwc_reusable_bnorm_runtime_params_t &rt_conf,
+static status_t init_conf_common(nhwc_params_t &bn_conf,
+        nhwc_reusable_compile_params_t &cmpl_conf,
+        nhwc_reusable_runtime_params_t &rt_conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const pd_t *pd, impl::engine_t *engine) {
 
     // This implementation is temporarly unavailable by default
     // TODO: remove the guard after performance tuning
     if (!dev_getenv("enable_bn_nhwc_reusable", 0)) return status::unimplemented;
-    bn_conf.impl = bn_impl_t::nhwc_reusable;
+    bn_conf.impl = impl_t::nhwc_reusable;
 
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
@@ -189,16 +187,15 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
     // Set dispatching
 
     dispatch_calc_stat = intel_engine->create_dispatch();
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             calc_mean_ker, bn_conf, engine, dispatch_calc_stat));
     dispatch_reduce_stat = intel_engine->create_dispatch();
-    CHECK(nhwc_bnorm_kernel_dispatching(reusable_reduce_stats_fwd_ker, bn_conf,
+    CHECK(nhwc_kernel_dispatching(reusable_reduce_stats_fwd_ker, bn_conf,
             engine, dispatch_reduce_stat));
     dispatch = intel_engine->create_dispatch(data_mdw.md_);
-    CHECK(nhwc_bnorm_kernel_dispatching(
-            default_fwd_ker, bn_conf, engine, dispatch));
+    CHECK(nhwc_kernel_dispatching(default_fwd_ker, bn_conf, engine, dispatch));
     dispatch_reduce_aux = intel_engine->create_dispatch(data_mdw.md_);
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             reduce_aux_init_ker, bn_conf, engine, dispatch_reduce_aux));
 
     CHECK(final_set_rt_params(bn_conf, rt_conf));
@@ -207,7 +204,7 @@ static status_t init_conf_common(nhwc_bnorm_params_t &bn_conf,
 }
 
 static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const nhwc_reusable_bnorm_compile_params_t &cmpl_conf) {
+        const nhwc_reusable_compile_params_t &cmpl_conf) {
     kernel_ctx.set_data_type(cmpl_conf.data_type);
 
     kernel_ctx.define_int("WITH_RELU", cmpl_conf.with_relu);
@@ -227,20 +224,18 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("MAX_IC_BLOCK", cmpl_conf.max_ic_block);
 }
 
-status_t nhwc_reusable_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(bn_conf, cmpl_conf, rt_conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, this, engine);
 }
 
-compute::kernel_ctx_t
-nhwc_reusable_bnorm_compile_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t nhwc_reusable_compile_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     init_kernel_ctx_common(kernel_ctx, *this);
     return kernel_ctx;
 }
 
-void nhwc_reusable_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void nhwc_reusable_fwd_t::pd_t::init_scratchpad() {
     if (cmpl_conf.calculate_stats) {
         size_t reduce_size = static_cast<size_t>(2 * rt_conf.reduce_stat_nblocks
                 * rnd_up(rt_conf.ic_size, bn_conf.sub_group_size));
@@ -260,9 +255,8 @@ void nhwc_reusable_batch_normalization_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-static dim_t get_calc_slm_size(
-        const nhwc_reusable_bnorm_compile_params_t &cmpl_conf,
-        const nhwc_reusable_bnorm_runtime_params_t &rt_conf) {
+static dim_t get_calc_slm_size(const nhwc_reusable_compile_params_t &cmpl_conf,
+        const nhwc_reusable_runtime_params_t &rt_conf) {
     return rt_conf.use_fused_atomics_reduction
             ? (rt_conf.use_buffers_calc ? sizeof(float) * rt_conf.ic_block
                                     * rt_conf.calc_adj_lws[1]
@@ -271,8 +265,7 @@ static dim_t get_calc_slm_size(
             : 0;
 }
 
-status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     const auto &cmpl_conf = pd()->cmpl_conf;
@@ -525,13 +518,12 @@ status_t nhwc_reusable_batch_normalization_fwd_t::execute_forward(
             arg_list);
 }
 
-status_t nhwc_reusable_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(bn_conf, cmpl_conf, rt_conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, this, engine);
 }
 
-void nhwc_reusable_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void nhwc_reusable_bwd_t::pd_t::init_scratchpad() {
     size_t elsize = types::data_type_size(data_type::f32);
     size_t size = rnd_up(rt_conf.ic_size, bn_conf.sub_group_size)
             * (1 + rt_conf.reduce_stat_nblocks);
@@ -542,8 +534,7 @@ void nhwc_reusable_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             elsize, OCL_BUFFER_ALIGNMENT);
 }
 
-status_t nhwc_reusable_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     status_t status = status::success;
     const auto &cmpl_conf = pd()->cmpl_conf;
     const auto &rt_conf = pd()->rt_conf;

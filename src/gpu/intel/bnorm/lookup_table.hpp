@@ -21,8 +21,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/config.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -91,7 +91,7 @@ public:
     bool is_overridable() const override { return true; }
 };
 
-struct params_t : public bnorm_conf_t, public container_config_t {
+struct params_t : public conf_t, public container_config_t {
 #define DECL_PARAM(name) \
     const name##_param_t &name##_param() const { \
         gpu_assert(!name##_.is_undef()); \
@@ -233,10 +233,10 @@ private:
     std::string pattern_;
 };
 
-class bnorm_problem_filter_t {
+class problem_filter_t {
 public:
     using key_t = std::string;
-    bnorm_problem_filter_t(const std::string &s);
+    problem_filter_t(const std::string &s);
     key_t key() const { return nhwc_desc_; }
     bool matches(
             const params_t &conf, const compute::gpu_arch_t &gpu_arch) const;
@@ -255,24 +255,24 @@ private:
     std::string tag_;
     normalization_flags_t flags_filter_;
     compute::gpu_arch_t hw_;
-    bn_impl_t impl_ = bn_impl_t::unknown;
+    impl_t impl_ = impl_t::unknown;
 };
 
-class bnorm_lookup_table_t {
+class lookup_table_t {
 public:
-    bnorm_lookup_table_t() = default;
-    bnorm_lookup_table_t(bool use_stats_one_pass);
+    lookup_table_t() = default;
+    lookup_table_t(bool use_stats_one_pass);
     const char *find(
             const params_t &conf, const compute::gpu_arch_t &gpu_arch) const;
     void get_params(const params_t &conf, const std::string &params) const;
 
 private:
     struct entry_t {
-        bnorm_problem_filter_t filter;
+        problem_filter_t filter;
         const char *s_params;
     };
     void add(const char *s_prb, const char *s_params);
-    using key_t = bnorm_problem_filter_t::key_t;
+    using key_t = problem_filter_t::key_t;
     std::unordered_map<key_t, std::vector<entry_t>> map_;
 };
 

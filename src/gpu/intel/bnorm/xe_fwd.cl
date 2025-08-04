@@ -25,9 +25,8 @@
 //    xe_reduce_* kernels.
 // 2) Atomics-based reduction with SLM use (FUSED_ATOMICS_REDUCTION definition),
 //    implemented as part of calc kernels, see xe_*_fused_reduction()
-//    functions in xe_bnorm.h. This reduction implementation requires
-//    zeroing and finalization steps, see xe_fused_reduce_* kernels
-//    in xe_bnorm_reduce.cl
+//    functions in xe.h. This reduction implementation requires zeroing and
+//    finalization steps, see xe_fused_reduce_* kernels in xe_reduce.cl
 
 #define LOAD_DATA_Nx16_USING_LOOP_IDX(n, dest, src, idx) \
     { \

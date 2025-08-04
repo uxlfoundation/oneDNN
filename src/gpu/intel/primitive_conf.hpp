@@ -321,46 +321,6 @@ struct rnn_reorder_conf_t {
     size_t scales_count;
 };
 
-// Batch Normalization
-enum bn_impl_t {
-    unknown = 0,
-    ref,
-    simple,
-    reusable,
-    xe,
-    nhwc_opt,
-    nhwc_reusable
-};
-
-struct bnorm_conf_t {
-    data_type_t data_type;
-    size_t elsz;
-    dim_idx_t ndims;
-    dim_t mb, ic, id, ih, iw;
-    int mb_block;
-    dim_idx_t reduce_dim_idx;
-    dim_t reduce_dim;
-    dim_t nn, sp, sp_tail;
-    int vect_size;
-    dim_t stat_sp_nblocks, stat_sp_tail;
-    dim_t update_sp_nblocks, update_sp_tail;
-    dim_t reduce_stat_nblocks;
-    bool with_relu;
-    dim_t stat_ic;
-    bool is_forward, is_backward;
-    bool use_scale, use_shift, save_stats, is_training;
-    bool calculate_stats, calculate_diff_stats;
-    bool fuse_norm_relu, fuse_norm_add_relu;
-    bool diff_scale, diff_shift;
-    float relu_negative_slope, eps;
-    int sub_group_size;
-    bool skip_reduce_stat;
-    bool use_stats_one_pass;
-    dim_t calc_stat_ic;
-    int max_ic_block;
-    bn_impl_t impl = bn_impl_t::unknown;
-};
-
 // Layer Normalization
 struct lnorm_conf_t {
     data_type_t src_dt, dst_dt;

@@ -34,27 +34,27 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-namespace bnorm_dims_t {
+namespace dims {
 dim_idx_t mb = 0;
 dim_idx_t ic = 1;
 dim_idx_t sp0 = 2;
 dim_idx_t sp1 = 3;
 dim_idx_t sp2 = 4;
-}; // namespace bnorm_dims_t
+}; // namespace dims
 
 static std::vector<dim_idx_t> get_dims(size_t ndims) {
     std::vector<dim_idx_t> ret(ndims);
     uint8_t idx = 0;
-    ret[idx++] = bnorm_dims_t::mb;
-    ret[idx++] = bnorm_dims_t::ic;
-    if (ndims >= 3) ret[idx++] = bnorm_dims_t::sp0;
-    if (ndims >= 4) ret[idx++] = bnorm_dims_t::sp1;
-    if (ndims >= 5) ret[idx++] = bnorm_dims_t::sp2;
+    ret[idx++] = dims::mb;
+    ret[idx++] = dims::ic;
+    if (ndims >= 3) ret[idx++] = dims::sp0;
+    if (ndims >= 4) ret[idx++] = dims::sp1;
+    if (ndims >= 5) ret[idx++] = dims::sp2;
     return ret;
 }
 
-static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
-        reusable_bnorm_runtime_params_t &rt_conf, impl::engine_t *engine,
+static status_t init_calculate_stats_conf(reusable_params_t &conf,
+        reusable_runtime_params_t &rt_conf, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw,
         const gpu_primitive_attr_t *gpu_attr) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -82,8 +82,8 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
     dst_buf.remove_dim(dim_ids[reduce_dim_idx]);
 
     // Move ic interior
-    dst_buf.remove_dim(bnorm_dims_t::ic);
-    dst_buf.append_block(bnorm_dims_t::ic, dims[1]);
+    dst_buf.remove_dim(dims::ic);
+    dst_buf.append_block(dims::ic, dims[1]);
 
     rt_conf.reduce_dim_stride = 1;
     size_t num_blocks_reduced = 0;
@@ -113,7 +113,7 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
     CHECK(calc_stat_dispatch_config.register_buffer(src_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(dst_buf));
     CHECK(calc_stat_dispatch_config.define_dim_index(
-            "IC_DIM", bnorm_dims_t::ic, rt_conf.ic));
+            "IC_DIM", dims::ic, rt_conf.ic));
 
     compute::reusable_dispatch_t dispatch_calc_stat;
     auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
@@ -123,12 +123,12 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
 
     compute::named_buffer_t reduce_buffer("BUFFER", dst_buf);
     for (const auto &dim : dim_ids) {
-        if (dim != bnorm_dims_t::ic) reduce_buffer.remove_dim(dim);
+        if (dim != dims::ic) reduce_buffer.remove_dim(dim);
     }
 
     // Reduce kernels dispatch to ic dim only
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
-            intel_engine, {bnorm_dims_t::ic});
+            intel_engine, {dims::ic});
     CHECK(reduce_stat_dispatch_config.register_buffer(reduce_buffer));
 
     compute::reusable_dispatch_t dispatch_reduce_stat;
@@ -139,11 +139,11 @@ static status_t init_calculate_stats_conf(reusable_bnorm_params_t &conf,
     return status::success;
 }
 
-static status_t init_conf_common(reusable_bnorm_params_t &conf,
-        reusable_bnorm_runtime_params_t &rt_conf,
-        const batch_normalization_pd_t *pd, const memory_desc_wrapper &data_mdw,
-        impl::engine_t *engine, const gpu_primitive_attr_t *&gpu_attr) {
-    const batch_normalization_desc_t &bd = *pd->desc();
+static status_t init_conf_common(reusable_params_t &conf,
+        reusable_runtime_params_t &rt_conf, const pd_t *pd,
+        const memory_desc_wrapper &data_mdw, impl::engine_t *engine,
+        const gpu_primitive_attr_t *&gpu_attr) {
+    const desc_t &bd = *pd->desc();
 
     conf = utils::zero<decltype(conf)>();
     conf.data_type = data_mdw.data_type();
@@ -171,8 +171,7 @@ static status_t init_conf_common(reusable_bnorm_params_t &conf,
     compute::reusable_dispatch_config_t dispatch_config(
             intel_engine, std::move(dims));
     CHECK(dispatch_config.register_buffer(buffer));
-    CHECK(dispatch_config.define_dim_index(
-            "IC_DIM", bnorm_dims_t::ic, rt_conf.ic));
+    CHECK(dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic));
 
     compute::reusable_dispatch_t dispatch;
     CHECK(dispatch_config.generate(
@@ -183,8 +182,8 @@ static status_t init_conf_common(reusable_bnorm_params_t &conf,
     return status::success;
 }
 
-static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const reusable_bnorm_params_t &conf) {
+static void init_kernel_ctx_common(
+        compute::kernel_ctx_t &kernel_ctx, const reusable_params_t &conf) {
     kernel_ctx.set_data_type(conf.data_type, false);
 
     kernel_ctx.define_int("WITH_RELU", conf.with_relu);
@@ -205,8 +204,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     conf.reduce_stat_params.def_kernel_macros(kernel_ctx, "REDUCE");
 }
 
-status_t reusable_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_mdw(src_md());
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
@@ -215,13 +213,13 @@ status_t reusable_batch_normalization_fwd_t::pd_t::init_conf(
     return status::success;
 }
 
-compute::kernel_ctx_t reusable_bnorm_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     init_kernel_ctx_common(kernel_ctx, *this);
     return kernel_ctx;
 }
 
-void reusable_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void reusable_fwd_t::pd_t::init_scratchpad() {
     if (conf.calculate_stats) {
         size_t reduce_size = static_cast<size_t>(rt_conf.stat_ic);
         size_t stats_size = static_cast<size_t>(rt_conf.ic);
@@ -238,8 +236,7 @@ void reusable_batch_normalization_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t reusable_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
     const auto &rt_conf = pd()->rt_conf;
@@ -357,8 +354,7 @@ status_t reusable_batch_normalization_fwd_t::execute_forward(
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-status_t reusable_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(diff_src_md());
     const auto *gpu_attr
@@ -368,7 +364,7 @@ status_t reusable_batch_normalization_bwd_t::pd_t::init_conf(
     return status::success;
 }
 
-void reusable_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void reusable_bwd_t::pd_t::init_scratchpad() {
     size_t elsize = types::data_type_size(data_type::f32);
     size_t size = static_cast<size_t>(rt_conf.stat_ic);
     auto scratchpad = scratchpad_registry().registrar();
@@ -378,8 +374,7 @@ void reusable_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             elsize, OCL_BUFFER_ALIGNMENT);
 }
 
-status_t reusable_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
     const auto &rt_conf = pd()->rt_conf;

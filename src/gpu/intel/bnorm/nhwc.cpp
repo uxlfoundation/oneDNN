@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/bnorm/nhwc.hpp"
+
 #include "common/experimental.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/bnorm/model.hpp"
@@ -27,13 +28,14 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace bnorm {
+
 using namespace lookup_table;
 using namespace model;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;
 
 static size_t get_slm_buff_size(
-        int ic_block, nhwc_bnorm_params_t &conf, const compute::range_t &lws) {
+        int ic_block, nhwc_params_t &conf, const compute::range_t &lws) {
     // Returns size of SLM buffer of nhwc stat calculation kernels.
     const size_t base_size
             = div_up(ic_block, conf.sub_group_size) * lws.nelems();
@@ -45,7 +47,7 @@ static size_t get_slm_buff_size(
     }
 }
 // Local group size adjustment for calc_stat kernel
-static void adjust_lws_calc_kernel(int ic_block, nhwc_bnorm_params_t &conf,
+static void adjust_lws_calc_kernel(int ic_block, nhwc_params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
         bool large_grf_mode = false) {
     auto *intel_engine = downcast<intel::engine_t *>(engine);
@@ -107,9 +109,8 @@ static int get_reduce_sub_group_count(
     return reduce_sub_group_count;
 }
 
-status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
-        nhwc_bnorm_params_t &conf, impl::engine_t *engine,
-        compute::dispatch_t &dispatch) {
+status_t nhwc_kernel_dispatching(kernel_kind_t kernel, nhwc_params_t &conf,
+        impl::engine_t *engine, compute::dispatch_t &dispatch) {
 
     conf.stat_sp_nblocks
             = rnd_up(conf.sp, conf.stat_sp_block()) / conf.stat_sp_block();
@@ -188,16 +189,16 @@ status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
     return status::success;
 }
 
-static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
+static status_t init_conf_common(nhwc_params_t &conf, offsets_t &off,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const batch_normalization_pd_t *pd, impl::engine_t *engine) {
+        const pd_t *pd, impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
 
-    conf.impl = bn_impl_t::nhwc_opt;
+    conf.impl = impl_t::nhwc_opt;
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
 
@@ -277,25 +278,24 @@ static status_t init_conf_common(nhwc_bnorm_params_t &conf, offsets_t &off,
 
     // Set dispatching
     dispatch_calc_stat = intel_engine->create_dispatch();
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             calc_mean_ker, conf, engine, dispatch_calc_stat));
     dispatch_reduce_stat = intel_engine->create_dispatch();
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             reduce_stats_fwd_ker, conf, engine, dispatch_reduce_stat));
 
     dispatch = intel_engine->create_dispatch(data_mdw.md_);
-    CHECK(nhwc_bnorm_kernel_dispatching(
-            default_fwd_ker, conf, engine, dispatch));
+    CHECK(nhwc_kernel_dispatching(default_fwd_ker, conf, engine, dispatch));
 
     dispatch_reduce_aux = intel_engine->create_dispatch(data_mdw.md_);
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             reduce_aux_init_ker, conf, engine, dispatch_reduce_aux));
 
     return status::success;
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const nhwc_bnorm_params_t &conf,
+        const nhwc_params_t &conf,
         const compute::dispatch_t &dispatch_calc_stat,
         const compute::dispatch_t &dispatch_reduce_stat,
         const compute::dispatch_t &dispatch,
@@ -365,19 +365,18 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t nhwc_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
 
-status_t nhwc_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t nhwc_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }
 
-void nhwc_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void nhwc_fwd_t::pd_t::init_scratchpad() {
     if (conf.calculate_stats) {
         size_t size_coeff = sizeof(double) / sizeof(float);
         size_t size = 2 * size_coeff * conf.reduce_stat_nblocks
@@ -397,8 +396,7 @@ void nhwc_batch_normalization_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t nhwc_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     const auto &conf = pd()->conf;
@@ -569,19 +567,18 @@ status_t nhwc_batch_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t nhwc_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t nhwc_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
 
-status_t nhwc_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t nhwc_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }
 
-void nhwc_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void nhwc_bwd_t::pd_t::init_scratchpad() {
     size_t size = 2 * rnd_up(conf.ic, conf.sub_group_size)
             * (1 + conf.reduce_stat_nblocks);
     auto scratchpad = scratchpad_registry().registrar();
@@ -589,8 +586,7 @@ void nhwc_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t nhwc_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
 

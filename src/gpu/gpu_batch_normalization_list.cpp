@@ -52,24 +52,24 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_BNORM_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::xe_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::simple_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::reusable_batch_normalization_fwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::ref_batch_normalization_fwd_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::xe_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::simple_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::reusable_fwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::ref_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_batch_normalization_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_batch_normalization_fwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_batch_normalization_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::xe_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::simple_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::reusable_batch_normalization_bwd_t)
-        GPU_INSTANCE_INTEL(intel::bnorm::ref_batch_normalization_bwd_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::bnorm::nhwc_reusable_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::nhwc_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::xe_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::simple_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::reusable_bwd_t)
+        GPU_INSTANCE_INTEL(intel::bnorm::ref_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_batch_normalization_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_batch_normalization_bwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_batch_normalization_bwd_t)

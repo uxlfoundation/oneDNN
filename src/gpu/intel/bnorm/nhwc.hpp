@@ -18,7 +18,7 @@
 #define GPU_INTEL_BNORM_NHWC_HPP
 
 #include "common/primitive.hpp"
-#include "gpu/gpu_batch_normalization_pd.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/bnorm/lookup_table.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
@@ -44,23 +44,21 @@ enum kernel_kind_t {
     reusable_reduce_stats_fwd_ker
 };
 
-struct nhwc_bnorm_params_t : public lookup_table::params_t {
+struct nhwc_params_t : public lookup_table::params_t {
     bool use_workaround = false;
     float expected_time_ms;
     compute::range_t calc_adj_lws;
 };
 
-status_t nhwc_bnorm_kernel_dispatching(kernel_kind_t kernel,
-        nhwc_bnorm_params_t &conf, impl::engine_t *engine,
-        compute::dispatch_t &dispatch);
+status_t nhwc_kernel_dispatching(kernel_kind_t kernel, nhwc_params_t &conf,
+        impl::engine_t *engine, compute::dispatch_t &dispatch);
 
-struct nhwc_batch_normalization_fwd_t : public primitive_t {
+struct nhwc_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_fwd_pd_t {
-        using gpu_batch_normalization_fwd_pd_t::
-                gpu_batch_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), nhwc_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), nhwc_fwd_t);
 
         const char *impl_name() const {
             return conf.use_stats_one_pass ? "ocl:nhwc:onepass" : "ocl:nhwc";
@@ -118,7 +116,7 @@ struct nhwc_batch_normalization_fwd_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        nhwc_bnorm_params_t conf;
+        nhwc_params_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -205,13 +203,12 @@ private:
     compute::kernel_t reduce_final_kernel_;
 };
 
-struct nhwc_batch_normalization_bwd_t : public primitive_t {
+struct nhwc_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_bwd_pd_t {
-        using gpu_batch_normalization_bwd_pd_t::
-                gpu_batch_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(impl_name(), nhwc_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), nhwc_bwd_t);
 
         const char *impl_name() const { return "ocl:nhwc"; }
 
@@ -262,7 +259,7 @@ struct nhwc_batch_normalization_bwd_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        nhwc_bnorm_params_t conf;
+        nhwc_params_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;

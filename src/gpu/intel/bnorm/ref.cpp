@@ -17,9 +17,6 @@
 #include "gpu/intel/bnorm/ref.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_traits.hpp"
-#include "common/math_utils.hpp"
-#include "common/scratchpad.hpp"
 #include "common/type_helpers.hpp"
 
 using namespace dnnl::impl::memory_tracking::names;
@@ -30,7 +27,7 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-static void init_calculate_stats_conf(bnorm_conf_t &conf,
+static void init_calculate_stats_conf(conf_t &conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat, impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw) {
@@ -75,11 +72,10 @@ static void init_calculate_stats_conf(bnorm_conf_t &conf,
     dispatch_reduce_stat.generate();
 }
 
-static void init_conf_common(bnorm_conf_t &conf, compute::dispatch_t &dispatch,
-        offsets_t &off, const batch_normalization_pd_t *pd,
-        const memory_desc_wrapper &data_mdw, impl::engine_t *engine) {
-
-    const batch_normalization_desc_t &bd = *pd->desc();
+static void init_conf_common(conf_t &conf, compute::dispatch_t &dispatch,
+        offsets_t &off, const pd_t *pd, const memory_desc_wrapper &data_mdw,
+        impl::engine_t *engine) {
+    const desc_t &bd = *pd->desc();
     const int ndims = data_mdw.ndims();
 
     conf = utils::zero<decltype(conf)>();
@@ -121,7 +117,7 @@ static void init_conf_common(bnorm_conf_t &conf, compute::dispatch_t &dispatch,
 }
 
 static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const bnorm_conf_t &conf, const compute::dispatch_t &dispatch,
+        const conf_t &conf, const compute::dispatch_t &dispatch,
         const offsets_t &off) {
     kernel_ctx.set_data_type(conf.data_type, false);
 
@@ -156,7 +152,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     def_dispatch(kernel_ctx, dispatch);
 }
 
-void ref_batch_normalization_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+void ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_mdw(src_md());
     init_conf_common(conf, dispatch, off, this, data_mdw, engine);
 
@@ -166,8 +162,7 @@ void ref_batch_normalization_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 }
 
-void ref_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+void ref_fwd_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("IS_FWD", 1);
 
     if (conf.calculate_stats) {
@@ -177,7 +172,7 @@ void ref_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
     init_kernel_ctx_common(kernel_ctx, conf, dispatch, off);
 }
 
-void ref_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void ref_fwd_t::pd_t::init_scratchpad() {
     if (conf.calculate_stats) {
 
         size_t size = 2 * static_cast<size_t>(conf.stat_ic);
@@ -188,8 +183,7 @@ void ref_batch_normalization_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t ref_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     const auto &conf = pd()->conf;
@@ -286,7 +280,7 @@ status_t ref_batch_normalization_fwd_t::execute_forward(
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-void ref_batch_normalization_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+void ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(diff_src_md());
     init_conf_common(conf, dispatch, off, this, data_mdw, engine);
@@ -295,8 +289,7 @@ void ref_batch_normalization_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
             conf, dispatch_calc_stat, dispatch_reduce_stat, engine, data_mdw);
 }
 
-void ref_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+void ref_bwd_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 
     def_dispatch(kernel_ctx, dispatch_calc_stat);
     def_dispatch(kernel_ctx, dispatch_reduce_stat);
@@ -304,7 +297,7 @@ void ref_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
     init_kernel_ctx_common(kernel_ctx, conf, dispatch, off);
 }
 
-void ref_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void ref_bwd_t::pd_t::init_scratchpad() {
     size_t size = 2 * static_cast<size_t>(conf.stat_ic);
 
     auto scratchpad = scratchpad_registry().registrar();
@@ -312,8 +305,7 @@ void ref_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t ref_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t ref_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     const auto &conf = pd()->conf;

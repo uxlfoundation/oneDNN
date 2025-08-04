@@ -182,7 +182,7 @@ void dump_kernel_descriptor(kernel_desc_t &desc) {
             to_string(desc.input_location).c_str(),
             to_string(desc.output_location).c_str());
 }
-std::string to_string(const nhwc_bnorm_params_t &conf) {
+std::string to_string(const nhwc_params_t &conf) {
     std::string s;
 #define STR_PARAM(p) \
     s += std::to_string(conf.p##_param().is_overridden()) + ","; \
@@ -246,8 +246,8 @@ float get_vectorization_factor(
 }
 
 // Get number of calls
-int get_ncalls(model_params_t &p, const nhwc_bnorm_params_t &conf,
-        kernel_kind_t kernel) {
+int get_ncalls(
+        model_params_t &p, const nhwc_params_t &conf, kernel_kind_t kernel) {
     if (conf.is_forward) {
         switch (kernel) {
             case default_fwd_ker: return 1;
@@ -278,8 +278,8 @@ int get_ncalls(model_params_t &p, const nhwc_bnorm_params_t &conf,
     }
 }
 
-size_t get_kernel_input_size(const model_params_t &p,
-        const nhwc_bnorm_params_t &conf, const kernel_desc_t &desc) {
+size_t get_kernel_input_size(const model_params_t &p, const nhwc_params_t &conf,
+        const kernel_desc_t &desc) {
     size_t nbytes = 0;
     const size_t tensor_sz = conf.sp * conf.ic * conf.elsz;
     const size_t stat_vect_sz = conf.ic * sizeof(float);
@@ -333,7 +333,7 @@ size_t get_kernel_input_size(const model_params_t &p,
     return nbytes;
 }
 size_t get_kernel_output_size(const model_params_t &p,
-        const nhwc_bnorm_params_t &conf, const kernel_desc_t &desc) {
+        const nhwc_params_t &conf, const kernel_desc_t &desc) {
     size_t nbytes = 0;
     const size_t tensor_sz = conf.sp * conf.ic * conf.elsz;
     const size_t stat_vect_sz = conf.ic * sizeof(float);
@@ -377,7 +377,7 @@ size_t get_kernel_output_size(const model_params_t &p,
     return nbytes;
 }
 // Expected data location depending on arch, size and kernel kind.
-void get_expected_data_location(model_params_t &p, nhwc_bnorm_params_t &conf,
+void get_expected_data_location(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, kernel_desc_t &desc) {
     desc.input_location = HBM;
     desc.output_location = HBM;
@@ -559,7 +559,7 @@ bool is_reduction_kernel(const kernel_kind_t &kernel) {
             || kernel == reusable_reduce_stats_fwd_ker;
 }
 
-void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
+void get_estimated_kernel_time(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, kernel_desc_t &desc) {
     const data_location_t input_location = desc.input_location;
     const data_location_t output_location = desc.output_location;
@@ -634,7 +634,7 @@ void get_estimated_kernel_time(model_params_t &p, nhwc_bnorm_params_t &conf,
             read_ns, write_ns, desc.time_ns);
 }
 
-void init_ker_desc(model_params_t &p, nhwc_bnorm_params_t &conf,
+void init_ker_desc(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, kernel_desc_t &desc,
         bool reusable_version, const kernel_kind_t kernel) {
     desc.kernel = kernel;
@@ -648,7 +648,7 @@ void dump_kernel_desc(kernel_desc_t &desc) {
             desc.reusable_version ? "yes" : "no", desc.ncalls);
 }
 
-void init_kernel_descriptors(model_params_t &p, nhwc_bnorm_params_t &conf,
+void init_kernel_descriptors(model_params_t &p, nhwc_params_t &conf,
         const hw_params_t &hw_params, bool reusable_version) {
     kernel_desc_t desc;
 
@@ -727,20 +727,19 @@ void dump_params(std::vector<model_params_t> &params) {
     }
 }
 
-status_t get_estimated_hw_utilization(model_params_t &p,
-        nhwc_bnorm_params_t &conf, hw_params_t &hw_params,
-        kernel_desc_t &desc) {
+status_t get_estimated_hw_utilization(model_params_t &p, nhwc_params_t &conf,
+        hw_params_t &hw_params, kernel_desc_t &desc) {
     auto *intel_engine = downcast<intel::engine_t *>(hw_params.engine);
     compute::dispatch_t dry_run_dispatch // to get auto-generated lws
             = intel_engine->create_dispatch();
 
-    nhwc_bnorm_params_t conf_dry_run {conf};
+    nhwc_params_t conf_dry_run {conf};
     conf_dry_run.set_use_fused_atomics_reduction(p.use_fused_atomics_reduction);
     conf_dry_run.set_ic_block(p.ic_block);
     conf_dry_run.set_stat_sp_block(p.stat_sp_block);
     conf_dry_run.set_update_sp_block(p.stat_sp_block);
     conf_dry_run.set_update_sp_unroll(1);
-    CHECK(nhwc_bnorm_kernel_dispatching(
+    CHECK(nhwc_kernel_dispatching(
             desc.kernel, conf_dry_run, hw_params.engine, dry_run_dispatch));
 
     auto nd_range = dry_run_dispatch.nd_range();
@@ -754,9 +753,8 @@ status_t get_estimated_hw_utilization(model_params_t &p,
     return status::success;
 }
 
-status_t make_kernel_perf_estimation(model_params_t &p,
-        nhwc_bnorm_params_t &conf, kernel_desc_t &desc,
-        hw_params_t &hw_params) {
+status_t make_kernel_perf_estimation(model_params_t &p, nhwc_params_t &conf,
+        kernel_desc_t &desc, hw_params_t &hw_params) {
 
     CHECK(get_estimated_hw_utilization(p, conf, hw_params, desc));
 
@@ -772,7 +770,7 @@ status_t make_kernel_perf_estimation(model_params_t &p,
 // Make execution time estimation based on data amount, data location and
 // HW utilization
 status_t make_perf_estimations(
-        model_params_t &p, nhwc_bnorm_params_t &conf, hw_params_t &hw_params) {
+        model_params_t &p, nhwc_params_t &conf, hw_params_t &hw_params) {
     for (auto &desc : p.kernel_descs) {
         CHECK(make_kernel_perf_estimation(p, conf, desc, hw_params));
     }
@@ -781,9 +779,8 @@ status_t make_perf_estimations(
 
 // Get the best set of bnorm parameters based on performance model
 // common for nhwc-optimized and nhwc-reusable implementations
-status_t get_params_by_model(nhwc_bnorm_params_t &conf,
-        const batch_normalization_pd_t *pd, hw_params_t &hw_params,
-        bool reusable_version) {
+status_t get_params_by_model(nhwc_params_t &conf, const pd_t *pd,
+        hw_params_t &hw_params, bool reusable_version) {
 
     // Create set of possible parameters
     std::vector<model_params_t> params;

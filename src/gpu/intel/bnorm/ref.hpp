@@ -17,9 +17,7 @@
 #ifndef GPU_INTEL_BNORM_REF_HPP
 #define GPU_INTEL_BNORM_REF_HPP
 
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_batch_normalization_pd.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -29,13 +27,12 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-struct ref_batch_normalization_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_fwd_pd_t {
-        using gpu_batch_normalization_fwd_pd_t::
-                gpu_batch_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -89,7 +86,7 @@ struct ref_batch_normalization_fwd_t : public primitive_t {
         void init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        bnorm_conf_t conf;
+        conf_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -138,13 +135,12 @@ private:
     compute::kernel_t calculate_mean_variance_kernel_;
 };
 
-struct ref_batch_normalization_bwd_t : public primitive_t {
+struct ref_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_batch_normalization_bwd_pd_t {
-        using gpu_batch_normalization_bwd_pd_t::
-                gpu_batch_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -188,7 +184,7 @@ struct ref_batch_normalization_bwd_t : public primitive_t {
         void init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        bnorm_conf_t conf;
+        conf_t conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;

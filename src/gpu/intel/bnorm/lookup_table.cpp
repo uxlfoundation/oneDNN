@@ -45,7 +45,7 @@ void maybe_override_bn_conf_params_table(
     assert(!conf.bn_tuning);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
-    static bnorm_lookup_table_t table(conf.use_stats_one_pass);
+    static lookup_table_t table(conf.use_stats_one_pass);
     auto *s_params = table.find(conf, gpu_arch);
     if (s_params) {
         conf.override_set(s_params, /*is_env*/ false);
@@ -78,9 +78,9 @@ gpu_arch_t to_hw(const std::string &s) {
     return gpu_arch_t::unknown;
 }
 
-bn_impl_t to_impl(const std::string &s) {
+impl_t to_impl(const std::string &s) {
 #define CASE(name) \
-    if (s == #name) return bn_impl_t::name;
+    if (s == #name) return impl_t::name;
     CASE(ref)
     CASE(simple)
     CASE(reusable)
@@ -89,7 +89,7 @@ bn_impl_t to_impl(const std::string &s) {
     CASE(nhwc_reusable)
 #undef CASE
     gpu_error_not_expected();
-    return bn_impl_t::unknown;
+    return impl_t::unknown;
 }
 
 int_filter_t::int_filter_t(const std::string &s) : cmp_op_(op_kind_t::_eq) {
@@ -162,8 +162,7 @@ static std::vector<std::pair<char, normalization_flags_t>> all_patterns = {
 };
 
 static bool is_nhwc_impl(const params_t &conf) {
-    return conf.impl == bn_impl_t::nhwc_reusable
-            || conf.impl == bn_impl_t::nhwc_opt;
+    return conf.impl == impl_t::nhwc_reusable || conf.impl == impl_t::nhwc_opt;
 }
 
 normalization_flags_t flags_from_string(const std::string &s) {
@@ -184,7 +183,7 @@ std::string string_from_flags(normalization_flags_t flags) {
     return ret;
 }
 
-bnorm_problem_filter_t::bnorm_problem_filter_t(const std::string &s) {
+problem_filter_t::problem_filter_t(const std::string &s) {
     auto parts = split(s, " ");
     for (auto &part : parts) {
         auto sub_parts = split(part, "=");
@@ -213,7 +212,7 @@ bnorm_problem_filter_t::bnorm_problem_filter_t(const std::string &s) {
     }
 }
 
-bool bnorm_problem_filter_t::matches(
+bool problem_filter_t::matches(
         const params_t &conf, const gpu_arch_t &gpu_arch) const {
     if (gpu_arch != hw_) return false;
     if (!matches_impl(conf)) return false;
@@ -225,7 +224,7 @@ bool bnorm_problem_filter_t::matches(
     return true;
 }
 
-bool bnorm_problem_filter_t::matches_dir(const params_t &conf) const {
+bool problem_filter_t::matches_dir(const params_t &conf) const {
     // --dir={FWD_D [default], FWD_I, BWD_D, BWD_DW}
     if (dir_.empty()) return conf.is_forward;
     if (dir_ == "FWD_D" || dir_ == "FWD_I" || dir_ == "fwd_d"
@@ -240,7 +239,7 @@ bool bnorm_problem_filter_t::matches_dir(const params_t &conf) const {
     return false;
 }
 
-bool bnorm_problem_filter_t::matches_tag(const params_t &conf) const {
+bool problem_filter_t::matches_tag(const params_t &conf) const {
     // --tag={nchw [default], ...}
     bool default_tag = !(conf.is_nhwc || conf.is_blocked_16c
             || conf.is_blocked_16n16c || conf.is_blocked_32n16c);
@@ -259,11 +258,11 @@ bool bnorm_problem_filter_t::matches_tag(const params_t &conf) const {
     return false;
 }
 
-bool bnorm_problem_filter_t::matches_impl(const params_t &conf) const {
+bool problem_filter_t::matches_impl(const params_t &conf) const {
     return conf.impl == impl_;
 }
 
-bool bnorm_problem_filter_t::matches_desc(const params_t &conf) const {
+bool problem_filter_t::matches_desc(const params_t &conf) const {
     return is_nhwc_impl(conf) ? get_nhwc_desc_str(conf) == nhwc_desc_
                               : get_desc_str(conf) == desc_;
 }
@@ -274,7 +273,7 @@ bool bnorm_problem_filter_t::matches_desc(const params_t &conf) const {
 // Env varibles BN_TUNING and BN_PARAMS must be set.
 // BN_PARAMS syntax is {key=val,...}, for example
 // BN_PARAMS="far=0 mv=4 sspb=14 uspb=4 uspu=4"
-bnorm_lookup_table_t::bnorm_lookup_table_t(bool use_stat_one_pass) {
+lookup_table_t::lookup_table_t(bool use_stat_one_pass) {
     if (use_stat_one_pass) {
         // clang-format off
         // nhwc_opt version
@@ -600,7 +599,7 @@ std::string get_nhwc_desc_str(const params_t &conf) {
     return oss.str();
 }
 
-const char *bnorm_lookup_table_t::find(
+const char *lookup_table_t::find(
         const params_t &conf, const gpu_arch_t &gpu_arch) const {
     const auto &key
             = is_nhwc_impl(conf) ? get_nhwc_desc_str(conf) : get_desc_str(conf);
@@ -612,8 +611,8 @@ const char *bnorm_lookup_table_t::find(
     return nullptr;
 }
 
-void bnorm_lookup_table_t::add(const char *s_prb, const char *s_params) {
-    bnorm_problem_filter_t filter(s_prb);
+void lookup_table_t::add(const char *s_prb, const char *s_params) {
+    problem_filter_t filter(s_prb);
     map_[filter.key()].push_back(entry_t {filter, s_params});
 }
 

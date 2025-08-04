@@ -27,10 +27,9 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
-static status_t init_conf_common(bnorm_conf_t &conf, offsets_t &off,
-        const batch_normalization_pd_t *pd) {
+static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd) {
 
-    const batch_normalization_desc_t &bd = *pd->desc();
+    const desc_t &bd = *pd->desc();
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
     const dim_idx_t ndims = into<dim_idx_t>(data_mdw.ndims());
@@ -68,7 +67,7 @@ static status_t init_conf_common(bnorm_conf_t &conf, offsets_t &off,
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const bnorm_conf_t &conf, const compute::dispatch_t &dispatch_calc_stat,
+        const conf_t &conf, const compute::dispatch_t &dispatch_calc_stat,
         const compute::dispatch_t &dispatch_reduce_stat,
         const compute::dispatch_t &dispatch, const offsets_t &off) {
     kernel_ctx.set_data_type(conf.data_type);
@@ -109,8 +108,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t simple_batch_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t simple_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     CHECK(init_conf_common(conf, off, this));
 
     // This implementation optimizes the stat calculation - skip it if we're not calculating stats
@@ -202,7 +200,7 @@ status_t simple_batch_normalization_fwd_t::pd_t::init_conf(
     return status::success;
 }
 
-status_t simple_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t simple_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     CHECK(init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, off));
@@ -210,7 +208,7 @@ status_t simple_batch_normalization_fwd_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-void simple_batch_normalization_fwd_t::pd_t::init_scratchpad() {
+void simple_fwd_t::pd_t::init_scratchpad() {
     size_t size = 2 * conf.stat_ic;
 
     auto scratchpad = scratchpad_registry().registrar();
@@ -218,8 +216,7 @@ void simple_batch_normalization_fwd_t::pd_t::init_scratchpad() {
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t simple_batch_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t simple_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
 
@@ -282,8 +279,7 @@ status_t simple_batch_normalization_fwd_t::execute_forward(
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t simple_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     CHECK(init_conf_common(conf, off, this));
     intel::engine_t *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -344,7 +340,7 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_conf(
     return status::unimplemented;
 }
 
-status_t simple_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t simple_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     CHECK(init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, off));
@@ -356,7 +352,7 @@ status_t simple_batch_normalization_bwd_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-void simple_batch_normalization_bwd_t::pd_t::init_scratchpad() {
+void simple_bwd_t::pd_t::init_scratchpad() {
     size_t size = 2 * conf.reduce_stat_nblocks * conf.ic;
 
     auto scratchpad = scratchpad_registry().registrar();
@@ -364,8 +360,7 @@ void simple_batch_normalization_bwd_t::pd_t::init_scratchpad() {
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t simple_batch_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t simple_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
 

@@ -60,7 +60,8 @@ struct ref_t : public primitive_t {
                             | smask_t::scales_groups | smask_t::dropout
                             | smask_t::zero_points_data_type
                             | smask_t::zero_points_groups | smask_t::post_ops
-                            | smask_t::fpmath_mode | smask_t::rounding_mode),
+                            | smask_t::fpmath_mode | smask_t::rounding_mode
+                            | smask_t::placeholder),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -209,7 +210,8 @@ struct ref_t : public primitive_t {
                 // all other groups should be divisible by the precomp group
                 return (sgw % pgs == 0) && (sgs % pgs == 0) && (zgw % pgs == 0);
             }
-            return true;
+            return pl.has_default_values(DNNL_ARG_WEIGHTS)
+                    && pl.has_default_values(DNNL_ARG_DST);
         }
     };
 
@@ -233,10 +235,8 @@ struct ref_t : public primitive_t {
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
 
-        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
-            // TODO: check if this is still a good name.
-            kernel_ctx.define_int("WITH_USER_PRECOMP_SRC_ZPOINTS", 1);
-        }
+        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC))
+            kernel_ctx.define_int("WITH_SRC_GROUP_SUMS", 1);
 
         bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
         if (!runtime_dims) {
@@ -268,16 +268,12 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC),
                 "SRC_SCALES");
-        if (!pd()->attr()->placeholder_.has_default_values(DNNL_ARG_SRC)) {
-            // TODO: check if `SRC_ZP` is still a good name.
-            def_data_type(kernel_ctx,
-                    pd()->attr()->placeholder_.get_data_type(DNNL_ARG_SRC),
-                    "SRC_ZP");
-        } else {
-            def_data_type(kernel_ctx,
-                    pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
-                    "SRC_ZP");
-        }
+        def_data_type(kernel_ctx,
+                pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
+                "SRC_ZP");
+        def_data_type(kernel_ctx,
+                pd()->attr()->placeholder_.get_data_type(DNNL_ARG_SRC),
+                "SRC_GS");
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
                 "DST_SCALES");

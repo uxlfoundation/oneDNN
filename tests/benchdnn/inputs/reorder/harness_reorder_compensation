@@ -3,7 +3,7 @@
 --sdt=f32
 --ddt=s8
 --attr-scales=, \
-    src:common:2, \
+    src:common:2+dst:common:2, \
     src:per_dim_0, \
     src:per_dim_1, \
     src:per_dim_01, \

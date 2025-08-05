@@ -452,17 +452,6 @@ struct concat_conf_t {
     bool use_large_index = true;
 };
 
-// Shuffle
-struct shuffle_conf_t {
-    data_type_t data_type;
-    dim_idx_t axis;
-    dim_t transpose_row;
-    dim_t transpose_col;
-    compute::dispatch_t dispatch;
-    memory_desc_info_t src_md_info;
-    memory_desc_info_t dst_md_info;
-};
-
 void set_default_pool_conf(pool_conf_t &conf, const pooling_desc_t &desc,
         const memory_desc_t &src_md, const memory_desc_t &dst_md,
         const primitive_attr_t &attr);

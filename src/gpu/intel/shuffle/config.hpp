@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,38 +14,34 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/generic/shuffle_by_reorder.hpp"
-#include "gpu/gpu_impl_list.hpp"
+#ifndef GPU_INTEL_SHUFFLE_CONFIG_HPP
+#define GPU_INTEL_SHUFFLE_CONFIG_HPP
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/shuffle/ref.hpp"
-#endif
-
-#ifdef GENERIC_SYCL_KERNELS_ENABLED
-#include "gpu/generic/sycl/ref_shuffle.hpp"
-#endif
+#include "gpu/gpu_shuffle_pd.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
+namespace shuffle {
 
-namespace {
+using pd_t = gpu_shuffle_pd_t;
 
-// clang-format off
-constexpr impl_list_item_t impl_list[] = REG_SHUFFLE_P({
-        GPU_INSTANCE_GENERIC(generic::shuffle_by_reorder_t)
-        GPU_INSTANCE_INTEL(intel::shuffle::ref_t)
-        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_shuffle_t)
-        nullptr,
-});
-// clang-format on
-} // namespace
+struct conf_t {
+    data_type_t data_type;
+    dim_idx_t axis;
+    dim_t transpose_row;
+    dim_t transpose_col;
+    compute::dispatch_t dispatch;
+    memory_desc_info_t src_md_info;
+    memory_desc_info_t dst_md_info;
+};
 
-const impl_list_item_t *get_shuffle_impl_list(const shuffle_desc_t *desc) {
-    UNUSED(desc);
-    return impl_list;
-}
-
+} // namespace shuffle
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

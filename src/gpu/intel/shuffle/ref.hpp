@@ -19,9 +19,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "gpu/gpu_shuffle_pd.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/shuffle/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,12 +28,12 @@ namespace gpu {
 namespace intel {
 namespace shuffle {
 
-struct ref_shuffle_t : public primitive_t {
+struct ref_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_shuffle_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace format_tag;
@@ -67,7 +66,7 @@ struct ref_shuffle_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        shuffle_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 

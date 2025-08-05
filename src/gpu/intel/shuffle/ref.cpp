@@ -24,7 +24,7 @@ namespace shuffle {
 
 using namespace format_tag;
 
-status_t ref_shuffle_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper input_mdw(is_fwd() ? src_md() : diff_dst_md());
     conf.data_type = input_mdw.data_type();
     const memory_desc_wrapper output_mdw(is_fwd() ? dst_md() : diff_src_md());
@@ -54,8 +54,7 @@ status_t ref_shuffle_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_shuffle_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(conf.data_type);
     kernel_ctx.define_int("AXIS", conf.axis);
     kernel_ctx.define_int("TRANSPOSE_ROW", conf.transpose_row);
@@ -69,7 +68,7 @@ status_t ref_shuffle_t::pd_t::init_kernel_ctx(
 }
 
 template <dnnl_format_tag_t tag>
-status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
+status_t ref_t::execute_(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
     auto &src = pd()->is_fwd() ? CTX_IN_STORAGE(DNNL_ARG_SRC)
@@ -89,7 +88,7 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     status = parallel_for(ctx, nd_range, kernel_, arg_list);
     return status;
 }
-template status_t ref_shuffle_t::execute_<any>(const exec_ctx_t &ctx) const;
+template status_t ref_t::execute_<any>(const exec_ctx_t &ctx) const;
 
 } // namespace shuffle
 } // namespace intel

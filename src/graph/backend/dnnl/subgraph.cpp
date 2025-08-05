@@ -126,7 +126,7 @@ std::string layout2str(const dnnl::memory::desc &md) {
         const auto &strs = md.get_strides();
         std::copy(strs.begin(), strs.end(), strides);
 
-        utils::simultaneous_sort(strides, ou_blocks, dim_chars, ndims,
+        impl::utils::simultaneous_sort(strides, ou_blocks, dim_chars, ndims,
                 [](dim_t a, dim_t b) { return b - a; });
 
         blk_tag = std::string(dim_chars);

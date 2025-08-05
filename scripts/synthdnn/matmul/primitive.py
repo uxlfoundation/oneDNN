@@ -254,5 +254,5 @@ class Primitive:
         self.dims = dims
         self.quantization = quantization
 
-    def benchdnn_str(self):
-        return f"{self.kind.benchdnn_str()} {self.quantization} {self.dims}"
+    def benchdnn_str(self, optional_args = ""):
+        return f"{optional_args}{self.kind.benchdnn_str()} {self.quantization} {self.dims}"

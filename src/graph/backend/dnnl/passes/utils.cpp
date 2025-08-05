@@ -684,9 +684,10 @@ bool inverse_mul_scales(std::shared_ptr<op_t> &scale_op) {
     VCHECK_UTILS(scale_op->num_inputs() <= 1
                     && !scale_op->has_attr(op_attr::with_runtime_scales),
             false, "scale_op should be static and have only one input value.");
-    auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
-    scales = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
-    scale_op->set_attr(op_attr::scales, scales);
+    const auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
+    const auto scales_inv
+            = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
+    scale_op->set_attr(op_attr::scales, scales_inv);
     return true;
 }
 

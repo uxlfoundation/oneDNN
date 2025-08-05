@@ -2219,13 +2219,14 @@ status_t fuse_reciprocal_mul_to_div(std::shared_ptr<subgraph_t> &sg) {
             float alpha = 0.f;
             if (cur_op->has_attr(op_attr::alpha))
                 alpha = cur_op->get_attr<float>(op_attr::alpha);
-            if (!utils::compare_float(alpha, 1.f)) return false;
+            if (alpha != 1.f) return false;
 
             // check attribute beta
             float beta = 0.f;
             if (cur_op->has_attr(op_attr::beta))
                 beta = cur_op->get_attr<float>(op_attr::beta);
-            if (!utils::compare_float(beta, -1.f)) return false;
+            if (beta != -1.f) return false;
+
             return true;
         };
 

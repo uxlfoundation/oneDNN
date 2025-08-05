@@ -50,14 +50,6 @@ inline std::pair<bool, int64_t> try_reverse_axis(
     return std::make_pair(true, new_axis);
 }
 
-inline bool compare_float(
-        float ref, float given, float rtol = 1e-5f, float atol = 1e-6f) {
-    const float diff = std::abs(given - ref);
-    const float bigger
-            = std::abs(ref) > std::abs(given) ? std::abs(ref) : std::abs(given);
-    return diff <= rtol * bigger + atol;
-}
-
 inline std::vector<int32_t> cast_to_int32(const std::vector<int64_t> &vec) {
     return fmap(vec, [](int64_t e) { return static_cast<int32_t>(e); });
 }

@@ -18,8 +18,8 @@
 #define GPU_INTEL_GNORM_REF_HPP
 
 #include "common/group_normalization_pd.hpp"
+#include "gpu/intel/gnorm/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,13 +27,13 @@ namespace gpu {
 namespace intel {
 namespace gnorm {
 
-struct ref_group_normalization_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
 
-    struct pd_t : public group_normalization_fwd_pd_t {
-        using group_normalization_fwd_pd_t::group_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("gnorm_ref:any", ref_group_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         // check data types compatibility and initialize `dispatch`
         status_t init(impl::engine_t *engine);
@@ -67,13 +67,13 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_group_normalization_bwd_t : public primitive_t {
+struct ref_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
 
-    struct pd_t : public group_normalization_bwd_pd_t {
-        using group_normalization_bwd_pd_t::group_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("gnorm_ref:any", ref_group_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         // check data types compatibility and initialize `dispatch`
         status_t init(impl::engine_t *engine);

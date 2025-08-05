@@ -15,7 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/gnorm/ref.hpp"
-#include "common/group_normalization_pd.hpp"
+
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,7 +26,7 @@ namespace gnorm {
 
 // define kernel runtime common environment variables
 static status_t init_kernel_ctx_common(
-        compute::kernel_ctx_t &kernel_ctx, const group_normalization_pd_t *pd) {
+        compute::kernel_ctx_t &kernel_ctx, const pd_t *pd) {
 
     const memory_desc_wrapper input_data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
@@ -64,7 +65,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
 
     using skip_mask_t = primitive_attr_t::skip_mask_t;
@@ -101,7 +102,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_group_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
 
     kernel_ctx.define_int("WITH_SRC_SCALES",
@@ -116,7 +117,7 @@ status_t ref_group_normalization_fwd_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     memory_storage_t &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
@@ -158,7 +159,7 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
 
     // TODO: remove me
@@ -190,7 +191,7 @@ status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_group_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
 
     CHECK(init_kernel_ctx_common(kernel_ctx, this));
@@ -201,7 +202,7 @@ status_t ref_group_normalization_bwd_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_bwd_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->has_zero_dim_memory()) { return status::success; }
 

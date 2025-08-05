@@ -19,6 +19,7 @@
 
 #include "alloc_utils.hpp"
 #include "gemmstone/generator.hpp"
+#include "generator/pieces/copy_plan.hpp"
 #include "hw_utils.hpp"
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
@@ -2145,33 +2146,15 @@ void Generator<hw>::convert(const GRFMultirange &range, Type Told, Type Tnew, co
 
     // Special path: s16->bf16.
     if (Told == Type::s16 && Tnew == Type::bf16) {
-        auto temp = state.ra.alloc_range(range.getLen());
-        int ne = elementsPerGRF<uint32_t>(hw);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, temp[i].f(0)(1), range[i].w(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            if (strategy.systolicAvailable) {
-                shr(ne, temp[i].uw(0)(2), temp[i].ud(), 16);
-            } else {
-                mov(ne, temp[i].bf(0)(2), temp[i].f());
-            }
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].uw(0)(2), temp[i].uw(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            rol(ne, range[i].ud(), range[i].ud(), 16);
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, temp[i].f(0)(1), range[i].w(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            if (strategy.systolicAvailable) {
-                shr(ne, temp[i].uw(0)(2), temp[i].ud(), 16);
-            } else {
-                mov(ne, temp[i].bf(0)(2), temp[i].f());
-            }
-        for (int i = 0; i < range.getLen(); i++)
-            mov(ne, range[i].uw(0)(2), temp[i].uw(0)(2));
-        for (int i = 0; i < range.getLen(); i++)
-            rol(ne, range[i].ud(), range[i].ud(), 16);
-        state.ra.release(temp);
+        int ne = elementsPerGRF<uint16_t>(hw);
+        CopyPlan plan(hw, strategy.systolicAvailable);
+        for(int i = 0; i < range.getLen(); i++) {
+            CopyOperand sOp(range[i]), dOp(sOp);
+            sOp.type = Told.ngen();
+            dOp.type = Tnew.ngen();
+            plan.append(Opcode::mov, ne, dOp, sOp);
+        }
+        copyExecute(std::move(plan), state);
         return;
     }
 

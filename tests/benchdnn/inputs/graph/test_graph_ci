@@ -8,3 +8,4 @@
 --batch=pattern/harness_f8_ci
 --batch=complex_fusion/harness_mha_ci
 --batch=complex_fusion/harness_mlp_ci
+--batch=complex_fusion/harness_bmb_ci

@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-status_t xe_eltwise_jit_params_t::init(impl::engine_t *engine,
+status_t xe_jit_params_t::init(impl::engine_t *engine,
         const memory_desc_wrapper data_d, alg_kind_t alg_kind_) {
     *this = {};
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -63,7 +63,7 @@ status_t xe_eltwise_jit_params_t::init(impl::engine_t *engine,
     return status::success;
 }
 
-compute::kernel_ctx_t xe_eltwise_jit_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
 
     kernel_ctx.set_data_type(data_type);
@@ -80,13 +80,13 @@ compute::kernel_ctx_t xe_eltwise_jit_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t xe_eltwise_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_d(use_dst() ? dst_md() : src_md());
     status_t status = conf.init(engine, data_d, this->desc()->alg_kind);
     return status;
 }
 
-status_t xe_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
+status_t xe_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -112,7 +112,7 @@ status_t xe_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 
     status = parallel_for(ctx, nd_range, kernel_, arg_list);
 
-    if (!gpu_eltwise_fwd_pd_t::eltwise_preserves_zero(
+    if (!fwd_pd_t::eltwise_preserves_zero(
                 pd()->desc()->alg_kind, alpha, beta)) {
         CHECK(ctx.zero_pad_output(DNNL_ARG_DST));
     }
@@ -120,7 +120,7 @@ status_t xe_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t xe_eltwise_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
     const memory_desc_wrapper data_d(data_md());
@@ -132,7 +132,7 @@ status_t xe_eltwise_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return conf.init(engine, data_d, this->desc()->alg_kind);
 }
 
-status_t xe_eltwise_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {
+status_t xe_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
     auto &src = pd()->use_dst() ? CTX_IN_STORAGE(DNNL_ARG_DST)

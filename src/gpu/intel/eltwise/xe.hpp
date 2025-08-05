@@ -17,10 +17,8 @@
 #ifndef GPU_INTEL_ELTWISE_XE_HPP
 #define GPU_INTEL_ELTWISE_XE_HPP
 
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "common/serialization.hpp"
-#include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/intel/eltwise/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -29,8 +27,7 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-struct xe_eltwise_jit_params_t
-    : public trivially_serializable_t<xe_eltwise_jit_params_t> {
+struct xe_jit_params_t : public trivially_serializable_t<xe_jit_params_t> {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         return engine.create_kernel_bundle(
@@ -57,12 +54,12 @@ struct xe_eltwise_jit_params_t
     uint8_t pad0[3] = {};
 };
 
-struct xe_eltwise_fwd_t : public primitive_t {
+struct xe_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_eltwise_fwd_pd_t {
-        using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe:any", xe_eltwise_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe:any", xe_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -96,7 +93,7 @@ struct xe_eltwise_fwd_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
 
-        xe_eltwise_jit_params_t conf;
+        xe_jit_params_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -113,12 +110,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct xe_eltwise_bwd_t : public primitive_t {
+struct xe_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_eltwise_bwd_pd_t {
-        using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe:any", xe_eltwise_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe:any", xe_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -161,7 +158,7 @@ struct xe_eltwise_bwd_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
 
-        xe_eltwise_jit_params_t conf;
+        xe_jit_params_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {

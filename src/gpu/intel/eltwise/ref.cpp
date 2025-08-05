@@ -22,8 +22,8 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-static status_t init_conf_common(ref_eltwise_conf_t &conf,
-        const eltwise_pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(
+        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
     alg_kind_t alg = pd->desc()->alg_kind;
     const bool is_forward = pd->is_fwd();
     const auto &src_md = pd->use_dst() ? pd->dst_md() : pd->src_md();
@@ -63,7 +63,7 @@ static status_t init_conf_common(ref_eltwise_conf_t &conf,
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const ref_eltwise_conf_t &conf, const post_ops_t &post_ops,
+        const conf_t &conf, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     kernel_ctx.set_data_type(conf.data_type);
 
@@ -96,17 +96,17 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_eltwise_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t ref_eltwise_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
 }
 
-status_t ref_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
@@ -129,18 +129,17 @@ status_t ref_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     return large_parallel_for(ctx, nd_range, kernel_, arg_list, 4);
 }
 
-status_t ref_eltwise_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t ref_eltwise_bwd_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
 }
 
-status_t ref_eltwise_bwd_t::execute_backward_dense(
-        const exec_ctx_t &ctx) const {
+status_t ref_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {
 
     auto &src = pd()->use_dst() ? CTX_IN_STORAGE(DNNL_ARG_DST)
                                 : CTX_IN_STORAGE(DNNL_ARG_SRC);

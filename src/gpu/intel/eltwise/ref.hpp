@@ -20,8 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/intel/eltwise/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,29 +29,12 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-// Elementwise
-struct ref_eltwise_conf_t {
-    int ndims;
-    int vector_size;
-    bool with_zero_padding;
-    data_type_t data_type;
-    alg_kind_t alg;
-    bool is_forward;
-    int work_group_size;
-    int sub_group_size;
-    compute::dispatch_t dispatch;
-    memory_desc_info_t data_md_info;
-    memory_desc_info_t data_diff_md_info;
-
-    attr_info_t attr_info;
-};
-
-struct ref_eltwise_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_fwd_pd_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_eltwise_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -93,7 +76,7 @@ struct ref_eltwise_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        ref_eltwise_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -118,12 +101,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_eltwise_bwd_t : public primitive_t {
+struct ref_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public gpu_eltwise_bwd_pd_t {
         using gpu_eltwise_bwd_pd_t::gpu_eltwise_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_eltwise_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -168,7 +151,7 @@ struct ref_eltwise_bwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        ref_eltwise_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {

@@ -145,6 +145,7 @@ Team: @uxlfoundation/onednn-cpu-x64
 | ------------------- | --------------------- | ----------------- | ---------- |
 | Andrey Kalinin      | @ankalinin            | Intel Corporation | Maintainer |
 | Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
+| Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
 | Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |
 | David Eberius       | @davideberius         | Intel Corporation | Code Owner |
 | Dmitriy Ovchinnikov | @inteldimitrius       | Intel Corporation | Code Owner |

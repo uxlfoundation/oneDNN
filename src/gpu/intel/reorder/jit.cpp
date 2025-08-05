@@ -16,17 +16,13 @@
 
 #include "gpu/intel/reorder/jit.hpp"
 
-#include <iostream>
 #include <utility>
 
 #include "common/c_types_map.hpp"
-#include "common/impl_registration.hpp"
 #include "common/utils.hpp"
-#include "common/verbose.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/reorder/jit/config.hpp"
 #include "gpu/intel/reorder/jit/kernel.hpp"
 
@@ -38,8 +34,8 @@ namespace reorder {
 
 using namespace jit;
 
-status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
-        impl::engine_t *src_engine, impl::engine_t *dst_engine) {
+status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
+        impl::engine_t *dst_engine) {
     const auto src_dt = src_md()->data_type;
     const auto dst_dt = dst_md()->data_type;
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -145,7 +141,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     exec_config_t exec_cfg(hw);
     exec_cfg.set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
     exec_cfg.set_simd(16);
-    cfg = std::make_shared<reorder_config_t>(exec_cfg, src_layout, dst_layout);
+    cfg = std::make_shared<config_t>(exec_cfg, src_layout, dst_layout);
     cfg->set_zp_cfg(zp_cfg);
 
     auto count_inner_elems = [&](const layout_t &layout) {
@@ -184,7 +180,7 @@ status_t gen_reorder_t::pd_t::init(impl::engine_t *engine,
     return status::success;
 }
 
-status_t gen_reorder_t::pd_t::init_kernel_info() {
+status_t gen_t::pd_t::init_kernel_info() {
     tensor_config_t tensor_cfg;
     tensor_cfg.add_tensor("src", DNNL_ARG_SRC, true, false,
             cfg->src_layout().user(), cfg->src_layout().user());
@@ -220,20 +216,20 @@ status_t gen_reorder_t::pd_t::init_kernel_info() {
     return status::success;
 }
 
-status_t gen_reorder_t::init(impl::engine_t *engine) {
+status_t gen_t::init(impl::engine_t *engine) {
     CHECK(pd()->maybe_create_zp_precompute_conv(
             zp_precomp_conv_, engine, this));
 
     auto &cfg = *pd()->cfg;
     auto &info = *pd()->kernel_info;
 
-    kernel_ = make_kernel<reorder_kernel_t>(this, engine, cfg, "gen_reorder",
-            info, /*require_dpas=*/false, pd());
+    kernel_ = make_kernel<kernel_t>(this, engine, cfg, "gen_reorder", info,
+            /*require_dpas=*/false, pd());
     if (!kernel_) return status::runtime_error;
     return status::success;
 }
 
-status_t gen_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto &info = *pd()->kernel_info;
 
     std::vector<memory_storage_wrapper_t> storage_list;

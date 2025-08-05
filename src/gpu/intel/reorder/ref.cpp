@@ -25,7 +25,7 @@ namespace reorder {
 
 using namespace dnnl::impl::memory_tracking::names;
 
-status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace format_tag;
     using namespace data_type;
 
@@ -73,8 +73,7 @@ status_t ref_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     return status;
 }
 
-status_t ref_reorder_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     using namespace format_tag;
     using namespace data_type;
 
@@ -108,7 +107,7 @@ status_t ref_reorder_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-void ref_reorder_t::pd_t::init_scratchpad() {
+void ref_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     if (conf.subbyte_pack) {
         scratchpad.book(memory_tracking::names::key_reorder_space, conf.nelems,
@@ -126,7 +125,7 @@ void ref_reorder_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t ref_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t ref_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_TO);
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(

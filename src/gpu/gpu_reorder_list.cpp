@@ -51,10 +51,10 @@ using namespace dnnl::impl::data_type;
 constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
         GPU_REORDER_INSTANCE_INTEL(intel::rnn::rnn_weights_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_GENERIC(generic::direct_copy_t::pd_t)
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::gen_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::custom_reorder_t::pd_t) // for specific tensor shapes
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::generic_reorder_t::pd_t)// fast and quite generic
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::ref_reorder_t::pd_t)    // slow but fits every use case
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::gen_t::pd_t)
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::custom_t::pd_t) // for specific tensor shapes
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::generic_t::pd_t)// fast and quite generic
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::ref_t::pd_t)    // slow but fits every use case
         GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_lt_t::pd_t)
         GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_AMD(amd::miopen_reorder_t::pd_t)

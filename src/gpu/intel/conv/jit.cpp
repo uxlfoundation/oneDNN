@@ -39,8 +39,6 @@ namespace conv {
 namespace jit {
 
 using namespace intel::jit;
-using reorder::jit::reorder_config_t;
-using reorder::jit::reorder_kernel_t;
 
 struct conv_pd_data_t {
     conv_config_t pd_cfg;
@@ -186,23 +184,25 @@ public:
                             break;
                         }
                         case kernel_id_t::pre_reorder: {
-                            reorder_config_t reorder_cfg(cfg.exec_cfg(),
+                            reorder::jit::config_t reorder_cfg(cfg.exec_cfg(),
                                     tensor_cfg.user_layout(info.arg_name(1)),
                                     tensor_cfg.compute_layout(
                                             info.arg_name(1)));
                             tmp_kernels.push_back(
-                                    make_kernel<reorder_kernel_t>(primitive,
+                                    make_kernel<reorder::jit::kernel_t>(
+                                            primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
                                             cfg.is_dpas_or_dpasw_fma()));
                             break;
                         }
                         case kernel_id_t::post_reorder: {
-                            reorder_config_t reorder_cfg(cfg.exec_cfg(),
+                            reorder::jit::config_t reorder_cfg(cfg.exec_cfg(),
                                     tensor_cfg.compute_layout(info.arg_name(0)),
                                     tensor_cfg.user_layout(info.arg_name(0)));
                             tmp_kernels.push_back(
-                                    make_kernel<reorder_kernel_t>(primitive,
+                                    make_kernel<reorder::jit::kernel_t>(
+                                            primitive,
                                             /*register_kernel=*/false, engine,
                                             reorder_cfg, "conv_reorder", info,
                                             cfg.is_dpas_or_dpasw_fma()));
@@ -406,7 +406,7 @@ private:
                     reorder_info.register_user_arg(user_buf, user_arg_key,
                             /*is_input=*/true);
                     add_compute_arg(reorder_info, compute_buf, false);
-                    reorder_config_t reorder_cfg(
+                    reorder::jit::config_t reorder_cfg(
                             cfg.exec_cfg(), t.user_layout, t.compute_layout);
                     reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }
@@ -416,7 +416,7 @@ private:
                     add_compute_arg(reorder_info, compute_buf, true);
                     reorder_info.register_user_arg(user_buf, user_arg_key,
                             /*is_input=*/false);
-                    reorder_config_t reorder_cfg(
+                    reorder::jit::config_t reorder_cfg(
                             cfg.exec_cfg(), t.compute_layout, t.user_layout);
                     reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }

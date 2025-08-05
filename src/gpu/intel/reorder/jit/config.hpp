@@ -30,7 +30,7 @@ using namespace intel::jit;
 extern pvar_t pvars[];
 
 // Parameters for kernel generation.
-class reorder_config_t : public prim_config_t {
+class config_t : public prim_config_t {
 public:
     std::string str() const override {
         ostringstream_t ss;
@@ -52,7 +52,7 @@ public:
     const std::vector<tile_t> &tiles() const { return tiles_; }
     const std::array<tile_t, 3> &grid() const { return grid_; }
 
-    reorder_config_t(const exec_config_t &ec, layout_t src, layout_t dst);
+    config_t(const exec_config_t &ec, layout_t src, layout_t dst);
 
 private:
     std::vector<tile_t> tiles_;

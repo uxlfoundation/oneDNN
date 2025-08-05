@@ -50,7 +50,7 @@ void split_tile(const tile_t &wg_tile, const tile_t &iter_tile,
     }
 }
 
-void reorder_ir_builder_t::build() {
+void ir_builder_t::build() {
     const auto &wg_block = cfg_.tiles().front();
 
     tile_t iter_tile, loop_tile;
@@ -70,8 +70,7 @@ void reorder_ir_builder_t::build() {
     gpu_error_not_expected();
 }
 
-bool reorder_ir_builder_t::try_build(
-        const tile_t &iter_tile, const tile_t &loop_tile) {
+bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
     constraint_set_t init_cset;
 
     const auto &padded_dims = cfg_.padded_dims().get();

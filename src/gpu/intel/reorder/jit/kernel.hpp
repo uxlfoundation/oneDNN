@@ -27,17 +27,17 @@ namespace intel {
 namespace reorder {
 namespace jit {
 
-class reorder_kernel_t : public ir_kernel_t {
+class kernel_t : public ir_kernel_t {
 public:
-    reorder_kernel_t(const reorder_config_t &cfg,
-            const std::string &kernel_name, const kernel_info_t &kernel_info,
-            bool require_dpas, const primitive_desc_t *pd = nullptr)
+    kernel_t(const config_t &cfg, const std::string &kernel_name,
+            const kernel_info_t &kernel_info, bool require_dpas,
+            const primitive_desc_t *pd = nullptr)
         : ir_kernel_t(kernel_info.iface(kernel_name), cfg.exec_cfg(),
                 kernel_info.nd_range().local_range(), require_dpas,
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;
-        reorder_ir_builder_t builder(cfg, kernel_info, attr, dst_md);
+        ir_builder_t builder(cfg, kernel_info, attr, dst_md);
         const stmt_t &body = builder.stmt();
         generate_from_ir(body);
     }

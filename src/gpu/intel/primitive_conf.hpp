@@ -419,27 +419,6 @@ struct reduction_conf_t {
     attr_info_t attr_info;
 };
 
-// Reorder
-enum custom_kernel_t {
-    none,
-    dense_vector,
-    unroll_16b,
-    unroll_16b16c,
-    unroll_16a16b,
-    plain_to_ABcd84a42b,
-    vectorize_last_dim,
-    plain_to_ABxx8ayb,
-    plain_xFxE_to_abcdef,
-    transpose8x8,
-    transpose16x16,
-    reorder_nchw,
-    unaligned_sizes,
-    reorder_alt,
-    vectorize_groups,
-    pad_innermost,
-    xb_to_xab_xba
-};
-
 // Resampling
 struct resampling_conf_t {
     dim_idx_t ndims;
@@ -457,52 +436,6 @@ struct resampling_conf_t {
     attr_info_t attr_info;
     compute::dispatch_t dispatch;
 };
-
-struct block_desc_t {
-    dim_idx_t dim_idx;
-    int blk_size;
-    int step_size;
-};
-
-#define LOOP_NEST_LEVEL 4
-struct vectorize_last_dim_t {
-    dim_idx_t vector_dim;
-    int rescale_coeff;
-    // composition of data within 16-item packet
-    block_desc_t src_vct[LOOP_NEST_LEVEL];
-    block_desc_t dst_vct[LOOP_NEST_LEVEL];
-    // dimensions to loop over when accessing packets defined above
-    block_desc_t src_blk[LOOP_NEST_LEVEL];
-    block_desc_t dst_blk[LOOP_NEST_LEVEL];
-    int src_blk_limits[MAX_NDIMS];
-    int dst_blk_limits[MAX_NDIMS];
-    int src_vect_limit;
-    int dst_vect_limit;
-};
-
-struct vectorize_group_t {
-    dim_idx_t vector_dim;
-    dim_idx_t src_loop_dim;
-    dim_idx_t dst_loop_dim;
-    int group_size;
-    int innermost_size;
-};
-
-struct xb_to_xab_xba_t {
-    int vd;
-    dim_t blk_size;
-    dim_idx_t src_blk_dim;
-    dim_t src_blk_coeff;
-    dim_idx_t dst_blk_dim;
-    dim_t dst_blk_coeff;
-};
-
-union reorder_implementation {
-    vectorize_group_t vg;
-    xb_to_xab_xba_t ab;
-    vectorize_last_dim_t vld;
-};
-
 struct quantization_t : public gpu::quantization_t {
 public:
     using gpu::quantization_t::quantization_t;
@@ -517,26 +450,6 @@ public:
 
     void define_macros(
             compute::kernel_ctx_t &kernel_ctx, const std::string &name) const;
-};
-
-struct reorder_conf_t {
-    bool has_padding;
-
-    quantization_t src_quant, dst_quant;
-    sum_quantization_t sum_quant;
-
-    custom_kernel_t implementation;
-    int ndims;
-    size_t nelems;
-    bool subbyte_pack = false;
-
-    compute::dispatch_t dispatch;
-
-    int sub_group_size;
-    memory_desc_info_t src_md_info;
-    memory_desc_info_t dst_md_info;
-
-    reorder_implementation aux_data;
 };
 
 // Concat

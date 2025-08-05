@@ -22,6 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/intel/primitive.hpp"
+#include "gpu/intel/reorder/config.hpp"
 #include "gpu/intel/reorder/jit/config.hpp"
 
 namespace dnnl {
@@ -30,17 +31,17 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
-class gen_reorder_t : public primitive_t {
+class gen_t : public primitive_t {
 public:
-    struct pd_t : public gpu_reorder_pd_t {
-        using gpu_reorder_pd_t::gpu_reorder_pd_t;
+    struct pd_t : public reorder::pd_t {
+        using reorder::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ir", gen_reorder_t);
+        DECLARE_COMMON_PD_T("jit:ir", gen_t);
 
         status_t init(impl::engine_t *, impl::engine_t *, impl::engine_t *);
         status_t init_kernel_info();
 
-        std::shared_ptr<jit::reorder_config_t> cfg;
+        std::shared_ptr<jit::config_t> cfg;
         std::shared_ptr<jit::kernel_info_t> kernel_info;
 
     private:

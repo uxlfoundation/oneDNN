@@ -21,10 +21,8 @@
 #include "common/memory.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_reorder_pd.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reorder/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,12 +30,12 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
-struct ref_reorder_t : public primitive_t {
+struct ref_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reorder_pd_t {
-        using gpu_reorder_pd_t::gpu_reorder_pd_t;
+    struct pd_t : public reorder::pd_t {
+        using reorder::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_reorder_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
@@ -120,7 +118,7 @@ struct ref_reorder_t : public primitive_t {
         void init_scratchpad();
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        reorder_conf_t conf;
+        conf_t conf;
 
     private:
         DECLARE_GPU_REORDER_CREATE();

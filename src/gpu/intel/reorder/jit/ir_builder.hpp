@@ -29,11 +29,10 @@ namespace intel {
 namespace reorder {
 namespace jit {
 
-class reorder_ir_builder_t : public ir_builder_t {
+class ir_builder_t : public intel::jit::ir_builder_t {
 public:
-    reorder_ir_builder_t(const reorder_config_t &cfg,
-            const kernel_info_t &kernel_info, const primitive_attr_t *attr,
-            const memory_desc_t *dst_md)
+    ir_builder_t(const config_t &cfg, const kernel_info_t &kernel_info,
+            const primitive_attr_t *attr, const memory_desc_t *dst_md)
         : cfg_(cfg), kernel_info_(kernel_info), attr_(attr), dst_md_(dst_md) {
         build();
     }
@@ -44,7 +43,7 @@ private:
     void build() override;
     bool try_build(const tile_t &iter_tile, const tile_t &loop_tile);
 
-    const reorder_config_t &cfg_;
+    const config_t &cfg_;
     const kernel_info_t &kernel_info_;
     const primitive_attr_t *attr_;
     const memory_desc_t *dst_md_;

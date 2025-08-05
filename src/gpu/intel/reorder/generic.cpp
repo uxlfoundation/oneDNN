@@ -767,7 +767,7 @@ bool fill_conf_vld(const memory_desc_wrapper &src,
     return true;
 }
 
-status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t generic_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace format_tag;
 
     size_t memlimit_bytes;
@@ -861,7 +861,7 @@ status_t generic_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     return status;
 }
 
-status_t generic_reorder_t::pd_t::init_kernel_ctx(
+status_t generic_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace format_tag;
 
@@ -952,7 +952,7 @@ status_t generic_reorder_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-void generic_reorder_t::pd_t::init_scratchpad() {
+void generic_t::pd_t::init_scratchpad() {
     if (conf.src_quant.with_scale()) {
         auto scratchpad = scratchpad_registry().registrar();
         scratchpad.book(memory_tracking::names::key_reorder_src_scales,
@@ -967,7 +967,7 @@ void generic_reorder_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t generic_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t generic_t::execute(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
 

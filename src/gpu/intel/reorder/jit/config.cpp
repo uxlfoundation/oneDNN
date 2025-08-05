@@ -31,8 +31,7 @@ pvar_t pvars[] = {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"},
 static_assert(sizeof(pvars) == DNNL_MAX_NDIMS * sizeof(pvar_t),
         "Incorrect number of pvars for reorder");
 
-reorder_config_t::reorder_config_t(
-        const exec_config_t &ec, layout_t src, layout_t dst) {
+config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     set_exec_cfg(ec);
 
     jit::normalize(src, dst);
@@ -85,7 +84,7 @@ reorder_config_t::reorder_config_t(
     init_thread_group_grid(grid_);
 }
 
-compute::nd_range_t reorder_config_t::nd_range() const {
+compute::nd_range_t config_t::nd_range() const {
     compute::range_t gws = compute::range_t::empty();
     compute::range_t lws = compute::range_t::empty();
     for (dim_idx_t i = 0; i < compute::range_t::max_ndims; ++i) {

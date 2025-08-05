@@ -18,6 +18,7 @@
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/reorder/config.hpp"
 #include "gpu/intel/reorder/custom.hpp"
 
 #include "common/utils.hpp"
@@ -315,7 +316,7 @@ bool fits_3ch(const memory_desc_wrapper &src_mdw,
     return true;
 }
 
-custom_kernel_t select_kernel(const reorder_conf_t &conf,
+custom_kernel_t select_kernel(const conf_t &conf,
         const memory_desc_wrapper &src_mdw, const memory_desc_wrapper &dst_mdw,
         const compute::device_info_t *dev_info) {
     using namespace format_tag;
@@ -358,7 +359,7 @@ custom_kernel_t select_kernel(const reorder_conf_t &conf,
     if (src_mdw.matches_one_of_tag(nhwc) && dst_mdw.matches_one_of_tag(nchw)
             && padded_dims[last] % 16 == 0
             && dim_is_div_by_16_or_less_than_16(dst_mdw, 1)) {
-        return custom_kernel_t::reorder_nchw;
+        return custom_kernel_t::nchw;
     }
     if (src_mdw.matches_one_of_tag(nhwc) && dst_mdw.matches_one_of_tag(nchw)
             && dim_is_div_by_16_or_less_than_16(dst_mdw, 1)) {
@@ -456,14 +457,13 @@ custom_kernel_t select_kernel(const reorder_conf_t &conf,
             && src_mdw.offset0() == 0 && dst_mdw.offset0() == 0
             && is_alt_faster_than_ref(src_mdw, dst_mdw, dev_info)
             && !has_padding_or_multi_scale_quant) {
-        return custom_kernel_t::reorder_alt;
+        return custom_kernel_t::alt;
     }
 
     return custom_kernel_t::none;
 }
 
-void custom_reorder_t::pd_t::alt_defines(
-        compute::kernel_ctx_t &kernel_ctx) const {
+void custom_t::pd_t::alt_defines(compute::kernel_ctx_t &kernel_ctx) const {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     size_t ndims = src_mdw.ndims();
@@ -488,7 +488,7 @@ void custom_reorder_t::pd_t::alt_defines(
     kernel_ctx.define_int("BLK", ndims > 3 ? sdim[last - 3] : 1);
 }
 
-void custom_reorder_t::pd_t::alt_gen() {
+void custom_t::pd_t::alt_gen() {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     auto sdim = src_mdw.dims();
@@ -506,7 +506,7 @@ void custom_reorder_t::pd_t::alt_gen() {
     conf.dispatch.generate_override(gws, lws);
 }
 
-status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace format_tag;
 
     const memory_desc_wrapper src_mdw(src_md());
@@ -549,33 +549,33 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             | conf.dst_quant.scale_mask() | conf.dst_quant.zp_mask();
 
     switch (conf.implementation) {
-        case none: return status_t::dnnl_unimplemented;
-        case reorder_alt:
+        case custom_kernel_t::none: return status_t::dnnl_unimplemented;
+        case custom_kernel_t::alt:
             // special handling with dispatcher override
             conf.sub_group_size = 16;
             break;
-        case dense_vector:
+        case custom_kernel_t::dense_vector:
             // see special handling below
             conf.sub_group_size = 16;
             break;
-        case unroll_16b:
+        case custom_kernel_t::unroll_16b:
             conf.sub_group_size = 16;
             vect_dim = 1;
             vect_size = 16;
             break;
-        case unroll_16b16c:
+        case custom_kernel_t::unroll_16b16c:
             conf.sub_group_size = 16;
             blocks[2] = 16;
             vect_dim = 1;
             vect_size = 16;
             break;
-        case unroll_16a16b:
+        case custom_kernel_t::unroll_16a16b:
             conf.sub_group_size = 16;
             blocks[0] = 16;
             vect_dim = 1;
             vect_size = 16;
             break;
-        case plain_to_ABcd84a42b: {
+        case custom_kernel_t::plain_to_ABcd84a42b: {
             auto &blk = dst_mdw.blocking_desc();
             int inner_block = into<int>(blk.inner_blks[blk.inner_nblks - 1]);
             int outer_block = into<int>(blk.inner_blks[blk.inner_nblks - 2]);
@@ -585,12 +585,12 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             vect_dim = 3;
             vect_size = conf.sub_group_size;
         } break;
-        case xb_to_xab_xba:
+        case custom_kernel_t::xb_to_xab_xba:
             fill_conf_xab_xba(src_mdw, dst_mdw, mask, conf.aux_data.ab,
                     vect_dim, vect_size, &blocks[0]);
             conf.sub_group_size = vect_size;
             break;
-        case vectorize_last_dim:
+        case custom_kernel_t::vectorize_last_dim:
             vect_dim = last;
             vect_size = (last_dim % 16 == 0) ? 16 : 8;
             if (!may_use_sg8 && vect_size == 8) {
@@ -604,7 +604,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
                 blocks[dim] = temp_block;
             }
             break;
-        case pad_innermost: {
+        case custom_kernel_t::pad_innermost: {
             auto last_dim_src = get_Nth_last_dim_or_block(src_mdw);
             auto nextlast_dim_src = get_Nth_last_dim_or_block(src_mdw, 1);
             auto last_dim_dst = get_Nth_last_dim_or_block(dst_mdw);
@@ -646,7 +646,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             vect_size = conf.sub_group_size;
         } break;
 
-        case vectorize_groups: {
+        case custom_kernel_t::vectorize_groups: {
             auto last_dim_src = get_Nth_last_dim_or_block(src_mdw);
             auto nextlast_dim_src = get_Nth_last_dim_or_block(src_mdw, 1);
             auto last_dim_dst = get_Nth_last_dim_or_block(dst_mdw);
@@ -704,42 +704,44 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
             blocks[conf.aux_data.vg.src_loop_dim] = group;
             blocks[conf.aux_data.vg.dst_loop_dim] = group;
         } break;
-        case plain_to_ABxx8ayb:
+        case custom_kernel_t::plain_to_ABxx8ayb:
             conf.sub_group_size = 16;
             blocks[0] = 8;
             vect_dim = last;
             vect_size = 16;
             break;
-        case plain_xFxE_to_abcdef:
+        case custom_kernel_t::plain_xFxE_to_abcdef:
             conf.sub_group_size = 16;
             blocks[5] = nstl::min(padded_dims[conf.ndims - 1], dnnl_dim_t(16));
             vect_dim = 4;
             vect_size = 16;
             break;
-        case transpose8x8:
+        case custom_kernel_t::transpose8x8:
             if (!may_use_sg8) { return status_t::dnnl_unimplemented; }
             conf.sub_group_size = 8;
             blocks[get_Nth_last_dim_or_block(dst_mdw).idx] = 8;
             vect_dim = get_Nth_last_dim_or_block(src_mdw).idx;
             vect_size = 8;
             break;
-        case transpose16x16:
+        case custom_kernel_t::transpose16x16:
             conf.sub_group_size = 16;
             blocks[get_Nth_last_dim_or_block(dst_mdw).idx] = 16;
             vect_dim = get_Nth_last_dim_or_block(src_mdw).idx;
             vect_size = 16;
             break;
-        case reorder_nchw:
+        case custom_kernel_t::nchw:
             conf.sub_group_size = 16;
             blocks[1] = nstl::min(padded_dims[1], dnnl_dim_t(16));
             vect_dim = 3;
             vect_size = 16;
             break;
-        case unaligned_sizes: blocks[1] = padded_dims[1]; break;
+        case custom_kernel_t::unaligned_sizes:
+            blocks[1] = padded_dims[1];
+            break;
     }
 
     // special case for dense_vector kernel - treat tensors as flat 1D vectors
-    if (conf.implementation == dense_vector) {
+    if (conf.implementation == custom_kernel_t::dense_vector) {
         conf.dispatch.define_dim("D0", 0, conf.nelems, 16);
         CHECK(conf.dispatch.vectorize_dim("D0", 16));
     } else {
@@ -760,7 +762,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    if (conf.implementation == reorder_alt) {
+    if (conf.implementation == custom_kernel_t::alt) {
         alt_gen();
     } else {
         conf.dispatch.generate();
@@ -768,7 +770,7 @@ status_t custom_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     return status;
 }
 
-status_t custom_reorder_t::pd_t::init_kernel_ctx(
+status_t custom_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace format_tag;
 
@@ -788,13 +790,13 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
 
     // the 'unaligned_sizes' kernel uses the same implementation in .cl
     // the difference is in sizes of blocks[]
-    if (conf.implementation == unaligned_sizes) {
+    if (conf.implementation == custom_kernel_t::unaligned_sizes) {
         kernel_ctx.define_int("UNALIGNED", 1);
     }
     kernel_ctx.define_int("SUB_GROUP_SIZE", conf.sub_group_size);
 
     kernel_ctx.define_int("PAD_FILL_ZERO", conf.has_padding);
-    if (conf.implementation == dense_vector) {
+    if (conf.implementation == custom_kernel_t::dense_vector) {
         kernel_ctx.add_option("-Dcl_intel_subgroups_char");
         kernel_ctx.define_int("USE_DENSE_VECT", 1);
     }
@@ -834,18 +836,20 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
         kernel_ctx.define_int("DST_16C16B", 1);
     }
 
-    if (conf.implementation == reorder_alt) { alt_defines(kernel_ctx); }
-    if (conf.implementation == plain_xFxE_to_abcdef)
+    if (conf.implementation == custom_kernel_t::alt) {
+        alt_defines(kernel_ctx);
+    }
+    if (conf.implementation == custom_kernel_t::plain_xFxE_to_abcdef)
         kernel_ctx.define_int("PLAIN_xFxE_TO_ABCDEF", 1);
 
-    if (conf.implementation == plain_to_ABcd84a42b) {
+    if (conf.implementation == custom_kernel_t::plain_to_ABcd84a42b) {
         kernel_ctx.define_int("PLAIN_TO_ABCD84A42B", 1);
         compute::nd_range_t nd_range = conf.dispatch.nd_range();
         const auto &lws = nd_range.local_range();
         if (!lws) return status::runtime_error;
         kernel_ctx.define_int("SG_PER_WG", lws.nelems() / conf.sub_group_size);
     }
-    if (conf.implementation == xb_to_xab_xba) {
+    if (conf.implementation == custom_kernel_t::xb_to_xab_xba) {
         kernel_ctx.define_int("XAB_XBA", 1);
         compute::nd_range_t nd_range = conf.dispatch.nd_range();
         const auto &lws = nd_range.local_range();
@@ -859,11 +863,11 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
         kernel_ctx.define_int("XB_TO_XAB", conf.aux_data.ab.vd);
     }
 
-    if (conf.implementation == vectorize_last_dim) {
+    if (conf.implementation == custom_kernel_t::vectorize_last_dim) {
         kernel_ctx.define_int("VECTORIZE_LAST_DIM", 1);
     }
 
-    if (conf.implementation == pad_innermost) {
+    if (conf.implementation == custom_kernel_t::pad_innermost) {
         kernel_ctx.define_int("PAD_INNERMOST", 1);
         kernel_ctx.define_int(
                 "VECT_DIM", conf.aux_data.vg.vector_dim); //useless
@@ -891,34 +895,34 @@ status_t custom_reorder_t::pd_t::init_kernel_ctx(
                         ? dst_mdw.blocking_desc().strides[last_dim_dst.idx]
                         : 1);
     }
-    if (conf.implementation == vectorize_groups) {
+    if (conf.implementation == custom_kernel_t::vectorize_groups) {
         kernel_ctx.define_int("VECTORIZE_GROUPS", 1);
         kernel_ctx.define_int("VECT_DIM", conf.aux_data.vg.vector_dim);
         kernel_ctx.define_int("SRC_LOOP_DIM", conf.aux_data.vg.src_loop_dim);
         kernel_ctx.define_int("DST_LOOP_DIM", conf.aux_data.vg.dst_loop_dim);
         kernel_ctx.define_int("GROUP", conf.aux_data.vg.group_size);
     }
-    if (conf.implementation == plain_to_ABxx8ayb) {
+    if (conf.implementation == custom_kernel_t::plain_to_ABxx8ayb) {
         kernel_ctx.define_int("PLAIN_TO_AB_XX_8AYB", 1);
         kernel_ctx.define_int(
                 "BLK_L", innermost_block(dst_mdw.md_->format_desc.blocking));
     }
 
-    if (conf.implementation == transpose8x8
-            || conf.implementation == transpose16x16) {
+    if (conf.implementation == custom_kernel_t::transpose8x8
+            || conf.implementation == custom_kernel_t::transpose16x16) {
         kernel_ctx.define_int("TRANSPOSE_NXN", 1);
         kernel_ctx.define_int(
                 "DST_BLOCK_DIM", get_Nth_last_dim_or_block(src_mdw).idx);
     }
 
-    if (conf.implementation == reorder_nchw) {
+    if (conf.implementation == custom_kernel_t::nchw) {
         kernel_ctx.define_int("REORDER_NCHW", 1);
     }
 
     return status::success;
 }
 
-void custom_reorder_t::pd_t::init_scratchpad() {
+void custom_t::pd_t::init_scratchpad() {
     if (conf.src_quant.with_scale()) {
         auto scratchpad = scratchpad_registry().registrar();
         scratchpad.book(memory_tracking::names::key_reorder_src_scales,
@@ -933,7 +937,7 @@ void custom_reorder_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t custom_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t custom_t::execute(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
 

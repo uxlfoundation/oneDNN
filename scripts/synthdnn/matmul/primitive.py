@@ -275,8 +275,10 @@ class Primitive:
 
         raise KeyError(f"Cannot get {index} from matmul primitive")
 
-    def benchdnn_str(self):
-        return f"{self.kind.benchdnn_str()} {self.quantization} {self.dims}"
+    def benchdnn_str(self, optional_args=""):
+        return (
+            f"{optional_args}{self.kind.benchdnn_str()} {self.quantization} {self.dims}"
+        )
 
     @staticmethod
     def from_repro(repro_line):

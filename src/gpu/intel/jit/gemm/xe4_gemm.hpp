@@ -52,7 +52,9 @@ struct xe4_gemm_t : public gpu_gemm_t {
         uint32_t stages;
 
         uint32_t slm_size() const {
-            return (bm * bk + bk * bn) * stages
+            uint32_t a_bytes = (bm * bk * ngen::getBytes(a_type)) * stages;
+            uint32_t b_bytes = (bk * bn * ngen::getBytes(b_type)) * stages;
+            return a_bytes + b_bytes
                     + (ngen::getBytes(acc_type()) + ngen::getBytes(c_type))
                     * (bm * bn);
         }

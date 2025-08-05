@@ -93,6 +93,8 @@ public:
                 = desc_.bm * desc_.bn * ngen::getBytes(desc_.acc_type());
         const uint32_t slm_bytes = a_slm_bytes * desc_.stages
                 + b_slm_bytes * desc_.stages + c_slm_bytes + acc_slm_bytes;
+        assert(slm_bytes == desc_.slm_size());
+
         const uint32_t a_slm_off = 0;
         const uint32_t b_slm_off = a_slm_off + a_slm_bytes * desc_.stages;
         const uint32_t c_slm_off = b_slm_off + b_slm_bytes * desc_.stages;

@@ -158,6 +158,7 @@ public:
 #define DNNL_BACKEND_REGISTER_PATTERN_DEF_END }
 
 #define MAX_REPETITION 5
+#define LARGE_PARTITION_MAX_REPETITION 32
 } // namespace pattern
 } // namespace dnnl_impl
 } // namespace graph

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "graph/backend/dnnl/kernels/binary.hpp"
+#include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"
 #include "graph/backend/dnnl/patterns/utils.hpp"
@@ -71,6 +72,48 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, binary_post_ops_fusion)
                 })
         .set_attr<FCreateKernel>("FCreateKernel",
                 []() -> kernel_ptr { return std::make_shared<binary_t>(); });
+
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
+        dnnl, binary_post_ops_matmul_post_ops_fusion)
+        .set_priority(8.9f)
+        .set_kind(partition_kind_t::binary_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    auto binary_op
+                            = pgraph->append_alternation(get_binary_ops());
+
+                    auto post_subgraph = std::make_shared<pb_graph_t>();
+                    auto alternative_post_op
+                            = post_subgraph->append_alternation(
+                                    get_unary_binary_ops());
+                    alternative_post_op->allow_internal_inputs();
+                    post_subgraph->create_input_port(0, alternative_post_op, 0);
+                    post_subgraph->create_output_port(
+                            0, alternative_post_op, 0);
+
+                    auto binary_pattern_last_op
+                            = pgraph->append_repetition(post_subgraph, {0, 0},
+                                    1, LARGE_PARTITION_MAX_REPETITION,
+                                    {in_edge(0, binary_op, 0)});
+                    auto matmul_op = pgraph->append_op(graph::op_kind::MatMul,
+                            in_edges_t {in_edge(0, binary_pattern_last_op, 0)});
+
+                    auto matmul_post_subgraph = std::make_shared<pb_graph_t>();
+                    auto matmul_alternative_post_op
+                            = post_subgraph->append_alternation(
+                                    get_unary_binary_ops());
+                    matmul_alternative_post_op->allow_internal_inputs();
+                    matmul_post_subgraph->create_input_port(
+                            0, matmul_alternative_post_op, 0);
+                    matmul_post_subgraph->create_output_port(
+                            0, matmul_alternative_post_op, 0);
+                    pgraph->append_repetition(matmul_post_subgraph, {0, 0}, 1,
+                            LARGE_PARTITION_MAX_REPETITION,
+                            {in_edge(0, matmul_op, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<larger_partition_kernel_t>();
+        });
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_END
 

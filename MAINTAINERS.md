@@ -149,6 +149,7 @@ Team: @uxlfoundation/onednn-cpu-x64
 | David Eberius      | @davideberius         | Intel Corporation | Code Owner |
 | Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
 | Tomasz Czeszun     | @tczeszun             | Intel Corporation | Code Owner |
+| Yair Obodovsky     | @yair-obodovsky       | Intel Corporation | Code Owner |
 | Xuxin Zeng         | @xuxinzen             | Intel Corporation | Code Owner |
 
 ### AArch64

@@ -18,12 +18,8 @@
 #define GPU_INTEL_BINARY_MULTI_PO_REORDER_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "common/reorder.hpp"
-#include "common/reorder_pd.hpp"
-#include "common/stream.hpp"
-#include "gpu/gpu_binary_pd.hpp"
-#include "gpu/gpu_resource.hpp"
+#include "gpu/intel/binary/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -32,12 +28,12 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-struct multi_po_reorder_binary_t : public primitive_t {
+struct multi_po_reorder_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_binary_pd_t {
-        using gpu_binary_pd_t::gpu_binary_pd_t;
+    struct pd_t : public binary::pd_t {
+        using binary::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("reorder+postops", multi_po_reorder_binary_t);
+        DECLARE_COMMON_PD_T("reorder+postops", multi_po_reorder_t);
 
         status_t init(impl::engine_t *engine) {
             if (!attr()->scales_.has_default_values(DNNL_ARG_SRC_0)

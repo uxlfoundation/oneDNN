@@ -18,10 +18,8 @@
 #define GPU_INTEL_BINARY_SIMPLE_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_binary_pd.hpp"
+#include "gpu/intel/binary/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-struct simple_binary_t : public primitive_t {
+struct simple_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_binary_pd_t {
-        using gpu_binary_pd_t::gpu_binary_pd_t;
+    struct pd_t : public binary::pd_t {
+        using binary::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:simple:any", simple_binary_t);
+        DECLARE_COMMON_PD_T("ocl:simple:any", simple_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -150,7 +148,7 @@ struct simple_binary_t : public primitive_t {
                     : dnnl_alg_kind_undef;
         }
 
-        binary_conf_t conf;
+        conf_t conf;
 
     private:
         bool check_scales_mask() const {

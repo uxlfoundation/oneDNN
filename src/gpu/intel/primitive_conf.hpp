@@ -367,42 +367,6 @@ struct lnorm_conf_t {
     compute::dispatch_t dispatch_fused;
 };
 
-// Binary
-struct binary_conf_t {
-    int ndims, nvect;
-    bool use_unroll_16b, src0_unroll_16b;
-    bool is_plain_layout;
-    bool plain_to_ABcd4a4b;
-    bool isXa16b;
-    data_type_t src0_data_type;
-    data_type_t src1_data_type;
-    data_type_t src2_data_type;
-    data_type_t dst_data_type;
-    alg_kind_t alg;
-    // bool is_ne;
-    bool is_tensor_op;
-    compute::dispatch_t dispatch;
-    int mb_block;
-    int has_tail;
-    int dim0[MAX_NDIMS];
-    int src0_bcast_dims[MAX_NDIMS];
-    int src1_bcast_dims[MAX_NDIMS];
-    int src2_bcast_dims[MAX_NDIMS];
-    bool is_dense;
-    bool is_same_md;
-    bool same_src_dt;
-    bool with_binary_post_op;
-    bool is_src1_broadcast;
-    bool is_src0_blocked;
-
-    memory_desc_info_t src0_md_info;
-    memory_desc_info_t src1_md_info;
-    memory_desc_info_t src2_md_info;
-    memory_desc_info_t dst_md_info;
-
-    attr_info_t attr_info;
-};
-
 // Reduction
 struct reduction_conf_t {
     // Used by reference implementation

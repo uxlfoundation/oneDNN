@@ -15,7 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/binary/simple.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+
+#include "gpu/intel/binary/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -23,7 +24,7 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
     const memory_desc_wrapper src2_d(src_md(2));
@@ -122,7 +123,7 @@ status_t simple_binary_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t simple_binary_t::pd_t::init_kernel_ctx(
+status_t simple_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
@@ -179,7 +180,7 @@ status_t simple_binary_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-status_t simple_binary_t::execute_simple(const exec_ctx_t &ctx) const {
+status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
 

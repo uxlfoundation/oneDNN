@@ -42,9 +42,9 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_BINARY_P({
-        GPU_INSTANCE_INTEL(intel::binary::multi_po_reorder_binary_t)
-        GPU_INSTANCE_INTEL(intel::binary::xe_binary_t)
-        GPU_INSTANCE_INTEL(intel::binary::simple_binary_t)
+        GPU_INSTANCE_INTEL(intel::binary::multi_po_reorder_t)
+        GPU_INSTANCE_INTEL(intel::binary::xe_t)
+        GPU_INSTANCE_INTEL(intel::binary::simple_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_binary_t)
         GPU_INSTANCE_AMD(amd::miopen_binary_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_binary_t)

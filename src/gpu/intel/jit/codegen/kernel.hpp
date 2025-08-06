@@ -211,8 +211,8 @@ public:
         or_(1, BaseGeneratorT::cr0, BaseGeneratorT::cr0, uint16_t(0x14C0));
     }
 
-    void bind_external_vars(
-            const stmt_t &kernel_body, expr_binding_t &expr_binding) {
+    void bind_external_vars(const stmt_t &kernel_body,
+            expr_binding_t &expr_binding, const walk_order_t *walk_order) {
         alloc_manager_t alloc_mgr(kernel_body);
 
         // Bind local IDs.
@@ -278,6 +278,15 @@ public:
                 expr_binding.bind(tg_idx, tg_reg);
                 ra_.claim(tg_reg);
                 grid_ids[i] = tg_reg;
+            } else if (walk_order) {
+                for (auto &b : walk_order->blocks()) {
+                    if (b.grid_id == i) {
+                        ngen::Subregister tg_reg = r0_info.ud(r0_sub_idxs[i]);
+                        ra_.claim(tg_reg);
+                        grid_ids[i] = tg_reg;
+                        break;
+                    }
+                }
             }
         }
 

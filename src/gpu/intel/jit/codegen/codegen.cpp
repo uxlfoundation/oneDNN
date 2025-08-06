@@ -1653,7 +1653,7 @@ void convert_ir_to_ngen(const stmt_t &body, GeneratorT *host,
     host->comment("Prologue");
     host->generate_prologue();
 
-    host->bind_external_vars(body, expr_binding);
+    host->bind_external_vars(body, expr_binding, kernel_grid_walk_order);
     if (kernel_grid_walk_order)
         host->bind_kernel_grid_walk_order(
                 *kernel_grid_walk_order, expr_binding);

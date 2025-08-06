@@ -109,6 +109,7 @@ void parse_result(res_t &res, const char *pstr) {
             break;
         case FAILED: is_failed = true; break;
         case SKIPPED: bs.skipped++; break;
+        case DEFERRED:
         case UNIMPLEMENTED:
             is_failed = true;
             bs.unimplemented++;

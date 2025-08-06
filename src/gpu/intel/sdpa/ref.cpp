@@ -17,7 +17,6 @@
 #include "gpu/intel/sdpa/ref.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
@@ -26,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-status_t ref_sdpa_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);

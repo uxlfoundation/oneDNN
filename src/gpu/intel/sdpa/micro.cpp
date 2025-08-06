@@ -25,6 +25,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/microkernels/shim.hpp"
 
 #include <cstdio>
 #include <iostream>
@@ -57,8 +58,7 @@ bool with_quantize_common(const quant_entry_t &entry) {
 
 } /* anonymous namespace */
 
-status_t update_config_from_devenv_values(
-        sdpa_config_t *config, bool quantized) {
+status_t update_config_from_devenv_values(config_t *config, bool quantized) {
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
@@ -96,7 +96,7 @@ status_t update_config_from_devenv_values(
     return status::success;
 }
 
-status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
@@ -110,7 +110,7 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
-    sdpa_config_t *config = nullptr;
+    config_t *config = nullptr;
     const dim_t thin_q_threshold = 16;
     bool thin_q = (d->queries() <= thin_q_threshold);
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
@@ -164,7 +164,7 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
-    micro_sdpa_ukernel_params_t ukernel_params;
+    micro_ukernel_params_t ukernel_params;
     ukernel_params.unroll_m_kq = config->unroll_m_kq;
     ukernel_params.unroll_n_kq = config->unroll_n_kq;
     ukernel_params.unroll_m_vs = config->unroll_m_vs;
@@ -349,14 +349,14 @@ status_t micro_sdpa_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_sdpa_t::init(impl::engine_t *engine) {
+status_t micro_t::init(impl::engine_t *engine) {
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
     if (!kernel_) return status::runtime_error;
     return status::success;
 }
 
-status_t micro_sdpa_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
 
     auto *pd = this;
@@ -458,7 +458,7 @@ status_t micro_sdpa_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.d_max = pd->d_max();
 
     /* Set up microkernel strategy */
-    const sdpa_config_t config = {conf.ukernel_config.unroll_m_kq,
+    const config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
@@ -507,7 +507,7 @@ status_t micro_sdpa_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_sdpa_params_t::get_kernel_ctx(
+status_t micro_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
 
@@ -591,7 +591,7 @@ status_t micro_sdpa_params_t::get_kernel_ctx(
     micro::Package gemm_kq, gemm_vs;
 
     /* Set up microkernel strategy */
-    const sdpa_config_t config
+    const config_t config
             = {ukernel_config.unroll_m_kq, ukernel_config.unroll_n_kq,
                     ukernel_config.unroll_m_vs, ukernel_config.unroll_n_vs,
                     ukernel_config.wg_m_kq, ukernel_config.wg_n_kq,
@@ -661,7 +661,7 @@ status_t micro_sdpa_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
+status_t micro_t::execute(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
@@ -684,7 +684,7 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     const dim_t K = pd()->desc()->keys();
     const dim_t D = pd()->desc()->head_size();
 
-    const sdpa_config_t config = {conf.ukernel_config.unroll_m_kq,
+    const config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,

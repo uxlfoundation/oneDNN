@@ -25,12 +25,9 @@
 #include "common/math_utils.hpp"
 #include "common/primitive.hpp"
 #include "common/sdpa_pd.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/intel/microkernels/shim.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/sdpa/config.hpp"
 #include "gpu/intel/sdpa/configs.hpp"
 
 namespace dnnl {
@@ -39,7 +36,7 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
+struct micro_params_t : trivially_serializable_t<micro_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names = {"micro_sdpa"};
@@ -93,20 +90,20 @@ struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
     bool use_systolic_ukernel;
     uint8_t padding3[1] = {0};
 
-    micro_sdpa_ukernel_params_t ukernel_config;
+    micro_ukernel_params_t ukernel_config;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_sdpa_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_params_t);
 
-struct micro_sdpa_t : public primitive_t {
+struct micro_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public sdpa_pd_t {
-        using sdpa_pd_t::sdpa_pd_t;
+    struct pd_t : public sdpa::pd_t {
+        using sdpa::pd_t::pd_t;
         static constexpr int mask_mb_index = 0;
         static constexpr int mask_q_index = 2;
         static constexpr int mask_k_index = 3;
         static constexpr int ndims = 4;
 
-        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_sdpa_t);
+        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -287,7 +284,7 @@ struct micro_sdpa_t : public primitive_t {
         }
 
         compute::gpu_arch_t arch() const { return arch_; }
-        micro_sdpa_params_t conf;
+        micro_params_t conf;
 
     private:
         int sg_size_ = 0;

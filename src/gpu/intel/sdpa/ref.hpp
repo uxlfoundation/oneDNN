@@ -17,16 +17,9 @@
 #ifndef GPU_INTEL_SDPA_REF_HPP
 #define GPU_INTEL_SDPA_REF_HPP
 
-#include <assert.h>
-
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "common/sdpa_pd.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
-#include "gpu/gpu_resource.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/sdpa/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct ref_sdpa_t : public primitive_t {
+struct ref_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public sdpa_pd_t {
-        using sdpa_pd_t::sdpa_pd_t;
+    struct pd_t : public sdpa::pd_t {
+        using sdpa::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_sdpa_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

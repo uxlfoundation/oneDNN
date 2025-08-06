@@ -17,8 +17,12 @@
 #ifndef GPU_INTEL_SDPA_CONFIGS_HPP
 #define GPU_INTEL_SDPA_CONFIGS_HPP
 
+#include <iostream>
+
 #include "common/c_types_map.hpp"
 #include "gemmstone/microkernel_provider.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/microkernels/protocol.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -26,14 +30,14 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct sdpa_config_t {
+struct config_t {
     int unroll_m_kq, unroll_n_kq; // Subgroup tile sizes for K*Q GEMM
     int unroll_m_vs, unroll_n_vs; // Subgroup tile sizes for V*S GEMM
     int wg_m_kq, wg_n_kq; // Workgroup configuration for K*Q GEMM
     int wg_m_vs, wg_n_vs; // Workgroup configuration for V*S GEMM
 };
 
-enum class sdpa_property : int {
+enum class property : int {
     none = 0x0,
     second_token = 0x1,
     quantized = 0x2,
@@ -42,26 +46,26 @@ enum class sdpa_property : int {
     f32 = 0x10,
 };
 
-sdpa_property operator|(sdpa_property a, sdpa_property b);
-sdpa_property operator&(sdpa_property a, sdpa_property b);
-sdpa_property operator^(sdpa_property a, sdpa_property b);
-sdpa_property &operator|=(sdpa_property &a, sdpa_property b);
-sdpa_property &operator&=(sdpa_property &a, sdpa_property b);
-sdpa_property &operator^=(sdpa_property &a, sdpa_property b);
+property operator|(property a, property b);
+property operator&(property a, property b);
+property operator^(property a, property b);
+property &operator|=(property &a, property b);
+property &operator&=(property &a, property b);
+property &operator^=(property &a, property b);
 
 struct config_query_t {
     static constexpr int any = -1;
     compute::gpu_arch_t arch;
     int head_size;
     int seq_len = any;
-    sdpa_property property = sdpa_property::none;
+    property prop = property::none;
 
     config_query_t(compute::gpu_arch_t arch_, int head_size_,
-            int seq_len_ = any, sdpa_property property_ = sdpa_property::none)
+            int seq_len_ = any, property property_ = property::none)
         : arch(arch_)
         , head_size(head_size_)
         , seq_len(seq_len_)
-        , property(property_) {}
+        , prop(property_) {}
 };
 
 struct config_criteria_t {
@@ -69,33 +73,33 @@ struct config_criteria_t {
     compute::gpu_arch_t arch;
     int head_size;
     int seq_len = any;
-    sdpa_property property = sdpa_property::none;
+    property prop = property::none;
     config_criteria_t(compute::gpu_arch_t a, int hs)
-        : arch(a), head_size(hs), seq_len(any), property(sdpa_property::none) {}
+        : arch(a), head_size(hs), seq_len(any), prop(property::none) {}
     config_criteria_t(compute::gpu_arch_t a, int hs, int sq)
-        : arch(a), head_size(hs), seq_len(sq), property(sdpa_property::none) {}
-    config_criteria_t(compute::gpu_arch_t a, int hs, sdpa_property prop)
-        : arch(a), head_size(hs), seq_len(any), property(prop) {}
-    config_criteria_t(compute::gpu_arch_t a, int hs, int sq, sdpa_property prop)
-        : arch(a), head_size(hs), seq_len(sq), property(prop) {}
+        : arch(a), head_size(hs), seq_len(sq), prop(property::none) {}
+    config_criteria_t(compute::gpu_arch_t a, int hs, property prop)
+        : arch(a), head_size(hs), seq_len(any), prop(prop) {}
+    config_criteria_t(compute::gpu_arch_t a, int hs, int sq, property prop)
+        : arch(a), head_size(hs), seq_len(sq), prop(prop) {}
 };
 
 struct config_record_t {
     config_criteria_t criteria;
-    sdpa_config_t config;
+    config_t config;
 };
 
 std::ostream &operator<<(std::ostream &s, const config_query_t &q);
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c);
-std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c);
+std::ostream &operator<<(std::ostream &s, const config_t &c);
 
 bool operator==(const config_record_t &key, const config_query_t &query);
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs);
 bool operator<(const config_record_t &lhs, const config_record_t &rhs);
 
-sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32);
+config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
+        bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
+        bool is_f32);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
@@ -218,8 +222,8 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
 static_assert(sizeof(ukernel_serialized_problem_t) == 92,
         "Expected sizeof(ukernel_serialized_problem_t) == 92");
 
-struct micro_sdpa_ukernel_params_t
-    : trivially_serializable_t<micro_sdpa_ukernel_params_t> {
+struct micro_ukernel_params_t
+    : trivially_serializable_t<micro_ukernel_params_t> {
     int unroll_m_kq, unroll_n_kq;
     int unroll_m_vs, unroll_n_vs;
     int wg_m_kq, wg_n_kq;
@@ -232,14 +236,14 @@ struct micro_sdpa_ukernel_params_t
     ukernel_serialized_opts_t opts_vs;
     ukernel_serialized_sizes_t sizes_kq, sizes_vs;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_sdpa_ukernel_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
 
 void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
         micro::GEMMProtocol::Options &opts_kq,
         micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
         gemmstone::SizeParams &sizes_vs,
-        const micro_sdpa_ukernel_params_t &ukernel_config);
+        const micro_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa
 } // namespace intel

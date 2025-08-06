@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,35 +14,23 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
+#ifndef GPU_INTEL_SDPA_CONFIG_HPP
+#define GPU_INTEL_SDPA_CONFIG_HPP
 
-#include "gpu/gpu_impl_list.hpp"
-
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/sdpa/micro.hpp"
-#include "gpu/intel/sdpa/ref.hpp"
-#endif
+#include "common/sdpa_pd.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
+namespace sdpa {
 
-namespace {
+using pd_t = sdpa_pd_t;
 
-// clang-format off
-constexpr impl_list_item_t impl_list[] = REG_SDPA_P({
-        GPU_INSTANCE_INTEL(intel::sdpa::micro_t)
-        GPU_INSTANCE_INTEL_DEVMODE(intel::sdpa::ref_t)
-        nullptr,
-});
-// clang-format on
-} // namespace
-
-const impl_list_item_t *get_sdpa_impl_list(const sdpa_desc_t *desc) {
-    UNUSED(desc);
-    return impl_list;
-}
-
+} // namespace sdpa
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

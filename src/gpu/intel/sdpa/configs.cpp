@@ -15,7 +15,9 @@
 *******************************************************************************/
 
 #include "gpu/intel/sdpa/configs.hpp"
-#include <sstream>
+
+#include <algorithm>
+
 #include "common/c_types_map.hpp"
 
 namespace dnnl {
@@ -24,46 +26,46 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-inline sdpa_property operator|(sdpa_property a, sdpa_property b) {
-    return (sdpa_property)((int)a | (int)b);
+inline property operator|(property a, property b) {
+    return (property)((int)a | (int)b);
 }
-inline sdpa_property operator&(sdpa_property a, sdpa_property b) {
-    return (sdpa_property)((int)a & (int)b);
+inline property operator&(property a, property b) {
+    return (property)((int)a & (int)b);
 }
-inline sdpa_property operator^(sdpa_property a, sdpa_property b) {
-    return (sdpa_property)((int)a ^ (int)b);
+inline property operator^(property a, property b) {
+    return (property)((int)a ^ (int)b);
 }
-inline sdpa_property &operator|=(sdpa_property &a, sdpa_property b) {
-    return (sdpa_property &)((int &)a |= (int)b);
+inline property &operator|=(property &a, property b) {
+    return (property &)((int &)a |= (int)b);
 }
-inline sdpa_property &operator&=(sdpa_property &a, sdpa_property b) {
-    return (sdpa_property &)((int &)a &= (int)b);
+inline property &operator&=(property &a, property b) {
+    return (property &)((int &)a &= (int)b);
 }
-inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
-    return (sdpa_property &)((int &)a ^= (int)b);
+inline property &operator^=(property &a, property b) {
+    return (property &)((int &)a ^= (int)b);
 }
 
 std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len << " thinq,qnt,int,fma,f32?: "
-      << (bool)(q.property & sdpa_property::second_token) << " "
-      << (bool)(q.property & sdpa_property::quantized) << " "
-      << (bool)(q.property & sdpa_property::integrated) << " "
-      << (bool)(q.property & sdpa_property::fma) << " "
-      << (bool)(q.property & sdpa_property::f32);
+      << " seq:" << q.seq_len
+      << " thinq,qnt,int,fma,f32?: " << (bool)(q.prop & property::second_token)
+      << " " << (bool)(q.prop & property::quantized) << " "
+      << (bool)(q.prop & property::integrated) << " "
+      << (bool)(q.prop & property::fma) << " "
+      << (bool)(q.prop & property::f32);
     return s;
 }
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len << " thinq,qnt,int,fma,f32?: "
-      << (bool)(c.property & sdpa_property::second_token) << " "
-      << (bool)(c.property & sdpa_property::quantized) << " "
-      << (bool)(c.property & sdpa_property::integrated) << " "
-      << (bool)(c.property & sdpa_property::fma) << " "
-      << (bool)(c.property & sdpa_property::f32);
+      << " seq:" << c.seq_len
+      << " thinq,qnt,int,fma,f32?: " << (bool)(c.prop & property::second_token)
+      << " " << (bool)(c.prop & property::quantized) << " "
+      << (bool)(c.prop & property::integrated) << " "
+      << (bool)(c.prop & property::fma) << " "
+      << (bool)(c.prop & property::f32);
     return s;
 }
-std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
+std::ostream &operator<<(std::ostream &s, const config_t &c) {
     s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
       << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
       << c.wg_m_vs << "," << c.wg_n_vs;
@@ -83,31 +85,25 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
             && ((key.criteria.seq_len == -1)
                     || (key.criteria.seq_len != -1
                             && query.seq_len <= key.criteria.seq_len))
-            && (((key.criteria.property & sdpa_property::second_token)
-                                == sdpa_property::none
-                        || (query.property & sdpa_property::second_token)
-                                == (key.criteria.property
-                                        & sdpa_property::second_token))
-                    && ((key.criteria.property & sdpa_property::quantized)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::quantized)
-                                    == (key.criteria.property
-                                            & sdpa_property::quantized))
-                    && ((key.criteria.property & sdpa_property::fma)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::fma)
-                                    == (key.criteria.property
-                                            & sdpa_property::fma))
-                    && ((key.criteria.property & sdpa_property::f32)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::f32)
-                                    == (key.criteria.property
-                                            & sdpa_property::f32))
-                    && ((key.criteria.property & sdpa_property::integrated)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::integrated)
-                                    == (key.criteria.property
-                                            & sdpa_property::integrated))));
+            && (((key.criteria.prop & property::second_token) == property::none
+                        || (query.prop & property::second_token)
+                                == (key.criteria.prop & property::second_token))
+                    && ((key.criteria.prop & property::quantized)
+                                    == property::none
+                            || (query.prop & property::quantized)
+                                    == (key.criteria.prop
+                                            & property::quantized))
+                    && ((key.criteria.prop & property::fma) == property::none
+                            || (query.prop & property::fma)
+                                    == (key.criteria.prop & property::fma))
+                    && ((key.criteria.prop & property::f32) == property::none
+                            || (query.prop & property::f32)
+                                    == (key.criteria.prop & property::f32))
+                    && ((key.criteria.prop & property::integrated)
+                                    == property::none
+                            || (query.prop & property::integrated)
+                                    == (key.criteria.prop
+                                            & property::integrated))));
     return result;
 }
 
@@ -116,22 +112,20 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
         int set_fields = 0;
         if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
         if (crit.head_size != -1) { set_fields++; }
-        if ((int)(crit.property & sdpa_property::second_token)) {
-            set_fields++;
-        }
-        if ((int)(crit.property & sdpa_property::quantized)) { set_fields++; }
-        if ((int)(crit.property & sdpa_property::integrated)) { set_fields++; }
-        if ((int)(crit.property & sdpa_property::fma)) { set_fields++; }
-        if ((int)(crit.property & sdpa_property::f32)) { set_fields++; }
+        if ((int)(crit.prop & property::second_token)) { set_fields++; }
+        if ((int)(crit.prop & property::quantized)) { set_fields++; }
+        if ((int)(crit.prop & property::integrated)) { set_fields++; }
+        if ((int)(crit.prop & property::fma)) { set_fields++; }
+        if ((int)(crit.prop & property::f32)) { set_fields++; }
         return set_fields;
     };
 
     auto noprops = [](const config_criteria_t &crit) {
-        return !(((bool)(crit.property & sdpa_property::second_token))
-                || ((bool)(crit.property & sdpa_property::quantized))
-                || ((bool)(crit.property & sdpa_property::integrated))
-                || ((bool)(crit.property & sdpa_property::fma))
-                || ((bool)(crit.property & sdpa_property::f32)));
+        return !(((bool)(crit.prop & property::second_token))
+                || ((bool)(crit.prop & property::quantized))
+                || ((bool)(crit.prop & property::integrated))
+                || ((bool)(crit.prop & property::fma))
+                || ((bool)(crit.prop & property::f32)));
     };
 
     int l_set_fields = num_set_fields(lhs);
@@ -155,21 +149,19 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     else if (lhs.seq_len != rhs.seq_len)
         return lhs.seq_len != -1;
     // ensure consistent order if # fields identical
-    else if ((lhs.property & sdpa_property::fma)
-            != (rhs.property & sdpa_property::fma))
-        return static_cast<bool>(lhs.property & sdpa_property::fma);
-    else if ((lhs.property & sdpa_property::quantized)
-            != (rhs.property & sdpa_property::quantized))
-        return static_cast<bool>(lhs.property & sdpa_property::quantized);
-    else if ((lhs.property & sdpa_property::second_token)
-            != (rhs.property & sdpa_property::second_token))
-        return static_cast<bool>(lhs.property & sdpa_property::second_token);
-    else if ((lhs.property & sdpa_property::integrated)
-            != (rhs.property & sdpa_property::integrated))
-        return static_cast<bool>(lhs.property & sdpa_property::integrated);
-    else if ((lhs.property & sdpa_property::f32)
-            != (rhs.property & sdpa_property::f32))
-        return static_cast<bool>(lhs.property & sdpa_property::f32);
+    else if ((lhs.prop & property::fma) != (rhs.prop & property::fma))
+        return static_cast<bool>(lhs.prop & property::fma);
+    else if ((lhs.prop & property::quantized)
+            != (rhs.prop & property::quantized))
+        return static_cast<bool>(lhs.prop & property::quantized);
+    else if ((lhs.prop & property::second_token)
+            != (rhs.prop & property::second_token))
+        return static_cast<bool>(lhs.prop & property::second_token);
+    else if ((lhs.prop & property::integrated)
+            != (rhs.prop & property::integrated))
+        return static_cast<bool>(lhs.prop & property::integrated);
+    else if ((lhs.prop & property::f32) != (rhs.prop & property::f32))
+        return static_cast<bool>(lhs.prop & property::f32);
     return false;
 }
 
@@ -177,11 +169,11 @@ bool operator<(const config_record_t &lhs, const config_record_t &rhs) {
     return lhs.criteria < rhs.criteria;
 }
 
-static auto constexpr second_token = sdpa_property::second_token;
-static auto constexpr quantized = sdpa_property::quantized;
-static auto constexpr integrated = sdpa_property::integrated;
-static auto constexpr fma = sdpa_property::fma;
-static auto constexpr f32 = sdpa_property::f32;
+static auto constexpr second_token = property::second_token;
+static auto constexpr quantized = property::quantized;
+static auto constexpr integrated = property::integrated;
+static auto constexpr fma = property::fma;
+static auto constexpr f32 = property::f32;
 
 // Kernel configurations: [ arch, head_size, {sequence length}, {properties} ] -> config
 static std::vector<config_record_t> sorted_configs = []() {
@@ -591,20 +583,20 @@ static std::vector<config_record_t> sorted_configs = []() {
     return configs;
 }();
 
-sdpa_property set_properties(bool is_thin_q, bool is_quantized,
-        bool is_integrated, bool is_fma, bool is_f32) {
-    sdpa_property properties = sdpa_property::none;
-    if (is_thin_q) { properties |= sdpa_property::second_token; }
-    if (is_quantized) { properties |= sdpa_property::quantized; }
-    if (is_integrated) { properties |= sdpa_property::integrated; }
-    if (is_fma) { properties |= sdpa_property::fma; }
-    if (is_f32) { properties |= sdpa_property::f32; }
+property set_properties(bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32) {
+    property properties = property::none;
+    if (is_thin_q) { properties |= property::second_token; }
+    if (is_quantized) { properties |= property::quantized; }
+    if (is_integrated) { properties |= property::integrated; }
+    if (is_fma) { properties |= property::fma; }
+    if (is_f32) { properties |= property::f32; }
     return properties;
 }
 
-sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32) {
+config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
+        bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
+        bool is_f32) {
     // quantized FMA for f16 on MTL not implemented in gemmstone
     if (arch == compute::gpu_arch_t::xe_hpg && is_fma && !is_f32
             && is_quantized)
@@ -621,7 +613,7 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
             ? compute::gpu_arch_t::xe2
             : arch;
-    sdpa_property query_properties = set_properties(
+    property query_properties = set_properties(
             is_thin_q, is_quantized, is_integrated, is_fma, is_f32);
 
     config_query_t query(arch_query, static_cast<int>(head_size),
@@ -644,7 +636,7 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
         bool is_fma, bool is_f32) {
-    sdpa_property query_properties = set_properties(
+    property query_properties = set_properties(
             is_thin_q, is_quantized, is_integrated, is_fma, is_f32);
 
     compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
@@ -663,7 +655,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         micro::GEMMProtocol::Options &opts_kq,
         micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
         gemmstone::SizeParams &sizes_vs,
-        const micro_sdpa_ukernel_params_t &ukernel_config) {
+        const micro_ukernel_params_t &ukernel_config) {
 
     // hardware info
     hwInfo.gmdid = ukernel_config.hwinfo.gmdid;

@@ -231,6 +231,8 @@ partition_data_displacer_t::partition_data_displacer_t(
         // This is done to avoid taking future tokens into account by
         // influencing SoftMax input values.
         while (aop.kind_ == "Add" || aop.kind_ == "Select") {
+            if (dg.get_recognized_pattern() != graph_recognized_pattern_t::sdpa)
+                break;
             auto *aop_out_lt = &aop.out_lts_[0];
             auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
             if (child_op->kind_ != "SoftMax") break;
@@ -354,6 +356,8 @@ partition_data_displacer_t::partition_data_displacer_t(
 
         // Fill proper data for bottom-right implicit casual mask
         while (aop.kind_ == "Add") {
+            if (dg.get_recognized_pattern() != graph_recognized_pattern_t::sdpa)
+                break;
             auto *aop_out_lt = &aop.out_lts_[0];
             auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
             if (child_sub_op->kind_ != "Subtract") break;

@@ -305,8 +305,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
     int xqGroupK  = doA ? problem.aqGroupK : problem.bqGroupK;
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
 
-    bool broadcast = (qlayout.rows() * qlayout.cols()) == 1;
-    bool mnGrouped = (xqGroupMN > 1);
+    bool common = (qlayout.rows() * qlayout.cols()) == 1;
 
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
@@ -314,40 +313,43 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         int nx = colMajor ? block.nr : block.nc;
         int ny = colMajor ? block.nc : block.nr;
 
-        for (int y0 = 0; y0 < ny; y0 += (mnGrouped ? 1 : crosspack)) {
-        for (int x0 = 0; x0 < nx; ) {
+        int xqGroupX = colMajor == doA ? xqGroupMN : xqGroupK;
+        int xqGroupY = colMajor == doA ? xqGroupK : xqGroupMN;
+
+        // If crosspack spans multiple groups, use a stride to restrict to one group
+        bool qbroadcastY = (xqGroupY % crosspack == 0) || common;
+        int strided = 1;
+        if (!qbroadcastY) {
+            strided = crosspack;
+        }
+
+        bool qbroadcastX = xqGroupX > 1 || common;
+        int strideq = qbroadcastX ? 0 : 1;
+
+        for(int y0 = 0; y0 < ny; y0 += qbroadcastY ? crosspack : 1) {
+        for(int x0 = 0; x0 < nx; ) {
             auto ii0 = colMajor ? x0 : y0;
             auto jj0 = colMajor ? y0 : x0;
             auto io0 = ii0 + block.offsetR;
             auto jo0 = jj0 + block.offsetC;
             auto &ho0 = doA ? jo0 : io0;
             auto &lo0 = doA ? io0 : jo0;
-            auto l0 = lo0;
             ho0 += hq;
             ho0 /= xqGroupK;
-            if (mnGrouped) lo0 /= xqGroupMN;
-            if (broadcast) io0 = jo0 = 0;
+            lo0 /= xqGroupMN;
+
+            // Common scales always load the first element
+            if (common) io0 = jo0 = 0;
 
             int ne, neq;
             const RegisterBlock *qblock;
             auto data = block.find(T, ii0, jj0, regs, &ne);
             auto qdata = qlayout.find(io0, jo0, qregs, &neq, &qblock);
 
-            int strideq = 1;
-            int strided = 1;
-            if (broadcast)
-                strideq = 0;
-            else if (mnGrouped) {
-                strided = crosspack;
-                strideq = 0;
-                ne = std::min(ne, xqGroupMN - (l0 % xqGroupMN));
-            } else if (colMajor == doA) {
-                ne = std::min(ne, neq);
-                if (qblock->crosspack * Tq < crosspack * T) stub();
-            } else {
-                ne = std::min(ne, xqGroupK);
-                strideq = 0;
-            }
+            if (!qbroadcastX) ne = std::min(ne, neq);
+
+            // If a group lies along the X-direction, limit ne to the end of the current group
+            if (xqGroupX > 1) ne = std::min(ne, xqGroupX - x0 % xqGroupX);
 
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
             if (Tq == Type::f32) maxSIMD = elementsPerGRF(hw, Tq);

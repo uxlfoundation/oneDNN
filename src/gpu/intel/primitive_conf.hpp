@@ -416,42 +416,6 @@ public:
             compute::kernel_ctx_t &kernel_ctx, const std::string &name) const;
 };
 
-// Concat
-struct concat_conf_t {
-    dim_t dst_extern_dim_size;
-    dim_t src_extern_dim_sizes[64];
-    dim_t offset[64];
-    dim_t padded_offset[64];
-    dim_t n_blocks;
-    dim_t blocks[6];
-    dim_t strides[6];
-    dim_t inner_axis;
-    dim_t dst_concat_axis;
-    dim_t dst_padded_concat_axis;
-    dim_t dst_offset0;
-    dim_t read_block;
-    dim_t write_block;
-    dim_t gws0_block;
-    dim_t read_overlap;
-    int n;
-    int simd;
-    int data_type_size;
-    compute::range_t gws_d = compute::range_t::one();
-    compute::range_t lws_d;
-
-    data_type_t src_type, dst_type;
-    compute::dispatch_t dispatch;
-    int ndims;
-    memory_desc_info_t src_md_infos[16]; // simple concat does not use this
-    memory_desc_info_t dst_md_info;
-    int concat_axis;
-    int sub_group_size;
-    int iter_dim_idx, iter_dim_chunk;
-    scales_query_t scale_src[64];
-    uint64_t scales_mask;
-    bool use_large_index = true;
-};
-
 void set_default_pool_conf(pool_conf_t &conf, const pooling_desc_t &desc,
         const memory_desc_t &src_md, const memory_desc_t &dst_md,
         const primitive_attr_t &attr);

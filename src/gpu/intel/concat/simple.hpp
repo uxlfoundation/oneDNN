@@ -17,12 +17,8 @@
 #ifndef GPU_INTEL_CONCAT_SIMPLE_HPP
 #define GPU_INTEL_CONCAT_SIMPLE_HPP
 
-#include "common/engine.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_concat_pd.hpp"
-#include "gpu/gpu_resource.hpp"
+#include "gpu/intel/concat/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,8 +26,7 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-struct reusable_simple_concat_params_t
-    : trivially_serializable_t<reusable_simple_concat_params_t> {
+struct simple_params_t : trivially_serializable_t<simple_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names
@@ -63,7 +58,7 @@ struct reusable_simple_concat_params_t
     uint8_t padding[6] = {0};
 };
 
-struct reusable_simple_concat_runtime_params_t {
+struct simple_runtime_params_t {
     dim_t dst_extern_dim_size;
     dim_t dst_offset0;
     dim_t src_extern_dim_sizes[64];
@@ -85,12 +80,12 @@ struct reusable_simple_concat_runtime_params_t {
     compute::range_t lws_d;
 };
 
-struct reusable_simple_concat_t : public primitive_t {
+struct simple_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_concat_pd_t {
-        using gpu_concat_pd_t::gpu_concat_pd_t;
+    struct pd_t : public concat::pd_t {
+        using concat::pd_t::pd_t;
 
-        DECLARE_CONCAT_PD_T("simple:reusable", reusable_simple_concat_t);
+        DECLARE_CONCAT_PD_T("ocl:simple:reusable", simple_t);
 
         status_t init(impl::engine_t *engine) {
             VDISPATCH_CONCAT(n_inputs() <= 64, VERBOSE_BAD_PARAM, "n_inputs");
@@ -107,8 +102,8 @@ struct reusable_simple_concat_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
 
-        reusable_simple_concat_params_t conf;
-        reusable_simple_concat_runtime_params_t rt_conf;
+        simple_params_t conf;
+        simple_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {

@@ -18,11 +18,9 @@
 #define GPU_INTEL_CONCAT_MULTI_HPP
 
 #include "common/concat.hpp"
-#include "common/engine.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_desc.hpp"
-#include "common/stream.hpp"
-#include "gpu/gpu_concat_pd.hpp"
+#include "gpu/intel/concat/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -31,17 +29,17 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-struct multi_concat_t : public primitive_t {
+struct multi_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_concat_pd_t {
+    struct pd_t : public concat::pd_t {
         static constexpr int batch_failure = -1;
 
-        using gpu_concat_pd_t::gpu_concat_pd_t;
+        using concat::pd_t::pd_t;
 
         pd_t(const pd_t &rhs) = default;
         ~pd_t() override = default;
 
-        DECLARE_CONCAT_PD_T("multi:any", multi_concat_t);
+        DECLARE_CONCAT_PD_T("multi:any", multi_t);
 
         int max_batch_size() const {
             if (n_inputs() > 64) return 64;
@@ -57,7 +55,7 @@ struct multi_concat_t : public primitive_t {
             VDISPATCH_CONCAT_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
 
             auto n_batches = utils::div_up(n_inputs(), max_batch_size());
-            concat_pds_.resize(n_batches);
+            pds_.resize(n_batches);
             dst_chunk_mds_.resize(n_batches);
 
             dim_t concat_dim_offset = 0;
@@ -79,16 +77,16 @@ struct multi_concat_t : public primitive_t {
                 status = memory_desc_init_submemory(
                         dst_chunk_mds_[i], *dst_md(), dims, offsets);
                 if (status != status::success) {
-                    concat_pds_.clear();
+                    pds_.clear();
                     dst_chunk_mds_.clear();
                     VDISPATCH_CONCAT(
                             false, VERBOSE_DESC_CREATION_FAIL, "dst submemory");
                 }
-                status = concat_primitive_desc_create(concat_pds_[i], engine,
+                status = concat_primitive_desc_create(pds_[i], engine,
                         &dst_chunk_mds_[i], batch_size, concat_dim_,
                         src_md(src_offset), attr());
                 if (status != status::success) {
-                    concat_pds_.clear();
+                    pds_.clear();
                     dst_chunk_mds_.clear();
                     VDISPATCH_CONCAT(
                             false, VERBOSE_PRIMITIVE_CREATION_FAIL, "concat");
@@ -98,16 +96,16 @@ struct multi_concat_t : public primitive_t {
             return status;
         }
 
-        std::vector<std::shared_ptr<primitive_desc_t>> concat_pds_;
+        std::vector<std::shared_ptr<primitive_desc_t>> pds_;
         std::vector<memory_desc_t> dst_chunk_mds_;
     };
 
     status_t init(impl::engine_t *engine) override {
-        const auto &pds = pd()->concat_pds_;
+        const auto &pds = pd()->pds_;
         const size_t n = pds.size();
-        concats_.resize(n);
+        prims_.resize(n);
         for (size_t i = 0; i < n; ++i)
-            CHECK(create_nested_primitive(concats_[i], pds[i], engine));
+            CHECK(create_nested_primitive(prims_[i], pds[i], engine));
         return status::success;
     }
 
@@ -136,14 +134,14 @@ struct multi_concat_t : public primitive_t {
         for (int i = 0; i < n_batches; ++i) {
             const auto remaining = n - max_batch_size * i;
             const auto batch_size = std::min(max_batch_size, remaining);
-            CHECK(execute_concat(concats_[i], i, batch_size));
+            CHECK(execute_concat(prims_[i], i, batch_size));
         }
         return status::success;
     }
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::vector<std::shared_ptr<impl::primitive_t>> concats_;
+    std::vector<std::shared_ptr<impl::primitive_t>> prims_;
 };
 
 } // namespace concat

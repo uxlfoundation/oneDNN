@@ -13,13 +13,13 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+#include "gpu/intel/concat/simple.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 
 #include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/concat/simple.hpp"
 #include "gpu/intel/concat/utils.hpp"
 
 namespace dnnl {
@@ -28,15 +28,13 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-static status_t normalize_reusable_simple_concat(
-        reusable_simple_concat_params_t &conf,
-        reusable_simple_concat_runtime_params_t &rt_conf,
-        impl::engine_t *engine, const concat_pd_t *pd,
-        const normalization_t &normalize) {
+static status_t normalize(simple_params_t &conf,
+        simple_runtime_params_t &rt_conf, impl::engine_t *engine,
+        const concat_pd_t *pd, const normalization_t &normalize) {
 
     const memory_desc_wrapper ref_dst_mdw = *pd->dst_md();
 
-    const auto concat_dim = pd->concat_dim();
+    const auto axis = pd->concat_dim();
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
@@ -79,7 +77,7 @@ static status_t normalize_reusable_simple_concat(
     int offset = 0, padded_offset = 0, nonempty_inputs = 0;
     dim_t final_padding = 0;
     for (int i = 0; i < pd->n_inputs(); ++i) {
-        if (pd->src_md(i)->padded_dims[concat_dim] == 0) continue;
+        if (pd->src_md(i)->padded_dims[axis] == 0) continue;
         max_bytes = std::max(max_bytes,
                 into<dim_t>(memory_desc_wrapper(pd->src_md(i)).size()));
         memcpy(&src_md, pd->src_md(i), sizeof(memory_desc_t));
@@ -155,10 +153,9 @@ static status_t normalize_reusable_simple_concat(
     return status::success;
 }
 
-static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
-        reusable_simple_concat_runtime_params_t &rt_conf,
-        impl::engine_t *engine, const concat_pd_t *pd,
-        normalization_t normalize) {
+static status_t try_normalize_internal_padding(simple_params_t &conf,
+        simple_runtime_params_t &rt_conf, impl::engine_t *engine,
+        const concat_pd_t *pd, const normalization_t &normalize) {
 
     using namespace utils;
     const memory_desc_wrapper ref_dst_mdw = *pd->dst_md();
@@ -167,8 +164,6 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
-
-    normalize.set_pessimistic_chunk_size();
 
     const int max_sg_size = device_info->max_subgroup_size();
     const auto data_type_size = normalize.data_type_size();
@@ -186,7 +181,7 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
         if (pd->src_md(i)->padded_dims[concat_dim] == 0) continue;
         memcpy(&src_md, pd->src_md(i), sizeof(memory_desc_t));
 
-        normalize(src_md);
+        normalize(src_md, padding::internal);
         dim_t concat_dim = src_md.dims[axis::concat];
         dim_t concat_pdim = src_md.padded_dims[axis::concat];
 
@@ -207,7 +202,7 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
         nonempty_inputs++;
     }
     memcpy(&dst_md, pd->dst_md(), sizeof(memory_desc_t));
-    normalize(dst_md);
+    normalize(dst_md, padding::internal);
     const auto &dst_blkg = dst_md.format_desc.blocking;
     rt_conf.dst_extern_dim_size
             = dst_blkg.strides[axis::outer] * data_type_size;
@@ -293,35 +288,31 @@ static status_t try_normalize_ip_concat2(reusable_simple_concat_params_t &conf,
             && ((conf.blocks[0] == 4) || (conf.blocks[0] == 8)
                     || (conf.blocks[0] == 16) || (conf.blocks[0] == 32));
 
-    bool can_use_internal_padding_concat2 = (conf.n == 2)
-            && can_subgroup_read_dt && inner_size_sufficient
-            && supported_block_size && problem_size_sufficient;
+    bool can_use = (conf.n == 2) && can_subgroup_read_dt
+            && inner_size_sufficient && supported_block_size
+            && problem_size_sufficient;
 
-    if (can_use_internal_padding_concat2) {
-        rt_conf.inner_axis = concat2_inner_axis;
-        conf.data_type_size = static_cast<int>(concat2_dtsize);
-        conf.use_internal_padding_kernel = true;
-        conf.bytes_per_workitem = static_cast<int>(bytes_per_workitem);
+    if (!can_use) return status::unimplemented;
 
-        const compute::range_t gws
-                = {static_cast<size_t>(
-                           utils::div_up(dst_md.padded_dims[axis::concat]
-                                           * dst_md.dims[axis::inner],
-                                   conf.simd * loads_per_thread)
-                           * conf.simd),
-                        static_cast<size_t>(dst_md.dims[axis::outer]), 1};
-        rt_conf.gws_d = gws;
-        rt_conf.lws_d = compute::get_optimal_lws(
-                rt_conf.gws_d, dim_idx::invalid, device_info->gpu_arch());
-        return status::success;
-    }
+    rt_conf.inner_axis = concat2_inner_axis;
+    conf.data_type_size = static_cast<int>(concat2_dtsize);
+    conf.use_internal_padding_kernel = true;
+    conf.bytes_per_workitem = static_cast<int>(bytes_per_workitem);
 
-    return status::unimplemented;
+    const compute::range_t gws = {
+            static_cast<size_t>(utils::div_up(dst_md.padded_dims[axis::concat]
+                                                * dst_md.dims[axis::inner],
+                                        conf.simd * loads_per_thread)
+                    * conf.simd),
+            static_cast<size_t>(dst_md.dims[axis::outer]), 1};
+    rt_conf.gws_d = gws;
+    rt_conf.lws_d = compute::get_optimal_lws(
+            rt_conf.gws_d, dim_idx::invalid, device_info->gpu_arch());
+    return status::success;
 }
 
 static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
-        reusable_simple_concat_params_t &conf,
-        reusable_simple_concat_runtime_params_t &rt_conf) {
+        simple_params_t &conf, simple_runtime_params_t &rt_conf) {
     using namespace utils;
     const memory_desc_t &ref_dst_md = *pd->dst_md();
 
@@ -337,16 +328,15 @@ static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
     }
 
     if (normalize.has_internal_padding()) {
-        status_t s = try_normalize_ip_concat2(
+        status_t s = try_normalize_internal_padding(
                 conf, rt_conf, engine, pd, normalize);
         if (s == status::success) { return s; }
     }
 
-    return normalize_reusable_simple_concat(
-            conf, rt_conf, engine, pd, normalize);
+    return concat::normalize(conf, rt_conf, engine, pd, normalize);
 }
 
-compute::kernel_ctx_t reusable_simple_concat_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t simple_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
 
     kernel_ctx.define_int("WRITE_BLOCK", write_block);
@@ -366,15 +356,14 @@ compute::kernel_ctx_t reusable_simple_concat_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t reusable_simple_concat_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(engine, this, conf, rt_conf);
 }
 
 template <typename IDX_T>
 void push_idx_kernel_args(compute::kernel_arg_list_t &partial_list,
-        const exec_ctx_t &ctx, const reusable_simple_concat_params_t &conf,
-        const reusable_simple_concat_runtime_params_t &rt_conf,
-        const concat_pd_t *pd) {
+        const exec_ctx_t &ctx, const simple_params_t &conf,
+        const simple_runtime_params_t &rt_conf, const concat_pd_t *pd) {
     const auto concat_dim = pd->concat_dim();
 
     bool cutoff = (rt_conf.dst_concat_axis % rt_conf.read_overlap != 0);
@@ -417,8 +406,7 @@ void push_idx_kernel_args(compute::kernel_arg_list_t &partial_list,
 template <typename IDX_T>
 void push_idx_kernel_args_internal_padding(
         compute::kernel_arg_list_t &partial_list, const exec_ctx_t &ctx,
-        const reusable_simple_concat_params_t &conf,
-        const reusable_simple_concat_runtime_params_t &rt_conf,
+        const simple_params_t &conf, const simple_runtime_params_t &rt_conf,
         const concat_pd_t *pd) {
     const auto concat_dim = pd->concat_dim();
 
@@ -450,7 +438,7 @@ void push_idx_kernel_args_internal_padding(
     partial_list.append(static_cast<IDX_T>(rt_conf.inner_axis));
 }
 
-status_t reusable_simple_concat_t::execute_concat(const exec_ctx_t &ctx) const {
+status_t simple_t::execute_concat(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
     const auto &rt_conf = pd()->rt_conf;
     if (conf.n == 0) return status::success;

@@ -26,7 +26,7 @@ namespace gpu {
 namespace intel {
 namespace concat {
 
-std::pair<int, int> xe_concat_t::pd_t::calculate_iter_dim_idx_chunk(
+std::pair<int, int> xe_t::pd_t::calculate_iter_dim_idx_chunk(
         int num_threads) const {
     if (conf.ndims <= 1) return std::make_pair(0, 1);
     const auto &dst_dims = conf.dst_md_info.padded_dims;
@@ -55,8 +55,8 @@ std::pair<int, int> xe_concat_t::pd_t::calculate_iter_dim_idx_chunk(
     return std::make_pair(iter_dim_idx, iter_dim_chunk);
 }
 
-bool xe_concat_t::pd_t::can_use_sub_group_size(
-        const intel::engine_t *intel_engine, int sub_group_size) {
+bool xe_t::pd_t::can_use_sub_group_size(
+        const intel::engine_t *intel_engine, int sub_group_size) const {
     auto is_dim_dense = [](const memory_desc_wrapper &mdw, int dim_idx) {
         return mdw.blocking_desc().strides[dim_idx] == 1;
     };
@@ -68,9 +68,8 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
         return blk.inner_blks[blk.inner_nblks - 1];
     };
 
-    const concat_pd_t *pd = this;
     const int c_idx = 1;
-    const memory_desc_wrapper dst_mdw(pd->dst_md());
+    const memory_desc_wrapper dst_mdw(dst_md());
     const bool is_dst_blocked = dst_mdw.blocking_desc().inner_nblks > 0;
     const int max_sub_group_size
             = intel_engine->device_info()->max_subgroup_size();
@@ -79,7 +78,7 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
             ? get_dim_block(dst_mdw, c_idx) % sub_group_size == 0
             : is_dim_dense(dst_mdw, c_idx);
     for (int i = 0; i < conf.n; ++i) {
-        const memory_desc_wrapper src_mdw(pd->src_md(i));
+        const memory_desc_wrapper src_mdw(src_md(i));
         is_concat_axis_aligned = is_concat_axis_aligned
                 && src_mdw.dims()[conf.concat_axis] % sub_group_size == 0;
         if (is_dst_blocked) {
@@ -95,8 +94,8 @@ bool xe_concat_t::pd_t::can_use_sub_group_size(
             && intel_engine->mayiuse_sub_group(sub_group_size);
 }
 
-int xe_concat_t::pd_t::calculate_sub_group_size(
-        const intel::engine_t *intel_engine) {
+int xe_t::pd_t::calculate_sub_group_size(
+        const intel::engine_t *intel_engine) const {
     // Subgroups are used only for concatenation over C dimension
     if (conf.concat_axis != 1) return 1;
     for (int sub_group_size : {32, 16, 8}) {
@@ -107,7 +106,7 @@ int xe_concat_t::pd_t::calculate_sub_group_size(
     return 1;
 }
 
-status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
     const concat_pd_t *pd = this;
 
     const memory_desc_wrapper dst_mdw(pd->dst_md());
@@ -170,7 +169,7 @@ status_t xe_concat_t::pd_t::init_conf(impl::engine_t *engine) {
 }
 
 static status_t init_kernel_ctx_common(
-        compute::kernel_ctx_t &kernel_ctx, const concat_conf_t &conf) {
+        compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
     constexpr bool with_punning = false;
 
     for (int i = 0; i < conf.n; ++i) {
@@ -200,13 +199,11 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t xe_concat_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+status_t xe_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-status_t xe_concat_t::execute_concat(const exec_ctx_t &ctx) const {
-    status_t status;
+status_t xe_t::execute(const exec_ctx_t &ctx) const {
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
     int next_arg = 0;
     const auto &conf = pd()->conf;
@@ -227,8 +224,7 @@ status_t xe_concat_t::execute_concat(const exec_ctx_t &ctx) const {
 
     auto nd_range = conf.dispatch.nd_range();
 
-    status = parallel_for(ctx, nd_range, kernel, arg_list);
-    return status;
+    return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
 } // namespace concat

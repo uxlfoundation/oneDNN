@@ -55,9 +55,11 @@ namespace axis {
 enum normalized_axis_t { outer = 0, concat = 1, inner = 2, ndims = 3 };
 }
 
-class normalization_t {
-    enum class padding_t { none = 0, external, internal };
+namespace padding {
+enum padding_t { none = 0, external, internal };
+}
 
+class normalization_t {
     enum class striding_t {
         mismatched, // Formats are incompatible
         sparse, // Striding between concat dim/block and inner dim
@@ -118,13 +120,13 @@ public:
         auto source_chunk = math::gcd(dim, pdim - dim);
 
         // We can ignore padding if it only occurs on the final non-empty input
-        if (padding_type_ == padding_t::external) {
-            padding_type_ = padding_t::internal;
+        if (padding_type_ == padding::external) {
+            padding_type_ = padding::internal;
             chunk_size_ = padded_chunk_size_;
-        } else if (padding_type_ == padding_t::none && dim != pdim)
-            padding_type_ = padding_t::external;
+        } else if (padding_type_ == padding::none && dim != pdim)
+            padding_type_ = padding::external;
 
-        if (padding_type_ == padding_t::internal) {
+        if (padding_type_ == padding::internal) {
             chunk_size_ = math::gcd(chunk_size_, source_chunk);
         } else {
             chunk_size_ = math::gcd(chunk_size_, pdim);
@@ -135,7 +137,6 @@ public:
 
     data_type_t data_type() const { return data_type_; }
     size_t data_type_size() const { return types::data_type_size(data_type_); }
-    void set_pessimistic_chunk_size() { chunk_size_ = 1; }
 
     dim_t max_write_size() const {
         dim_t write_size = 1;
@@ -159,10 +160,11 @@ public:
         return size;
     }
 
-    void operator()(memory_desc_t &) const;
+    void operator()(
+            memory_desc_t &, padding::padding_t pad_type = padding::none) const;
 
     bool has_internal_padding() const {
-        return (padding_type_ == padding_t::internal);
+        return (padding_type_ == padding::internal);
     }
 
 private:
@@ -232,7 +234,7 @@ private:
     int extern_axis_idx_;
     data_type_t data_type_;
     blocking_desc_t blocking_;
-    padding_t padding_type_ = padding_t::none;
+    padding::padding_t padding_type_ = padding::none;
     bool can_read_past_concat_dim_ = true;
 
     dim_t chunk_size_; // concat-dim elements that can be written simultaneously
@@ -242,8 +244,9 @@ private:
     std::vector<int> axis_order_;
 };
 
-inline void normalization_t::operator()(memory_desc_t &md) const {
-    auto chunk_size = chunk_size_;
+inline void normalization_t::operator()(
+        memory_desc_t &md, padding::padding_t pad_type) const {
+    auto chunk_size = pad_type == padding::internal ? 1 : chunk_size_;
     auto &blkg = md.format_desc.blocking;
     auto &dims = md.dims;
     auto &pdims = md.padded_dims;

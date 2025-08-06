@@ -32,9 +32,9 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_CONCAT_P({
-        GPU_CONCAT_INSTANCE_INTEL(intel::concat::reusable_simple_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::concat::xe_concat_t)
-        GPU_CONCAT_INSTANCE_INTEL(intel::concat::multi_concat_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::simple_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::xe_t)
+        GPU_CONCAT_INSTANCE_INTEL(intel::concat::multi_t)
         GPU_CONCAT_INSTANCE_GENERIC(generic::ref_concat_t)
         nullptr,
 });

@@ -276,6 +276,7 @@ void CopyPlan::transform()
 
     sort(SortType::SourceOrder);
 
+    optimizeZip(true);
     optimizeWriteCombine();
     optimizeWriteSpread();
 
@@ -821,12 +822,12 @@ void CopyPlan::planTypeConversions()
         else if (st == DataType::ub && dt == DataType::hf) {
             copyThrough(i, DataType::uw);
             rerun = true;
-        } else if (st == DataType::ub && dt == DataType::bf && i.src0.stride < 4) {
+        } else if (st == DataType::ub && dt == DataType::bf) {
             copyThrough(i, DataType::uw);
             rerunZip = true;
         } else if (st == DataType::b && dt == DataType::hf)
             planBToHF(i);
-        else if (st == DataType::b && dt == DataType::bf && i.src0.stride < 4) {
+        else if (st == DataType::b && dt == DataType::bf) {
             planBToBF(i);
             rerunZip = true;
         } else if (st == DataType::f && dt == DataType::tf32) {
@@ -2166,6 +2167,10 @@ void CopyPlan::legalizeSIMD(bool initial)
                     op.offset += n;
                 if (op.kind != CopyOperand::GRF) return;
                 int ne = bytesToElements(grf, op.type);
+                if (op.width) {
+                    op.offset += (n / op.width) * op.vs;
+                    n %= op.width;
+                }
                 op.offset += n * op.stride;
                 int grfOffset = op.offset / ne;
                 op.grf += grfOffset;
@@ -2569,8 +2574,20 @@ void CopyPlan::sort(SortType type)
 //    mov (8)  r0.2<4>:uw   r10.1<2>:uw
 // Output:
 //    mov (16) r0.0<2>:uw   r10.0<1>:uw
-void CopyPlan::optimizeZip()
+//
+// If zip2DSrc0 is true, then look for opportunities to use 2D regions
+//   for src0:
+//
+// Example input:
+//    mov (8)  r0.0<2>:uw   r10.0<4>:ub
+//    mov (8)  r0.1<2>:uw   r10.1<4>:ub
+// Output:
+//    mov (16) r0.0<1>:uw   r10.0<4;2,1>:ub
+//
+void CopyPlan::optimizeZip(bool zip2DSrc0)
 {
+    bool didZip2D = false;
+
     auto ninsn = insns.size();
     for (size_t n1 = 0; n1 < ninsn; n1++) {
         for (size_t n2 = n1 + 1; n2 < ninsn; n2++) {
@@ -2580,19 +2597,21 @@ void CopyPlan::optimizeZip()
             if (i1.op != i2.op || i1.phase != i2.phase || i1.dst.grf != i2.dst.grf || i1.flag) break;
             if (i1.simd != i2.simd) continue;
 
-            auto zippable = [](const CopyOperand &o1, const CopyOperand &o2) {
+            auto zippable = [](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind != CopyOperand::GRF) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;
                 if (o1.temp && o1.value != o2.value) return false;
                 if (o1.stride & 1) return false;
+                if (o1.vs || o1.width) return false;
                 if (o1.neg != o2.neg) return false;
                 if (o1.abs != o2.abs) return false;
-                return (o1.offset + (o1.stride >> 1) == o2.offset);
+                if (!is_zero_or_pow2(o2.offset - o1.offset)) return false;
+                return (o1.offset + (o1.stride >> 1) != o2.offset) == zip2D;
             };
 
-            bool zip = zippable(i1.dst, i2.dst) && zippable(i1.src0, i2.src0);
+            bool zip = zippable(i1.dst, i2.dst) && zippable(i1.src0, i2.src0, zip2DSrc0);
             if (i1.src1) zip = zip && zippable(i1.src1, i2.src1);
             if (i1.src2) zip = zip && zippable(i1.src2, i2.src2);
 
@@ -2600,10 +2619,17 @@ void CopyPlan::optimizeZip()
                 if (auto &i = join(i1, i2)) {
                     i.simd *= 2;
                     i.dst.stride /= 2;
-                    i.src0.stride /= 2;
                     i.src1.stride /= 2;
                     i.src2.stride /= 2;
-                    std::swap(i1, i2);      /* move joined entry to end for further processing */
+                    if (!zip2DSrc0) {
+                        i.src0.stride /= 2;
+                        std::swap(i1, i2);      /* move joined entry to end for further processing */
+                    } else {
+                        i.src0.vs = i.src0.stride;
+                        i.src0.stride = i2.src0.offset - i1.src0.offset;
+                        i.src0.width = 2;
+                        didZip2D = true;
+                    }
                     break;
                 }
             }
@@ -2611,6 +2637,9 @@ void CopyPlan::optimizeZip()
     }
 
     mergeChanges();
+
+    if (didZip2D)
+        legalizeSIMD();     /* 2D zipping comes late in the pipeline */
 }
 
 // Make an integer operand twice as wide.

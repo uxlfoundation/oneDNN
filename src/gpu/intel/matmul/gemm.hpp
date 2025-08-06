@@ -292,6 +292,8 @@ struct gemm_t : public primitive_t {
 
                 scales_t reshaped_scales = gemm_attr.scales_;
                 zero_points_t reshaped_zp = gemm_attr.zero_points_;
+                precomputed_reductions_t reshaped_pr
+                        = gemm_attr.precomputed_reductions_;
                 CHECK(adjust_quant(reshaped_scales, DNNL_ARG_SRC, *a_md,
                         a_md_reshaped, diff_dims));
                 CHECK(adjust_quant(reshaped_scales, DNNL_ARG_WEIGHTS, *b_md,
@@ -304,6 +306,10 @@ struct gemm_t : public primitive_t {
                         b_md_reshaped, diff_dims));
                 CHECK(adjust_quant(reshaped_zp, DNNL_ARG_DST, *c_md,
                         c_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_pr, DNNL_ARG_SRC, *a_md,
+                        a_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_pr, DNNL_ARG_WEIGHTS, *b_md,
+                        b_md_reshaped, diff_dims));
 
                 // Reshaping successful - lock in changes
                 a_md = &a_md_reshaped;
@@ -313,6 +319,7 @@ struct gemm_t : public primitive_t {
 
                 gemm_attr.scales_ = reshaped_scales;
                 gemm_attr.zero_points_ = reshaped_zp;
+                gemm_attr.precomputed_reductions_ = reshaped_pr;
                 gemm_attr.post_ops_ = reshaped_post_ops;
                 return status::success;
             };

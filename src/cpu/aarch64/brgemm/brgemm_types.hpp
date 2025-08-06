@@ -237,7 +237,8 @@ struct brgemm_t {
     // Derived  parameters
     int LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     bool is_blocked = false;
-
+    
+    int pad_rdb = 0; 
     int bdb = 0, bd_block = 0, bdb_tail = 0;
     int bdb2 = 0, bd_block2 = 0, bdb2_tail = 0;
     int ldb = 0, ld_block = 0, ldb_tail = 0;

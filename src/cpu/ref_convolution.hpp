@@ -61,7 +61,7 @@ struct ref_convolution_fwd_t : public primitive_t {
                                    utils::one_of(wei_type, f16, bf16)
                                            && src_type == f32),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(dst_type, src_type, f32),
+            VDISPATCH_CONV(utils::one_of(dst_type, src_type, f32, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(
                     utils::one_of(bia_type, data_type::undef, src_type, f32),

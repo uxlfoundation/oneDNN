@@ -1126,7 +1126,7 @@ static inline uint8_t encodeDnsclCtrl(uint8_t mode, RoundingType rnd, RegData &d
 
     mode <<= 4;
     if (dt == DataType::e2m1)     mode |= 1;
-    if (dt == DataType::e3m0)     mode |= 2;
+    if (dt == DataType::s4)       mode |= 2;
     if (st == DataType::bf)       mode |= 4;
     if (rnd == RoundingType::rne) mode |= 8;
 

@@ -18,9 +18,7 @@
 #define GPU_INTEL_LRN_REF_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/nstl.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_lrn_pd.hpp"
+#include "gpu/intel/lrn/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -30,12 +28,12 @@ namespace gpu {
 namespace intel {
 namespace lrn {
 
-struct ref_lrn_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_lrn_fwd_pd_t {
-        using gpu_lrn_fwd_pd_t::gpu_lrn_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_lrn_fwd_t);
+        DECLARE_COMMON_PD_T("ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -157,12 +155,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_lrn_bwd_t : public primitive_t {
+struct ref_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_lrn_bwd_pd_t {
-        using gpu_lrn_bwd_pd_t::gpu_lrn_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_lrn_bwd_t);
+        DECLARE_COMMON_PD_T("ref:any", ref_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

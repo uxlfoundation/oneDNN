@@ -88,19 +88,6 @@ int ref_partition_t::init_ref(
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
 
-        // Softmax with stats is a special case, where primitive creation
-        // is failed and returns SKIPPED state, but it still can be executed
-        // with a reference primitive later. So in this case we ignore the
-        // SKIPPED state and continue the rest part.
-        // TODO: try to make a general logic when to reset the state.
-        bool reuse_driver_for_ref_compute = (par_op_ref.get().kind_ == "SoftMax"
-                && par_op_ref.get().out_lts_.size() == 2);
-        if (reuse_driver_for_ref_compute && res->state == SKIPPED) {
-            // reset res to avoid a skipped state from init_prim() to affect the rest part.
-            res->state = UNTESTED;
-            res->reason.clear();
-        }
-
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
         // for correctness check.
@@ -142,9 +129,10 @@ int ref_partition_t::init_ref(
         // reference would diverge from the values passed to the Graph API.
         SAFE(ref_prim->displace_scales(), WARN);
 
-        // Initialze the rest ops if current status is UNTESTED or EXECUTED
+        // Initialze the rest ops if current status is UNTESTED or EXECUTED or DEFERRED.
         // otherwise there is no need to init memory for the rest ops.
-        if (res->state != UNTESTED && res->state != EXECUTED) {
+        if (res->state != UNTESTED && res->state != EXECUTED
+                && res->state != DEFERRED) {
             // But for perf mode, when the tensors in the current op is not
             // the graph in/out, continue, otherwise return.
             if (has_bench_mode_bit(mode_bit_t::perf)) {

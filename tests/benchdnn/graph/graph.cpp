@@ -641,7 +641,8 @@ int doit(const prb_t *prb, res_t *res) {
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // correctness mode, run ref partition
-            if (res->state == UNTESTED || res->state == EXECUTED) {
+            if (res->state == UNTESTED || res->state == EXECUTED
+                    || res->state == DEFERRED) {
                 ref_partition.exec_ops(res);
                 if (res->state == FAILED) return FAIL;
                 if (res->state == SKIPPED || res->state == UNIMPLEMENTED)

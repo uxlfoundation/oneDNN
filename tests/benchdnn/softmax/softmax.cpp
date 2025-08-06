@@ -237,13 +237,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         return;
     }
     // Softmax with stats is not supported in the primitive implementation
-    // so skip it. It is supported in the graph driver, we will handle it
-    // separately.
-    // TODO: Change it to a dedicated status so that graph driver knows
-    // where the skipped case is coming from.
+    // But it is supported in the graph implementation, we will handle it
+    // separately by marking it as DEFERRED.
     if (prb->has_stats) {
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->state = DEFERRED;
         return;
     }
 }

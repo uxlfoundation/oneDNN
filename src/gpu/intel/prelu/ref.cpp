@@ -16,6 +16,8 @@
 
 #include "gpu/intel/prelu/ref.hpp"
 
+#include "gpu/intel/prelu/config.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -23,7 +25,7 @@ namespace intel {
 namespace prelu {
 
 static status_t init_conf_common(
-        prelu_conf_t &conf, const prelu_pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
 
     conf.is_forward = pd->is_fwd();
 
@@ -77,7 +79,7 @@ static status_t init_conf_common(
 };
 
 static status_t init_kernel_ctx_common(
-        compute::kernel_ctx_t &kernel_ctx, const prelu_conf_t &conf) {
+        compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
 
     kernel_ctx.set_data_type(conf.dst_md_info.data_type);
     def_eltwise_alg_kinds(kernel_ctx);
@@ -97,16 +99,16 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t ref_prelu_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t ref_prelu_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &weights = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
@@ -124,16 +126,16 @@ status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_prelu_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t ref_prelu_bwd_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-void ref_prelu_bwd_t::pd_t::init_scratchpad() {
+void ref_bwd_t::pd_t::init_scratchpad() {
     if (conf.reduce_diff_weights) {
         auto scratchpad = scratchpad_registry().registrar();
         size_t size = utils::array_product(
@@ -146,7 +148,7 @@ void ref_prelu_bwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t ref_prelu_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+status_t ref_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &weights = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);

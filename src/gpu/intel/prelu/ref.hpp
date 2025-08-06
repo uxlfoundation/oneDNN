@@ -21,9 +21,8 @@
 #include "common/primitive.hpp"
 #include "common/reduction_pd.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_prelu_pd.hpp"
+#include "gpu/intel/prelu/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,12 +30,12 @@ namespace gpu {
 namespace intel {
 namespace prelu {
 
-struct ref_prelu_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_prelu_fwd_pd_t {
-        using gpu_prelu_fwd_pd_t::gpu_prelu_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("prelu_ref:any", ref_prelu_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
 
@@ -60,7 +59,7 @@ struct ref_prelu_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        prelu_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -86,12 +85,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_prelu_bwd_t : public primitive_t {
+struct ref_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_prelu_bwd_pd_t {
-        using gpu_prelu_bwd_pd_t::gpu_prelu_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("prelu_ref:any", ref_prelu_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         status_t init(impl::engine_t *engine) {
 
@@ -143,7 +142,7 @@ struct ref_prelu_bwd_t : public primitive_t {
             }
         }
 
-        prelu_conf_t conf;
+        conf_t conf;
         std::shared_ptr<primitive_desc_t> reduction_pd_;
     };
 

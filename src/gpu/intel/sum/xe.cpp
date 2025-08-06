@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace sum {
 
-status_t xe_sum_t::execute(const exec_ctx_t &ctx) const {
+status_t xe_t::execute(const exec_ctx_t &ctx) const {
     auto &output = CTX_OUT_STORAGE(DNNL_ARG_DST);
     const int num_arrs = pd()->n_inputs();
     const memory_desc_wrapper o_d(pd()->dst_md());

@@ -20,9 +20,9 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "gpu/gpu_resource.hpp"
-#include "gpu/gpu_sum_pd.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/sum/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,18 +30,17 @@ namespace gpu {
 namespace intel {
 namespace sum {
 
-struct many_inputs_sum_t : public primitive_t {
+struct many_inputs_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_sum_pd_t {
-        using gpu_sum_pd_t::gpu_sum_pd_t;
+    struct pd_t : public sum::pd_t {
+        using sum::pd_t::pd_t;
 
-        DECLARE_SUM_PD_T("ocl:many_inputs", many_inputs_sum_t);
+        DECLARE_SUM_PD_T("ocl:many_inputs", many_inputs_t);
 
         status_t init(impl::engine_t *engine) {
             const int n = n_inputs();
 
-            VDISPATCH_SUM_SC(
-                    gpu_sum_pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
+            VDISPATCH_SUM_SC(sum::pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
 
             const memory_desc_wrapper o_d(dst_md());
 

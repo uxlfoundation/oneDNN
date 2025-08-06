@@ -24,7 +24,7 @@ namespace intel {
 namespace sum {
 
 template <data_type_t data_type>
-status_t simple_sum_t<data_type>::execute(const exec_ctx_t &ctx) const {
+status_t simple_t<data_type>::execute(const exec_ctx_t &ctx) const {
 
     auto &output = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
@@ -52,7 +52,7 @@ status_t simple_sum_t<data_type>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template struct simple_sum_t<data_type::f32>;
+template struct simple_t<data_type::f32>;
 
 } // namespace sum
 } // namespace intel

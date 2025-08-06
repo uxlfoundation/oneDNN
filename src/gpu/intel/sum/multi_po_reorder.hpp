@@ -20,11 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/reorder.hpp"
-#include "common/reorder_pd.hpp"
-#include "common/stream.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/gpu_sum_pd.hpp"
 #include "gpu/intel/primitive.hpp"
+#include "gpu/intel/sum/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,19 +29,18 @@ namespace gpu {
 namespace intel {
 namespace sum {
 
-struct multi_po_reorder_sum_t : public primitive_t {
+struct multi_po_reorder_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_sum_pd_t {
-        using gpu_sum_pd_t::gpu_sum_pd_t;
+    struct pd_t : public sum::pd_t {
+        using sum::pd_t::pd_t;
 
         pd_t(const pd_t &rhs) = default;
         ~pd_t() override = default;
 
-        DECLARE_SUM_PD_T("multi_po_reorder_sum", multi_po_reorder_sum_t);
+        DECLARE_SUM_PD_T("reorder+post_ops", multi_po_reorder_t);
 
         status_t init(impl::engine_t *engine) {
-            VDISPATCH_SUM_SC(
-                    gpu_sum_pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
+            VDISPATCH_SUM_SC(sum::pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
 
             if (has_zero_dim_memory()) return status::success;
 

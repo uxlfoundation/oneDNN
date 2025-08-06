@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace sum {
 
-status_t many_inputs_sum_t::execute(const exec_ctx_t &ctx) const {
+status_t many_inputs_t::execute(const exec_ctx_t &ctx) const {
     auto &output = CTX_OUT_STORAGE(DNNL_ARG_DST);
     const int num_arrs = pd()->n_inputs()
             - 1; // input0 is copied over to output. Accumulate the rest.
@@ -35,10 +35,10 @@ status_t many_inputs_sum_t::execute(const exec_ctx_t &ctx) const {
     auto &input0 = CTX_IN_STORAGE(DNNL_ARG_MULTIPLE_SRC);
     const bool is_inplace = (output.data_handle() == input0.data_handle());
     if (!is_inplace) {
-        auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
-        CHECK(compute_stream->copy(input0, output, o_d.size(),
-                compute_stream->ctx().get_deps(),
-                compute_stream->ctx().get_deps()));
+        auto *intel_stream = utils::downcast<intel::stream_t *>(ctx.stream());
+        CHECK(intel_stream->copy(input0, output, o_d.size(),
+                intel_stream->ctx().get_deps(),
+                intel_stream->ctx().get_deps()));
     }
     status_t status;
     for (int batch_iter = 0; batch_iter < num_batches; batch_iter++) {
@@ -54,9 +54,9 @@ status_t many_inputs_sum_t::execute(const exec_ctx_t &ctx) const {
             } else
                 arg_list.set(a, memory_storage_t::empty_storage());
         }
-        arg_list.set(many_inputs_sum_t::max_num_arrs, output);
-        arg_list.set(many_inputs_sum_t::max_num_arrs + 1,
-                CTX_GPU_RES_STORAGE(SCALES_));
+        arg_list.set(many_inputs_t::max_num_arrs, output);
+        arg_list.set(
+                many_inputs_t::max_num_arrs + 1, CTX_GPU_RES_STORAGE(SCALES_));
 
         const size_t total_width = nelems * kernel_num_arrs;
         const size_t lws = utils::rnd_dn(256, kernel_num_arrs);

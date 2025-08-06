@@ -258,6 +258,14 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_fused_convolution_fwd_t)
             nullptr,
         }},
+        {{forward, f32, f32, u8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, f32, f32, s8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f32),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, bf16),

@@ -699,7 +699,7 @@ void deserialized_graph_t::detect_recognized_patterns() {
 bool deserialized_graph_t::detect_sdpa_impl() const {
 
     static const std::unordered_set<std::string> mm1_post_op_kind
-            = {"Divide", "Multiply", "Add", "Select", "GenIndex",
+            = {"Divide", "Multiply", "Add", "Subtract", "Select", "GenIndex",
                     "GreaterEqual", "StaticReshape", "StaticTranspose"};
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
@@ -711,7 +711,6 @@ bool deserialized_graph_t::detect_sdpa_impl() const {
     std::vector<std::reference_wrapper<const deserialized_op_t>> starter_ops;
     for (const auto &aop : ops_) {
         if (is_root_op(aop)) starter_ops.emplace_back(aop);
-        if (aop.out_lts_.size() > 1) return false;
     }
 
     // this lambda function is used to traverse downward through the given

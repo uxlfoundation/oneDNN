@@ -288,7 +288,8 @@ void ref_partition_t::exec_ops(res_t *res) {
         // it's assumed Softmax is unfusable.
         const bool is_softmax_in_sdpa_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::SoftMax
-                && has_parent_op(op, /* check_all_in_lts = */ true);
+                && dg_->get_recognized_pattern()
+                        == graph_recognized_pattern_t::sdpa;
 
         // For SDPA training backward, it is limited for MatMuls used to compute
         // dQ, dK, dV.

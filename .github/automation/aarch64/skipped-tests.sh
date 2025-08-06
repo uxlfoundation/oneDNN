@@ -51,7 +51,6 @@ SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_regressions_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_conv_int8_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_matmul_sparse_gpu_cpu"
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_reorder_all_cpu"
 
 # c7g failures. TODO: scope these to c7g only. Better yet, fix them.
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_binary_all_cpu"

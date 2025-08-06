@@ -1491,9 +1491,18 @@ TEST(test_subgraph_pass_int8_matmul_passes_with_diff_inputs,
             add
              | (bf16)
     */
+
+    static auto isa = dnnl_get_effective_cpu_isa();
+
     std::vector<op_kind_t> scale_kinds {Multiply, Divide};
     for (auto scale_kind : scale_kinds) {
         graph::engine_t *g_eng = get_engine();
+
+        SKIP_IF((isa < dnnl_cpu_isa_avx512_core)
+                        && g_eng->kind() == graph::engine_kind::cpu,
+                "Skip bf16 examples for systems that do not support "
+                "avx512_core.");
+
         dnnl::engine p_eng
                 = dnnl::impl::graph::dnnl_impl::make_dnnl_engine(*g_eng);
         graph_t agraph;

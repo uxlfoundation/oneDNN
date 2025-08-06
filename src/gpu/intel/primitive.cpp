@@ -99,7 +99,7 @@ status_t primitive_t::large_parallel_for(const exec_ctx_t &ctx,
         }
     }
 
-    int64x3_t offset_arg = {};
+    compute::int64x3_t offset_arg = {};
     auto &offset = offset_arg.array;
     static_assert(
             range_ndims == 3, "Large parallel for loop doesn't match ndims.");

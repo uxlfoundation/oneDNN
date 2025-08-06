@@ -712,13 +712,15 @@ status_t micro_sdpa_t::execute(const exec_ctx_t &ctx) const {
     //TODO: change arg_list type based on large_idx
     //bool use_int32_offset = conf.use_int32_offset;
 
-    auto append_offs = [](compute::kernel_arg_list_t &arg_list,
-                               const offset_t &offs) {
-        int64x4_t dims4 = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
-        int64x4_t strides4 = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
-        arg_list.append(dims4);
-        arg_list.append(strides4);
-    };
+    auto append_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+                  compute::int64x4_t dims4
+                          = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
+                  compute::int64x4_t strides4
+                          = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
+                  arg_list.append(dims4);
+                  arg_list.append(strides4);
+              };
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;

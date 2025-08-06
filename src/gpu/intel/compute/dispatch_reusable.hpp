@@ -17,7 +17,6 @@
 #ifndef GPU_INTEL_COMPUTE_DISPATCH_REUSABLE_HPP
 #define GPU_INTEL_COMPUTE_DISPATCH_REUSABLE_HPP
 
-#include <sstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -29,9 +28,9 @@
 #include "gpu/intel/compute/block_manipulation.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
+#include "gpu/intel/compute/types_interop.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/engine.hpp"
-#include "gpu/intel/include/types_interop.h"
 
 namespace dnnl {
 namespace impl {

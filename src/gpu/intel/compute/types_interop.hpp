@@ -18,13 +18,14 @@
 #define GPU_INTEL_COMPUTE_TYPES_INTEROP_HPP
 
 #include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/include/types_interop.h"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace compute {
+
+#include "gpu/intel/include/types_interop.h"
 
 template <>
 struct scalar_type_traits_t<int64x2_t> {

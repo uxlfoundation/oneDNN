@@ -59,26 +59,28 @@ static void set_scalar_arg(::sycl::handler &cgh, int index,
             cgh.set_arg(index, *static_cast<const uint64_t *>(value));
             break;
         case scalar_type_t::_zero_pad_mask_t:
-            cgh.set_arg(index, *static_cast<const zero_pad_mask_t *>(value));
+            cgh.set_arg(index,
+                    *static_cast<const compute::zero_pad_mask_t *>(value));
             break;
         case scalar_type_t::_int64x2_t:
-            cgh.set_arg(index, *static_cast<const int64x2_t *>(value));
+            cgh.set_arg(index, *static_cast<const compute::int64x2_t *>(value));
             break;
         case scalar_type_t::_int64x3_t:
-            cgh.set_arg(index, *static_cast<const int64x3_t *>(value));
+            cgh.set_arg(index, *static_cast<const compute::int64x3_t *>(value));
             break;
         case scalar_type_t::_int64x4_t:
-            cgh.set_arg(index, *static_cast<const int64x4_t *>(value));
+            cgh.set_arg(index, *static_cast<const compute::int64x4_t *>(value));
             break;
         case scalar_type_t::_int64x5_t:
-            cgh.set_arg(index, *static_cast<const int64x5_t *>(value));
+            cgh.set_arg(index, *static_cast<const compute::int64x5_t *>(value));
             break;
         case scalar_type_t::_int64x6_t:
-            cgh.set_arg(index, *static_cast<const int64x6_t *>(value));
+            cgh.set_arg(index, *static_cast<const compute::int64x6_t *>(value));
             break;
         case scalar_type_t::_dispatch_gws_rt_params_t:
             cgh.set_arg(index,
-                    *static_cast<const dispatch_gws_rt_params_t *>(value));
+                    *static_cast<const compute::dispatch_gws_rt_params_t *>(
+                            value));
             break;
         default:
             gpu_error_not_expected() << "Unimplemented scalar_type_t";

@@ -77,8 +77,9 @@ enum class dnnl_driver_t {
 };
 
 enum class graph_recognized_pattern_t {
-    sdpa,
     ordinary,
+    sdpa_fwd,
+    sdpa_bwd,
 };
 
 extern bdnn_state_t convert_state(const dnnl_status_t &s);

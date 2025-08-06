@@ -38,6 +38,7 @@ public:
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
     const NEOInterfaceHandler &getInterface() {return interface_;}
+    void setInterface(NEOInterfaceHandler interface) {interface_ = std::move(interface);}
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }
 

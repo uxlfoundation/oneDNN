@@ -711,7 +711,6 @@ bool deserialized_graph_t::detect_sdpa_impl() const {
     std::vector<std::reference_wrapper<const deserialized_op_t>> starter_ops;
     for (const auto &aop : ops_) {
         if (is_root_op(aop)) starter_ops.emplace_back(aop);
-        if (aop.out_lts_.size() > 1) return false;
     }
 
     // this lambda function is used to traverse downward through the given

@@ -15,7 +15,9 @@
  *******************************************************************************/
 
 #include "gpu/intel/zeropad/simple.hpp"
+
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/zeropad/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -23,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace zeropad {
 
-status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
+status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
     compute::kernel_arg_list_t arg_list;
 
     const memory_t *memory = ctx.input(DNNL_ARG_SRC);
@@ -53,11 +55,11 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
     }
 
     // This constant needs to be the same as DEFAULT_NELEMS_BLOCK in
-    // simple_zero_pad.cl
+    // simple.cl
     const int default_nelems_block = 8;
 
     // This divisibility condition cannot be changed without some modifications
-    // to use of DEFAULT_NELEMS_BLOCK in simple_zero_pad.cl
+    // to use of DEFAULT_NELEMS_BLOCK in simple.cl
     size_t nelems_block = 1;
     while (nelems_block < default_nelems_block
             && step_nelems % (nelems_block * 2) == 0)
@@ -92,8 +94,8 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
             pos[j] = 0;
         }
 
-        zero_pad_mask_t bit_mask;
-        zero_pad_mask_t lookup_mask;
+        mask_t bit_mask;
+        mask_t lookup_mask;
         for (unsigned int j = 0; j < ZERO_PAD_MASK_SIZE; j++)
             bit_mask.mask[j] = 0;
 
@@ -131,7 +133,7 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
 
         size_t mode = ZERO_PAD_BIT_MODE;
         size_t gws0 = nelems_block;
-        zero_pad_mask_t *mask_in = &bit_mask;
+        mask_t *mask_in = &bit_mask;
         if (use_lookup_mask) {
             mode = ZERO_PAD_LOOKUP_MODE;
             gws0 = mask_count;
@@ -153,7 +155,7 @@ status_t simple_zero_pad_t::execute_simple(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-status_t simple_zero_pad_t::execute_subg_16(const exec_ctx_t &ctx,
+status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
         const memory_desc_wrapper &mdw,
         const blocking_desc_t &blocking_desc) const {
 
@@ -294,8 +296,8 @@ status_t simple_zero_pad_t::execute_subg_16(const exec_ctx_t &ctx,
     return status;
 }
 
-status_t simple_zero_pad_t::execute_subg_16_mask_and_clear_dt_1B(
-        const exec_ctx_t &ctx, const memory_desc_wrapper &mdw,
+status_t simple_t::execute_subg_16_mask_and_clear_dt_1B(const exec_ctx_t &ctx,
+        const memory_desc_wrapper &mdw,
         const blocking_desc_t &blocking_desc) const {
 
     const memory_t *memory = ctx.input(DNNL_ARG_SRC);
@@ -330,7 +332,7 @@ status_t simple_zero_pad_t::execute_subg_16_mask_and_clear_dt_1B(
             ctx, zp_nd_range, kernel_subg16_mask_and_clear_dt_1b_, arg_list);
 }
 
-status_t simple_zero_pad_t::execute(const exec_ctx_t &ctx) const {
+status_t simple_t::execute(const exec_ctx_t &ctx) const {
     const memory_t *memory = ctx.input(DNNL_ARG_SRC);
     const memory_desc_wrapper mdw(memory->md());
     const blocking_desc_t &blocking_desc = mdw.blocking_desc();

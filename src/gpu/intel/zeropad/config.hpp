@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,31 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/gpu_impl_list.hpp"
+#ifndef GPU_INTEL_ZEROPAD_CONFIG_HPP
+#define GPU_INTEL_ZEROPAD_CONFIG_HPP
 
-#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/zeropad/simple.hpp"
-#endif
+#include "gpu/gpu_zero_pad_pd.hpp"
+#include "gpu/intel/compute/types_interop.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
+namespace intel {
+namespace zeropad {
 
-namespace {
+using pd_t = gpu_zero_pad_pd_t;
+using mask_t = compute::zero_pad_mask_t;
 
-// clang-format off
-constexpr impl_list_item_t impl_list[] = {
-        GPU_INSTANCE_INTEL(intel::zeropad::simple_t)
-        nullptr,
-};
-// clang-format on
-} // namespace
-
-const impl_list_item_t *get_zero_pad_impl_list(const zero_pad_desc_t *desc) {
-    UNUSED(desc);
-    return impl_list;
-}
-
+} // namespace zeropad
+} // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

@@ -17,10 +17,8 @@
 #ifndef GPU_INTEL_ZEROPAD_SIMPLE_HPP
 #define GPU_INTEL_ZEROPAD_SIMPLE_HPP
 
-#include "gpu/gpu_resource.hpp"
 #include "gpu/gpu_zero_pad_pd.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,12 +31,12 @@ namespace zeropad {
             status::unimplemented, "%s," msg, this->info(engine), \
             ##__VA_ARGS__)
 
-struct simple_zero_pad_t : public primitive_t {
+struct simple_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public gpu_zero_pad_pd_t {
         using gpu_zero_pad_pd_t::gpu_zero_pad_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:simple:any", simple_zero_pad_t);
+        DECLARE_COMMON_PD_T("ocl:simple:any", simple_t);
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
             VDISPATCH_ZERO_PAD(intel_engine->mayiuse_sub_group(16),

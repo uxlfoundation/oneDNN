@@ -17,13 +17,9 @@
 #ifndef GPU_INTEL_IP_CONV_HPP
 #define GPU_INTEL_IP_CONV_HPP
 
-#include <assert.h>
-
 #include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_inner_product_pd.hpp"
+#include "gpu/intel/ip/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,13 +27,13 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct convolution_inner_product_fwd_t : public primitive_t {
-    struct pd_t : public gpu_inner_product_fwd_pd_t {
-        using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
+struct conv_fwd_t : public primitive_t {
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
         pd_t(const pd_t &rhs) = default;
 
-        DECLARE_COMMON_PD_T("ocl:conv", convolution_inner_product_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:conv", conv_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -93,7 +89,7 @@ struct convolution_inner_product_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        inner_product_conf_t conf;
+        conf_t conf;
 
         std::shared_ptr<primitive_desc_t> cpd_;
         std::shared_ptr<primitive_desc_t> rpd_postop_;
@@ -103,7 +99,7 @@ struct convolution_inner_product_fwd_t : public primitive_t {
         status_t init_scratchpad();
     };
 
-    convolution_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    conv_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(impl::engine_t *engine) override {
         CHECK(create_nested_primitive(conv_, pd()->cpd_, engine));

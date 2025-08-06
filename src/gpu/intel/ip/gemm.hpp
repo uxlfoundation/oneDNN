@@ -25,7 +25,7 @@
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "common/reduction_pd.hpp"
-#include "gpu/gpu_inner_product_pd.hpp"
+#include "gpu/intel/ip/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/primitive_conf.hpp"
@@ -36,13 +36,13 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct gemm_inner_product_fwd_t : public primitive_t {
+struct gemm_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_inner_product_fwd_pd_t {
-        using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T((gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"),
-                gemm_inner_product_fwd_t);
+        DECLARE_COMMON_PD_T(
+                (gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"), gemm_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -144,13 +144,13 @@ private:
     std::shared_ptr<impl::primitive_t> gemm_;
 };
 
-struct gemm_inner_product_bwd_data_t : public primitive_t {
+struct gemm_bwd_data_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_inner_product_bwd_data_pd_t {
-        using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
+    struct pd_t : public bwd_data_pd_t {
+        using bwd_data_pd_t::bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T((gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"),
-                gemm_inner_product_bwd_data_t);
+        DECLARE_COMMON_PD_T(
+                (gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"), gemm_bwd_data_t);
 
         bool has_type(data_type_t v) const {
             return utils::one_of(v, weights_md()->data_type,
@@ -229,14 +229,13 @@ private:
     std::shared_ptr<impl::primitive_t> gemm_;
 };
 
-struct gemm_inner_product_bwd_weights_t : public primitive_t {
+struct gemm_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
-    using gpu_ip_bwd_weights_pd_t = gpu_inner_product_bwd_weights_pd_t;
-    struct pd_t : public gpu_ip_bwd_weights_pd_t {
-        using gpu_ip_bwd_weights_pd_t::gpu_ip_bwd_weights_pd_t;
+    struct pd_t : public bwd_weights_pd_t {
+        using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T(gemm_pd_ ? gemm_pd_->name() : "ocl:gemm",
-                gemm_inner_product_bwd_weights_t);
+        DECLARE_COMMON_PD_T(
+                gemm_pd_ ? gemm_pd_->name() : "ocl:gemm", gemm_bwd_weights_t);
 
         bool has_type(data_type_t v) const {
             return utils::one_of(v, diff_weights_md()->data_type,

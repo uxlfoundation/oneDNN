@@ -17,9 +17,6 @@
 #include "gpu/intel/ip/ref.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_traits.hpp"
-#include "common/math_utils.hpp"
-#include "common/type_helpers.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,9 +24,9 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
-        const inner_product_pd_t *pd, impl::engine_t *engine) {
-    const inner_product_desc_t &ipd = *pd->desc();
+static status_t init_conf_common(
+        conf_t &conf, offsets_t &off, const pd_t *pd, impl::engine_t *engine) {
+    const desc_t &ipd = *pd->desc();
     const memory_desc_wrapper src_d(pd->invariant_src_md());
     const memory_desc_wrapper wei_d(pd->invariant_wei_md());
     const memory_desc_wrapper dst_d(pd->invariant_dst_md());
@@ -114,8 +111,7 @@ static status_t init_conf_common(inner_product_conf_t &conf, offsets_t &off,
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const inner_product_conf_t &conf, const offsets_t &off,
-        const primitive_desc_t &pd) {
+        const conf_t &conf, const offsets_t &off, const primitive_desc_t &pd) {
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("MB", conf.mb);
     kernel_ctx.define_int("OC", conf.oc);
@@ -163,11 +159,11 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_inner_product_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
-status_t ref_inner_product_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
 
     kernel_ctx.register_buffer_size(*src_md());
@@ -178,7 +174,7 @@ status_t ref_inner_product_fwd_t::pd_t::init_kernel_ctx(
     return init_kernel_ctx_common(kernel_ctx, conf, off, *this);
 }
 
-status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -213,11 +209,11 @@ status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_inner_product_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
-status_t ref_inner_product_bwd_data_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_data_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.register_buffer_size(*diff_src_md());
     kernel_ctx.register_buffer_size(*diff_dst_md());
@@ -226,8 +222,7 @@ status_t ref_inner_product_bwd_data_t::pd_t::init_kernel_ctx(
     return init_kernel_ctx_common(kernel_ctx, conf, off, *this);
 }
 
-status_t ref_inner_product_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
@@ -249,12 +244,11 @@ status_t ref_inner_product_bwd_data_t::execute_backward_data(
     return status;
 }
 
-status_t ref_inner_product_bwd_weights_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t ref_bwd_weights_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
-status_t ref_inner_product_bwd_weights_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_weights_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.register_buffer_size(*src_md());
     kernel_ctx.register_buffer_size(*diff_dst_md());
@@ -263,7 +257,7 @@ status_t ref_inner_product_bwd_weights_t::pd_t::init_kernel_ctx(
     return init_kernel_ctx_common(kernel_ctx, conf, off, *this);
 }
 
-status_t ref_inner_product_bwd_weights_t::execute_backward_weights(
+status_t ref_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
     status_t status = status::success;
 

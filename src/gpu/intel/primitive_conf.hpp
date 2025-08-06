@@ -274,27 +274,6 @@ struct pool_conf_t {
     memory_desc_info_t dst_md_info;
 };
 
-// Inner Product
-struct inner_product_conf_t {
-    dim_idx_t ndims;
-    dim_idx_t src_ndims, wei_ndims, dst_ndims;
-    dim_t mb, oc, ic, ic_total;
-    dim_t id, ih, iw, od, oh, ow;
-    dim_t kd, kh, kw;
-    bool with_bias, has_spatial;
-    bool is_forward, is_backward_data, is_backward_weights;
-    compute::dispatch_t dispatch;
-    bool reorder_dst = false;
-
-    data_type_t src_dt;
-    data_type_t wei_dt;
-    data_type_t bia_dt;
-    data_type_t dst_dt;
-    data_type_t acc_dt;
-
-    attr_info_t attr_info;
-};
-
 struct rnn_reorder_conf_t {
     bool do_reorder, with_group, has_padding;
     bool with_sum_ab, with_sum_a;

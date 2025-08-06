@@ -17,13 +17,9 @@
 #ifndef GPU_INTEL_IP_REF_HPP
 #define GPU_INTEL_IP_REF_HPP
 
-#include <assert.h>
-
 #include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_inner_product_pd.hpp"
+#include "gpu/intel/ip/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct ref_inner_product_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_inner_product_fwd_pd_t {
-        using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_inner_product_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -105,7 +101,7 @@ struct ref_inner_product_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        inner_product_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 
@@ -131,12 +127,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_inner_product_bwd_data_t : public primitive_t {
+struct ref_bwd_data_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_inner_product_bwd_data_pd_t {
-        using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
+    struct pd_t : public bwd_data_pd_t {
+        using bwd_data_pd_t::bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_inner_product_bwd_data_t);
+        DECLARE_COMMON_PD_T("ref:any", ref_bwd_data_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -171,7 +167,7 @@ struct ref_inner_product_bwd_data_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        inner_product_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 
@@ -197,13 +193,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct ref_inner_product_bwd_weights_t : public primitive_t {
+struct ref_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_inner_product_bwd_weights_pd_t {
-        using gpu_inner_product_bwd_weights_pd_t::
-                gpu_inner_product_bwd_weights_pd_t;
+    struct pd_t : public bwd_weights_pd_t {
+        using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_inner_product_bwd_weights_t);
+        DECLARE_COMMON_PD_T("ref:any", ref_bwd_weights_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -238,7 +233,7 @@ struct ref_inner_product_bwd_weights_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        inner_product_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 

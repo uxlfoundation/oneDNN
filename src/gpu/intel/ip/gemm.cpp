@@ -24,8 +24,7 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-status_t gemm_inner_product_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
     gemm::exec_args_t gemm_args;
@@ -63,8 +62,7 @@ status_t gemm_inner_product_fwd_t::execute_forward(
     return status::success;
 }
 
-status_t gemm_inner_product_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+status_t gemm_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
     gemm::exec_args_t gemm_args;
@@ -83,7 +81,7 @@ status_t gemm_inner_product_bwd_data_t::execute_backward_data(
     return status::success;
 }
 
-status_t gemm_inner_product_bwd_weights_t::execute_backward_weights(
+status_t gemm_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 

@@ -34,9 +34,8 @@ static int adjust_dims(dims_t &dims, const memory_desc_t *dst, int ndims) {
     return max_dims;
 }
 
-status_t convolution_inner_product_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
-    const inner_product_desc_t &ipd = *desc();
+status_t conv_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+    const desc_t &ipd = *desc();
 
     const auto *src_md = invariant_src_md();
     const auto *wei_md = invariant_wei_md();
@@ -136,7 +135,7 @@ status_t convolution_inner_product_fwd_t::pd_t::init_conf(
     return status::success;
 }
 
-status_t convolution_inner_product_fwd_t::pd_t::init_scratchpad() {
+status_t conv_fwd_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     if (conf.reorder_dst) {
         memory_desc_wrapper md_d(*cpd_->dst_md());
@@ -153,8 +152,7 @@ status_t convolution_inner_product_fwd_t::pd_t::init_scratchpad() {
     return status::success;
 }
 
-status_t convolution_inner_product_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t conv_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
 

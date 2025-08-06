@@ -227,13 +227,6 @@ int ref_partition_t::init_graph_mem(
 }
 
 void ref_partition_t::exec_ops(res_t *res) {
-    // check if there's softmax backward op in the partition,
-    // which will be a candidate for sdpa training backward pattern
-    bool has_softmax_backward = std::any_of(partition_ops_ref_.begin(),
-            partition_ops_ref_.end(), [](const op_ref_t &op_ref) {
-                return op_ref.get().kind_ == "SoftMaxBackward";
-            });
-
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
         auto ref_prim = ref_prims_.at(op.id_);
@@ -289,18 +282,16 @@ void ref_partition_t::exec_ops(res_t *res) {
         const bool is_softmax_in_sdpa_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::SoftMax
                 && dg_->get_recognized_pattern()
-                        == graph_recognized_pattern_t::sdpa;
+                        == graph_recognized_pattern_t::sdpa_fwd;
 
         // For SDPA training backward, it is limited for MatMuls used to compute
-        // dQ, dK, dV.
-        const bool is_matmul
-                = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul;
-        bool is_matmul_in_sdpa_bwd_pattern = false;
-        if (is_matmul && has_softmax_backward) {
-            const deserialized_op_t *child_op = nullptr;
-            if (!has_child_op(op, &child_op))
-                is_matmul_in_sdpa_bwd_pattern = true;
-        }
+        // dQ, dK, dV (which has no child ops).
+        const deserialized_op_t *child_op = nullptr;
+        const bool is_matmul_in_sdpa_bwd_pattern
+                = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul
+                && dg_->get_recognized_pattern()
+                        == graph_recognized_pattern_t::sdpa_bwd
+                && !has_child_op(op, &child_op);
 
         // For gated-MLP, it is complicated - the Swish op is decomposed into
         // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its

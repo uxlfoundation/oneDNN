@@ -132,8 +132,18 @@ struct deserialized_graph_t {
     const deserialized_op_t &get_op_by_out_lt(size_t out_lt_id) const;
     // returns an op based on its input logical tensor ID.
     const deserialized_op_t &get_op_by_in_lt(size_t in_lt_id) const;
-    // returns the post op that consumes the first output of given op.
-    const deserialized_op_t &get_post_op(const deserialized_op_t &op) const;
+    // returns the child ops that consumes the first output of given op.
+    const std::vector<deserialized_op_t> &get_child_ops(
+            const deserialized_op_t &op) const;
+    // Traverses downward through the graph starting from the first consumer of the
+    // given operation's first output tensor. The traversal continues until either:
+    // 1. A disallowed operation is encountered, or
+    // 2. An operation of the specified target kind is reached.
+    //
+    // Note: If start_op already matches target_kind, it will be returned directly.
+    const deserialized_op_t &find_next_until(const deserialized_op_t &start_op,
+            const std::string &target_kind,
+            const std::unordered_set<std::string> &allowed_skips) const;
 
     // outputs the information about graph from operator<< into a string.
     std::string get_string() const;
@@ -192,7 +202,9 @@ private:
     // loading.
     void detect_recognized_patterns();
     // check whether the graph is a scaled dot-product implementation.
-    bool detect_sdpa_impl() const;
+    bool detect_sdpa_fwd_impl() const;
+    // check whether the graph is a sdpa backpropagation implementation.
+    bool detect_sdpa_bwd_impl() const;
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_graph_t &dg);
 

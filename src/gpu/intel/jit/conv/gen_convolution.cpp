@@ -61,6 +61,11 @@ public:
 
             VDISPATCH_CONV_IC(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_BAD_ENGINE_KIND);
+#if XE4
+            VDISPATCH_CONV_IC(
+                    compute::gpu_arch(engine) < compute::gpu_arch_t::xe4,
+                    VERBOSE_UNSUPPORTED_ARCH, "gpu");
+#endif
             VDISPATCH_CONV_IC(
                     pd->set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);

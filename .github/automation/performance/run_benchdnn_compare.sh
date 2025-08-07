@@ -26,24 +26,21 @@ set -euo pipefail
 
 BASE_BINARY=$1
 NEW_BINARY=$2
-CMD_STR=$3
-THREADS=${4:-16}
+CMD_STR=("${@:3}")
 REPS=5
 PERF='--perf-template=%prb%,%-time%,%-ctime%'
 MODE='--mode=P'
 
-read -ra TOKENS <<< "$CMD_STR"
 FINAL_ARGS=()
-FINAL_ARGS=("${TOKENS[0]}" "${PERF}" "${MODE}" "${TOKENS[@]:1}")
+FINAL_ARGS=("${CMD_STR[0]}" "${PERF}" "${MODE}" "${CMD_STR[@]:1}")
 
-echo "Final benchdnn command:"
 printf '%s ' "${FINAL_ARGS[@]}"
 echo
 
 for i in $(seq 1 "$REPS"); do
   echo "Running base iteration $i..."
-  OMP_NUM_THREADS="$THREADS" "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
+  "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
   
   echo "Running new iteration $i..."
-  OMP_NUM_THREADS="$THREADS" "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
+  "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
 done

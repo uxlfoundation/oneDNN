@@ -31,13 +31,13 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-namespace lnorm_dims {
+namespace dims {
 constexpr dim_idx_t mb = 0;
 constexpr dim_idx_t ic = 1;
 constexpr dim_idx_t sp0 = 2;
 constexpr dim_idx_t sp1 = 3;
 constexpr dim_idx_t sp2 = 4;
-}; // namespace lnorm_dims
+}; // namespace dims
 
 static std::vector<dim_idx_t> get_dims(size_t ndims, bool for_stats = false) {
     assert(ndims > 1 && ndims < 6);
@@ -45,11 +45,11 @@ static std::vector<dim_idx_t> get_dims(size_t ndims, bool for_stats = false) {
     if (for_stats) ndims--;
     std::vector<dim_idx_t> ret(ndims);
     uint8_t idx = 0;
-    ret[idx++] = lnorm_dims::mb;
-    if (ndims >= 2) ret[idx++] = lnorm_dims::ic;
-    if (ndims >= 3) ret[idx++] = lnorm_dims::sp0;
-    if (ndims >= 4) ret[idx++] = lnorm_dims::sp1;
-    if (ndims >= 5) ret[idx++] = lnorm_dims::sp2;
+    ret[idx++] = dims::mb;
+    if (ndims >= 2) ret[idx++] = dims::ic;
+    if (ndims >= 3) ret[idx++] = dims::sp0;
+    if (ndims >= 4) ret[idx++] = dims::sp1;
+    if (ndims >= 5) ret[idx++] = dims::sp2;
     return ret;
 }
 

@@ -17,7 +17,6 @@
 #include "gpu/intel/lnorm/simple.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
-#include "common/scratchpad.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,8 +24,8 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-static status_t init_conf_common(lnorm_conf_t &conf,
-        const layer_normalization_pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(
+        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
     memory_desc_wrapper src_mdw(
@@ -232,7 +231,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
 }
 
 static status_t init_kernel_ctx_common(
-        compute::kernel_ctx_t &kernel_ctx, const lnorm_conf_t &conf) {
+        compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
     kernel_ctx.set_data_type(conf.is_fwd ? conf.src_dt : conf.dst_dt);
     def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
 
@@ -267,18 +266,16 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t simple_layer_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t simple_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t simple_layer_normalization_fwd_t::pd_t::init_kernel_ctx(
+status_t simple_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-status_t simple_layer_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t simple_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     const auto &conf = pd()->conf;
@@ -315,25 +312,23 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
     return status;
 }
 
-status_t simple_layer_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t simple_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t simple_layer_normalization_bwd_t::pd_t::init_kernel_ctx(
+status_t simple_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-void simple_layer_normalization_bwd_t::pd_t::init_scratchpad() {
+void simple_bwd_t::pd_t::init_scratchpad() {
     const size_t size = conf.n_chunks * conf.norm_axis * 2;
     auto scratchpad = scratchpad_registry().registrar();
     scratchpad.book(memory_tracking::names::key_lnorm_reduction, size,
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t simple_layer_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t simple_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     status_t status = status::success;

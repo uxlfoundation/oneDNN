@@ -20,9 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_layer_normalization_pd.hpp"
+#include "gpu/intel/lnorm/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,13 +29,12 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-struct vectorized_lnorm_fwd_t : public primitive_t {
+struct vectorized_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_layer_normalization_fwd_pd_t {
-        using gpu_layer_normalization_fwd_pd_t::
-                gpu_layer_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_lnorm_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -76,7 +74,7 @@ struct vectorized_lnorm_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        lnorm_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -108,13 +106,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct vectorized_lnorm_bwd_t : public primitive_t {
+struct vectorized_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_layer_normalization_bwd_pd_t {
-        using gpu_layer_normalization_bwd_pd_t::
-                gpu_layer_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_lnorm_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -155,7 +152,7 @@ struct vectorized_lnorm_bwd_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        lnorm_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {

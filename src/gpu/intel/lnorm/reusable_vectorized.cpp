@@ -19,13 +19,10 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_storage.hpp"
 #include "common/memory_tracking.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/lnorm/reusable.hpp"
 #include "gpu/intel/lnorm/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -81,9 +78,9 @@ bool is_sg_stride_compatible(int norm_axis, int sg_stride) {
     return true;
 }
 
-static status_t init_conf_common(const layer_normalization_pd_t *pd,
-        reusable_vectorized_lnorm_params_t *conf,
-        reusable_vectorized_lnorm_runtime_params_t *rt_conf,
+static status_t init_conf_common(const pd_t *pd,
+        reusable_vectorized_params_t *conf,
+        reusable_vectorized_runtime_params_t *rt_conf,
         const impl::engine_t *engine, const compute::named_buffer_t &input_buf,
         const compute::named_buffer_t &output_buf,
         const compute::named_buffer_t &stat_buf,
@@ -178,8 +175,7 @@ static status_t init_conf_common(const layer_normalization_pd_t *pd,
     return status::success;
 }
 
-status_t reusable_vectorized_layer_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(src_md()->ndims);
     vector<dim_idx_t> dims = get_dims(ndims);
     vector<dim_idx_t> stat_dims = get_dims(ndims, true);
@@ -201,8 +197,7 @@ status_t reusable_vectorized_layer_normalization_fwd_t::pd_t::init_conf(
     return status::success;
 }
 
-compute::kernel_ctx_t
-reusable_vectorized_lnorm_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t reusable_vectorized_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     kernel_ctx.set_data_type(input_dt);
     def_data_type(kernel_ctx, input_dt, "SRC");
@@ -225,7 +220,7 @@ reusable_vectorized_lnorm_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t reusable_vectorized_layer_normalization_fwd_t::execute_forward(
+status_t reusable_vectorized_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     const auto &rt_conf = pd()->rt_conf;
     const auto &conf = pd()->conf;
@@ -245,22 +240,22 @@ status_t reusable_vectorized_layer_normalization_fwd_t::execute_forward(
             ? CTX_IN_STORAGE(DNNL_ARG_VARIANCE)
             : CTX_OUT_STORAGE(DNNL_ARG_VARIANCE);
 
-    compute::kernel_arg_list_t lnorm_arg_list;
-    lnorm_arg_list.append(src);
-    lnorm_arg_list.append(mean);
-    lnorm_arg_list.append(variance);
-    lnorm_arg_list.append(pd()->norm_axis());
-    lnorm_arg_list.append(dst);
-    lnorm_arg_list.append(scale);
-    lnorm_arg_list.append(shift);
-    lnorm_arg_list.append(pd()->desc()->layer_norm_epsilon);
-    lnorm_arg_list.append(src_scale);
-    lnorm_arg_list.append(dst_scale);
-    lnorm_arg_list.append((int)utils::div_up(
+    compute::kernel_arg_list_t arg_list;
+    arg_list.append(src);
+    arg_list.append(mean);
+    arg_list.append(variance);
+    arg_list.append(pd()->norm_axis());
+    arg_list.append(dst);
+    arg_list.append(scale);
+    arg_list.append(shift);
+    arg_list.append(pd()->desc()->layer_norm_epsilon);
+    arg_list.append(src_scale);
+    arg_list.append(dst_scale);
+    arg_list.append((int)utils::div_up(
             pd()->norm_axis(), conf.sg_size * conf.vector_size));
-    lnorm_arg_list.append(1.f / (pd()->norm_axis()));
+    arg_list.append(1.f / (pd()->norm_axis()));
 
-    lnorm_arg_list.append(rt_conf.gws_params.get());
+    arg_list.append(rt_conf.gws_params.get());
 
     compute::nd_range_t gws_nd_range_calc(
             {static_cast<size_t>(conf.sg_size),
@@ -269,7 +264,7 @@ status_t reusable_vectorized_layer_normalization_fwd_t::execute_forward(
             {static_cast<size_t>(conf.sg_size), 1, 1});
 
     return parallel_for(
-            ctx, gws_nd_range_calc, calculate_lnorm_kernel_, lnorm_arg_list);
+            ctx, gws_nd_range_calc, calculate_lnorm_kernel_, arg_list);
 }
 
 } // namespace lnorm

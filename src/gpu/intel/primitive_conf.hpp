@@ -286,52 +286,6 @@ struct rnn_reorder_conf_t {
     size_t scales_count;
 };
 
-// Layer Normalization
-struct lnorm_conf_t {
-    data_type_t src_dt, dst_dt;
-    data_type_t weights_data_type = data_type::f32;
-
-    bool is_fwd;
-    dim_idx_t ndims;
-    dim_idx_t norm_axis;
-    dim_idx_t across_axis;
-    int norm_block;
-    int num_norm_blocks;
-    int norm_block_fused;
-    int num_norm_blocks_fused;
-    int across_block;
-    int num_across_blocks;
-
-    memory_desc_info_t src_md_info;
-    memory_desc_info_t dst_md_info;
-    memory_desc_info_t stat_md_info;
-
-    bool use_scale;
-    bool use_shift;
-    bool use_fused;
-    bool calculate_stats;
-    bool save_stats;
-    bool vectorize_calc_stats;
-    bool vectorize_bwd;
-    bool vectorize_bwd_scaleshift;
-    float eps;
-    int sub_group_size;
-    int vect_dt_n;
-    int vect_size_fused;
-    int shift_off;
-    int n_chunk_size;
-    dim_t finalize_n_chunks;
-    dim_t n_chunks;
-    int vector_size_scaleshift;
-    bool use_src_buffer;
-    bool skip_mean;
-
-    compute::dispatch_t dispatch_scaleshift;
-    compute::dispatch_t dispatch_scaleshift_finalize;
-    compute::dispatch_t dispatch;
-    compute::dispatch_t dispatch_fused;
-};
-
 // Reduction
 struct reduction_conf_t {
     // Used by reference implementation

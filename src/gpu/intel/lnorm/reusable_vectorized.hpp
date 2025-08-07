@@ -24,6 +24,7 @@
 #include "gpu/gpu_layer_normalization_pd.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
+#include "gpu/intel/lnorm/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -34,8 +35,8 @@ namespace lnorm {
 
 //************* Common Reusable structs *************//
 
-struct reusable_vectorized_lnorm_params_t
-    : trivially_serializable_t<reusable_vectorized_lnorm_params_t> {
+struct reusable_vectorized_params_t
+    : trivially_serializable_t<reusable_vectorized_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names
@@ -79,20 +80,19 @@ struct reusable_vectorized_lnorm_params_t
     uint8_t padding[3] = {false};
 };
 
-struct reusable_vectorized_lnorm_runtime_params_t {
+struct reusable_vectorized_runtime_params_t {
     compute::dispatch_runtime_params_t gws_params;
 };
 
 //************* FWD implementation *************//
 
-struct reusable_vectorized_layer_normalization_fwd_t : public primitive_t {
+struct reusable_vectorized_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_layer_normalization_fwd_pd_t {
-        using gpu_layer_normalization_fwd_pd_t::
-                gpu_layer_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reusable:vectorized",
-                reusable_vectorized_layer_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(
+                "ocl:reusable:vectorized", reusable_vectorized_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -131,8 +131,8 @@ struct reusable_vectorized_layer_normalization_fwd_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
 
-        reusable_vectorized_lnorm_params_t conf;
-        reusable_vectorized_lnorm_runtime_params_t rt_conf;
+        reusable_vectorized_params_t conf;
+        reusable_vectorized_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {

@@ -34,9 +34,8 @@ bool mayiuse_sg(const int sg_size, impl::engine_t *engine) {
             && intel_engine->mayiuse_block_reads_writes_with_sub_group(sg_size);
 };
 
-bool is_fused_kernel_applicable(lnorm_conf_t &conf,
-        const layer_normalization_pd_t *pd, impl::engine_t *engine,
-        bool large_grf_mode) {
+bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
+        impl::engine_t *engine, bool large_grf_mode) {
     auto *intel_engine = utils::downcast<engine_t *>(engine);
 
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
@@ -171,8 +170,8 @@ bool is_fused_kernel_applicable(lnorm_conf_t &conf,
     return true;
 }
 
-static status_t init_conf_common(lnorm_conf_t &conf,
-        const layer_normalization_pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(
+        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<engine_t *>(engine);
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
@@ -465,7 +464,7 @@ static status_t init_conf_common(lnorm_conf_t &conf,
 }
 
 static status_t init_kernel_ctx_common(
-        kernel_ctx_t &kernel_ctx, const lnorm_conf_t &conf) {
+        kernel_ctx_t &kernel_ctx, const conf_t &conf) {
     kernel_ctx.set_data_type(conf.src_dt);
     def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
 
@@ -518,16 +517,16 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t vectorized_lnorm_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t vectorized_lnorm_fwd_t::pd_t::init_kernel_ctx(
+status_t vectorized_fwd_t::pd_t::init_kernel_ctx(
         kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-status_t vectorized_lnorm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t vectorized_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     const auto &conf = pd()->conf;
@@ -563,23 +562,23 @@ status_t vectorized_lnorm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t vectorized_lnorm_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t vectorized_lnorm_bwd_t::pd_t::init_kernel_ctx(
+status_t vectorized_bwd_t::pd_t::init_kernel_ctx(
         kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(kernel_ctx, conf);
 }
 
-void vectorized_lnorm_bwd_t::pd_t::init_scratchpad() {
+void vectorized_bwd_t::pd_t::init_scratchpad() {
     const size_t size = conf.n_chunks * conf.norm_axis * 2;
     auto scratchpad = scratchpad_registry().registrar();
     scratchpad.book(memory_tracking::names::key_lnorm_reduction, size,
             types::data_type_size(data_type::f32), OCL_BUFFER_ALIGNMENT);
 }
 
-status_t vectorized_lnorm_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+status_t vectorized_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     status_t status = status::success;

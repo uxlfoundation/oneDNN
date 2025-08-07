@@ -18,12 +18,11 @@
 #define GPU_INTEL_LNORM_REUSABLE_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/layer_normalization_pd.hpp"
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_layer_normalization_pd.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
+#include "gpu/intel/lnorm/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -34,8 +33,7 @@ namespace lnorm {
 
 //************* Common Reusable structs *************//
 
-struct reusable_lnorm_params_t
-    : trivially_serializable_t<reusable_lnorm_params_t> {
+struct reusable_params_t : trivially_serializable_t<reusable_params_t> {
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names
                 = {"lnorm_reusable_fwd", "lnorm_reusable_calc_mean",
@@ -69,7 +67,7 @@ struct reusable_lnorm_params_t
     compute::dispatch_compile_params_t scaleshift_params;
 };
 
-struct reusable_lnorm_runtime_params_t {
+struct reusable_runtime_params_t {
     stride_t norm_stride, stat_stride;
     compute::dispatch_runtime_params_t gws_params;
     compute::dispatch_runtime_params_t stat_params;
@@ -78,14 +76,12 @@ struct reusable_lnorm_runtime_params_t {
 
 //************* FWD implementation *************//
 
-struct reusable_layer_normalization_fwd_t : public primitive_t {
+struct reusable_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_layer_normalization_fwd_pd_t {
-        using gpu_layer_normalization_fwd_pd_t::
-                gpu_layer_normalization_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                "ocl:reusable:ref", reusable_layer_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:reusable:ref", reusable_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -123,8 +119,8 @@ struct reusable_layer_normalization_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        reusable_lnorm_params_t conf;
-        reusable_lnorm_runtime_params_t rt_conf;
+        reusable_params_t conf;
+        reusable_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -155,14 +151,12 @@ private:
 
 //************* BWD implementation *************//
 
-struct reusable_layer_normalization_bwd_t : public primitive_t {
+struct reusable_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_layer_normalization_bwd_pd_t {
-        using gpu_layer_normalization_bwd_pd_t::
-                gpu_layer_normalization_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                "ocl:reusable:ref", reusable_layer_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:reusable:ref", reusable_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -197,8 +191,8 @@ struct reusable_layer_normalization_bwd_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
 
-        reusable_lnorm_params_t conf;
-        reusable_lnorm_runtime_params_t rt_conf;
+        reusable_params_t conf;
+        reusable_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {

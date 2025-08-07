@@ -26,9 +26,9 @@
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/lnorm/config.hpp"
 #include "gpu/intel/lnorm/reusable.hpp"
 #include "gpu/intel/lnorm/utils.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -36,9 +36,9 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
-static status_t init_conf_common(const layer_normalization_pd_t *pd,
-        reusable_lnorm_params_t *conf, reusable_lnorm_runtime_params_t *rt_conf,
-        const impl::engine_t *engine, const compute::named_buffer_t &src_buf,
+static status_t init_conf_common(const pd_t *pd, reusable_params_t *conf,
+        reusable_runtime_params_t *rt_conf, const impl::engine_t *engine,
+        const compute::named_buffer_t &src_buf,
         const compute::named_buffer_t &dst_buf,
         const compute::named_buffer_t &stat_buf,
         const compute::named_buffer_t &ss_buf) {
@@ -142,8 +142,7 @@ void init_scratchpad_common(
     }
 }
 
-status_t reusable_layer_normalization_fwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(src_md()->ndims);
     std::vector<dim_idx_t> dims = get_dims(ndims);
     std::vector<dim_idx_t> stat_dims = get_dims(ndims, true);
@@ -169,7 +168,7 @@ status_t reusable_layer_normalization_fwd_t::pd_t::init_conf(
     return status::success;
 }
 
-compute::kernel_ctx_t reusable_lnorm_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
 
     data_type_t acc_dt = types::default_accum_data_type(src_dt, data_type::f32);
@@ -194,13 +193,12 @@ compute::kernel_ctx_t reusable_lnorm_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-void reusable_layer_normalization_fwd_t::pd_t::init_scratchpad() {
+void reusable_fwd_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     init_scratchpad_common(scratchpad, across_axis());
 }
 
-status_t reusable_layer_normalization_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &rt_conf = pd()->rt_conf;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -276,8 +274,7 @@ status_t reusable_layer_normalization_fwd_t::execute_forward(
 
 /********** BWD implementation ***********/
 
-status_t reusable_layer_normalization_bwd_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(diff_dst_md()->ndims);
     std::vector<dim_idx_t> dims = get_dims(ndims);
     std::vector<dim_idx_t> stat_dims = get_dims(ndims, true);
@@ -310,8 +307,7 @@ status_t reusable_layer_normalization_bwd_t::pd_t::init_conf(
     return status::success;
 }
 
-status_t reusable_layer_normalization_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     const auto &rt_conf = pd()->rt_conf;

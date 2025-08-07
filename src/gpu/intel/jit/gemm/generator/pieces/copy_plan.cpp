@@ -1418,7 +1418,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
     i.sat = false;
 
 #if XE3P
-    if (hw >= HW::Xe3p && getBytes(i.dst.type) <= 2)
+    if (hw >= HW::Xe3p && one_of(getBits(i.dst.type), 8, 16))
         if (planShflUpconvertXe3p(i))
             return;
 #endif

@@ -93,11 +93,8 @@ size_t matmul_amx_blocking_params_t::L1_threshold() {
 bool matmul_amx_blocking_params_macro_t::is_supported(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils) {
-    // TODO: enable extendable_k optimization
-    if (bgmmc.K < bgmmc.wei_k_blk
-            || bgmmc.K % data_type_vnni_granularity(bgmmc.wei_dt) != 0) {
-        return false;
-    }
+
+    if (bgmmc.K < bgmmc.wei_k_blk) { return false; }
 
     bool a_dt_ok
             = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
@@ -756,6 +753,15 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         return postops_inst_count / avx_ipc > div_up(k_blk, k_tmul);
     };
 
+    auto skip_extendable_k = [&]() {
+        size_t num_amx_ops_over_k = div_up(k_blk_, 64 / gemm_dt_sz);
+        return k_blk_ % num_amx_ops_over_k == 0
+                && k_blk_ / num_amx_ops_over_k <= 64 / gemm_dt_sz
+                && (k_blk_ / num_amx_ops_over_k)
+                        % data_type_vnni_granularity(wei_dt)
+                == 0;
+    };
+
     if (is_horizontal) {
         size_t l1_eff_factor = div_up(K, k_blk_h);
         // This works for M > 32 in this case k_blk_h << 4096 =~ 512
@@ -793,6 +799,9 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         n_chunk_size_ = 1;
         m_blk_ = m_decomposition;
         m_chunk_size_ = div_up(m_per_thread, m_blk_);
+
+        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
+
     } else {
         if (is_postops_bound(k_blk_v)) {
             // Give up on the L1 blocking
@@ -814,9 +823,9 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         is_a_nt_ = true;
         is_b_nt_ = false;
         need_prefetch = true;
-    }
 
-    extendable_k_ = K % data_type_vnni_granularity(wei_dt) != 0;
+        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
+    }
 
     brgemm_batch_size_ = 1;
 

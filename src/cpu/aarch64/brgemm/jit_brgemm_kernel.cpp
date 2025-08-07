@@ -500,28 +500,39 @@ void jit_brgemm_kernel_t::load_data(data_type_t type_in,
 void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
         const XReg &addr, bool mask_flag, bool store, PReg ktail_mask,
         const int offset, const int base_offset) {
-    const auto mask = mask_flag ? ktail_mask : P_ALL_ONE;
     switch (type_in) {
         case data_type::f32:
-        case data_type::s32:
+        case data_type::s32: {
+            const auto mask = mask_flag ? ktail_mask : P_ALL_ONE;
             LD_MUL_VL(ld1w, z_tmp_1().s, mask, addr, offset - base_offset, 4);
             if (store) //Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
+        }
         case data_type::bf16: assert(!"unsupported data type\n"); break;
         case data_type::s8:
-            LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
-            sxtb(z_tmp_1().d, mask / T_m, z_tmp_1().d);
+            if (mask_flag)
+                set_preg(P_TMP.b, brg.ldb_tail, X_TMP_0, X_TMP_1);
+            else
+                set_preg(P_TMP.b, brg.ld_block, X_TMP_0, X_TMP_1);
+            add_imm(X_DEFAULT_ADDR, addr, offset - base_offset, X_TMP_0);
+            ld1b(z_tmp_1().b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            sunpklo(z_tmp_1().h, z_tmp_1().b);
+            sunpklo(z_tmp_1().s, z_tmp_1().h);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
-        case data_type::u8:
-            LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
-            uxtb(z_tmp_1().s, mask / T_m, z_tmp_1().s);
+        case data_type::u8: {
+            const auto mask = mask_flag ? ktail_mask : P_ALL_ONE;
+            LD_MUL_VL(ld1b, z_tmp_1().s, mask, addr, offset - base_offset, 1);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
+        }
         default: assert(!"unsupported data type");
+    }
+    if (types::is_integral_dt(type_in)) {
+        scvtf(zmm_in.s, P_ALL_ONE / T_m, zmm_in.s);
     }
 }
 
@@ -889,7 +900,8 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
                 const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
                 add_imm(X_DEFAULT_ADDR, reg_aux_D, D_offset(bd, ld), X_TMP_0);
-                ld1w(vmm_prev_dst.s, k_mask / T_z, ptr(X_DEFAULT_ADDR));
+                cvt2ps(brg.sum_dt, vmm_prev_dst, X_DEFAULT_ADDR, is_tail, false,
+                        k_mask, 0, 0);
                 if (p_sum_zp_reg_set)
                     fsub(vmm_prev_dst.s, vmm_prev_dst.s, vmm_sum_zp.s);
                 if (p_sum_scale_reg_set) {
@@ -964,8 +976,8 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
-            cvt2ps(brg.dt_bias, zmm_bias, x_addr, true, false, k_mask, offset,
-                    base_offset);
+            cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
+                    offset, base_offset);
         }
         for (int bd = 0; bd < bd_block; bd++) {
             auto zmm = accm(ld_block2, bd, ld);
@@ -1020,7 +1032,20 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
 
     const bool dt_requires_saturation
             = one_of(brg.dt_d, data_type::u8, data_type::s8, data_type::s32);
-    if (dt_requires_saturation) { assert(!"unsupported\n"); }
+    auto zmm_lbound = z_tmp_1();
+    auto zmm_ubound = z_tmp_2();
+    if (dt_requires_saturation) {
+        init_saturate_f32(
+                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        for (int bd = 0; bd < bd_block; bd++) {
+            for (int ld = 0; ld < ld_block2; ld++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                saturate_f32(zmm, zmm_lbound, zmm_ubound, brg.dt_d, k_mask);
+                frinti(zmm.s, k_mask, zmm.s);
+                fcvtzs(zmm.s, k_mask, zmm.s);
+            }
+        }
+    }
 
     x_addr = reg_aux_D;
     base_offset = 0;
@@ -1041,8 +1066,17 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                             4);
                     break;
                 case data_type::bf16: assert(!"unsupported\n"); break;
-                case data_type::s8: assert(!"unsupported\n"); break;
-                case data_type::u8: assert(!"unsupported\n"); break;
+                case data_type::s8:
+                    smin(zmm.s, std::numeric_limits<int8_t>::max());
+                    smax(zmm.s, std::numeric_limits<int8_t>::min());
+                    ST_MUL_VL(st1b, zmm.s, k_mask, x_addr, offset - base_offset,
+                            1);
+                    break;
+                case data_type::u8:
+                    umin(zmm.s, std::numeric_limits<uint8_t>::max());
+                    ST_MUL_VL(st1b, zmm.s, k_mask, x_addr, offset - base_offset,
+                            1);
+                    break;
                 default: assert(!"unknown dst_dt");
             }
         }
@@ -1135,7 +1169,22 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dt_requires_saturation = brg.is_int8
             && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
-    if (dt_requires_saturation) { assert(!"unsupported\n"); }
+    auto zmm_lbound = z_tmp_1();
+    auto zmm_ubound = z_tmp_2();
+    assert(zmm_lbound.getIdx() != zmm_ubound.getIdx());
+    if (dt_requires_saturation) {
+        init_saturate_f32(
+                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        for (int bd = 0; bd < bd_block; bd++) {
+            for (int ld = 0; ld < ld_block2; ld++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                saturate_f32(
+                        zmm, zmm_lbound, zmm_ubound, brg.dt_d, ld_full_mask);
+                frinti(zmm.s, ld_full_mask, zmm.s);
+                fcvtzs(zmm.s, ld_full_mask, zmm.s);
+            }
+        }
+    }
     auto x_addr = reg_aux_C;
     int base_offset = 0;
 

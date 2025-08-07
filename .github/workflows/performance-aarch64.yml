@@ -121,28 +121,54 @@ jobs:
         env:
           ACL_ACTION: clone
           ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          ACL_VERSION: ${{ inputs.acl_new_hash || inputs.acl_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-  
-      - name: Get ACL commit hash for cache key
-        id: get_acl_commit_hash
-        run: |
-          cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          ACL_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
 
       - name: Get system name
         id: get_system_name
         run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
 
-      - name: Restore cached ACL
-        id: cache-acl-restore
+      - name: Checkout base ACL hash
+        if: ${{ inputs.acl_base_hash != '' }}
+        run: |
+          cd ${{ github.workspace }}/ComputeLibrary
+          git fetch --all
+          git checkout ${{ inputs.acl_base_hash }}
+
+      - name: Get ACL commit hash for cache key
+        id: get_acl_commit_hash_base
+        run: |
+          cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Restore base cached ACL
+        id: cache-acl-restore-base
         uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
+          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash_base.outputs.ACLCommitHash }}
           path: ${{ github.workspace }}/ComputeLibrary/build
 
       - name: Rename to ComputeLibrary_base
         run: cp -r ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
-      - name: Rename to ComputeLibrary_new
+      - name: Checkout new ACL hash
+        if: ${{ inputs.acl_new_hash != '' }}
+        run: |
+          cd ${{ github.workspace }}/ComputeLibrary
+          git fetch --all
+          git checkout ${{ inputs.acl_new_hash }}
+
+      - name: Get ACL commit hash for cache key
+        id: get_acl_commit_hash_new
+        run: |
+          cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Restore new cached ACL
+        id: cache-acl-restore-new
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash_new.outputs.ACLCommitHash }}
+          path: ${{ github.workspace }}/ComputeLibrary/build
+
+      - name: Move to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new
       
       - name: Checkout oneDNN base
@@ -209,7 +235,6 @@ jobs:
 
       - name: Check for regressions
         if: ${{ inputs.benchdnn_command == '' }}
-        continue-on-error: true
         run: |
           python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
 
@@ -217,11 +242,11 @@ jobs:
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
         run: |
+          OMP_NUM_THREADS=${{ inputs.num_threads }} \
           bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
-            "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn"  \
-            "${{ inputs.benchdnn_command }}"                                    \
-            "${{ inputs.num_threads }}"
+            "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn" \
+             ${{ inputs.benchdnn_command }}
 
       - name: Print speed comparisons
         if: ${{ inputs.benchdnn_command != '' }}

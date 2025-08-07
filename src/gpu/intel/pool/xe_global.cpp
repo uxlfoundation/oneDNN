@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
+dim_t calculate_spatial_chunk(const conf_t &conf, impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     const int hw_threads = intel_engine->device_info()->hw_threads();
     const bool is_xe_hp_plus = intel_engine->is_xe_hp()
@@ -44,11 +44,11 @@ dim_t calculate_spatial_chunk(const pool_conf_t &conf, impl::engine_t *engine) {
     return chunk_size;
 }
 
-static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
-        const pooling_pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(
+        conf_t &conf, offsets_t &off, const pd_t *pd, impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
-    set_default_pool_conf(conf, *pd->desc(), *pd->invariant_src_md(),
+    set_default_conf(conf, *pd->desc(), *pd->invariant_src_md(),
             *pd->invariant_dst_md(), *pd->attr());
 
     VDISPATCH_POOLING_IC(
@@ -86,16 +86,16 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
     conf.is_plain = src_mdw.is_plain();
-    conf.global_pool_spatial_chunk = calculate_spatial_chunk(conf, engine);
+    conf.global_spatial_chunk = calculate_spatial_chunk(conf, engine);
 
     const dim_t spatial_dim_padded = utils::rnd_up(
-            conf.id * conf.ih * conf.iw, conf.global_pool_spatial_chunk);
+            conf.id * conf.ih * conf.iw, conf.global_spatial_chunk);
     conf.dispatch = intel_engine->create_dispatch(src_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
     conf.dispatch.define_dim("C", 1, conf.c_padded);
     if (conf.is_backward) {
-        conf.dispatch.define_dim("SPATIAL", 2, spatial_dim_padded,
-                conf.global_pool_spatial_chunk);
+        conf.dispatch.define_dim(
+                "SPATIAL", 2, spatial_dim_padded, conf.global_spatial_chunk);
         conf.sub_group_size = intel_engine->device_info()->max_subgroup_size(
                 src_mdw.data_type());
         if (conf.c % conf.sub_group_size != 0) conf.vectorize = false;
@@ -119,8 +119,8 @@ static status_t init_conf_common(pool_conf_t &conf, offsets_t &off,
 };
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const pool_conf_t &conf, const offsets_t &off,
-        const post_ops_t &post_ops, const memory_desc_t *dst_md) {
+        const conf_t &conf, const offsets_t &off, const post_ops_t &post_ops,
+        const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
     kernel_ctx.set_data_type(conf.src_dt);
 
@@ -131,7 +131,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("IH", conf.ih);
     kernel_ctx.define_int("IW", conf.iw);
     kernel_ctx.define_int("SPATIAL_DIM", conf.id * conf.ih * conf.iw);
-    kernel_ctx.define_int("SPATIAL_CHUNK", conf.global_pool_spatial_chunk);
+    kernel_ctx.define_int("SPATIAL_CHUNK", conf.global_spatial_chunk);
     kernel_ctx.define_int("IS_TRAINING", conf.is_training);
     kernel_ctx.define_int("IS_BWD", conf.is_backward);
     kernel_ctx.define_int("IS_FWD", !conf.is_backward);
@@ -158,17 +158,17 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t xe_global_pooling_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_global_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
-status_t xe_global_pooling_fwd_t::pd_t::init_kernel_ctx(
+status_t xe_global_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, off, attr()->post_ops_, invariant_dst_md());
 }
 
-void xe_global_pooling_fwd_t::pd_t::init_scratchpad() {
+void xe_global_fwd_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     size_t size = utils::array_product(
             conf.dst_md_info.padded_dims, conf.dst_md_info.ndims);
@@ -179,7 +179,7 @@ void xe_global_pooling_fwd_t::pd_t::init_scratchpad() {
             reduction_pd_->scratchpad_registry());
 }
 
-status_t xe_global_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t xe_global_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     if (!reduction_p_) {
         auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
         auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
@@ -209,18 +209,17 @@ status_t xe_global_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     }
 }
 
-status_t xe_global_pooling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_global_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
-status_t xe_global_pooling_bwd_t::pd_t::init_kernel_ctx(
+status_t xe_global_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, off, attr()->post_ops_, invariant_dst_md());
 }
 
-status_t xe_global_pooling_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t xe_global_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto &diff_src = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
     auto &ws = CTX_IN_STORAGE(DNNL_ARG_WORKSPACE);

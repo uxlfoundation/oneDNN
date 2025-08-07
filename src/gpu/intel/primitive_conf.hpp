@@ -218,39 +218,6 @@ struct conv_conf_t {
     memory_desc_info_t dst_md_info;
 };
 
-// Pooling
-struct pool_conf_t {
-    int ndims;
-    dim_t mb, c;
-    dim_t mb_padded;
-    dim_t c_padded;
-    dim_t id, ih, iw, od, oh, ow;
-    dim_t stride_d, stride_h, stride_w;
-    dim_t kd, kh, kw;
-    dim_t dd, dh, dw;
-    dim_t f_pad, t_pad, l_pad;
-    data_type_t src_dt;
-    data_type_t dst_dt;
-    alg_kind_t alg;
-    bool is_plain;
-    bool is_training, is_backward;
-    bool use_mb_c_block, use_only_c_block;
-    int unroll_mb_count = 1;
-    bool vectorize = true;
-    int chunks_per_c_block, chunks_per_mb_block;
-    int vect_dt_n;
-    int nvect;
-    compute::dispatch_t dispatch;
-    int sub_group_size;
-    dim_t global_pool_spatial_chunk;
-    dim_t num_batches = 1;
-    int mb_block_size = 16;
-
-    attr_info_t attr_info;
-    memory_desc_info_t src_md_info;
-    memory_desc_info_t dst_md_info;
-};
-
 // Reduction
 struct reduction_conf_t {
     // Used by reference implementation
@@ -282,10 +249,6 @@ public:
     void define_macros(
             compute::kernel_ctx_t &kernel_ctx, const std::string &name) const;
 };
-
-void set_default_pool_conf(pool_conf_t &conf, const pooling_desc_t &desc,
-        const memory_desc_t &src_md, const memory_desc_t &dst_md,
-        const primitive_attr_t &attr);
 
 void set_default_conf(conv_conf_t &conf, const convolution_desc_t &cd,
         const memory_desc_t &src_md, const memory_desc_t &weights_md,

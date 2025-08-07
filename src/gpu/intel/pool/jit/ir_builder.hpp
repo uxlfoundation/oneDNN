@@ -28,9 +28,9 @@ namespace intel {
 namespace pool {
 namespace jit {
 
-class pooling_ir_builder_t : public ir_builder_t {
+class builder_t : public ir_builder_t {
 public:
-    pooling_ir_builder_t(pooling_config_t &cfg, const kernel_info_t &ki,
+    builder_t(config_t &cfg, const kernel_info_t &ki,
             const primitive_desc_t &pd) {
         while ((stmt_ = try_build(*this, ki, cfg, pd)).is_empty()) {
             gpu_warning() << "loop too large: cut and retry!";
@@ -41,8 +41,8 @@ public:
 
 private:
     void build() override {}
-    static stmt_t try_build(pooling_ir_builder_t &pb, const kernel_info_t &ki,
-            const pooling_config_t &cfg, const primitive_desc_t &pd);
+    static stmt_t try_build(builder_t &pb, const kernel_info_t &ki,
+            const config_t &cfg, const primitive_desc_t &pd);
 };
 
 } // namespace jit

@@ -20,9 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/reduction_pd.hpp"
-#include "gpu/gpu_pooling_pd.hpp"
+#include "gpu/intel/pool/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +29,12 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-struct xe_global_pooling_fwd_t : public primitive_t {
+struct xe_global_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_pooling_fwd_pd_t {
-        using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe_global:any", xe_global_pooling_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe_global:any", xe_global_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -103,7 +102,7 @@ struct xe_global_pooling_fwd_t : public primitive_t {
         }
 
         std::shared_ptr<primitive_desc_t> reduction_pd_;
-        pool_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 
@@ -141,12 +140,12 @@ private:
     std::shared_ptr<impl::primitive_t> reduction_p_;
 };
 
-struct xe_global_pooling_bwd_t : public primitive_t {
+struct xe_global_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_pooling_bwd_pd_t {
-        using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe_global:any", xe_global_pooling_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe_global:any", xe_global_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -204,7 +203,7 @@ struct xe_global_pooling_bwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        pool_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 

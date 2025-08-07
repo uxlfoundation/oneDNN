@@ -20,7 +20,7 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "gpu/gpu_pooling_pd.hpp"
+#include "gpu/intel/pool/config.hpp"
 #include "gpu/intel/pool/jit/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
@@ -30,16 +30,16 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-class gen_pooling_fwd_t : public primitive_t {
+class gen_fwd_t : public primitive_t {
 public:
-    struct pd_t : public gpu_pooling_fwd_pd_t {
-        using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ir", gen_pooling_fwd_t);
+        DECLARE_COMMON_PD_T("jit:ir", gen_fwd_t);
 
         status_t init(impl::engine_t *);
 
-        std::shared_ptr<pool_conf_t> pool_conf;
+        std::shared_ptr<conf_t> conf;
         std::shared_ptr<jit::exec_config_t> exec_cfg;
         std::shared_ptr<jit::layout_t> src;
         std::shared_ptr<jit::layout_t> dst;
@@ -53,7 +53,7 @@ public:
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    jit::pooling_config_t cfg_;
+    jit::config_t cfg_;
     jit::kernel_info_t kernel_info_;
     compute::kernel_t kernel_;
 };

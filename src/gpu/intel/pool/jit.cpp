@@ -16,16 +16,12 @@
 
 #include "gpu/intel/pool/jit.hpp"
 
-#include <iostream>
-
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/pool/jit/kernel.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 #include "ngen_register_allocator.hpp"
 
 namespace dnnl {
@@ -36,7 +32,7 @@ namespace pool {
 
 using namespace jit;
 
-status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
     using namespace prop_kind;
     using namespace alg_kind;
@@ -89,9 +85,9 @@ status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_POOLING(src->ndims() == dst->ndims(), VERBOSE_INCONSISTENT_NDIMS,
             "src->ndims()", "dst_ndims()");
 
-    pool_conf = std::make_shared<pool_conf_t>();
-    set_default_pool_conf(*pool_conf, *desc(), *invariant_src_md(),
-            *invariant_dst_md(), *attr());
+    conf = std::make_shared<conf_t>();
+    set_default_conf(
+            *conf, *desc(), *invariant_src_md(), *invariant_dst_md(), *attr());
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
@@ -100,15 +96,14 @@ status_t gen_pooling_fwd_t::pd_t::init(impl::engine_t *engine) {
     exec_cfg->set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
     exec_cfg->set_simd(16);
 
-    VDISPATCH_POOLING(pooling_config_t::check_compatibility(*pool_conf,
-                              *exec_cfg, *src, attr()->post_ops_, dst->type()),
+    VDISPATCH_POOLING(config_t::check_compatibility(*conf, *exec_cfg, *src,
+                              attr()->post_ops_, dst->type()),
             "incompatible pooling configuration");
     return status::success;
 }
 
-status_t gen_pooling_fwd_t::init(impl::engine_t *engine) {
-    cfg_ = pooling_config_t(
-            *pd()->exec_cfg, *pd()->pool_conf, *pd()->src, *pd()->dst);
+status_t gen_fwd_t::init(impl::engine_t *engine) {
+    cfg_ = config_t(*pd()->exec_cfg, *pd()->conf, *pd()->src, *pd()->dst);
     zero_points_config_t zp_cfg(pd());
     cfg_.set_zp_cfg(zp_cfg);
     cfg_.compute_grid();
@@ -147,7 +142,7 @@ status_t gen_pooling_fwd_t::init(impl::engine_t *engine) {
 
     while (!kernel_) {
         try {
-            kernel_ = make_kernel<pooling_kernel_t>(
+            kernel_ = make_kernel<kernel_t>(
                     this, engine, cfg_, "gen_pooling_fwd", kernel_info_, *pd());
             break;
         } catch (const ngen::out_of_registers_exception &exc) {
@@ -168,7 +163,7 @@ status_t gen_pooling_fwd_t::init(impl::engine_t *engine) {
     return (kernel_) ? status::success : status::runtime_error;
 }
 
-status_t gen_pooling_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_fwd_t::execute(const exec_ctx_t &ctx) const {
     std::vector<memory_storage_wrapper_t> storage_list;
     kernel_info_.init_memory_storage_list(storage_list, ctx, this);
 

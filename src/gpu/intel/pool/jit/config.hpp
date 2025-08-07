@@ -22,7 +22,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/ir/config.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/pool/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,7 +33,7 @@ namespace jit {
 
 using namespace intel::jit;
 
-class pooling_problem_param_t : public value_param_t<pool_conf_t> {
+class problem_param_t : public value_param_t<conf_t> {
 public:
     using value_param_t::value_param_t;
 
@@ -62,9 +62,9 @@ public:
 };
 
 // Parameters for kernel generation.
-class pooling_config_t : public prim_config_t {
+class config_t : public prim_config_t {
 public:
-    static bool check_compatibility(const pool_conf_t &prb,
+    static bool check_compatibility(const conf_t &prb,
             const exec_config_t &exec, const layout_t &src,
             const post_ops_t &po, type_t dst_dt) {
         const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
@@ -120,10 +120,10 @@ public:
         return true; // no more restrictions, the configuration is compatible
     }
 
-    pooling_config_t() = default;
-    pooling_config_t(const exec_config_t &ec, const pool_conf_t &prb,
-            const layout_t &src, const layout_t &dst) {
-        set_pooling_problem(prb);
+    config_t() = default;
+    config_t(const exec_config_t &ec, const conf_t &prb, const layout_t &src,
+            const layout_t &dst) {
+        set_problem(prb);
         src_layout().set_user(spatials_to_3d(src, false, {0, 1, 2}));
         dst_layout().set_user(spatials_to_3d(dst, false, {0, 1, 2}));
         set_exec_cfg(ec);
@@ -135,7 +135,7 @@ public:
             ? utils::rnd_up(prb.l_name, pad_block(pvars::g_name)) \
             : prb.l_name
 
-        const auto &prb = pooling_problem();
+        const auto &prb = problem();
         tile_t ret;
         SET(mb, mb);
         SET(oc, c);
@@ -188,13 +188,12 @@ public:
         return 1;
     }
 
-    bool is_fwd() const { return !pooling_problem().is_backward; }
+    bool is_fwd() const { return !problem().is_backward; }
     bool is_max() const {
-        return pooling_problem().alg == alg_kind_t::dnnl_pooling_max;
+        return problem().alg == alg_kind_t::dnnl_pooling_max;
     }
     bool is_padded() const {
-        return pooling_problem().alg
-                == alg_kind_t::dnnl_pooling_avg_include_padding;
+        return problem().alg == alg_kind_t::dnnl_pooling_avg_include_padding;
     }
 
     bool is_blocked_by_mb() const {
@@ -217,7 +216,7 @@ public:
     }
 
     void compute_grid() {
-        const auto &prb = pooling_problem();
+        const auto &prb = problem();
         const auto &src = src_layout().user();
         const auto &exec = exec_cfg();
         const int simd = exec.simd();
@@ -588,7 +587,7 @@ public:
         name##_.set(value); \
     }
 
-    DECL_PARAM(pooling_problem);
+    DECL_PARAM(problem);
     DECL_PARAM(loop_grid);
     DECL_PARAM(dims_padded);
 #undef DECL_PARAM
@@ -597,9 +596,9 @@ public:
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &((const pooling_config_t *)c)->name##_; \
+                  return &((const config_t *)c)->name##_; \
               });
-    INIT_PARAM(pooling_problem);
+    INIT_PARAM(problem);
     INIT_PARAM(loop_grid);
     INIT_PARAM(dims_padded);
 #undef INIT_PARAM
@@ -629,7 +628,7 @@ private:
     }
 
     std::string desc_str() const {
-        const auto &prb = pooling_problem();
+        const auto &prb = problem();
         const std::array<dim_t, 6> xd
                 = {prb.id, prb.od, prb.kd, prb.stride_d, prb.dd, prb.f_pad};
         const std::array<dim_t, 6> xh

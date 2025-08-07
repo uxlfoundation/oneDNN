@@ -39,13 +39,15 @@ namespace intel {
 namespace pool {
 namespace jit {
 
-class pooling_post_op_view_mapper_t : public post_op_view_mapper_t {
+class post_op_view_mapper_t : public intel::jit::post_op_view_mapper_t {
+    using base_t = intel::jit::post_op_view_mapper_t;
+
 public:
-    pooling_post_op_view_mapper_t(const view_t &cp_view, const int ndims)
-        : post_op_view_mapper_t(cp_view), ndims_(ndims) {}
+    post_op_view_mapper_t(const view_t &cp_view, const int ndims)
+        : base_t(cp_view), ndims_(ndims) {}
 
     view_t create_view(const type_t &type, uint32_t mask) const override {
-        return post_op_view_mapper_t::create_view(type, normalize_mask(mask));
+        return base_t::create_view(type, normalize_mask(mask));
     }
 
     view_t create_view(const memory_desc_t &md) const override {
@@ -129,11 +131,10 @@ private:
     const gemm_schedule_t &schedule_;
 };
 
-stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
-        const kernel_info_t &ki, const pooling_config_t &cfg,
-        const primitive_desc_t &pd) {
+stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
+        const config_t &cfg, const primitive_desc_t &pd) {
     const auto &exec = cfg.exec_cfg();
-    const auto &prb = cfg.pooling_problem();
+    const auto &prb = cfg.problem();
     const auto &src_layout = cfg.src_layout().user();
     const auto &dst_layout = cfg.dst_layout().user();
 
@@ -510,7 +511,7 @@ stmt_t pooling_ir_builder_t::try_build(pooling_ir_builder_t &pb,
     }
 
     int buf_size = 0;
-    pooling_post_op_view_mapper_t view_mapper(dst_view, prb.ndims);
+    post_op_view_mapper_t view_mapper(dst_view, prb.ndims);
     post_op_context_t post_op_ctx(*pd.attr(), cfg.zp_cfg(), schedule, ki,
             *pd.invariant_dst_md(), *pd.invariant_dst_md(), view_mapper);
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,

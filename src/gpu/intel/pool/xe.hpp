@@ -20,9 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_pooling_pd.hpp"
+#include "gpu/intel/pool/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +29,12 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-struct xe_pooling_fwd_t : public primitive_t {
+struct xe_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_pooling_fwd_pd_t {
-        using gpu_pooling_fwd_pd_t::gpu_pooling_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe", xe_pooling_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe", xe_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -102,7 +101,7 @@ struct xe_pooling_fwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        pool_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 
@@ -127,12 +126,12 @@ private:
     compute::kernel_t kernel_;
 };
 
-struct xe_pooling_bwd_t : public primitive_t {
+struct xe_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_pooling_bwd_pd_t {
-        using gpu_pooling_bwd_pd_t::gpu_pooling_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe:any", xe_pooling_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe:any", xe_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -195,7 +194,7 @@ struct xe_pooling_bwd_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        pool_conf_t conf;
+        conf_t conf;
         offsets_t off;
     };
 

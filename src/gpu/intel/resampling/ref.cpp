@@ -26,7 +26,7 @@ namespace resampling {
 // -------- Common functions ----------- //
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const resampling_conf_t &conf, const resampling_desc_t *desc) {
+        const conf_t &conf, const desc_t *desc) {
     switch (desc->alg_kind) {
         case alg_kind::resampling_nearest:
             kernel_ctx.define_int("RESAMPLING_ALG_NEAREST", 1);
@@ -57,9 +57,9 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-// ---------- ref_resampling_fwd_t ------------ //
+// ---------- ref_fwd_t ------------ //
 
-status_t ref_resampling_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(dst_md());
@@ -96,7 +96,7 @@ status_t ref_resampling_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_resampling_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(src_md()->data_type);
     kernel_ctx.define_int("IS_FWD", 1);
@@ -113,7 +113,7 @@ status_t ref_resampling_fwd_t::pd_t::init_kernel_ctx(
     return status;
 }
 
-status_t ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
@@ -129,9 +129,9 @@ status_t ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-// -------- ref_resampling_bwd_t ---------- //
+// -------- ref_bwd_t ---------- //
 
-status_t ref_resampling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(diff_src_md());
@@ -171,7 +171,7 @@ status_t ref_resampling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_resampling_bwd_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(diff_src_md()->data_type);
     kernel_ctx.define_int("IS_BWD", 1);
@@ -184,7 +184,7 @@ status_t ref_resampling_bwd_t::pd_t::init_kernel_ctx(
     return status;
 }
 
-status_t ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+status_t ref_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
     auto &diff_src = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
 

@@ -267,23 +267,6 @@ struct reduction_conf_t {
     attr_info_t attr_info;
 };
 
-// Resampling
-struct resampling_conf_t {
-    dim_idx_t ndims;
-    offsets_t off;
-    dim_t MB, C;
-    dim_t ID, IH, IW;
-    dim_t OD, OH, OW;
-    float FD, FH, FW;
-    int vect_size;
-    dims_t padded_strides;
-    compute::range_t gws = compute::range_t::empty();
-    compute::range_t lws = compute::range_t::empty();
-    int sub_group_size;
-    dim_t padded_c;
-    attr_info_t attr_info;
-    compute::dispatch_t dispatch;
-};
 struct quantization_t : public gpu::quantization_t {
 public:
     using gpu::quantization_t::quantization_t;

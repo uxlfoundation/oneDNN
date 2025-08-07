@@ -17,9 +17,8 @@
 #ifndef GPU_INTEL_RESAMPLING_VECTORIZED_HPP
 #define GPU_INTEL_RESAMPLING_VECTORIZED_HPP
 
-#include "gpu/gpu_resampling_pd.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/resampling/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,12 +26,12 @@ namespace gpu {
 namespace intel {
 namespace resampling {
 
-struct vectorized_resampling_bwd_t : public primitive_t {
+struct vectorized_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_resampling_bwd_pd_t {
-        using gpu_resampling_bwd_pd_t::gpu_resampling_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_resampling_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -47,7 +46,7 @@ struct vectorized_resampling_bwd_t : public primitive_t {
             VDISPATCH_RESAMPLING_SC(init_conf(engine), "init_conf()");
             return status::success;
         }
-        resampling_conf_t conf;
+        conf_t conf;
 
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;

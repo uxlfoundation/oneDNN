@@ -15,8 +15,10 @@
 *******************************************************************************/
 
 #include "gpu/intel/resampling/vectorized.hpp"
+
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
+#include "gpu/intel/resampling/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,7 +29,7 @@ namespace resampling {
 // -------- Common functions ----------- //
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const resampling_conf_t &conf, const resampling_desc_t *desc) {
+        const conf_t &conf, const desc_t *desc) {
 
     using namespace alg_kind;
 
@@ -101,7 +103,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t vectorized_resampling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace data_type;
     assert(engine->kind() == engine_kind::gpu);
     bool ok = !is_fwd() && set_default_params() == status::success
@@ -198,7 +200,7 @@ status_t vectorized_resampling_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t vectorized_resampling_bwd_t::pd_t::init_kernel_ctx(
+status_t vectorized_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(diff_dst_md()->data_type);
     kernel_ctx.define_int("IS_BWD", 1);
@@ -211,8 +213,7 @@ status_t vectorized_resampling_bwd_t::pd_t::init_kernel_ctx(
     return status;
 }
 
-status_t vectorized_resampling_bwd_t::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t vectorized_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
     auto &diff_src = CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
 
@@ -220,7 +221,7 @@ status_t vectorized_resampling_bwd_t::execute_backward(
     arg_list.set(0, diff_src);
     arg_list.set(1, diff_dst);
 
-    const resampling_conf_t &conf = pd()->conf;
+    const conf_t &conf = pd()->conf;
     compute::nd_range_t nd_range(conf.gws, conf.lws);
 
     return parallel_for(ctx, nd_range, kernel_, arg_list);

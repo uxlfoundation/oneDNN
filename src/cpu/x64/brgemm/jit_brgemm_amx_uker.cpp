@@ -165,19 +165,24 @@ private:
 
     const reg64_t reg_addr_batch = r13;
     const reg64_t reg_aux1_batch = rbp;
-    const reg64_t reg_A = r11;
-    const reg64_t reg_B = r10;
+    const reg64_savable_t reg_A {regscratchpad_, r11};
+    const reg64_savable_t reg_A_backup {regscratchpad_, r11};
+    const reg64_savable_t reg_B {regscratchpad_, r10};
+    const reg64_savable_t reg_B_backup {regscratchpad_, r10};
     const reg64_t reg_stride_lda = r14;
     const reg64_t reg_stride_ldb = abi_not_param1;
-    const reg64_t reg_C = r15;
-    const reg64_t reg_D = r12;
+    const reg64_savable_t reg_C {regscratchpad_, r15};
+    const reg64_savable_t reg_D {regscratchpad_, r12};
 
     const reg64_t reg_buf = r8;
     const reg64_t reg_BS = rbx;
     const reg64_t reg_BS_loop = r9;
-    const reg64_t reg_bias = rbx;
-    const reg64_t reg_scales = rbx;
-    const reg64_t reg_dst_scales = rbx;
+    const reg64_savable_t reg_bias {regscratchpad_, rbx};
+    const reg64_savable_t reg_bias_backup {regscratchpad_, rbx};
+    const reg64_savable_t reg_src_scales {regscratchpad_, rbx};
+    const reg64_savable_t reg_wei_scales {regscratchpad_, rbx};
+    const reg64_savable_t reg_wei_scales_backup {regscratchpad_, rbx};
+    const reg64_savable_t reg_dst_scales {regscratchpad_, rbx};
 
     const reg64_t reg_stride_ld_block = rdx;
     const reg64_t reg_do_post_ops = rbx;
@@ -194,6 +199,11 @@ private:
     const reg64_t reg_zp_comp_pad_a = rsi;
 
     const reg64_t reg_long_offt = r11;
+    const reg64_savable_t reg_ldb_loop {regscratchpad_, rbx, r21};
+    const reg64_savable_t reg_bs_loop {regscratchpad_, rbx, r22};
+    const reg64_savable_t reg_bs_loop_backup {regscratchpad_, rbx, r22};
+    const reg64_savable_t reg_rdb_loop {regscratchpad_, rbx, r23};
+    const reg64_savable_t reg_rdb_loop_backup {regscratchpad_, rbx, r23};
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -410,6 +420,9 @@ private:
     bool use_sat_cvt_ = false;
 
     bool ununroll_bd_loop = false;
+    bool ununroll_ld_loop = false;
+    bool ununroll_bs_loop = false;
+    bool ununroll_rd_loop = false;
     // Number of ZMM registers per bd block for AMX10 microkernel.
     static constexpr int amx10_zmms_per_bd_block = 4;
 
@@ -622,6 +635,7 @@ private:
     void gemm_microkernel_amx(brgemm_iteration_t &bi);
     void gemm_microkernel_amx10(brgemm_iteration_t &bi);
 
+    void rdb_loop_body(brgemm_iteration_t &bi);
     void rdb_loop(brgemm_iteration_t &bi);
 
     void bs_loop_body(brgemm_iteration_t &bi);
@@ -677,7 +691,7 @@ private:
 
     dim_t bias_offset(int ldb) const noexcept;
 
-    dim_t scales_offset(int ldb) const noexcept;
+    dim_t scales_wei_offset(int ldb) const noexcept;
     dim_t zp_comp_a_offset(int ldb) const noexcept;
     dim_t zp_comp_pad_a_offset(const brgemm_iteration_t &bi, int bdb,
             int inp_bd, int ldb) const noexcept;
@@ -894,7 +908,7 @@ dim_t jit_brgemm_amx_uker_base_t::bias_offset(int ldb) const noexcept {
     return ldb * ld_block_bias_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::scales_offset(int ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_base_t::scales_wei_offset(int ldb) const noexcept {
     return brg.is_oc_scale * ldb * ld_block_scales_size_;
 }
 
@@ -1000,6 +1014,39 @@ void jit_brgemm_amx_uker_base_t::read_params() {
         mov(reg_zp_c_values, ptr[param1 + GET_OFF(c_zp_values)]);
         reg_zp_c_values.save();
     }
+    if (brg.with_bias) {
+        mov(reg_bias, ptr[param1 + GET_OFF(ptr_bias)]);
+        reg_bias.save();
+    }
+    if (brg.with_src_scales) {
+        mov(reg_src_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
+        reg_src_scales.save();
+    }
+    if (brg.with_wei_scales) {
+        mov(reg_wei_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
+        reg_wei_scales.save();
+    }
+    if (brg.with_dst_scales) {
+        mov(reg_dst_scales, ptr[param1 + GET_OFF(ptr_dst_scales)]);
+        reg_dst_scales.save();
+    }
+
+    if (brg.type == brgemm_offs || brg.type == brgemm_static_offs) {
+        if (brg.layout == brgemm_row_major) {
+            mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
+            mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
+        } else {
+            mov(reg_A, ptr[param1 + GET_OFF(ptr_B)]);
+            mov(reg_B, ptr[param1 + GET_OFF(ptr_A)]);
+        }
+        reg_A.save();
+        reg_B.save();
+    }
+
+    mov(reg_C, ptr[param1 + GET_OFF(ptr_C)]);
+    reg_C.save();
+    mov(reg_D, ptr[param1 + GET_OFF(ptr_D)]);
+    reg_D.save();
 }
 
 void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
@@ -1221,7 +1268,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
     const auto ldi = bi.ldi;
 
     if (brg.with_bias) {
-        mov(reg_bias, ptr[param1 + GET_OFF(ptr_bias)]);
+        reg_bias.restore();
 
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto ptr_bias
@@ -1232,21 +1279,22 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
     }
 
     if (brg.with_src_scales) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
+        reg_src_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             // Hard-coded assumption for a single src scale value being
             // supported, thus, offset is 0.
-            auto scales_ptr = EVEX_compress_addr(reg_scales, /* offset = */ 0);
+            auto scales_ptr
+                    = EVEX_compress_addr(reg_src_scales, /* offset = */ 0);
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
             vbroadcastss(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
         }
     }
 
     if (brg.with_wei_scales) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
+        reg_wei_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
-                    reg_scales, scales_offset(ldi->pos(ldb)));
+                    reg_wei_scales, scales_wei_offset(ldi->pos(ldb)));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
             const bool is_single_scale = !brg.is_oc_scale;
 
@@ -1259,8 +1307,9 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
                     // when both scales are defined.
                     assert(brg.dt_wei_scales == data_type::f32);
                     // Src scales are set, need to multiply by their value.
-                    auto scales_bcast_ptr = EVEX_compress_addr(reg_scales,
-                            scales_offset(ldi->pos(ldb)), /* bcast = */ true);
+                    auto scales_bcast_ptr = EVEX_compress_addr(reg_wei_scales,
+                            scales_wei_offset(ldi->pos(ldb)),
+                            /* bcast = */ true);
                     vmulps(zmm_scale_masked, zmm_scale, scales_bcast_ptr);
                 } else {
                     switch (brg.dt_wei_scales) {
@@ -1618,7 +1667,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
     }
 
     if (brg.with_dst_scales) {
-        mov(reg_dst_scales, ptr[param1 + GET_OFF(ptr_dst_scales)]);
+        reg_dst_scales.restore();
         auto zmm_dst_scales = zmm_tmp_1();
         vbroadcastss(zmm_dst_scales, ptr[reg_dst_scales]);
         for (auto bd = bd_start; bd < bd_finish; bd++) {
@@ -1872,9 +1921,9 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices(int bs) {
                             batch_offset + GET_OFF_BATCH_ELEMENT(ptr.A)));
         }
     } else if (brg.type == brgemm_offs) {
+        reg_A.restore();
+        reg_B.restore();
         if (brg.layout == brgemm_row_major) {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
             add(reg_A,
                     EVEX_compress_addr(reg_addr_batch,
                             batch_offset + GET_OFF_BATCH_ELEMENT(offset.A)));
@@ -1882,8 +1931,6 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices(int bs) {
                     EVEX_compress_addr(reg_addr_batch,
                             batch_offset + GET_OFF_BATCH_ELEMENT(offset.B)));
         } else {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_B)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_A)]);
             add(reg_A,
                     EVEX_compress_addr(reg_addr_batch,
                             batch_offset + GET_OFF_BATCH_ELEMENT(offset.B)));
@@ -1909,14 +1956,12 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
             mov(reg_B, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
         }
     } else if (brg.type == brgemm_offs) {
+        reg_A.restore();
+        reg_B.restore();
         if (brg.layout == brgemm_row_major) {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
             add(reg_A, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(offset.A)]);
             add(reg_B, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(offset.B)]);
         } else {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_B)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_A)]);
             add(reg_A, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(offset.B)]);
             add(reg_B, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(offset.A)]);
         }
@@ -1961,7 +2006,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
 
     auto t1 = Tmm(is_A ? brg.get_A_tensor(xdb, bi.bdi->is_tail(xdb))
                        : brg.get_B_tensor(xdb, bi.ldi->is_tail(xdb)));
-    auto reg_base = is_A ? reg_A : reg_B;
+    auto &reg_base = is_A ? reg_A : reg_B;
     auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
 
     const bool mem_advice_A = utils::one_of(brg.brgattr.mem_advice,
@@ -2718,14 +2763,75 @@ void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
             do_post_tilestore);
 }
 
+void jit_brgemm_amx_uker_base_t::rdb_loop_body(brgemm_iteration_t &bi) {
+    if (brg.is_amx10())
+        gemm_microkernel_amx10(bi);
+    else
+        gemm_microkernel_amx(bi);
+}
+
 void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
-    for (auto &rdi : tloop.rdis) {
-        bi.rdi = &rdi;
-        if (brg.is_amx10())
-            gemm_microkernel_amx10(bi);
-        else
-            gemm_microkernel_amx(bi);
+    if (ununroll_rd_loop) {
+        // TODO:
+        // - check do we need to save/restore reg_B, reg_C, reg_D and reg_ldb_loop. May be use backup registers
+
+        auto rdb_loop_count = static_cast<int>(tloop.rdis.size());
+
+        // calculate offsets for B, C, D registers using next rdi
+        // assuming that offsets will be same for all iterations
+        bi.rdi = &tloop.rdis[0];
+        const auto last_rdi = &tloop.rdis[tloop.rdis.size() - 1];
+        const bool separate_last_iteration = brg.rdb_tail;
+
+        if (separate_last_iteration) rdb_loop_count--;
+
+        // ??!! may be we may calculate below increments only once?
+        brgemm_iteration_t next_rdi_bi = bi;
+        next_rdi_bi.rdi = &tloop.rdis[1];
+        const auto reg_A_increment = A_offset(next_rdi_bi, 0) - A_offset(bi, 0);
+        const auto reg_B_increment = B_offset(next_rdi_bi, 0) - B_offset(bi, 0);
+
+        // save registers
+        reg_rdb_loop_backup.save();
+        reg_A_backup.save(); //??
+        reg_B_backup.save(); //??
+
+        mov(reg_rdb_loop, rdb_loop_count);
+        reg_rdb_loop.save();
+
+        if (rdb_loop_count > 0) {
+            // loop over rdb iterations
+            Label rdb_loop_start;
+            L(rdb_loop_start);
+            {
+                rdb_loop_body(bi);
+                add(reg_A, reg_A_increment);
+                add(reg_B, reg_B_increment);
+                reg_rdb_loop.restore();
+                dec(reg_rdb_loop);
+                reg_rdb_loop.save();
+                cmp(reg_rdb_loop, 0);
+                jg(rdb_loop_start, T_NEAR);
+            }
+        }
+
+        // restore registers
+        reg_B_backup.restore();
+        reg_A_backup.restore();
+
+        // separate last iteration if needed
+        if (separate_last_iteration) {
+            bi.rdi = last_rdi;
+            rdb_loop_body(bi);
+        }
+        reg_rdb_loop_backup.restore();
+
+    } else {
+        for (auto &rdi : tloop.rdis) {
+            bi.rdi = &rdi;
+            rdb_loop_body(bi);
+        }
     }
 }
 
@@ -2842,11 +2948,59 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
         store_accumulators(bi);
     } else {
         if (brg.alpha != 0.f) {
-            for (int bs = 0; bs < brg.brgattr.max_bs; bs++) {
-                bi.bsi = &(tloop.bsis[bs]);
-                bi.first_bsi = bi.bsi->is_first;
-                bi.last_bsi = bi.bsi->is_last;
-                bs_loop_body(bi);
+            if (ununroll_bs_loop) {
+                // TODO:
+                // - check do we need to save/restore reg_B, reg_C, reg_D and reg_ldb_loop. May be use backup registers
+
+                auto bs_loop_count = static_cast<int>(tloop.bsis.size());
+
+                // calculate offsets for B, C, D registers using next bsi
+                // assuming that offsets will be same for all iterations
+                bi.bsi = &tloop.bsis[0];
+                bi.rdi = &tloop.rdis[0];
+
+                // ??!! may be we may calculate below increments only once?
+                brgemm_iteration_t next_bsi_bi = bi;
+                next_bsi_bi.bsi = &tloop.bsis[1];
+                const auto reg_A_increment
+                        = A_offset(next_bsi_bi, 0) - A_offset(bi, 0);
+                const auto reg_B_increment
+                        = B_offset(next_bsi_bi, 0) - B_offset(bi, 0);
+
+                // save registers
+                reg_bs_loop_backup.save();
+                reg_A_backup.save(); //??
+                reg_B_backup.save(); //??
+
+                mov(reg_bs_loop, bs_loop_count);
+                reg_bs_loop.save();
+
+                // loop over bs iterations
+                Label bs_loop_start;
+                L(bs_loop_start);
+                {
+                    bs_loop_body(bi);
+                    add(reg_A, reg_A_increment);
+                    add(reg_B, reg_B_increment);
+                    reg_bs_loop.restore();
+                    dec(reg_bs_loop);
+                    reg_bs_loop.save();
+                    cmp(reg_bs_loop, 0);
+                    jg(bs_loop_start, T_NEAR);
+                }
+
+                // restore registers
+                reg_B_backup.restore();
+                reg_A_backup.restore();
+                reg_bs_loop_backup.restore();
+
+            } else {
+                for (int bs = 0; bs < brg.brgattr.max_bs; bs++) {
+                    bi.bsi = &(tloop.bsis[bs]);
+                    bi.first_bsi = bi.bsi->is_first;
+                    bi.last_bsi = bi.bsi->is_last;
+                    bs_loop_body(bi);
+                }
             }
         }
         store_accumulators(bi);
@@ -2865,11 +3019,160 @@ void jit_brgemm_amx_uker_base_t::ldb_loop_body(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_base_t::ldb_loop(brgemm_iteration_t &bi) {
     // clear the transform cache for A, as the existing data is invalid as
     // we move to next bdb2 block.
+
     const auto &tloop = imap_[bi.apply_postops];
+    if (tloop.ldis.size() == 0) return;
     transform_buf_map_A_.clear();
-    for (auto &ldi : tloop.ldis) {
-        bi.ldi = &ldi;
-        ldb_loop_body(bi);
+    if (ununroll_ld_loop) {
+#if 0
+        // in assumption that ununroll_ld_loop is only of ld_loop is innermost.
+        // We may check for (ununroll_bd_loop && bdi->similar) here, not in bs_loop 
+        // as it is if innermost loop is bd_loop.
+        assert(brg.innermost_loop == brgemm_ld_loop_innermost);
+        if (ununroll_bd_loop && bi.bdi->similar != nullptr) {
+            // there is code for this iteration already, so we need to store
+            // prev_bi_ only
+            prev_bi_ = bi;
+            was_prev_bi_ = true;
+            return;
+        }
+#else
+        assert(!ununroll_bd_loop);
+#endif
+        // TODO:
+        // - check for regular amx. Including interleaving stories (first iteration may be separate)
+        // - check how to handle ldb2
+        // - check how to handle ld_tail and ldb2_tail
+        // - check do we need to save/restore reg_B, reg_C, reg_D and reg_ldb_loop. May be use backup registers
+        // - check how to handle transform_buf_map_A_ and/or transform_buf_map_B_
+
+        auto ldb_loop_count = static_cast<int>(tloop.ldis.size());
+
+        // calculate offsets for B, C, D registers using next ldi
+        // assuming that offsets will be same for all iterations
+        if (brg.innermost_loop == brgemm_bd_loop_innermost)
+            bi.bdi = &tloop.bdis[0];
+        bi.ldi = &tloop.ldis[0];
+        bi.bsi = &tloop.bsis[0];
+        bi.rdi = &tloop.rdis[0];
+        const bool real_ils = actual_ils(bi.apply_postops, bi.skip_accumulation)
+                && bi.bdi->idx == 0;
+        const bool separate_first_iteration = real_ils;
+        const auto last_ldi = &tloop.ldis[tloop.ldis.size() - 1];
+        const bool separate_last_iteration
+                = brg.ldb_tail || last_ldi->block2() != brg.ld_block2;
+
+        if (separate_first_iteration) ldb_loop_count--;
+        if (separate_last_iteration) ldb_loop_count--;
+
+        // ??!! may be we may calculate below increments only once?
+        brgemm_iteration_t next_ldi_bi = bi;
+        next_ldi_bi.ldi = &tloop.ldis[1];
+        const auto reg_B_increment = B_offset(next_ldi_bi, 0) - B_offset(bi, 0);
+        const auto reg_C_increment
+                = C_offset(next_ldi_bi, 0, 0, next_ldi_bi.ldi->pos(0))
+                - C_offset(bi, 0, 0, bi.ldi->pos(0));
+        const auto reg_D_increment
+                = D_offset(next_ldi_bi, 0, 0, next_ldi_bi.ldi->pos(0))
+                - D_offset(bi, 0, 0, bi.ldi->pos(0));
+        const auto reg_bias_increment = bias_offset(next_ldi_bi.ldi->pos(0))
+                - bias_offset(bi.ldi->pos(0));
+        const auto reg_wei_scales_increment
+                = scales_wei_offset(next_ldi_bi.ldi->pos(0))
+                - scales_wei_offset(bi.ldi->pos(0));
+
+        // save registers
+        if (brg.with_bias) {
+            reg_bias.restore();
+            reg_bias_backup.save();
+        }
+        if (brg.with_wei_scales) {
+            reg_wei_scales.restore();
+            reg_wei_scales_backup.save();
+        }
+
+        reg_B.save();
+        reg_C.save();
+        reg_D.save();
+
+        // separate first iteration if needed
+        if (separate_first_iteration) {
+            ldb_loop_body(bi);
+
+#if 0
+            add(reg_B, reg_B_increment);
+            add(reg_C, reg_C_increment);
+            add(reg_D, reg_D_increment);
+            if (brg.with_bias) {
+                reg_bias.restore();
+                add(reg_bias, reg_bias_increment);
+                reg_bias.save();
+            }
+            if (brg.with_wei_scales) {
+                reg_wei_scales.restore();
+                add(reg_wei_scales, reg_wei_scales_increment);
+                reg_wei_scales.save();
+            }
+#endif
+
+            bi.ldi = &tloop.ldis[1];
+        }
+
+        mov(reg_ldb_loop, ldb_loop_count);
+        reg_ldb_loop.save();
+
+        if (ldb_loop_count > 0) {
+            // loop over ldb iterations
+            Label ldb_loop_start;
+            L(ldb_loop_start);
+            {
+                ldb_loop_body(bi);
+                add(reg_B, reg_B_increment);
+                add(reg_C, reg_C_increment);
+                add(reg_D, reg_D_increment);
+                if (brg.with_bias) {
+                    reg_bias.restore();
+                    add(reg_bias, reg_bias_increment);
+                    reg_bias.save();
+                }
+                if (brg.with_wei_scales) {
+                    reg_wei_scales.restore();
+                    add(reg_wei_scales, reg_wei_scales_increment);
+                    reg_wei_scales.save();
+                }
+                reg_ldb_loop.restore();
+                dec(reg_ldb_loop);
+                reg_ldb_loop.save();
+                cmp(reg_ldb_loop, 0);
+                jg(ldb_loop_start, T_NEAR);
+            }
+        }
+
+        // restore registers
+        reg_D.restore();
+        reg_C.restore();
+        reg_B.restore();
+        if (brg.with_bias) {
+            reg_bias_backup.restore();
+            reg_bias.save();
+        }
+        if (brg.with_wei_scales) {
+            reg_wei_scales_backup.restore();
+            reg_wei_scales.save();
+        }
+
+        // separate last iteration if needed
+        if (separate_last_iteration) {
+            bi.ldi = last_ldi;
+            ldb_loop_body(bi);
+        }
+
+    } else {
+
+        for (auto &ldi : tloop.ldis) {
+            bi.ldi = &ldi;
+            ldb_loop_body(bi);
+        }
     }
 }
 
@@ -2947,8 +3250,8 @@ void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
 }
 
 void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
-    mov(reg_C, ptr[param1 + GET_OFF(ptr_C)]);
-    mov(reg_D, ptr[param1 + GET_OFF(ptr_D)]);
+    reg_C.restore();
+    reg_D.restore();
     init(bi);
     if (brg.innermost_loop == brgemm_ld_loop_innermost)
         bdb_loop(bi);
@@ -3164,24 +3467,68 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
 
 void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
     was_prev_bi_ = false;
+
+    // !! review this values
+    auto ker_size_est = static_cast<dim_t>(brg.bdb2) * brg.ldb2
+            * brg.brgattr.max_bs * (brg.rdb ? brg.rdb : 1)
+            * (brg.is_amx10() ? 1 : 1);
+    // !! TODO: review this threshold
+    const dim_t ker_size_threshold = brg.is_amx10() ? 16 : 256;
+
+    const bool maybe_ununroll_bd_loop = brg.brgattr.hint_ununroll_bd_loop
+            || (ker_size_est > ker_size_threshold && brg.bdb2 > brg.ldb2);
     const auto bdb2_to_unroll = nstl::max(0,
             brg.bdb2
                     - (actual_ils(bi.apply_postops, bi.skip_accumulation) ? 1
                                                                           : 0));
-    ununroll_bd_loop = brg.brgattr.hint_ununroll_bd_loop && bdb2_to_unroll > 1
+    // TODO: review this condition
+    // Especially: brg.brgattr.fpmath_mode == fpmath_mode::strict
+    ununroll_bd_loop = brg.brgattr.fpmath_mode == fpmath_mode::strict
+            && maybe_ununroll_bd_loop && bdb2_to_unroll > 1
             && (brg.innermost_loop == brgemm_ld_loop_innermost || brg.ldb2 == 1)
             && get_store_by_vectors(bi.apply_postops)
             && IMPLICATION(!bi.skip_accumulation,
                     (brg.brgattr.max_bs == 1 || brg.type == brgemm_static_offs)
                             && !brg.brgattr.var_bs);
+    ker_size_est /= ununroll_bd_loop ? brg.bdb2 : 1;
+
+    const bool maybe_ununroll_ld_loop = brg.brgattr.hint_ununroll_ld_loop
+            || ker_size_est > ker_size_threshold;
+    const auto ldb2_to_unroll = nstl::max(0,
+            brg.ldb2 - (brg.ldb2_tail != 0)
+                    - (actual_ils(bi.apply_postops, bi.skip_accumulation) ? 1
+                                                                          : 0));
+    // TODO: review this condition
+    // Especially: brg.brgattr.fpmath_mode == fpmath_mode::strict
+    // and !use_ils_
+    ununroll_ld_loop = brg.brgattr.fpmath_mode == fpmath_mode::strict
+            && !use_ils_ && !ununroll_bd_loop && maybe_ununroll_ld_loop
+            && ldb2_to_unroll > 1
+            && IMPLICATION(!bi.skip_accumulation,
+                    (brg.brgattr.max_bs == 1 || brg.type == brgemm_static_offs)
+                            && !brg.brgattr.var_bs);
+
+    ker_size_est /= ununroll_ld_loop ? brg.ldb2 : 1;
+    const bool maybe_ununroll_bs_loop = brg.brgattr.hint_ununroll_bs_loop
+            || (ker_size_est > ker_size_threshold);
+    // TODO: review this condition
+    // It is disabled for now
+    ununroll_bs_loop = false && !use_ils_ && maybe_ununroll_bs_loop
+            && brg.brgattr.max_bs > 1;
+
+    ker_size_est /= ununroll_bs_loop ? brg.brgattr.max_bs : 1;
+    const bool maybe_ununroll_rd_loop = brg.brgattr.hint_ununroll_rd_loop
+            || (ker_size_est > ker_size_threshold);
+    const auto rdb_to_unroll = nstl::max(0, brg.rdb - (brg.rdb_tail != 0));
+    // TODO: review this condition
+    // Especially: brg.brgattr.fpmath_mode == fpmath_mode::strict
+    // and !use_ils_
+    ununroll_rd_loop = brg.brgattr.fpmath_mode == fpmath_mode::strict
+            && !use_ils_ && maybe_ununroll_rd_loop && rdb_to_unroll > 1;
+
     if (brg.type == brgemm_static_offs && !bi.skip_accumulation) {
-        if (brg.layout == brgemm_row_major) {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
-        } else {
-            mov(reg_A, ptr[param1 + GET_OFF(ptr_B)]);
-            mov(reg_B, ptr[param1 + GET_OFF(ptr_A)]);
-        }
+        reg_A.restore();
+        reg_B.restore();
     } else if (brg.brgattr.max_bs == 1 && !bi.skip_accumulation) {
         assert(one_of(brg.type, brgemm_addr, brgemm_offs));
         if (brg.type == brgemm_addr) {
@@ -3201,13 +3548,8 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
                                 reg_addr_batch, GET_OFF_BATCH_ELEMENT(ptr.A)));
             }
         } else if (brg.type == brgemm_offs) {
-            if (brg.layout == brgemm_row_major) {
-                mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
-                mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
-            } else {
-                mov(reg_A, ptr[param1 + GET_OFF(ptr_B)]);
-                mov(reg_B, ptr[param1 + GET_OFF(ptr_A)]);
-            }
+            reg_A.restore();
+            reg_B.restore();
         }
     }
 

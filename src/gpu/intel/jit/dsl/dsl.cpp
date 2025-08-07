@@ -601,8 +601,8 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         auto &b0 = src0.layout.blocks();
         auto &b1 = src1.layout.blocks();
         for (size_t i = 0; i < bd.size(); i++) {
-            if (b0.size() >= i) break;
-            if (b1.size() >= i) break;
+            if (b0.size() <= i) break;
+            if (b1.size() <= i) break;
             if (bd[i] == b0[i] && bd[i] == b1[i] && bd[i].has_const_size()
                     && bd[i].has_const_stride())
                 ret[bd[i].dim] *= bd[i].int_size();

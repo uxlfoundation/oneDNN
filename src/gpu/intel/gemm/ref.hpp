@@ -18,8 +18,8 @@
 #define GPU_INTEL_GEMM_REF_HPP
 
 #include "common/serialization.hpp"
-#include "gpu/gpu_gemm_pd.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -28,8 +28,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct ref_gemm_jit_params_t
-    : public trivially_serializable_t<ref_gemm_jit_params_t> {
+struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         return engine.create_kernel_bundle(
@@ -78,12 +77,12 @@ struct ref_gemm_jit_params_t
     int eltwise_alg = {};
 };
 
-struct ref_gemm_t : public gpu_gemm_t {
-    using gpu_gemm_t::gpu_gemm_t;
-    struct pd_t : public gpu_gemm_pd_t {
-        using gpu_gemm_pd_t::gpu_gemm_pd_t;
+struct ref_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public gemm::pd_t {
+        using gemm::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_gemm_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -186,9 +185,7 @@ struct ref_gemm_t : public gpu_gemm_t {
             return status::success;
         }
 
-        bool set_default_formats() {
-            return gpu_gemm_pd_t::set_default_formats();
-        }
+        bool set_default_formats() { return gemm::pd_t::set_default_formats(); }
 
         bool attr_oscale_ok() const {
             const auto &scales = attr()->scales_;
@@ -237,7 +234,7 @@ struct ref_gemm_t : public gpu_gemm_t {
         }
 
         attr_info_t attr_info = {};
-        ref_gemm_jit_params_t conf = {};
+        ref_jit_params_t conf = {};
     };
 
     status_t init(impl::engine_t *engine) override {

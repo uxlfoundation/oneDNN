@@ -14,13 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
-
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/jit/binary_format.hpp"
-
 #include "gpu/intel/gemm/jit.hpp"
 #include "gpu/intel/gemm/jit_xe_hp_systolic.hpp"
 #include "gpu/intel/gemm/ref.hpp"
@@ -40,11 +36,11 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = {
-        GPU_INSTANCE_INTEL_DEVMODE(intel::gemm::conv_gemm_t)
-        GPU_INSTANCE_INTEL(intel::gemm::xe_hp_systolic_gemm_t)
-        GPU_INSTANCE_INTEL(intel::gemm::gemm_with_post_ops_t)
-        GPU_INSTANCE_INTEL(intel::gemm::gen_gemm_t)
-        GPU_INSTANCE_INTEL_REF(intel::gemm::ref_gemm_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::gemm::conv_t)
+        GPU_INSTANCE_INTEL(intel::gemm::xe_hp_systolic_t)
+        GPU_INSTANCE_INTEL(intel::gemm::with_post_ops_t)
+        GPU_INSTANCE_INTEL(intel::gemm::gen_t)
+        GPU_INSTANCE_INTEL_REF(intel::gemm::ref_t)
         nullptr,
 };
 // clang-format on

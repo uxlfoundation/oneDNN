@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GEMM_GPU_GEMM_HPP
-#define GPU_INTEL_GEMM_GPU_GEMM_HPP
+#ifndef GPU_INTEL_GEMM_PRIMITIVE_HPP
+#define GPU_INTEL_GEMM_PRIMITIVE_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
@@ -28,34 +28,33 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct gpu_gemm_t : public primitive_t {
-    using primitive_t::primitive_t;
+struct primitive_t : public intel::primitive_t {
+    using intel::primitive_t::primitive_t;
     virtual status_t execute(const exec_ctx_t &ctx) const = 0;
     status_t execute(const impl::exec_ctx_t &ctx) const override {
-        exec_args_t gemm_args;
+        exec_args_t args;
         // TODO: we have to swap a and b because
         // - gemm primitive is created with row major desc,
         // - parameters to gemm are passed as row major
         // - but gemm implementation assumes column major
-        gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_A);
-        gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_B);
-        gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_C);
-        gemm_args.a_zero_point
+        args.a = &CTX_IN_STORAGE(DNNL_ARG_A);
+        args.b = &CTX_IN_STORAGE(DNNL_ARG_B);
+        args.c = &CTX_OUT_STORAGE(DNNL_ARG_C);
+        args.a_zero_point
                 = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_A);
-        gemm_args.b_zero_point
+        args.b_zero_point
                 = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_B);
-        gemm_args.c_zero_point
+        args.c_zero_point
                 = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_C);
-        gemm_args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_A);
-        gemm_args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_B);
-        gemm_args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_C);
-        exec_ctx_t gemm_ctx(ctx, gemm_args);
-        return execute(gemm_ctx);
+        args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_A);
+        args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_B);
+        args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_C);
+        return execute({ctx, args});
     }
 };
 
-inline const gpu_gemm_t *gpu_gemm(const std::shared_ptr<impl::primitive_t> &p) {
-    return utils::downcast<gpu_gemm_t *>(p.get());
+inline const primitive_t *gemm(const std::shared_ptr<impl::primitive_t> &p) {
+    return utils::downcast<primitive_t *>(p.get());
 }
 
 } // namespace gemm

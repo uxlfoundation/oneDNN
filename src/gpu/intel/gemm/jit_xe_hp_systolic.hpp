@@ -17,17 +17,13 @@
 #ifndef GPU_INTEL_GEMM_JIT_XE_HP_SYSTOLIC_HPP
 #define GPU_INTEL_GEMM_JIT_XE_HP_SYSTOLIC_HPP
 
-#include <assert.h>
-#include <memory>
-#include <tuple>
-
 #include "common/c_types_map.hpp"
 #include "common/memory_storage.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gemmstone/problem.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
 #include "gpu/intel/gemm/jit/pd.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,11 +31,11 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct xe_hp_systolic_gemm_t : public gemm::gpu_gemm_t {
-    struct pd_t : public jit::gemm_pd_t {
-        using jit::gemm_pd_t::gemm_pd_t;
+struct xe_hp_systolic_t : public gemm::primitive_t {
+    struct pd_t : public jit::pd_t {
+        using jit::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("jit:xe_hp:gemm:any", xe_hp_systolic_gemm_t);
+        DECLARE_COMMON_PD_T("jit:xe_hp:gemm:any", xe_hp_systolic_t);
 
         status_t init(impl::engine_t *engine);
         void init_scratchpad();
@@ -154,7 +150,7 @@ struct xe_hp_systolic_gemm_t : public gemm::gpu_gemm_t {
                     *(int *)result = 4;
                     break;
                 }
-                default: return gpu_gemm_pd_t::query(what, idx, result);
+                default: return pd_t::query(what, idx, result);
             }
             return status::success;
         }
@@ -173,7 +169,7 @@ struct xe_hp_systolic_gemm_t : public gemm::gpu_gemm_t {
     status_t init(impl::engine_t *engine) override;
 
 public:
-    xe_hp_systolic_gemm_t(const pd_t *apd) : gpu_gemm_t(apd) {}
+    xe_hp_systolic_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

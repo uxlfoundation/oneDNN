@@ -19,11 +19,9 @@
 
 #ifdef DNNL_DEV_MODE
 
-#include "gpu/gpu_gemm_pd.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/intel/conv/jit.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "common/convolution_pd.hpp"
+#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,19 +29,18 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct conv_gemm_t : public gpu_gemm_t {
-    using gpu_gemm_t::gpu_gemm_t;
-    struct pd_t : public gpu_gemm_pd_t {
-        using gpu_gemm_pd_t::gpu_gemm_pd_t;
+struct conv_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public gemm::pd_t {
+        using gemm::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:conv:ir", conv_gemm_t);
+        DECLARE_COMMON_PD_T("conv:ir", conv_t);
 
         status_t init(impl::engine_t *engine) {
             // This is currently only used for experimentation purposes
-            bool enable_conv_gemm
-                    = gpu_utils::dev_getenv("enable_conv_gemm", false);
-            VDISPATCH_GEMM(enable_conv_gemm, VERBOSE_UNSUPPORTED_DEVICE_FEATURE,
-                    "conv_gemm");
+            bool enabled = gpu_utils::dev_getenv("enable_conv_gemm", false);
+            VDISPATCH_GEMM(
+                    enabled, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "gemm::conv");
 
             VDISPATCH_GEMM(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::gpu_attr),
@@ -51,12 +48,12 @@ struct conv_gemm_t : public gpu_gemm_t {
 
             auto conv_desc = convolution_desc_t();
 
-            auto *gemm_a_desc = src_md(0);
-            auto *gemm_b_desc = src_md(1);
-            auto *gemm_bias_desc = src_md(2);
-            auto *gemm_c_desc = dst_md();
+            auto src_desc = *src_md(0);
+            auto weights_desc = *src_md(1);
+            auto bias_desc = *src_md(2);
+            auto dst_desc = *dst_md();
 
-            auto with_bias = gemm_bias_desc->format_kind != format_kind::undef;
+            auto with_bias = bias_desc.format_kind != format_kind::undef;
 
             auto add_width = [&](memory_desc_t &desc) {
                 VDISPATCH_GEMM(
@@ -101,12 +98,10 @@ struct conv_gemm_t : public gpu_gemm_t {
             // Enable using blocked format, otherwise, prefer spatial dimensions
             // as mb=1 is a more common optimization target than w=1.
             bool use_spatial_m = gpu_utils::dev_getenv("use_spatial_m",
-                    !(gemm_a_desc->format_kind == format_kind::any
-                            && gemm_a_desc->dims[0] > 8));
+                    !(src_desc.format_kind == format_kind::any
+                            && src_desc.dims[0] > 8));
 
             // M x K x N -> use_spatial_m ? iw/ow x ic x oc : mb x ic x oc
-            memory_desc_t src_desc = *gemm_a_desc, weights_desc = *gemm_b_desc,
-                          dst_desc = *gemm_c_desc, bias_desc = *gemm_bias_desc;
             CHECK(add_width(src_desc));
             if (use_spatial_m) transpose(src_desc, 0, 2);
             CHECK(add_width(weights_desc));

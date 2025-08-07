@@ -31,7 +31,7 @@
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/rnn/config.hpp"
 
@@ -1088,62 +1088,62 @@ gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
         case gemm_iter_fwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_fwd_, utils::scratch_t::key_gemm_iter_fwd);
-            CHECK(gemm::gpu_gemm(gemm_iter_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_iter_fwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_fwd_2:
             init_gemm_nested_scratchpad(
                     gemm_iter_fwd_2_, utils::scratch_t::key_gemm_iter_fwd_2);
-            CHECK(gemm::gpu_gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_fwd_, utils::scratch_t::key_gemm_layer_fwd);
-            CHECK(gemm::gpu_gemm(gemm_layer_fwd_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_layer_fwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_fwd_src:
             init_gemm_nested_scratchpad(gemm_layer_fwd_src_,
                     utils::scratch_t::key_gemm_layer_fwd_src);
-            CHECK(gemm::gpu_gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd:
             init_gemm_nested_scratchpad(
                     gemm_iter_bwd_, utils::scratch_t::key_gemm_iter_bwd);
-            CHECK(gemm::gpu_gemm(gemm_iter_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_iter_bwd_)->execute(gemm_ctx));
             break;
         case gemm_iter_bwd_2:
             init_gemm_nested_scratchpad(
                     gemm_iter_bwd_2_, utils::scratch_t::key_gemm_iter_bwd_2);
-            CHECK(gemm::gpu_gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd:
             init_gemm_nested_scratchpad(
                     gemm_layer_bwd_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gpu_gemm(gemm_layer_bwd_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_layer_bwd_)->execute(gemm_ctx));
             break;
         case gemm_layer_bwd_src:
             init_gemm_nested_scratchpad(
                     gemm_layer_bwd_src_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gpu_gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
                     utils::scratch_t::key_gemm_diff_wei_iter);
-            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
                     utils::scratch_t::key_gemm_diff_wei_layer);
-            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_layer_src:
             init_gemm_nested_scratchpad(gemm_diff_wei_layer_src_,
                     utils::scratch_t::key_gemm_diff_wei_layer_src);
-            CHECK(gemm::gpu_gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
             break;
         case gemm_diff_wei_iter_2:
             init_gemm_nested_scratchpad(gemm_diff_wei_iter_2_,
                     utils::scratch_t::key_gemm_diff_wei_iter_2);
-            CHECK(gemm::gpu_gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
+            CHECK(gemm::gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
             break;
         default: assert(!"unknown gemm_kind"); return status::runtime_error;
     }

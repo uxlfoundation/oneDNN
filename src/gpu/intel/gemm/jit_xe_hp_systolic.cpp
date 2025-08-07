@@ -31,7 +31,7 @@ namespace gemm {
 
 using namespace gemmstone;
 
-status_t xe_hp_systolic_gemm_t::pd_t::init(impl::engine_t *engine) {
+status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     using namespace prop_kind;
     using namespace data_type;
     using namespace primitive_kind;
@@ -203,7 +203,7 @@ const nocopy_table_t xe_hpc_x8x8s32_nocopy_bad_ld_table[] = {
         {{{624, 624}, {480, 624}}, {{0, 0}, {0, 0}}}};
 } // namespace
 
-bool xe_hp_systolic_gemm_t::pd_t::use_nocopy() {
+bool xe_hp_systolic_t::pd_t::use_nocopy() {
     using namespace data_type;
 
     const auto &d = desc();
@@ -255,7 +255,7 @@ bool xe_hp_systolic_gemm_t::pd_t::use_nocopy() {
     return false;
 }
 
-bool xe_hp_systolic_gemm_t::pd_t::use_nocopy_xehpg(
+bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
         data_type_t dt, unsigned ld_align) {
     using namespace data_type;
 
@@ -300,9 +300,9 @@ bool xe_hp_systolic_gemm_t::pd_t::use_nocopy_xehpg(
     return false;
 }
 
-status_t xe_hp_systolic_gemm_t::pd_t::set_default_formats(data_type_t dt) {
+status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     using namespace format_tag;
-    using new_kd_t = jit::gen_gemm_xe_systolic_kernel_desc_t;
+    using new_kd_t = jit::gen_xe_systolic_kernel_desc_t;
 
     auto sz = types::data_type_size(dt);
     const auto &d = desc();
@@ -450,11 +450,11 @@ status_t xe_hp_systolic_gemm_t::pd_t::set_default_formats(data_type_t dt) {
     if ((!packed_a_ && unroll_m_ == 16) || (!packed_b_ && unroll_n_ == 16))
         return status::unimplemented;
 
-    return gpu_gemm_pd_t::set_default_formats() ? status::success
-                                                : status::unimplemented;
+    return gemm::pd_t::set_default_formats() ? status::success
+                                             : status::unimplemented;
 }
 
-void xe_hp_systolic_gemm_t::pd_t::init_scratchpad() {
+void xe_hp_systolic_t::pd_t::init_scratchpad() {
     if (packed_a() && packed_b()) return;
 
     auto a_type = desc()->a_type();
@@ -487,7 +487,7 @@ void xe_hp_systolic_gemm_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
+status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
     arch_ = pd()->dev_info_->gpu_arch();
     eu_count_ = pd()->dev_info_->eu_count();
 
@@ -522,7 +522,7 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
             if (clear_sum && !pd()->with_ab_zero_points()) continue;
             if (!copy_b ? pd()->packed_a() : pd()->packed_b()) continue;
 
-            using copy_kernel_params_t = xe_systolic_gemm_copy_kernel_t;
+            using copy_kernel_params_t = xe_systolic_copy_kernel_t;
             compute::kernel_ctx_t kernel_ctx;
 
             auto trans
@@ -549,8 +549,8 @@ status_t xe_hp_systolic_gemm_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t xe_hp_systolic_gemm_t::init_compute(impl::engine_t *engine) {
-    using kd_t = jit::gen_gemm_xe_systolic_kernel_desc_t;
+status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
+    using kd_t = jit::gen_xe_systolic_kernel_desc_t;
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     int stepping = intel_engine->device_info()->stepping_id();
@@ -647,12 +647,11 @@ status_t xe_hp_systolic_gemm_t::init_compute(impl::engine_t *engine) {
     return status::success;
 }
 
-bool xe_hp_systolic_gemm_t::enable_mn_blocking() const {
+bool xe_hp_systolic_t::enable_mn_blocking() const {
     return (pd()->desc()->m() >= 8192) && (pd()->desc()->n() >= 8192);
 }
 
-std::tuple<int64_t, int64_t, int64_t>
-xe_hp_systolic_gemm_t::get_blocking() const {
+std::tuple<int64_t, int64_t, int64_t> xe_hp_systolic_t::get_blocking() const {
     int64_t m = pd()->desc()->m();
     int64_t n = pd()->desc()->n();
     int64_t k = pd()->desc()->k();
@@ -703,12 +702,12 @@ xe_hp_systolic_gemm_t::get_blocking() const {
     return std::make_tuple(block_m, block_n, block_k);
 }
 
-status_t xe_hp_systolic_gemm_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
+status_t xe_hp_systolic_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
         int64_t c, const memory_storage_t &src, int64_t offset_src,
         int64_t ld_src, const memory_storage_t &dst, int32_t offset_dst,
         int32_t ld_dst, bool copyb) const {
 
-    using copy_kernel_t = xe_systolic_gemm_copy_kernel_t;
+    using copy_kernel_t = xe_systolic_copy_kernel_t;
 
     if (pd()->with_ab_zero_points()) {
         auto status
@@ -773,8 +772,8 @@ status_t xe_hp_systolic_gemm_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_gemm_t::launch_clear_sum(const exec_ctx_t &ctx,
-        int64_t r, int64_t c, const memory_storage_t &dst, int32_t offset_dst,
+status_t xe_hp_systolic_t::launch_clear_sum(const exec_ctx_t &ctx, int64_t r,
+        int64_t c, const memory_storage_t &dst, int32_t offset_dst,
         int32_t ld_dst, bool copyb) const {
 
     auto &kernel = copy_kernel_[copyb][true];
@@ -789,7 +788,7 @@ status_t xe_hp_systolic_gemm_t::launch_clear_sum(const exec_ctx_t &ctx,
 
     size_t threads = !copyb ? utils::div_up(r, pd()->unroll_m())
                             : utils::div_up(c, pd()->unroll_n());
-    size_t sg = xe_systolic_gemm_copy_kernel_t::subgroup_size_clear_sum(arch_);
+    size_t sg = xe_systolic_copy_kernel_t::subgroup_size_clear_sum(arch_);
 
     compute::range_t gws(threads * sg);
     compute::range_t lws(sg);
@@ -799,7 +798,7 @@ status_t xe_hp_systolic_gemm_t::launch_clear_sum(const exec_ctx_t &ctx,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_gemm_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
+status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
         int32_t n, int32_t k, const memory_storage_t &ap, int64_t offset_a,
         int32_t lda, const memory_storage_t &bp, int64_t offset_b, int32_t ldb,
         const memory_storage_t &c, int64_t offset_c, int32_t ldc, float alpha,
@@ -911,7 +910,7 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
     lws[1] *= compute_info_.wgExpand;
     gws[1] *= compute_info_.wgExpand;
 
-    jit::gemm_linear_order_args(arg_list, argn, lws, gws, m, n, k, false,
+    jit::linear_order_args(arg_list, argn, lws, gws, m, n, k, false,
             compute_info_, nullptr, pd()->dev_info_);
 
     lws[0] *= compute_info_.subgroupSize;
@@ -922,7 +921,7 @@ status_t xe_hp_systolic_gemm_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_gemm_t::execute(const exec_ctx_t &ctx) const {
+status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     auto a_type = pd()->desc()->a_type();
     auto b_type = pd()->desc()->b_type();
     auto c_type = pd()->desc()->c_type();

@@ -20,8 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
-#include "common/tag_traits.hpp"
-#include "gpu/gpu_gemm_pd.hpp"
+#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/post_ops.hpp"
 
 namespace dnnl {
@@ -33,8 +32,8 @@ namespace jit {
 
 #define GEMM_MAX_PO 36
 
-struct gemm_pd_t : public gpu_gemm_pd_t {
-    using gpu_gemm_pd_t::gpu_gemm_pd_t;
+struct pd_t : public gemm::pd_t {
+    using gemm::pd_t::pd_t;
 
     struct binary_src_t {
         enum type_t { none, scales, bias, binary, prelu } type;

@@ -29,7 +29,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct xe_systolic_gemm_copy_kernel_t {
+struct xe_systolic_copy_kernel_t {
     status_t init(compute::gpu_arch_t arch, data_type_t dt, int unroll_n,
             bool copyb, bool trans, bool sum = false, bool clear_sum = false) {
         *this = {};
@@ -120,16 +120,16 @@ struct xe_systolic_gemm_copy_kernel_t {
     }
 
 #if __cplusplus >= 202002L
-    bool operator==(const xe_systolic_gemm_copy_kernel_t &) const = default;
+    bool operator==(const xe_systolic_copy_kernel_t &) const = default;
 #endif
 
     serialization_stream_t serialize() const {
         return serialization_stream_t(*this);
     }
 
-    static xe_systolic_gemm_copy_kernel_t deserialize(
+    static xe_systolic_copy_kernel_t deserialize(
             const serialization_stream_t &s) {
-        xe_systolic_gemm_copy_kernel_t t {};
+        xe_systolic_copy_kernel_t t {};
         deserializer_t d(s);
         d.pop(t);
         return t;

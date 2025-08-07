@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+
 #include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
@@ -46,13 +47,13 @@ void entryObserver(
 };
 } // anonymous namespace
 
-status_t gen_gemm_kernel_desc_t::create_generator(
+status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
-    gen_gemm_kernel_t kd(*this);
+    gen_kernel_t kd(*this);
     return engine.create_kernel(&kernel, &kd);
 }
 
-compute::scalar_type_t gen_gemm_kernel_desc_t::scalar_type() const {
+compute::scalar_type_t gen_desc_t::scalar_type() const {
     switch (problem_.Ts) {
         case Type::s4: return compute::scalar_type_t::_int4;
         case Type::u4: return compute::scalar_type_t::_uint4;
@@ -76,7 +77,7 @@ compute::scalar_type_t gen_gemm_kernel_desc_t::scalar_type() const {
     }
 }
 
-status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
+status_t gen_desc_t::finalize(const char *tags) {
     // Update problem alignments to match catalog entry.
     if (!isPacked(problem_.A.layout)
             && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
@@ -284,7 +285,7 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     return status::success;
 }
 
-void gen_gemm_kernel_desc_t::update_driver_info() {
+void gen_desc_t::update_driver_info() {
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: \
         driver_info_ = gemm_kernel_generator_t<ngen::HW::arch>::driverInfo( \
@@ -306,7 +307,7 @@ void gen_gemm_kernel_desc_t::update_driver_info() {
 #undef ARCH_DISPATCH
 }
 
-status_t gen_gemm_kernel_desc_t::transfer_post_ops(
+status_t gen_desc_t::transfer_post_ops(
         gpu_post_ops_t &&post_ops_, bool swap_ab) {
     problem_.postOps = std::move(post_ops_);
     const auto &post_ops = problem_.postOps;
@@ -367,7 +368,7 @@ status_t gen_gemm_kernel_desc_t::transfer_post_ops(
     return status::success;
 }
 
-status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
+status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         int stepping, int eu_count, bool has_systolic, bool is_integrated,
         compute_mode mode, int batch_dims, bool trans_a, bool trans_b,
         bool trans_co, bool swap_ab, int ao_dims, int bo_dims, int asc_dims,
@@ -670,14 +671,14 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     return finalize(match_params[0].tags);
 }
 
-status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
-        compute::gpu_arch_t arch, int stepping, int eu_count,
-        bool is_integrated, int batch_dims, bool packed_c, bool trans_co,
-        bool a_offset, bool b_offset, bool c_offset, bool bias, float alpha,
-        float beta, data_type_t a_type, data_type_t b_type, data_type_t c_type,
-        data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
-        data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
-        int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops) {
+status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
+        int stepping, int eu_count, bool is_integrated, int batch_dims,
+        bool packed_c, bool trans_co, bool a_offset, bool b_offset,
+        bool c_offset, bool bias, float alpha, float beta, data_type_t a_type,
+        data_type_t b_type, data_type_t c_type, data_type_t ao_type,
+        data_type_t bo_type, data_type_t co_type, data_type_t acc_type, dim_t m,
+        dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
+        gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -793,10 +794,10 @@ status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
     return finalize(match_params.tags);
 }
 
-void gen_gemm_xe_systolic_kernel_desc_t::choose_unrolls(
-        compute::gpu_arch_t arch, int eu_count, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, dim_t m, dim_t n, dim_t k,
-        dim_t batch, int &unroll_m, int &unroll_n, bool &alt) {
+void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
+        int eu_count, data_type_t a_type, data_type_t b_type,
+        data_type_t c_type, dim_t m, dim_t n, dim_t k, dim_t batch,
+        int &unroll_m, int &unroll_n, bool &alt) {
 
     using namespace data_type;
 
@@ -833,7 +834,7 @@ void gen_gemm_xe_systolic_kernel_desc_t::choose_unrolls(
     }
 }
 
-void gen_gemm_kernel_t::init_interface() {
+void gen_kernel_t::init_interface() {
     using namespace ngen;
 
     auto &problem = *desc()->problem();
@@ -976,7 +977,7 @@ void gen_gemm_kernel_t::init_interface() {
     interface_.externalName(kernel_name());
 }
 
-status_t gen_gemm_kernel_t::get_kernel(
+status_t gen_kernel_t::get_kernel(
         compute::kernel_t &kernel, const intel::engine_t *engine) {
     init_interface();
     maybe_print_verbose();
@@ -1008,7 +1009,7 @@ status_t gen_gemm_kernel_t::get_kernel(
     return status::runtime_error;
 }
 
-void gen_gemm_kernel_t::maybe_print_verbose() {
+void gen_kernel_t::maybe_print_verbose() {
     int level = get_verbose(verbose_t::debuginfo);
     if (level < 2) return;
 

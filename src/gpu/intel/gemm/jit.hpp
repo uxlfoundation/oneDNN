@@ -26,9 +26,9 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/zero_pool.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/gemm/jit/pd.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -36,12 +36,12 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct gen_gemm_t : public gpu_gemm_t {
-    struct pd_t : public jit::gemm_pd_t {
-        using jit::gemm_pd_t::gemm_pd_t;
-        using kernel_desc_t = jit::gen_gemm_nocopy_kernel_desc_t;
+struct gen_t : public primitive_t {
+    struct pd_t : public jit::pd_t {
+        using jit::pd_t::pd_t;
+        using kernel_desc_t = jit::gen_nocopy_desc_t;
 
-        DECLARE_COMMON_PD_T("jit:gemm:any", gen_gemm_t);
+        DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -364,7 +364,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     *(int *)result = (grfs > 128) ? 4 : 8;
                     break;
                 }
-                default: return gpu_gemm_pd_t::query(what, idx, result);
+                default: return pd_t::query(what, idx, result);
             }
             return status::success;
         }
@@ -487,8 +487,8 @@ struct gen_gemm_t : public gpu_gemm_t {
                 }
             }
 
-            return gpu_gemm_pd_t::set_default_formats() ? status::success
-                                                        : status::unimplemented;
+            return gemm::pd_t::set_default_formats() ? status::success
+                                                     : status::unimplemented;
         }
 
         void init_scratchpad() {
@@ -511,7 +511,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             }
         }
 
-        const jit::gen_gemm_nocopy_kernel_desc_t *kernel_desc() const {
+        const jit::gen_nocopy_desc_t *kernel_desc() const {
             return &kernel_desc_;
         }
 
@@ -537,9 +537,9 @@ struct gen_gemm_t : public gpu_gemm_t {
         kernel_desc_t kernel_desc_;
     };
 
-    gen_gemm_t(const pd_t *apd) : gpu_gemm_t(apd) {}
+    gen_t(const pd_t *apd) : primitive_t(apd) {}
 
-    ~gen_gemm_t() override {
+    ~gen_t() override {
         if (zero_pool_) release_zero_pool(zero_pool_);
     }
 

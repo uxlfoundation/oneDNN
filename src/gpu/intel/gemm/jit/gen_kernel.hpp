@@ -21,7 +21,6 @@
 #include "gemmstone/driver_info.hpp"
 #include "gemmstone/kernel_catalog.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
-#include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
 #include "gemmstone/type.hpp"
@@ -29,7 +28,6 @@
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -60,8 +58,8 @@ static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
     }
 }
 
-struct gen_gemm_kernel_desc_t {
-    friend struct gen_gemm_kernel_t;
+struct gen_desc_t {
+    friend struct gen_kernel_t;
 
     const gemmstone::GEMMProblem *problem() const { return &problem_; };
     const gemmstone::GEMMStrategy *strategy() const { return &strategy_; };
@@ -110,7 +108,7 @@ protected:
     void update_driver_info();
 };
 
-struct gen_gemm_nocopy_kernel_desc_t : public gen_gemm_kernel_desc_t {
+struct gen_nocopy_desc_t : public gen_desc_t {
     enum compute_mode {
         mode_default = 0,
         mode_tf32 = 0x1,
@@ -140,7 +138,7 @@ struct gen_gemm_nocopy_kernel_desc_t : public gen_gemm_kernel_desc_t {
             dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);
 };
 
-struct gen_gemm_xe_systolic_kernel_desc_t : public gen_gemm_kernel_desc_t {
+struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
     status_t select_kernel(compute::gpu_arch_t arch, int stepping, int eu_count,
             bool is_integrated, int batch_dims, bool packed_c, bool trans_co,
             bool a_offset, bool b_offset, bool c_offset, bool bias, float alpha,
@@ -158,19 +156,18 @@ struct gen_gemm_xe_systolic_kernel_desc_t : public gen_gemm_kernel_desc_t {
     static int min_block_k(data_type_t a_type) { return 2048; }
 };
 
-struct gen_gemm_kernel_t : public intel::jit::generator_base_t {
+struct gen_kernel_t : public intel::jit::generator_base_t {
 
-    explicit gen_gemm_kernel_t(const gen_gemm_kernel_desc_t &desc)
-        : desc_(desc) {}
+    explicit gen_kernel_t(const gen_desc_t &desc) : desc_(desc) {}
 
     const char *kernel_name() const override { return "gemm_kernel"; }
     status_t get_kernel(
             compute::kernel_t &kernel, const intel::engine_t *engine) override;
 
-    const gen_gemm_kernel_desc_t *desc() const { return &desc_; }
+    const gen_desc_t *desc() const { return &desc_; }
 
 protected:
-    const gen_gemm_kernel_desc_t &desc_;
+    const gen_desc_t &desc_;
     ngen::NEOInterfaceHandler interface_ {ngen::HW::Unknown};
 
     void init_interface();
@@ -181,27 +178,24 @@ protected:
 } // namespace gemm
 
 template <>
-struct trivial_key_validator_t<gemm::jit::gen_gemm_kernel_desc_t> {
-    static bool is_valid(const gemm::jit::gen_gemm_kernel_desc_t &) {
-        return true;
+struct trivial_key_validator_t<gemm::jit::gen_desc_t> {
+    static bool is_valid(const gemm::jit::gen_desc_t &) { return true; }
+};
+
+template <>
+struct trivial_key_validator_t<gemm::jit::gen_nocopy_desc_t> {
+    static bool is_valid(const gemm::jit::gen_nocopy_desc_t &derived) {
+        return trivial_key_validator_t<gemm::jit::gen_desc_t>::is_valid(
+                derived);
     }
 };
 
 template <>
-struct trivial_key_validator_t<gemm::jit::gen_gemm_nocopy_kernel_desc_t> {
+struct trivial_key_validator_t<gemm::jit::gen_xe_systolic_kernel_desc_t> {
     static bool is_valid(
-            const gemm::jit::gen_gemm_nocopy_kernel_desc_t &derived) {
-        return trivial_key_validator_t<
-                gemm::jit::gen_gemm_kernel_desc_t>::is_valid(derived);
-    }
-};
-
-template <>
-struct trivial_key_validator_t<gemm::jit::gen_gemm_xe_systolic_kernel_desc_t> {
-    static bool is_valid(
-            const gemm::jit::gen_gemm_xe_systolic_kernel_desc_t &derived) {
-        return trivial_key_validator_t<
-                gemm::jit::gen_gemm_kernel_desc_t>::is_valid(derived);
+            const gemm::jit::gen_xe_systolic_kernel_desc_t &derived) {
+        return trivial_key_validator_t<gemm::jit::gen_desc_t>::is_valid(
+                derived);
     }
 };
 

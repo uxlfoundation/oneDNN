@@ -31,7 +31,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
+status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
@@ -205,9 +205,8 @@ status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
 
     gws[2] *= pd()->desc()->batch();
 
-    jit::gemm_linear_order_args(arg_list, argn, lws, gws, m, n, k,
-            disable_hilbert, *nocopy_info(), pd()->kernel_desc()->aux_params(),
-            pd()->dev_info_);
+    jit::linear_order_args(arg_list, argn, lws, gws, m, n, k, disable_hilbert,
+            *nocopy_info(), pd()->kernel_desc()->aux_params(), pd()->dev_info_);
 
     if (nocopy_info()->perKSLM > 0) {
         size_t slm = nocopy_info()->slm;
@@ -232,7 +231,7 @@ status_t gen_gemm_t::launch_nocopy(const exec_ctx_t &ctx,
     return status;
 }
 
-status_t gen_gemm_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto zero_pool = zero_pool_;

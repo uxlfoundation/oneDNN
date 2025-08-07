@@ -16,7 +16,6 @@
 
 #include "gpu/intel/matmul/sparse_ref.hpp"
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
@@ -25,7 +24,7 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-status_t ref_sparse_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_sparse_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &a_values = CTX_IN_STORAGE(DNNL_ARG_SRC, 0);
     const auto &a_rows = CTX_IN_STORAGE(DNNL_ARG_SRC, 1);
     const auto &a_cols = CTX_IN_STORAGE(DNNL_ARG_SRC, 2);

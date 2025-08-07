@@ -19,6 +19,7 @@
 
 #include "common/memory_storage.hpp"
 #include "common/primitive_exec_types.hpp"
+#include "gpu/intel/gemm/config.hpp"
 
 #define DNNL_ARG_A DNNL_ARG_WEIGHTS
 #define DNNL_ARG_B DNNL_ARG_SRC
@@ -52,19 +53,19 @@ struct exec_args_t {
 
 struct exec_ctx_t {
     exec_ctx_t(impl::stream_t *stream, const exec_args_t &args,
-            const gemm_desc_t *gemm_desc = nullptr)
-        : stream_(stream), args_(args), gemm_desc_(gemm_desc) {}
+            const desc_t *desc = nullptr)
+        : stream_(stream), args_(args), desc_(desc) {}
     exec_ctx_t(const impl::exec_ctx_t &other, const exec_args_t &args,
-            const gemm_desc_t *gemm_desc = nullptr)
+            const desc_t *desc = nullptr)
         : stream_(other.stream())
         , args_(args)
-        , gemm_desc_(gemm_desc)
+        , desc_(desc)
         , resource_mapper_(other.get_resource_mapper())
         , scratchpad_grantor_(other.grantor_handle()) {}
 
     impl::stream_t *stream() const { return stream_; }
     const exec_args_t &args() const { return args_; }
-    const gemm_desc_t *desc() const { return gemm_desc_; }
+    const desc_t *desc() const { return desc_; }
 
     impl::exec_ctx_t into_exec_ctx_t(impl::exec_args_t &&args) const {
         impl::exec_ctx_t ctx(stream(), std::move(args));
@@ -95,7 +96,7 @@ struct exec_ctx_t {
 private:
     impl::stream_t *stream_;
     exec_args_t args_;
-    const gemm_desc_t *gemm_desc_ = nullptr;
+    const desc_t *desc_ = nullptr;
     const resource_mapper_t *resource_mapper_ = nullptr;
     const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
 };

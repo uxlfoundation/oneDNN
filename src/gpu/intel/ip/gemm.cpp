@@ -16,7 +16,7 @@
 
 #include "gpu/intel/ip/gemm.hpp"
 
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,11 +27,11 @@ namespace ip {
 status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    gemm::exec_args_t gemm_args;
-    gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
-    gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
-    gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
-    gemm_args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
+    gemm::exec_args_t args;
+    args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
+    args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+    args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
+    args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
     memory_storage_t *a0
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
 
@@ -41,21 +41,20 @@ status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     memory_storage_t *c0
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    gemm_args.a_zero_point = b0;
-    gemm_args.b_zero_point = a0;
-    gemm_args.c_zero_point = c0;
-    gemm_args.a_scales
-            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    gemm_args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    gemm_args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    gemm_args.exec_args = ctx.args();
+    args.a_zero_point = b0;
+    args.b_zero_point = a0;
+    args.c_zero_point = c0;
+    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    args.exec_args = ctx.args();
 
-    gemm::exec_ctx_t gemm_ctx(ctx, gemm_args);
+    gemm::exec_ctx_t gemm_ctx(ctx, args);
 
     nested_scratchpad_t ns(ctx, key_nested, gemm_);
     gemm_ctx.set_scratchpad_grantor(ns.grantor());
 
-    status_t gemm_exec_status = gemm::gpu_gemm(gemm_)->execute(gemm_ctx);
+    status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
 
     if (gemm_exec_status != status::success) return gemm_exec_status;
 
@@ -65,17 +64,17 @@ status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 status_t gemm_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    gemm::exec_args_t gemm_args;
-    gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
-    gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
-    gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
+    gemm::exec_args_t args;
+    args.a = &CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
+    args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+    args.c = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
 
-    gemm::exec_ctx_t gemm_ctx(ctx, gemm_args);
+    gemm::exec_ctx_t gemm_ctx(ctx, args);
 
     nested_scratchpad_t ns(ctx, key_nested, gemm_);
     gemm_ctx.set_scratchpad_grantor(ns.grantor());
 
-    status_t gemm_exec_status = gemm::gpu_gemm(gemm_)->execute(gemm_ctx);
+    status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
 
     return status::success;
@@ -101,7 +100,7 @@ status_t gemm_bwd_weights_t::execute_backward_weights(
     nested_scratchpad_t ns(ctx, key_nested_multiple, gemm_);
     gemm_ctx.set_scratchpad_grantor(ns.grantor());
 
-    status_t gemm_exec_status = gemm::gpu_gemm(gemm_)->execute(gemm_ctx);
+    status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
 
     if (pd()->with_bias() && pd()->reduction_pd_) {

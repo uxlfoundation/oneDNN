@@ -15,7 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/matmul/gemm.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -23,7 +24,7 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-status_t gemm_matmul_t::execute(const exec_ctx_t &ctx) const {
+status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC);
@@ -40,35 +41,34 @@ status_t gemm_matmul_t::execute(const exec_ctx_t &ctx) const {
     memory_storage_t *c0
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    gemm::exec_args_t gemm_args;
-    gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
-    gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
-    gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
-    gemm_args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
+    gemm::exec_args_t args;
+    args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
+    args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+    args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
+    args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
     // Note: we have to swap `a` and `b` zero-point arguments because,
     // - gemm primitive is created with row major desc,
     // - parameters to gemm are passed as row major
     // - but gemm implementation assumes column major
-    gemm_args.a_zero_point = b0;
-    gemm_args.b_zero_point = a0;
-    gemm_args.c_zero_point = c0;
-    gemm_args.a_scales
-            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    gemm_args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    gemm_args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    gemm_args.sround_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
-    gemm_args.exec_args = ctx.args();
-    gemm_desc_t gemm_desc;
-    CHECK(create_gemm_desc(&gemm_desc, src_d.md_, weights_d.md_, dst_d.md_,
+    args.a_zero_point = b0;
+    args.b_zero_point = a0;
+    args.c_zero_point = c0;
+    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    args.sround_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
+    args.exec_args = ctx.args();
+    gemm::desc_t desc;
+    CHECK(create_gemm_desc(&desc, src_d.md_, weights_d.md_, dst_d.md_,
             bia_d.md_, pd()->desc()->accum_data_type, ctx.stream()->engine()));
 
-    gemm::exec_ctx_t gemm_ctx(ctx, gemm_args, &gemm_desc);
+    gemm::exec_ctx_t gemm_ctx(ctx, args, &desc);
 
     nested_scratchpad_t ns(ctx, key_nested, gemm_);
     gemm_ctx.set_scratchpad_grantor(ns.grantor());
 
-    status_t gemm_exec_status = gemm::gpu_gemm(gemm_)->execute(gemm_ctx);
+    status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
 
     return status::success;

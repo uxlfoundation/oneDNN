@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_GEMM_WITH_POST_OPS_HPP
 #define GPU_INTEL_GEMM_WITH_POST_OPS_HPP
 
-#include "gpu/gpu_gemm_pd.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -27,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct gemm_with_post_ops_t : public gpu_gemm_t {
-    using gpu_gemm_t::gpu_gemm_t;
-    struct pd_t : public gpu_gemm_pd_t {
-        using gpu_gemm_pd_t::gpu_gemm_pd_t;
+struct with_post_ops_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public gemm::pd_t {
+        using gemm::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:gemm_with_po:any", gemm_with_post_ops_t);
+        DECLARE_COMMON_PD_T("ocl:with_po:any", with_post_ops_t);
 
         status_t init(impl::engine_t *engine);
 
@@ -43,7 +43,7 @@ struct gemm_with_post_ops_t : public gpu_gemm_t {
             return use_scratchpad_with_post_op_worker;
         }
 
-        std::shared_ptr<primitive_desc_t> gemm_pd_;
+        std::shared_ptr<primitive_desc_t> pd_;
         bool use_scratchpad_with_post_op_worker = false;
         bool use_reorder = false;
         compute::dispatch_t dispatch_;
@@ -52,13 +52,12 @@ struct gemm_with_post_ops_t : public gpu_gemm_t {
     };
 
     status_t init(impl::engine_t *engine) override {
-        auto ret_status
-                = create_nested_primitive(gemm_prim_, pd()->gemm_pd_, engine);
+        auto ret_status = create_nested_primitive(prim_, pd()->pd_, engine);
         CHECK(ret_status);
         primitive_attr_t attr;
         int threads_per_eu = 0;
         if (status::success
-                == pd()->gemm_pd_->query(query::preferred_gpu_threads_per_eu, 0,
+                == pd()->pd_->query(query::preferred_gpu_threads_per_eu, 0,
                         &threads_per_eu)) {
             CHECK(attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
         }
@@ -77,7 +76,7 @@ struct gemm_with_post_ops_t : public gpu_gemm_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::shared_ptr<impl::primitive_t> gemm_prim_;
+    std::shared_ptr<impl::primitive_t> prim_;
     compute::kernel_t post_process_kernel_;
     compute::kernel_t subbyte_pack_kernel_;
 };

@@ -20,8 +20,7 @@
 #include "common/gemm_utils.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
-#include "gpu/gpu_matmul_pd.hpp"
-#include "gpu/intel/gemm/gpu_gemm.hpp"
+#include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -30,12 +29,12 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-struct gemm_matmul_t : public primitive_t {
+struct gemm_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_matmul_pd_t {
-        using gpu_matmul_pd_t::gpu_matmul_pd_t;
+    struct pd_t : public matmul::pd_t {
+        using matmul::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T(gemm_pd_->name(), gemm_matmul_t);
+        DECLARE_COMMON_PD_T(gemm_pd_->name(), gemm_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

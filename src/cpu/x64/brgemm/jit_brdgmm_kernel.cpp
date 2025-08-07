@@ -34,6 +34,7 @@ namespace x64 {
 
 using namespace dnnl::impl::utils;
 using namespace Xbyak;
+using namespace injector_utils;
 
 template <typename Wmm>
 jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
@@ -110,51 +111,50 @@ void jit_brdgmm_kernel_base_t<Wmm>::read_params() {
         mov(reg_aux1_A, ptr[param1 + GET_OFF(ptr_A)]);
         mov(reg_aux1_B, ptr[param1 + GET_OFF(ptr_B)]);
         if (brg.brgattr.max_bs > 1) {
-            mov(ptr[rsp + reg_A_offs_], reg_aux1_A);
-            mov(ptr[rsp + reg_B_offs_], reg_aux1_B);
+            reg_aux1_A.save();
+            reg_aux1_B.save();
         }
     }
 
     if (one_of(brg.type, brgemm_addr, brgemm_offs) || has_vpad_) {
         mov(reg_aux_batch_addr, ptr[param1 + GET_OFF(batch)]);
-        if (brg.brgattr.max_bs > 1)
-            mov(ptr[rsp + reg_batch0_addr_offs_], reg_aux_batch_addr);
+        if (brg.brgattr.max_bs > 1) reg_aux_batch_addr.save();
     }
 
     if (brg.with_bias) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(ptr_bias)]);
-        mov(ptr[rsp + reg_bias_offs_], reg_tmp);
+        mov(reg_aux_bias, ptr[param1 + GET_OFF(ptr_bias)]);
+        reg_aux_bias.save();
     }
 
     if (brg.with_scales) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(ptr_scales)]);
-        mov(ptr[rsp + reg_scales_offs_], reg_tmp);
+        mov(reg_aux_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+        reg_aux_scales.save();
     }
 
     if (brg.with_dst_scales) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(ptr_dst_scales)]);
-        mov(ptr[rsp + reg_dst_scales_offs_], reg_tmp);
+        mov(reg_aux_dst_scales, ptr[param1 + GET_OFF(ptr_dst_scales)]);
+        reg_aux_dst_scales.save();
     }
 
     if (brg.req_s8s8_compensation) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(ptr_buf)]);
-        mov(ptr[rsp + reg_s8s8_comp_offs_], reg_tmp);
+        mov(reg_s8s8_comp, ptr[param1 + GET_OFF(ptr_buf)]);
+        reg_s8s8_comp.save();
     }
 
     if (compute_dst_zp_) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(c_zp_values)]);
-        mov(ptr[rsp + dst_zp_value_], reg_tmp);
+        mov(reg_dst_zero_point, ptr[param1 + GET_OFF(c_zp_values)]);
+        reg_dst_zero_point.save();
     }
 
     if (compute_src_zp_) {
-        mov(reg_tmp, ptr[param1 + GET_OFF(a_zp_values)]);
-        mov(ptr[rsp + src_zp_value_], reg_tmp);
+        mov(reg_src_zero_point, ptr[param1 + GET_OFF(a_zp_values)]);
+        reg_src_zero_point.save();
 
-        mov(reg_tmp, ptr[param1 + GET_OFF(a_zp_compensations)]);
-        mov(ptr[rsp + zp_compensation_], reg_tmp);
+        mov(reg_zp_compensation, ptr[param1 + GET_OFF(a_zp_compensations)]);
+        reg_zp_compensation.save();
     }
 
-    if (brg.with_binary) mov(ptr[rsp + abi_param1_offs_], param1);
+    if (brg.with_binary) reg_binary_params.save();
 }
 
 template <typename Wmm>
@@ -191,11 +191,11 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::restore_A_B_matrices() {
     if (brg.brgattr.max_bs > 1
             && (one_of(brg.type, brgemm_addr, brgemm_offs) || has_vpad_))
-        mov(reg_aux_batch_addr, ptr[rsp + reg_batch0_addr_offs_]);
+        reg_aux_batch_addr.restore();
 
     if (brg.type == brgemm_strd && brg.brgattr.max_bs > 1) {
-        mov(reg_aux1_A, ptr[rsp + reg_A_offs_]);
-        mov(reg_aux1_B, ptr[rsp + reg_B_offs_]);
+        reg_aux1_A.restore();
+        reg_aux1_B.restore();
     }
 }
 
@@ -280,7 +280,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
     }
 
     if (brg.with_binary) {
-        mov(reg_binary_params, ptr[rsp + abi_param1_offs_]);
+        reg_binary_params.restore();
 
         if (with_binary_non_scalar_bcast_) {
 
@@ -307,12 +307,10 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         const bool p_sum_scale_reg_set = *p_sum_scale != 1.f;
         const bool p_sum_zp_reg_set = *p_sum_zp != 0;
 
-        const injector_utils::conditional_register_preserve_guard_t
-                register_guard_sum_scale(
-                        (with_binary_non_scalar_bcast_) && p_sum_scale_reg_set,
-                        this, {reg_ptr_sum_scale});
-        const injector_utils::conditional_register_preserve_guard_t
-                register_guard_sum_zp(p_sum_zp_reg_set, this, {reg_ptr_sum_zp});
+        const reg64_savable_guard_t register_guard_sum(
+                {{{reg_ptr_sum_scale},
+                         with_binary_non_scalar_bcast_ && p_sum_scale_reg_set},
+                        {{reg_ptr_sum_zp}, p_sum_zp_reg_set}});
 
         if (p_sum_scale_reg_set)
             mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
@@ -368,7 +366,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     const bool dq2ps_required = brg.is_int8;
     const int v_substep = vnni_substep();
     if (brg.with_scales) {
-        mov(reg_aux_scales, ptr[rsp + reg_scales_offs_]);
+        reg_aux_scales.restore();
         if (brg.is_oc_scale) {
             lea(reg_aux_scales,
                     ptr[reg_aux_scales + reg_aux_N * sizeof(float)]);
@@ -407,7 +405,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     }
 
     if (brg.with_bias) {
-        mov(reg_aux_bias, ptr[rsp + reg_bias_offs_]);
+        reg_aux_bias.restore();
         lea(reg_aux_bias, ptr[reg_aux_bias + reg_aux_N * brg.typesize_bias]);
     }
 
@@ -431,7 +429,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     if (postops_injector_) apply_post_ops(m_blocks, n_blocks, has_n_tail);
 
     if (brg.with_dst_scales) {
-        mov(reg_aux_dst_scales, ptr[rsp + reg_dst_scales_offs_]);
+        reg_aux_dst_scales.restore();
         auto vmm_dst_scales = vmm_tmp(0);
         if (!is_superset(brg.isa_impl, avx512_core))
             vbroadcastss(vmm_dst_scales, ptr[reg_aux_dst_scales]);
@@ -452,7 +450,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     if (compute_dst_zp_) {
         auto vmm_dst_zp = vmm_tmp(0);
-        mov(reg_dst_zero_point, ptr[rsp + dst_zp_value_]);
+        reg_dst_zero_point.restore();
         if (is_superset(brg.isa_impl, avx512_core)) {
             vcvtdq2ps(vmm_dst_zp,
                     EVEX_compress_addr(reg_dst_zero_point, 0, true));
@@ -623,7 +621,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
-    mov(reg_src_zero_point, ptr[rsp + src_zp_value_]);
+    reg_src_zero_point.restore();
     lea(reg_src_zero_point,
             is_src_zp_bcast_
                     ? ptr_b[reg_src_zero_point]
@@ -639,12 +637,12 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
     const int v_substep = vnni_substep();
 
     if (brg.req_s8s8_compensation) {
-        mov(reg_s8s8_comp, ptr[rsp + reg_s8s8_comp_offs_]);
+        reg_s8s8_comp.restore();
         lea(reg_s8s8_comp, ptr[reg_s8s8_comp + reg_aux_N * sizeof(int32_t)]);
     }
     if (compute_src_zp_) {
         load_src_zp();
-        mov(reg_zp_compensation, ptr[rsp + zp_compensation_]);
+        reg_zp_compensation.restore();
         lea(reg_zp_compensation,
                 ptr[reg_zp_compensation + reg_aux_N * sizeof(int32_t)]);
     }
@@ -1414,7 +1412,7 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::generate() {
 
     preamble();
-    sub(rsp, stack_space_needed_);
+    sub(rsp, regscratchpad_.Size());
 
     init_masks();
 
@@ -1423,7 +1421,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
     read_params();
     compute_loop();
 
-    add(rsp, stack_space_needed_);
+    add(rsp, regscratchpad_.Size());
     postamble();
 
     if (brg.with_eltwise)

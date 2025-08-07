@@ -23,6 +23,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/softmax/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +31,12 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-struct xe_softmax_fwd_t : public primitive_t {
+struct xe_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_softmax_fwd_pd_t {
-        using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe", xe_softmax_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe", xe_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;
@@ -239,12 +240,12 @@ protected:
     compute::kernel_t kernel_;
 };
 
-struct xe_softmax_bwd_t : public primitive_t {
+struct xe_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_softmax_bwd_pd_t {
-        using gpu_softmax_bwd_pd_t::gpu_softmax_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe", xe_softmax_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe", xe_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;

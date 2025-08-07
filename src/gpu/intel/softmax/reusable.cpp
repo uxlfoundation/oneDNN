@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include <numeric>
+#include "gpu/intel/primitive_conf.hpp"
 #include "gpu/intel/softmax/reusable.hpp"
 
 namespace dnnl {
@@ -26,7 +27,7 @@ namespace softmax {
 using namespace compute;
 using namespace gpu_utils;
 
-class softmax_lws_strategy_t : public compute::lws_strategy_t {
+class lws_strategy_t : public compute::lws_strategy_t {
 public:
     bool is_included(const compute::mapped_block_t &blocks) const override {
         for (const block_t &block : inc_blocks) {
@@ -61,27 +62,27 @@ private:
     std::vector<block_t> inc_blocks;
 };
 
-namespace softmax_dims_t {
+namespace dims {
 dim_idx_t mb = 0;
 dim_idx_t ic = 1;
 dim_idx_t sp0 = 2;
 dim_idx_t sp1 = 3;
 dim_idx_t sp2 = 4;
 dim_idx_t workers = 5; // artificial dimension partitions reductions
-}; // namespace softmax_dims_t
+}; // namespace dims
 
 static std::vector<dim_idx_t> get_dims(size_t ndims) {
     std::vector<dim_idx_t> ret(ndims);
     uint8_t idx = 0;
-    ret[idx++] = softmax_dims_t::mb;
-    ret[idx++] = softmax_dims_t::ic;
-    if (ndims >= 3) ret[idx++] = softmax_dims_t::sp0;
-    if (ndims >= 4) ret[idx++] = softmax_dims_t::sp1;
-    if (ndims >= 5) ret[idx++] = softmax_dims_t::sp2;
+    ret[idx++] = dims::mb;
+    ret[idx++] = dims::ic;
+    if (ndims >= 3) ret[idx++] = dims::sp0;
+    if (ndims >= 4) ret[idx++] = dims::sp1;
+    if (ndims >= 5) ret[idx++] = dims::sp2;
     return ret;
 }
 
-status_t reusable_softmax_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
+status_t reusable_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
         gpu::engine_t *engine) {
     compute::range_t gws {(size_t)conf.subgroup_size};
     compute::range_t lws {(size_t)conf.subgroup_size};
@@ -95,7 +96,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
     return status::success;
 }
 
-status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
+status_t reusable_fwd_t::pd_t::init_dispatch_default_reusable(
         gpu::engine_t *engine) {
     using dims_vec_t = std::vector<dim_idx_t>;
 
@@ -126,7 +127,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_default_reusable(
     return status::success;
 }
 
-status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
+status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
         gpu::engine_t *engine, const size_t num_workers_per_workgroup) {
 
     const memory_desc_wrapper src_mdw(src_md());
@@ -154,8 +155,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
 
     for (size_t i = 0; i < dims_ids.size(); i++) {
         if (i == softmax_axis) {
-            src_buf.append_block(
-                    softmax_dims_t::workers, num_workers_per_workgroup);
+            src_buf.append_block(dims::workers, num_workers_per_workgroup);
             src_buf.append_block(dims_ids[i], rt_conf.softmax_chunk_size);
         }
         if (i != softmax_axis) { src_buf.append_block(dims_ids[i], sizes[i]); }
@@ -177,7 +177,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
 
     // dispatch: all dims except reduction dimension plus workers dimension
     std::vector<dim_idx_t> dispatch_dims = std::move(dims_ids);
-    dispatch_dims[softmax_axis] = softmax_dims_t::workers;
+    dispatch_dims[softmax_axis] = dims::workers;
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
@@ -189,8 +189,8 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
     compute::reusable_dispatch_t dispatch;
-    auto lws_strat = softmax_lws_strategy_t(intel_engine, gpu_attr);
-    lws_strat.include(softmax_dims_t::workers, num_workers_per_workgroup);
+    auto lws_strat = lws_strategy_t(intel_engine, gpu_attr);
+    lws_strat.include(dims::workers, num_workers_per_workgroup);
     CHECK(dispatch_config.generate(dispatch, lws_strat));
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
@@ -212,7 +212,7 @@ status_t reusable_softmax_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     return status::success;
 }
 
-compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
+compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", is_softmax_inf_as_zero);
     kernel_ctx.define_int("LOGSOFTMAX", is_logsoftmax);
@@ -245,7 +245,7 @@ compute::kernel_ctx_t reusable_softmax_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t reusable_softmax_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
+status_t reusable_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);

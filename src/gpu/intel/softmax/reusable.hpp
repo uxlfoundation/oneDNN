@@ -18,13 +18,10 @@
 #define GPU_INTEL_SOFTMAX_REUSABLE_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/nstl.hpp"
 #include "common/primitive.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/gpu_softmax_pd.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/softmax/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,7 +29,7 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-enum softmax_algorithm_id_t {
+enum algorithm_id_t {
     many_reductions_per_workgroup = 1,
     one_reduction_per_workgroup,
     one_reduction_per_subgroup,
@@ -40,7 +37,7 @@ enum softmax_algorithm_id_t {
     small
 };
 
-struct reusable_softmax_params_t {
+struct reusable_params_t {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
@@ -58,13 +55,12 @@ struct reusable_softmax_params_t {
     bool operator==(const reusable_softmax_params_t &) const = default;
 #endif
     serialization_stream_t serialize() const {
-        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(reusable_softmax_params_t);
+        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(reusable_params_t);
         return serialization_stream_t(*this);
     }
 
-    static reusable_softmax_params_t deserialize(
-            const serialization_stream_t &s) {
-        return deserializer_t(s).pop<reusable_softmax_params_t>();
+    static reusable_params_t deserialize(const serialization_stream_t &s) {
+        return deserializer_t(s).pop<reusable_params_t>();
     }
 
     compute::kernel_ctx_t get_kernel_ctx() const;
@@ -81,19 +77,19 @@ struct reusable_softmax_params_t {
     compute::dispatch_compile_params_t gws_params;
 };
 
-struct reusable_softmax_runtime_params_t {
+struct reusable_runtime_params_t {
     dim_t softmax_axis_stride;
     dim_t softmax_axis_size;
     dim_t softmax_chunk_size;
     compute::dispatch_runtime_params_t gws_params;
 };
 
-struct reusable_softmax_fwd_t : public primitive_t {
+struct reusable_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_softmax_fwd_pd_t {
-        using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reusable", reusable_softmax_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:reusable", reusable_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using arch_t = compute::gpu_arch_t;
@@ -275,8 +271,8 @@ struct reusable_softmax_fwd_t : public primitive_t {
                 gpu::engine_t *engine, const size_t num_workers_per_workgroup);
         status_t init_dispatch_subgroup_per_reduction(gpu::engine_t *engine);
 
-        reusable_softmax_params_t conf;
-        reusable_softmax_runtime_params_t rt_conf;
+        reusable_params_t conf;
+        reusable_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {

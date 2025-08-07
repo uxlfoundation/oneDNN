@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-status_t simple_softmax_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
+status_t simple_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -47,7 +47,7 @@ status_t simple_softmax_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     }
 }
 
-status_t simple_softmax_bwd_t::execute_generic(const exec_ctx_t &ctx) const {
+status_t simple_bwd_t::execute_generic(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     auto &dst = CTX_IN_STORAGE(DNNL_ARG_DST);

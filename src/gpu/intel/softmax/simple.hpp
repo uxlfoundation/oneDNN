@@ -17,12 +17,9 @@
 #ifndef GPU_INTEL_SOFTMAX_SIMPLE_HPP
 #define GPU_INTEL_SOFTMAX_SIMPLE_HPP
 
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
-#include "gpu/gpu_softmax_pd.hpp"
-#include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/softmax/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
-struct simple_softmax_fwd_t : public primitive_t {
+struct simple_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_softmax_fwd_pd_t {
-        using gpu_softmax_fwd_pd_t::gpu_softmax_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:simple:any", simple_softmax_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:simple:any", simple_fwd_t);
 
         bool post_ops_ok() const {
             return attr()->post_ops_.has_default_values(
@@ -195,12 +192,12 @@ protected:
     compute::kernel_t kernel_;
 };
 
-struct simple_softmax_bwd_t : public primitive_t {
+struct simple_bwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_softmax_bwd_pd_t {
-        using gpu_softmax_bwd_pd_t::gpu_softmax_bwd_pd_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:simple:any", simple_softmax_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:simple:any", simple_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);

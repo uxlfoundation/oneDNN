@@ -45,17 +45,17 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_SOFTMAX_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::softmax::reusable_softmax_fwd_t)
-        GPU_INSTANCE_INTEL(intel::softmax::xe_softmax_fwd_t)
-        GPU_INSTANCE_INTEL(intel::softmax::simple_softmax_fwd_t)
+        GPU_INSTANCE_INTEL(intel::softmax::reusable_fwd_t)
+        GPU_INSTANCE_INTEL(intel::softmax::xe_fwd_t)
+        GPU_INSTANCE_INTEL(intel::softmax::simple_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_softmax_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_softmax_fwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_sycl_softmax_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::softmax::xe_softmax_bwd_t)
-        GPU_INSTANCE_INTEL(intel::softmax::simple_softmax_bwd_t)
+        GPU_INSTANCE_INTEL(intel::softmax::xe_bwd_t)
+        GPU_INSTANCE_INTEL(intel::softmax::simple_bwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_softmax_bwd_t)
         GPU_INSTANCE_AMD(amd::miopen_softmax_bwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_sycl_softmax_bwd_t)

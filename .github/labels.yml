@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2024-2025 Intel Corporation
+# Copyright 2025 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,8 +84,13 @@ third_party:
 
 # CPU Engine
 platform:cpu-aarch64:
-- changed-files:
-  - any-glob-to-any-file: 'src/cpu/aarch64/**'
+- any:
+  - changed-files:
+    - any-glob-to-any-file: 'src/cpu/aarch64/**'
+    - any-glob-to-any-file: '.github/automation/aarch64/**'
+    - any-glob-to-any-file: '.github/automation/performance/**'
+    - any-glob-to-any-file: '.github/automation/workflows/*aarch64*'
+  
 
 platform:cpu-ppc64:
 - changed-files:

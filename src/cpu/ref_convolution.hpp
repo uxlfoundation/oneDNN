@@ -144,7 +144,8 @@ struct ref_convolution_bwd_data_t : public primitive_t {
                                    utils::one_of(wei_type, f16, bf16)
                                            && diff_dst_type == f32),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(utils::one_of(diff_src_type, f32, diff_dst_type),
+            VDISPATCH_CONV(
+                    utils::one_of(diff_src_type, f32, diff_dst_type, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(

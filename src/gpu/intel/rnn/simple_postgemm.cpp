@@ -22,11 +22,10 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-using namespace dnnl::impl::gpu::intel::gpu_utils;
-using namespace rnn_utils;
+using namespace utils;
 
 template <prop_kind_t aprop>
-elemwise_sig((simple_rnn_common_t<aprop>::rnn_elemwise)) {
+elemwise_sig((simple_common_t<aprop>::rnn_elemwise)) {
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -69,23 +68,23 @@ elemwise_sig((simple_rnn_common_t<aprop>::rnn_elemwise)) {
     auto ws_grid = workspace.grid_comp(lay, dir, iter);
     arg_list.append(ws_grid, pd()->ocl_conf.aux_dt);
 
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.gates_ws_ld));
     if (aprop == prop_kind::forward)
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     else {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_gates_ld));
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     }
 
     arg_list.append(into<int32_t>(batch));
     arg_list.append(into<int32_t>(dhc));
     if (aprop == dnnl_backward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_states_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_states_ld));
         arg_list.append(into<int32_t>(diff_states_layer_ld));
     }
 
-    arg_list.append(pd()->rnn_conf.tm_cscale);
+    arg_list.append(pd()->conf.tm_cscale);
     if (aprop != dnnl_forward) {
         auto diff_dt = pd()->ocl_conf.diff_dt;
         arg_list.append(scratch_diff_states, diff_dt);
@@ -96,11 +95,11 @@ elemwise_sig((simple_rnn_common_t<aprop>::rnn_elemwise)) {
     }
     return parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
-template elemwise_sig(simple_rnn_fwd_t::rnn_elemwise);
-template elemwise_sig(simple_rnn_bwd_t::rnn_elemwise);
+template elemwise_sig(simple_fwd_t::rnn_elemwise);
+template elemwise_sig(simple_bwd_t::rnn_elemwise);
 
 template <prop_kind_t aprop>
-elemwise_sig((simple_rnn_common_t<aprop>::lstm_elemwise)) {
+elemwise_sig((simple_common_t<aprop>::lstm_elemwise)) {
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -143,22 +142,22 @@ elemwise_sig((simple_rnn_common_t<aprop>::lstm_elemwise)) {
     auto ws_grid = workspace.grid_comp(lay, dir, iter);
     arg_list.append(ws_grid, pd()->ocl_conf.aux_dt);
 
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.gates_ws_ld));
     if (aprop == prop_kind::forward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     } else {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_gates_ld));
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     }
     arg_list.append(into<int32_t>(batch));
     arg_list.append(into<int32_t>(dhc));
     if (aprop == dnnl_backward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_states_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_states_ld));
         arg_list.append(into<int32_t>(diff_states_layer_ld));
     }
 
-    arg_list.append(pd()->rnn_conf.tm_cscale);
+    arg_list.append(pd()->conf.tm_cscale);
     if (aprop != dnnl_forward) {
         auto diff_dt = pd()->ocl_conf.diff_dt;
         arg_list.append(scratch_diff_states, diff_dt);
@@ -171,11 +170,11 @@ elemwise_sig((simple_rnn_common_t<aprop>::lstm_elemwise)) {
     }
     return parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
-template elemwise_sig(simple_rnn_fwd_t::lstm_elemwise);
-template elemwise_sig(simple_rnn_bwd_t::lstm_elemwise);
+template elemwise_sig(simple_fwd_t::lstm_elemwise);
+template elemwise_sig(simple_bwd_t::lstm_elemwise);
 
 template <prop_kind_t aprop>
-elemwise_sig((simple_rnn_common_t<aprop>::lstm_elemwise_u8s8)) {
+elemwise_sig((simple_common_t<aprop>::lstm_elemwise_u8s8)) {
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -215,26 +214,26 @@ elemwise_sig((simple_rnn_common_t<aprop>::lstm_elemwise_u8s8)) {
 
     arg_list.append(workspace.bias());
 
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.states_ws_ld));
     if (aprop == prop_kind::forward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     } else {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_gates_ld));
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     }
     arg_list.append(into<int32_t>(batch));
     arg_list.append(into<int32_t>(dhc));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_layer));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.n_dir));
-    arg_list.append(pd()->rnn_conf.tm_cscale);
+    arg_list.append(into<int32_t>(pd()->conf.n_layer));
+    arg_list.append(into<int32_t>(pd()->conf.n_dir));
+    arg_list.append(pd()->conf.tm_cscale);
     return parallel_for(
             ctx, nd_range, kernels_[kernel_id::elemwise_fwd], arg_list.args);
 }
-template elemwise_sig(simple_rnn_fwd_t::lstm_elemwise_u8s8);
-template elemwise_sig(simple_rnn_bwd_t::lstm_elemwise_u8s8);
+template elemwise_sig(simple_fwd_t::lstm_elemwise_u8s8);
+template elemwise_sig(simple_bwd_t::lstm_elemwise_u8s8);
 
 template <prop_kind_t aprop>
-elemwise_sig_gru_lbr((simple_rnn_common_t<aprop>::gru_lbr_elemwise)) {
+elemwise_sig_gru_lbr((simple_common_t<aprop>::gru_lbr_elemwise)) {
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -279,18 +278,18 @@ elemwise_sig_gru_lbr((simple_rnn_common_t<aprop>::gru_lbr_elemwise)) {
     auto ws_grid = workspace.grid_comp(lay, dir, iter);
     arg_list.append(ws_grid, pd()->ocl_conf.aux_dt);
 
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.gates_ws_ld));
     if (aprop == prop_kind::forward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     } else {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_gates_ld));
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     }
     arg_list.append(into<int32_t>(batch));
     arg_list.append(into<int32_t>(dhc));
     if (aprop == dnnl_backward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_states_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_states_ld));
         arg_list.append(into<int32_t>(diff_states_layer_ld));
     }
 
@@ -306,11 +305,11 @@ elemwise_sig_gru_lbr((simple_rnn_common_t<aprop>::gru_lbr_elemwise)) {
     }
     return parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
-template elemwise_sig_gru_lbr(simple_rnn_fwd_t::gru_lbr_elemwise);
-template elemwise_sig_gru_lbr(simple_rnn_bwd_t::gru_lbr_elemwise);
+template elemwise_sig_gru_lbr(simple_fwd_t::gru_lbr_elemwise);
+template elemwise_sig_gru_lbr(simple_bwd_t::gru_lbr_elemwise);
 
 template <prop_kind_t aprop>
-elemwise_sig_gru((simple_rnn_common_t<aprop>::gru_elemwise)) {
+elemwise_sig_gru((simple_common_t<aprop>::gru_elemwise)) {
     auto nd_range = get_nd_range({dhc,
             utils::div_up(
                     batch, aprop == prop_kind::forward ? 1 : bwd_batch_block)});
@@ -354,18 +353,18 @@ elemwise_sig_gru((simple_rnn_common_t<aprop>::gru_elemwise)) {
     auto ws_grid = workspace.grid_comp(lay, dir, iter);
     arg_list.append(ws_grid, pd()->ocl_conf.aux_dt);
 
-    arg_list.append(into<int32_t>(pd()->rnn_conf.states_ws_ld));
-    arg_list.append(into<int32_t>(pd()->rnn_conf.gates_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.states_ws_ld));
+    arg_list.append(into<int32_t>(pd()->conf.gates_ws_ld));
     if (aprop == prop_kind::forward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     } else {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_gates_ld));
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_gates_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_gates_ld));
     }
     arg_list.append(into<int32_t>(batch));
     arg_list.append(into<int32_t>(dhc));
     if (aprop == dnnl_backward) {
-        arg_list.append(into<int32_t>(pd()->rnn_conf.scratch_diff_states_ld));
+        arg_list.append(into<int32_t>(pd()->conf.scratch_diff_states_ld));
         arg_list.append(into<int32_t>(diff_states_layer_ld));
     }
 
@@ -383,8 +382,8 @@ elemwise_sig_gru((simple_rnn_common_t<aprop>::gru_elemwise)) {
     }
     return parallel_for(ctx, nd_range, kernel, arg_list.args);
 }
-template elemwise_sig_gru(simple_rnn_fwd_t::gru_elemwise);
-template elemwise_sig_gru(simple_rnn_bwd_t::gru_elemwise);
+template elemwise_sig_gru(simple_fwd_t::gru_elemwise);
+template elemwise_sig_gru(simple_bwd_t::gru_elemwise);
 
 } // namespace rnn
 } // namespace intel

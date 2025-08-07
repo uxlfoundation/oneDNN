@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/rnn/simple_cell_fusion.hpp"
+#include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -22,8 +23,7 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-using namespace rnn_utils;
-using namespace dnnl::impl::utils;
+using namespace utils;
 
 template <size_t out_ndims, size_t in_ndims>
 strides_t<out_ndims> inner(const strides_t<in_ndims> &s) {
@@ -47,7 +47,7 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
         const strides_t<2> &scratch_gates_strides,
         const memory_storage_t &scratch_cell, float alpha,
         const memory_storage_t *tm_scales, const conf_t &conf,
-        const ocl_conf_t &ocl_conf, const rnn_offsets_t &offsets) {
+        const ocl_conf_t &ocl_conf, const offsets_t &offsets) {
     auto &cell_conf = ocl_conf.cell_comp;
     const size_t dhc = conf.dhc;
     const size_t dhc_thr = cell_conf.dhc_thr;

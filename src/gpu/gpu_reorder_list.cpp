@@ -49,7 +49,7 @@ using namespace dnnl::impl::data_type;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
-        GPU_REORDER_INSTANCE_INTEL(intel::rnn::rnn_weights_reorder_t::pd_t)
+        GPU_REORDER_INSTANCE_INTEL(intel::rnn::weights_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_GENERIC(generic::direct_copy_t::pd_t)
         GPU_REORDER_INSTANCE_INTEL(intel::reorder::gen_t::pd_t)
         GPU_REORDER_INSTANCE_INTEL(intel::reorder::custom_t::pd_t) // for specific tensor shapes

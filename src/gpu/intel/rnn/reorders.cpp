@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-status_t rnn_weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
 
@@ -57,7 +57,7 @@ status_t rnn_weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t rnn_weights_reorder_t::pd_t::init_kernel_ctx(
+status_t weights_reorder_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("NDIMS", conf.ndims);
     if (conf.with_sum_a)
@@ -112,7 +112,7 @@ status_t rnn_weights_reorder_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-status_t rnn_weights_reorder_t::execute(const exec_ctx_t &ctx) const {
+status_t weights_reorder_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
     auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 

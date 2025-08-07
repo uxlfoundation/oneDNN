@@ -129,29 +129,6 @@ struct offsets_t {
     dim_t dst_off[4][MAX_NDIMS];
 };
 
-struct rnn_offsets_t {
-    strides_t<3> src_layer;
-    strides_t<4> src_iter;
-    strides_t<4> src_iter_c;
-    strides_t<5> weights_layer;
-    strides_t<5> weights_iter;
-    dim_t weights_layer_comp_off;
-    dim_t weights_iter_comp_off;
-    strides_t<4> bias;
-    strides_t<3> dst_layer;
-    strides_t<4> dst_iter;
-    strides_t<4> dst_iter_c;
-    strides_t<3> diff_src_layer;
-    strides_t<4> diff_src_iter;
-    strides_t<4> diff_src_iter_c;
-    strides_t<5> diff_weights_layer;
-    strides_t<5> diff_weights_iter;
-    strides_t<4> diff_bias;
-    strides_t<3> diff_dst_layer;
-    strides_t<4> diff_dst_iter;
-    strides_t<4> diff_dst_iter_c;
-};
-
 // Convolution
 enum conv_version_t {
     ver_unused,
@@ -272,18 +249,6 @@ struct pool_conf_t {
     attr_info_t attr_info;
     memory_desc_info_t src_md_info;
     memory_desc_info_t dst_md_info;
-};
-
-struct rnn_reorder_conf_t {
-    bool do_reorder, with_group, has_padding;
-    bool with_sum_ab, with_sum_a;
-    bool use_ref_impl;
-    int ndims;
-    size_t nelems;
-    compute::dispatch_t dispatch;
-    int sub_group_size;
-    int mask;
-    size_t scales_count;
 };
 
 // Reduction

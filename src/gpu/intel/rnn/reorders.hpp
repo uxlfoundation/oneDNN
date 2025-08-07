@@ -21,10 +21,10 @@
 #include "common/memory.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reorder/config.hpp"
+#include "gpu/intel/rnn/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,12 +32,12 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-struct rnn_weights_reorder_t : public primitive_t {
+struct weights_reorder_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public reorder_pd_t {
-        using reorder_pd_t::reorder_pd_t;
+    struct pd_t : public reorder::pd_t {
+        using reorder::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("cross_engine::rnn", rnn_weights_reorder_t);
+        DECLARE_COMMON_PD_T("cross_engine::rnn", weights_reorder_t);
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
@@ -76,7 +76,7 @@ struct rnn_weights_reorder_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        rnn_reorder_conf_t conf;
+        reorder_conf_t conf;
 
     private:
         DECLARE_GPU_REORDER_CREATE();

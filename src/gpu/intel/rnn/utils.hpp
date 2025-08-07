@@ -19,10 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
-#include "common/serialization.hpp"
-#include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/engine.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/rnn/config.hpp"
 
 #define OFF6(i0, d0, i1, d1, i2, d2, i3, d3, i4, d4, i5, d5) \
     ((((((i0) * (d1) + (i1)) * (d2) + (i2)) * (d3) + (i3)) * (d4) + (i4)) \
@@ -38,15 +35,15 @@
 #define elemwise_sig(f) \
     status_t f(const exec_ctx_t &ctx, dim_t dir, dim_t lay, dim_t iter, \
             dim_t dhc, dim_t batch, dim_t bwd_batch_block, \
-            const rnn_utils::user_data_t &user_data, \
-            const rnn_utils::workspace_t &workspace, \
-            const rnn_utils::sub_buffer_t &scratch_gates, \
-            const rnn_utils::sub_buffer_t &scratch_diff_gates, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_s1, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_iter, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_iter_s1, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_layer, \
+            const utils::user_data_t &user_data, \
+            const utils::workspace_t &workspace, \
+            const utils::sub_buffer_t &scratch_gates, \
+            const utils::sub_buffer_t &scratch_diff_gates, \
+            const utils::sub_buffer_t &scratch_diff_states, \
+            const utils::sub_buffer_t &scratch_diff_states_s1, \
+            const utils::sub_buffer_t &scratch_diff_states_iter, \
+            const utils::sub_buffer_t &scratch_diff_states_iter_s1, \
+            const utils::sub_buffer_t &scratch_diff_states_layer, \
             dim_t diff_states_layer_ld, const memory_storage_t *scales, \
             const memory_storage_t *tm_scales, \
             const memory_storage_t &diff_bias) const
@@ -54,79 +51,62 @@
 #define elemwise_sig_gru_lbr(f) \
     status_t f(const exec_ctx_t &ctx, dim_t dir, dim_t lay, dim_t iter, \
             dim_t dhc, dim_t batch, dim_t bwd_batch_block, \
-            const rnn_utils::user_data_t &user_data, \
-            const rnn_utils::workspace_t &workspace, \
-            const rnn_utils::sub_buffer_t &scratch_gates, \
-            const rnn_utils::sub_buffer_t &scratch_diff_gates, \
+            const utils::user_data_t &user_data, \
+            const utils::workspace_t &workspace, \
+            const utils::sub_buffer_t &scratch_gates, \
+            const utils::sub_buffer_t &scratch_diff_gates, \
             const memory_storage_t &scratch_cell, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_iter, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_layer, \
+            const utils::sub_buffer_t &scratch_diff_states, \
+            const utils::sub_buffer_t &scratch_diff_states_iter, \
+            const utils::sub_buffer_t &scratch_diff_states_layer, \
             dim_t diff_states_layer_ld, const memory_storage_t *tm_scales, \
             const memory_storage_t &diff_bias) const
 
 #define elemwise_sig_gru(f) \
     status_t f(const exec_ctx_t &ctx, dim_t dir, dim_t lay, dim_t iter, \
             dim_t dhc, dim_t batch, dim_t bwd_batch_block, \
-            const rnn_utils::user_data_t &user_data, \
-            const rnn_utils::workspace_t &workspace, \
-            const rnn_utils::sub_buffer_t &scratch_gates, \
-            const rnn_utils::sub_buffer_t &scratch_diff_gates, \
+            const utils::user_data_t &user_data, \
+            const utils::workspace_t &workspace, \
+            const utils::sub_buffer_t &scratch_gates, \
+            const utils::sub_buffer_t &scratch_diff_gates, \
             const memory_storage_t &scratch_cell, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_iter, \
-            const rnn_utils::sub_buffer_t &scratch_diff_states_layer, \
+            const utils::sub_buffer_t &scratch_diff_states, \
+            const utils::sub_buffer_t &scratch_diff_states_iter, \
+            const utils::sub_buffer_t &scratch_diff_states_layer, \
             dim_t diff_states_layer_ld, \
-            const rnn_utils::sub_buffer_t &scratch_dhG1, \
+            const utils::sub_buffer_t &scratch_dhG1, \
             const memory_storage_t *tm_scales, \
             const memory_storage_t &diff_bias, int part) const
 
 #define cell_execution_sig(f) \
     status_t f(impl::engine_t *engine, const exec_ctx_t &ctx, dim_t dir, \
-            dim_t lay, dim_t iter, const rnn_utils::user_data_t &user_data, \
-            const rnn_utils::workspace_t &workspace, \
-            const rnn_utils::scratch_t &scratch, \
+            dim_t lay, dim_t iter, const utils::user_data_t &user_data, \
+            const utils::workspace_t &workspace, \
+            const utils::scratch_t &scratch, \
             const memory_storage_t &diff_bias, const memory_storage_t *scales, \
             const memory_storage_t *tm_scales) const
 
 #define grid_execution_sig(f) \
     status_t f(impl::engine_t *engine, const exec_ctx_t &ctx, \
-            const rnn_utils::user_data_t &user_data, \
-            const rnn_utils::workspace_t &workspace, \
-            const rnn_utils::scratch_t &scratch, \
+            const utils::user_data_t &user_data, \
+            const utils::workspace_t &workspace, \
+            const utils::scratch_t &scratch, \
             const memory_storage_t &diff_bias, const memory_storage_t *scales, \
             const memory_storage_t *tm_scales) const
 
 #define gemm_sig(f) \
     status_t f(impl::engine_t *engine, const exec_ctx_t &ctx, \
-            const rnn_utils::sub_buffer_t &a, \
-            const rnn_utils::sub_buffer_t &b, \
-            const rnn_utils::sub_buffer_t &c, gemm_kind_t gemm_kind) const
+            const utils::sub_buffer_t &a, const utils::sub_buffer_t &b, \
+            const utils::sub_buffer_t &c, gemm_kind_t gemm_kind) const
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace rnn {
+namespace utils {
 
-namespace rnn_utils {
-
-enum execution_direction_t {
-    l2r,
-    r2l,
-    bi_concat,
-    bi_sum,
-};
-
-enum data_type_conf_t {
-    all_f32,
-    all_f16,
-    all_bf16,
-    u8u8u8f32,
-    f32u8f32f32,
-    u8u8u8u8,
-    f32u8f32u8
-};
+using namespace impl::utils;
 
 enum ws_part_t {
     gates,
@@ -150,207 +130,12 @@ constexpr size_t elemwise_bwd = 6;
 constexpr size_t cell_fwd = 7;
 } // namespace kernel_id
 
-struct ocl_conf_t {
-    status_t create_generator(const intel::engine_t &engine,
-            compute::kernel_bundle_t &bundle) const {
-
-        compute::kernel_ctx_t kernel_ctx;
-        CHECK(init_kernel_ctx(kernel_ctx));
-        return engine.create_kernel_bundle(
-                bundle, get_kernel_names(), kernel_ctx);
-    }
-    const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> names = {"rnn_bias_prepare",
-                "simple_rnn_copy_init_layer", "simple_rnn_copy_init_iter",
-                "simple_rnn_copy_res_layer", "simple_rnn_copy_res_iter",
-                "simple_rnn_elemwise_fwd", "simple_rnn_elemwise_bwd",
-                "simple_rnn_cell_fwd"};
-        return names;
-    }
-
-#if __cplusplus >= 202002L
-    bool operator==(const ocl_conf_t &) const = default;
-#endif
-    serialization_stream_t serialize() const {
-        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ocl_conf_t);
-        return serialization_stream_t(*this);
-    }
-
-    static ocl_conf_t deserialize(const serialization_stream_t &s) {
-        ocl_conf_t t {};
-        deserializer_t d(s);
-        d.pop(t);
-        return t;
-    }
-
-    status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
-
-    int threads_per_eu = 0;
-    int subgroup_size = 0;
-    int cell_kind = 0;
-    int activation_kind = 0;
-    int direction_kind = 0;
-
-    data_type_t src_dt = data_type::undef;
-    data_type_t src_c_dt = data_type::undef;
-    data_type_t wei_dt = data_type::undef;
-    data_type_t bia_dt = data_type::undef;
-    data_type_t dst_dt = data_type::undef;
-    data_type_t dst_c_dt = data_type::undef;
-    data_type_t acc_dt = data_type::undef;
-    data_type_t aux_dt = data_type::undef;
-    data_type_t ws_state_dt = data_type::undef;
-    data_type_t input_dt = data_type::undef;
-    data_type_t output_dt = data_type::undef;
-    data_type_t diff_dt = data_type::undef;
-    uint8_t pad[4] = {};
-
-    struct inner_layouts_t {
-#if __cplusplus >= 202002L
-        bool operator==(const inner_layouts_t &) const = default;
-#endif
-        block_layout_t src_layer;
-        block_layout_t src_iter;
-        block_layout_t src_iter_c;
-        block_layout_t weights_layer;
-        block_layout_t weights_iter;
-        block_layout_t bias;
-        block_layout_t dst_layer;
-        block_layout_t dst_iter;
-        block_layout_t dst_iter_c;
-        block_layout_t diff_src_layer;
-        block_layout_t diff_src_iter;
-        block_layout_t diff_src_iter_c;
-        block_layout_t diff_weights_layer;
-        block_layout_t diff_weights_iter;
-        block_layout_t diff_bias;
-        block_layout_t diff_dst_layer;
-        block_layout_t diff_dst_iter;
-        block_layout_t diff_dst_iter_c;
-    };
-
-    inner_layouts_t inner_layouts = {};
-
-    int wei_qparam_mask = 0;
-
-    int elemwise_bwd_batch_block = 0;
-    bool need_bias_atomic_reduce = false;
-    bool with_bias = false;
-    bool with_src_iter = false;
-    bool with_src_iter_c = false;
-    bool with_dst_iter = false;
-    bool with_dst_iter_c = false;
-    bool is_fwd = false;
-    bool copy_bias = false;
-    bool is_int8 = false;
-    bool is_testmode = false;
-    bool is_training = false;
-    bool recompute_gates = false;
-    bool copy_src_layer = false;
-    bool copy_diff_dst_layer = false;
-    bool copy_diff_src_layer;
-    bool deterministic = false;
-    struct comp_conf_t {
-        bool is_enabled = false;
-        bool compute_gemm_layer = false;
-        bool gemm_layer_k_tail = false;
-        bool compute_gemm_iter = false;
-        bool gemm_iter_k_tail = false;
-        bool dhc_tail = false;
-        bool mb_tail = false;
-        bool enable_iter_block = false;
-        int dhc_thr = 0;
-        int dhc_tg = 0;
-        int mb_thr = 0;
-        int mb_tg = 0;
-#if __cplusplus >= 202002L
-        bool operator==(const comp_conf_t &) const = default;
-#endif
-    } cell_comp;
-};
-
-struct conf_t {
-    execution_direction_t exec_dir;
-    data_type_conf_t dt_conf;
-    dim_t n_layer, n_iter, n_dir, n_gates, n_states;
-    dim_t mb;
-    dim_t slc, sic, dhc, dlc, wic;
-
-    dim_t gates_ld, gates_ws_ld, arch_ld;
-
-    dim_t n_parts_weights_layer, parts_weights_layer[DNNL_RNN_MAX_N_PARTS];
-    dim_t n_parts_weights_iter, parts_weights_iter[DNNL_RNN_MAX_N_PARTS];
-    dim_t n_bias, n_parts_bias, parts_bias[DNNL_RNN_MAX_N_PARTS];
-
-    dim_t part_weights_iter_pack_size[DNNL_RNN_MAX_N_PARTS],
-            part_weights_layer_pack_size[DNNL_RNN_MAX_N_PARTS];
-
-    // Size of packed data in bytes
-    dim_t weights_layer_comp_offset, weights_layer_pack_size,
-            weights_iter_comp_offset, weights_iter_pack_size;
-
-    struct {
-        bool gemm_layer;
-        bool gemm_iter;
-    } cell_fusion;
-
-    dim_t dhc_loop;
-    dim_t iter_loop;
-
-    bool copy_bias;
-    dim_t states_ws_ld, scratch_diff_states_ld;
-    bool is_fwd, is_training, is_lbr, is_int8, is_testmode, is_vanilla_gru;
-    bool use_workspace;
-    bool recompute_gates;
-    bool copy_src_layer;
-    bool copy_diff_dst_layer;
-    bool copy_diff_src_layer;
-
-    // for test mode (--skip_nonliner=true of benchdnn)
-    float tm_cscale;
-    dim_t tm_ngates;
-
-    // Size of workspace for each tensor in bytes
-    dim_t ws_states_cell_size, ws_c_states_cell_size, ws_gates_cell_size;
-    dim_t ws_gates_size, ws_states_size, ws_c_states_size,
-            scratch_diff_states_size, scratch_cell_size, scratch_dhG1_size,
-            ws_grid_comp_size, ws_per_cell, ws_bias_size;
-
-    dim_t ws_gates_offset;
-    dim_t ws_states_offset;
-    dim_t ws_grid_comp_offset;
-    dim_t ws_c_state_offset;
-    dim_t ws_bias_offset;
-
-    bool merge_gemm_iter, merge_gemm_layer, use_gemm, use_layer_packed_gemm,
-            use_iter_packed_gemm;
-
-    // Element size of each workspace part in bytes
-    dim_t ws_gates_elsz, ws_states_elsz, ws_grid_comp_elsz, ws_bias_elsz;
-
-    dim_t n_iter_scratch_gates;
-    dim_t scratch_gates_size, scratch_gates_elsz, scratch_gates_ld;
-    dim_t scratch_diff_gates_size, scratch_diff_gates_elsz,
-            scratch_diff_gates_ld;
-
-    data_type_t acc_data_type;
-    dim_t acc_data_type_elsz;
-    data_type_t aux_data_type;
-    data_type_t input_data_type;
-    data_type_t output_data_type;
-    data_type_t src_data_type;
-    data_type_t dst_data_type;
-    data_type_t diff_data_type;
-    data_type_t wei_layer_type;
-    data_type_t wei_iter_type;
-    data_type_t bias_data_type;
-};
 bool is_ldigo(const memory_desc_wrapper &md);
 bool is_ldgoi(const memory_desc_wrapper &md);
 
 dim_t get_good_ld(
         dim_t arch_ld, dim_t dim, dim_t sizeof_dt, bool ignore_assoc = false);
-void init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
+void init_conf(conf_t &conf, const desc_t &rd,
         const memory_desc_wrapper &src_layer_d,
         const memory_desc_wrapper &src_iter_d,
         const memory_desc_wrapper &weights_layer_d,
@@ -360,8 +145,8 @@ void init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
         const memory_desc_wrapper &diff_dst_layer_d,
         const memory_desc_wrapper &bias_d, data_type_t acc_data_type,
         const compute::device_info_t &device_info);
-void init_test_mode(conf_t &rnn, const primitive_attr_t &attr);
-void set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
+void init_test_mode(conf_t &conf, const primitive_attr_t &attr);
+void set_conf(conf_t &conf, const desc_t &rd,
         const memory_desc_wrapper &src_layer_d,
         const memory_desc_wrapper &diff_src_layer_d,
         const memory_desc_wrapper &diff_dst_layer_d,
@@ -369,11 +154,11 @@ void set_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
         const memory_desc_wrapper &weights_iter_d,
         const memory_desc_wrapper &diff_weights_layer_d,
         const memory_desc_wrapper &diff_weights_iter_d);
-dim_t set_workspace_offsets(const conf_t &rnn, dim_t &ws_gates_offset,
+dim_t set_workspace_offsets(const conf_t &conf, dim_t &ws_gates_offset,
         dim_t &ws_h_state_offset, dim_t &ws_c_state_offset,
         dim_t &ws_grid_comp_onfset, dim_t &ws_bias_offset);
-dim_t get_workspace_size(const conf_t &rnn);
-status_t set_weights_desc(memory_desc_t &weights_md, const conf_t &rnn);
+dim_t get_workspace_size(const conf_t &conf);
+status_t set_weights_desc(memory_desc_t &weights_md, const conf_t &conf);
 status_t set_good_strides(
         dim_t ld_, memory_desc_t &weights_md, format_tag_t tag);
 const memory_storage_t &get_storage(const memory_storage_t *storage);
@@ -429,7 +214,7 @@ struct user_data_t : public data_helper_t {
             const mst &bias, const mst &diff_src_layer,
             const mst &diff_dst_layer, const mst &diff_wei_layer,
             const mst &diff_wei_iter, const conf_t &conf,
-            const rnn_offsets_t &offsets)
+            const offsets_t &offsets)
         : src_layer_(src_layer)
         , wei_layer_(wei_layer)
         , wei_iter_(wei_iter)
@@ -619,7 +404,7 @@ struct user_data_t : public data_helper_t {
     const mst &diff_wei_layer_;
     const mst &diff_wei_iter_;
     const conf_t &conf_;
-    const rnn_offsets_t &offsets_;
+    const offsets_t &offsets_;
 };
 
 struct workspace_t : public data_helper_t {
@@ -820,16 +605,16 @@ struct scratch_t : public data_helper_t {
     };
 
     static void book(memory_tracking::registrar_t &scratchpad,
-            const conf_t &rnn_conf, const gemm_pds_t &gemms) {
+            const conf_t &conf, const gemm_pds_t &gemms) {
         using namespace memory_tracking::names;
-        if (rnn_conf.scratch_gates_size > 0)
-            scratchpad.book(key_rnn_gates, rnn_conf.scratch_gates_size, 1,
+        if (conf.scratch_gates_size > 0)
+            scratchpad.book(key_rnn_gates, conf.scratch_gates_size, 1,
                     OCL_BUFFER_ALIGNMENT, 4096);
-        scratchpad.book(key_rnn_cell, rnn_conf.scratch_cell_size, 1,
+        scratchpad.book(key_rnn_cell, conf.scratch_cell_size, 1,
                 OCL_BUFFER_ALIGNMENT, 4096);
-        scratchpad.book(key_rnn_diff_states, rnn_conf.scratch_diff_states_size,
-                1, OCL_BUFFER_ALIGNMENT, 4096);
-        scratchpad.book(key_rnn_diff_ht, rnn_conf.scratch_dhG1_size, 1,
+        scratchpad.book(key_rnn_diff_states, conf.scratch_diff_states_size, 1,
+                OCL_BUFFER_ALIGNMENT, 4096);
+        scratchpad.book(key_rnn_diff_ht, conf.scratch_dhG1_size, 1,
                 OCL_BUFFER_ALIGNMENT, 4096);
         // book scratchpad for nested primitives
         if (gemms.layer_fwd_pd) {
@@ -845,14 +630,13 @@ struct scratch_t : public data_helper_t {
                     gemms.iter_fwd_pd->scratchpad_registry());
         }
 
-        if (rnn_conf.is_fwd) {
-            if (rnn_conf.is_vanilla_gru)
+        if (conf.is_fwd) {
+            if (conf.is_vanilla_gru)
                 scratchpad.book(key_gemm_iter_fwd_2,
                         gemms.iter_fwd_2_pd->scratchpad_registry());
         } else {
-            scratchpad.book(key_rnn_diff_gates,
-                    rnn_conf.scratch_diff_gates_size, 1, OCL_BUFFER_ALIGNMENT,
-                    4096);
+            scratchpad.book(key_rnn_diff_gates, conf.scratch_diff_gates_size, 1,
+                    OCL_BUFFER_ALIGNMENT, 4096);
             scratchpad.book(key_gemm_iter_bwd,
                     gemms.iter_bwd_pd->scratchpad_registry());
             scratchpad.book(key_gemm_layer_bwd,
@@ -867,7 +651,7 @@ struct scratch_t : public data_helper_t {
                         gemms.diff_wei_layer_src_pd->scratchpad_registry());
             scratchpad.book(key_gemm_diff_wei_iter,
                     gemms.diff_wei_iter_pd->scratchpad_registry());
-            if (rnn_conf.is_vanilla_gru) {
+            if (conf.is_vanilla_gru) {
                 scratchpad.book(key_gemm_iter_bwd_2,
                         gemms.iter_bwd_2_pd->scratchpad_registry());
                 scratchpad.book(key_gemm_diff_wei_iter_2,
@@ -980,7 +764,7 @@ struct arg_list_t {
     void append(const T &t) {
         args.append(t);
     }
-    void append(const rnn_utils::sub_buffer_t &buffer, data_type_t dt) {
+    void append(const sub_buffer_t &buffer, data_type_t dt) {
         args.append(buffer.get_storage());
         args.append(into<dim_t>(buffer.offset(dt)));
     }
@@ -991,8 +775,7 @@ static_assert(sizeof(arg_list_t) == sizeof(compute::kernel_arg_list_t),
         "The arg_list_t is a helper for injecting RNN specific helper "
         "functions structures into kernel_args_list_t.");
 
-} // namespace rnn_utils
-
+} // namespace utils
 } // namespace rnn
 } // namespace intel
 } // namespace gpu

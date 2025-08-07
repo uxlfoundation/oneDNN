@@ -17,7 +17,8 @@
 #ifndef GPU_INTEL_RNN_SIMPLE_CELL_FUSION_HPP
 #define GPU_INTEL_RNN_SIMPLE_CELL_FUSION_HPP
 
-#include "gpu/intel/rnn/grid.hpp"
+#include "gpu/intel/rnn/config.hpp"
+#include "gpu/intel/rnn/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,7 +26,7 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-using namespace rnn_utils;
+using namespace utils;
 
 template <size_t out_ndims, size_t in_ndims>
 strides_t<out_ndims> inner(const strides_t<in_ndims> &s);
@@ -40,7 +41,7 @@ status_t compute_cell_fwd(const exec_ctx_t &ctx,
         const strides_t<2> &scratch_gates_strides,
         const memory_storage_t &scratch_cell, float alpha,
         const memory_storage_t *tm_scales, const conf_t &conf,
-        const ocl_conf_t &ocl_conf, const rnn_offsets_t &offsets);
+        const ocl_conf_t &ocl_conf, const offsets_t &offsets);
 
 } // namespace rnn
 } // namespace intel

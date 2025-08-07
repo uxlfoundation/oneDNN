@@ -35,7 +35,7 @@ int min_align_2d();
 int min_pitch_2d();
 
 struct send_hint_t {
-    send_cache_hint_t cache = send_cache_hint_t::undef;
+    send_cache_hint_t cache;
 };
 
 struct tensor_t {

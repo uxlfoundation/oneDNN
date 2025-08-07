@@ -218,22 +218,6 @@ struct conv_conf_t {
     memory_desc_info_t dst_md_info;
 };
 
-// Reduction
-struct reduction_conf_t {
-    // Used by reference implementation
-    alg_kind_t alg;
-    int ndims, div;
-    float eps, power;
-    dim_t src_dims[MAX_NDIMS], reduce_dims[MAX_NDIMS], dst_dims[MAX_NDIMS];
-    bool is_reduction_dim[MAX_NDIMS];
-    int hwd_reduction_size, hwd_size;
-    data_type_t src_type, dst_type;
-    memory_desc_info_t src_md_info, dst_md_info;
-    compute::dispatch_t dispatch;
-    offsets_t off;
-    attr_info_t attr_info;
-};
-
 struct quantization_t : public gpu::quantization_t {
 public:
     using gpu::quantization_t::quantization_t;

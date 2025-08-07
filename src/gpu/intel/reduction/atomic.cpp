@@ -15,9 +15,9 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
-#include "common/compiler_workarounds.hpp"
 
 #include <limits>
+
 #include "common/eltwise_pd.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/block_structure.hpp"
@@ -81,7 +81,8 @@ private:
 //      its indexing is handled manually to make use of compiled constants
 // reduction is broken up into global, local, and loop
 // outer is left unchanged
-namespace reduction_dims {
+namespace {
+namespace dims {
 dim_idx_t subgroup = 0;
 // implicit vector = 1
 dim_idx_t inner_group = 2;
@@ -89,14 +90,14 @@ dim_idx_t global = 3;
 dim_idx_t local = 4;
 dim_idx_t loop = 5;
 dim_idx_t outer = 6;
-} // namespace reduction_dims
+} // namespace dims
+} // namespace
 
-atomic_reduction_conf_t::atomic_reduction_conf_t(
-        const reduction_subproblem_t &subprb, reduction_alg_kind_t alg,
-        reduction_alg_kind_t secondary_alg, data_type_t src_type,
-        data_type_t dst_type, const compute::device_info_t &device_info,
+atomic_conf_t::atomic_conf_t(const subproblem_t &subprb, alg_kind_t alg,
+        alg_kind_t secondary_alg, data_type_t src_type, data_type_t dst_type,
+        const compute::device_info_t &device_info,
         gpu_primitive_attr_t *gpu_attr)
-    : reduction_subproblem_t(subprb) {
+    : subproblem_t(subprb) {
     conf.src_type = src_type;
     conf.dst_type = dst_type;
     conf.subgroup_size = device_info.max_subgroup_size();
@@ -151,8 +152,8 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
 
     // If using atomic accumulation, mean is performed in separate kernel
     // XXX: dividing before the final accumulation can lead to lower accuracy
-    if (conf.global_acc > 1 && alg == reduction_alg_kind_t::mean) {
-        alg = secondary_alg = reduction_alg_kind_t::sum;
+    if (conf.global_acc > 1 && alg == alg_kind_t::mean) {
+        alg = secondary_alg = alg_kind_t::sum;
     }
     conf.alg = alg;
     conf.secondary_alg = secondary_alg;
@@ -215,22 +216,22 @@ atomic_reduction_conf_t::atomic_reduction_conf_t(
     conf.tail_unroll_factor = compute_unroll(tail_loop_size);
 }
 
-status_t atomic_reduction_conf_t::init_dispatcher(
+status_t atomic_conf_t::init_dispatcher(
         const intel::engine_t *engine, const gpu_primitive_attr_t *gpu_attr) {
     std::vector<dim_idx_t> dispatch_dims = {
-            reduction_dims::outer,
-            reduction_dims::local,
-            reduction_dims::global,
-            reduction_dims::inner_group,
-            reduction_dims::subgroup,
+            dims::outer,
+            dims::local,
+            dims::global,
+            dims::inner_group,
+            dims::subgroup,
     };
     const std::vector<dim_idx_t> all_dims = {
-            reduction_dims::outer,
-            reduction_dims::loop,
-            reduction_dims::local,
-            reduction_dims::global,
-            reduction_dims::inner_group,
-            reduction_dims::subgroup,
+            dims::outer,
+            dims::loop,
+            dims::local,
+            dims::global,
+            dims::inner_group,
+            dims::subgroup,
     };
     compute::named_buffer_t src("SRC");
     std::array<dim_t, 6> sizes = {
@@ -246,22 +247,22 @@ status_t atomic_reduction_conf_t::init_dispatcher(
         src.append_block(all_dims[dim_idx], sizes[dim_idx]);
     }
     // the loop dim may have padding - update the outer block's stride to avoid it
-    dim_idx_t src_outer_idx = src.get_dim_idx(reduction_dims::outer);
+    dim_idx_t src_outer_idx = src.get_dim_idx(dims::outer);
     gpu_assert(src_outer_idx != dim_idx::invalid);
     src.format_desc.blocking.strides[src_outer_idx]
             = outer_block.stride / conf.vect_size;
 
     compute::named_buffer_t dst("DST", src);
-    dst.remove_dim(reduction_dims::loop);
-    dst.remove_dim(reduction_dims::local); // broadcasted
-    dst.remove_dim(reduction_dims::global); // broadcasted
+    dst.remove_dim(dims::loop);
+    dst.remove_dim(dims::local); // broadcasted
+    dst.remove_dim(dims::global); // broadcasted
 
     // Broadcast src's global/local dims, since we index the reduction dims manually
-    src.remove_dim(reduction_dims::global, false);
-    src.remove_dim(reduction_dims::local, false);
+    src.remove_dim(dims::global, false);
+    src.remove_dim(dims::local, false);
 
     // Once again, loop dim padding causes issues
-    dim_idx_t dst_outer_idx = dst.get_dim_idx(reduction_dims::outer);
+    dim_idx_t dst_outer_idx = dst.get_dim_idx(dims::outer);
     gpu_assert(dst_outer_idx != dim_idx::invalid);
     dst.format_desc.blocking.strides[dst_outer_idx]
             = inner_block.block / conf.vect_size;
@@ -271,18 +272,15 @@ status_t atomic_reduction_conf_t::init_dispatcher(
             engine, std::move(dispatch_dims));
     CHECK(config.register_buffer(src));
     CHECK(config.register_buffer(dst));
-    CHECK(config.define_dim_index(
-            "ATOMIC", reduction_dims::global, conf.global_acc));
-    CHECK(config.define_dim_index(
-            "LOCAL", reduction_dims::local, conf.local_acc));
+    CHECK(config.define_dim_index("ATOMIC", dims::global, conf.global_acc));
+    CHECK(config.define_dim_index("LOCAL", dims::local, conf.local_acc));
     CHECK(config.use_subgroup(
             src.get_name(), into<size_t>(conf.subgroup_size)));
 
     compute::reusable_dispatch_t dispatch;
     atomic_lws_strategy_t lws_strat(engine, gpu_attr);
-    lws_strat.include(reduction_dims::local, into<size_t>(conf.local_acc));
-    lws_strat.include(
-            reduction_dims::subgroup, into<size_t>(conf.subgroup_size));
+    lws_strat.include(dims::local, into<size_t>(conf.local_acc));
+    lws_strat.include(dims::subgroup, into<size_t>(conf.subgroup_size));
     CHECK(config.generate(dispatch, lws_strat));
     conf.params = dispatch.get_compile_params();
     rt_conf = dispatch.get_runtime_params();
@@ -290,7 +288,7 @@ status_t atomic_reduction_conf_t::init_dispatcher(
     return status::success;
 }
 
-void atomic_reduction_t::pd_t::init_scratchpad() {
+void atomic_t::pd_t::init_scratchpad() {
     // Only need scratchpads for the first 2 phases, since we can reuse them
     // and memory requirements are monotonically decreasing each phase.
     const uint32_t keys[2] = {memory_tracking::names::key_reduction,
@@ -303,7 +301,7 @@ void atomic_reduction_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     const size_t num_scratchpads = std::min(num_phases - 1, size_t {2});
     for (size_t i = 0; i < num_scratchpads; i++) {
-        const atomic_reduction_conf_t &phase = phases[i];
+        const atomic_conf_t &phase = phases[i];
         const size_t sp_data_size = types::data_type_size(phase.conf.dst_type);
         const size_t num_dst_elems = into<size_t>(
                 phase.outer_block.block * phase.inner_block.block);
@@ -312,7 +310,7 @@ void atomic_reduction_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -337,11 +335,11 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         is_reduction_dim[i] = false;
     }
 
-    std::vector<reduction_subproblem_t> subprbs;
-    CHECK(generate_reduction_phases(src_md(), dst_md(), subprbs));
+    std::vector<subproblem_t> subprbs;
+    CHECK(generate_phases(src_md(), dst_md(), subprbs));
 
     //DST zero-padding not supported on reduction dims
-    reduction_subproblem_t &last_subprb = subprbs.back();
+    subproblem_t &last_subprb = subprbs.back();
     for (const auto &zpad : last_subprb.dst_zpads) {
         if (is_reduction_dim[zpad.dim_idx]) return status::unimplemented;
     }
@@ -358,7 +356,7 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     // SRC zero-padding on reduced dims is not supported if alg is affected by zeros.
-    reduction_subproblem_t &first_subprb = subprbs.front();
+    subproblem_t &first_subprb = subprbs.front();
     const bool alg_affected_by_zeros = utils::one_of(
             desc()->alg_kind, reduction_min, reduction_max, reduction_mul);
     for (const auto &zpad : first_subprb.src_zpads) {
@@ -379,21 +377,19 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         const bool is_final = (i == subprbs.size() - 1);
         data_type_t src_dt = is_first ? src_mdw.data_type() : accum_data_type;
         data_type_t dst_dt = is_final ? dst_mdw.data_type() : accum_data_type;
-        reduction_alg_kind_t alg
-                = from_alg(desc()->alg_kind, is_first, is_final);
-        reduction_alg_kind_t secondary_alg
-                = from_alg(desc()->alg_kind, false, is_final);
+        alg_kind_t alg = from_alg(desc()->alg_kind, is_first, is_final);
+        alg_kind_t secondary_alg = from_alg(desc()->alg_kind, false, is_final);
 
         phases.emplace_back(subprbs[i], alg, secondary_alg, src_dt, dst_dt,
                 *intel_engine->device_info(), gpu_attr);
-        atomic_reduction_conf_t &phase = phases.back();
+        atomic_conf_t &phase = phases.back();
         if (phase.inner_block.block % phase.conf.subgroup_size != 0) {
             return status::unimplemented;
         }
         CHECK(phase.init_dispatcher(intel_engine, gpu_attr));
     }
 
-    for (atomic_reduction_conf_t &phase : phases) {
+    for (atomic_conf_t &phase : phases) {
         if (phase.conf.global_acc > 1) {
             bool ok = intel_engine->mayiuse(
                     compute::device_ext_t::ext_float_atomics);
@@ -402,9 +398,8 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
             // f32 sum/mean (initialized to 0) and f32 min (initialized to inf)
             // are supported. Better filling logic could enable f16 atomic operations.
             ok = ok && phase.conf.dst_type == data_type::f32
-                    && utils::one_of(phase.conf.alg, reduction_alg_kind_t::mean,
-                            reduction_alg_kind_t::sum,
-                            reduction_alg_kind_t::min);
+                    && utils::one_of(phase.conf.alg, alg_kind_t::mean,
+                            alg_kind_t::sum, alg_kind_t::min);
             if (!ok) return status::unimplemented;
         }
     }
@@ -432,18 +427,16 @@ status_t atomic_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t atomic_reduction_t::pd_t::init_finalization_pd(
-        impl::engine_t *engine) {
+status_t atomic_t::pd_t::init_finalization_pd(impl::engine_t *engine) {
     eltwise_desc_t eltwise_desc;
     memory_desc_t eltwise_mem_desc(*dst_md());
     // XXX: Just for mean currently
     if (desc()->alg_kind != alg_kind::reduction_mean) {
         return status::unimplemented;
     }
-    CHECK(eltwise_desc_init(&eltwise_desc, prop_kind_t::dnnl_forward,
-            alg_kind_t::dnnl_eltwise_linear, &eltwise_mem_desc,
-            &eltwise_mem_desc, nullptr, nullptr, 1.0f / static_cast<float>(div),
-            0));
+    CHECK(eltwise_desc_init(&eltwise_desc, prop_kind::forward,
+            alg_kind::eltwise_linear, &eltwise_mem_desc, &eltwise_mem_desc,
+            nullptr, nullptr, 1.0f / static_cast<float>(div), 0));
 
     primitive_attr_t eltwise_attr(*attr());
     if (!eltwise_attr.is_initialized()) return status::out_of_memory;
@@ -456,8 +449,8 @@ status_t atomic_reduction_t::pd_t::init_finalization_pd(
     return eltwise_pd_ ? status::success : status::invalid_arguments;
 }
 
-static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const atomic_reduction_key_params_t &conf) {
+static void init_kernel_ctx_common(
+        compute::kernel_ctx_t &kernel_ctx, const atomic_key_params_t &conf) {
     using namespace alg_kind;
 
     kernel_ctx.set_data_type(conf.src_type);
@@ -485,7 +478,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
             "SECONDARY_REDUCTION_ALG", to_int(conf.secondary_alg));
 }
 
-status_t atomic_reduction_key_params_t::get_kernel_ctx(
+status_t atomic_key_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     primitive_attr_t ocl_attr;
     CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
@@ -495,7 +488,7 @@ status_t atomic_reduction_key_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
+status_t atomic_t::execute_atomic(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
     std::unique_ptr<memory_storage_t> sp_reduce[2]
@@ -515,7 +508,7 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
         auto &nd_range = phase.rt_conf.nd_range;
 
         // Set up the reduction arg list
-        compute::kernel_arg_list_t reduction_arg_list;
+        compute::kernel_arg_list_t arg_list;
 
         memory_storage_t &src_mem = (i == 0) ? src : *sp_reduce[(i - 1) % 2];
         memory_storage_t &dst_mem
@@ -524,8 +517,7 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
         // Initialize dst if we're using atomic (global) accumulation
         if (phase.conf.global_acc > 1) {
             // min -> fill with inf (11111111), otherwise sum/mean fill with 0
-            uint8_t pattern
-                    = phase.conf.alg == reduction_alg_kind_t::min ? 255 : 0;
+            uint8_t pattern = phase.conf.alg == alg_kind_t::min ? 255 : 0;
             const size_t dst_data_size
                     = types::data_type_size(phase.conf.dst_type);
             const size_t num_dst_elems = into<size_t>(
@@ -538,16 +530,16 @@ status_t atomic_reduction_t::execute_atomic(const exec_ctx_t &ctx) const {
                     compute_stream->ctx().get_deps()));
         }
 
-        reduction_arg_list.set(0, src_mem);
-        reduction_arg_list.set(1, dst_mem);
-        reduction_arg_list.append(into<int>(phase.inner_block.block));
-        reduction_arg_list.append(pd()->div);
-        reduction_arg_list.append(pd()->power);
-        reduction_arg_list.append(pd()->eps);
-        reduction_arg_list.append(into<int>(phase.reduction_block.block));
-        reduction_arg_list.append(phase.rt_conf.get());
+        arg_list.set(0, src_mem);
+        arg_list.set(1, dst_mem);
+        arg_list.append(into<int>(phase.inner_block.block));
+        arg_list.append(pd()->div);
+        arg_list.append(pd()->power);
+        arg_list.append(pd()->eps);
+        arg_list.append(into<int>(phase.reduction_block.block));
+        arg_list.append(phase.rt_conf.get());
 
-        CHECK(parallel_for(ctx, nd_range, kernel, reduction_arg_list));
+        CHECK(parallel_for(ctx, nd_range, kernel, arg_list));
     }
 
     // Run a finalization kernel if needed

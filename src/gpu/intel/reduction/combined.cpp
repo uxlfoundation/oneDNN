@@ -44,7 +44,7 @@ static bool can_block_read(dim_t upper_bound, dim_t stride, data_type_t dt) {
     return (stride * static_cast<dim_t>(types::data_type_size(dt)) % 4 == 0);
 }
 
-bool reduction_phase_conf_t::can_use_block_reads() {
+bool phase_conf_t::can_use_block_reads() {
     const dim_t inner_dim_per_sg
             = nstl::clamp(subgroup_size / inner_block.block, dim_t {1},
                     reduction_block.block);
@@ -71,11 +71,10 @@ bool reduction_phase_conf_t::can_use_block_reads() {
             && aligned_reduction;
 }
 
-reduction_phase_conf_t::reduction_phase_conf_t(
-        const reduction_subproblem_t &subprb, data_type_t src_type,
+phase_conf_t::phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
         data_type_t dst_type, const intel::engine_t *intel_engine,
         bool large_grf_mode)
-    : reduction_subproblem_t(subprb)
+    : subproblem_t(subprb)
     , src_type(src_type)
     , dst_type(dst_type)
     , subgroup_size(intel_engine->device_info()->max_subgroup_size()) {
@@ -142,7 +141,7 @@ reduction_phase_conf_t::reduction_phase_conf_t(
     is_final = false;
 }
 
-void combined_reduction_t::pd_t::init_scratchpad() {
+void combined_t::pd_t::init_scratchpad() {
     // Only need scratchpads for the first 2 phases, since we can reuse them
     // and memory requirements are monotonically decreasing each phase.
     const uint32_t keys[2] = {memory_tracking::names::key_reduction,
@@ -152,7 +151,7 @@ void combined_reduction_t::pd_t::init_scratchpad() {
     const size_t num_phases = phases.size();
     const size_t num_scratchpads = std::min(num_phases - 1, size_t {2});
     for (size_t i = 0; i < num_scratchpads; i++) {
-        const reduction_phase_conf_t &phase = phases[i];
+        const phase_conf_t &phase = phases[i];
         const size_t sp_data_size = types::data_type_size(phase.dst_type);
         const size_t num_dst_elems = static_cast<size_t>(
                 phase.outer_block.block * phase.inner_block.block);
@@ -162,19 +161,18 @@ void combined_reduction_t::pd_t::init_scratchpad() {
 }
 
 // Further subdivides a subproblem, by applying part of the reduction
-std::array<reduction_subproblem_t, 2> subdivide_subproblem(
-        const reduction_subproblem_t &subprb, dim_t reduction_size) {
+std::array<subproblem_t, 2> subdivide_subproblem(
+        const subproblem_t &subprb, dim_t reduction_size) {
     const block_t &reduction_block = subprb.reduction_block;
     assert(reduction_block.block % reduction_size == 0);
     const dim_t remaining_reduction = reduction_block.block / reduction_size;
     const dim_t inner = subprb.inner_block.block;
     const dim_t outer = subprb.outer_block.block;
 
-    reduction_subproblem_t prb0(
-            inner, reduction_size, outer * remaining_reduction);
+    subproblem_t prb0(inner, reduction_size, outer * remaining_reduction);
 
     block_t next_reduction(1, remaining_reduction, inner);
-    reduction_subproblem_t prb1(inner, remaining_reduction, outer);
+    subproblem_t prb1(inner, remaining_reduction, outer);
 
     prb0.src_zpads = subprb.src_zpads;
     prb1.dst_zpads = subprb.dst_zpads;
@@ -182,11 +180,11 @@ std::array<reduction_subproblem_t, 2> subdivide_subproblem(
     return {std::move(prb0), std::move(prb1)};
 }
 
-status_t split_into_phases(const reduction_subproblem_t &subprb,
+status_t split_into_phases(const subproblem_t &subprb,
         data_type_t accum_data_type, const intel::engine_t *intel_engine,
-        std::vector<reduction_phase_conf_t> &phases, bool large_grf_mode) {
+        std::vector<phase_conf_t> &phases, bool large_grf_mode) {
     const dim_t reduction_elems = subprb.reduction_block.block;
-    reduction_phase_conf_t try_phase(subprb, accum_data_type, accum_data_type,
+    phase_conf_t try_phase(subprb, accum_data_type, accum_data_type,
             intel_engine, large_grf_mode);
     // Zero-dim short circuit
     if (try_phase.outer_block.block == 0 || try_phase.inner_block.block == 0) {
@@ -243,7 +241,7 @@ status_t split_into_phases(const reduction_subproblem_t &subprb,
     return status::success;
 }
 
-status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
     // To start, check for compatibility
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
@@ -273,8 +271,8 @@ status_t combined_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     using namespace alg_kind;
-    std::vector<reduction_subproblem_t> subprbs;
-    CHECK(generate_reduction_phases(src_md(), dst_md(), subprbs));
+    std::vector<subproblem_t> subprbs;
+    CHECK(generate_phases(src_md(), dst_md(), subprbs));
 
     // Heuristic: Checking for src zero padding in the reduction loop is slow.
     // For now, if the reduction dim for any subproblem contains zero-padded elements,
@@ -364,14 +362,12 @@ void def_zero_pad(compute::kernel_ctx_t &kernel_ctx, const char *prefix,
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const reduction_conf_t &conf, const reduction_phase_conf_t &phase) {
+        const conf_t &conf, const phase_conf_t &phase) {
     using namespace alg_kind;
 
     def_reduction_alg_kinds(kernel_ctx);
-    reduction_alg_kind_t alg
-            = from_alg(conf.alg, phase.is_first, phase.is_final);
-    reduction_alg_kind_t secondary_alg
-            = from_alg(conf.alg, false, phase.is_final);
+    alg_kind_t alg = from_alg(conf.alg, phase.is_first, phase.is_final);
+    alg_kind_t secondary_alg = from_alg(conf.alg, false, phase.is_final);
     kernel_ctx.define_int("REDUCTION_ALG", to_int(alg));
     kernel_ctx.define_int("SECONDARY_REDUCTION_ALG", to_int(secondary_alg));
 
@@ -440,9 +436,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t combined_reduction_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx,
-        const reduction_phase_conf_t &phase) const {
+status_t combined_t::pd_t::init_kernel_ctx(
+        compute::kernel_ctx_t &kernel_ctx, const phase_conf_t &phase) const {
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, phase);
     if (status != status_t::dnnl_success) return status;
 
@@ -461,7 +456,7 @@ status_t combined_reduction_t::pd_t::init_kernel_ctx(
     return status;
 }
 
-status_t combined_reduction_t::execute_combined(const exec_ctx_t &ctx) const {
+status_t combined_t::execute_combined(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -479,23 +474,22 @@ status_t combined_reduction_t::execute_combined(const exec_ctx_t &ctx) const {
         auto nd_range = phase.nd_range;
 
         // Set up the reduction arg list
-        compute::kernel_arg_list_t reduction_arg_list;
+        compute::kernel_arg_list_t arg_list;
 
         memory_storage_t &src_mem = (i == 0) ? src : *sp_reduce[(i - 1) % 2];
         memory_storage_t &dst_mem
                 = (i == kernels_.size() - 1) ? dst : *sp_reduce[i % 2];
 
-        reduction_arg_list.set(0, src_mem);
-        reduction_arg_list.set(1, dst_mem);
+        arg_list.set(0, src_mem);
+        arg_list.set(1, dst_mem);
 
         // nullify post ops unless it's the final phase
         auto empty_po = post_ops_t();
         const auto &actual_po = &pd()->attr()->post_ops_;
         const post_ops_t *po = phase.is_final ? actual_po : &empty_po;
-        append_post_ops_to_arg_list(
-                ctx, reduction_arg_list, 2, *po, *pd()->dst_md());
+        append_post_ops_to_arg_list(ctx, arg_list, 2, *po, *pd()->dst_md());
 
-        status = parallel_for(ctx, nd_range, kernel, reduction_arg_list);
+        status = parallel_for(ctx, nd_range, kernel, arg_list);
         CHECK(status);
     }
     return status;

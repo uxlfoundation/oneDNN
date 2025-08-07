@@ -25,35 +25,30 @@
 #include "common/primitive.hpp"
 #include "common/reduction_pd.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/reduction_generator.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reduction/config.hpp"
+#include "gpu/intel/reduction/jit/generator.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace reduction {
-namespace jit {
 
-using namespace intel::jit;
-
-struct reduction_t : public primitive_t {
+struct gen_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reduction_pd_t {
-        using gpu_reduction_pd_t::gpu_reduction_pd_t;
+    struct pd_t : public reduction::pd_t {
+        using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ref", reduction_t);
+        DECLARE_COMMON_PD_T("jit:ref", gen_t);
 
         status_t init(impl::engine_t *engine) {
             // Require the corresponding environment variable - skip this impl
             // unless requested (do not report this skip to verbose)
-            bool enable_jit_reduction
-                    = gpu_utils::dev_getenv("enable_jit_reduction", false);
-            if (!enable_jit_reduction) return status::unimplemented;
+            bool enabled = gpu_utils::dev_getenv("enable_jit_reduction", false);
+            if (!enabled) return status::unimplemented;
 
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
@@ -94,8 +89,8 @@ struct reduction_t : public primitive_t {
         if (!gpu_engine) return status::runtime_error;
 
         const compute::device_info_t &device_info = *gpu_engine->device_info();
-        kernel_ = jit::make_kernel<jit::reduction_generator_t>(this, engine,
-                device_info, pd()->desc()->alg_kind, pd()->reduction_stride,
+        kernel_ = jit::make_kernel<jit::generator_t>(this, engine, device_info,
+                pd()->desc()->alg_kind, pd()->reduction_stride,
                 pd()->reduction_size, pd()->nregs);
         if (!kernel_) return status::runtime_error;
 
@@ -112,7 +107,6 @@ private:
     compute::kernel_t kernel_;
 };
 
-} // namespace jit
 } // namespace reduction
 } // namespace intel
 } // namespace gpu

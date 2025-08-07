@@ -20,11 +20,10 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/serialization.hpp"
-#include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reduction/config.hpp"
 #include "gpu/intel/reduction/utils.hpp"
 
 namespace dnnl {
@@ -33,8 +32,7 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-struct ref_reduction_key_params_t
-    : trivially_serializable_t<ref_reduction_key_params_t> {
+struct ref_key_params_t : trivially_serializable_t<ref_key_params_t> {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
@@ -52,34 +50,33 @@ struct ref_reduction_key_params_t
 
     status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
 
-    reduction_alg_kind_t alg;
+    alg_kind_t alg;
     data_type_t src_dt, dst_dt;
     int32_t threads_per_eu;
 
     compute::dispatch_compile_params_t params;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ref_reduction_key_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ref_key_params_t);
 
-struct ref_reduction_conf_t {
-    ref_reduction_conf_t(const reduction_subproblem_t &subprb,
-            reduction_alg_kind_t alg, data_type_t src_dt, data_type_t dst_dt,
-            const compute::device_info_t &device_info,
+struct ref_conf_t {
+    ref_conf_t(const subproblem_t &subprb, alg_kind_t alg, data_type_t src_dt,
+            data_type_t dst_dt, const compute::device_info_t &device_info,
             gpu_primitive_attr_t *gpu_attr);
-    status_t init_dispatcher(const reduction_subproblem_t &subprb,
+    status_t init_dispatcher(const subproblem_t &subprb,
             const intel::engine_t &engine, gpu_primitive_attr_t *gpu_attr);
-    ref_reduction_key_params_t conf;
+    ref_key_params_t conf;
     stride_t reduction_stride;
     dim_t reduction_size;
     size_t num_dst_elems; // used for scratchpad initialization
     compute::dispatch_runtime_params_t rt_conf;
 };
 
-struct reusable_ref_reduction_t : public primitive_t {
+struct reusable_ref_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reduction_pd_t {
-        using gpu_reduction_pd_t::gpu_reduction_pd_t;
+    struct pd_t : public reduction::pd_t {
+        using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:reusable:ref", reusable_ref_reduction_t);
+        DECLARE_COMMON_PD_T("ocl:reusable:ref", reusable_ref_t);
 
         status_t init(impl::engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
@@ -103,7 +100,7 @@ struct reusable_ref_reduction_t : public primitive_t {
         void init_scratchpad();
 
         int div = 0;
-        std::vector<ref_reduction_conf_t> phases;
+        std::vector<ref_conf_t> phases;
     };
 
     status_t init(impl::engine_t *engine) override {

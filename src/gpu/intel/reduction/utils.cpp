@@ -71,14 +71,13 @@ block_t merge_blocks(
 }
 
 // Produce a subproblem needed to perform the reduction of red_block after a given subproblem
-reduction_subproblem_t chain_reductions(
-        const reduction_subproblem_t &prev_subprb, const block_t &red_block) {
+subproblem_t chain_reductions(
+        const subproblem_t &prev_subprb, const block_t &red_block) {
     // Copy shape/block layout to the next subproblem
     const dim_t outer_stride = red_block.stride * red_block.block;
     const dim_t nelems
             = prev_subprb.inner_block.block * prev_subprb.outer_block.block;
-    reduction_subproblem_t ret(
-            red_block.stride, red_block.block, nelems / outer_stride);
+    subproblem_t ret(red_block.stride, red_block.block, nelems / outer_stride);
 
     ret.src_zpads = prev_subprb.dst_zpads;
     return ret;
@@ -99,9 +98,8 @@ reduction_subproblem_t chain_reductions(
 // 4) Attach src zero-padding to first problem and dst zero-padding to the last:
 //      src: (idx / 1) % 16 + [(idx / 256) % 2] * 16 < 30 aren't zeros
 //      dst: (idx / 1) % 16 + [(idx / 64) % 1] * 16 < 1 aren't zeros
-status_t generate_reduction_phases(const memory_desc_t *src,
-        const memory_desc_t *dst,
-        std::vector<reduction_subproblem_t> &subprbs) {
+status_t generate_phases(const memory_desc_t *src, const memory_desc_t *dst,
+        std::vector<subproblem_t> &subprbs) {
     int reduced_dim_mask
             = ~utils::get_dims_mask(src->dims, dst->dims, src->ndims)
             & ((1 << src->ndims) - 1);
@@ -170,12 +168,12 @@ status_t generate_reduction_phases(const memory_desc_t *src,
     // Sequentially create subproblems after a partial reduction
     const dim_t nelems = src_mdw.nelems(true);
     subprbs.emplace_back(nelems, 1, 1);
-    reduction_subproblem_t &base_subprb = subprbs.back();
+    subproblem_t &base_subprb = subprbs.back();
 
     base_subprb.dst_zpads = calc_zero_padding(src_blocks, src_mdw);
 
     for (const auto &red_block : reduction_blocks) {
-        const reduction_subproblem_t &prev_subprb = subprbs.back();
+        const subproblem_t &prev_subprb = subprbs.back();
         subprbs.push_back(chain_reductions(prev_subprb, red_block));
 
         // Update the strides of all remaining reduction blocks after subproblem-i
@@ -190,7 +188,7 @@ status_t generate_reduction_phases(const memory_desc_t *src,
     subprbs.erase(subprbs.begin());
 
     // Step 7: Potentially add dst-zero-padding if needed for the final reduction dimensions.
-    reduction_subproblem_t &last_subprb = subprbs.back();
+    subproblem_t &last_subprb = subprbs.back();
     const auto &dst_blk = dst_mdw.blocking_desc();
     for (size_t i = 0; i < static_cast<size_t>(dst_blk.inner_nblks); i++) {
         const dim_idx_t dim_idx = into<dim_idx_t>(dst_blk.inner_idxs[i]);

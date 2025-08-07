@@ -20,9 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reduction/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +29,12 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-struct ref_reduction_t : public primitive_t {
+struct ref_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reduction_pd_t {
-        using gpu_reduction_pd_t::gpu_reduction_pd_t;
+    struct pd_t : public reduction::pd_t {
+        using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("reduction_ref:any", ref_reduction_t);
+        DECLARE_COMMON_PD_T("ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
@@ -59,7 +58,7 @@ struct ref_reduction_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        reduction_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {

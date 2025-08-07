@@ -20,11 +20,10 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/serialization.hpp"
-#include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_attr.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reduction/config.hpp"
 #include "gpu/intel/reduction/utils.hpp"
 
 namespace dnnl {
@@ -33,8 +32,7 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-struct atomic_reduction_key_params_t
-    : trivially_serializable_t<atomic_reduction_key_params_t> {
+struct atomic_key_params_t : trivially_serializable_t<atomic_key_params_t> {
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t kernel_ctx;
@@ -52,7 +50,7 @@ struct atomic_reduction_key_params_t
     status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
 
     // Basic reduction parameters
-    reduction_alg_kind_t alg, secondary_alg;
+    alg_kind_t alg, secondary_alg;
     data_type_t src_type, dst_type;
 
     // Implementation-specific parameters
@@ -66,27 +64,26 @@ struct atomic_reduction_key_params_t
 
     compute::dispatch_compile_params_t params;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(atomic_reduction_key_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(atomic_key_params_t);
 
-struct atomic_reduction_conf_t : public reduction_subproblem_t {
-    atomic_reduction_conf_t(const reduction_subproblem_t &subprb,
-            reduction_alg_kind_t alg, reduction_alg_kind_t secondary_alg,
-            data_type_t src_type, data_type_t dst_type,
-            const compute::device_info_t &device_info,
+struct atomic_conf_t : public subproblem_t {
+    atomic_conf_t(const subproblem_t &subprb, alg_kind_t alg,
+            alg_kind_t secondary_alg, data_type_t src_type,
+            data_type_t dst_type, const compute::device_info_t &device_info,
             gpu_primitive_attr_t *gpu_attr);
     status_t init_dispatcher(const intel::engine_t *engine,
             const gpu_primitive_attr_t *gpu_attr);
 
-    atomic_reduction_key_params_t conf;
+    atomic_key_params_t conf;
     compute::dispatch_runtime_params_t rt_conf;
 };
 
-struct atomic_reduction_t : public primitive_t {
+struct atomic_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reduction_pd_t {
-        using gpu_reduction_pd_t::gpu_reduction_pd_t;
+    struct pd_t : public reduction::pd_t {
+        using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:atomic", atomic_reduction_t);
+        DECLARE_COMMON_PD_T("ocl:atomic", atomic_t);
 
         status_t init(impl::engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
@@ -114,7 +111,7 @@ struct atomic_reduction_t : public primitive_t {
 
         int div = 0;
         float eps = 1, power = 1;
-        std::vector<atomic_reduction_conf_t> phases;
+        std::vector<atomic_conf_t> phases;
         bool needs_finalization = false;
         std::shared_ptr<primitive_desc_t> eltwise_pd_;
     };

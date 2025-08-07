@@ -14,9 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/c_types_map.hpp"
-#include "common/compiler_workarounds.hpp"
+#include "gpu/intel/reduction/reusable_ref.hpp"
 
+#include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/device_info.hpp"
@@ -24,7 +24,6 @@
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive_attr.hpp"
-#include "gpu/intel/reduction/reusable_ref.hpp"
 #include "gpu/intel/reduction/utils.hpp"
 
 namespace dnnl {
@@ -36,24 +35,20 @@ namespace reduction {
 using namespace gpu_utils;
 
 namespace { // Use an anonymous namespace to avoid collisions with ocl:atomic
-namespace reduction_dims {
+namespace dims {
 dim_idx_t outer = 0;
 dim_idx_t reduction = 1;
 dim_idx_t inner = 2;
-} // namespace reduction_dims
+} // namespace dims
 } // namespace
-static const std::vector<dim_idx_t> dims {
-        reduction_dims::outer,
-        reduction_dims::reduction,
-        reduction_dims::inner,
-};
+
 static const std::vector<dim_idx_t> dispatch_dims {
-        reduction_dims::outer,
-        reduction_dims::inner,
+        dims::outer,
+        dims::inner,
 };
 
-ref_reduction_conf_t::ref_reduction_conf_t(const reduction_subproblem_t &subprb,
-        reduction_alg_kind_t alg, data_type_t src_dt, data_type_t dst_dt,
+ref_conf_t::ref_conf_t(const subproblem_t &subprb, alg_kind_t alg,
+        data_type_t src_dt, data_type_t dst_dt,
         const compute::device_info_t &device_info,
         gpu_primitive_attr_t *gpu_attr)
     : reduction_stride(subprb.reduction_block.stride)
@@ -70,18 +65,15 @@ ref_reduction_conf_t::ref_reduction_conf_t(const reduction_subproblem_t &subprb,
             = gpu_attr ? gpu_attr->threads_per_eu() : base_threads_per_eu;
 }
 
-status_t ref_reduction_conf_t::init_dispatcher(
-        const reduction_subproblem_t &subprb, const intel::engine_t &engine,
-        gpu_primitive_attr_t *gpu_attr) {
+status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
+        const intel::engine_t &engine, gpu_primitive_attr_t *gpu_attr) {
 
     compute::named_buffer_t src_buf("SRC");
-    std::array<dim_t, 3> dim_sizes = {subprb.outer_block.block,
-            subprb.reduction_block.block, subprb.inner_block.block};
-    for (size_t i = 0; i < 3; i++) {
-        src_buf.append_block(dims[i], dim_sizes[i]);
-    }
+    src_buf.append_block(dims::outer, subprb.outer_block.block);
+    src_buf.append_block(dims::reduction, subprb.reduction_block.block);
+    src_buf.append_block(dims::inner, subprb.inner_block.block);
     compute::named_buffer_t dst_buf("DST", src_buf);
-    dst_buf.remove_dim(reduction_dims::reduction);
+    dst_buf.remove_dim(dims::reduction);
 
     compute::reusable_dispatch_config_t config(&engine, dispatch_dims);
     CHECK(config.register_buffer(src_buf));
@@ -96,7 +88,7 @@ status_t ref_reduction_conf_t::init_dispatcher(
     return status::success;
 }
 
-void reusable_ref_reduction_t::pd_t::init_scratchpad() {
+void reusable_ref_t::pd_t::init_scratchpad() {
     // Only need scratchpads for the first 2 phases, since we can reuse them
     // and memory requirements are monotonically decreasing each phase.
     const uint32_t keys[2] = {memory_tracking::names::key_reduction,
@@ -104,14 +96,14 @@ void reusable_ref_reduction_t::pd_t::init_scratchpad() {
 
     auto scratchpad = scratchpad_registry().registrar();
     for (size_t i = 0; i < std::min(phases.size(), size_t {2}); i++) {
-        const ref_reduction_conf_t &phase = phases[i];
+        const ref_conf_t &phase = phases[i];
         const size_t dt_size = types::data_type_size(phase.conf.dst_dt);
         scratchpad.book(
                 keys[i], phase.num_dst_elems, dt_size, OCL_BUFFER_ALIGNMENT);
     }
 }
 
-status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -136,11 +128,11 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
         is_reduction_dim[i] = false;
     }
 
-    std::vector<reduction_subproblem_t> subprbs;
-    CHECK(generate_reduction_phases(src_md(), dst_md(), subprbs));
+    std::vector<subproblem_t> subprbs;
+    CHECK(generate_phases(src_md(), dst_md(), subprbs));
 
     //DST zero-padding not supported on reduction dims
-    reduction_subproblem_t &last_subprb = subprbs.back();
+    subproblem_t &last_subprb = subprbs.back();
     for (const auto &zpad : last_subprb.dst_zpads) {
         if (is_reduction_dim[zpad.dim_idx]) return status::unimplemented;
     }
@@ -157,7 +149,7 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     // SRC zero-padding on reduced dims is not supported if alg is affected by zeros.
-    reduction_subproblem_t &first_subprb = subprbs.front();
+    subproblem_t &first_subprb = subprbs.front();
     const bool alg_affected_by_zeros = utils::one_of(
             desc()->alg_kind, reduction_min, reduction_max, reduction_mul);
     for (const auto &zpad : first_subprb.src_zpads) {
@@ -176,8 +168,7 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     for (size_t i = 0; i < subprbs.size(); i++) {
         const bool is_first = (i == 0);
         const bool is_final = (i == subprbs.size() - 1);
-        reduction_alg_kind_t phase_alg
-                = from_alg(desc()->alg_kind, is_first, is_final);
+        alg_kind_t phase_alg = from_alg(desc()->alg_kind, is_first, is_final);
         data_type_t src_dt = is_first ? src_mdw.data_type() : accum_data_type;
         data_type_t dst_dt = is_final ? dst_mdw.data_type() : accum_data_type;
 
@@ -195,8 +186,8 @@ status_t reusable_ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const ref_reduction_key_params_t &conf) {
+static void init_kernel_ctx_common(
+        compute::kernel_ctx_t &kernel_ctx, const ref_key_params_t &conf) {
     using namespace alg_kind;
 
     // Data types
@@ -211,7 +202,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("REDUCTION_ALG", to_int(conf.alg));
 }
 
-status_t ref_reduction_key_params_t::get_kernel_ctx(
+status_t ref_key_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     primitive_attr_t ocl_attr;
     CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
@@ -221,7 +212,7 @@ status_t ref_reduction_key_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t reusable_ref_reduction_t::execute(const exec_ctx_t &ctx) const {
+status_t reusable_ref_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
     std::unique_ptr<memory_storage_t> sp_reduce[2]
@@ -247,22 +238,22 @@ status_t reusable_ref_reduction_t::execute(const exec_ctx_t &ctx) const {
                   };
 
         // Set up the reduction arg list
-        compute::kernel_arg_list_t reduction_arg_list;
+        compute::kernel_arg_list_t arg_list;
 
         memory_storage_t &src_mem = (i == 0) ? src : *sp_reduce[(i - 1) % 2];
         memory_storage_t &dst_mem
                 = (i == kernels_.size() - 1) ? dst : *sp_reduce[i % 2];
 
-        reduction_arg_list.append(src_mem);
-        reduction_arg_list.append(dst_mem);
-        append_off(reduction_arg_list, phase.reduction_stride);
-        append_off(reduction_arg_list, into<dim_t>(phase.reduction_size));
-        reduction_arg_list.append(pd()->div);
-        reduction_arg_list.append(pd()->desc()->p);
-        reduction_arg_list.append(pd()->desc()->eps);
-        reduction_arg_list.append(phase.rt_conf.get());
+        arg_list.append(src_mem);
+        arg_list.append(dst_mem);
+        append_off(arg_list, phase.reduction_stride);
+        append_off(arg_list, into<dim_t>(phase.reduction_size));
+        arg_list.append(pd()->div);
+        arg_list.append(pd()->desc()->p);
+        arg_list.append(pd()->desc()->eps);
+        arg_list.append(phase.rt_conf.get());
 
-        CHECK(parallel_for(ctx, nd_range, kernel, reduction_arg_list));
+        CHECK(parallel_for(ctx, nd_range, kernel, arg_list));
     }
 
     return status::success;

@@ -18,7 +18,6 @@
 #define GPU_INTEL_REDUCTION_UTILS_HPP
 
 #include <assert.h>
-#include <sstream>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -42,7 +41,7 @@ namespace reduction {
 //     dst = max(sum(src), eps)
 // final_sum:
 //     dst = sum(src) + eps
-enum class reduction_alg_kind_t {
+enum class alg_kind_t {
     undef = alg_kind::undef,
     max = alg_kind::reduction_max,
     min = alg_kind::reduction_min,
@@ -64,48 +63,47 @@ enum class reduction_alg_kind_t {
 // Convert from the basic alg_kind_t to the expanded reduction_alg_kind_t. Since
 // we break reduction problems into phases, this assigns a unique alg to any
 // phase. e.g. mean -> sum, sum, sum, ..., mean (with the full div)
-inline reduction_alg_kind_t from_alg(alg_kind_t alg, bool first, bool final) {
+inline alg_kind_t from_alg(impl::alg_kind_t alg, bool first, bool final) {
     using namespace alg_kind;
     switch (alg) {
-        case (reduction_max): return reduction_alg_kind_t::max;
-        case (reduction_min): return reduction_alg_kind_t::min;
-        case (reduction_sum): return reduction_alg_kind_t::sum;
-        case (reduction_mul): return reduction_alg_kind_t::mul;
+        case (reduction_max): return alg_kind_t::max;
+        case (reduction_min): return alg_kind_t::min;
+        case (reduction_sum): return alg_kind_t::sum;
+        case (reduction_mul): return alg_kind_t::mul;
         case (reduction_mean):
-            return final ? reduction_alg_kind_t::mean
-                         : reduction_alg_kind_t::sum;
+            return final ? alg_kind_t::mean : alg_kind_t::sum;
         case (reduction_norm_lp_max):
-            return first && final     ? reduction_alg_kind_t::lp_norm_max
-                    : first && !final ? reduction_alg_kind_t::lp_norm_power_p
-                    : !first && final ? reduction_alg_kind_t::pth_root_max
-                                      : reduction_alg_kind_t::sum;
+            return first && final     ? alg_kind_t::lp_norm_max
+                    : first && !final ? alg_kind_t::lp_norm_power_p
+                    : !first && final ? alg_kind_t::pth_root_max
+                                      : alg_kind_t::sum;
         case (reduction_norm_lp_sum):
-            return first && final     ? reduction_alg_kind_t::lp_norm_sum
-                    : first && !final ? reduction_alg_kind_t::lp_norm_power_p
-                    : !first && final ? reduction_alg_kind_t::pth_root_sum
-                                      : reduction_alg_kind_t::sum;
+            return first && final     ? alg_kind_t::lp_norm_sum
+                    : first && !final ? alg_kind_t::lp_norm_power_p
+                    : !first && final ? alg_kind_t::pth_root_sum
+                                      : alg_kind_t::sum;
         case (reduction_norm_lp_power_p_max):
-            return first && final ? reduction_alg_kind_t::lp_norm_power_p_max
-                    : first && !final ? reduction_alg_kind_t::lp_norm_power_p
-                    : !first && final ? reduction_alg_kind_t::final_max
-                                      : reduction_alg_kind_t::sum;
+            return first && final     ? alg_kind_t::lp_norm_power_p_max
+                    : first && !final ? alg_kind_t::lp_norm_power_p
+                    : !first && final ? alg_kind_t::final_max
+                                      : alg_kind_t::sum;
         case (reduction_norm_lp_power_p_sum):
-            return first && final ? reduction_alg_kind_t::lp_norm_power_p_sum
-                    : first && !final ? reduction_alg_kind_t::lp_norm_power_p
-                    : !first && final ? reduction_alg_kind_t::final_sum
-                                      : reduction_alg_kind_t::sum;
+            return first && final     ? alg_kind_t::lp_norm_power_p_sum
+                    : first && !final ? alg_kind_t::lp_norm_power_p
+                    : !first && final ? alg_kind_t::final_sum
+                                      : alg_kind_t::sum;
         default: gpu_assert(false) << "Unexpected alg";
     }
-    return reduction_alg_kind_t::undef;
+    return alg_kind_t::undef;
 }
 
-inline int to_int(reduction_alg_kind_t alg) {
+inline int to_int(alg_kind_t alg) {
     return static_cast<int>(alg);
 }
 
 inline void def_reduction_alg_kinds(compute::kernel_ctx_t &kernel_ctx) {
 #define CASE(alg, str) \
-    kernel_ctx.define_int("REDUCTION_" str, to_int(reduction_alg_kind_t::alg));
+    kernel_ctx.define_int("REDUCTION_" str, to_int(alg_kind_t::alg));
     CASE(max, "MAX");
     CASE(min, "MIN");
     CASE(sum, "SUM");
@@ -166,10 +164,9 @@ struct zero_padding_t {
     dim_t inner_stride, inner_size;
 };
 
-class reduction_subproblem_t {
+class subproblem_t {
 public:
-    reduction_subproblem_t(
-            dim_t inner_size, dim_t reduction_size, dim_t outer_size)
+    subproblem_t(dim_t inner_size, dim_t reduction_size, dim_t outer_size)
         : inner_block(0, inner_size, 1)
         , reduction_block(1, reduction_size, inner_size)
         , outer_block(2, outer_size, inner_size * reduction_size) {}
@@ -199,8 +196,8 @@ public:
     std::vector<zero_padding_t> dst_zpads;
 };
 
-status_t generate_reduction_phases(const memory_desc_t *src,
-        const memory_desc_t *dst, std::vector<reduction_subproblem_t> &subprbs);
+status_t generate_phases(const memory_desc_t *src, const memory_desc_t *dst,
+        std::vector<subproblem_t> &subprbs);
 
 } // namespace reduction
 } // namespace intel

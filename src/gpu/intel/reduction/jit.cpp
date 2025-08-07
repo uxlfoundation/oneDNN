@@ -31,11 +31,10 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace reduction {
-namespace jit {
 
 using namespace gpu_utils;
 
-status_t reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -107,7 +106,7 @@ status_t reduction_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t reduction_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
@@ -122,7 +121,6 @@ status_t reduction_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-} // namespace jit
 } // namespace reduction
 } // namespace intel
 } // namespace gpu

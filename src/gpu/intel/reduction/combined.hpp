@@ -18,9 +18,8 @@
 #define GPU_INTEL_REDUCTION_COMBINED_HPP
 
 #include "common/primitive.hpp"
-#include "gpu/gpu_reduction_pd.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/reduction/config.hpp"
 #include "gpu/intel/reduction/utils.hpp"
 
 namespace dnnl {
@@ -29,10 +28,10 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-struct reduction_phase_conf_t : public reduction_subproblem_t {
-    reduction_phase_conf_t(const reduction_subproblem_t &subprb,
-            data_type_t src_type, data_type_t dst_type,
-            const intel::engine_t *intel_engine, bool large_grf_mode);
+struct phase_conf_t : public subproblem_t {
+    phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
+            data_type_t dst_type, const intel::engine_t *intel_engine,
+            bool large_grf_mode);
     bool can_use_block_reads();
     data_type_t src_type, dst_type;
     compute::nd_range_t nd_range;
@@ -43,12 +42,12 @@ struct reduction_phase_conf_t : public reduction_subproblem_t {
     bool with_block_reads;
 };
 
-struct combined_reduction_t : public primitive_t {
+struct combined_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_reduction_pd_t {
-        using gpu_reduction_pd_t::gpu_reduction_pd_t;
+    struct pd_t : public reduction::pd_t {
+        using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:combined", combined_reduction_t);
+        DECLARE_COMMON_PD_T("ocl:combined", combined_t);
 
         status_t init(impl::engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
@@ -72,11 +71,11 @@ struct combined_reduction_t : public primitive_t {
 
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx,
-                const reduction_phase_conf_t &phase) const;
+                const phase_conf_t &phase) const;
         void init_scratchpad();
 
-        reduction_conf_t conf;
-        std::vector<reduction_phase_conf_t> phases;
+        conf_t conf;
+        std::vector<phase_conf_t> phases;
     };
 
     status_t init(impl::engine_t *engine) override {

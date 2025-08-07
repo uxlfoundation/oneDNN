@@ -49,11 +49,11 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
-        GPU_INSTANCE_INTEL_DEVMODE(intel::reduction::jit::reduction_t)
-        GPU_INSTANCE_INTEL(intel::reduction::atomic_reduction_t)
-        GPU_INSTANCE_INTEL(intel::reduction::combined_reduction_t)
-        GPU_INSTANCE_INTEL(intel::reduction::ref_reduction_t)
-        GPU_INSTANCE_INTEL(intel::reduction::reusable_ref_reduction_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::reduction::gen_t)
+        GPU_INSTANCE_INTEL(intel::reduction::atomic_t)
+        GPU_INSTANCE_INTEL(intel::reduction::combined_t)
+        GPU_INSTANCE_INTEL(intel::reduction::ref_t)
+        GPU_INSTANCE_INTEL(intel::reduction::reusable_ref_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_reduction_t)
         GPU_INSTANCE_AMD(amd::miopen_reduction_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_reduction_t)

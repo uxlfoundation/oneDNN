@@ -25,8 +25,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
-    const reduction_pd_t *pd = this;
+status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
+    const pd_t *pd = this;
 
     const memory_desc_wrapper src_mdw(pd->src_md());
     const memory_desc_wrapper dst_mdw(pd->dst_md());
@@ -78,7 +78,7 @@ status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const reduction_conf_t &conf, const post_ops_t &post_ops,
+        const conf_t &conf, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     using namespace alg_kind;
 
@@ -132,28 +132,27 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_reduction_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
+status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
 }
 
-status_t ref_reduction_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
     const auto &conf = pd()->conf;
 
-    compute::kernel_arg_list_t reduction_arg_list;
+    compute::kernel_arg_list_t arg_list;
 
-    reduction_arg_list.set(0, src);
-    reduction_arg_list.set(1, dst);
-    append_post_ops_to_arg_list(ctx, reduction_arg_list, 2,
-            pd()->attr()->post_ops_, *pd()->dst_md());
+    arg_list.set(0, src);
+    arg_list.set(1, dst);
+    append_post_ops_to_arg_list(
+            ctx, arg_list, 2, pd()->attr()->post_ops_, *pd()->dst_md());
 
     auto nd_range = conf.dispatch.nd_range();
 
-    return parallel_for(ctx, nd_range, kernel, reduction_arg_list);
+    return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
 } // namespace reduction

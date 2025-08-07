@@ -14,12 +14,11 @@
  * limitations under the License.
  *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_REDUCTION_GENERATOR_HPP
-#define GPU_INTEL_JIT_REDUCTION_GENERATOR_HPP
+#ifndef GPU_INTEL_REDUCTION_JIT_GENERATOR_HPP
+#define GPU_INTEL_REDUCTION_JIT_GENERATOR_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
-#include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/emulated_generator.hpp"
 #include "gpu/intel/jit/generator.hpp"
@@ -31,17 +30,20 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace reduction {
 namespace jit {
 
+using namespace intel::jit;
+
 template <gpu_gen_t hw>
-class reduction_generator_t : public emulated_generator_t<hw> {
+class generator_t : public emulated_generator_t<hw> {
 protected:
     NGEN_FORWARD_ELF(hw)
     FORWARD_EMULATION(hw);
 
 public:
-    reduction_generator_t(const compute::device_info_t &device_info,
-            alg_kind_t alg, dim_t stride, dim_t iters, int nregs)
+    generator_t(const compute::device_info_t &device_info, impl::alg_kind_t alg,
+            dim_t stride, dim_t iters, int nregs)
         : emulated_generator_t<hw>(
                 device_info, {GENERATOR_NAME, GENERATOR_LINE}) {
         constexpr auto GlobalPtr = ngen::ExternalArgumentType::GlobalPtr;
@@ -170,8 +172,8 @@ protected:
         }
     }
 
-    void finalize(
-            int simd, alg_kind_t alg, const ngen::GRFRange &acc, dim_t iters) {
+    void finalize(int simd, impl::alg_kind_t alg, const ngen::GRFRange &acc,
+            dim_t iters) {
         int nregs = acc.getLen();
         for (int i = 0; i < nregs; i++) {
             switch (alg) {
@@ -185,9 +187,10 @@ protected:
 };
 
 } // namespace jit
+} // namespace reduction
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_JIT_REDUCTION_GENERATOR_HPP
+#endif // GPU_INTEL_REDUCTION_JIT_GENERATOR_HPP

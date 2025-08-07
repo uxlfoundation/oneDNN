@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,16 +38,20 @@ void prepare_ws_bwd(const prb_t &prb, std::vector<float> &ws_bwd_buffer,
             prb.n_iter + 2, prb.mb, prb.wc);
     ws_diff_src_iter_c = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
             prb.n_iter + 2, prb.mb, prb.wc);
-
+    printf("*src layer elems %ld src iter elems %ld src iter c nelems %ld\n",
+            ws_diff_src_layer.nelems(), ws_diff_src_iter.nelems(),
+            is_lstm * ws_diff_src_iter_c.nelems());
     int64_t size = ws_diff_src_layer.nelems() + ws_diff_src_iter.nelems()
             + is_lstm * ws_diff_src_iter_c.nelems();
+    printf("BWD buffer size : %ld\n", size);
     ws_bwd_buffer.resize(size, 0);
-
+    printf("Setting base Pointers\n");
     ws_diff_src_layer.set_base_ptr(ws_bwd_buffer.data());
     ws_diff_src_iter.set_base_ptr(
             ws_bwd_buffer.data() + ws_diff_src_layer.nelems());
     ws_diff_src_iter_c.set_base_ptr(ws_bwd_buffer.data()
             + ws_diff_src_layer.nelems() + ws_diff_src_iter.nelems());
+    printf("Done prepping BWD buffer\n");
 }
 
 /******************************************************************************/

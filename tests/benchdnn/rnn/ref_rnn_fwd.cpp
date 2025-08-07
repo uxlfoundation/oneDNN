@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ void prepare_ws_fwd(const prb_t &prb, std::vector<float> &ws_fwd_buffer,
 
     int64_t size = ws_src_layer.nelems() + is_lstm * ws_src_iter_c.nelems()
             + ws_gates.nelems() + is_lstmp * ws_ht.nelems();
+    printf("FWD buffer size %ld\n", size);
     ws_fwd_buffer.resize(size);
 
     float *ptr = ws_fwd_buffer.data();

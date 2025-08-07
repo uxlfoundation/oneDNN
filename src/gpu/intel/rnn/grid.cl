@@ -24,7 +24,7 @@ simple_rnn_copy_init_layer(__global WS_STATE_DATA_T *dst_base,
         int lr, int rl, int batch, int dhc, int slc, int n_iter, int n_layer,
         int n_dir, int n_states, int states_ws_ld, int scratch_diff_states_ld,
         int64x3_t strides) {
-
+    return;
 #if IS_FWD
 
     const int it = get_global_id(2);
@@ -115,7 +115,7 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 
 #endif // IS_FWD
         int scratch_diff_states_ld) {
-
+    return;
     const int s = get_global_id(0);
     const int b = get_global_id(1);
     const int lay = get_global_id(2) / n_dir;
@@ -180,7 +180,7 @@ simple_rnn_copy_res_layer(
         const float shift, const float scale, const int dequantize
 #endif
 ) {
-
+    return;
     const int it = get_global_id(2);
     const int b = get_global_id(1);
     const int s = get_global_id(0);
@@ -275,7 +275,7 @@ __kernel void simple_rnn_copy_res_iter(
         const float shift, const float scale, const int dequantize
 #endif
 ) {
-
+    return;
     const int s = get_global_id(0);
     const int b = get_global_id(1);
     const int lay = get_global_id(2) / n_dir;
@@ -330,6 +330,7 @@ __kernel void rnn_bias_prepare(__global float *ws_bias, __global float *scales,
         __global BIAS_DATA_T *bias, int dhc, int n_layer, int n_dir,
         float data_shift, float data_scale, int wei_l_comp_off,
         int wei_i_comp_off, int64x4_t bias_strides) {
+    return;
 #if COPY_BIAS
 
     const int dhc_ = get_global_id(0);
@@ -435,6 +436,7 @@ simple_rnn_elemwise_fwd(__global ACC_DATA_T *scratch_gates_,
         int n_part
 #endif
 ) {
+    return;
     const int i = get_global_id(1); // batch
     const int j = get_global_id(0); // dhc
 
@@ -560,6 +562,7 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
 #endif
         MAYBE_ATOMIC DIFF_BIAS_DATA_T *diff_bias_base,
         int64x4_t diff_bias_strides) {
+    return;
     const int i_ = get_global_id(1) * ELEMWISE_BWD_BATCH_BLOCK; // batch
     const int j = get_global_id(0); // dhc
 

@@ -36,6 +36,7 @@ enum res_state_t {
     LISTED,
     INITIALIZED,
     EXECUTED,
+    DEFERRED, // primitive has no support while graph might has support
 };
 
 enum dir_t {

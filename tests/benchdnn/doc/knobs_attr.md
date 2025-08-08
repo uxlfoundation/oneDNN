@@ -87,6 +87,8 @@ default no scales are applied which corresponds to `common` policy and `1.f`
 scale value. Supported values are:
   - `common`         corresponds to `mask = 0` and means a whole tensor will be
                      multiplied by a single `SCALE` value.
+  - `host_scalar`    for this policy, the whole tensor will be multiplied by a
+                     single `SCALE` value that is always stored on the host.
   - `per_dim_0`      corresponds to `mask = 1 << 0` and means elements of dim0
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[0].
@@ -143,6 +145,7 @@ attribute. This attribute is supported only for integer data types as of now.
 `POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
 values are:
   - `common`
+  - `host_scalar`
   - `per_dim_1` (for `src` and `dst`)
 
 `ZEROPOINT` is required for the `common` policy only, an specifies an integer
@@ -251,18 +254,18 @@ supported, positioned after `MASK_INPUT`, to specify physical memory format.
 - `sub`
 - `select`
 
-For the `select` algorithm, the operation also requires a third conditional 
-tensor to be specified. A different format is thus used for providing the 
+For the `select` algorithm, the operation also requires a third conditional
+tensor to be specified. A different format is thus used for providing the
 arguments for both the tensors:
 
 ```
 --attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]
 ```
 
-The arguments for each tensor are are delimited using `.`, with the arguments 
-for the third tensor positioned after that of the second and are separated by `:`. 
-The arguments are optional for the third tensor and the data type value for 
-the third tensor is fixed at `s8`. 
+The arguments for each tensor are are delimited using `.`, with the arguments
+for the third tensor positioned after that of the second and are separated by `:`.
+The arguments are optional for the third tensor and the data type value for
+the third tensor is fixed at `s8`.
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

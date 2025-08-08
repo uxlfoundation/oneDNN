@@ -100,11 +100,8 @@ status_t primitive_execute(
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
-        stream->wait();
-        double start_ms = get_msec();
-        status = stream->enqueue_primitive(primitive_iface, ctx);
-        stream->wait();
-        double duration_ms = get_msec() - start_ms;
+        std::string info;
+
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.
@@ -122,14 +119,19 @@ status_t primitive_execute(
                     = primitive_iface->pd()->impl()->invariant_dst_md();
             const auto dst_md = ctx.memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
 
-            std::string info = primitive_iface->pd()->info_with_runtime_dims(
+            info = primitive_iface->pd()->info_with_runtime_dims(
                     src_md, wei_md, bia_md, dst_md);
-            VPROF(start_ms, primitive, exec, VERBOSE_profile, info.c_str(),
-                    duration_ms);
         } else {
-            VPROF(start_ms, primitive, exec, VERBOSE_profile,
-                    primitive_iface->pd()->info(), duration_ms);
+            info = primitive_iface->pd()->info();
         }
+        // tracks the execution times for the primitive asynchronously by
+        // directly querying the event times for the stream.
+        // if timing data cannot be obtained asynchronously, it falls back
+        // to a blocking implementation relying on stream.wait() calls.
+        double start_ms;
+        CHECK(stream->init_async_tracking(info, &start_ms));
+        status = stream->enqueue_primitive(primitive_iface, ctx);
+        CHECK(stream->check_async_exec_times(info, &start_ms));
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);
     }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -52,6 +52,8 @@ status_t shuffle_desc_init(shuffle_desc_t *shuffle_desc, prop_kind_t prop_kind,
     VCHECK_SHUFFLE(axis >= 0 && axis < src_desc->ndims, VERBOSE_BAD_AXIS);
     VCHECK_SHUFFLE(group_size > 0 && group_size <= src_desc->dims[axis],
             VERBOSE_BAD_PARAM, "group_size");
+    VCHECK_SHUFFLE(!any_memory_desc_host_scalar(src_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     VCONDCHECK(primitive, create, check, shuffle,
             !memory_desc_wrapper(src_desc).has_runtime_dims_or_strides(),

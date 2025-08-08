@@ -71,6 +71,7 @@ struct attr_t {
         PER_DIM_2, // ... dims[2] point.
         PER_DIM_3, // ... dims[3] point.
         PER_TENSOR, // ... point in the tensor.
+        HOST_SCALAR, // same as COMMON, but uses host-side scalar memory
         POLICY_TOTAL // guard
     };
 
@@ -95,6 +96,8 @@ struct attr_t {
                         && groups.empty();
             }
 
+            bool is_host_scalar() const { return policy == HOST_SCALAR; }
+
             policy_t policy = COMMON;
             int value = 0;
             dnnl_data_type_t dt = dnnl_s32;
@@ -116,6 +119,13 @@ struct attr_t {
                 def = def && is_def(e.first);
             }
             return def;
+        }
+
+        bool has_host_scalars() const {
+            for (const auto &e : points) {
+                if (e.second.is_host_scalar()) return true;
+            }
+            return false;
         }
 
         void set(int arg, policy_t policy, int value) {
@@ -158,6 +168,8 @@ struct attr_t {
                         && groups.empty();
             }
 
+            bool is_host_scalar() const { return policy == HOST_SCALAR; }
+
             policy_t policy = COMMON;
             float scale = 1.f;
             dnnl_data_type_t dt = dnnl_f32;
@@ -190,6 +202,12 @@ struct attr_t {
                 def = def && is_def(e.first);
             }
             return def;
+        }
+        bool has_host_scalars() const {
+            for (const auto &e : scales) {
+                if (e.second.is_host_scalar()) return true;
+            }
+            return false;
         }
         int from_str(const std::string &s);
 

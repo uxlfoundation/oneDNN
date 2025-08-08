@@ -60,6 +60,9 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
     VCHECK_SOFTMAX(
             IMPLICATION(!is_fwd, !memory_desc_wrapper(dst_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VCHECK_SOFTMAX(!any_memory_desc_host_scalar(
+                           src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(dst_desc).has_runtime_dims_or_strides();
@@ -128,6 +131,13 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                 VCHECK_SOFTMAX_UNIMPL(
                         mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SOFTMAX_UNIMPL(
+                    IMPLICATION(engine->kind() == engine_kind::gpu,
+                            !attr->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

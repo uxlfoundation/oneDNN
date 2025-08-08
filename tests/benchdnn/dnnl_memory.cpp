@@ -58,6 +58,24 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
     }
 }
 
+dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, void *value) {
+    dnnl_format_kind_t format_kind = query_md_format_kind(md);
+    if (format_kind != dnnl_format_kind_host_scalar) { return; }
+
+    auto status = dnnl_memory_desc_clone(&md_, md);
+    (void)status;
+    assert(status == dnnl_success);
+
+    status = dnnl_memory_create_host_scalar(&m_, md_, value);
+    assert(status == dnnl_success);
+
+    // Map the memory for compatibility,
+    // allowing data to be accessed just like a regular memory object
+    map();
+
+    active_ = (status == dnnl_success);
+}
+
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
         const std::string &tag, dnnl_engine_t engine, bool prefill) {
     const int ndims = query_md_ndims(md);
@@ -635,6 +653,13 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_sparse_packed_md(
     dnnl_memory_desc_t md {};
     DNN_SAFE_V(dnnl_memory_desc_create_with_packed_encoding(
             &md, ndims, dims, data_type, nnz));
+    return md;
+}
+
+benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
+        dnnl_data_type_t data_type) {
+    dnnl_memory_desc_t md {};
+    DNN_SAFE_V(dnnl_memory_desc_create_host_scalar(&md, data_type));
     return md;
 }
 

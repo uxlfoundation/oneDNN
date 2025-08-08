@@ -54,18 +54,19 @@ struct quant_entry_t : public c_compatible {
         return set(mask, data_type, 0, {});
     }
     status_t set(int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims) {
+            const dims_t group_dims, bool is_host_scalar = false) {
         mask_ = mask;
         data_type_ = data_type;
         group_ndims_ = group_ndims;
         if (group_ndims_ > 0) {
             utils::array_copy(group_dims_, group_dims, group_ndims_);
         }
+        is_host_scalar_ = is_host_scalar;
         return status::success;
     }
     status_t set(const quant_entry_t &other) {
         return set(other.mask_, other.data_type_, other.group_ndims_,
-                other.group_dims_);
+                other.group_dims_, other.is_host_scalar());
     }
 
     quant_entry_t &operator=(const quant_entry_t &rhs) {
@@ -90,6 +91,8 @@ struct quant_entry_t : public c_compatible {
         if (d >= group_ndims_) return 0;
         return group_dims_[d];
     }
+
+    bool is_host_scalar() const { return is_host_scalar_; }
 
     // Note: keep the definition here to satisfy the
     // `gtests/internals/test_comparison_operators` linking requirements which
@@ -118,6 +121,7 @@ private:
     data_type_t data_type_ = data_type::undef;
     int group_ndims_ = 0;
     dims_t group_dims_ {};
+    bool is_host_scalar_ = false;
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -138,15 +142,19 @@ struct quant_entries_t : public c_compatible {
         return set(arg, mask, default_data_type_, 0, {});
     }
     status_t set(int arg, int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims) {
+            const dims_t group_dims, bool is_host_scalar = false) {
         if (!check_arg(arg)) return status::invalid_arguments;
-        CHECK(entries_[arg].set(mask, data_type, group_ndims, group_dims));
+        CHECK(entries_[arg].set(
+                mask, data_type, group_ndims, group_dims, is_host_scalar));
         return status::success;
     }
     // Use this interface with `default_quant_entry` when need to remove a
     // specific entry.
     status_t set(int arg, const quant_entry_t &other) {
         return entries_[arg].set(other);
+    }
+    status_t set_host_scalar(int arg) {
+        return set(arg, 0, default_data_type_, 0, {}, true);
     }
 
     // This interface is different from the one below and is just a shortcut.
@@ -193,6 +201,13 @@ struct quant_entries_t : public c_compatible {
         return get(arg).get_data_type();
     }
     dim_t get_group(int arg, int d) const { return get(arg).get_group(d); }
+
+    bool has_host_scalars() const {
+        for (const auto &e : entries_) {
+            if (e.second.is_host_scalar()) return true;
+        }
+        return false;
+    }
 
     bool operator==(const quant_entries_t &rhs) const {
         return entries_ == rhs.entries_;

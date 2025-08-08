@@ -34,6 +34,7 @@ size_t quant_entry_t::get_hash() const {
     if (group_ndims_ > 0)
         seed = primitive_hashing::get_array_hash(
                 seed, group_dims_, group_ndims_);
+    seed = hash_combine(seed, is_host_scalar_);
     return seed;
 }
 
@@ -41,6 +42,7 @@ void quant_entry_t::serialize(serialization_stream_t &sstream) const {
     sstream.append(mask_);
     sstream.append(data_type_);
     sstream.append_array(group_ndims_, group_dims_);
+    sstream.append(is_host_scalar_);
 }
 
 quant_entry_t quant_entry_t::deserialize(deserializer_t &d) {
@@ -50,6 +52,7 @@ quant_entry_t quant_entry_t::deserialize(deserializer_t &d) {
     size_t group_ndims;
     d.pop_array(group_ndims, e.group_dims_);
     e.group_ndims_ = static_cast<int>(group_ndims);
+    d.pop(e.is_host_scalar_);
     return e;
 }
 
@@ -63,6 +66,7 @@ std::string quant_entry_t::get_verbose() const {
                 .append("x")
                 .append(std::to_string(group_dims_[1]));
     }
+    if (is_host_scalar_) { s.append(":host_scalar"); }
     return s;
 }
 

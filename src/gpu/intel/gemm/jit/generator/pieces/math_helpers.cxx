@@ -153,12 +153,12 @@ void Generator<hw>::modExt(const Subregister &dstMod, const Subregister &dstMult
 // Divide an unsigned value by a constant, rounding down.
 template <HW hw>
 template <typename DT>
-void Generator<hw>::divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint32_t divisor, const CommonStrategy &strategy, CommonState &state)
 {
     if (is_zero_or_pow2(divisor))
         shr<DT>(1, dst, src, ilog2(divisor));
     else if (strategy.emulate.emulate64 && (hw <= HW::Gen12LP))
-        math<DT>(1, MathFunction::iqot, dst, src, uint32_t(divisor));
+        math<DT>(1, MathFunction::iqot, dst, src, divisor);
     else {
         // Replace integer division with multiplication by reciprocal + shift.
         // Valid for numerators <= 2^31.

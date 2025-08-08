@@ -38,15 +38,8 @@ status_t memory_desc_init_host_scalar(
     memory_desc.data_type = data_type;
     memory_desc.format_kind = format_kind::host_scalar;
 
-    // align with scales attr support
-    bool allowed_scales_type = utils::one_of(data_type, dnnl_f32, dnnl_bf16,
-            dnnl_f16, dnnl_e8m0, dnnl_f8_e5m2, dnnl_f8_e4m3);
-
-    // align with zero points attr support
-    bool allowed_zero_points_type = utils::one_of(
-            data_type, dnnl_s32, dnnl_s8, dnnl_u8, dnnl_s4, dnnl_u4);
-
-    bool args_ok = allowed_scales_type || allowed_zero_points_type;
+    bool args_ok = memory_desc_sanity_check(memory_desc.ndims, memory_desc.dims,
+            memory_desc.data_type, memory_desc.format_kind);
     VCHECK_MEMORY(args_ok, invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
 
     return success;

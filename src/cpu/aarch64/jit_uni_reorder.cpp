@@ -17,10 +17,7 @@
 *******************************************************************************/
 
 #include <algorithm>
-#include <assert.h>
-#include <numeric>
-
-#include "oneapi/dnnl/dnnl_debug.h"
+#include <cassert>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -807,7 +804,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             // transposition on the fly
             const bool fast_return = prb_.src_scale_type != scale_type_t::MANY
                     && prb_.dst_scale_type != scale_type_t::MANY
-                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp;
+                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp
+                    && !compensation_needed_;
             if (fast_return) {
                 if (prb_.src_scale_type == scale_type_t::COMMON)
                     for (int ur = 0; ur < reg_unroll; ur += load_step)
@@ -1159,13 +1157,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         }
 
         if (compensation_needed_) {
-            const uint32_t xmm_begin = 9;
-            const uint32_t xmm_end = 11;
-            uint32_t xmm_id = xmm_begin;
+            uint32_t xmm_id = 0;
             const auto get_temp_xmm = [&] {
-                const Xbyak_aarch64::VReg temp {xmm_id++};
+                const Xbyak_aarch64::VReg temp {tmp_vec_idx[xmm_id]};
 
-                if (xmm_id > xmm_end) { xmm_id = xmm_begin; }
+                xmm_id = (xmm_id + 1) % tmp_vec_idx.size();
 
                 return temp;
             };

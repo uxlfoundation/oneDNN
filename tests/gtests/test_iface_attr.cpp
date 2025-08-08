@@ -160,21 +160,15 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestScratchpadArg) {
 
 TEST_F(attr_test_t, TestZeroPoints) {
     dnnl::primitive_attr attr;
-
     const std::vector<int> supported_args = {DNNL_ARG_SRC, DNNL_ARG_DST};
-    const std::vector<int> unsupported_args = {DNNL_ARG_BIAS, DNNL_ARG_DST_2,
-            DNNL_ARG_MEAN, DNNL_ARG_WORKSPACE, DNNL_ARG_SCRATCHPAD};
 
     for (auto arg : supported_args) {
         // single non-default zero_point for supported arg
         attr.set_zero_points_mask(arg, 0);
         // multiple zero_points for supported arg
         attr.set_zero_points_mask(arg, 1 << 0);
-    }
-
-    for (auto arg : unsupported_args) {
-        // single **default** zero_point for **unsupported** arg
-        EXPECT_ANY_THROW(attr.set_zero_points_mask(arg, 0));
+        // host zero point
+        attr.set_host_zero_point(arg);
     }
 }
 
@@ -240,34 +234,31 @@ TEST_F(attr_test_t, TestZeroPointsDataTypes) {
 
 TEST_F(attr_test_t, TestZeroPointsExpectFailure) {
     dnnl::primitive_attr attr;
+    const std::vector<int> unsupported_args = {DNNL_ARG_BIAS, DNNL_ARG_DST_2,
+            DNNL_ARG_MEAN, DNNL_ARG_WORKSPACE, DNNL_ARG_SCRATCHPAD};
 
-    const int unsupported_arg = DNNL_ARG_MEAN;
-
-    // single non-default zero_point for unsupported arg
-    EXPECT_ANY_THROW(attr.set_zero_points_mask(unsupported_arg, 0));
-
-    // multiple zero points for unsupported args
-    EXPECT_ANY_THROW(attr.set_zero_points_mask(unsupported_arg, 1 << 1));
+    for (auto arg : unsupported_args) {
+        // single non-default zero_point for unsupported arg
+        EXPECT_ANY_THROW(attr.set_zero_points_mask(arg, 0));
+        // multiple zero points for unsupported args
+        EXPECT_ANY_THROW(attr.set_zero_points_mask(arg, 1 << 1));
+        // host zero point
+        EXPECT_ANY_THROW(attr.set_host_zero_point(arg));
+    }
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestScales) {
     dnnl::primitive_attr attr;
-
     const std::vector<int> supported_args = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1,
             DNNL_ARG_MULTIPLE_SRC, DNNL_ARG_MULTIPLE_SRC + 42};
-    const std::vector<int> unsupported_args = {DNNL_ARG_BIAS, DNNL_ARG_DST_2,
-            DNNL_ARG_MEAN, DNNL_ARG_WORKSPACE, DNNL_ARG_SCRATCHPAD};
 
     for (auto arg : supported_args) {
         // single non-default scales for supported arg
         attr.set_scales_mask(arg, 0);
         // multiple scales
         attr.set_scales_mask(arg, 1 << 1);
-    }
-
-    for (auto arg : unsupported_args) {
-        // single scales for unsupported args
-        EXPECT_ANY_THROW(attr.set_scales_mask(arg, 0));
+        // host scale
+        attr.set_host_scale(arg);
     }
 }
 
@@ -374,11 +365,16 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestRNNProjWeightsQuantization) {
 
 TEST_F(attr_test_t, TestScalesExpectFailure) {
     dnnl::primitive_attr attr;
-    const int unsupported_arg = DNNL_ARG_MEAN;
+    const std::vector<int> unsupported_args = {DNNL_ARG_BIAS, DNNL_ARG_DST_2,
+            DNNL_ARG_MEAN, DNNL_ARG_WORKSPACE, DNNL_ARG_SCRATCHPAD};
 
-    // non-default scales for unsupported arg
-    EXPECT_ANY_THROW(attr.set_scales_mask(unsupported_arg, 0));
-    EXPECT_ANY_THROW(attr.set_scales_mask(unsupported_arg, 1 << 1));
+    for (auto arg : unsupported_args) {
+        // single scales for unsupported args
+        EXPECT_ANY_THROW(attr.set_scales_mask(arg, 0));
+        EXPECT_ANY_THROW(attr.set_scales_mask(arg, 1 << 1));
+        // host scale
+        EXPECT_ANY_THROW(attr.set_host_scale(arg));
+    }
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestPostOps) {

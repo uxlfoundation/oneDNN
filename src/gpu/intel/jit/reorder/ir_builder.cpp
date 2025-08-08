@@ -50,7 +50,7 @@ void split_tile(const tile_t &wg_tile, const tile_t &iter_tile,
     const auto &wg_dims = wg_tile.values();
     const auto &it_dims = iter_tile.values();
     for (dim_idx_t i = 0; i < wg_tile.size(); ++i) {
-        pvar_t &d = reorder::pvars[i];
+        pvar_t d(i);
         iter_dims[d] = it_dims[i];
         loop_dims[d] = wg_dims[i] / it_dims[i];
     }
@@ -87,7 +87,7 @@ bool reorder_ir_builder_t::try_build(
     std::vector<expr_t> vars;
     vars.reserve(ndims);
     for (auto &d : padded_dims) {
-        auto var = var_t::make(type_t::s32(), d.name());
+        auto var = var_t::make(type_t::s32(), d.str());
         vars.emplace_back(var);
     }
 
@@ -98,7 +98,7 @@ bool reorder_ir_builder_t::try_build(
     view_t src_view(vars, ndims);
     view_t dst_view(vars, ndims);
     for (dim_idx_t i = 0; i < ndims; ++i) {
-        const auto &d = reorder::pvars[i];
+        const pvar_t d(i);
         expr_t &var = vars[i];
         dim_t vdim = padded_dims[d];
         src_view.set_vdim(var, vdim);
@@ -130,7 +130,7 @@ bool reorder_ir_builder_t::try_build(
     for (dim_idx_t i = 0; i < ndims; i++) {
         std::vector<expr_t> ordered;
         auto v = vars[i];
-        const auto &d = reorder::pvars[i];
+        const pvar_t d(i);
         auto grid_idx = find_grid_idx(d);
         const auto &iter_dim = iter_tile[d];
         const auto &loop_dim = loop_tile[d];

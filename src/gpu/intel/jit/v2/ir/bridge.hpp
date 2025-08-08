@@ -71,7 +71,7 @@ inline jit::send_op_t to_ir(send_op_t op, bool is_2d = false) {
 inline jit::layout_t to_ir(const layout_t &layout) {
     gpu_assert(layout.has_const_sizes());
     gpu_assert(layout.has_const_strides());
-    std::vector<gpu::intel::block_t> blocks;
+    std::vector<layout_block_t> blocks;
     for (auto &b : layout.blocks()) {
         int dim_idx = layout.desc().dim_index(b.dim);
         blocks.emplace_back(dim_idx, b.int_size(), b.int_stride());

@@ -214,7 +214,6 @@ struct gen_gemm_t : public gpu_gemm_t {
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!attr()->zero_points_.has_default_values()) {
-
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
             }
@@ -318,6 +317,11 @@ struct gen_gemm_t : public gpu_gemm_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
+            bool force_ags = !attr()->zero_points_.has_default_values(
+                    DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_A);
+            bool force_bgs = !attr()->zero_points_.has_default_values(
+                    DNNL_ARG_ATTR_USER_PRECOMP | DNNL_ARG_B);
+
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,
                             dev_info_->eu_count(), has_systolic, is_integrated,
@@ -328,9 +332,10 @@ struct gen_gemm_t : public gpu_gemm_t {
                             eff_sum_ab(), alpha(), beta(), eff_a_type(),
                             eff_b_type(), desc()->c_type(), ao_type, bo_type,
                             a_scales_type_, b_scales_type_, co_type, acc_type,
-                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                            d->batch(), std::move(gpu_post_ops)),
+                            force_ags, force_bgs, eff_align_a(), eff_align_b(),
+                            align_c(), eff_m(), eff_n(), d->k(), eff_lda(),
+                            eff_ldb(), d->ldc(), d->batch(),
+                            std::move(gpu_post_ops)),
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "matching kernel not found in catalog");
 
@@ -586,7 +591,8 @@ private:
             const memory_storage_t &a, const memory_storage_t &b,
             const memory_storage_t &c, const memory_storage_t *ao,
             const memory_storage_t *bo, const memory_storage_t *a_scales,
-            const memory_storage_t *b_scales, const memory_storage_t &co,
+            const memory_storage_t *b_scales, const memory_storage_t *ag,
+            const memory_storage_t *bg, const memory_storage_t &co,
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,
             int64_t offset_b, int64_t offset_c, int64_t offset_aq,

@@ -131,7 +131,7 @@ jobs:
         if: ${{ inputs.acl_base_hash != '' }}
         run: |
           cd ${{ github.workspace }}/ComputeLibrary
-          git fetch --all
+          git fetch --all --tags
           git checkout ${{ inputs.acl_base_hash }}
 
       - name: Get ACL commit hash for cache key
@@ -153,7 +153,7 @@ jobs:
         if: ${{ inputs.acl_new_hash != '' }}
         run: |
           cd ${{ github.workspace }}/ComputeLibrary
-          git fetch --all
+          git fetch --all --tags
           git checkout ${{ inputs.acl_new_hash }}
 
       - name: Get ACL commit hash for cache key

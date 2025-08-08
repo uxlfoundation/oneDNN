@@ -231,7 +231,7 @@ protected:
     void legalizeNegation();
     void legalizeImmediateTypes();
     void sort(SortType type);
-    void optimizeZip();
+    void optimizeZip(bool zip2DSrc0 = false);
     void optimizeZipAdjacent();
     void optimizeWidenIntegers();
     void optimizeConcatenate(bool initial = false);

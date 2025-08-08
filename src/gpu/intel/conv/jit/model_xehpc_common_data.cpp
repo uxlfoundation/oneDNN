@@ -13786,7 +13786,7 @@ static const uint64_t _data[] = {
         0x4c0008bd4d8a4eff, 0xedc3ff1147010711, 0x08bd990eb0ffbd17, 0xbd1f53c4ff115501, 0x000000bccf49a9ff
 };
 
-const std::vector<uint64_t> &get_conv_model_xehpc_common_data() {
+const std::vector<uint64_t> &get_model_xehpc_common_data() {
     static std::vector<uint64_t> data(
             _data, _data + sizeof(_data) / sizeof(_data[0]));
     return data;

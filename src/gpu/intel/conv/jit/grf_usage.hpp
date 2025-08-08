@@ -27,7 +27,7 @@ namespace conv {
 namespace jit {
 
 void verify_grf_usage(
-        const conv_config_t &cfg, const stmt_t &body, int external_usage);
+        const config_t &cfg, const stmt_t &body, int external_usage);
 
 } // namespace jit
 } // namespace conv

@@ -28,8 +28,6 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
-#include <random>
-#include <sstream>
 
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_ocl.hpp"
@@ -46,9 +44,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 
 bench_manager_t::bench_manager_t()
@@ -213,10 +211,10 @@ private:
     bench_time_t time_;
 };
 
-using problem_t = dnnl::impl::gpu::intel::jit::v2::conv::problem_t;
-using kernel_desc_t = dnnl::impl::gpu::intel::jit::v2::conv::kernel_desc_t;
-using bench_data_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_data_t;
-using bench_time_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_time_t;
+using problem_t = dnnl::impl::gpu::intel::conv::jit::v2::problem_t;
+using kernel_desc_t = dnnl::impl::gpu::intel::conv::jit::v2::kernel_desc_t;
+using bench_data_t = dnnl::impl::gpu::intel::conv::jit::v2::bench_data_t;
+using bench_time_t = dnnl::impl::gpu::intel::conv::jit::v2::bench_time_t;
 using tile_t = dnnl::impl::gpu::intel::jit::tile_t;
 namespace pvars = dnnl::impl::gpu::intel::jit::pvars;
 
@@ -330,7 +328,7 @@ public:
                     auto diff_dst_md = to_memory_desc(prb_.dst_tag(), dst_dims);
                     memory::desc diff_bias_md;
                     if (!prb_.bias_type().is_undef()) {
-                        auto tag = make_conv_layout_tag(tensor_kind_t::bias,
+                        auto tag = make_layout_tag(tensor_kind_t::bias,
                                 "a:" + prb_.bias_type().str());
                         diff_bias_md = to_memory_desc(tag, bias_dims);
                     }
@@ -549,7 +547,7 @@ double footprint(const layout_tag_t &src, const layout_tag_t &wei,
 tile_t expand_tile(
         prop_kind_t prop, const prb_reqs_t &reqs, const tile_t &_tile) {
     tile_t tile = _tile;
-    for (auto &d : conv_index_dims(prop)) {
+    for (auto &d : index_dims(prop)) {
         dim_t mod = reqs.max_factor(d);
         mod = math::lcm(mod, tile.get(d, 1));
         if (mod == 1) continue;
@@ -662,7 +660,7 @@ public:
 
     bench_data_t bench(const kernel_desc_t &kernel_desc) {
         if (tasks_.empty()) return bench_data_t();
-        if (!create_conv_plan(kernel_desc, bench_mger_.hw())) return {};
+        if (!create_plan(kernel_desc, bench_mger_.hw())) return {};
         return planner::bench(bench_mger_, kernel_desc, tasks_, &mem_pool_);
     }
 
@@ -682,7 +680,7 @@ bench_data_t bench_runner_t::bench(const kernel_desc_t &kernel_desc) {
 
 bench_data_t bench(const bench_manager_t &bench_mger,
         const kernel_desc_t &kernel_desc, int nprbs) {
-    if (!create_conv_plan(kernel_desc, bench_mger.hw())) return {};
+    if (!create_plan(kernel_desc, bench_mger.hw())) return {};
     bench_runner_t runner(bench_mger,
             bench_input_params_t(kernel_desc, bench_mger.hw(), nprbs));
     return runner.bench(kernel_desc);
@@ -736,7 +734,7 @@ kernel_desc_t try_extensions(
         auto d = kernel_desc;
         auto &tag = get_out_tag(d);
         tag = layout_tag_t(tag.desc(), out_type, tag.raw_tag());
-        if (!create_conv_plan(d, bench_mger.hw())) continue;
+        if (!create_plan(d, bench_mger.hw())) continue;
         if (!try_create(bench_mger, d)) continue;
         ext.add(extensions_t::out_size(out_type.size()));
         reqs_vec.push_back(d.reqs());
@@ -747,7 +745,7 @@ kernel_desc_t try_extensions(
             && !kernel_desc.with_bias_bwd_w()) {
         auto d = kernel_desc;
         d.bias_type = type_t::f32();
-        if (create_conv_plan(d, bench_mger.hw()) && try_create(bench_mger, d)) {
+        if (create_plan(d, bench_mger.hw()) && try_create(bench_mger, d)) {
             ext.add(extension_kind_t::bias);
             reqs_vec.push_back(d.reqs());
             out_type_sizes.push_back(desc_out_type.size());
@@ -764,8 +762,7 @@ kernel_desc_t try_extensions(
     if (try_stream_k) {
         auto d = to_stream_k(kernel_desc, /*check_ext=*/false);
         if (!d.is_empty()) {
-            if (create_conv_plan(d, bench_mger.hw())
-                    && try_create(bench_mger, d)) {
+            if (create_plan(d, bench_mger.hw()) && try_create(bench_mger, d)) {
                 ext.add(extension_kind_t::stream_k);
             }
         }
@@ -793,9 +790,9 @@ plan_registry_t::entry_t prepare_plan_registry_entry(
 }
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

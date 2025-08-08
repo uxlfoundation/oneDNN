@@ -500,7 +500,7 @@ private:
                 tensor_kind_t::dst);
         auto &c_tag = pick_c(
                 desc_.prop, desc_.src_tag, desc_.wei_tag, desc_.dst_tag);
-        auto rhs_layout = make_conv_layout(
+        auto rhs_layout = make_layout(
                 kind, c_tag, desc_.is_dw, desc_.spec.reqs(), mask);
         rhs_layout = rhs_layout.retype(type);
         auto is_bcast = [&](const pvar_t &dim) {
@@ -770,9 +770,9 @@ private:
     const epilogue_plan_t &plan_;
 };
 
-class conv_builder_t : public v2::ir_builder_t {
+class builder_t : public v2::ir_builder_t {
 public:
-    conv_builder_t(ir_context_t &ir_ctx, const kernel_desc_t &desc,
+    builder_t(ir_context_t &ir_ctx, const kernel_desc_t &desc,
             var_manager_t &var_mgr, const plan_t &plan)
         : ir_builder_t(ir_ctx)
         , desc_(desc)
@@ -1014,7 +1014,7 @@ private:
     void emit_thread_group_index_let(const expr_t &_base_tg_idx = {}) {
         auto &tg_grid = plan_.tg_grid;
         auto &coord_info = plan_.coord_info;
-        for (auto &d : conv_index_dims(plan_.desc.prop)) {
+        for (auto &d : index_dims(plan_.desc.prop)) {
             const auto &tg_idx = coord_info.tg_index(d);
             if (is_const(tg_idx)) continue;
             auto base_tg_idx
@@ -1033,7 +1033,7 @@ private:
 
 stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
         var_manager_t &var_mgr) {
-    auto plan = create_conv_plan(desc, exec_cfg.hw());
+    auto plan = create_plan(desc, exec_cfg.hw());
     if (!plan) gpu_except_not_implemented("Cannot create plan.");
 
     gpu_info() << desc;
@@ -1041,7 +1041,7 @@ stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
 
     constraint_set_t cset;
     ir_context_t ir_ctx(exec_cfg, cset);
-    conv_builder_t builder(ir_ctx, desc, var_mgr, plan);
+    builder_t builder(ir_ctx, desc, var_mgr, plan);
     auto stmt = builder.get_stmt();
     gpu_trace() << "Convolution kernel body:\n" << stmt;
     return stmt;

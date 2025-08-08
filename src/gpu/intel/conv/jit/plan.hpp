@@ -212,7 +212,7 @@ struct fma_plan_t : public base_plan_t {
     IR_DEFINE_DUMP()
 };
 
-struct conv_plan_t : public base_plan_t {
+struct plan_t : public base_plan_t {
     expr_t ap_buf;
     expr_t bp_buf;
     expr_t cp_buf;
@@ -230,7 +230,7 @@ struct conv_plan_t : public base_plan_t {
     int max_gmem_bufs = 0;
     int reserved_regs = -1;
 
-    conv_plan_t(const hw_t &hw)
+    plan_t(const hw_t &hw)
         : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}
 
     const tile_coord_t &x_reduce_tile_coord() const {
@@ -250,9 +250,9 @@ struct conv_plan_t : public base_plan_t {
     IR_DEFINE_DUMP()
 };
 
-class conv_config_t;
+class config_t;
 
-status_t init_plan(conv_config_t &cfg);
+status_t init_plan(config_t &cfg);
 
 } // namespace jit
 } // namespace conv

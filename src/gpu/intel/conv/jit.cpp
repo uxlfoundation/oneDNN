@@ -36,12 +36,11 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace conv {
-namespace jit {
 
-using namespace intel::jit;
+using namespace jit;
 
-struct conv_pd_data_t {
-    conv_config_t pd_cfg;
+struct pd_data_t {
+    config_t pd_cfg;
     tensor_config_t tensor_cfg;
     std::vector<kernel_info_t> kernel_infos;
     std::shared_ptr<primitive_desc_t> zp_pd;
@@ -56,7 +55,7 @@ struct conv_pd_data_t {
         CHECK(st); \
     } while (false)
 
-class gen_convolution_t {
+class gen_t {
 public:
     static const int max_kernels = 16;
 
@@ -72,7 +71,7 @@ public:
                     pd->set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
 
-            conv_problem_t prb;
+            problem_t prb;
             CONV_CHECK(prb.init(engine, pd));
 
             // The IR generator hard-codes s32 as the type for problem parameters.
@@ -83,7 +82,7 @@ public:
                             prb.pw, prb.dd, prb.dh, prb.dw}),
                     VERBOSE_SHAPE_RESTRICTION);
 
-            pd->data = std::make_shared<conv_pd_data_t>();
+            pd->data = std::make_shared<pd_data_t>();
             CONV_CHECK(init_pd_time_cfg(
                     prb, pd->data->pd_cfg, engine, pd, &pd->attr_));
 
@@ -97,7 +96,7 @@ public:
                             1.f, alg_kind::eltwise_linear, -1.f, 0.f));
                 }
                 dim_t I[3], O[3], P[3], D[3];
-                prepare_zp_precompute_conv(prb, I, O, P, D);
+                prepare_zp_precompute(prb, I, O, P, D);
                 CONV_CHECK(create_zp_precompute_conv_pd(pd->data->zp_pd, engine,
                         attr, pd->weights_md(), I, O, P, D, data_type::f32,
                         pd->get_prop_kind(),
@@ -109,8 +108,8 @@ public:
                 }
             }
 
-            pd->data->tensor_cfg = get_tensor_config(
-                    pd->data->pd_cfg, zp_conv_md_in(*pd->data));
+            pd->data->tensor_cfg
+                    = get_tensor_config(pd->data->pd_cfg, zp_md_in(*pd->data));
             pd->data->kernel_infos.reserve(max_kernels);
             CONV_CHECK(init_kernel_infos(pd));
 
@@ -120,14 +119,14 @@ public:
         }
     }
 
-    gen_convolution_t() = default;
+    gen_t() = default;
 
     template <typename T>
     status_t init(T *primitive, impl::engine_t *engine) {
         auto *pd = primitive->pd();
         auto &data = *pd->data;
         auto &tensor_cfg = data.tensor_cfg;
-        auto tiler = std::make_shared<conv_tiler_t>(data.pd_cfg);
+        auto tiler = std::make_shared<tiler_t>(data.pd_cfg);
 
         if (primitive->cache_blob()) {
             int32_t version;
@@ -138,9 +137,9 @@ public:
 
         bool ok = false;
         int max_tries = 100;
-        conv_config_t cfg;
+        config_t cfg;
         layout_t zp_dst;
-        if (data.zp_pd) zp_dst = layout_t(zp_conv_md_out(data), false);
+        if (data.zp_pd) zp_dst = layout_t(zp_md_out(data), false);
 
         if (primitive->cache_blob()) {
             tiler->set_cur_version(primitive->version());
@@ -249,7 +248,7 @@ public:
         gpu_assert(kernels_.size() == data.kernel_infos.size());
         CONV_CHECK(primitive->register_kernels(kernels_));
 
-        conv_tiler_t::after_create_hook(cfg, primitive);
+        tiler_t::after_create_hook(cfg, primitive);
         return status::success;
     }
 
@@ -260,7 +259,7 @@ public:
         auto &data = *pd->data;
         auto &kernel_infos = data.kernel_infos;
 
-        conv_tiler_t::before_exec_hook(primitive, ctx.stream());
+        tiler_t::before_exec_hook(primitive, ctx.stream());
 
         int max_stage = 100;
         int nsubmitted = 0;
@@ -292,9 +291,8 @@ public:
                     gpu_assert(zp_prim_);
                     std::unique_ptr<memory_t, memory_deleter_t> zp_src, zp_dst;
                     CONV_CHECK(scratchpad_arg(
-                            zp_src, "src_zero_points", zp_conv_md_in(data)));
-                    CONV_CHECK(scratchpad_arg(
-                            zp_dst, "dst", zp_conv_md_out(data)));
+                            zp_src, "src_zero_points", zp_md_in(data)));
+                    CONV_CHECK(scratchpad_arg(zp_dst, "dst", zp_md_out(data)));
 
                     exec_args_t e_args;
                     auto src_zp_idx = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC;
@@ -317,14 +315,14 @@ public:
     }
 
 private:
-    static const memory_desc_t *zp_conv_md_in(const conv_pd_data_t &data) {
+    static const memory_desc_t *zp_md_in(const pd_data_t &data) {
         if (!data.zp_pd) return nullptr;
         const bool is_bwd_d
                 = (data.zp_pd->get_prop_kind() == prop_kind::backward_data);
         return (is_bwd_d) ? data.zp_pd->diff_dst_md() : data.zp_pd->src_md();
     }
 
-    static const memory_desc_t *zp_conv_md_out(const conv_pd_data_t &data) {
+    static const memory_desc_t *zp_md_out(const pd_data_t &data) {
         if (!data.zp_pd) return nullptr;
         const bool is_bwd_d
                 = (data.zp_pd->get_prop_kind() == prop_kind::backward_data);
@@ -460,7 +458,7 @@ private:
     }
 
     template <typename T>
-    void init_nd_ranges(T *primitive, const conv_config_t &cfg) {
+    void init_nd_ranges(T *primitive, const config_t &cfg) {
         auto *pd = primitive->pd();
         auto &data = *pd->data;
         int nkernels = int(data.kernel_infos.size());
@@ -486,7 +484,7 @@ private:
     }
 
     static bool can_skip_zero_out(
-            const kernel_info_t &info, const conv_config_t &cfg) {
+            const kernel_info_t &info, const config_t &cfg) {
         gpu_assert(info.id() == kernel_id_t::zero_out);
         auto &buf_name = info.arg_var(1).as<var_t>().name;
         if (buf_name == "wei") return cfg.can_skip_wei_zero_out();
@@ -509,52 +507,51 @@ private:
     std::shared_ptr<impl::primitive_t> zp_prim_;
 };
 
-status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_fwd(), VERBOSE_BAD_PROPKIND);
-    CHECK(gen_convolution_t::init_pd(this, engine));
+    CHECK(gen_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_fwd_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_bwd_data_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_d(), VERBOSE_BAD_PROPKIND);
-    CHECK(gen_convolution_t::init_pd(this, engine));
+    CHECK(gen_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_w(), VERBOSE_BAD_PROPKIND);
-    CHECK(gen_convolution_t::init_pd(this, engine));
+    CHECK(gen_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_bwd_data_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_bwd_weights_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-} // namespace jit
 } // namespace conv
 } // namespace intel
 } // namespace gpu

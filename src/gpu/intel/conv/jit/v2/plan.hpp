@@ -451,8 +451,8 @@ struct plan_t : public base_plan_t {
     IR_DEFINE_DUMP()
 };
 
-plan_t create_conv_plan(const kernel_desc_t &desc, const hw_t &hw);
-plan_t create_conv_plan(const kernel_desc_t &desc, const problem_t &prb);
+plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw);
+plan_t create_plan(const kernel_desc_t &desc, const problem_t &prb);
 prb_reqs_t generate_reqs(const kernel_desc_t &desc);
 
 } // namespace v2

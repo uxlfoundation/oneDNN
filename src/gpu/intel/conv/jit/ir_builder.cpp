@@ -171,7 +171,7 @@ stmt_t add_grid_guard(
 
 class compute_builder_t {
 public:
-    compute_builder_t(const conv_config_t &cfg, ir_context_t &ir_ctx,
+    compute_builder_t(const config_t &cfg, ir_context_t &ir_ctx,
             const kernel_info_t &kernel_info, const layout_t &zp_dst)
         : cfg_(cfg)
         , plan_(cfg_.plan())
@@ -498,7 +498,7 @@ private:
 
     void build_c_store() {
         auto &gemm_schedule = plan_.gemm_schedule;
-        conv_post_op_view_mapper_t view_mapper(
+        post_op_view_mapper_t view_mapper(
                 gemm_schedule, cfg_.prb(), cfg_.zp_cfg(), zp_dst_);
         post_op_context_t post_op_ctx(*cfg_.prb().attr, cfg_.zp_cfg(),
                 gemm_schedule, kernel_info_, *cfg_.prb().conv_pd->dst_md(),
@@ -587,8 +587,8 @@ private:
         x_reduce_store_stmt_ = if_t::make(cond, stmt);
     }
 
-    const conv_config_t &cfg_;
-    const conv_plan_t &plan_;
+    const config_t &cfg_;
+    const plan_t &plan_;
     ir_context_t &ir_ctx_;
     const kernel_info_t &kernel_info_;
 
@@ -639,7 +639,7 @@ stmt_t inject_compute_loop_label(const stmt_t &s) {
     return compute_loop_label_injector_t().mutate(s);
 }
 
-void conv_ir_builder_t::build() {
+void builder_t::build() {
     const auto &prb = cfg_.prb();
 
     trace_reset();

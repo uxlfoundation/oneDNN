@@ -98,7 +98,7 @@ layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
     return split_dimension(layout, /*dim_idx=*/1, groups);
 }
 
-layout_t normalize_conv_layout(const layout_t &_layout, bool with_groups,
+layout_t normalize_layout(const layout_t &_layout, bool with_groups,
         dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups, bool is_wei) {
     layout_t layout = _layout;
@@ -109,25 +109,25 @@ layout_t normalize_conv_layout(const layout_t &_layout, bool with_groups,
     return layout;
 }
 
-std::vector<dim_t> normalize_conv_dims(std::vector<dim_t> &dims,
-        bool with_groups, dim_t groups, bool is_dw,
-        const std::array<int, 3> &dhw_map, bool add_groups, bool is_wei) {
+std::vector<dim_t> normalize_dims(std::vector<dim_t> &dims, bool with_groups,
+        dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
+        bool add_groups, bool is_wei) {
     layout_t dummy_layout(type_t::u8(), 0, dims);
-    return normalize_conv_layout(dummy_layout, with_groups, groups, is_dw,
-            dhw_map, add_groups, is_wei)
+    return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
+            add_groups, is_wei)
             .dims();
 }
 
-void normalize_conv_layouts(layout_t &src_layout, layout_t &wei_layout,
+void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
         layout_t &dst_layout, layout_t &bia_layout, bool with_groups, dim_t g,
         dim_t ic, dim_t oc, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups) {
-    src_layout = normalize_conv_layout(src_layout, /*with_groups=*/false,
+    src_layout = normalize_layout(src_layout, /*with_groups=*/false,
             g > 1 ? src_layout.dim(1) / ic : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
-    wei_layout = normalize_conv_layout(wei_layout, with_groups, g, is_dw,
-            dhw_map, add_groups, /*is_wei=*/true);
-    dst_layout = normalize_conv_layout(dst_layout, /*with_groups=*/false,
+    wei_layout = normalize_layout(wei_layout, with_groups, g, is_dw, dhw_map,
+            add_groups, /*is_wei=*/true);
+    dst_layout = normalize_layout(dst_layout, /*with_groups=*/false,
             g > 1 ? dst_layout.dim(1) / oc : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     if (add_groups && !bia_layout.is_empty()) {
@@ -136,7 +136,7 @@ void normalize_conv_layouts(layout_t &src_layout, layout_t &wei_layout,
     }
 }
 
-uint32_t conv_post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
+uint32_t post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
     dim_idx_t cp_ndims = cp_view().nvdims();
     gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
@@ -148,8 +148,8 @@ uint32_t conv_post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
     for (int i = 0; i < orig_ndims; i++) {
         if ((orig_mask & (1 << i)) != 0) dummy_dims[i] = mask_set_value;
     }
-    auto cvt_dims = normalize_conv_dims(dummy_dims, /*with_groups=*/false,
-            prb_.g, prb_.is_dw, prb_.dhw_map,
+    auto cvt_dims = normalize_dims(dummy_dims, /*with_groups=*/false, prb_.g,
+            prb_.is_dw, prb_.dhw_map,
             /*add_groups=*/false, /*is_wei=*/false);
     // Split channels into groups and channels to match ngcdhw layout.
     if (add_groups) cvt_dims.insert(cvt_dims.begin() + 1, cvt_dims[1]);
@@ -175,7 +175,7 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
 
 // this method only gets called when ZP precompute is in order;
 // in all other cases ZPs are applied ad-hoc, without a post-op
-view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
+view_t post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     auto map_o2k = [this](view_t &v, dim_idx_t idx, dim_t O, dim_t I, dim_t K,
                            dim_t D, dim_t P, dim_t S) {
         const auto KD = (K - 1) * (D + 1) + 1;
@@ -211,7 +211,7 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     };
 
     const auto &vars = cp_view().vvars();
-    auto dst = normalize_conv_layout(zp_dst_, /*with_groups=*/false, prb_.g,
+    auto dst = normalize_layout(zp_dst_, /*with_groups=*/false, prb_.g,
             prb_.is_dw, prb_.dhw_map, /*add_groups=*/true, /*is_wei=*/false);
     gpu_assert((vars.size() == 6) && (dst.ndims() == 6));
 
@@ -242,7 +242,7 @@ view_t conv_post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     return view;
 }
 
-view_t conv_post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
+view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     dim_idx_t cp_ndims = cp_view().nvdims();
     gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
@@ -251,13 +251,13 @@ view_t conv_post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
     std::vector<dim_t> padded_dims(md.padded_dims, md.padded_dims + md.ndims);
     maybe_reshape_dims(prb_.ndims, layout, dims, padded_dims);
-    layout = normalize_conv_layout(layout, /*with_groups=*/false, prb_.g,
-            prb_.is_dw, prb_.dhw_map, add_groups,
+    layout = normalize_layout(layout, /*with_groups=*/false, prb_.g, prb_.is_dw,
+            prb_.dhw_map, add_groups,
             /*is_wei=*/false);
-    dims = normalize_conv_dims(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
+    dims = normalize_dims(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
             prb_.dhw_map, add_groups, /*is_wei=*/false);
-    padded_dims = normalize_conv_dims(padded_dims, /*with_groups=*/false,
-            prb_.g, prb_.is_dw, prb_.dhw_map, add_groups,
+    padded_dims = normalize_dims(padded_dims, /*with_groups=*/false, prb_.g,
+            prb_.is_dw, prb_.dhw_map, add_groups,
             /*is_wei=*/false);
     gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
     uint32_t bound_check_mask = 0;
@@ -272,13 +272,13 @@ view_t conv_post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     return view_t(layout, cp_view().vvars(), dims, bound_check_mask);
 }
 
-view_t conv_post_op_view_mapper_t::try_create_bias_view(uint32_t mask) const {
+view_t post_op_view_mapper_t::try_create_bias_view(uint32_t mask) const {
     if ((prb_.is_fwd || prb_.is_bwd_d) && prb_.with_bias)
         return create_view(prb_.conv_pd->invariant_bia_md()->data_type, mask);
     return {};
 }
 
-bool conv_post_op_view_mapper_t::is_spurious_spatial(dim_idx_t dim_idx) const {
+bool post_op_view_mapper_t::is_spurious_spatial(dim_idx_t dim_idx) const {
     auto &var = cp_view().vvars()[dim_idx].as<var_t>();
 
     int sp_idx = -1;
@@ -324,16 +324,16 @@ bool conv_post_op_view_mapper_t::is_spurious_spatial(dim_idx_t dim_idx) const {
     return false;
 }
 
-bool conv_post_op_view_mapper_t::need_to_restore_zero_padding() const {
+bool post_op_view_mapper_t::need_to_restore_zero_padding() const {
     auto &zp = prb_.conv_pd->attr()->zero_points_;
     return prb_.with_bias || !zp.has_default_values(DNNL_ARG_WEIGHTS);
 }
 
-bool conv_post_op_view_mapper_t::use_dst_in_sum_post_op() const {
+bool post_op_view_mapper_t::use_dst_in_sum_post_op() const {
     return prb_.is_fwd;
 }
 
-bool conv_post_op_view_mapper_t::can_use_scales() const {
+bool post_op_view_mapper_t::can_use_scales() const {
     return prb_.is_fwd || prb_.is_bwd_d;
 }
 

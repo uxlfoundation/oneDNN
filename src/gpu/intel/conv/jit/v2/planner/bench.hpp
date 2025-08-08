@@ -29,9 +29,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 
 class bench_manager_t {
@@ -111,9 +111,9 @@ plan_registry_t::entry_t prepare_plan_registry_entry(
         const bench_manager_t &bench_mger, const kernel_desc_t &kernel_desc);
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

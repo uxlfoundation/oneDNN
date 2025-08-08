@@ -28,13 +28,10 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace conv {
-namespace jit {
-
-using namespace intel::jit;
-
 namespace v2 {
 
-using namespace intel::jit::v2;
+using namespace jit;
+using namespace jit::v2;
 
 void maybe_init_layout(
         memory_desc_t &md, const layout_tag_t &_tag, bool remove_a_dim) {
@@ -45,11 +42,11 @@ void maybe_init_layout(
     // XXX: When internal blocked layouts are added, this needs an adjustment.
     // The user layout should be set to a plain layout for consistency with
     // other layers.
-    auto layout = to_conv_layout(_tag, md, remove_a_dim);
+    auto layout = to_layout(_tag, md, remove_a_dim);
     md = layout.to_dnnl(md.dims);
 }
 
-status_t init_default_layouts(convolution_pd_t *pd) {
+status_t init_default_layouts(pd_t *pd) {
     auto &src_md = *const_cast<memory_desc_t *>(pd->invariant_src_md());
     auto &dst_md = *const_cast<memory_desc_t *>(pd->invariant_dst_md());
     if (src_md.format_kind == format_kind::any)
@@ -59,7 +56,7 @@ status_t init_default_layouts(convolution_pd_t *pd) {
     return status::success;
 }
 
-status_t init_layouts(const kernel_desc_t &desc, convolution_pd_t *pd) {
+status_t init_layouts(const kernel_desc_t &desc, pd_t *pd) {
     auto &src_md = *const_cast<memory_desc_t *>(pd->invariant_src_md());
     auto &wei_md = *const_cast<memory_desc_t *>(pd->invariant_wei_md());
     auto &dst_md = *const_cast<memory_desc_t *>(pd->invariant_dst_md());
@@ -67,12 +64,11 @@ status_t init_layouts(const kernel_desc_t &desc, convolution_pd_t *pd) {
     maybe_init_layout(src_md, desc.src_tag, false);
     maybe_init_layout(wei_md, desc.wei_tag, !pd->with_groups());
     maybe_init_layout(dst_md, desc.dst_tag, false);
-    maybe_init_layout(
-            bia_md, make_conv_layout_tag(tensor_kind_t::bias, "a"), false);
+    maybe_init_layout(bia_md, make_layout_tag(tensor_kind_t::bias, "a"), false);
     return status::success;
 }
 
-void iter_md(const convolution_pd_t *pd,
+void iter_md(const pd_t *pd,
         const std::function<void(const memory_desc_t &)> &func) {
     func(*pd->invariant_src_md());
     func(*pd->invariant_wei_md());
@@ -85,7 +81,7 @@ void iter_md(const convolution_pd_t *pd,
     }
 }
 
-bool has_large_buffers(const convolution_pd_t *pd) {
+bool has_large_buffers(const pd_t *pd) {
     auto is_large = [](const memory_desc_t &md) {
         memory_desc_wrapper mdw(md);
         gpu_assert(!mdw.format_any());
@@ -98,7 +94,7 @@ bool has_large_buffers(const convolution_pd_t *pd) {
     return has;
 }
 
-bool has_shifted_mds(const convolution_pd_t *pd) {
+bool has_shifted_mds(const pd_t *pd) {
     bool has = false;
     iter_md(pd, [&](const memory_desc_t &md) {
         if (md.offset0 != 0) has = true;
@@ -106,7 +102,7 @@ bool has_shifted_mds(const convolution_pd_t *pd) {
     return has;
 }
 
-class gen_convolution_t {
+class gen_t {
 public:
     template <typename T>
     static bool is_supported(T *pd, prop_kind_t prop) {
@@ -163,7 +159,7 @@ public:
         if (has_shifted_mds(pd)) return status::unimplemented;
 
         CHECK(_desc.set_attr(pd, pd->attr(), out_md(pd)));
-        if (!create_conv_plan(_desc, prb)) {
+        if (!create_plan(_desc, prb)) {
             gpu_info() << "Cannot create kernel descriptor.\n";
             return status::runtime_error;
         }
@@ -172,7 +168,7 @@ public:
         return status::success;
     }
 
-    gen_convolution_t() = default;
+    gen_t() = default;
 
     template <typename T>
     status_t init(T *primitive, impl::engine_t *engine) {
@@ -187,7 +183,7 @@ public:
     }
 
 private:
-    static const memory_desc_t *out_md(const convolution_pd_t *pd) {
+    static const memory_desc_t *out_md(const pd_t *pd) {
         if (pd->is_fwd()) return pd->dst_md();
         if (pd->is_bwd_d()) return pd->diff_src_md();
         if (pd->is_bwd_w()) return pd->diff_weights_md();
@@ -198,48 +194,46 @@ private:
     primitive_exec_plan_t exec_plan_;
 };
 
-status_t gen_convolution_fwd_t::pd_t::init(impl::engine_t *engine) {
-    return gen_convolution_t::init_pd(this, engine, prop_kind::forward);
+status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
+    return gen_t::init_pd(this, engine, prop_kind::forward);
 }
 
-status_t gen_convolution_fwd_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_fwd_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_data_t::pd_t::init(impl::engine_t *engine) {
-    return gen_convolution_t::init_pd(this, engine, prop_kind::backward_data);
+status_t gen_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+    return gen_t::init_pd(this, engine, prop_kind::backward_data);
 }
 
-status_t gen_convolution_bwd_data_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_bwd_data_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_convolution_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
-    return gen_convolution_t::init_pd(
-            this, engine, prop_kind::backward_weights);
+status_t gen_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+    return gen_t::init_pd(this, engine, prop_kind::backward_weights);
 }
 
-status_t gen_convolution_bwd_weights_t::init(impl::engine_t *engine) {
-    impl_ = std::make_shared<gen_convolution_t>();
+status_t gen_bwd_weights_t::init(impl::engine_t *engine) {
+    impl_ = std::make_shared<gen_t>();
     return impl_->init(this, engine);
 }
 
-status_t gen_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
 } // namespace v2
-} // namespace jit
 } // namespace conv
 } // namespace intel
 } // namespace gpu

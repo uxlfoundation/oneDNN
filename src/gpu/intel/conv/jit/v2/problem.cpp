@@ -81,7 +81,7 @@ void problem_t::normalize() {
     if (src_tag().is_strided() || wei_tag().is_strided()
             || dst_tag().is_strided())
         return;
-    normalize_conv_shape(GET(od), GET(id), GET(kd), GET(sd), GET(dd), GET(pd),
+    normalize_shape(GET(od), GET(id), GET(kd), GET(sd), GET(dd), GET(pd),
             GET(oh), GET(ih), GET(kh), GET(sh), GET(dh), GET(ph), GET(ow),
             GET(iw), GET(kw), GET(sw), GET(dw), GET(pw),
             /*can_flatten_spatial=*/true, dhw_map_);
@@ -192,11 +192,11 @@ tile_t problem_t::default_shape() {
         ret[pvars::id] = ret[pvars::ih] = ret[pvars::iw] = 1;
         ret[pvars::od] = ret[pvars::oh] = ret[pvars::ow] = 1;
         ret[pvars::kd] = ret[pvars::kh] = ret[pvars::kw] = 1;
-        for (auto &d : conv_stride_dims())
+        for (auto &d : stride_dims())
             ret[d] = 1;
-        for (auto &d : conv_dilation_dims())
+        for (auto &d : dilation_dims())
             ret[d] = 0;
-        for (auto &d : conv_padding_dims())
+        for (auto &d : padding_dims())
             ret[d] = 0;
         return ret;
     }();

@@ -31,8 +31,8 @@ namespace conv {
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::format_tag;
 
-static bool is_impl_optimal(conv_conf_t &conf, const convolution_desc_t &cd,
-        const compute::gpu_arch_t arch) {
+static bool is_impl_optimal(
+        conf_t &conf, const desc_t &cd, const compute::gpu_arch_t arch) {
     if (cd.alg_kind == alg_kind::convolution_winograd) return true;
 
     dim_t ow_blocks = conf.wino_ow / conf.ow_block;
@@ -57,7 +57,7 @@ static bool is_impl_optimal(conv_conf_t &conf, const convolution_desc_t &cd,
 }
 
 static void fwd_compute_block_sizes(
-        conv_conf_t &conf, const compute::gpu_arch_t arch) {
+        conf_t &conf, const compute::gpu_arch_t arch) {
 
     if (conf.ver == ver_16mb16c) {
         conf.mb_block = (conf.src_data_type == data_type::f16)
@@ -111,9 +111,8 @@ static void fwd_compute_block_sizes(
     conf.wino_oc = utils::rnd_up(conf.oc, conf.wino_oc_block);
 }
 
-status_t xe_wino_convolution_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
-
-    const convolution_desc_t &cd = *desc();
+status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
+    const desc_t &cd = *desc();
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper weights_mdw(weights_md());
     const memory_desc_wrapper dst_mdw(dst_md());
@@ -158,8 +157,8 @@ status_t xe_wino_convolution_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
     }
 
     const compute::gpu_arch_t arch = engine->device_info()->gpu_arch();
-    fwd_compute_block_sizes(conf, arch);
-    if (!is_impl_optimal(conf, cd, arch)) return status::unimplemented;
+    conv::fwd_compute_block_sizes(conf, arch);
+    if (!conv::is_impl_optimal(conf, cd, arch)) return status::unimplemented;
 
     size_t U_sz = conf.tile_size * conf.kh * conf.wino_ic * conf.wino_oc;
     size_t M_sz = 0, V_sz = 0;
@@ -268,7 +267,7 @@ status_t xe_wino_convolution_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
     return status::success;
 }
 
-void xe_wino_convolution_fwd_t::pd_t::init_scratchpad() {
+void xe_wino_fwd_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
 
     auto wei_data_t = this->desc()->weights_desc.data_type;
@@ -291,7 +290,7 @@ void xe_wino_convolution_fwd_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t xe_wino_convolution_fwd_t::pd_t::init_kernel_ctx(
+status_t xe_wino_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("G", conf.ngroups);
     kernel_ctx.define_int("MB", conf.mb);
@@ -358,8 +357,7 @@ status_t xe_wino_convolution_fwd_t::pd_t::init_kernel_ctx(
     return status::success;
 }
 
-status_t xe_wino_convolution_fwd_t::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t xe_wino_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &weights = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);

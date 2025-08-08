@@ -17,9 +17,9 @@
 #include "gpu/intel/conv/jit/v2/kernel_desc.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/convolution_pd.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/conv/jit/v2/bridge.hpp"
 #include "gpu/intel/conv/jit/v2/kernel.hpp"
 #include "gpu/intel/conv/jit/v2/problem.hpp"
@@ -319,9 +319,9 @@ loop_desc_t default_loop_desc(prop_kind_t prop) {
 }
 
 void kernel_desc_t::set_missing() {
-    src_tag = make_conv_layout_tag(tensor_kind_t::src, src_tag.str());
-    wei_tag = make_conv_layout_tag(tensor_kind_t::wei, wei_tag.str());
-    dst_tag = make_conv_layout_tag(tensor_kind_t::dst, dst_tag.str());
+    src_tag = make_layout_tag(tensor_kind_t::src, src_tag.str());
+    wei_tag = make_layout_tag(tensor_kind_t::wei, wei_tag.str());
+    dst_tag = make_layout_tag(tensor_kind_t::dst, dst_tag.str());
     if (loop_desc.is_empty()) loop_desc = default_loop_desc(prop);
     if (is_dw) {
         spec.dim_values[pvars::ic] = 1;
@@ -454,8 +454,8 @@ void kernel_desc_t::fit_to(const problem_t &prb) {
     spec.specialize(prb);
 }
 
-status_t kernel_desc_t::set_attr(const convolution_pd_t *pd,
-        const primitive_attr_t *attr, const memory_desc_t *out_md) {
+status_t kernel_desc_t::set_attr(const pd_t *pd, const primitive_attr_t *attr,
+        const memory_desc_t *out_md) {
     scales = attr->scales_;
     if (!pd->with_groups()) {
         // Extend weights scales mask to include groups as the kernel can be
@@ -709,7 +709,7 @@ int arg_helper_t::post_op_key(size_t idx) const {
 }
 
 tensor_config_t get_tensor_config(
-        const kernel_desc_t &desc, const convolution_pd_t *pd = nullptr) {
+        const kernel_desc_t &desc, const pd_t *pd = nullptr) {
     arg_helper_t h(desc);
     tensor_config_t tensor_cfg;
     for (auto *t : {"src", "wei", "dst", "bias"}) {
@@ -772,14 +772,14 @@ void kernel_desc_t::init_kernel_iface(kernel_iface_t &kernel_iface) const {
                     dims[j].str() + "_grid_size_magic", type_t::u64());
         }
     }
-    for (auto &d : conv_dims()) {
+    for (auto &d : dims()) {
         dim_t dummy;
         if (_reqs.get_value(d, dummy)) continue;
         auto var = var_t::make(type_t::s32(), d.str());
         kernel_iface.register_arg(var);
         if (d == pvars::sw)
             kernel_iface.register_arg("sw_magic", type_t::u64());
-        if (!is_conv_index(d)) continue;
+        if (!is_index(d)) continue;
         for (auto &t_kind :
                 {tensor_kind_t::src, tensor_kind_t::wei, tensor_kind_t::dst}) {
             auto &tag = layout_tag(t_kind);
@@ -880,8 +880,8 @@ dim_t stream_k_thread_groups(
 
 dim_t stream_k_k_batches(const kernel_desc_t &desc, const problem_t &prb) {
     const size_t l3_size = prb.hw().l3_cache_size();
-    auto a = to_conv_layout(desc.layout_tag(tensor_kind_t::a), prb.shape());
-    auto b = to_conv_layout(desc.layout_tag(tensor_kind_t::b), prb.shape());
+    auto a = to_layout(desc.layout_tag(tensor_kind_t::a), prb.shape());
+    auto b = to_layout(desc.layout_tag(tensor_kind_t::b), prb.shape());
     dim_t ab_size = a.size() + b.size();
     return utils::div_up(2 * ab_size, l3_size);
 }
@@ -1015,8 +1015,7 @@ status_t kernel_desc_t::create_generator(
 }
 
 jit::layout_t get_kernel_layout(const std::string &name,
-        const kernel_desc_t &desc, const memory_desc_t &md,
-        const convolution_pd_t *pd) {
+        const kernel_desc_t &desc, const memory_desc_t &md, const pd_t *pd) {
     layout_tag_t tag;
     if (name == "src") {
         tag = desc.src_tag;
@@ -1025,24 +1024,22 @@ jit::layout_t get_kernel_layout(const std::string &name,
     } else if (name == "dst") {
         tag = desc.dst_tag;
     } else if (name == "bias") {
-        tag = make_conv_layout_tag(
-                tensor_kind_t::bias, "a:" + desc.bias_type.str());
+        tag = make_layout_tag(tensor_kind_t::bias, "a:" + desc.bias_type.str());
     } else if (name.find("_scales") != std::string::npos) {
         return jit::layout_t();
     } else if (name.find("binary") == 0) {
         auto out_kind = pick_c(desc.prop, tensor_kind_t::src,
                 tensor_kind_t::wei, tensor_kind_t::dst);
-        tag = make_conv_layout_tag(
-                out_kind, "axb:" + type_t(md.data_type).str());
+        tag = make_layout_tag(out_kind, "axb:" + type_t(md.data_type).str());
     }
     gpu_assert(!tag.is_empty()) << "Unknown tensor: " << name;
-    auto layout = to_conv_layout(tag, md, name == "wei" && !pd->with_groups());
+    auto layout = to_layout(tag, md, name == "wei" && !pd->with_groups());
     if (layout.type() != tag.type()) layout = layout.retype(tag.type());
     return layout;
 }
 
-status_t kernel_desc_t::init_primitive_plan(primitive_init_plan_t &plan,
-        const problem_t &prb, convolution_pd_t *pd) const {
+status_t kernel_desc_t::init_primitive_plan(
+        primitive_init_plan_t &plan, const problem_t &prb, pd_t *pd) const {
     auto tensor_config = get_tensor_config(*this, pd);
     int scratchpad_key = memory_tracking::names::key_none;
     for (auto &t : tensor_config.tensors()) {

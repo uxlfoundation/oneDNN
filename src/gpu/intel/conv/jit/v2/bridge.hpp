@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_CONV_JIT_V2_BRIDGE_HPP
 #define GPU_INTEL_CONV_JIT_V2_BRIDGE_HPP
 
-#include "common/convolution_pd.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/conv/jit/v2/plan.hpp"
 #include "gpu/intel/conv/jit/v2/problem.hpp"
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
@@ -35,7 +35,7 @@ namespace v2 {
 
 using namespace intel::jit::v2;
 
-inline tile_t to_shape(const convolution_pd_t *pd) {
+inline tile_t to_shape(const pd_t *pd) {
     tile_t shape;
     shape[pvars::mb] = pd->MB();
     shape[pvars::ic] = ir_utils::safe_div(pd->IC(), pd->G());
@@ -125,14 +125,13 @@ inline tile_t to_shape(const convolution_pd_t *pd) {
     return shape;
 }
 
-inline problem_t to_problem(
-        const convolution_pd_t *pd, const impl::engine_t *engine) {
+inline problem_t to_problem(const pd_t *pd, const impl::engine_t *engine) {
     auto prop = pd->desc()->prop_kind;
-    auto src = make_conv_layout_tag(
+    auto src = make_layout_tag(
             tensor_kind_t::src, pd->ndims(), *pd->invariant_src_md());
-    auto wei = make_conv_layout_tag(
+    auto wei = make_layout_tag(
             tensor_kind_t::wei, pd->ndims(), *pd->invariant_wei_md());
-    auto dst = make_conv_layout_tag(
+    auto dst = make_layout_tag(
             tensor_kind_t::dst, pd->ndims(), *pd->invariant_dst_md());
     auto shape = to_shape(pd);
 
@@ -152,7 +151,7 @@ inline problem_t to_problem(
     return prb;
 }
 
-inline jit::layout_t to_conv_layout(const layout_tag_t &_tag,
+inline jit::layout_t to_layout(const layout_tag_t &_tag,
         const memory_desc_t &md, bool remove_a_dim = false) {
     auto tag = _tag.raw_tag();
     dim_idx_t non_spatial_ndims = tag.ndims() - 3;
@@ -166,8 +165,7 @@ inline jit::layout_t to_conv_layout(const layout_tag_t &_tag,
     return jit::layout_t(md, tag.str(), /*do_normalize=*/false);
 }
 
-inline jit::layout_t to_conv_layout(
-        const layout_tag_t &_tag, const tile_t &shape) {
+inline jit::layout_t to_layout(const layout_tag_t &_tag, const tile_t &shape) {
     int ndims = _tag.desc().ndims();
     const auto &tag = _tag.raw_tag();
     std::vector<dim_t> dims(ndims);

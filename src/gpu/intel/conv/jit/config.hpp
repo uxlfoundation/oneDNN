@@ -208,7 +208,7 @@ private:
     bool reuse_headers_ = false;
 };
 
-class prb_param_t : public value_param_t<conv_problem_t> {
+class prb_param_t : public value_param_t<problem_t> {
 public:
     using value_param_t::value_param_t;
 
@@ -475,10 +475,10 @@ static const int max_slm_bufs = 3;
 static const int reserved_regs_default = 16;
 } // namespace constants
 
-struct conv_plan_t;
-class conv_tiler_t;
+struct plan_t;
+class tiler_t;
 
-class conv_config_t : public prim_config_t {
+class config_t : public prim_config_t {
 public:
 #define DECL_PARAM(name) \
     const name##_param_t &name##_param() const { \
@@ -523,13 +523,13 @@ public:
     std::string str() const override;
 
     const std::vector<pvar_t> &index_dims() const override {
-        return conv_index_dims(prb().prop_kind());
+        return jit::index_dims(prb().prop_kind());
     }
     tile_t shape(bool pad) const override;
 
     std::string blocking_brief_str() const;
 
-    conv_key_t key() const;
+    key_t key() const;
 
     // Blocks for padding. This is to comply with
     // zero-padding requirements. For example if the output
@@ -581,7 +581,7 @@ public:
         return compute::nd_range_t(gws, lws);
     }
 
-    void set_pd(const convolution_pd_t *pd) { prb_.set_pd(pd); }
+    void set_pd(const pd_t *pd) { prb_.set_pd(pd); }
 
     void set_regs(int regs) {
         auto tmp = exec_cfg();
@@ -597,12 +597,12 @@ public:
 
     void set_vec_size(int vec_size) { vec_size_ = vec_size; }
 
-    void set_tiler(const std::shared_ptr<conv_tiler_t> &tiler);
-    const conv_tiler_t &tiler() const;
-    conv_tiler_t &tiler();
+    void set_tiler(const std::shared_ptr<tiler_t> &tiler);
+    const tiler_t &tiler() const;
+    tiler_t &tiler();
 
-    void set_plan(const std::shared_ptr<conv_plan_t> &plan);
-    const conv_plan_t &plan() const;
+    void set_plan(const std::shared_ptr<plan_t> &plan);
+    const plan_t &plan() const;
 
     bool can_skip_wei_zero_out() const;
     bool can_skip_bia_zero_out() const;
@@ -626,14 +626,14 @@ public:
 
 private:
     int vec_size_ = 0;
-    std::shared_ptr<conv_plan_t> plan_;
-    std::shared_ptr<conv_tiler_t> tiler_;
+    std::shared_ptr<plan_t> plan_;
+    std::shared_ptr<tiler_t> tiler_;
 
 #define INIT_PARAM(name) \
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &((const conv_config_t *)c)->name##_; \
+                  return &((const config_t *)c)->name##_; \
               });
 
     INIT_PARAM(allow_global_reduction)
@@ -655,7 +655,7 @@ private:
 
 class bmnk_dim_helper_t {
 public:
-    bmnk_dim_helper_t(const conv_config_t &cfg) {
+    bmnk_dim_helper_t(const config_t &cfg) {
         auto &prb = cfg.prb();
         gemm_iter_ = to_gemm(cfg.iter_dims().get(), prb),
         gemm_thread_group_ = to_gemm(cfg.thread_group_dims().get(), prb);
@@ -676,25 +676,25 @@ private:
     tile_t gemm_loop_;
 };
 
-status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
-        impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr);
-status_t init_cfg(conv_config_t &cfg, const primitive_t *prim);
-void init_regs(conv_config_t &cfg);
-int slm_bufs_hint(const conv_problem_t &prb, dim_t m_tg, dim_t n_tg,
+status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
+        impl::engine_t *engine, pd_t *pd, primitive_attr_t *attr);
+status_t init_cfg(config_t &cfg, const primitive_t *prim);
+void init_regs(config_t &cfg);
+int slm_bufs_hint(const problem_t &prb, dim_t m_tg, dim_t n_tg,
         bool do_src_zp_compensation, bool enable_a, bool enable_b,
         bool do_unroll);
 tensor_config_t get_tensor_config(
-        const conv_config_t &cfg, const memory_desc_t *zp_src);
+        const config_t &cfg, const memory_desc_t *zp_src);
 bool is_small(const type_t &type, dim_t elems);
-int estimate_register_count(const conv_config_t &cfg);
-int default_regs(const conv_config_t &cfg);
-void init_kernel_grid(conv_config_t &cfg);
-void init_walk_order(conv_config_t &cfg);
-void init_thread_group_grid(conv_config_t &cfg);
-void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
-        dim_t *odhw, dim_t *pdhw, dim_t *ddhw);
-std::array<tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
-std::array<tile_t, 3> get_thread_group_grid_conv_dims(const conv_config_t &cfg);
+int estimate_register_count(const config_t &cfg);
+int default_regs(const config_t &cfg);
+void init_kernel_grid(config_t &cfg);
+void init_walk_order(config_t &cfg);
+void init_thread_group_grid(config_t &cfg);
+void prepare_zp_precompute(const problem_t &prb, dim_t *idhw, dim_t *odhw,
+        dim_t *pdhw, dim_t *ddhw);
+std::array<tile_t, 3> get_kernel_grid_dims(const config_t &cfg);
+std::array<tile_t, 3> get_thread_group_grid_dims(const config_t &cfg);
 
 } // namespace jit
 } // namespace conv

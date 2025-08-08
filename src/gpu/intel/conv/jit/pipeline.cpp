@@ -1035,7 +1035,7 @@ pipeline_ctx_t pipeline(int length, const loop_info_t &loop,
 class prefetch_pipeliner_t {
 public:
     prefetch_pipeliner_t(
-            const stmt_t &root, const conv_config_t &cfg, ir_context_t &ir_ctx)
+            const stmt_t &root, const config_t &cfg, ir_context_t &ir_ctx)
         : root_(root), cfg_(cfg), ir_ctx_(ir_ctx) {}
     stmt_t inject() {
         auto compute_loop
@@ -1080,12 +1080,12 @@ public:
 
 private:
     stmt_t root_;
-    const conv_config_t &cfg_;
+    const config_t &cfg_;
     ir_context_t &ir_ctx_;
 };
 
 stmt_t inject_prefetch_pipeline(
-        const stmt_t &s, ir_context_t &ir_ctx, const conv_config_t &cfg) {
+        const stmt_t &s, ir_context_t &ir_ctx, const config_t &cfg) {
     trace_start();
     auto ret = prefetch_pipeliner_t(s, cfg, ir_ctx).inject();
     trace_pass("inject_prefetch_pipeline", ret, ir_ctx);
@@ -1108,7 +1108,7 @@ stmt_t inject_prefetch_pipeline(
 // Schemes for double and triple buffering are below.
 class slm_sync_manager_t {
 public:
-    slm_sync_manager_t(const conv_config_t &cfg, bool with_unroll)
+    slm_sync_manager_t(const config_t &cfg, bool with_unroll)
         : slm_bufs_(cfg.slm().bufs())
         , gmem_bufs_(cfg.slm().gmem_bufs())
         , with_unroll_(with_unroll) {
@@ -1301,14 +1301,14 @@ private:
     version_t ver_;
 };
 
-static bool assign_sbids(const conv_config_t &cfg) {
+static bool assign_sbids(const config_t &cfg) {
     return cfg.is_dpas_or_dpasw_fma();
 }
 
 class simple_slm_buffering_injector_t {
 public:
     simple_slm_buffering_injector_t(const stmt_t &root, ir_context_t &ir_ctx,
-            const conv_config_t &cfg, int ab_slm_size)
+            const config_t &cfg, int ab_slm_size)
         : ir_ctx_(ir_ctx)
         , cfg_(cfg)
         , ab_slm_size_(ab_slm_size)
@@ -1501,7 +1501,7 @@ public:
     }
 
     ir_context_t &ir_ctx_;
-    const conv_config_t &cfg_;
+    const config_t &cfg_;
     int ab_slm_size_;
 
     stmt_t root_;
@@ -1512,7 +1512,7 @@ public:
 };
 
 stmt_t inject_simple_slm_buffering(const stmt_t &s, ir_context_t &ir_ctx,
-        const conv_config_t &cfg, int ab_slm_size) {
+        const config_t &cfg, int ab_slm_size) {
     trace_start();
     auto ret = simple_slm_buffering_injector_t(s, ir_ctx, cfg, ab_slm_size)
                        .inject();
@@ -1522,7 +1522,7 @@ stmt_t inject_simple_slm_buffering(const stmt_t &s, ir_context_t &ir_ctx,
 
 class unrolling_injector_t {
 public:
-    unrolling_injector_t(const stmt_t &root, const conv_config_t &cfg,
+    unrolling_injector_t(const stmt_t &root, const config_t &cfg,
             ir_context_t &ir_ctx, int ab_slm_size)
         : cfg_(cfg)
         , ir_ctx_(ir_ctx)
@@ -1961,7 +1961,7 @@ private:
         return s;
     }
 
-    const conv_config_t &cfg_;
+    const config_t &cfg_;
     ir_context_t &ir_ctx_;
     int ab_slm_size_;
 
@@ -1977,7 +1977,7 @@ private:
 };
 
 stmt_t inject_unrolling(const stmt_t &s, ir_context_t &ir_ctx,
-        const conv_config_t &cfg, int ab_slm_size) {
+        const config_t &cfg, int ab_slm_size) {
     trace_start();
     auto ret = unrolling_injector_t(s, cfg, ir_ctx, ab_slm_size).inject();
     trace_pass("inject_unrolling", ret, ir_ctx);

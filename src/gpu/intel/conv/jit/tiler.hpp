@@ -29,30 +29,30 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-class conv_config_t;
-class conv_tuner_t;
-class conv_tiler_impl_t;
+class config_t;
+class tuner_t;
+class tiler_impl_t;
 
-class conv_tiler_t {
+class tiler_t {
 public:
-    conv_tiler_t(const conv_config_t &cfg);
-    void set_tuner(conv_tuner_t *tuner);
+    tiler_t(const config_t &cfg);
+    void set_tuner(tuner_t *tuner);
     int configs() const;
     bool is_tuning_mode() const;
     bool is_valid() const;
-    void move_next(const conv_config_t &cfg);
+    void move_next(const config_t &cfg);
     int32_t cur_version() const;
     void set_cur_version(int32_t idx);
-    void set_params(conv_config_t &cfg);
-    void notify_out_of_registers(const conv_config_t &cfg);
-    bool is_grf_limit_ok(const conv_config_t &cfg) const;
+    void set_params(config_t &cfg);
+    void notify_out_of_registers(const config_t &cfg);
+    bool is_grf_limit_ok(const config_t &cfg) const;
     static void after_create_hook(
-            const conv_config_t &cfg, const impl::primitive_t *primitive);
+            const config_t &cfg, const impl::primitive_t *primitive);
     static void before_exec_hook(
             const impl::primitive_t *primitive, impl::stream_t *stream);
 
 private:
-    std::shared_ptr<conv_tiler_impl_t> impl_;
+    std::shared_ptr<tiler_impl_t> impl_;
 };
 
 } // namespace jit

@@ -17,8 +17,6 @@
 #include "gpu/intel/conv/jit/zp_plan.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/conv/jit/config.hpp"
-#include "gpu/intel/conv/jit/plan_utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
@@ -1072,13 +1070,13 @@ private:
     op_kind_t op_;
 };
 
-class conv_config_t;
+class config_t;
 
 class zp_mask_init_plan_t : public base_plan_t {
 public:
     using base_plan_t::base_plan_t;
 
-    zp_mask_init_plan_t(const conv_config_t &cfg,
+    zp_mask_init_plan_t(const config_t &cfg,
             const gemm_schedule_t &gemm_schedule, const layout_t &src_layout)
         : base_plan_t(cfg.hw()) {
         auto &a_view = gemm_schedule.a_view();
@@ -1139,7 +1137,7 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    void init_mask_descs(const conv_config_t &cfg, const view_t &a_view) {
+    void init_mask_descs(const config_t &cfg, const view_t &a_view) {
         for (dim_idx_t i = 0; i < a_view.ntdims(); i++) {
             auto &tdim = a_view.tdim(i);
             if (tdim.is_identity()) {
@@ -1513,7 +1511,7 @@ zp_plan_t::zp_plan_t(const hw_t &hw)
 zp_plan_t::~zp_plan_t() = default;
 
 // NOLINTNEXTLINE(readability-make-member-function-const)
-void zp_plan_t::init(const conv_config_t &cfg, bool src_2d_loads,
+void zp_plan_t::init(const config_t &cfg, bool src_2d_loads,
         const gemm_schedule_t &gemm_schedule, const view_t &zp_view,
         const view_t &zp_src_view, const layout_t &src_layout,
         const layout_t &wei_layout, const layout_t &dst_layout) {

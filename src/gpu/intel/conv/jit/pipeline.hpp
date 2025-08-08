@@ -28,18 +28,18 @@ namespace conv {
 namespace jit {
 
 stmt_t inject_prefetch_pipeline(
-        const stmt_t &s, ir_context_t &ir_ctx, const conv_config_t &cfg);
+        const stmt_t &s, ir_context_t &ir_ctx, const config_t &cfg);
 
 // Injects SLM buffering without unrolling based on the config.
 stmt_t inject_simple_slm_buffering(const stmt_t &s, ir_context_t &ir_ctx,
-        const conv_config_t &cfg, int ab_slm_size);
+        const config_t &cfg, int ab_slm_size);
 
 // Injects loop unrolling based on the config. Possible options:
 // - Without preload (no SLM buffering, no prefetch)
 // - With SLM buffering
 // - With prefetch
 stmt_t inject_unrolling(const stmt_t &s, ir_context_t &ir_ctx,
-        const conv_config_t &cfg, int ab_slm_size);
+        const config_t &cfg, int ab_slm_size);
 
 } // namespace jit
 } // namespace conv

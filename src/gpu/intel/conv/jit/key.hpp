@@ -33,8 +33,8 @@ namespace jit {
 
 using namespace intel::jit;
 
-class conv_config_t;
-class conv_key_impl_t;
+class config_t;
+class key_impl_t;
 
 // Represents a key with hash/equality functionality for convolution problems.
 // Mainly used for the lookup table with key -> <optimal convolution parameters>
@@ -48,19 +48,19 @@ class conv_key_impl_t;
 // 2) Batch size
 //    - Convolution problem: mb32(blocked)
 //    - Filter:              mb32+(blocked)
-class conv_key_t {
+class key_t {
 public:
-    conv_key_t() = default;
-    conv_key_t(const conv_config_t &cfg, bool make_filter = false);
+    key_t() = default;
+    key_t(const config_t &cfg, bool make_filter = false);
     const std::string &desc() const;
     // Makes a filter from the given key.
-    conv_key_t to_filter() const;
+    key_t to_filter() const;
     // Computes the distance between this key and other key (must be
     // non-filter), a filter with a smaller distance is a better match for the
     // key.
-    dim_t distance(const conv_key_t &other) const;
-    bool operator==(const conv_key_t &other) const;
-    bool matches(const conv_key_t &other) const;
+    dim_t distance(const key_t &other) const;
+    bool operator==(const key_t &other) const;
+    bool matches(const key_t &other) const;
     size_t get_hash() const;
     void stringify(std::ostream &out) const;
     void parse(std::istream &in);
@@ -70,11 +70,11 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    std::shared_ptr<conv_key_impl_t> impl_;
+    std::shared_ptr<key_impl_t> impl_;
 };
 
 struct conv_key_hash_t {
-    size_t operator()(const conv_key_t &key) const { return key.get_hash(); }
+    size_t operator()(const key_t &key) const { return key.get_hash(); }
 };
 
 } // namespace jit

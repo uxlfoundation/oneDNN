@@ -33,17 +33,15 @@ namespace v2 {
 
 using namespace intel::jit::v2;
 
-layout_desc_t make_conv_layout_desc(
+layout_desc_t make_layout_desc(
         tensor_kind_t tensor_kind, bool src_dst_with_group = false);
-layout_desc_t make_conv_algo_layout_desc(
+layout_desc_t make_algo_layout_desc(
         prop_kind_t prop, tensor_kind_t tensor_kind);
-layout_tag_t make_conv_layout_tag(
-        tensor_kind_t tensor_kind, const std::string &s);
-layout_tag_t make_conv_layout_tag(tensor_kind_t tensor_kind,
-        dim_idx_t conv_ndims, const memory_desc_t &md);
-v2::layout_t make_conv_layout(tensor_kind_t tensor_kind,
-        const layout_tag_t &_tag, bool is_dw, const prb_reqs_t &reqs,
-        uint32_t mask = 0xFFFFFFFF);
+layout_tag_t make_layout_tag(tensor_kind_t tensor_kind, const std::string &s);
+layout_tag_t make_layout_tag(
+        tensor_kind_t tensor_kind, dim_idx_t ndims, const memory_desc_t &md);
+v2::layout_t make_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
+        bool is_dw, const prb_reqs_t &reqs, uint32_t mask = 0xFFFFFFFF);
 layout_tag_t append_groups(
         tensor_kind_t tensor_kind, const layout_tag_t &layout_tag, bool is_dw);
 

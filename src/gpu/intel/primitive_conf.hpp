@@ -26,7 +26,6 @@
 
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
-#include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -129,95 +128,6 @@ struct offsets_t {
     dim_t dst_off[4][MAX_NDIMS];
 };
 
-// Convolution
-enum conv_version_t {
-    ver_unused,
-    ver_1stconv,
-    ver_16mb16c,
-    ver_32mb16c,
-    ver_32mb32c,
-    ver_32c,
-    ver_8ow16c,
-    ver_nhwc,
-    ver_nchw,
-    ver_mb_block,
-    ver_ow_block,
-
-    // Xe_HP-specific versions.
-    ver_v1,
-    ver_v2
-};
-
-struct conv_conf_t {
-    prop_kind_t prop_kind;
-
-    int ndims;
-    dim_t mb;
-    dim_t ngroups, ic, oc;
-    dim_t ngroups_without_padding, oc_without_padding, ic_without_padding;
-    dim_t id, ih, iw, od, oh, ow;
-    dim_t f_pad, l_pad, t_pad;
-    dim_t back_pad, r_pad, b_pad;
-    dim_t kd, kh, kw, kwb;
-    dim_t stride_d, stride_h, stride_w;
-    dim_t dilate_d, dilate_h, dilate_w;
-
-    int oh_block, ow_block;
-    int oc_block, ic_block;
-    dim_t ocb;
-    int mb_block;
-    int iw_tail;
-    size_t wei_slm_size, src_slm_size, dst_slm_size;
-    int sub_group_size;
-
-    compute::range_t gws_d = compute::range_t::empty();
-    compute::range_t lws_d = compute::range_t::empty();
-    compute::dispatch_t dispatch;
-
-    bool with_bias, with_groups;
-
-    attr_info_t attr_info;
-
-    bool is_depthwise;
-    bool is_nhwc;
-    bool reorder_wei = false;
-    bool reorder_bias = false;
-    bool stochastic_round = false;
-    int ver;
-    format_tag_t src_tag, dst_tag, wei_tag;
-    bool is_nchw;
-    bool is_src_nchw, is_src_nhwc;
-    bool is_dst_nhwc;
-
-    int tile_size;
-    int wino_m;
-    int wino_r;
-    dim_t wino_ih, wino_oh;
-    dim_t wino_iw, wino_ow;
-    dim_t wino_ic;
-    dim_t wino_oc;
-    int wino_ic_block;
-    int wino_oc_block;
-    int vect_size;
-    compute::range_t U_gws_d = compute::range_t::empty();
-    compute::range_t U_lws_d = compute::range_t::empty();
-    compute::range_t V_gws_d = compute::range_t::empty();
-    compute::range_t V_lws_d = compute::range_t::empty();
-    compute::range_t M_gws_d = compute::range_t::empty();
-    compute::range_t M_lws_d = compute::range_t::empty();
-    bool is_fused;
-
-    data_type_t src_data_type;
-    data_type_t weights_data_type;
-    data_type_t bias_data_type;
-    data_type_t dst_data_type;
-    data_type_t acc_data_type;
-
-    memory_desc_info_t src_md_info;
-    memory_desc_info_t wei_md_info;
-    memory_desc_info_t dst_md_info;
-};
-
 struct quantization_t : public gpu::quantization_t {
 public:
     using gpu::quantization_t::quantization_t;
@@ -233,11 +143,6 @@ public:
     void define_macros(
             compute::kernel_ctx_t &kernel_ctx, const std::string &name) const;
 };
-
-void set_default_conf(conv_conf_t &conf, const convolution_desc_t &cd,
-        const memory_desc_t &src_md, const memory_desc_t &weights_md,
-        const memory_desc_t &dst_md, const memory_desc_t &bias_md,
-        const primitive_attr_t &attr);
 
 void set_offsets(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_wrapper &md, const char *str);

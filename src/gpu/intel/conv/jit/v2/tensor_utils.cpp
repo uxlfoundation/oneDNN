@@ -27,11 +27,11 @@ namespace conv {
 namespace jit {
 namespace v2 {
 
-layout_desc_t make_conv_layout_desc(
+layout_desc_t make_layout_desc(
         tensor_kind_t tensor_kind, bool src_dst_with_group) {
     bool is_wei = (tensor_kind == tensor_kind_t::wei);
     pvar_map_t<char> letter_map;
-    for (auto &d : conv_layout_dims(tensor_kind, src_dst_with_group)) {
+    for (auto &d : layout_dims(tensor_kind, src_dst_with_group)) {
         char c = ' ';
 #define CASE(key, value) \
     if (d == pvars::key) c = (value)
@@ -55,9 +55,9 @@ layout_desc_t make_conv_layout_desc(
     return layout_desc_t(letter_map);
 }
 
-layout_desc_t make_conv_algo_layout_desc(
+layout_desc_t make_algo_layout_desc(
         prop_kind_t prop, tensor_kind_t tensor_kind) {
-    auto desc = make_conv_layout_desc(tensor_kind, /*src_dst_with_group=*/true);
+    auto desc = make_layout_desc(tensor_kind, /*src_dst_with_group=*/true);
     switch (tensor_kind) {
         case tensor_kind_t::bias:
         case tensor_kind_t::wei: return desc;
@@ -92,11 +92,10 @@ layout_desc_t make_conv_algo_layout_desc(
     return layout_desc_t(letter_map);
 }
 
-layout_tag_t make_conv_layout_tag(
-        tensor_kind_t tensor_kind, const std::string &s) {
+layout_tag_t make_layout_tag(tensor_kind_t tensor_kind, const std::string &s) {
     if (s.empty()) return layout_tag_t();
     bool is_wei = (tensor_kind == tensor_kind_t::wei);
-    auto desc = make_conv_layout_desc(tensor_kind);
+    auto desc = make_layout_desc(tensor_kind);
     auto parts = gpu_utils::split(s, ":");
     auto type = (parts.size() > 1 ? type_t(parts[1]) : type_t::f32());
     auto str_tag = desc.to_abx_tag(parts[0]);
@@ -135,7 +134,7 @@ layout_tag_t append_groups(
             new_raw_tag.add_entry(letter, e.block, e.is_blocked);
         }
     }
-    auto desc = make_conv_layout_desc(tensor_kind, /*src_dst_with_group=*/true);
+    auto desc = make_layout_desc(tensor_kind, /*src_dst_with_group=*/true);
     return layout_tag_t(
             desc, layout_tag.type(), new_raw_tag, layout_tag.is_strided());
 }
@@ -151,7 +150,7 @@ uint32_t append_groups(tensor_kind_t tensor_kind, uint32_t mask, bool is_dw) {
     return n_mask | (c_mask << 1) | (c_mask << 2) | (dhw_mask << 3);
 }
 
-layout_t make_conv_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
+layout_t make_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
         bool is_dw, const prb_reqs_t &reqs, uint32_t _mask) {
     auto tag = append_groups(tensor_kind, _tag, is_dw);
     auto mask = append_groups(tensor_kind, _mask, is_dw);
@@ -241,15 +240,15 @@ std::string blocked_to_str_tag(const memory_desc_t &md) {
     return oss.str();
 }
 
-layout_raw_tag_t normalize_conv_tag(tensor_kind_t tensor_kind,
-        dim_idx_t conv_ndims, const layout_raw_tag_t &tag) {
+layout_raw_tag_t normalize_tag(tensor_kind_t tensor_kind, dim_idx_t ndims,
+        const layout_raw_tag_t &tag) {
     bool is_wei = (tensor_kind == tensor_kind_t::wei);
-    bool add_groups = (is_wei && tag.ndims() == conv_ndims);
-    int old_sp_ndims = conv_ndims - 2;
+    bool add_groups = (is_wei && tag.ndims() == ndims);
+    int old_sp_ndims = ndims - 2;
     int new_sp_ndims = 3;
     layout_raw_tag_t ret = tag;
     if (add_groups) ret.add_dim('a', 0);
-    char sp_letter = dim_idx::as_tag(2u + ret.ndims() - conv_ndims);
+    char sp_letter = dim_idx::as_tag(2u + ret.ndims() - ndims);
     int entry_idx = ret.entry_index(sp_letter);
     for (int i = old_sp_ndims; i < new_sp_ndims; i++) {
         ret.add_dim(sp_letter, entry_idx);
@@ -257,19 +256,19 @@ layout_raw_tag_t normalize_conv_tag(tensor_kind_t tensor_kind,
     return ret;
 }
 
-layout_tag_t make_conv_layout_tag(tensor_kind_t tensor_kind,
-        dim_idx_t conv_ndims, const memory_desc_t &md) {
+layout_tag_t make_layout_tag(
+        tensor_kind_t tensor_kind, dim_idx_t ndims, const memory_desc_t &md) {
     bool is_any = (md.format_kind == format_kind::any);
     bool is_blocked = (md.format_kind == format_kind::blocked);
     gpu_assert(is_any || is_blocked);
     memory_desc_wrapper mdw(md);
     bool is_strided = (mdw.is_plain() && !mdw.is_dense());
-    auto desc = make_conv_layout_desc(tensor_kind);
+    auto desc = make_layout_desc(tensor_kind);
     type_t type(md.data_type);
     if (is_any) return layout_tag_t(desc, type, layout_raw_tag_t::any());
     auto str_tag = blocked_to_str_tag(md);
     auto raw_tag = layout_raw_tag_t(str_tag);
-    raw_tag = normalize_conv_tag(tensor_kind, conv_ndims, raw_tag);
+    raw_tag = normalize_tag(tensor_kind, ndims, raw_tag);
     return layout_tag_t(desc, type, raw_tag, is_strided);
 }
 
@@ -334,8 +333,7 @@ dim_mapper_t dim_mapper_manager_t::init_src_mapper() const {
         mapper.set_dim(pvars::ih);
         mapper.set_dim(pvars::iw);
     }
-    mapper.set_layout_desc(
-            make_conv_algo_layout_desc(prop_, tensor_kind_t::src));
+    mapper.set_layout_desc(make_algo_layout_desc(prop_, tensor_kind_t::src));
     return mapper;
 }
 
@@ -347,8 +345,7 @@ dim_mapper_t dim_mapper_manager_t::init_wei_mapper() const {
     mapper.set_dim(pvars::kd);
     mapper.set_dim(pvars::kh);
     mapper.set_dim(pvars::kw);
-    mapper.set_layout_desc(
-            make_conv_algo_layout_desc(prop_, tensor_kind_t::wei));
+    mapper.set_layout_desc(make_algo_layout_desc(prop_, tensor_kind_t::wei));
     return mapper;
 }
 
@@ -356,8 +353,7 @@ dim_mapper_t dim_mapper_manager_t::init_bias_mapper() const {
     dim_mapper_t mapper;
     mapper.set_dim(pvars::g);
     mapper.set_dim(pvars::oc);
-    mapper.set_layout_desc(
-            make_conv_algo_layout_desc(prop_, tensor_kind_t::bias));
+    mapper.set_layout_desc(make_algo_layout_desc(prop_, tensor_kind_t::bias));
     return mapper;
 }
 
@@ -392,8 +388,7 @@ dim_mapper_t dim_mapper_manager_t::init_dst_mapper() const {
         mapper.set_dim(pvars::ow,
                 simplify_rewrite((iw_idx + pw - (kw_idx * dw_inc)) / sw), true);
     }
-    mapper.set_layout_desc(
-            make_conv_algo_layout_desc(prop_, tensor_kind_t::dst));
+    mapper.set_layout_desc(make_algo_layout_desc(prop_, tensor_kind_t::dst));
     return mapper;
 }
 

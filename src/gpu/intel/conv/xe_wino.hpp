@@ -21,7 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "gpu/gpu_convolution_pd.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -31,12 +31,12 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct xe_wino_convolution_fwd_t : public primitive_t {
+struct xe_wino_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_convolution_fwd_pd_t {
-        using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:xe:wino", xe_wino_convolution_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:xe:wino", xe_wino_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -103,7 +103,7 @@ struct xe_wino_convolution_fwd_t : public primitive_t {
         void init_scratchpad();
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        conv_conf_t conf;
+        conf_t conf;
     };
 
     status_t init(impl::engine_t *engine) override {

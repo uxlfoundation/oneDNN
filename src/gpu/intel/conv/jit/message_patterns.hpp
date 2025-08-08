@@ -29,15 +29,15 @@ namespace jit {
 
 using namespace intel::jit;
 
-struct conv_stride_layout_t : public stride_layout_t<pvar_t> {
-    using base_layout_t = stride_layout_t<pvar_t>;
+struct stride_layout_t : public intel::jit::stride_layout_t<pvar_t> {
+    using base_layout_t = intel::jit::stride_layout_t<pvar_t>;
 
     enum class input_tensor_t {
         src,
         wei,
         dst,
     };
-    conv_stride_layout_t(const conv_problem_t &prb, input_tensor_t type)
+    stride_layout_t(const problem_t &prb, input_tensor_t type)
         : base_layout_t(0) {
 
         const memory_desc_t &md = [&]() {
@@ -80,7 +80,7 @@ struct conv_stride_layout_t : public stride_layout_t<pvar_t> {
         auto write_strides
                 = [&](std::array<base_layout_t::stride_dim_t,
                               stride_layout_t::max_ndims>::iterator s,
-                          const pvar_t &conv_dim, dim_t desc_dim, dim_t size,
+                          const pvar_t &dim, dim_t desc_dim, dim_t size,
                           dim_t access_stride = 1, bool can_overflow = false) {
                       // Size 1 dimensions are effectively non-existent
                       if (size == 1) return s;
@@ -107,14 +107,14 @@ struct conv_stride_layout_t : public stride_layout_t<pvar_t> {
                                   }
                               }
                               gpu_assert(s != strides.end());
-                              *s++ = stride_dim_t(conv_dim, blk_size, next,
+                              *s++ = stride_dim_t(dim, blk_size, next,
                                       can_overflow, is_complex);
                               ndims++;
                           }
                           stride *= blk_size;
                       }
                       gpu_assert(s != strides.end());
-                      *s++ = stride_dim_t(conv_dim, outer,
+                      *s++ = stride_dim_t(dim, outer,
                               access_stride * blk.strides[desc_dim],
                               can_overflow, is_complex);
                       ndims++;
@@ -197,11 +197,11 @@ struct conv_stride_layout_t : public stride_layout_t<pvar_t> {
 };
 
 inline std::ostream &operator<<(
-        std::ostream &out, conv_stride_layout_t::input_tensor_t t) {
+        std::ostream &out, stride_layout_t::input_tensor_t t) {
     switch (t) {
-        case conv_stride_layout_t::input_tensor_t::src: out << "src"; break;
-        case conv_stride_layout_t::input_tensor_t::wei: out << "wei"; break;
-        case conv_stride_layout_t::input_tensor_t::dst: out << "dst"; break;
+        case stride_layout_t::input_tensor_t::src: out << "src"; break;
+        case stride_layout_t::input_tensor_t::wei: out << "wei"; break;
+        case stride_layout_t::input_tensor_t::dst: out << "dst"; break;
     }
     return out;
 }

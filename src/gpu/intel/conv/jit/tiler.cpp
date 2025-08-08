@@ -36,11 +36,11 @@ namespace jit {
 
 namespace {
 
-int conv_tune_level() {
+int tune_level() {
     return gpu_utils::dev_getenv("gpu_conv_tune", 0);
 }
 
-std::vector<tensor_kind_t> input_tensors(const conv_problem_t &prb) {
+std::vector<tensor_kind_t> input_tensors(const problem_t &prb) {
     std::vector<tensor_kind_t> ret;
     if (prb.is_fwd || prb.is_bwd_w) ret.push_back(tensor_kind_t::src);
     if (prb.is_fwd || prb.is_bwd_d) ret.push_back(tensor_kind_t::wei);
@@ -48,11 +48,11 @@ std::vector<tensor_kind_t> input_tensors(const conv_problem_t &prb) {
     return ret;
 }
 
-bool is_reduction_dim(const pvar_t &d, const conv_problem_t &prb) {
+bool is_reduction_dim(const pvar_t &d, const problem_t &prb) {
     return to_gemm(d, prb) == pvars::k;
 }
 
-pvar_t vectorized_dim(const conv_problem_t &prb, const tile_t &tile) {
+pvar_t vectorized_dim(const problem_t &prb, const tile_t &tile) {
     pvar_t vec_dim;
     if (prb.is_dw) {
         vec_dim = pvars::g;
@@ -69,7 +69,7 @@ pvar_t vectorized_dim(const conv_problem_t &prb, const tile_t &tile) {
 }
 
 bool is_vectorized_dim(
-        const pvar_t &d, const conv_problem_t &prb, const tile_t &tile) {
+        const pvar_t &d, const problem_t &prb, const tile_t &tile) {
     return d == vectorized_dim(prb, tile);
 }
 
@@ -148,7 +148,7 @@ struct x2_tile_info_t {
     div_info_t d1;
 };
 
-const layout_t &compute_layout(const conv_config_t &cfg, tensor_kind_t kind) {
+const layout_t &compute_layout(const config_t &cfg, tensor_kind_t kind) {
     switch (kind) {
         case tensor_kind_t::src: return cfg.src_layout().compute();
         case tensor_kind_t::wei: return cfg.wei_layout().compute();
@@ -158,7 +158,7 @@ const layout_t &compute_layout(const conv_config_t &cfg, tensor_kind_t kind) {
     return cfg.src_layout().compute();
 }
 
-int get_layout_unit(const conv_config_t &cfg, const layout_t &layout,
+int get_layout_unit(const config_t &cfg, const layout_t &layout,
         tensor_kind_t tensor_kind, const pvar_t &d) {
     auto &prb = cfg.prb();
     if (!is_reduction_dim(d, prb)) return 1;
@@ -178,7 +178,7 @@ int get_layout_unit(const conv_config_t &cfg, const layout_t &layout,
     return ret;
 }
 
-int get_layout_unit(const conv_config_t &cfg, const pvar_t &d) {
+int get_layout_unit(const config_t &cfg, const pvar_t &d) {
     int ret = 1;
     for (auto t :
             {tensor_kind_t::src, tensor_kind_t::wei, tensor_kind_t::dst}) {
@@ -188,7 +188,7 @@ int get_layout_unit(const conv_config_t &cfg, const pvar_t &d) {
     return ret;
 }
 
-bool is_mad_x8_non_dw(const conv_config_t &cfg) {
+bool is_mad_x8_non_dw(const config_t &cfg) {
     auto &prb = cfg.prb();
     return (cfg.fma_kind() == fma_kind_t::mad) && !prb.is_dw
             && (prb.a_data_type_size == 1) && (prb.b_data_type_size == 1);
@@ -239,7 +239,7 @@ public:
         return x2_tile_infos_;
     }
 
-    void finalize(const conv_config_t &cfg) {
+    void finalize(const config_t &cfg) {
         finalize_iter_units(cfg);
         finalize_iter_min_blocks(cfg);
         finalize_fused_reduction(cfg);
@@ -279,7 +279,7 @@ public:
     }
 
 private:
-    void finalize_iter_units(const conv_config_t &cfg) {
+    void finalize_iter_units(const config_t &cfg) {
         auto &prb = cfg.prb();
         bool is_dpas = cfg.is_dp_fma();
         int rdims = 0;
@@ -317,7 +317,7 @@ private:
         }
     }
 
-    void finalize_iter_min_blocks(const conv_config_t &cfg) {
+    void finalize_iter_min_blocks(const config_t &cfg) {
         if (is_mad_x8_non_dw(cfg)) {
             auto &prb = cfg.prb();
             // Reduce min block size for mad/x8 as it requires a lot of
@@ -333,7 +333,7 @@ private:
         }
     }
 
-    void finalize_fused_reduction(const conv_config_t &cfg) {
+    void finalize_fused_reduction(const config_t &cfg) {
         if (!cfg.is_dp_fma()) return;
         auto &prb = cfg.prb();
         int rdims = 0;
@@ -364,7 +364,7 @@ private:
         x2_tile_infos_.push_back(std::move(x2_info));
     }
 
-    void finalize_loop_dims(const conv_config_t &cfg) {
+    void finalize_loop_dims(const config_t &cfg) {
         auto &prb = cfg.prb();
         if (prb.is_bwd_w) {
             if (!cfg.allow_global_reduction()) {
@@ -427,8 +427,8 @@ protected:
     std::vector<x2_tile_info_t> x2_tile_infos_;
 };
 
-int inner_block(const conv_config_t &cfg, tensor_kind_t tensor_kind,
-        const pvar_t &dim) {
+int inner_block(
+        const config_t &cfg, tensor_kind_t tensor_kind, const pvar_t &dim) {
     int dim_idx = tensor_conv_dim_index(dim, tensor_kind);
     gpu_assert(dim_idx != -1);
     auto &layout = compute_layout(cfg, tensor_kind);
@@ -436,7 +436,7 @@ int inner_block(const conv_config_t &cfg, tensor_kind_t tensor_kind,
             dim_idx, /*skip_outer=*/true, /*inner_only=*/false));
 }
 
-int inner_block(const conv_config_t &cfg, const pvar_t &dim) {
+int inner_block(const config_t &cfg, const pvar_t &dim) {
     int ret = 0;
     for (auto t : input_tensors(cfg.prb())) {
         if (tensor_conv_dim_index(dim, t) == -1) continue;
@@ -446,8 +446,8 @@ int inner_block(const conv_config_t &cfg, const pvar_t &dim) {
     return ret == 0 ? 1 : ret;
 }
 
-dim_t inner_stride(const conv_config_t &cfg, tensor_kind_t tensor_kind,
-        const pvar_t &dim) {
+dim_t inner_stride(
+        const config_t &cfg, tensor_kind_t tensor_kind, const pvar_t &dim) {
     dim_idx_t dim_idx = tensor_conv_dim_index(dim, tensor_kind);
     gpu_assert(dim_idx != dim_idx::invalid);
     auto &layout = compute_layout(cfg, tensor_kind);
@@ -457,7 +457,7 @@ dim_t inner_stride(const conv_config_t &cfg, tensor_kind_t tensor_kind,
     return 0;
 }
 
-bool is_inner_non_blocked(const conv_config_t &cfg, const pvar_t &dim) {
+bool is_inner_non_blocked(const config_t &cfg, const pvar_t &dim) {
     for (auto t : input_tensors(cfg.prb())) {
         if (tensor_conv_dim_index(dim, t) == -1) continue;
         if (inner_block(cfg, dim) != 1) continue;
@@ -490,9 +490,8 @@ dim_t grf_usage_bytes(fma_kind_t fma, dim_t b_iter, dim_t m_iter, dim_t n_iter,
     return abc_size;
 }
 
-int slm_usage_bytes(const conv_config_t &cfg, dim_t b_tg, dim_t m_tg,
-        dim_t n_tg, dim_t k_tg, dim_t b_iter, dim_t m_iter, dim_t n_iter,
-        dim_t k_iter) {
+int slm_usage_bytes(const config_t &cfg, dim_t b_tg, dim_t m_tg, dim_t n_tg,
+        dim_t k_tg, dim_t b_iter, dim_t m_iter, dim_t n_iter, dim_t k_iter) {
     if (cfg.hw() >= ngen::HW::XeHPC) return 0;
 
     auto &prb = cfg.prb();
@@ -516,7 +515,7 @@ int slm_usage_bytes(const conv_config_t &cfg, dim_t b_tg, dim_t m_tg,
 }
 
 int slm_usage_bytes_for_params(
-        const conv_config_t &cfg, const blocking_params_t &params) {
+        const config_t &cfg, const blocking_params_t &params) {
     auto &prb = cfg.prb();
     auto tg = to_gemm(params.blocking().thread_group(), prb);
     auto iter = to_gemm(params.blocking().iter(), prb);
@@ -534,7 +533,7 @@ int slm_usage_bytes_for_params(
 
 class conv_blocking_checker_t : public blocking_checker_t {
 public:
-    conv_blocking_checker_t(const conv_config_t &cfg)
+    conv_blocking_checker_t(const config_t &cfg)
         : cfg_(cfg)
         , padded_shape_(cfg.shape(/*pad=*/true))
         , padded_gemm_shape_(to_gemm(padded_shape_, cfg.prb()))
@@ -599,12 +598,12 @@ public:
 
 private:
     struct context_t {
-        context_t(const blocking_t &blk, const conv_config_t &cfg)
+        context_t(const blocking_t &blk, const config_t &cfg)
             : context_t(blk, cfg, to_gemm(blk.iter(), cfg.prb()),
                     to_gemm(blk.loop(), cfg.prb()),
                     to_gemm(blk.thread_group(), cfg.prb())) {}
 
-        context_t(const blocking_t &blk, const conv_config_t &cfg,
+        context_t(const blocking_t &blk, const config_t &cfg,
                 const tile_t &iter, const tile_t &loop, const tile_t &tg)
             : blk(blk)
             , b_iter(iter.get(pvars::b, 1))
@@ -619,7 +618,7 @@ private:
             , dpas_2x_depth(get_dpas_2x_depth(blk, cfg, m_iter * n_iter)) {}
 
         static bool get_dpas_2x_depth(
-                const blocking_t &blk, const conv_config_t &cfg, dim_t mn) {
+                const blocking_t &blk, const config_t &cfg, dim_t mn) {
             if (!cfg.is_dp_fma() || cfg.regs() <= 128
                     || cfg.prb().is_fp8_conv())
                 return false;
@@ -968,7 +967,7 @@ private:
         return true;
     }
 
-    const conv_config_t &cfg_;
+    const config_t &cfg_;
     const tile_t padded_shape_;
     const tile_t padded_gemm_shape_;
     const int max_tg_size_ = 0;
@@ -1018,7 +1017,7 @@ conv_blocking_scheme_t bwd_w_T_io_I_ikow("l:[mb,oh,ow],T:[oc,ic],i:[ic,kw,oc,ow]
 // clang-format on
 
 double get_iter_dim_score(
-        const pvar_t &dim, const conv_config_t &cfg, dim_t dim_size) {
+        const pvar_t &dim, const config_t &cfg, dim_t dim_size) {
     auto &prb = cfg.prb();
     if (utils::one_of(dim, pvars::ow, pvars::iw)) {
         if (prb.ksp > 1 || dim_size % 16 != 0) return 16 - 1;
@@ -1032,7 +1031,7 @@ double get_iter_dim_score(
 }
 
 pvar_t select_non_blocked_iter_dim(
-        const conv_config_t &cfg, const std::vector<pvar_t> &dims) {
+        const config_t &cfg, const std::vector<pvar_t> &dims) {
     const auto shape = cfg.shape(/*pad=*/false);
     std::vector<double> scores;
     scores.reserve(dims.size());
@@ -1042,8 +1041,7 @@ pvar_t select_non_blocked_iter_dim(
     return dims[max_it - scores.begin()];
 }
 
-pvar_t select_iter_dim(
-        const conv_config_t &cfg, const std::vector<pvar_t> &_dims) {
+pvar_t select_iter_dim(const config_t &cfg, const std::vector<pvar_t> &_dims) {
     bool is_bwd_d_w_opt = utils::one_of(cfg.bwd_d_optimize_kind(),
             bwd_d_optimize_kind_t::skip_strided_dhw,
             bwd_d_optimize_kind_t::skip_out_of_bound_w);
@@ -1072,9 +1070,8 @@ pvar_t select_iter_dim(
 using conv_blocking_scheme_list_t
         = blocking_scheme_list_impl_t<conv_blocking_scheme_t>;
 
-conv_blocking_scheme_list_t get_blocking_schemes_fwd_dw(
-        const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_fwd_dw(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::ow});
     bool m_is_mb = (m_iter_dim == pvars::mb);
     bool m_is_ow = (m_iter_dim == pvars::ow);
@@ -1083,9 +1080,8 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd_dw(
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_bwd_d_dw(
-        const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_bwd_d_dw(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
     bool m_is_mb = (m_iter_dim == pvars::mb);
     bool m_is_iw = (m_iter_dim == pvars::iw);
@@ -1094,9 +1090,8 @@ conv_blocking_scheme_list_t get_blocking_schemes_bwd_d_dw(
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_bwd_w_dw(
-        const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_bwd_w_dw(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto k_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::ow});
     bool k_is_mb = (k_iter_dim == pvars::mb);
     bool k_is_ow = (k_iter_dim == pvars::ow);
@@ -1109,8 +1104,8 @@ conv_blocking_scheme_list_t get_blocking_schemes_bwd_w_dw(
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_fwd(const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_fwd(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::ow});
     bool mb_iter = (m_iter_dim == pvars::mb);
     bool ow_iter = (m_iter_dim == pvars::ow);
@@ -1126,9 +1121,8 @@ conv_blocking_scheme_list_t get_blocking_schemes_fwd(const conv_config_t &cfg) {
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(
-        const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto m_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::iw});
     bool mb_iter = (m_iter_dim == pvars::mb);
     bool iw_iter = (m_iter_dim == pvars::iw);
@@ -1141,9 +1135,8 @@ conv_blocking_scheme_list_t get_blocking_schemes_bwd_d(
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_bwd_w(
-        const conv_config_t &cfg) {
-    conv_blocking_scheme_list_t ret(conv_tune_level());
+conv_blocking_scheme_list_t get_blocking_schemes_bwd_w(const config_t &cfg) {
+    conv_blocking_scheme_list_t ret(tune_level());
     auto k_iter_dim = select_iter_dim(cfg, {pvars::mb, pvars::ow});
     bool k_is_mb = (k_iter_dim == pvars::mb);
     bool k_is_ow = (k_iter_dim == pvars::ow);
@@ -1159,8 +1152,7 @@ conv_blocking_scheme_list_t get_blocking_schemes_bwd_w(
     return ret;
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_dw_impl(
-        const conv_config_t &cfg) {
+conv_blocking_scheme_list_t get_blocking_schemes_dw_impl(const config_t &cfg) {
     auto &prb = cfg.prb();
     if (prb.is_fwd) return get_blocking_schemes_fwd_dw(cfg);
     if (prb.is_bwd_d) return get_blocking_schemes_bwd_d_dw(cfg);
@@ -1169,8 +1161,7 @@ conv_blocking_scheme_list_t get_blocking_schemes_dw_impl(
     return conv_blocking_scheme_list_t();
 }
 
-conv_blocking_scheme_list_t get_blocking_schemes_impl(
-        const conv_config_t &cfg) {
+conv_blocking_scheme_list_t get_blocking_schemes_impl(const config_t &cfg) {
     auto &prb = cfg.prb();
     if (prb.is_dw) return get_blocking_schemes_dw_impl(cfg);
     if (prb.is_fwd) return get_blocking_schemes_fwd(cfg);
@@ -1180,8 +1171,7 @@ conv_blocking_scheme_list_t get_blocking_schemes_impl(
     return conv_blocking_scheme_list_t();
 }
 
-std::vector<conv_blocking_scheme_t> get_blocking_schemes(
-        const conv_config_t &cfg) {
+std::vector<conv_blocking_scheme_t> get_blocking_schemes(const config_t &cfg) {
     auto ret = get_blocking_schemes_impl(cfg).get();
     for (auto &s : ret)
         s.finalize(cfg);
@@ -1190,8 +1180,7 @@ std::vector<conv_blocking_scheme_t> get_blocking_schemes(
 
 } // namespace
 
-dim_t grf_usage_bytes(
-        const conv_config_t &cfg, const blocking_params_t &params) {
+dim_t grf_usage_bytes(const config_t &cfg, const blocking_params_t &params) {
     auto &prb = cfg.prb();
     auto iter = to_gemm(params.blocking().iter(), prb);
     dim_t b_iter = iter.get(pvars::b, 1);
@@ -1204,8 +1193,8 @@ dim_t grf_usage_bytes(
     return abc_size;
 }
 
-void sort_by_model_scores(params_generator_t &params_gen,
-        const conv_config_t &cfg, tiler_mode_t mode) {
+void sort_by_model_scores(params_generator_t &params_gen, const config_t &cfg,
+        tiler_mode_t mode) {
     std::unordered_map<int, float> eff_scores;
     for (int i = 0; i < params_gen.configs(); i++) {
         auto &p = params_gen.at(i);
@@ -1238,11 +1227,11 @@ void sort_by_model_scores(params_generator_t &params_gen,
 }
 
 // Tuner class.
-class conv_tuner_t {
+class tuner_t {
 public:
     struct primitive_info_t {
-        const conv_tiler_t *impl = nullptr;
-        conv_key_t key;
+        const tiler_t *impl = nullptr;
+        key_t key;
         blocking_params_t params;
     };
 
@@ -1251,7 +1240,7 @@ public:
     void set_params(prim_config_t &cfg) { params_gen_.set_params(cfg); }
 
     void notify_create(
-            const conv_config_t &cfg, const impl::primitive_t *primitive) {
+            const config_t &cfg, const impl::primitive_t *primitive) {
         std::lock_guard<std::mutex> lock(mutex_);
         created_configs_++;
         auto &info = primitive_infos_[primitive];
@@ -1274,7 +1263,7 @@ public:
     void finalize(const blocking_params_t &params) {
         bool is_best = (tune_data_.best_id() == params.id());
         if (is_best) {
-            conv_lookup_table().set(key_.to_filter(), params);
+            lookup_table().set(key_.to_filter(), params);
             best_params_dbg_ = params;
         }
         uint64_t nsec = tune_data_.nsec(params.id());
@@ -1305,17 +1294,17 @@ public:
         return primitive_infos_.at(primitive);
     }
 
-    static conv_tuner_t *get_tuner(const conv_key_t &key, bool do_lock = true) {
+    static tuner_t *get_tuner(const key_t &key, bool do_lock = true) {
         std::unique_lock<std::mutex> lock(mutex_, std::defer_lock_t());
         if (do_lock) lock.lock();
         auto it = conv2tuner_.find(key);
         return it != conv2tuner_.end() ? &it->second : nullptr;
     }
 
-    static conv_tuner_t *get_tuner(int tune_level, int simd_size,
+    static tuner_t *get_tuner(int tune_level, int simd_size,
             blocking_checker_t &chk,
             const std::vector<level_tile_set_t> &level_tile_sets,
-            const conv_key_t &key, double ops,
+            const key_t &key, double ops,
             const std::function<tile_t(const tile_t &)> &convert,
             bool create_if_not_found = false) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1336,7 +1325,7 @@ public:
         }
         tile_to_vec_t tile_to_vec(tiles);
         auto ret = conv2tuner_.emplace(key,
-                conv_tuner_t(key, ops, std::move(params_gen),
+                tuner_t(key, ops, std::move(params_gen),
                         std::move(tile_to_vec)));
         return &ret.first->second;
     }
@@ -1362,8 +1351,8 @@ public:
     }
 
 private:
-    conv_tuner_t(const conv_key_t &key, double ops,
-            params_generator_t params_gen, tile_to_vec_t tile_vec)
+    tuner_t(const key_t &key, double ops, params_generator_t params_gen,
+            tile_to_vec_t tile_vec)
         : key_(key)
         , params_gen_(std::move(params_gen))
         , tile_vec_(std::move(tile_vec))
@@ -1372,7 +1361,7 @@ private:
     }
 
     struct stamp_info_t {
-        conv_tuner_t *tuner;
+        tuner_t *tuner;
         blocking_params_t params;
     };
 
@@ -1388,7 +1377,7 @@ private:
         std::vector<std::string> ret;
         ret.emplace_back("perf");
         ret.emplace_back("conv");
-        for (auto &k : conv_key_t::csv_keys())
+        for (auto &k : key_t::csv_keys())
             ret.push_back(k);
         for (auto &k : blocking_params_t::csv_keys())
             ret.push_back(k);
@@ -1427,7 +1416,7 @@ private:
         }
     }
 
-    conv_key_t key_;
+    key_t key_;
     params_generator_t params_gen_;
     const tile_to_vec_t tile_vec_;
     tune_data_t tune_data_;
@@ -1436,23 +1425,20 @@ private:
     int created_configs_ = 0;
     double ops_ = 0;
 
-    static std::unordered_map<conv_key_t, conv_tuner_t, conv_key_hash_t>
-            conv2tuner_;
+    static std::unordered_map<key_t, tuner_t, conv_key_hash_t> conv2tuner_;
     static std::unordered_map<uint64_t, stamp_info_t> stamp_infos_;
     static std::unordered_map<const impl::primitive_t *,
-            conv_tuner_t::primitive_info_t>
+            tuner_t::primitive_info_t>
             primitive_infos_;
     static std::mutex mutex_;
 };
 
-std::unordered_map<conv_key_t, conv_tuner_t, conv_key_hash_t>
-        conv_tuner_t::conv2tuner_;
-std::unordered_map<uint64_t, conv_tuner_t::stamp_info_t>
-        conv_tuner_t::stamp_infos_;
-std::unordered_map<const impl::primitive_t *, conv_tuner_t::primitive_info_t>
-        conv_tuner_t::primitive_infos_;
+std::unordered_map<key_t, tuner_t, conv_key_hash_t> tuner_t::conv2tuner_;
+std::unordered_map<uint64_t, tuner_t::stamp_info_t> tuner_t::stamp_infos_;
+std::unordered_map<const impl::primitive_t *, tuner_t::primitive_info_t>
+        tuner_t::primitive_infos_;
 
-std::mutex conv_tuner_t::mutex_;
+std::mutex tuner_t::mutex_;
 
 enum class grf_mode_policy_t {
     // Try 128 GRF mode based on heuristics.
@@ -1461,10 +1447,10 @@ enum class grf_mode_policy_t {
     _default = 1
 };
 
-class conv_tiler_impl_t {
+class tiler_impl_t {
 public:
-    conv_tiler_impl_t() = default;
-    conv_tiler_impl_t(const conv_config_t &cfg) {
+    tiler_impl_t() = default;
+    tiler_impl_t(const config_t &cfg) {
         double init_time_ms = 0;
 #ifdef DNNL_DEV_MODE
         init_time_ms = get_msec();
@@ -1488,7 +1474,7 @@ public:
         return params_gen_.is_valid();
     }
 
-    void move_next(const conv_config_t &cfg) {
+    void move_next(const config_t &cfg) {
         if (is_tuning_mode()) {
             tuner_->move_next();
             return;
@@ -1515,7 +1501,7 @@ public:
         params_gen_.set_cur_index(idx);
     }
 
-    void set_params(conv_config_t &cfg) {
+    void set_params(config_t &cfg) {
         init_regs(cfg);
         if (is_tuning_mode()) {
             tuner_->set_params(cfg);
@@ -1526,12 +1512,12 @@ public:
         }
     }
 
-    void notify_out_of_registers(const conv_config_t &cfg) {
+    void notify_out_of_registers(const config_t &cfg) {
         if (is_tuning_mode() || cfg.regs() != default_regs(cfg)) return;
         grf_usage_limit_ = estimate_register_count(cfg) * cfg.grf_size();
     }
 
-    bool is_grf_limit_ok(const conv_config_t &cfg) const {
+    bool is_grf_limit_ok(const config_t &cfg) const {
         if (is_tuning_mode() || grf_usage_limit_ == 0) return true;
         int cur_usage_bytes = estimate_register_count(cfg) * cfg.grf_size();
         return cur_usage_bytes < grf_usage_limit_;
@@ -1556,7 +1542,7 @@ private:
         policy = static_cast<grf_mode_policy_t>(version % 2);
     }
 
-    void init(const conv_config_t &cfg) {
+    void init(const config_t &cfg) {
         if (cfg.loop_dims().is_overridden()
                 || cfg.thread_group_dims().is_overridden()
                 || cfg.iter_dims().is_overridden()) {
@@ -1573,7 +1559,7 @@ private:
         init_regs(try_cfg);
         conv_blocking_checker_t chk(try_cfg);
         const int simd_size = cfg.vec_size();
-        const int tune_level = conv_tune_level();
+        const int tune_level = jit::tune_level();
 
         switch (mode_) {
             case tiler_mode_t::env_config:
@@ -1586,7 +1572,7 @@ private:
                 break;
                 break;
             case tiler_mode_t::lookup: {
-                const auto params = const_conv_lookup_table().find(cfg.key());
+                const auto params = const_lookup_table().find(cfg.key());
                 if (!params.is_empty() && chk.is_ok(params.blocking())) {
                     gpu_info() << "Using lookup table config: " << params.str();
                     params_gen_ = params_generator_t(tune_level, simd_size, chk,
@@ -1602,7 +1588,7 @@ private:
                 auto convert = [&](const tile_t &tile) {
                     return to_gemm(tile, cfg.prb());
                 };
-                tuner_ = conv_tuner_t::get_tuner(tune_level, simd_size, chk,
+                tuner_ = tuner_t::get_tuner(tune_level, simd_size, chk,
                         level_tile_sets, cfg.key(), cfg.prb().ops(), convert,
                         /*create_if_not_found=*/true);
                 break;
@@ -1619,7 +1605,7 @@ private:
         if (tiler_params().do_list) print_all();
     }
 
-    void maybe_try_small_grf(conv_config_t &cfg) {
+    void maybe_try_small_grf(config_t &cfg) {
         if (cfg.regs() == 128 || cfg.exec_cfg_param().is_overridden("regs"))
             return;
         auto try_cfg = cfg;
@@ -1629,10 +1615,9 @@ private:
         dim_t kg_elems = try_cfg.kernel_grid().elems(),
               tg_elems = try_cfg.thread_group_grid().elems();
         try_cfg.set_regs(128);
-        int new_wave_util
-                = static_cast<int>(conv_config_t::get_wave_utilization(
-                        try_cfg.exec_cfg(), kg_elems, tg_elems));
-        int wave_util = static_cast<int>(conv_config_t::get_wave_utilization(
+        int new_wave_util = static_cast<int>(config_t::get_wave_utilization(
+                try_cfg.exec_cfg(), kg_elems, tg_elems));
+        int wave_util = static_cast<int>(config_t::get_wave_utilization(
                 cfg.exec_cfg(), kg_elems, tg_elems));
         if (wave_util > 90 && new_wave_util >= wave_util) cfg.set_regs(128);
     }
@@ -1646,66 +1631,66 @@ private:
 
     tiler_mode_t mode_ = tiler_mode_t::undef;
     params_generator_t params_gen_;
-    conv_tuner_t *tuner_ = nullptr;
+    tuner_t *tuner_ = nullptr;
     int grf_usage_limit_ = 0;
     grf_mode_policy_t grf_mode_policy_ = grf_mode_policy_t::try_small_grf;
 };
 
-conv_tiler_t::conv_tiler_t(const conv_config_t &cfg)
-    : impl_(std::make_shared<conv_tiler_impl_t>(cfg)) {}
+tiler_t::tiler_t(const config_t &cfg)
+    : impl_(std::make_shared<tiler_impl_t>(cfg)) {}
 
-int conv_tiler_t::configs() const {
+int tiler_t::configs() const {
     return impl_->configs();
 }
 
-bool conv_tiler_t::is_tuning_mode() const {
+bool tiler_t::is_tuning_mode() const {
     return impl_->is_tuning_mode();
 }
 
-bool conv_tiler_t::is_valid() const {
+bool tiler_t::is_valid() const {
     return impl_->is_valid();
 }
 
-void conv_tiler_t::move_next(const conv_config_t &cfg) {
+void tiler_t::move_next(const config_t &cfg) {
     impl_->move_next(cfg);
 }
 
-int32_t conv_tiler_t::cur_version() const {
+int32_t tiler_t::cur_version() const {
     return impl_->cur_version();
 }
 
-void conv_tiler_t::set_cur_version(int32_t version) {
+void tiler_t::set_cur_version(int32_t version) {
     impl_->set_cur_version(version);
 }
 
-void conv_tiler_t::set_params(conv_config_t &cfg) {
+void tiler_t::set_params(config_t &cfg) {
     impl_->set_params(cfg);
 }
 
-void conv_tiler_t::notify_out_of_registers(const conv_config_t &cfg) {
+void tiler_t::notify_out_of_registers(const config_t &cfg) {
     impl_->notify_out_of_registers(cfg);
 }
 
-bool conv_tiler_t::is_grf_limit_ok(const conv_config_t &cfg) const {
+bool tiler_t::is_grf_limit_ok(const config_t &cfg) const {
     return impl_->is_grf_limit_ok(cfg);
 }
-void conv_tiler_t::after_create_hook(
-        const conv_config_t &cfg, const impl::primitive_t *primitive) {
+void tiler_t::after_create_hook(
+        const config_t &cfg, const impl::primitive_t *primitive) {
     if (!cfg.tiler().is_tuning_mode()) return;
-    auto *tuner = conv_tuner_t::get_tuner(cfg.key());
+    auto *tuner = tuner_t::get_tuner(cfg.key());
     tuner->notify_create(cfg, primitive);
 }
 
-void conv_tiler_t::before_exec_hook(
+void tiler_t::before_exec_hook(
         const impl::primitive_t *primitive, impl::stream_t *stream) {
     if (tiler_params().mode != tiler_mode_t::tune) return;
     if (!stream->is_profiling_enabled()) return;
-    auto &info = conv_tuner_t::get_primitive_info(primitive);
-    auto *tuner = conv_tuner_t::get_tuner(info.key);
+    auto &info = tuner_t::get_primitive_info(primitive);
+    auto *tuner = tuner_t::get_tuner(info.key);
     auto *compute_stream = utils::downcast<intel::stream_t *>(stream);
     auto &profiler = compute_stream->profiler();
     tuner->set_profile_info(profiler.stamp(), info.params);
-    profiler.set_callback(conv_tuner_t::profile_callback);
+    profiler.set_callback(tuner_t::profile_callback);
 }
 
 } // namespace jit

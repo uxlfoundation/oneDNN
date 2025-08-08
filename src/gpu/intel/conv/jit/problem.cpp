@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/conv/jit/problem.hpp"
-#include "common/convolution_pd.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
@@ -28,29 +27,29 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-const std::vector<pvar_t> &conv_dims() {
-    static std::vector<pvar_t> _conv_dims = []() {
+const std::vector<pvar_t> &dims() {
+    static std::vector<pvar_t> dims = []() {
         std::vector<pvar_t> ret;
-        for (auto &d : conv_index_dims(prop_kind::forward)) {
+        for (auto &d : index_dims(prop_kind::forward)) {
             ret.push_back(d);
         }
         ret.push_back(pvars::id);
         ret.push_back(pvars::ih);
         ret.push_back(pvars::iw);
-        for (auto &d : conv_stride_dims())
+        for (auto &d : stride_dims())
             ret.push_back(d);
-        for (auto &d : conv_dilation_dims())
+        for (auto &d : dilation_dims())
             ret.push_back(d);
-        for (auto &d : conv_padding_dims())
+        for (auto &d : padding_dims())
             ret.push_back(d);
         return ret;
     }();
-    return _conv_dims;
+    return dims;
 }
 
 pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
 
-    auto dims = conv_layout_dims(tensor_kind, true);
+    auto dims = layout_dims(tensor_kind, true);
     for (auto &d : dims) {
         if (d == dim) {
             auto str = to_string(tensor_kind) + "_";
@@ -60,7 +59,7 @@ pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
     return pvar_t();
 }
 
-const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop) {
+const std::vector<pvar_t> &index_dims(prop_kind_t prop) {
     auto get_dims = [&](prop_kind_t prop) {
         std::vector<pvar_t> ret;
         ret.push_back(pvars::mb);
@@ -93,20 +92,20 @@ const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop) {
     }
 }
 
-bool is_conv_index(const pvar_t &dim) {
+bool is_index(const pvar_t &dim) {
     for (auto prop : {prop_kind::forward, prop_kind::backward_data,
                  prop_kind::backward_weights})
-        if (is_conv_index(dim, prop)) return true;
+        if (is_index(dim, prop)) return true;
     return false;
 }
 
-bool is_conv_index(const pvar_t &dim, prop_kind_t prop) {
-    for (auto &d : conv_index_dims(prop))
+bool is_index(const pvar_t &dim, prop_kind_t prop) {
+    for (auto &d : index_dims(prop))
         if (d == dim) return true;
     return false;
 }
 
-const std::vector<pvar_t> &conv_layout_dims(
+const std::vector<pvar_t> &layout_dims(
         tensor_kind_t tensor_kind, bool src_dst_with_group) {
     static const std::vector<pvar_t> src_dims(
             {pvars::mb, pvars::ic, pvars::id, pvars::ih, pvars::iw});
@@ -160,7 +159,7 @@ tensor_kind_t from_abc(prop_kind_t prop, tensor_kind_t abc) {
     return tensor_kind_t::undef;
 }
 
-const std::vector<pvar_t> &conv_stride_dims() {
+const std::vector<pvar_t> &stride_dims() {
     static std::vector<pvar_t> _stride_dims = [&]() {
         std::vector<pvar_t> ret;
         ret.push_back(pvars::sd);
@@ -171,7 +170,7 @@ const std::vector<pvar_t> &conv_stride_dims() {
     return _stride_dims;
 }
 
-const std::vector<pvar_t> &conv_dilation_dims() {
+const std::vector<pvar_t> &dilation_dims() {
     static std::vector<pvar_t> _dilation_dims = [&]() {
         std::vector<pvar_t> ret;
         ret.push_back(pvars::dd);
@@ -182,7 +181,7 @@ const std::vector<pvar_t> &conv_dilation_dims() {
     return _dilation_dims;
 }
 
-const std::vector<pvar_t> &conv_padding_dims() {
+const std::vector<pvar_t> &padding_dims() {
     static std::vector<pvar_t> _padding_dims = [&]() {
         std::vector<pvar_t> ret;
         ret.push_back(pvars::pd);
@@ -227,8 +226,8 @@ bool can_reduce_to_1d(const memory_desc_t &md, const post_ops_t &post_ops) {
     return true;
 }
 
-void conv_problem_t::normalize_shape() {
-    normalize_conv_shape(id, od, kd, sd, dd, pd, ih, oh, kh, sh, dh, ph, iw, ow,
+void problem_t::normalize_shape() {
+    jit::normalize_shape(id, od, kd, sd, dd, pd, ih, oh, kh, sh, dh, ph, iw, ow,
             kw, sw, dw, pw,
             can_reduce_to_1d(c_md(), conv_pd->attr()->post_ops_)
                     && can_reduce_to_1d(a_md(), post_ops_t())
@@ -236,22 +235,22 @@ void conv_problem_t::normalize_shape() {
             dhw_map);
 }
 
-const memory_desc_t &conv_problem_t::a_md() const {
+const memory_desc_t &problem_t::a_md() const {
     return *pick_a(conv_pd->invariant_src_md(), conv_pd->invariant_wei_md(),
             conv_pd->invariant_dst_md());
 }
 
-const memory_desc_t &conv_problem_t::b_md() const {
+const memory_desc_t &problem_t::b_md() const {
     return *pick_b(conv_pd->invariant_src_md(), conv_pd->invariant_wei_md(),
             conv_pd->invariant_dst_md());
 }
 
-const memory_desc_t &conv_problem_t::c_md() const {
+const memory_desc_t &problem_t::c_md() const {
     return *pick_c(conv_pd->invariant_src_md(), conv_pd->invariant_wei_md(),
             conv_pd->invariant_dst_md());
 }
 
-status_t conv_problem_t::init_abc_data_types(const hw_t &hw) {
+status_t problem_t::init_abc_data_types(const hw_t &hw) {
     a_data_type = pick_a(src_data_type, wei_data_type, dst_data_type);
     b_data_type = pick_b(src_data_type, wei_data_type, dst_data_type);
     // Always use f32 for accumulation/storing in the main kernel.
@@ -295,7 +294,7 @@ status_t conv_problem_t::init_abc_data_types(const hw_t &hw) {
     return status::success;
 }
 
-status_t conv_problem_t::init_acc_data_type() {
+status_t problem_t::init_acc_data_type() {
     auto a = a_data_type;
     auto b = b_data_type;
     auto c = c_data_type;
@@ -320,12 +319,12 @@ status_t conv_problem_t::init_acc_data_type() {
     return status::success;
 }
 
-bool conv_problem_t::with_sum_post_op() const {
+bool problem_t::with_sum_post_op() const {
     auto &post_ops = attr->post_ops_;
     return post_ops.find(primitive_kind::sum) != -1;
 }
 
-void conv_problem_t::init_transpose(const hw_t &hw) {
+void problem_t::init_transpose(const hw_t &hw) {
     bool is_dw = (g > 1) && (oc == 1) && (ic == 1);
     bool wei_any
             = (conv_pd->invariant_wei_md()->format_kind == format_kind::any);
@@ -346,7 +345,7 @@ void conv_problem_t::init_transpose(const hw_t &hw) {
             = gpu_utils::dev_getenv("ab_swap_transpose", ab_swap_transpose);
 }
 
-void normalize_conv_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
+void normalize_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
         dim_t &pd, dim_t &ih, dim_t &oh, dim_t &kh, dim_t &sh, dim_t &dh,
         dim_t &ph, dim_t &iw, dim_t &ow, dim_t &kw, dim_t &sw, dim_t &dw,
         dim_t &pw, bool can_flatten_spatial, std::array<int, 3> &dhw_map) {
@@ -451,7 +450,7 @@ tile_t to_gemm(const tile_t &t, prop_kind_t prop, bool is_transpose) {
 
 // Matches the user-provided descriptor against the list of supported plain tags.
 std::string get_plain_user_tag(
-        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei) {
+        const problem_t &prb, const memory_desc_t &md, bool is_wei) {
     memory_desc_wrapper mdw(md);
     if (mdw.is_plain() && !mdw.is_dense()) return "user";
     if (is_wei) {
@@ -476,8 +475,8 @@ std::string get_plain_user_tag(
     return {};
 }
 
-bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
-        bool nested) {
+bool is_nchw_ok(
+        const problem_t &prb, ngen::HW hw, tensor_kind_t kind, bool nested) {
     gpu_assert(utils::one_of(kind, tensor_kind_t::src, tensor_kind_t::dst));
     bool is_src = (kind == tensor_kind_t::src);
     bool is_input = (is_src && prb.is_fwd) || (!is_src && prb.is_bwd_d)

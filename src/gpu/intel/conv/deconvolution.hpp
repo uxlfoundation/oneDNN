@@ -21,8 +21,8 @@
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_deconvolution_pd.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -30,7 +30,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace conv {
+namespace deconv {
+
+using namespace conv;
 
 static status_t weights_axes_permutation(
         memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {
@@ -42,8 +44,7 @@ static status_t weights_axes_permutation(
     return memory_desc_permute_axes(*o_md, *i_md, perm);
 }
 
-static status_t conv_descr_create(
-        const deconvolution_desc_t *dd, convolution_desc_t *cd) {
+static status_t conv_descr_create(const deconv::desc_t *dd, conv::desc_t *cd) {
     using namespace prop_kind;
     alg_kind_t alg_kind = alg_kind::convolution_direct;
 
@@ -83,17 +84,15 @@ static status_t conv_descr_create(
             dd->strides, dd->dilates, dd->padding[0], dd->padding[1]);
 }
 
-struct convolution_deconvolution_bwd_weights_t : public primitive_t {
+struct conv_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_deconvolution_bwd_weights_pd_t {
-        using gpu_deconvolution_bwd_weights_pd_t::
-                gpu_deconvolution_bwd_weights_pd_t;
+    struct pd_t : public bwd_weights_pd_t {
+        using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                name_.c_str(), convolution_deconvolution_bwd_weights_t);
+        DECLARE_COMMON_PD_T(name_.c_str(), conv_bwd_weights_t);
 
         status_t init_convolution(impl::engine_t *engine) {
-            convolution_desc_t cd;
+            conv::desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr(*attr());
             if (!conv_attr.is_initialized()) return status::out_of_memory;
@@ -179,7 +178,7 @@ struct convolution_deconvolution_bwd_weights_t : public primitive_t {
 
     status_t init(impl::engine_t *engine) override {
         // Creating convolution primitve
-        CHECK(create_nested_primitive(conv_p_, pd()->conv_pd_, engine));
+        CHECK(create_nested_primitive(nested_p_, pd()->conv_pd_, engine));
 
         if (!pd()->with_bias()) return status::success;
         // Initializing values for the deconv bias kernel
@@ -220,18 +219,18 @@ struct convolution_deconvolution_bwd_weights_t : public primitive_t {
         using namespace memory_tracking::names;
 
         const auto &args = ctx.args();
-        exec_args_t conv_args;
-        conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
-        conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-        conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
+        exec_args_t nested_args;
+        nested_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
+        nested_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
+        nested_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
         if (!types::is_zero_md(pd()->scratchpad_md()))
-            conv_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
-        exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+            nested_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
+        exec_ctx_t nested_ctx(ctx, std::move(nested_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        nested_scratchpad_t ns(ctx, key_nested, nested_p_);
+        nested_ctx.set_scratchpad_grantor(ns.grantor());
 
-        status_t status = conv_p_->execute(conv_ctx);
+        status_t status = nested_p_->execute(nested_ctx);
         if (status != status::success) return status;
 
         if (pd()->with_bias()) {
@@ -252,7 +251,7 @@ struct convolution_deconvolution_bwd_weights_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::shared_ptr<impl::primitive_t> conv_p_;
+    std::shared_ptr<impl::primitive_t> nested_p_;
     compute::kernel_t bias_kernel_;
     compute::range_t gws = compute::range_t::empty(1);
     data_type_t dst_data_type = data_type::undef;
@@ -260,7 +259,7 @@ private:
     data_type_t accum_data_type = data_type::undef;
 };
 
-} // namespace conv
+} // namespace deconv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

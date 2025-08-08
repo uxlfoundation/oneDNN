@@ -30,13 +30,12 @@ namespace jit {
 
 using namespace intel::jit;
 
-class conv_problem_t;
-class conv_post_op_view_mapper_t : public post_op_view_mapper_t {
+class problem_t;
+class post_op_view_mapper_t : public intel::jit::post_op_view_mapper_t {
 public:
-    conv_post_op_view_mapper_t(const gemm_schedule_t &schedule,
-            const conv_problem_t &prb, const zero_points_config_t &zp_cfg,
-            const layout_t &zp_dst)
-        : post_op_view_mapper_t(schedule.c_view())
+    post_op_view_mapper_t(const gemm_schedule_t &schedule, const problem_t &prb,
+            const zero_points_config_t &zp_cfg, const layout_t &zp_dst)
+        : intel::jit::post_op_view_mapper_t(schedule.c_view())
         , has_external_src_zps_(zp_cfg.needs_src_conv_precalc
                   || zp_cfg.needs_src_reorder_precalc)
         , schedule_(schedule)
@@ -44,7 +43,8 @@ public:
         , zp_dst_(zp_dst) {}
 
     view_t create_view(const type_t &type, uint32_t mask) const override {
-        return post_op_view_mapper_t::create_view(type, normalize_mask(mask));
+        return intel::jit::post_op_view_mapper_t::create_view(
+                type, normalize_mask(mask));
     }
 
     view_t create_view(const memory_desc_t &md) const override;
@@ -74,11 +74,11 @@ private:
 
     const bool has_external_src_zps_;
     const gemm_schedule_t &schedule_;
-    const conv_problem_t &prb_;
+    const problem_t &prb_;
     const layout_t &zp_dst_;
 };
 
-void normalize_conv_layouts(layout_t &src_layout, layout_t &wei_layout,
+void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
         layout_t &dst_layout, layout_t &bia_layout, bool with_groups, dim_t g,
         dim_t ic, dim_t oc, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups);

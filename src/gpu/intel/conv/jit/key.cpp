@@ -241,7 +241,7 @@ struct key_type_info_t {
     key_type_t dst;
 
     key_type_info_t() = default;
-    key_type_info_t(const conv_config_t &cfg) {
+    key_type_info_t(const config_t &cfg) {
         auto &prb = cfg.prb();
         auto src_type = prb.a_data_type;
         auto wei_type = prb.b_data_type;
@@ -320,7 +320,7 @@ struct key_mb_t {
     dim_t value = 0;
 
     key_mb_t() = default;
-    key_mb_t(const conv_config_t &cfg, prop_kind_t prop) {
+    key_mb_t(const config_t &cfg, prop_kind_t prop) {
         auto &prb = cfg.prb();
         auto src_blocked = is_mb_blocked(cfg.src_layout().compute());
         auto dst_blocked = is_mb_blocked(cfg.dst_layout().compute());
@@ -393,13 +393,13 @@ struct key_desc_t {
 
 } // namespace
 
-class conv_key_impl_t {
+class key_impl_t {
 public:
-    conv_key_impl_t() = default;
+    key_impl_t() = default;
 
-    conv_key_impl_t(const key_hw_t &hw, const key_fma_t &fma,
-            const key_prop_t &prop, const key_type_info_t &type_info,
-            const key_mb_t &mb, const key_desc_t &desc)
+    key_impl_t(const key_hw_t &hw, const key_fma_t &fma, const key_prop_t &prop,
+            const key_type_info_t &type_info, const key_mb_t &mb,
+            const key_desc_t &desc)
         : hw_(hw)
         , fma_(fma)
         , prop_(prop)
@@ -409,13 +409,13 @@ public:
 
     const std::string &desc_str() const { return desc_.desc; }
 
-    conv_key_impl_t to_filter() const {
-        conv_key_impl_t ret = *this;
+    key_impl_t to_filter() const {
+        key_impl_t ret = *this;
         ret.type_info_ = type_info_.to_filter(prop_.kind);
         return ret;
     }
 
-    dim_t distance(const conv_key_impl_t &other) const {
+    dim_t distance(const key_impl_t &other) const {
         int max_dist = std::numeric_limits<int>::max();
         if (!matches(other)) return max_dist;
         // Here this object is a filter, other object is a non-filter.
@@ -436,13 +436,13 @@ public:
         return dist;
     }
 
-    bool operator==(const conv_key_impl_t &other) const {
+    bool operator==(const key_impl_t &other) const {
         return (hw_ == other.hw_) && (fma_ == other.fma_)
                 && (prop_ == other.prop_) && (type_info_ == other.type_info_)
                 && (mb_ == other.mb_) && (desc_ == other.desc_);
     }
 
-    bool matches(const conv_key_impl_t &other) const {
+    bool matches(const key_impl_t &other) const {
         return hw_.matches(other.hw_) && fma_.matches(other.fma_)
                 && prop_.matches(other.prop_)
                 && type_info_.matches(other.type_info_)
@@ -503,7 +503,7 @@ private:
     key_desc_t desc_;
 };
 
-conv_key_t::conv_key_t(const conv_config_t &cfg, bool make_filter) {
+key_t::key_t(const config_t &cfg, bool make_filter) {
     auto &prb = cfg.prb();
     auto hw = key_hw_t(cfg.hw().to_ngen(), cfg.hw().product_family());
     auto fma = key_fma_t(to_key(cfg.fma_kind()));
@@ -511,58 +511,58 @@ conv_key_t::conv_key_t(const conv_config_t &cfg, bool make_filter) {
     auto type_info = key_type_info_t(cfg);
     auto mb = key_mb_t(cfg, prop.kind);
     auto desc = key_desc_t(prb.desc_str(/*print_mb=*/false));
-    auto impl = conv_key_impl_t(hw, fma, prop, type_info, mb, desc);
+    auto impl = key_impl_t(hw, fma, prop, type_info, mb, desc);
     if (make_filter) impl = impl.to_filter();
-    impl_ = std::make_shared<conv_key_impl_t>(impl);
+    impl_ = std::make_shared<key_impl_t>(impl);
 }
 
-conv_key_t conv_key_t::to_filter() const {
-    if (!impl_) return conv_key_t();
-    conv_key_t ret;
-    ret.impl_ = std::make_shared<conv_key_impl_t>(impl_->to_filter());
+key_t key_t::to_filter() const {
+    if (!impl_) return key_t();
+    key_t ret;
+    ret.impl_ = std::make_shared<key_impl_t>(impl_->to_filter());
     return ret;
 }
 
-const std::string &conv_key_t::desc() const {
+const std::string &key_t::desc() const {
     gpu_assert(impl_);
     return impl_->desc_str();
 }
 
-dim_t conv_key_t::distance(const conv_key_t &other) const {
+dim_t key_t::distance(const key_t &other) const {
     gpu_assert(impl_ && other.impl_);
     return impl_->distance(*other.impl_);
 }
 
-bool conv_key_t::operator==(const conv_key_t &other) const {
+bool key_t::operator==(const key_t &other) const {
     if (!impl_ || !other.impl_) return impl_ == other.impl_;
     return impl_->operator==(*other.impl_);
 }
 
-bool conv_key_t::matches(const conv_key_t &other) const {
+bool key_t::matches(const key_t &other) const {
     if (!impl_ || !other.impl_) return impl_ == other.impl_;
     return impl_->matches(*other.impl_);
 }
 
-size_t conv_key_t::get_hash() const {
+size_t key_t::get_hash() const {
     return impl_ ? impl_->get_hash() : 0;
 }
 
-void conv_key_t::stringify(std::ostream &out) const {
+void key_t::stringify(std::ostream &out) const {
     gpu_assert(impl_);
     impl_->stringify(out);
 }
 
-void conv_key_t::parse(std::istream &in) {
-    impl_ = std::make_shared<conv_key_impl_t>();
+void key_t::parse(std::istream &in) {
+    impl_ = std::make_shared<key_impl_t>();
     impl_->parse(in);
 }
 
-std::string conv_key_t::str(bool csv) const {
+std::string key_t::str(bool csv) const {
     if (!impl_) return "(nil)";
     return impl_->str(csv);
 }
 
-std::vector<std::string> conv_key_t::csv_keys() {
+std::vector<std::string> key_t::csv_keys() {
     return {"hw", "fma", "prop", "cfg", "desc"};
 }
 

@@ -24,8 +24,8 @@ namespace intel {
 namespace conv {
 
 static status_t init_conf_common(
-        conv_conf_t &conf, const convolution_pd_t *pd, impl::engine_t *engine) {
-    const convolution_desc_t &cd = *pd->desc();
+        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+    const desc_t &cd = *pd->desc();
     const memory_desc_t &src_md = *pd->invariant_src_md();
     const memory_desc_t &weights_md = *pd->invariant_wei_md();
     const memory_desc_t &dst_md = *pd->invariant_dst_md();
@@ -88,7 +88,7 @@ static status_t init_conf_common(
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const conv_conf_t &conf, const post_ops_t &post_ops,
+        const conf_t &conf, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("G", conf.ngroups);
@@ -166,18 +166,18 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_convolution_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     CHECK(init_conf_common(conf, this, engine));
     return status::success;
 }
 
-status_t ref_convolution_fwd_t::pd_t::init_kernel_ctx(
+status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
 }
 
-status_t ref_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);
@@ -249,19 +249,18 @@ status_t ref_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
 }
 
-status_t ref_convolution_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
     CHECK(init_conf_common(conf, this, engine));
     return status::success;
 }
 
-status_t ref_convolution_bwd_data_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_data_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_src_md());
 }
 
-status_t ref_convolution_bwd_data_t::execute_backward_data(
-        const exec_ctx_t &ctx) const {
+status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
@@ -331,18 +330,17 @@ status_t ref_convolution_bwd_data_t::execute_backward_data(
             ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
 }
 
-status_t ref_convolution_bwd_weights_t::pd_t::init_conf(
-        impl::engine_t *engine) {
+status_t ref_bwd_weights_t::pd_t::init_conf(impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
-status_t ref_convolution_bwd_weights_t::pd_t::init_kernel_ctx(
+status_t ref_bwd_weights_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     return init_kernel_ctx_common(
             kernel_ctx, conf, attr()->post_ops_, invariant_wei_md());
 }
 
-status_t ref_convolution_bwd_weights_t::execute_backward_weights(
+status_t ref_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
 
     status_t status = status::success;

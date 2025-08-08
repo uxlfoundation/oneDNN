@@ -20,7 +20,7 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "gpu/gpu_convolution_pd.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -28,25 +28,24 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace conv {
-namespace jit {
 
-class gen_convolution_t;
-struct conv_pd_data_t;
+class gen_t;
+struct pd_data_t;
 
-class gen_convolution_fwd_t : public primitive_t {
+class gen_fwd_t : public primitive_t {
 public:
-    friend gen_convolution_t;
+    friend gen_t;
 
-    struct pd_t : public gpu_convolution_fwd_pd_t {
-        friend gen_convolution_t;
+    struct pd_t : public fwd_pd_t {
+        friend gen_t;
 
-        using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ir", gen_convolution_fwd_t);
+        DECLARE_COMMON_PD_T("jit:ir", gen_fwd_t);
 
         status_t init(impl::engine_t *engine);
 
-        std::shared_ptr<conv_pd_data_t> data;
+        std::shared_ptr<pd_data_t> data;
     };
 
     using primitive_t::primitive_t;
@@ -57,23 +56,23 @@ public:
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::shared_ptr<gen_convolution_t> impl_;
+    std::shared_ptr<gen_t> impl_;
 };
 
-class gen_convolution_bwd_data_t : public primitive_t {
+class gen_bwd_data_t : public primitive_t {
 public:
-    friend gen_convolution_t;
+    friend gen_t;
 
-    struct pd_t : public gpu_convolution_bwd_data_pd_t {
-        friend gen_convolution_t;
+    struct pd_t : public bwd_data_pd_t {
+        friend gen_t;
 
-        using gpu_convolution_bwd_data_pd_t::gpu_convolution_bwd_data_pd_t;
+        using bwd_data_pd_t::bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ir", gen_convolution_bwd_data_t);
+        DECLARE_COMMON_PD_T("jit:ir", gen_bwd_data_t);
 
         status_t init(impl::engine_t *engine);
 
-        std::shared_ptr<conv_pd_data_t> data;
+        std::shared_ptr<pd_data_t> data;
     };
 
     using primitive_t::primitive_t;
@@ -84,24 +83,23 @@ public:
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::shared_ptr<gen_convolution_t> impl_;
+    std::shared_ptr<gen_t> impl_;
 };
 
-class gen_convolution_bwd_weights_t : public primitive_t {
+class gen_bwd_weights_t : public primitive_t {
 public:
-    friend gen_convolution_t;
+    friend gen_t;
 
-    struct pd_t : public gpu_convolution_bwd_weights_pd_t {
-        friend gen_convolution_t;
+    struct pd_t : public bwd_weights_pd_t {
+        friend gen_t;
 
-        using gpu_convolution_bwd_weights_pd_t::
-                gpu_convolution_bwd_weights_pd_t;
+        using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ir", gen_convolution_bwd_weights_t);
+        DECLARE_COMMON_PD_T("jit:ir", gen_bwd_weights_t);
 
         status_t init(impl::engine_t *engine);
 
-        std::shared_ptr<conv_pd_data_t> data;
+        std::shared_ptr<pd_data_t> data;
     };
 
     using primitive_t::primitive_t;
@@ -112,10 +110,9 @@ public:
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::shared_ptr<gen_convolution_t> impl_;
+    std::shared_ptr<gen_t> impl_;
 };
 
-} // namespace jit
 } // namespace conv
 } // namespace intel
 } // namespace gpu

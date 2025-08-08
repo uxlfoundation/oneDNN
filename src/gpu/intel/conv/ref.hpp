@@ -20,9 +20,8 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
-#include "gpu/gpu_convolution_pd.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,12 +29,12 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
-struct ref_convolution_fwd_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_convolution_fwd_pd_t {
-        using gpu_convolution_fwd_pd_t::gpu_convolution_fwd_pd_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_convolution_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -123,7 +122,7 @@ struct ref_convolution_fwd_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 
-        conv_conf_t conf;
+        conf_t conf;
 
     private:
         bool set_default_formats() {
@@ -164,12 +163,12 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_data_t : public primitive_t {
+struct ref_bwd_data_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_convolution_bwd_data_pd_t {
-        using gpu_convolution_bwd_data_pd_t::gpu_convolution_bwd_data_pd_t;
+    struct pd_t : public bwd_data_pd_t {
+        using bwd_data_pd_t::bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_convolution_bwd_data_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_data_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -236,7 +235,7 @@ struct ref_convolution_bwd_data_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 
-        conv_conf_t conf;
+        conf_t conf;
 
     private:
         bool set_default_formats() {
@@ -277,13 +276,12 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct ref_convolution_bwd_weights_t : public primitive_t {
+struct ref_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_convolution_bwd_weights_pd_t {
-        using gpu_convolution_bwd_weights_pd_t::
-                gpu_convolution_bwd_weights_pd_t;
+    struct pd_t : public bwd_weights_pd_t {
+        using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_convolution_bwd_weights_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_weights_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -352,7 +350,7 @@ struct ref_convolution_bwd_weights_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 
-        conv_conf_t conf;
+        conf_t conf;
 
     private:
         bool set_default_formats() {

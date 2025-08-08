@@ -530,7 +530,7 @@ static const uint64_t _data[] = {
         0xbb20b18cff37d1dd, 0x1bfcf9ff02378f05, 0x0000399f9854ffb9
 };
 
-const std::vector<uint64_t> &get_conv_model_xehpc_dw_data() {
+const std::vector<uint64_t> &get_model_xehpc_dw_data() {
     static std::vector<uint64_t> data(
             _data, _data + sizeof(_data) / sizeof(_data[0]));
     return data;

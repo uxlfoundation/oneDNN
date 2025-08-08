@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
-#include "common/convolution_pd.hpp"
+#include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
@@ -34,13 +34,13 @@ namespace jit {
 
 using namespace intel::jit;
 
-bool is_conv_index(const pvar_t &dim);
-bool is_conv_index(const pvar_t &dim, prop_kind_t prop);
+bool is_index(const pvar_t &dim);
+bool is_index(const pvar_t &dim, prop_kind_t prop);
 pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind);
-const std::vector<pvar_t> &conv_dims();
-const std::vector<pvar_t> &conv_index_dims(prop_kind_t prop);
+const std::vector<pvar_t> &dims();
+const std::vector<pvar_t> &index_dims(prop_kind_t prop);
 
-const std::vector<pvar_t> &conv_layout_dims(
+const std::vector<pvar_t> &layout_dims(
         tensor_kind_t tensor_kind, bool src_dst_with_group = false);
 
 template <typename T>
@@ -84,16 +84,16 @@ T &&pick_c(prop_kind_t prop, T &&src, T &&wei, T &&dst) {
 
 tensor_kind_t to_abc(prop_kind_t prop, tensor_kind_t tensor);
 tensor_kind_t from_abc(prop_kind_t prop, tensor_kind_t abc);
-const std::vector<pvar_t> &conv_stride_dims();
-const std::vector<pvar_t> &conv_dilation_dims();
-const std::vector<pvar_t> &conv_padding_dims();
+const std::vector<pvar_t> &stride_dims();
+const std::vector<pvar_t> &dilation_dims();
+const std::vector<pvar_t> &padding_dims();
 
 // Description of the convolution problem.
-class conv_problem_t {
+class problem_t {
 public:
-    conv_problem_t() = default;
+    problem_t() = default;
 
-    status_t init(impl::engine_t *engine, const convolution_pd_t *conv_pd);
+    status_t init(impl::engine_t *engine, const pd_t *conv_pd);
 
     bool is_stride1() const { return sd == 1 && sh == 1 && sw == 1; }
 
@@ -174,7 +174,7 @@ public:
 
     std::string desc_str(bool print_mb = true) const;
 
-    const convolution_pd_t *conv_pd = nullptr;
+    const pd_t *conv_pd = nullptr;
     const primitive_attr_t *attr = nullptr;
 
     data_type_t src_data_type = data_type::undef;
@@ -233,15 +233,15 @@ private:
     void init_transpose(const hw_t &hw);
 };
 
-void normalize_conv_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
+void normalize_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
         dim_t &pd, dim_t &ih, dim_t &oh, dim_t &kh, dim_t &sh, dim_t &dh,
         dim_t &ph, dim_t &iw, dim_t &ow, dim_t &kw, dim_t &sw, dim_t &dw,
         dim_t &pw, bool can_flatten_spatial, std::array<int, 3> &dhw_map);
-bool is_small_ic(const conv_problem_t &prb);
+bool is_small_ic(const problem_t &prb);
 
-class conv_arg_helper_t {
+class arg_helper_t {
 public:
-    conv_arg_helper_t(const conv_problem_t &prb) : prb_(prb) {}
+    arg_helper_t(const problem_t &prb) : prb_(prb) {}
 
     int src_arg_key() const {
         if (prb_.is_fwd) return DNNL_ARG_SRC;
@@ -288,26 +288,26 @@ public:
     bool is_dst_output() const { return prb_.is_fwd; }
 
 private:
-    const conv_problem_t &prb_;
+    const problem_t &prb_;
 };
 
 pvar_t to_gemm(const pvar_t &d, prop_kind_t prop, bool is_transpose = false);
 tile_t to_gemm(const tile_t &t, prop_kind_t prop, bool is_transpose = false);
-inline pvar_t to_gemm(const pvar_t &d, const conv_problem_t &prb) {
+inline pvar_t to_gemm(const pvar_t &d, const problem_t &prb) {
     return to_gemm(d, prb.prop_kind(), prb.ab_swap_transpose);
 }
-inline tile_t to_gemm(const tile_t &t, const conv_problem_t &prb) {
+inline tile_t to_gemm(const tile_t &t, const problem_t &prb) {
     return to_gemm(t, prb.prop_kind(), prb.ab_swap_transpose);
 }
 
 // Matches the user-provided descriptor against the list of supported plain tags.
 std::string get_plain_user_tag(
-        const conv_problem_t &prb, const memory_desc_t &md, bool is_wei);
+        const problem_t &prb, const memory_desc_t &md, bool is_wei);
 
 // Checks if using NCHW layout for activations is optimal, this is dependent on:
 // - Whether the user-side layout is NCHW
 // - Whether the tensor sizes allow to use optimal loads (block 2D messages)
-bool is_nchw_ok(const conv_problem_t &prb, ngen::HW hw, tensor_kind_t kind,
+bool is_nchw_ok(const problem_t &prb, ngen::HW hw, tensor_kind_t kind,
         bool nested = false);
 
 } // namespace jit

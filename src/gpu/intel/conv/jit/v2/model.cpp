@@ -96,7 +96,7 @@ struct bmnk_helper_t {
         auto padded_shape = prb.shape();
         dim_t tmp_iters = 1;
         for (auto &d : padded_shape) {
-            if (!is_conv_index(d)) continue;
+            if (!is_index(d)) continue;
             dim_t tg = desc.thread_group_tile.get(d, 1);
             dim_t iter = desc.iter_tile.get(d, 1);
             dim_t dim = padded_shape[d];
@@ -138,7 +138,7 @@ dim_t layout_size(const layout_tag_t &tag, const problem_t &prb) {
     return elems * tag.type().size();
 }
 
-float conv_time_nsec(const bench_time_t &time) {
+float time_nsec(const bench_time_t &time) {
     if (time.nkernels() == 0) return 0;
     if (time.nkernels() == 1) return time.total;
     gpu_assert(utils::one_of(time.nkernels(), 2, 3))
@@ -151,7 +151,7 @@ public:
     data_parallel_sample_t(const problem_t &prb, const kernel_desc_t &desc,
             const bench_time_t &time)
         : sample_impl_t(model_kind_t::data_parallel, prb, desc)
-        , nsec_(conv_time_nsec(time)) {
+        , nsec_(time_nsec(time)) {
         bmnk_helper_t h(prb, desc);
         int tgs_per_wave = hw_cfg_.max_tgs_per_gpu(h.bt * h.mt * h.nt * h.kt);
         kl_ = h.kl;
@@ -178,7 +178,7 @@ public:
     stream_k_sample_t(const problem_t &prb, const kernel_desc_t &desc,
             const bench_time_t &time)
         : sample_impl_t(model_kind_t::stream_k, prb, desc)
-        , nsec_(conv_time_nsec(time)) {
+        , nsec_(time_nsec(time)) {
         bmnk_helper_t h(prb, desc);
         iters_ = h.iters;
     }

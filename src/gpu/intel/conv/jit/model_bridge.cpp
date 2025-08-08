@@ -76,15 +76,14 @@ fma_t to_fma(fma_kind_t fma) {
     return fma_t::undef;
 }
 
-hw_config_t to_hw_config(const conv_config_t &cfg) {
+hw_config_t to_hw_config(const config_t &cfg) {
     auto &prb = cfg.prb();
     auto &hw = cfg.hw();
     return hw_config_t(to_hw(hw.to_ngen()), to_fma(cfg.fma_kind()),
             to_type(prb.a_data_type), hw.eu_count());
 }
 
-conv_sample_t to_conv_sample(
-        const conv_config_t &cfg, const blocking_params_t &params) {
+conv_sample_t to_sample(const config_t &cfg, const blocking_params_t &params) {
     auto &prb = cfg.prb();
     conv_sample_t ret;
     ret.prop = (prb.is_fwd ? prop_t::fwd
@@ -135,7 +134,7 @@ conv_sample_t fixup(const conv_sample_t &sample) {
     return ret;
 }
 
-enum class conv_gbr_kind_t {
+enum class gbr_kind_t {
     all_common,
     xehpc_common,
     xehpc_dw,
@@ -144,16 +143,16 @@ enum class conv_gbr_kind_t {
     _max
 };
 
-using conv_gbr_kind_hash_t = ir_utils::enum_hash_t<conv_gbr_kind_t>;
+using gbr_kind_hash_t = ir_utils::enum_hash_t<gbr_kind_t>;
 
-conv_gbr_kind_t get_conv_gbr_kind(const conv_config_t &cfg) {
+gbr_kind_t get_gbr_kind(const config_t &cfg) {
     auto &prb = cfg.prb();
     if (cfg.hw() >= ngen::HW::XeHPC) {
-        if (prb.is_dw) return conv_gbr_kind_t::xehpc_dw;
-        return conv_gbr_kind_t::xehpc_common;
+        if (prb.is_dw) return gbr_kind_t::xehpc_dw;
+        return gbr_kind_t::xehpc_common;
     }
-    if (prb.is_dw) return conv_gbr_kind_t::xehpg_dw;
-    return conv_gbr_kind_t::xehpg_common;
+    if (prb.is_dw) return gbr_kind_t::xehpg_dw;
+    return gbr_kind_t::xehpg_common;
 }
 
 inline bool is_big_endian() {
@@ -178,19 +177,19 @@ std::vector<uint8_t> unpack_data(const std::vector<uint64_t> &data_u64) {
     return data_u8;
 }
 
-gradient_boost_regressor_t &get_gbr(const conv_config_t &cfg) {
+gradient_boost_regressor_t &get_gbr(const config_t &cfg) {
     // clang-format off
-    static const std::unordered_map<conv_gbr_kind_t,
-            const std::vector<uint64_t> *, conv_gbr_kind_hash_t>
+    static const std::unordered_map<gbr_kind_t,
+            const std::vector<uint64_t> *, gbr_kind_hash_t>
             kind2data = {
-                    {conv_gbr_kind_t::xehpc_common, &get_conv_model_xehpc_common_data()},
-                    {conv_gbr_kind_t::xehpg_common, &get_conv_model_xehpg_common_data()},
-                    {conv_gbr_kind_t::xehpc_dw, &get_conv_model_xehpc_dw_data()},
-                    {conv_gbr_kind_t::xehpg_dw, &get_conv_model_xehpg_dw_data()}
+                    {gbr_kind_t::xehpc_common, &get_model_xehpc_common_data()},
+                    {gbr_kind_t::xehpg_common, &get_model_xehpg_common_data()},
+                    {gbr_kind_t::xehpc_dw, &get_model_xehpc_dw_data()},
+                    {gbr_kind_t::xehpg_dw, &get_model_xehpg_dw_data()}
             };
     // clang-format on
-    static std::unordered_map<conv_gbr_kind_t, gradient_boost_regressor_t,
-            conv_gbr_kind_hash_t>
+    static std::unordered_map<gbr_kind_t, gradient_boost_regressor_t,
+            gbr_kind_hash_t>
             gbr_map;
     static std::once_flag flag;
     std::call_once(flag, [&] {
@@ -202,14 +201,14 @@ gradient_boost_regressor_t &get_gbr(const conv_config_t &cfg) {
             gbr_map[kind] = gradient_boost_regressor_t::deserialize(d);
         }
     });
-    auto kind = get_conv_gbr_kind(cfg);
+    auto kind = get_gbr_kind(cfg);
     return gbr_map.at(kind);
 }
 
-float get_score(const conv_config_t &cfg, const blocking_params_t &params) {
-    auto conv_sample = to_conv_sample(cfg, params);
-    conv_sample = fixup(conv_sample);
-    auto bmnk_sample = conv_sample.to_bmnk_conv_sample();
+float get_score(const config_t &cfg, const blocking_params_t &params) {
+    auto sample = to_sample(cfg, params);
+    sample = fixup(sample);
+    auto bmnk_sample = sample.to_bmnk_conv_sample();
     return get_gbr(cfg).predict(bmnk_sample.to_x());
 }
 

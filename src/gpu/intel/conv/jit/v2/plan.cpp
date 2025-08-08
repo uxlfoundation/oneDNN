@@ -19,9 +19,6 @@
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
 #include "gpu/intel/logging.hpp"
 
-#include <algorithm>
-#include <string>
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -409,7 +406,7 @@ private:
     void init_tiles() {
         tg_grid_ = create_thread_group_grid(desc_);
         thr_grid_ = create_thread_grid(desc_);
-        for (auto &d : conv_index_dims(desc_.prop)) {
+        for (auto &d : index_dims(desc_.prop)) {
             bool is_loop = desc_.loop_desc.has(d);
             bool is_global_loop = desc_.loop_desc.is_global(d);
             dim_t tg_tile = desc_.thread_group_tile.get(d, 1);
@@ -421,11 +418,11 @@ private:
     }
 
     bool init_layouts() {
-        auto src_layout = make_conv_layout(
+        auto src_layout = make_layout(
                 tensor_kind_t::src, desc_.src_tag, desc_.is_dw, reqs_);
-        auto wei_layout = make_conv_layout(
+        auto wei_layout = make_layout(
                 tensor_kind_t::wei, desc_.wei_tag, desc_.is_dw, reqs_);
-        auto dst_layout = make_conv_layout(
+        auto dst_layout = make_layout(
                 tensor_kind_t::dst, desc_.dst_tag, desc_.is_dw, reqs_);
         gpu_check(check_compatible_layout(src_layout, desc_.iter_tile));
         gpu_check(check_compatible_layout(wei_layout, desc_.iter_tile));
@@ -434,9 +431,9 @@ private:
         b_layout_ = pick_b(desc_.prop, src_layout, wei_layout, dst_layout);
         c_layout_ = pick_c(desc_.prop, src_layout, wei_layout, dst_layout);
         if (desc_.with_bias_bwd_w()) {
-            auto bias_tag = make_conv_layout_tag(
+            auto bias_tag = make_layout_tag(
                     tensor_kind_t::bias, "a:" + desc_.bias_type.str());
-            bias_layout_ = make_conv_layout(
+            bias_layout_ = make_layout(
                     tensor_kind_t::bias, bias_tag, desc_.is_dw, reqs_);
         }
         return true;
@@ -444,7 +441,7 @@ private:
 
     pvar_map_t<char> to_bmnk_map() const {
         pvar_map_t<char> ret;
-        for (auto &d : conv_index_dims(desc_.prop)) {
+        for (auto &d : index_dims(desc_.prop)) {
             auto gemm_d = to_gemm(d, desc_.prop);
             gpu_assert(!gemm_d.is_undef());
             ret[d] = gemm_d.name()[0];
@@ -891,7 +888,7 @@ private:
     prb_reqs_t reqs_;
 };
 
-plan_t create_conv_plan_impl(const kernel_desc_t &desc, const hw_t &hw,
+plan_t create_plan_impl(const kernel_desc_t &desc, const hw_t &hw,
         const problem_t *prb = nullptr) {
     if (!desc.is_supported(hw, prb)) return plan_t();
     plan_builder_t builder(desc, hw);
@@ -911,12 +908,12 @@ plan_t create_conv_plan_impl(const kernel_desc_t &desc, const hw_t &hw,
     return plan;
 }
 
-plan_t create_conv_plan(const kernel_desc_t &desc, const hw_t &hw) {
-    return create_conv_plan_impl(desc, hw);
+plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw) {
+    return create_plan_impl(desc, hw);
 }
 
-plan_t create_conv_plan(const kernel_desc_t &desc, const problem_t &prb) {
-    return create_conv_plan_impl(desc, prb.hw(), &prb);
+plan_t create_plan(const kernel_desc_t &desc, const problem_t &prb) {
+    return create_plan_impl(desc, prb.hw(), &prb);
 }
 
 } // namespace v2

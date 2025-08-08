@@ -22,7 +22,7 @@ namespace conv {
 namespace jit {
 
 // clang-format off
-const char** get_conv_lookup_table_entries() {
+const char** get_lookup_table_entries() {
     static const char *entries[] = {
         "xehpc dpas fwd x16:x16:any mb1 ic896iw64oc128ow64kw1pw0 simd=16 l=ic7 T=ic8 i=ic16oc16ow8 bufs=0",
         "xehpc dpas bwd_w x16:any:x16 mb24 ic2048iw49oc2048ow49kw1pw0 simd=16 l=ow49 T=ic4oc4 i=ic32mb16oc64 bufs=3",

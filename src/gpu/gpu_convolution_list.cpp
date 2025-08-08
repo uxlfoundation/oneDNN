@@ -53,28 +53,28 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_CONV_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::conv::jit::gen_convolution_fwd_t)
-        GPU_INSTANCE_INTEL(intel::conv::xe_wino_convolution_fwd_t)
-        GPU_INSTANCE_INTEL_REF(intel::conv::ref_convolution_fwd_t)
-        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::jit::v2::gen_convolution_fwd_t)
+        GPU_INSTANCE_INTEL(intel::conv::gen_fwd_t)
+        GPU_INSTANCE_INTEL(intel::conv::xe_wino_fwd_t)
+        GPU_INSTANCE_INTEL_REF(intel::conv::ref_fwd_t)
+        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::v2::gen_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_convolution_fwd_t)
         GPU_INSTANCE_AMD(amd::miopen_convolution_fwd_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_convolution_fwd_t)
         nullptr,
     }},
     {{backward_data}, REG_BWD_D_PK({
-        GPU_INSTANCE_INTEL(intel::conv::jit::gen_convolution_bwd_data_t)
-        GPU_INSTANCE_INTEL_REF(intel::conv::ref_convolution_bwd_data_t)
-        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::jit::v2::gen_convolution_bwd_data_t)
+        GPU_INSTANCE_INTEL(intel::conv::gen_bwd_data_t)
+        GPU_INSTANCE_INTEL_REF(intel::conv::ref_bwd_data_t)
+        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::v2::gen_bwd_data_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_convolution_bwd_data_t)
         GPU_INSTANCE_AMD(amd::miopen_convolution_bwd_data_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_convolution_bwd_data_t)
         nullptr,
     })},
     {{backward_weights}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::conv::jit::gen_convolution_bwd_weights_t)
-        GPU_INSTANCE_INTEL_REF(intel::conv::ref_convolution_bwd_weights_t)
-        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::jit::v2::gen_convolution_bwd_weights_t)
+        GPU_INSTANCE_INTEL(intel::conv::gen_bwd_weights_t)
+        GPU_INSTANCE_INTEL_REF(intel::conv::ref_bwd_weights_t)
+        GPU_INSTANCE_INTEL_EXPERIMENTAL(intel::conv::v2::gen_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_convolution_bwd_weights_t)
         GPU_INSTANCE_AMD(amd::miopen_convolution_bwd_weights_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_convolution_bwd_weights_t)
@@ -94,13 +94,11 @@ get_impl_list_map() {
             for (auto &kv : list_map) {
                 auto &list = kv.second;
                 int fwd_idx = impl_list_item_t::find<
-                        intel::conv::jit::v2::gen_convolution_fwd_t::pd_t>(
-                        &list[0]);
+                        intel::conv::v2::gen_fwd_t::pd_t>(&list[0]);
                 int bwd_d_idx = impl_list_item_t::find<
-                        intel::conv::jit::v2::gen_convolution_bwd_data_t::pd_t>(
-                        &list[0]);
-                int bwd_w_idx = impl_list_item_t::find<intel::conv::jit::v2::
-                                gen_convolution_bwd_weights_t::pd_t>(&list[0]);
+                        intel::conv::v2::gen_bwd_data_t::pd_t>(&list[0]);
+                int bwd_w_idx = impl_list_item_t::find<
+                        intel::conv::v2::gen_bwd_weights_t::pd_t>(&list[0]);
                 int idx = std::max({fwd_idx, bwd_d_idx, bwd_w_idx});
                 if (idx == -1) continue;
                 auto item = list[idx];

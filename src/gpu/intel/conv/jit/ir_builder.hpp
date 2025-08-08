@@ -30,10 +30,10 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-class conv_ir_builder_t : public ir_builder_t {
+class builder_t : public ir_builder_t {
 public:
-    conv_ir_builder_t(const conv_config_t &cfg,
-            const kernel_info_t &kernel_info, const layout_t &zp_dst)
+    builder_t(const config_t &cfg, const kernel_info_t &kernel_info,
+            const layout_t &zp_dst)
         : kernel_info_(kernel_info)
         , prb_(cfg.prb())
         , cfg_(cfg)
@@ -55,8 +55,8 @@ private:
             expr_t &bia_reduction_condition);
 
     const kernel_info_t &kernel_info_;
-    const conv_problem_t &prb_;
-    const conv_config_t &cfg_;
+    const problem_t &prb_;
+    const config_t &cfg_;
     const layout_t &zp_dst_;
 };
 

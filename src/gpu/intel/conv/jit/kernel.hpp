@@ -18,11 +18,9 @@
 #define GPU_INTEL_CONV_JIT_KERNEL_HPP
 
 #include "gpu/intel/jit/codegen/kernel.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 
 #include "gpu/intel/conv/jit/config.hpp"
-#include "gpu/intel/conv/jit/grf_usage.hpp"
 #include "gpu/intel/conv/jit/ir_builder.hpp"
 #include "gpu/intel/conv/jit/plan.hpp"
 
@@ -35,7 +33,7 @@ namespace jit {
 
 class conv_kernel_t : public ir_kernel_t {
 public:
-    conv_kernel_t(const conv_config_t &cfg, const kernel_info_t &kernel_info,
+    conv_kernel_t(const config_t &cfg, const kernel_info_t &kernel_info,
             const compute::range_t &local_range, const layout_t &zp_dst)
         : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.exec_cfg(),
                 local_range,
@@ -53,7 +51,7 @@ public:
 
         ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");
         // Build IR for the kernel.
-        conv_ir_builder_t builder(cfg, kernel_info, zp_dst);
+        builder_t builder(cfg, kernel_info, zp_dst);
         const stmt_t &body = builder.stmt();
         profile.stamp("Kernel Builder");
         generate_from_ir(
@@ -75,8 +73,8 @@ public:
     }
 
 private:
-    const conv_problem_t &prb_;
-    const conv_config_t &cfg_;
+    const problem_t &prb_;
+    const config_t &cfg_;
 };
 
 } // namespace jit

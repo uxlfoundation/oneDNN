@@ -30,22 +30,22 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-class conv_lookup_table_t {
+class lookup_table_t {
 public:
     struct entry_t {
-        conv_key_t key;
+        key_t key;
         blocking_params_t params;
 
         void stringify(std::ostream &out) const;
         void parse(std::istream &in);
     };
 
-    conv_lookup_table_t() = default;
-    conv_lookup_table_t(const char **entries);
+    lookup_table_t() = default;
+    lookup_table_t(const char **entries);
 
-    void set(const conv_key_t &key, const blocking_params_t &params);
-    void merge(const conv_lookup_table_t &other);
-    blocking_params_t find(const conv_key_t &key) const;
+    void set(const key_t &key, const blocking_params_t &params);
+    void merge(const lookup_table_t &other);
+    blocking_params_t find(const key_t &key) const;
     bool is_empty() const { return data_.empty(); }
     void stringify(std::ostream &out) const;
     void parse(std::istream &in);
@@ -54,8 +54,8 @@ private:
     std::unordered_map<std::string, std::vector<entry_t>> data_;
 };
 
-const conv_lookup_table_t &const_conv_lookup_table();
-conv_lookup_table_t &conv_lookup_table();
+const lookup_table_t &const_lookup_table();
+lookup_table_t &lookup_table();
 
 } // namespace jit
 } // namespace conv

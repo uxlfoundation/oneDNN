@@ -50,7 +50,7 @@ void compare(const grf_usage_t &est_usage, const grf_usage_t &ir_usage) {
 }
 
 void verify_grf_usage(
-        const conv_config_t &cfg, const stmt_t &body, int external_usage) {
+        const config_t &cfg, const stmt_t &body, int external_usage) {
     grf_usage_t gpu_info = get_grf_usage(body, cfg.grf_size(), external_usage);
     auto est_info = cfg.plan().grf_usage();
     compare(est_info, gpu_info);

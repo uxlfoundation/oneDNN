@@ -27,10 +27,10 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-const std::vector<uint64_t> &get_conv_model_xehpc_dw_data();
-const std::vector<uint64_t> &get_conv_model_xehpc_common_data();
-const std::vector<uint64_t> &get_conv_model_xehpg_dw_data();
-const std::vector<uint64_t> &get_conv_model_xehpg_common_data();
+const std::vector<uint64_t> &get_model_xehpc_dw_data();
+const std::vector<uint64_t> &get_model_xehpc_common_data();
+const std::vector<uint64_t> &get_model_xehpg_dw_data();
+const std::vector<uint64_t> &get_model_xehpg_common_data();
 
 } // namespace jit
 } // namespace conv

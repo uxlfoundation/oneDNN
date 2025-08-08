@@ -17,7 +17,6 @@
 #include "gpu/intel/conv/jit/plan.hpp"
 
 #include "gpu/intel/conv/jit/config.hpp"
-#include "gpu/intel/conv/jit/grf_usage.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
@@ -65,13 +64,13 @@ private:
 };
 
 static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
-        const conv_config_t &cfg, const expr_t &dim) {
+        const config_t &cfg, const expr_t &dim) {
     dim_tile_t tile;
     auto &name = dim.as<var_t>().name;
-    auto conv_dim = pvar_t(name);
-    dim_t loop_dim = cfg.loop_dim(conv_dim);
-    dim_t tg_dim = cfg.thread_group_dim(conv_dim);
-    dim_t iter_dim = cfg.iter_dim(conv_dim);
+    auto dim_id = pvar_t(name);
+    dim_t loop_dim = cfg.loop_dim(dim_id);
+    dim_t tg_dim = cfg.thread_group_dim(dim_id);
+    dim_t iter_dim = cfg.iter_dim(dim_id);
 
     std::vector<dim_t> dims = {1, loop_dim, tg_dim, iter_dim};
     dim_idx_t ndims = into<dim_idx_t>(dims.size());
@@ -86,8 +85,8 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
         bool is_tg = (dim_idx == 2);
         bool is_iter = (dim_idx == 3);
         if (is_thr || is_iter) return true;
-        auto grid = is_tg ? get_thread_group_grid_conv_dims(cfg)
-                          : get_kernel_grid_conv_dims(cfg);
+        auto grid = is_tg ? get_thread_group_grid_dims(cfg)
+                          : get_kernel_grid_dims(cfg);
         for (auto &tile : grid)
             for (auto &d : tile)
                 if (dim_name == d.name()) return true;
@@ -114,9 +113,9 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
     return tile;
 }
 
-void bind_thread_group_grid_idx(const conv_config_t &cfg,
+void bind_thread_group_grid_idx(const config_t &cfg,
         gemm_schedule_t &gemm_schedule, const expr_t &var) {
-    auto grid_dims = get_thread_group_grid_conv_dims(cfg);
+    auto grid_dims = get_thread_group_grid_dims(cfg);
     int grid_id = -1;
     for (auto &v : gemm_schedule.get_root_vars(var)) {
         auto v_dim = pvar_t(v.as<var_t>().name);
@@ -144,7 +143,7 @@ void bind_kernel_grid(
     }
 }
 
-void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
+void init_fwd(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
         view_t &src_view, view_t &wei_view, view_t &dst_view) {
     auto &prb_ = cfg_.prb();
 
@@ -304,7 +303,7 @@ void init_fwd(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
             ic_tile.tg_idx()});
 }
 
-void init_bwd_d(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
+void init_bwd_d(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
         view_t &dst_view, view_t &wei_view, view_t &src_view) {
     auto &prb_ = cfg_.prb();
     auto &src_layout = cfg_.src_layout().compute();
@@ -509,7 +508,7 @@ void init_bwd_d(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
     }
 }
 
-void init_bwd_w(const conv_config_t &cfg_, gemm_schedule_t &gemm_schedule,
+void init_bwd_w(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
         view_t &src_view, view_t &dst_view, view_t &wei_view,
         view_t &bia_view) {
     auto &prb_ = cfg_.prb();
@@ -1094,14 +1093,14 @@ std::string fma_plan_t::str() const {
     return add_indent("fma", oss.str());
 }
 
-bool conv_plan_t::can_split(abc_kind_t abc, int factor) const {
+bool plan_t::can_split(abc_kind_t abc, int factor) const {
     if (!fma.can_split(abc, factor)) return false;
     if (!x2r.can_split(abc, factor)) return false;
     if (zp.has_zp_src() && !zp.can_split(abc, factor)) return false;
     return true;
 }
 
-void conv_plan_t::set_split(abc_kind_t abc, int factor) {
+void plan_t::set_split(abc_kind_t abc, int factor) {
     gpu_assert(can_split(abc, factor));
     split_abc = abc;
     split_factor = factor;
@@ -1110,12 +1109,12 @@ void conv_plan_t::set_split(abc_kind_t abc, int factor) {
     if (zp.has_zp_src()) zp.set_split(abc, factor);
 }
 
-bool conv_plan_t::uses_2d_load(abc_kind_t abc) const {
+bool plan_t::uses_2d_load(abc_kind_t abc) const {
     auto &send_plan = ((abc == abc_kind_t::a) ? x2r.a_load : x2r.b_load);
     return send_plan.send_params().hint_2d.enable;
 }
 
-grf_usage_t conv_plan_t::grf_usage() const {
+grf_usage_t plan_t::grf_usage() const {
     gpu_assert(reserved_regs != -1);
     bool with_headers = !reuse_headers;
 
@@ -1208,7 +1207,7 @@ grf_usage_t conv_plan_t::grf_usage() const {
     return info;
 }
 
-void conv_plan_t::reset() {
+void plan_t::reset() {
     slm = slm_plan_t(hw);
     prefetch = prefetch_plan_t(hw);
     x2r = x2r_plan_t(hw);
@@ -1219,7 +1218,7 @@ void conv_plan_t::reset() {
     max_gmem_bufs = 1;
 }
 
-std::string conv_plan_t::str() const {
+std::string plan_t::str() const {
     using intel::jit::ir_utils::to_string;
     using intel::jit::operator<<;
 
@@ -1245,7 +1244,7 @@ std::string conv_plan_t::str() const {
 }
 
 type_t get_accumulation_type(
-        const conv_config_t &cfg, const type_t &a, const type_t &b) {
+        const config_t &cfg, const type_t &a, const type_t &b) {
     if (a.is_int()) return type_t::s32();
     if (a.is_f64()) return type_t::f64();
     if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()
@@ -1264,7 +1263,7 @@ struct fma_layout_hint_t {
 };
 
 struct fma_context_t {
-    fma_context_t(const conv_config_t &cfg)
+    fma_context_t(const config_t &cfg)
         : hw(cfg.hw())
         , simd(cfg.simd())
         , vec_size(cfg.vec_size())
@@ -1573,14 +1572,14 @@ struct reduce_mask_t {
     uint32_t mask;
 };
 
-bool do_reduce(const conv_config_t &cfg, abc_kind_t abc) {
+bool do_reduce(const config_t &cfg, abc_kind_t abc) {
     auto &prb = cfg.prb();
     return ((abc == abc_kind_t::b && !prb.ab_swap_transpose)
                    || (abc == abc_kind_t::a && prb.ab_swap_transpose))
             && prb.is_bwd_w && prb.with_bias;
 }
 
-reduce_mask_t reduce_mask(const conv_config_t &cfg, abc_kind_t abc) {
+reduce_mask_t reduce_mask(const config_t &cfg, abc_kind_t abc) {
     if (!do_reduce(cfg, abc)) return reduce_mask_t();
     // Reduce by g and oc.
     return reduce_mask_t((1 << 1) | (1 << 2));
@@ -1611,7 +1610,7 @@ tile_coord_t to_reduce_tensor(const tile_coord_t &tile_coord, uint32_t mask) {
 }
 
 layout_t to_reduce_layout(
-        const conv_config_t &cfg, const layout_t &layout, uint32_t mask) {
+        const config_t &cfg, const layout_t &layout, uint32_t mask) {
     int reduce_ndims = layout.ndims();
     auto map = get_reduce_dim_map(mask, reduce_ndims);
     std::vector<block_t> reduce_blocks;
@@ -1836,7 +1835,7 @@ enum class plan_status_t {
 
 class plan_builder_t {
 public:
-    plan_builder_t(conv_config_t &cfg)
+    plan_builder_t(config_t &cfg)
         : cfg_(cfg)
         , prb_(cfg.prb())
         , plan_ptr_(get_plan())
@@ -1943,7 +1942,7 @@ private:
         return plan_status_t::success;
     }
 
-    plan_status_t fixup_grf_usage(conv_plan_t &plan) const {
+    plan_status_t fixup_grf_usage(plan_t &plan) const {
         // XXX: This is an estimation, CSE pass does more accurate counting to
         // not exceed available GRF space.
         int tmp_regs = 5;
@@ -1967,7 +1966,7 @@ private:
         return plan_status_t::out_of_registers;
     }
 
-    plan_status_t try_apply_ab_split(conv_plan_t &plan, int bound) const {
+    plan_status_t try_apply_ab_split(plan_t &plan, int bound) const {
         if (cfg_.subtiles().is_env_overridden())
             return plan_status_t::out_of_registers;
         int min_regs = plan.grf_usage().total();
@@ -1991,7 +1990,7 @@ private:
         return plan_status_t::out_of_registers;
     }
 
-    plan_status_t try_reuse_headers(conv_plan_t &plan, int bound) const {
+    plan_status_t try_reuse_headers(plan_t &plan, int bound) const {
         if (cfg_.pipeline().is_env_overridden())
             return plan_status_t::out_of_registers;
         plan.reuse_headers = true;
@@ -1999,7 +1998,7 @@ private:
         return plan_status_t::out_of_registers;
     }
 
-    plan_status_t try_drop_prefetch(conv_plan_t &plan, int bound) const {
+    plan_status_t try_drop_prefetch(plan_t &plan, int bound) const {
         if (cfg_.prefetch().is_env_overridden())
             return plan_status_t::out_of_registers;
         auto &prefetch = plan.prefetch;
@@ -2479,8 +2478,8 @@ private:
         return plan_status_t::success;
     }
 
-    std::shared_ptr<conv_plan_t> get_plan() const {
-        auto plan_ptr = std::make_shared<conv_plan_t>(cfg_.hw());
+    std::shared_ptr<plan_t> get_plan() const {
+        auto plan_ptr = std::make_shared<plan_t>(cfg_.hw());
         auto &plan = *plan_ptr;
 
         auto &init_cset = plan.init_cset;
@@ -2538,10 +2537,10 @@ private:
     }
     void enable_slm(bool value) { allow_slm_ = value; }
 
-    conv_config_t &cfg_;
-    const conv_problem_t &prb_;
-    std::shared_ptr<conv_plan_t> plan_ptr_;
-    conv_plan_t &plan_;
+    config_t &cfg_;
+    const problem_t &prb_;
+    std::shared_ptr<plan_t> plan_ptr_;
+    plan_t &plan_;
     gemm_schedule_t &gemm_schedule_;
     fma_context_t fma_ctx_;
     direct_view_t a_direct_view_;
@@ -2552,7 +2551,7 @@ private:
     bool allow_slm_ = true;
 };
 
-status_t init_plan(conv_config_t &cfg) {
+status_t init_plan(config_t &cfg) {
     plan_builder_t plan_builder(cfg);
     return plan_builder.init_plan();
 }

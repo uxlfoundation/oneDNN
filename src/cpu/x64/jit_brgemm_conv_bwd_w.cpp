@@ -131,6 +131,7 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
                 brgattr.hint_innermost_loop = jcp_.brgemm_bd_loop_innermost
                         ? brgemm_bd_loop_innermost
                         : brgemm_innermost_undef;
+                brgattr.use_amx10 = jcp_.is_amx10;
 
                 brgattr.hint_expected_A_size = 0;
                 brgattr.hint_expected_B_size = 0;

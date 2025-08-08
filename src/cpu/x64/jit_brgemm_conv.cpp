@@ -313,6 +313,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     }
     brgattr.fpmath_mode = attr()->fpmath_.mode_;
     brgattr.K_koef = (float)bs / KW;
+    brgattr.use_amx10 = jcp_.is_amx10;
 
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
@@ -2493,6 +2494,7 @@ template struct brgemm_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_convolution_fwd_t<avx512_core_amx_fp16>;
 template struct brgemm_convolution_fwd_t<avx10_2_512>;
 template struct brgemm_convolution_fwd_t<avx10_2_512_amx_2>;
+template struct brgemm_convolution_fwd_t<avx10_512_amx10>;
 } // namespace x64
 
 } // namespace cpu

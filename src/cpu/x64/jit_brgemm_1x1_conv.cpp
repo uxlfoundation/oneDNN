@@ -219,6 +219,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
         // brgemm kernel
         if (need_postwork_ && ic_chunks_ == 1 && (!jcp_.is_reduced_rtus))
             brgattr.postops_only = true;
+        brgattr.use_amx10 = jcp_.is_amx10;
 
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
         auto LDD = jcp_.oc_without_padding;
@@ -804,6 +805,7 @@ template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx_fp16>;
 template struct brgemm_1x1_convolution_fwd_t<avx10_2_512>;
 template struct brgemm_1x1_convolution_fwd_t<avx10_2_512_amx_2>;
+template struct brgemm_1x1_convolution_fwd_t<avx10_512_amx10>;
 
 } // namespace x64
 } // namespace cpu

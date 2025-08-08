@@ -665,6 +665,8 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
     brgattr.max_top_vpad = max_vpad;
     brgattr.max_bottom_vpad = max_vpad;
+    brgattr.use_amx10 = is_amx10;
+    brgattr.use_uker = use_uker;
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     ur = brg.bd_block * (is_amx(isa) ? brg.bd_block2 : 1);
@@ -681,6 +683,8 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
                     ? brgemm_broadcast_t::per_tensor
                     : brgemm_broadcast_t::none;
         }
+        brgattr.use_amx10 = is_amx10;
+        brgattr.use_uker = use_uker;
         CHECK(brgemm_desc_set_attr(&brg_sp_tail, brgattr));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
@@ -765,6 +769,8 @@ status_t brg_blocking_t::get_brgemm_ur(
         brgattr.max_top_vpad = max_vpad;
         brgattr.max_bottom_vpad = max_vpad;
         brgattr.fpmath_mode = attr->fpmath_.mode_;
+        brgattr.use_amx10 = is_amx10;
+        brgattr.use_uker = use_uker;
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
         brg.with_sum = with_sum;
@@ -1294,9 +1300,13 @@ bool brg_blocking_t::fast_check_oc_block_1x1() const {
 float brg_blocking_t::est_eff_1x1() {
 
     auto calc_ave_blk = [&](int dim, int block, bool use_ave) -> float {
+        if (block <= 0) return 0.f;
         const int nb = dim / block;
-        constexpr int max_nb = 2; // only consider 2x2 tile blocking
+        // only consider 2x2 tile blocking
+        // !!! TODO: check for amx10 - blocking not 2x2 by default
+        constexpr int max_nb = 2;
         const int block2 = nstl::min(max_nb, nb);
+        if (block2 == 0) return 0.f;
         const int nb2 = nb / block2;
         const int nb2_tail = nb % block2;
         if (!use_ave) return block2;
@@ -1306,19 +1316,24 @@ float brg_blocking_t::est_eff_1x1() {
     const auto ocb_ave = calc_ave_blk(oc_block, acc_simd_w, use_ocb_ave);
     const bool use_spb_ave = false;
     const auto spb_ave = calc_ave_blk(sp_block, ur_block, use_spb_ave);
-    const auto M_n_sp_blks = ur_block > 0 ? nstl::max(M, M_tail) / ur_block : 0;
-    const auto M_tail_n_sp_blks
-            = ur_block_tail > 0 ? M_tail / ur_block_tail : 0;
+
+    const int safe_ur_block = ur_block > 0 ? ur_block : 1;
+    const int safe_ur_block_tail = ur_block_tail > 0 ? ur_block_tail : 1;
+    const auto M_n_sp_blks = nstl::max(M, M_tail) / safe_ur_block;
+    const auto M_tail_n_sp_blks = M_tail / safe_ur_block_tail;
 
     // heuristic for maskrcnn workaround: use old blocking for some convolutions
     // TODO: remove this condition
     const bool maskrcnn_cond = (ic == 1024 && oc == 2048)
             || (ic == 1024 && oc == 512) || (ic == 256 && oc == 1024)
             || (ic == 512 && oc == 1024) || (ic == 512 && oc == 2048);
+
+    const int denom = (M_n_sp_blks + M_tail_n_sp_blks) > 0
+            ? (M_n_sp_blks + M_tail_n_sp_blks)
+            : 1;
     const auto amx_fac = maskrcnn_cond
-            ? (div_up(M + M_tail, 16) / (M_n_sp_blks + M_tail_n_sp_blks))
-            : (static_cast<float>(div_up(M + M_tail, 16))
-                    / (M_n_sp_blks + M_tail_n_sp_blks));
+            ? (div_up(M + M_tail, 16) / denom)
+            : (static_cast<float>(div_up(M + M_tail, 16)) / denom);
 
     const auto brgemm_microkernel_eff = is_amx(isa)
             ? amx_fac * (static_cast<float>(ocb_ave) * spb_ave)
@@ -1328,7 +1343,9 @@ float brg_blocking_t::est_eff_1x1() {
     const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
 
     // heuristic sp_block: for reduced rtus, prioritize a smaller sp_block
-    const auto heur_sp_block = is_reduced_rtus ? 1.f / sp_block : sp_block;
+    const auto heur_sp_block = is_reduced_rtus && sp_block != 0
+            ? 1.f / sp_block
+            : static_cast<float>(sp_block);
     const auto brgemm_eff = squeeze_val(
             ur * (2.f - nstl::min(1.9f, static_cast<float>(ur) / heur_sp_block))
                     / 64,
@@ -1779,10 +1796,26 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
-    const auto vnni_dt = jcp.prop_kind == prop_kind::backward_weights
-            ? jcp.dst_dt
+    const bool is_bwd_w = one_of(jcp.prop_kind, prop_kind::backward_weights,
+            prop_kind::backward_bias);
+
+    const auto vnni_dt = is_bwd_w                                  ? jcp.dst_dt
             : utils::one_of(true, jcp.is_f32_bf16, jcp.is_f32_f16) ? jcp.src_dt
                                                                    : jcp.wei_dt;
+    jcp.is_amx10 = is_superset(isa, avx10_512_amx10)
+            && ((utils::one_of(jcp.src_dt, s8, u8)
+                        && utils::one_of(
+                                is_bwd_w ? jcp.dst_dt : jcp.wei_dt, s8, u8))
+                    || utils::everyone_is(bf16, jcp.src_dt,
+                            is_bwd_w ? jcp.dst_dt : jcp.wei_dt)
+                    || utils::everyone_is(
+                            f16, jcp.src_dt, is_bwd_w ? jcp.dst_dt : jcp.wei_dt)
+                    || (utils::one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
+                            && utils::one_of(is_bwd_w ? jcp.dst_dt : jcp.wei_dt,
+                                    f8_e5m2, f8_e4m3)
+                            && utils::one_of(is_bwd_w ? jcp.wei_dt : jcp.dst_dt,
+                                    f32, f8_e5m2, f8_e4m3)));
+
     const data_type_t vnni_block_dt
             = get_mac_emu_data_type(vnni_dt, isa, isa == avx10_1_512);
     jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
@@ -2282,7 +2315,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                         /* heuristic */ jcp.ow < 256)) {
             jcp.use_M_mask = jcp.is_os_blocking ? 2 : 0;
             jcp.use_uker = true;
-            jcp.use_interleave_stores = true;
+            jcp.use_interleave_stores = !jcp.is_amx10;
             jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
             // assuming 2x2 decomposition in amx brgemm kernel
             // and overlap of input by kw
@@ -2317,7 +2350,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         jcp.exec_type = exec_base;
         if (is_amx(isa) && jcp.ow < (8 * 1024)) {
             jcp.use_uker = true;
-            jcp.use_interleave_stores = true;
+            jcp.use_interleave_stores = !jcp.is_amx10;
             jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
         }
 
@@ -2527,6 +2560,15 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const bool use_loop_ngcdhw
                 = max_size < wei_size || (jcp.mb == 1 && os < os_cutoff);
         jcp.loop_order = use_loop_ngcdhw ? loop_ngcdhw : loop_ndhwgc;
+
+        // heuristic for small mb
+        const bool is_small_mb = jcp.nthr > 1 && jcp.mb == 1
+                && jcp.ic * jcp.oh <= 28 * 1024 && jcp.oc * jcp.oh <= 14 * 1024;
+        MAYBE_UNUSED(is_small_mb);
+        // non-unrolled kernel does not support bf32, only dispatch unrolled
+        // kernel for now
+        jcp.use_uker = jcp.is_amx10 || jcp.is_bf32 || !is_small_mb;
+        jcp.use_interleave_stores = !jcp.is_amx10;
     }
 
     const auto min_oc_block = jcp.acc_simd_w;
@@ -2602,17 +2644,6 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     size_t sc_size = sizeof(brgemm_batch_element_t);
     jcp.adjusted_batch_size
             = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
-
-    if (is_amx(isa)) {
-        // heuristic for small mb
-        const bool is_small_mb = jcp.nthr > 1 && jcp.mb == 1
-                && jcp.ic * jcp.oh <= 28 * 1024 && jcp.oc * jcp.oh <= 14 * 1024;
-        MAYBE_UNUSED(is_small_mb);
-        // non-unrolled kernel does not support bf32, only dispatch unrolled
-        // kernel for now
-        jcp.use_uker = jcp.is_bf32 || !is_small_mb;
-        jcp.use_interleave_stores = true;
-    }
 
     // TODO: heuristic to dispatch BF32 BRGeMM
     // The following condition checks for shapes where down-convert execution
@@ -3120,9 +3151,11 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
             && one_of(diff_weights_d.data_type(), f32, f16, f8_e5m2, f8_e4m3)
             && one_of(diff_dst_d.data_type(), f8_e5m2, f8_e4m3);
 
-    jcp.isa = is_fp8 ? (mayiuse(avx10_2_512_amx_2) ? avx10_2_512_amx_2
-                                                   : avx512_core_amx_fp16)
-                     : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx);
+    jcp.isa = mayiuse(avx10_512_amx10)
+            ? avx10_512_amx10
+            : (is_fp8 ? (mayiuse(avx10_2_512_amx_2) ? avx10_2_512_amx_2
+                                                    : avx512_core_amx_fp16)
+                      : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx));
 
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(jcp.isa)) return status::unimplemented;

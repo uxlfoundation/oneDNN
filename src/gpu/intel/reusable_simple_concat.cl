@@ -572,6 +572,8 @@ internal_padding_block_concat2(__global DATA_T *dst,
         int blocks_per_simd1 = SIMD / B0;
         COMPUTE_T bVal = AS_FULL(BLOCK_READ_UL(src1 + batch_offset1
                 + next_bii * B0)); // load next blocks across concat boundary
+
+        const COMPUTE_T zero = 0;
         if (leading_boundary_shift) {
             int block_scaled_leading_shift
                     = leading_boundary_shift / blocks_per_simd1;
@@ -595,15 +597,27 @@ internal_padding_block_concat2(__global DATA_T *dst,
                 bVal = SHUFFLE(
                         bVal, src_bank * B0 + (get_sub_group_local_id() % B0));
 
+                COMPUTE_T leadmask
+                        = (block_scaled_leading_shift > 0
+                                  && block_scaled_leading_shift <= NPERSG)
+                        ? SHIFTR(FULLMASK,
+                                (NPERSG - block_scaled_leading_shift)
+                                        * DATA_TYPE_SIZE * 8)
+                        : zero;
+                if (cutoff > 0 && (ic % B0) >= cutoff) {
+                    aVal = aVal
+                            & leadmask; // zero out non-leading portions in anticipation of further cutoff, trailing values
+                }
             } else {
                 bVal = SHIFTL(bVal,
                         (block_scaled_leading_shift * DATA_TYPE_SIZE * 8));
             }
+        } else {
+            if (cutoff > 0 && (ic % B0) >= cutoff) { aVal = 0; }
         }
 
         int sg_shuffle_dt = cutoff;
         COMPUTE_T offset_vec_data;
-        const COMPUTE_T zero = 0;
         offset_vec_data = SHUFFLE_UP(zero, bVal,
                 sg_shuffle_dt); // will move src1 block to cutoff
 
@@ -640,8 +654,6 @@ internal_padding_block_concat2(__global DATA_T *dst,
                     : zero;
 
             if (cutoff > 0 && (ic % B0) >= cutoff) {
-                aVal = aVal
-                        & trailmask; // zero out portions in anticipation of further trailing/cutoff values
                 aVal = aVal | offset_vec_data;
             }
 
@@ -669,10 +681,10 @@ internal_padding_block_concat2(__global DATA_T *dst,
                     block_scaled_leading_shift++;
 
                 if ((ic % B0) >= cutoff) {
-                    aVal = aVal
-                            & SHIFTR(FULLMASK,
-                                    (NPERSG - block_scaled_leading_shift)
-                                            * DATA_TYPE_SIZE * 8);
+                    COMPUTE_T boundary_mask = SHIFTR(FULLMASK,
+                            (NPERSG - block_scaled_leading_shift)
+                                    * DATA_TYPE_SIZE * 8);
+                    aVal = aVal & boundary_mask;
                 }
             }
 #else
@@ -681,6 +693,17 @@ internal_padding_block_concat2(__global DATA_T *dst,
         } else {
             // boundary case w/no trailing overlap
             if (cutoff > 0 && (ic % B0) >= cutoff) {
+                int block_scaled_leading_shift
+                        = leading_boundary_shift / blocks_per_simd1;
+
+                COMPUTE_T leadmask
+                        = (block_scaled_leading_shift > 0
+                                  && block_scaled_leading_shift <= NPERSG)
+                        ? SHIFTR(FULLMASK,
+                                (NPERSG - block_scaled_leading_shift)
+                                        * DATA_TYPE_SIZE * 8)
+                        : zero;
+                aVal = aVal & leadmask;
                 aVal = aVal | offset_vec_data;
             }
         }

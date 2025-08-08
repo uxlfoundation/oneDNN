@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -109,6 +110,14 @@ struct res_t {
     // TODO: fuse `ibytes` and `obytes` into `mem_size_args`.
     size_t ibytes, obytes;
     check_mem_size_args_t mem_size_args;
+
+    bool operator<(const res_t &r) const {
+        timer::timer_map_t &t1 = const_cast<timer::timer_map_t &>(timer_map);
+        timer::timer_map_t &t2 = const_cast<timer::timer_map_t &>(r.timer_map);
+        // Only count as an improvement if faster by 10% or more to account for variability
+        return (t1.perf_timer().ms(timer::timer_t::min) * 1.1
+                < t2.perf_timer().ms(timer::timer_t::min));
+    }
 };
 
 #endif

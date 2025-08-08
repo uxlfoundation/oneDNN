@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,6 +77,7 @@ bool allow_enum_tags_only {true};
 int test_start {0};
 bool attr_same_pd_check {false};
 bool check_ref_impl {false};
+bool bench_list {false};
 
 execution_mode_t execution_mode {execution_mode_t::direct};
 
@@ -185,6 +187,9 @@ int main(int argc, char **argv) {
             benchdnn_stat.mistrusted, benchdnn_stat.unimplemented,
             benchdnn_stat.invalid_arguments, benchdnn_stat.failed,
             benchdnn_stat.listed);
+
+    if (bench_list) std::cout << benchdnn_stat.recommendation;
+
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         const auto &perf_timer
                 = benchdnn_stat.ms.find(timer::names::perf_timer);

@@ -41,6 +41,11 @@ struct gemm_matmul_t : public gpu_primitive_t {
 
             primitive_attr_t gemm_attr;
             if (!attr()->scales_.has_default_values()) {
+                // By default, host scalar scales are not supported for GPU
+                // as the value should be accessed differently in the kernel
+                if (attr()->scales_.has_host_scalars())
+                    return status::unimplemented;
+
                 gemm_attr.scales_ = attr()->scales_;
             }
             if (!attr()->dropout_.has_default_values()) {
@@ -134,6 +139,11 @@ struct gemm_matmul_t : public gpu_primitive_t {
                 return status::success;
             };
             if (!attr()->zero_points_.has_default_values()) {
+                // By default, host scalar zero points are not supported for GPU
+                // as the value should be accessed differently in the kernel
+                if (attr()->zero_points_.has_host_scalars())
+                    return status::unimplemented;
+
                 CHECK(map_gemm_zp(DNNL_ARG_SRC, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_WEIGHTS, false, orig_dims - 2));
                 CHECK(map_gemm_zp(DNNL_ARG_DST));

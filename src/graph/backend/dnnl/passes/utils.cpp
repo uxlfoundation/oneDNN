@@ -392,9 +392,16 @@ bool post_binary_fusible(
     auto fused_out = base_op->get_output_values()[0];
     auto consumers = fused_out->get_consumers();
     if (consumers.size() != 1) return false;
-    if (consumers[0].get_op().num_inputs() != 2) return false;
 
     size_t fused_in_off = consumers[0].get_offset();
+
+    // binary select post-op can only be fused to previous op on the CPU engine
+    // and requires the previous op output to be connected to src0.
+    if (consumers[0].get_op().num_inputs() == 3
+            && (fused_in_off >= 1 || ekind == dnnl_gpu)) {
+        return false;
+    }
+
     auto fused_in = bin_op->get_input_value(fused_in_off)->get_logical_tensor();
     auto other_in
             = bin_op->get_input_value(1 - fused_in_off)->get_logical_tensor();

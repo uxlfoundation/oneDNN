@@ -258,6 +258,22 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_fused_convolution_fwd_t)
             nullptr,
         }},
+        {{forward, f32, f32, u8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, f32, f32, s8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, bf16, bf16, u8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
+        {{forward, bf16, bf16, s8}, {
+            CPU_INSTANCE(ref_convolution_fwd_t)
+            nullptr,
+        }},
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f32),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, bf16),
@@ -832,6 +848,15 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
             nullptr,
         })},
+        // BWD int8 (src:u8)
+        {{backward_data, u8, f32, f32}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, u8, bf16, bf16}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
         // BWD int8 (diff_dst:s8)
         {{backward_data, f32, s8, s8}, REG_BWD_D_PK({
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx512_core_amx>)
@@ -880,6 +905,15 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_convolution_bwd_strided_t<avx2_vnni>)
             CPU_INSTANCE(gemm_x8s8s32x_convolution_bwd_data_t)
             CPU_INSTANCE(ref_convolution_int8_bwd_data_t)
+            nullptr,
+        })},
+        // BWD int8 (src:s8)
+        {{backward_data, s8, f32, f32}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
+            nullptr,
+        })},
+        {{backward_data, s8, bf16, bf16}, REG_BWD_D_PK({
+            CPU_INSTANCE(ref_convolution_bwd_data_t)
             nullptr,
         })},
     });

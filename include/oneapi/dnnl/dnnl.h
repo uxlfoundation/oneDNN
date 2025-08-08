@@ -1300,6 +1300,21 @@ dnnl_status_t DNNL_API dnnl_memory_create_v2(dnnl_memory_t *memory,
         const_dnnl_memory_desc_t memory_desc, dnnl_engine_t engine,
         int nhandles, void **handles);
 
+/// Creates a memory object for a scalar value located on the host.
+///
+/// @note The scalar value is copied from the provided pointer into the newly
+///     allocated memory storage, so the user does not need to manage the
+///     lifetime of the original scalar data.
+///
+/// @param memory Output host-side scalar memory object.
+/// @param memory_desc Memory descriptor describing a scalar value residing on the host.
+/// @param scalar_ptr Pointer to the scalar value to be copied into the memory
+///     object. This should be a host pointer to the scalar data.
+/// @returns #dnnl_success on success; otherwise, returns a status code
+///     describing the error.
+dnnl_status_t DNNL_API dnnl_memory_create_host_scalar(dnnl_memory_t *memory,
+        const_dnnl_memory_desc_t memory_desc, void *scalar_ptr);
+
 /// Returns the memory descriptor for a memory object.
 ///
 /// @param memory Memory object.

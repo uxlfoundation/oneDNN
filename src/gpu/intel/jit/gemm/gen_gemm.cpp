@@ -23,6 +23,7 @@
 #include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/gemm/gemm_walk_orders.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
@@ -137,6 +138,18 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             auto stride_a = int32_t(pd()->eff_stride_a(i));
             auto stride_b = int32_t(pd()->eff_stride_b(i));
             auto stride_c = int32_t(pd()->desc()->stride_c(i));
+            if (enable_gemm_ir()) {
+                // 2d Surface pointer needs to be 64 byte aligned. When negative
+                // bounds checking is unnecessary, this restriction can be
+                // relaxed by rounding down the surface pointer and adjusting
+                // the width accordingly.
+                auto a_size = types::data_type_size(pd()->eff_a_type());
+                gpu_assert(stride_a * a_size % 64 == 0)
+                        << "Unimplemented load transform";
+                auto b_size = types::data_type_size(pd()->eff_b_type());
+                gpu_assert(stride_b * b_size % 64 == 0)
+                        << "Unimplemented load transform";
+            }
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
@@ -156,9 +169,14 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
             auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
-            uint32_t recipBatchSize = uint32_reciprocal(batchSize);
             arg_list.set(argn++, batchSize);
-            arg_list.set(argn++, recipBatchSize);
+            if (enable_gemm_ir()) {
+                uint64_t magic = ir_utils::idiv_magicgu_packed(batchSize);
+                arg_list.set(argn++, magic);
+            } else {
+                uint32_t recipBatchSize = uint32_reciprocal(batchSize);
+                arg_list.set(argn++, recipBatchSize);
+            }
         }
     }
 

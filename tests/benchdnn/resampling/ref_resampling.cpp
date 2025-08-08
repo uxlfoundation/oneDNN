@@ -39,10 +39,8 @@ float weight(const int64_t y, const int64_t y_max, const int64_t x_max) {
 }
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     int64_t MB = prb->mb;
     int64_t IC = prb->ic;
@@ -58,7 +56,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         const int64_t id = near(od, OD, ID);
         const int64_t ih = near(oh, OH, IH);
         const int64_t iw = near(ow, OW, IW);
-        result = src.get_f32_elem(src_off_f(prb, mb, ic, id, ih, iw));
+        result = src[src_off_f(prb, mb, ic, id, ih, iw)];
     };
 
     auto ker_linear = [&](float &result, int64_t mb, int64_t ic, int64_t od,
@@ -73,12 +71,8 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         float cd[2][2] = {{0}};
         for_(int i = 0; i < 2; i++)
         for (int j = 0; j < 2; j++)
-            cd[i][j] = src.get_f32_elem(
-                               src_off_f(prb, mb, ic, id[0], ih[i], iw[j]))
-                            * wd[0]
-                    + src.get_f32_elem(
-                              src_off_f(prb, mb, ic, id[1], ih[i], iw[j]))
-                            * wd[1];
+            cd[i][j] = src[src_off_f(prb, mb, ic, id[0], ih[i], iw[j])] * wd[0]
+                    + src[src_off_f(prb, mb, ic, id[1], ih[i], iw[j])] * wd[1];
 
         float ch[2] = {0};
         for (int i = 0; i < 2; i++)
@@ -103,17 +97,14 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
                 const auto v_po_vals
                         = prepare_po_vals(dst, args, v_po_masks, dst_off);
 
-                maybe_post_ops(prb->attr, result, dst.get_f32_elem(dst_off),
-                        v_po_vals);
-                dst_ptr[dst_off] = result;
+                maybe_post_ops(prb->attr, result, dst[dst_off], v_po_vals);
+                dst[dst_off] = result;
             });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
-
-    float *d_src_ptr = (float *)d_src;
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
 
     int64_t MB = prb->mb;
     int64_t IC = prb->ic;
@@ -127,17 +118,17 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     auto ker_nearest
             = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
                   const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
-                  float d_dst_val = d_dst.get_f32_elem(d_dst_off);
+                  float d_dst_val = d_dst[d_dst_off];
                   const int64_t id = near(od, OD, ID);
                   const int64_t ih = near(oh, OH, IH);
                   const int64_t iw = near(ow, OW, IW);
-                  d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] += d_dst_val;
+                  d_src[src_off_f(prb, mb, ic, id, ih, iw)] += d_dst_val;
               };
 
     auto ker_linear = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh,
                               int64_t ow) {
         const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
-        float d_dst_val = d_dst.get_f32_elem(d_dst_off);
+        float d_dst_val = d_dst[d_dst_off];
         const int64_t id[2] = {left(od, OD, ID), right(od, OD, ID)};
         const int64_t ih[2] = {left(oh, OH, IH), right(oh, OH, IH)};
         const int64_t iw[2] = {left(ow, OW, IW), right(ow, OW, IW)};
@@ -147,7 +138,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
         for_(int i = 0; i < 2; i++)
         for_(int j = 0; j < 2; j++)
         for (int k = 0; k < 2; k++) {
-            d_src_ptr[src_off_f(prb, mb, ic, id[i], ih[j], iw[k])]
+            d_src[src_off_f(prb, mb, ic, id[i], ih[j], iw[k])]
                     += wd[i] * wh[j] * ww[k] * d_dst_val;
         }
     };
@@ -155,7 +146,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     // zeroing d_src for correct result
     benchdnn_parallel_nd(MB, IC, ID, IH, IW,
             [&](int64_t mb, int64_t ic, int64_t id, int64_t ih, int64_t iw) {
-                d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] = 0;
+                d_src[src_off_f(prb, mb, ic, id, ih, iw)] = 0;
             });
 
     benchdnn_parallel_nd(MB, IC, [&](int64_t mb, int64_t ic) {

@@ -45,6 +45,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         const int64_t idx = mb * prb->g + g;
         const float val_coeff = is_integral_dt(prb->dt[0]) ? 1.f : 0.25f;
@@ -55,7 +56,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
             if (prb->dt[0] == dnnl_u8 && mean_val_shift < 2) mean_val_shift = 2;
             val = val_coeff * (1LL << mean_val_shift);
         }
-        mem_fp.set_f32_elem(idx, val);
+        mem_fp_h[idx] = val;
     });
 
     if (mem_dt && IMPLICATION(prb->dir & FLAG_FWD, prb->use_stats()))
@@ -78,9 +79,11 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
     const auto spatial = prb->id * prb->ih * prb->iw;
     const float val_coeff = is_integral_dt(prb->dt[0]) ? 1.f : 0.25f;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    const auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         const int64_t idx = mb * prb->g + g;
-        const float m = ref_mean.get_f32_elem(idx);
+        const float m = ref_mean_h[idx];
         // Note: we use a different seed for each chunk to avoid
         // repeating patterns. We could use discard(idx_start) too but
         // it has a complexity in O(idx_start). We also add 1 to avoid
@@ -136,7 +139,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                     if (cfg.check_alg_ == ALG_0
                             && !flip_coin(
                                     index_order / 2 * 257ULL, cfg.density_)) {
-                        mem_fp.set_f32_elem(off + sp, 0);
+                        mem_fp_h[off + sp] = 0;
                         continue;
                     }
 
@@ -158,7 +161,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 }
                 auto round_val
                         = round_to_nearest_representable(prb->dt[0], val);
-                mem_fp.set_f32_elem(off + sp, round_val);
+                mem_fp_h[off + sp] = round_val;
                 m_check += round_val;
             }
         }
@@ -195,7 +198,9 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         return fill_random_real(
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
-
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    const auto ref_src_h = ref_src.get_host_f32_handle();
+    const auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         const int64_t idx = mb * prb->g + g;
 
@@ -203,7 +208,7 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         if (prb->flags & GLOB_STATS) {
             val = ((idx % 7) << 1);
         } else {
-            const float m = ref_mean.get_f32_elem(idx);
+            const float m = ref_mean_h[idx];
             for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                     ++c) {
                 int64_t off = data_off(prb, mb, c, 0, 0, 0);
@@ -212,13 +217,13 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 for_(int64_t h = 0; h < prb->ih; ++h)
                 for (int64_t w = 0; w < prb->iw; ++w) {
                     const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
-                    const float s = ref_src.get_f32_elem(sp + off);
+                    const float s = ref_src_h[sp + off];
                     val += (s - m) * (s - m);
                 }
             }
             val /= cfg.L_;
         }
-        mem_fp.set_f32_elem(idx, val);
+        mem_fp_h[idx] = val;
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -239,10 +244,11 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -263,10 +269,11 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -324,11 +331,12 @@ int fill_variance_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         const int64_t idx = mb * prb->g + g;
         // final variance = {0.25f, 1.f, 4.f}
         const float val = 0.25f * (1 << ((idx % 3) * 2));
-        mem_fp.set_f32_elem(idx, val - prb->eps);
+        mem_fp_h[idx] = val - prb->eps;
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -352,6 +360,8 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
 
     const auto SP = prb->id * prb->ih * prb->iw;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    const auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         // Idea behind the filling is to reduce a possibility of cancellation
         // when subtracting a part accumulated over N. For that, we simplify
@@ -359,14 +369,13 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
         // random but we keep all values as pow2 values to have almost exact
         // summation result.
         int64_t idx = mb * prb->g + g;
-        const float m = ref_mean.get_f32_elem(idx);
+        const float m = ref_mean_h[idx];
 
         for_(int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1); ++c)
         for (int64_t sp = 0; sp < SP; ++sp) {
             const int64_t off = data_off(prb, mb, c, 0, 0, sp);
             const float val = sp % 2 == 0 ? (m - 1.f) : (m + 1.f);
-            mem_fp.set_f32_elem(
-                    off, round_to_nearest_representable(prb->dt[0], val));
+            mem_fp_h[off] = round_to_nearest_representable(prb->dt[0], val);
         }
     });
 
@@ -391,6 +400,7 @@ int fill_diff_dst_bwd(
 
     const auto SP = prb->id * prb->ih * prb->iw;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->mb, prb->g, [&](int64_t mb, int64_t g) {
         // Note: we use a different seed for each chunk to avoid
         // repeating patterns. We could use discard(idx_start) too but
@@ -411,8 +421,7 @@ int fill_diff_dst_bwd(
             const float sign = half_dist(b_seed) ? 1.f : -1.f;
             // d_dst = powf(2, {-4, ... , 2})
             const float val = sign * 0.0625f * (1LL << data_dist(int_seed));
-            mem_fp.set_f32_elem(
-                    off, round_to_nearest_representable(prb->dt[0], val));
+            mem_fp_h[off] = round_to_nearest_representable(prb->dt[0], val);
         }
     });
 
@@ -564,7 +573,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c
                         = dst.get_idx(args.idx, 1 << 1 /* last_dim_mask */);
-                const float beta = sh.get_f32_elem(c);
+                const float beta = sh.get_host_f32_handle()[c];
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);

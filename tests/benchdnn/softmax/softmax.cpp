@@ -139,6 +139,7 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, outer_size);
@@ -178,8 +179,8 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
                     n_top[i]--;
                     if (n_top[i] == 0) i++;
                 }
-                mem_fp.set_f32_elem(offset,
-                        round_to_nearest_representable(mem_dt.dt(), value));
+                mem_fp_h[offset]
+                        = round_to_nearest_representable(mem_dt.dt(), value);
             }
         }
     });
@@ -213,11 +214,12 @@ int fill_data_bwd(data_kind_t data_kind, const prb_t *prb, dnn_mem_t &mem_dt,
     // seed decides about the sign; 1 for SOFTMAX, 0 for LOGSOFTMAX
 
     const float sign = seed % 2 == 0 ? 1.f : -1.f;
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const float gen = ((11 * i) + 37 + 19 * seed) % range;
         float coeff = data_kind == DIFF_DST ? sign * 1.f : sign * (1.f / range);
         float value = coeff * gen;
-        mem_fp.set_f32_elem(i, value);
+        mem_fp_h[i] = value;
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

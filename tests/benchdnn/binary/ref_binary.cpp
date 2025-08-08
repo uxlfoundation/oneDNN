@@ -23,14 +23,13 @@ namespace binary {
 void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
 
-    const dnn_mem_t &src0 = args.find(DNNL_ARG_SRC_0);
-    const dnn_mem_t &src1 = args.find(DNNL_ARG_SRC_1);
-    const dnn_mem_t &src2 = args.find(DNNL_ARG_SRC_2);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
+    const auto src0 = args.find(DNNL_ARG_SRC_0).get_host_f32_handle();
+    const auto src1 = args.find(DNNL_ARG_SRC_1).get_host_f32_handle();
+    const auto src2 = args.find(DNNL_ARG_SRC_2).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
-    float *dst_ptr = (float *)dst;
-    const float *A = (const float *)src0;
-    const float *B = (const float *)src1;
+    const float *A = src0;
+    const float *B = src1;
 
     float scales[2] = {prb->attr.scales.get(DNNL_ARG_SRC_0).scale,
             prb->attr.scales.get(DNNL_ARG_SRC_1).scale};
@@ -45,12 +44,12 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         const auto idx_B = dst.get_idx(i, broadcast_mask_B);
 
         const bool c_val = prb->is_ternary_op()
-                ? static_cast<bool>(src2.get_f32_elem(idx_A))
+                ? static_cast<bool>(src2[idx_A])
                 : false;
 
         float res = compute_binary(
                 prb->alg, scales[0] * A[idx_A], scales[1] * B[idx_B], c_val);
-        float &dst_fp = dst_ptr[i];
+        float &dst_fp = dst[i];
 
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, i);
 

@@ -30,23 +30,24 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
 }
 
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
-    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &src_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    const dnn_mem_t &wei_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    const auto src_m = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto wei_m = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+    const auto bia_m = args.find(DNNL_ARG_BIAS).get_host_f32_handle();
+    auto dst_m = args.find(DNNL_ARG_DST).get_host_f32_handle();
+    const auto src_scales = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC)
+                                    .get_host_f32_handle();
+    const auto wei_scales = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)
+                                    .get_host_f32_handle();
+    const auto dst_scales = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
+                                    .get_host_f32_handle();
     const dnn_mem_t &src_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const dnn_mem_t &wei_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-    const dnn_mem_t &dropout = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
+    const auto dropout
+            = args.find(DNNL_ARG_ATTR_DROPOUT_MASK).get_host_f32_handle();
 
     const int64_t M = prb->m;
     const int64_t N = prb->n;
@@ -131,10 +132,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
         int src_zp = has_src_single_zp ? src_zps.get_elem(0) : 0;
         int wei_zp = has_wei_single_zp ? wei_zps.get_elem(0) : 0;
-        float src_scale
-                = has_src_single_scale ? src_scales.get_f32_elem(0) : 1.f;
-        float wei_scale
-                = has_wei_single_scale ? wei_scales.get_f32_elem(0) : 1.f;
+        float src_scale = has_src_single_scale ? src_scales[0] : 1.f;
+        float wei_scale = has_wei_single_scale ? wei_scales[0] : 1.f;
 
         for (int64_t gK = 0; gK < n_k_groups; gK++) {
             const auto src_gK_off
@@ -157,12 +156,12 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             if (has_src_scale && !has_src_single_scale) {
                 const auto src_scale_idx = src_m.get_idx(src_gK_off,
                         src_scale_mask, src_m.ndims(), src_scale_groups);
-                src_scale = src_scales.get_f32_elem(src_scale_idx);
+                src_scale = src_scales[src_scale_idx];
             }
             if (has_wei_scale && !has_wei_single_scale) {
                 const auto wei_scale_idx = wei_m.get_idx(wei_gK_off,
                         wei_scale_mask, wei_m.ndims(), wei_scale_groups);
-                wei_scale = wei_scales.get_f32_elem(wei_scale_idx);
+                wei_scale = wei_scales[wei_scale_idx];
             }
 
             for (int64_t k = 0; k < smallest_k_group; ++k) {
@@ -171,8 +170,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                 const auto wei_off = wei_ba_off_f(
                         prb, wei_mb, gK * smallest_k_group + k, n);
 
-                auto s = src_scale * (src_m.get_f32_elem(src_off) - src_zp);
-                auto w = wei_scale * (wei_m.get_f32_elem(wei_off) - wei_zp);
+                auto s = src_scale * (src_m[src_off] - src_zp);
+                auto w = wei_scale * (wei_m[wei_off] - wei_zp);
 
                 dst += s * w;
             }
@@ -181,13 +180,13 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         const auto dst_off = dst_off_f(prb, mb, m, n);
         if (prb->bia_dt != dnnl_data_type_undef) {
             const auto bia_idx = dst_m.get_idx(dst_off, bias_broadcast_mask);
-            dst += bia_m.get_f32_elem(bia_idx);
+            dst += bia_m[bia_idx];
         }
 
         const auto v_po_vals
                 = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
         maybe_dropout(prb->attr, dst, dst_off, dropout);
-        const auto sum_val = dst_m.get_f32_elem(dst_off);
+        const auto sum_val = dst_m[dst_off];
         maybe_post_ops(prb->attr, dst, sum_val, v_po_vals);
 
         int dst_zp = 0;
@@ -197,12 +196,11 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         }
         float dst_scale = 1.f;
         if (has_dst_scale) {
-            dst_scale
-                    = 1.f / dst_scales.get_f32_elem(dst_scale_mask > 0 ? n : 0);
+            dst_scale = 1.f / dst_scales[dst_scale_mask > 0 ? n : 0];
         }
         float dst_val = dst_scale * dst + dst_zp;
         maybe_round(prb->attr, DNNL_ARG_DST, dst_val, dst_off, prb->dst_dt());
-        dst_m.set_f32_elem(dst_off, dst_val);
+        dst_m[dst_off] = dst_val;
     });
 }
 
@@ -217,9 +215,7 @@ void cvt_coo_indices_to_csr_pointers(const int32_t *indices, int32_t *pointers,
 }
 
 void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+    auto dst_m = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     const auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
     const auto wei_encoding
@@ -244,10 +240,13 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
     // Batch is not supported.
     const int64_t mb = 0;
     benchdnn_parallel_nd(M, N, [&](int64_t m, int64_t n) {
-        dst_m.set_f32_elem(dst_off_f(prb, mb, m, n), 0.0f);
+        dst_m[dst_off_f(prb, mb, m, n)] = 0.0f;
     });
 
     if (is_wei_sparse) {
+        const auto src_m = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+        const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
+
         int32_t *wei_indices = wei_m.get_mapped_pointer<int32_t>(
                 encoding == dnnl_csr ? 1 : 2);
         int32_t *wei_pointers = wei_m.get_mapped_pointer<int32_t>(2);
@@ -271,15 +270,18 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
                     const int64_t src_idx = src_off_f(prb, mb, m, k);
                     const int64_t dst_idx
                             = dst_off_f(prb, mb, m, wei_indices[n]);
-                    const float src_val = src_m.get_f32_elem(src_idx);
+                    const float src_val = src_m[src_idx];
                     const float wei_val = wei_m.get_elem(n, 0);
-                    float dst_val = dst_m.get_f32_elem(dst_idx);
+                    float dst_val = dst_m[dst_idx];
                     dst_val += src_val * wei_val;
-                    dst_m.set_f32_elem(dst_idx, dst_val);
+                    dst_m[dst_idx] = dst_val;
                 }
             }
         });
     } else if (is_src_sparse) {
+        const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
+        const auto wei_m = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+
         int32_t *src_indices = src_m.get_mapped_pointer<int32_t>(
                 encoding == dnnl_csr ? 1 : 2);
         int32_t *src_pointers = src_m.get_mapped_pointer<int32_t>(2);
@@ -297,16 +299,16 @@ void compute_ref_sparse_matmul(const prb_t *prb, const args_t &args) {
             const int64_t row_end = src_pointers[m + 1];
             for (int64_t n = 0; n < N; n++) {
                 const int64_t dst_idx = dst_off_f(prb, mb, m, n);
-                float dst_val = dst_m.get_f32_elem(dst_idx);
+                float dst_val = dst_m[dst_idx];
 
                 for (int64_t k = row_start; k < row_end; k++) {
                     const int64_t wei_idx
                             = wei_ba_off_f(prb, mb, src_indices[k], n);
                     const float src_val = src_m.get_elem(k, 0);
-                    const float wei_val = wei_m.get_f32_elem(wei_idx);
+                    const float wei_val = wei_m[wei_idx];
                     dst_val += src_val * wei_val;
                 }
-                dst_m.set_f32_elem(dst_idx, dst_val);
+                dst_m[dst_idx] = dst_val;
             }
         });
     }

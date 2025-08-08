@@ -21,11 +21,9 @@
 namespace pool {
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
-
-    float *dst_ptr = (float *)dst;
 
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     auto ker = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
@@ -52,8 +50,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
                     const int64_t iw = ow * SW - PW + kw * (DW + 1);
                     if (iw < 0 || iw >= IW) continue;
 
-                    float s = src.get_f32_elem(
-                            src_off_f(prb, mb, ic, id, ih, iw));
+                    float s = src[src_off_f(prb, mb, ic, id, ih, iw)];
                     if (s > max_value) {
                         max_value = s;
                         ws_off = ker_off_f(prb, kd, kh, kw);
@@ -75,7 +72,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, dst_off);
 
         maybe_post_ops(prb->attr, res, 0.f, v_po_vals);
-        dst_ptr[dst_off] = res;
+        dst[dst_off] = res;
     };
 
     benchdnn_parallel_nd(prb->mb, prb->ic, prb->od, prb->oh, prb->ow,
@@ -85,22 +82,20 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
     const dnn_mem_t &ws = args.find(DNNL_ARG_WORKSPACE);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
-
-    float *d_src_ptr = (float *)d_src;
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
 
     auto zero_d_src = [&](int64_t mb, int64_t ic) {
         for_(int64_t id = 0; id < prb->id; ++id)
         for_(int64_t ih = 0; ih < prb->ih; ++ih)
         for (int64_t iw = 0; iw < prb->iw; ++iw)
-            d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] = 0.f;
+            d_src[src_off_f(prb, mb, ic, id, ih, iw)] = 0.f;
     };
 
     auto ker = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
         const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
-        float d_dst_val = d_dst.get_f32_elem(d_dst_off);
+        float d_dst_val = d_dst[d_dst_off];
         int ws_off = (prb->alg == max) ? ws.get_elem(d_dst_off) : 0;
 
         const int64_t ID = prb->id, IH = prb->ih, IW = prb->iw;
@@ -119,7 +114,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                     const int64_t iw = ow * SW - PW + kw * (DW + 1);
                     if (iw < 0 || iw >= IW) continue;
 
-                    float &S = d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)];
+                    float &S = d_src[src_off_f(prb, mb, ic, id, ih, iw)];
                     if (prb->alg == max) {
                         if (ws_off == ker_off_f(prb, kd, kh, kw))
                             S += d_dst_val;

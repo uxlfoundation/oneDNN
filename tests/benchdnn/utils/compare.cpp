@@ -156,13 +156,14 @@ bool compare_extreme_values(float a, float b) {
 }
 
 compare_t::driver_check_func_args_t::driver_check_func_args_t(
-        const dnn_mem_t &exp_mem, const dnn_mem_t &got_f32, const int64_t i,
+        const dnn_mem_t::handle_t<float> &exp_mem,
+        const dnn_mem_t::handle_t<float> &got_f32, const int64_t i,
         const dnnl_data_type_t data_type, const float trh)
     : dt(data_type)
     , idx(i)
-    , exp_f32(exp_mem.get_f32_elem(idx))
+    , exp_f32(exp_mem[idx])
     , exp(round_to_nearest_representable(dt, exp_f32))
-    , got(got_f32.get_f32_elem(idx))
+    , got(got_f32[idx])
     , diff(fabsf(exp - got))
     , rel_diff(diff / (fabsf(exp) > FLT_MIN ? fabsf(exp) : 1))
     , trh(trh) {}
@@ -177,7 +178,9 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total = 1;
 
-    dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t got_f32_mem(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    auto got_f32 = got_f32_mem.get_host_f32_handle();
+    auto exp_f32 = exp_mem.get_host_f32_handle();
     const auto dt = got_mem.dt();
 
     // Idea is to pad nelems to mimic uniform load between available threads.
@@ -196,7 +199,7 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
         // Specifiers to keep data accumulated over several `i`.
         static thread_local diff_norm_t diff_norm_ithr;
-        driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_);
+        driver_check_func_args_t args(exp_f32, got_f32, i, dt, trh_);
 
         if ((std::isnan(args.exp_f32)) || std::isinf(args.exp)) {
             // Don't include nan inf values into norm as they make it
@@ -230,7 +233,7 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     // Serial point dump with enabled dumping when needed for nicer output.
     if (need_dump) {
         for (int64_t i = 0; i < nelems; ++i) {
-            driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_);
+            driver_check_func_args_t args(exp_f32, got_f32, i, dt, trh_);
             dump_point_values(get_kind_str(),
                     {got_mem.md_, i, args.exp_f32, args.exp, args.got,
                             args.diff, args.rel_diff});
@@ -265,7 +268,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total += nelems;
 
-    dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    dnn_mem_t got_f32_mem(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    const auto got_f32 = got_f32_mem.get_host_f32_handle();
     dnn_mem_t exp_f32_plain;
     const bool is_prim_ref_dst_mem_f32_abx
             = query_md_data_type(exp_mem.md_) == dnnl_f32
@@ -275,7 +279,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         exp_f32_plain
                 = dnn_mem_t(exp_mem, dnnl_f32, tag::abx, get_cpu_engine());
     }
-    const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem;
+    const auto exp_f32 = exp_f32_plain ? exp_f32_plain.get_host_f32_handle()
+                                       : exp_mem.get_host_f32_handle();
 
     const auto dt = got_mem.dt();
     const bool has_eltwise
@@ -351,8 +356,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         // calls to this function.
         static thread_local auto &out_data = thread_data.get();
 
-        const auto got_val = got_f32.get_f32_elem(i);
-        bool ok = exp_f32.get_f32_elem(i) == got_val;
+        const auto got_val = got_f32[i];
+        bool ok = exp_f32[i] == got_val;
 
         static thread_local driver_check_func_args_t args;
         for (int z = ok; z < 1; z++) {

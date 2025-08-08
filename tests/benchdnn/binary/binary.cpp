@@ -62,6 +62,7 @@ int fill_mem(
     /* Do fixed partitioning to have same filling for any number of threads */
     static constexpr int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -82,7 +83,7 @@ int fill_mem(
             // Remove zeroes in src1 to avoid division by zero.
             if (input_idx == 1 && val == 0.0f) val = 1.0f;
             val = round_to_nearest_representable(mem_dt.dt(), val);
-            mem_fp.set_f32_elem(idx, val);
+            mem_fp_h[idx] = val;
         }
     });
 

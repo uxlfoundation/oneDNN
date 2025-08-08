@@ -48,6 +48,7 @@ int fill_data(data_kind_t kind, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -87,7 +88,7 @@ int fill_data(data_kind_t kind, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
                     : flip_coin(idx, 0.1f)      ? -1.f
                                                 : 1.f;
             value = round_to_nearest_representable(mem_dt.dt(), sign * value);
-            mem_fp.set_f32_elem(idx, value);
+            mem_fp_h[idx] = value;
         }
     });
 

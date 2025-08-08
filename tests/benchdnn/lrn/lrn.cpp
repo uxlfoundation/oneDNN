@@ -49,10 +49,11 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     const int range = 16;
     const int f_min = prb->dt == dnnl_u8 ? 0 : -range / 2;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const int64_t gen = kind == SRC ? 1091 * i + 1637 : 1279 * i + 1009;
         const float value = f_min + gen % range;
-        mem_fp.set_f32_elem(i, value);
+        mem_fp_h[i] = value;
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

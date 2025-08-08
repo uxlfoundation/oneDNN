@@ -94,6 +94,7 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         min_val = lowest_dt(dnnl_u8);
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -103,8 +104,8 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         std::uniform_int_distribution<> igen(min_val, max_val);
         // Most fp8 values can't be represented exactly with integers.
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            mem_fp.set_f32_elem(idx,
-                    round_to_nearest_representable(mem_dt.dt(), igen(msr)));
+            mem_fp_h[idx]
+                    = round_to_nearest_representable(mem_dt.dt(), igen(msr));
         }
     });
 

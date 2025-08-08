@@ -666,8 +666,8 @@ int measure_perf(
     return measure_perf(ctx, res, perf_func, args);
 }
 
-std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
-        const std::vector<std::pair<int, int>> &v_po_masks,
+std::vector<float> prepare_po_vals(const dnn_mem_t::handle_t<float> &dst_m,
+        const args_t &args, const std::vector<std::pair<int, int>> &v_po_masks,
         const size_t dst_off) {
     if (v_po_masks.empty()) return std::vector<float>();
 
@@ -675,8 +675,8 @@ std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
 
     for (size_t d = 0; d < v_po_masks.size(); ++d) {
         const auto po_offset = dst_m.get_idx(dst_off, v_po_masks[d].second);
-        const float val
-                = args.find(v_po_masks[d].first).get_f32_elem(po_offset);
+        const float val = args.find(v_po_masks[d].first)
+                                  .get_host_f32_handle()[po_offset];
         v_vals[d] = val;
     }
     return v_vals;
@@ -1923,7 +1923,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
     } else if (is_dropout_p) {
-        ref_mem.set_f32_elem(0, attr.dropout.p);
+        ref_mem.set_elem(0, attr.dropout.p);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_dropout_seed) {
         ref_mem.set_elem(0, attr.dropout.seed);

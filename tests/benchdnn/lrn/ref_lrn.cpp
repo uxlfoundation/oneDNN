@@ -25,8 +25,8 @@ float fast_powf(float omega, float beta) {
     return 1.0f / powf(omega, beta);
 }
 
-float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
-        int64_t d, int64_t h, int64_t w) {
+float get_omega(const prb_t *prb, const dnn_mem_t::handle_t<float> &src,
+        int64_t mb, int64_t c, int64_t d, int64_t h, int64_t w) {
     const int size = prb->ls;
     const int half_size = (size - 1) / 2;
     const int summands = compute_n_summands(prb);
@@ -38,7 +38,7 @@ float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
 
         for (int64_t cs = c_st; cs < c_en; ++cs) {
             const auto off = data_off(prb, mb, cs, d, h, w);
-            const float s = src.get_f32_elem(off);
+            const float s = src[off];
             sum += s * s;
         }
     } else if (prb->alg == WITHIN) {
@@ -53,7 +53,7 @@ float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
         for_(int64_t hs = h_st; hs < h_en; ++hs)
         for (int64_t ws = w_st; ws < w_en; ++ws) {
             const auto off = data_off(prb, mb, c, ds, hs, ws);
-            const float s = src.get_f32_elem(off);
+            const float s = src[off];
             sum += s * s;
         }
     }
@@ -62,26 +62,22 @@ float get_omega(const prb_t *prb, const dnn_mem_t &src, int64_t mb, int64_t c,
 }
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     benchdnn_parallel_nd(prb->mb, prb->ic, prb->id, prb->ih, prb->iw,
             [&](int64_t mb, int64_t c, int64_t d, int64_t h, int64_t w) {
                 const auto off = data_off(prb, mb, c, d, h, w);
                 const float omega = get_omega(prb, src, mb, c, d, h, w);
                 const float omega_in_beta = fast_powf(omega, prb->beta);
-                dst_ptr[off] = src.get_f32_elem(off) * omega_in_beta;
+                dst[off] = src[off] * omega_in_beta;
             });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
-
-    float *d_src_ptr = (float *)d_src;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
 
     const int size = prb->ls;
     const int half_size = (size - 1) / 2;
@@ -99,10 +95,9 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                         const float omega
                                 = get_omega(prb, src, mb, cs, d, h, w);
                         const float omega_in_beta = fast_powf(omega, prb->beta);
-                        const float tmp
-                                = omega_in_beta * d_dst.get_f32_elem(off);
+                        const float tmp = omega_in_beta * d_dst[off];
                         if (cs == c) A = tmp;
-                        B += (tmp / omega * src.get_f32_elem(off));
+                        B += (tmp / omega * src[off]);
                     }
                 } else if (prb->alg == WITHIN) {
                     const int64_t d_st = MAX2(d - half_size + 0, 0);
@@ -119,16 +114,14 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
                         const float omega
                                 = get_omega(prb, src, mb, c, ds, hs, ws);
                         const float omega_in_beta = fast_powf(omega, prb->beta);
-                        const float tmp
-                                = omega_in_beta * d_dst.get_f32_elem(off);
+                        const float tmp = omega_in_beta * d_dst[off];
                         if (ds == d && hs == h && ws == w) A = tmp;
-                        B += (tmp / omega * src.get_f32_elem(off));
+                        B += (tmp / omega * src[off]);
                     }
                 }
                 const auto off = data_off(prb, mb, c, d, h, w);
-                B *= (2.0f * prb->alpha * prb->beta * src.get_f32_elem(off)
-                        / summands);
-                d_src_ptr[off] = A - B;
+                B *= (2.0f * prb->alpha * prb->beta * src[off] / summands);
+                d_src[off] = A - B;
             });
 }
 

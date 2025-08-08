@@ -49,11 +49,12 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = 0.f;
         if (cfg.check_alg_ != ALG_0 || (prb->flags & GLOB_STATS))
             val = 0.25f * (1 << (c % 7));
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -72,8 +73,10 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 mem_dt, mem_fp, res, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
-        const float m = ref_mean.get_f32_elem(c);
+        const float m = ref_mean_h[c];
         for (int64_t mb = 0; mb < prb->mb; ++mb) {
             // l[0] must be even
             int64_t l_base = mb * prb->id * prb->ih * prb->iw + c * 239 * 2;
@@ -88,7 +91,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 // Shortcut for zero values.
                 if (cfg.check_alg_ == ALG_0
                         && !flip_coin(l / 2 * 257ULL, cfg.density_)) {
-                    mem_fp.set_f32_elem(off + sp, 0);
+                    mem_fp_h[off + sp] = 0;
                     continue;
                 }
 
@@ -104,8 +107,8 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                                 == cfg.L_ - 1)) {
                     val = m;
                 }
-                mem_fp.set_f32_elem(
-                        off + sp, round_to_nearest_representable(prb->dt, val));
+                mem_fp_h[off + sp]
+                        = round_to_nearest_representable(prb->dt, val);
             }
         }
     });
@@ -133,12 +136,15 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    auto ref_src_h = ref_src.get_host_f32_handle();
+    auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = 0.f;
         if (prb->flags & GLOB_STATS) {
             val = ((c % 7) << 1);
         } else {
-            const float m = ref_mean.get_f32_elem(c);
+            const float m = ref_mean_h[c];
             for (int64_t mb = 0; mb < prb->mb; ++mb) {
                 int64_t off = data_off(prb, mb, c, 0, 0, 0);
 
@@ -146,13 +152,13 @@ int fill_variance(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 for_(int64_t h = 0; h < prb->ih; ++h)
                 for (int64_t w = 0; w < prb->iw; ++w) {
                     const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
-                    const float s = ref_src.get_f32_elem(sp + off);
+                    const float s = ref_src_h[sp + off];
                     val += (s - m) * (s - m);
                 }
             }
             val /= cfg.L_;
         }
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt && prb->use_stats()) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -175,6 +181,9 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
+    auto ref_src_h = ref_src.get_host_f32_handle();
+    auto ref_mean_h = ref_mean.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, prb->mb, prb->id, prb->ih, prb->iw,
             [&](int64_t c, int64_t mb, int64_t d, int64_t h, int64_t w) {
                 const int64_t l_base
@@ -182,11 +191,11 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                 const int64_t sp = d * prb->ih * prb->iw + h * prb->iw + w;
                 const int64_t offset = data_off(prb, mb, c, 0, 0, 0) + sp;
                 const int64_t l = l_base + sp;
-                const float s = ref_src.get_f32_elem(offset);
-                const float m = ref_mean.get_f32_elem(c);
+                const float s = ref_src_h[offset];
+                const float m = ref_mean_h[c];
 
                 if (!(prb->flags & GLOB_STATS) && s == 0) {
-                    mem_fp.set_f32_elem(offset, 1.f);
+                    mem_fp_h[offset] = 1.f;
                     return;
                 }
 
@@ -204,8 +213,7 @@ int fill_src_add(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
                     const int64_t sign_val = s < m ? -1 : 1;
                     val = mod2_val * sign_val;
                 }
-                mem_fp.set_f32_elem(
-                        offset, round_to_nearest_representable(prb->dt, val));
+                mem_fp_h[offset] = round_to_nearest_representable(prb->dt, val);
             });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -226,10 +234,11 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = (1.f / 8) * (1 << (c % 7));
         if (prb->flags & GLOB_STATS) val *= 8.f;
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -250,10 +259,11 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
     }
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(prb->ic, [&](int64_t c) {
         float val = ((c % 3) - 1) * (1.f / 512 * (1 << (c % 7)));
         if (prb->flags & GLOB_STATS) val *= 512.f;
-        mem_fp.set_f32_elem(c, val);
+        mem_fp_h[c] = val;
     });
 
     if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
@@ -333,6 +343,7 @@ int prepare_bwd(
     const int64_t n_chunks = 16;
     const int64_t chunk_size = div_up(nelems, n_chunks);
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -354,7 +365,7 @@ int prepare_bwd(
             float value = flip_coin(igen_coin(msr), sparsity)
                     ? round_to_nearest_representable(prb->dt, igen_val(msr))
                     : 0;
-            mem_fp.set_f32_elem(idx, value);
+            mem_fp_h[idx] = value;
         }
     });
 
@@ -364,7 +375,7 @@ int prepare_bwd(
 }
 
 int check_fwd_ws(dnn_mem_map_t &mem_map, res_t *res) {
-    const auto &dst_dt = mem_map.at(DNNL_ARG_DST);
+    const auto dst_dt = mem_map.at(DNNL_ARG_DST).get_host_f32_handle();
     const auto &ws_dt = mem_map.at(DNNL_ARG_WORKSPACE);
 
     if (ws_dt.ndims() == 0) return OK;
@@ -385,7 +396,7 @@ int check_fwd_ws(dnn_mem_map_t &mem_map, res_t *res) {
      * zero, and the respective ws_dt elements should be set accordingly */
     for (int64_t i = 0; i < nelems; i += 8) {
         for (int64_t j = 0; j < MIN2(8, nelems - i); ++j) {
-            const float data = dst_dt.get_f32_elem(i + j);
+            const float data = dst_dt[i + j];
             const bool want = data > 0.f;
             const bool bit_set = ws_type == ws_byte ? *ws : !!(*ws & (1 << j));
 
@@ -560,11 +571,12 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 if (!((prb->dir & FLAG_FWD) && kind == DST && prb->use_sh()))
                     return false;
 
-                const auto &sh = ref_args.find(DNNL_ARG_SHIFT);
+                const auto &sh
+                        = ref_args.find(DNNL_ARG_SHIFT).get_host_f32_handle();
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
                 const int64_t c
                         = dst.get_idx(args.idx, 1 << 1 /* channel_mask */);
-                const float beta = sh.get_f32_elem(c);
+                const float beta = sh[c];
                 // Using an empirically derived threshold, check if
                 // cancellation error in `|Y| = |a*X - (-b)|` is huge.
                 const float abs_exp = fabsf(args.exp);

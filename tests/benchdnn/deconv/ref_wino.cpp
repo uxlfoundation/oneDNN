@@ -288,10 +288,10 @@ void free_scratchpad(scratchpad_t *sp) {
 }
 
 void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
-    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+    const auto src_m = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto wei_m = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+    const auto bia_m = args.find(DNNL_ARG_BIAS).get_host_f32_handle();
+    auto dst_m = args.find(DNNL_ARG_DST).get_host_f32_handle();
     scratchpad_t sp {};
     SAFE_V(init_scratchpad(prb, sp));
 
@@ -325,7 +325,7 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t src_off = src_off_f(prb, img, 0, c, 0,
                                         ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)src_m)[src_off];
+                                I[j][k] = src_m[src_off];
                             }
                         }
                     }
@@ -347,7 +347,7 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
         for_(int64_t j = 0; j < prb->kh; j++)
         for (int64_t i = 0; i < prb->kw; i++) {
             size_t wei_off = wei_off_f(prb, 0, oc, ic, 0, j, i);
-            F[j][i] = ((float *)wei_m)[wei_off];
+            F[j][i] = wei_m[wei_off];
         }
         trans_W_4x4_3x3(_u, F);
 
@@ -389,10 +389,10 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
 
                         const size_t dst_off
                                 = dst_off_f(prb, img, 0, oc, 0, ydim, xdim);
-                        float &dst = ((float *)dst_m)[dst_off];
+                        float &dst = dst_m[dst_off];
 
                         const size_t bia_off = bia_off_f(prb, 0, oc);
-                        conv_res += with_bias ? ((float *)bia_m)[bia_off] : 0.f;
+                        conv_res += with_bias ? bia_m[bia_off] : 0.f;
 
                         const auto v_po_vals = prepare_po_vals(
                                 dst_m, args, v_po_masks, dst_off);
@@ -407,10 +407,10 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
 }
 
 void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &diff_src_m = args.find(DNNL_ARG_DIFF_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
-    const dnn_mem_t &diff_dst_m = args.find(DNNL_ARG_DIFF_DST);
+    auto diff_src_m = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
+    const auto wei_m = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+    const auto bia_m = args.find(DNNL_ARG_BIAS).get_host_f32_handle();
+    const auto diff_dst_m = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
     scratchpad_t sp {};
     SAFE_V(init_scratchpad(prb, sp));
 
@@ -446,7 +446,7 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t dst_off = dst_off_f(prb, img, 0, c, 0,
                                         ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)diff_dst_m)[dst_off];
+                                I[j][k] = diff_dst_m[dst_off];
                             }
                         }
                     }
@@ -468,7 +468,7 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
         for (int64_t i = 0; i < prb->kw; i++) {
             size_t wei_off = wei_off_f(
                     prb, 0, oc, ic, 0, prb->kh - j - 1, prb->kw - i - 1);
-            F[j][i] = ((float *)wei_m)[wei_off];
+            F[j][i] = wei_m[wei_off];
         }
         trans_W_4x4_3x3(_u, F);
 
@@ -498,7 +498,7 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                 }
                 trans_O_4x4_3x3(_m, O);
 
-                float bia = with_bias ? ((float *)bia_m)[c] : 0.f;
+                float bia = with_bias ? bia_m[c] : 0.f;
 
                 for (int64_t j = 0; j < sp.out_dim; j++) {
                     int64_t ydim = hfm * sp.out_dim + j;
@@ -508,7 +508,7 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
                             if (xdim < prb->iw) {
                                 size_t src_off = src_off_f(
                                         prb, img, 0, c, 0, ydim, xdim);
-                                ((float *)diff_src_m)[src_off] = O[j][k] + bia;
+                                diff_src_m[src_off] = O[j][k] + bia;
                             }
                         }
                     }
@@ -519,9 +519,9 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
 }
 
 void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &diff_wei_m = args.find(DNNL_ARG_DIFF_WEIGHTS);
-    const dnn_mem_t &diff_dst_m = args.find(DNNL_ARG_DIFF_DST);
+    const auto src_m = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto diff_wei_m = args.find(DNNL_ARG_DIFF_WEIGHTS).get_host_f32_handle();
+    const auto diff_dst_m = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
     scratchpad_t sp {};
     SAFE_V(init_scratchpad(prb, sp));
 
@@ -554,7 +554,7 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
                             if ((l_pad <= xdim) && (xdim < wp_max)) {
                                 size_t src_off = src_off_f(prb, img, 0, ic, 0,
                                         ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)src_m)[src_off];
+                                I[j][k] = src_m[src_off];
                             }
                         }
                     }
@@ -581,7 +581,7 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
                             if (xdim < prb->ow) {
                                 size_t dst_off = dst_off_f(
                                         prb, img, 0, oc, 0, ydim, xdim);
-                                O[j][k] = ((float *)diff_dst_m)[dst_off];
+                                O[j][k] = diff_dst_m[dst_off];
                             }
                         }
                     }
@@ -615,7 +615,7 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
         for_(int64_t kh = 0; kh < prb->kh; kh++)
         for (int64_t kw = 0; kw < prb->kw; kw++) {
             size_t wei_off = wei_off_f(prb, 0, oc, ic, 0, kh, kw);
-            ((float *)diff_wei_m)[wei_off] = _u[kh][kw];
+            diff_wei_m[wei_off] = _u[kh][kw];
         }
     });
 

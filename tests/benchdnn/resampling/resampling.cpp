@@ -49,13 +49,14 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     const int range = 16;
     const int f_min = 0;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const float gen = ((97 * i) - 19 * kind + 101) % (range + 1);
         const float value = dt == dnnl_f32 || is_integral_dt(dt)
                 ? (f_min + gen) * (1.0f + 4.0f / range)
                 : (f_min + gen) / range;
 
-        mem_fp.set_f32_elem(i, round_to_nearest_representable(dt, value));
+        mem_fp_h[i] = round_to_nearest_representable(dt, value);
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

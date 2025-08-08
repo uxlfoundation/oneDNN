@@ -766,7 +766,8 @@ int partition_data_displacer_t::gen_softmax_stats_filling(
         const dnn_mem_t &src_mem, dnn_mem_t &mem, const_dnnl_memory_desc_t md,
         res_t *res) const {
 
-    dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
+    dnn_mem_t m_mem(md, get_test_engine(), /* prefill = */ false);
+    auto m = m_mem.get_host_f32_handle();
 
     logical_tensor::dims softmax_src_shape = main_op.in_lts_[0].shape_;
     logical_tensor::dims softmax_stats_shape = main_op.in_lts_[1].shape_;
@@ -784,6 +785,7 @@ int partition_data_displacer_t::gen_softmax_stats_filling(
         inner_size *= softmax_src_shape[i];
     axis_size = softmax_src_shape[axis];
 
+    const auto src_mem_h = src_mem.get_host_f32_handle();
     benchdnn_parallel_nd(outer_size, inner_size, [&](int64_t ou, int64_t in) {
         float space_denom = 0.f;
         float space_max = -FLT_MAX;
@@ -791,12 +793,12 @@ int partition_data_displacer_t::gen_softmax_stats_filling(
 
         for (int64_t as = 0; as < axis_size; ++as) {
             int64_t idx = ou_in_offset + as * inner_size;
-            space_max = MAX2(space_max, src_mem.get_f32_elem(idx));
+            space_max = MAX2(space_max, src_mem_h[idx]);
         }
 
         for (int64_t as = 0; as < axis_size; ++as) {
             int64_t idx = ou_in_offset + as * inner_size;
-            float s = src_mem.get_f32_elem(idx);
+            float s = src_mem_h[idx];
             space_denom += expf(s - space_max);
         }
 
@@ -805,10 +807,10 @@ int partition_data_displacer_t::gen_softmax_stats_filling(
         // consider inf as a zero value
         int64_t stats_idx = ou * inner_size + in;
         float stats_value = space_denom ? space_max + logf(space_denom) : 0.f;
-        m.set_f32_elem(stats_idx, stats_value);
+        m[stats_idx] = stats_value;
     });
 
-    mem = std::move(m);
+    mem = std::move(m_mem);
     return OK;
 }
 

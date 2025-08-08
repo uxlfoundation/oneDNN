@@ -421,6 +421,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -443,8 +444,7 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             while (val <= 0)
                 val = gen(int_seed);
             val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-            mem_fp.set_f32_elem(
-                    0, round_to_nearest_representable(cfg.get_dt(kind), val));
+            mem_fp_h[0] = round_to_nearest_representable(cfg.get_dt(kind), val);
             idx_start += 1;
         }
 
@@ -452,26 +452,26 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 const bool is_one = nnz_mask[idx];
                 if (!is_one) {
-                    mem_fp.set_f32_elem(idx, 0.f);
+                    mem_fp_h[idx] = 0.f;
                     continue;
                 }
                 float val = 0.f;
                 while (val == 0.f)
                     val = gen(int_seed);
-                mem_fp.set_f32_elem(idx,
-                        round_to_nearest_representable(cfg.get_dt(kind), val));
+                mem_fp_h[idx]
+                        = round_to_nearest_representable(cfg.get_dt(kind), val);
             }
         } else {
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 bool is_one = density == 1.f ? true : b_dist(b_seed);
                 if (!is_one) {
-                    mem_fp.set_f32_elem(idx, 0.f);
+                    mem_fp_h[idx] = 0.f;
                     continue;
                 }
                 float val = gen(int_seed);
                 val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-                mem_fp.set_f32_elem(idx,
-                        round_to_nearest_representable(cfg.get_dt(kind), val));
+                mem_fp_h[idx]
+                        = round_to_nearest_representable(cfg.get_dt(kind), val);
             }
         }
     });

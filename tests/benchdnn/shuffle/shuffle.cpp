@@ -53,12 +53,13 @@ int fill_src(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const int range = get_range(prb->dt);
     const int f_min = prb->dt == dnnl_u8 ? 0 : -range / 2;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const float gen = ((97 * i) + 101) % range;
         const float value = (prb->dt == dnnl_bf16 || prb->dt == dnnl_f16)
                 ? (f_min + gen) / range
                 : (f_min + gen) * (1.0f + 4.0f / range);
-        mem_fp.set_f32_elem(i, round_to_nearest_representable(prb->dt, value));
+        mem_fp_h[i] = round_to_nearest_representable(prb->dt, value);
     });
 
     SAFE(mem_dt.reorder(mem_fp), WARN);

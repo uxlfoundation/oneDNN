@@ -221,6 +221,7 @@ int fill_data(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     const int64_t n_chunks = div_up(nelems, chunk_size);
     const bool is_log = prb->alg == alg_t::LOG;
 
+    auto mem_fp_h = mem_fp.get_host_f32_handle();
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
@@ -275,7 +276,7 @@ int fill_data(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
             // passes through simple reorder which converts -0 into +0.
             if (value == -0.f) value = 0.f;
 
-            mem_fp.set_f32_elem(idx, value);
+            mem_fp_h[idx] = value;
         }
     });
 
@@ -380,9 +381,10 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 // where catastrophic cancellation may happen.
                 const auto &src = ref_args.find(DNNL_ARG_SRC);
                 const auto &dst = ref_args.find(DNNL_ARG_DST);
-                const auto &source
-                        = ((prb->dir & FLAG_BWD) && prb->use_dst()) ? dst : src;
-                const float s = source.get_f32_elem(args.idx);
+                const auto source = ((prb->dir & FLAG_BWD) && prb->use_dst())
+                        ? dst.get_host_f32_handle()
+                        : src.get_host_f32_handle();
+                const float s = source[args.idx];
                 if (check_abs_err(prb, s, args.trh))
                     return args.diff <= args.trh;
                 if (prb->attr.post_ops.binary_index() != -1)

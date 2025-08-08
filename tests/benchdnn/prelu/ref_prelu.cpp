@@ -24,48 +24,43 @@
 namespace prelu {
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto wei = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     const auto nelems = src.nelems();
     const auto weights_broadcast_mask = prb->get_broadcast_mask();
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const auto wei_idx = src.get_idx(i, weights_broadcast_mask);
-        const float s = src.get_f32_elem(i);
-        float res = s * (s > 0 ? 1.f : wei.get_f32_elem(wei_idx));
+        const float s = src[i];
+        float res = s * (s > 0 ? 1.f : wei[wei_idx]);
         maybe_saturate(prb->sdt[0], res);
-        dst_ptr[i] = res;
+        dst[i] = res;
     });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
-    const dnn_mem_t &d_wei = args.find(DNNL_ARG_DIFF_WEIGHTS);
-
-    float *d_src_ptr = (float *)d_src;
-    float *d_wei_ptr = (float *)d_wei;
-    float *d_wei_buf = d_wei_ptr;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto wei = args.find(DNNL_ARG_WEIGHTS).get_host_f32_handle();
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
+    auto d_wei = args.find(DNNL_ARG_DIFF_WEIGHTS).get_host_f32_handle();
+    float *d_wei_buf = d_wei;
 
     const auto src_nelems = d_src.nelems();
     const auto wei_nelems = d_wei.nelems();
 
     const auto ker = [&](int64_t i, int64_t wei_idx, int64_t d_wei_idx) {
-        float s = src.get_f32_elem(i);
-        float dd = d_dst.get_f32_elem(i);
-        float d_src = dd * (s > 0 ? 1.f : wei.get_f32_elem(wei_idx));
-        maybe_saturate(prb->sdt[0], d_src);
-        d_src_ptr[i] = d_src;
-        d_wei_buf[d_wei_idx] += MIN2(0.f, s) * dd;
+        float s = src[i];
+        float dd = d_dst[i];
+        float d_src_value = dd * (s > 0 ? 1.f : wei[wei_idx]);
+        maybe_saturate(prb->sdt[0], d_src_value);
+        d_src[i] = d_src_value;
+        d_wei[d_wei_idx] += MIN2(0.f, s) * dd;
     };
 
-    benchdnn_parallel_nd(wei_nelems, [&](int64_t i) { d_wei_ptr[i] = 0; });
+    benchdnn_parallel_nd(wei_nelems, [&](int64_t i) { d_wei[i] = 0; });
 
     if (wei_nelems == 1) {
         const int reduce_dim = 0;
@@ -82,7 +77,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
         });
 
         for (int64_t i = 0; i < N; i++)
-            d_wei_ptr[0] += d_wei_buf[i];
+            d_wei[0] += d_wei_buf[i];
         delete[] d_wei_buf;
 
     } else if (src_nelems == wei_nelems) {

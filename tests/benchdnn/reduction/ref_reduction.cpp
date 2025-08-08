@@ -75,10 +75,8 @@ void finalize(float &dst, alg_t alg, float p, float eps, dnnl_dim_t n) {
 
 void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     const auto &ndims = prb->ndims;
     const auto &src_dims = prb->vdims[0];
@@ -114,14 +112,14 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
             dims_t reduce_pos = off2dims_idx(reduce_dims, r);
             const int64_t src_reduce_off = md_off_v(src, reduce_pos.data());
             const int64_t src_off = src_idle_off + src_reduce_off;
-            accumulate(acc, src.get_f32_elem(src_off), alg, p, eps);
+            accumulate(acc, src[src_off], alg, p, eps);
         }
         finalize(acc, alg, p, eps, reduce_size);
 
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, dst_off);
 
-        maybe_post_ops(prb->attr, acc, dst_ptr[dst_off], v_po_vals);
-        dst_ptr[dst_off] = acc;
+        maybe_post_ops(prb->attr, acc, dst[dst_off], v_po_vals);
+        dst[dst_off] = acc;
     });
 }
 

@@ -22,17 +22,18 @@ namespace sum {
 
 void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     const auto nelems = dst.nelems();
 
     benchdnn_parallel_nd(nelems, [&](int64_t k) {
         float res = 0;
         for (int i_input = 0; i_input < prb->n_inputs(); ++i_input) {
-            const dnn_mem_t &src_i = args.find(DNNL_ARG_MULTIPLE_SRC + i_input);
-            res += (src_i.get_f32_elem(k) * prb->input_scales[i_input]);
+            const auto src_i = args.find(DNNL_ARG_MULTIPLE_SRC + i_input)
+                                       .get_host_f32_handle();
+            res += (src_i[k] * prb->input_scales[i_input]);
         }
-        dst.set_f32_elem(k, res);
+        dst[k] = res;
     });
 }
 

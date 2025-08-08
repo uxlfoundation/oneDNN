@@ -21,17 +21,15 @@
 namespace eltwise {
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
 
     const auto nelems = src.nelems();
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        float res = compute_eltwise_fwd(
-                prb->alg, src.get_f32_elem(i), prb->alpha, prb->beta);
+        float res
+                = compute_eltwise_fwd(prb->alg, src[i], prb->alpha, prb->beta);
 
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, i);
 
@@ -42,23 +40,22 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         res = ((prb->dir & FLAG_BWD) && prb->use_dst())
                 ? round_to_nearest_representable(prb->dt, res)
                 : res;
-        dst_ptr[i] = res;
+        dst[i] = res;
     });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &source = prb->use_dst() ? dst : src;
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
+    const auto source = prb->use_dst() ? dst : src;
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
 
-    float *d_src_ptr = (float *)d_src;
     const auto nelems = src.nelems();
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        d_src_ptr[i] = compute_eltwise_bwd(prb->alg, d_dst.get_f32_elem(i),
-                source.get_f32_elem(i), prb->alpha, prb->beta);
+        d_src[i] = compute_eltwise_bwd(
+                prb->alg, d_dst[i], source[i], prb->alpha, prb->beta);
     });
 }
 

@@ -675,8 +675,8 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
 int measure_perf(
         const thr_ctx_t &ctx, res_t *res, dnnl_primitive_t prim, args_t &args);
 
-std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
-        const std::vector<std::pair<int, int>> &v_po_masks,
+std::vector<float> prepare_po_vals(const dnn_mem_t::handle_t<float> &dst_m,
+        const args_t &args, const std::vector<std::pair<int, int>> &v_po_masks,
         const size_t dst_off);
 
 bool check_md_consistency_with_tag(

@@ -21,24 +21,24 @@
 namespace gnorm {
 
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &mean = args.find(DNNL_ARG_MEAN);
-    const dnn_mem_t &var = args.find(DNNL_ARG_VARIANCE);
-    const dnn_mem_t &sc = args.find(DNNL_ARG_SCALE);
-    const dnn_mem_t &sh = args.find(DNNL_ARG_SHIFT);
-    const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &src_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    const dnn_mem_t &dst_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-
-    float *dst_ptr = (float *)dst;
+    const auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto mean = args.find(DNNL_ARG_MEAN).get_host_f32_handle();
+    const auto var = args.find(DNNL_ARG_VARIANCE).get_host_f32_handle();
+    const auto sc = args.find(DNNL_ARG_SCALE).get_host_f32_handle();
+    const auto sh = args.find(DNNL_ARG_SHIFT).get_host_f32_handle();
+    auto dst = args.find(DNNL_ARG_DST).get_host_f32_handle();
+    const auto src_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC)
+                                   .get_host_f32_handle();
+    const auto dst_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
+                                   .get_host_f32_handle();
 
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
     assert(IMPLICATION(has_src_scale, src_scale.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scale.nelems() == 1));
 
-    const float src_scale_val = has_src_scale ? src_scale.get_f32_elem(0) : 1.f;
-    const float dst_scale_val = has_dst_scale ? dst_scale.get_f32_elem(0) : 1.f;
+    const float src_scale_val = has_src_scale ? src_scale[0] : 1.f;
+    const float dst_scale_val = has_dst_scale ? dst_scale[0] : 1.f;
     const float r_dst_scale_val = 1.0f / dst_scale_val;
 
     const int64_t MB = prb->mb;
@@ -52,41 +52,41 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(MB, G, [&](int64_t n, int64_t g) {
-        float smean = mean.get_f32_elem(n * G + g);
-        float svar = var.get_f32_elem(n * G + g);
+        float smean = mean[n * G + g];
+        float svar = var[n * G + g];
         float sqrt_var = sqrtf(svar + prb->eps);
         float rcp_denom = 1.f / sqrt_var;
 
         for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                 ++c) {
-            float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
-            float beta = use_sh ? sh.get_f32_elem(c) : 0.f;
+            float gamma = use_sc ? sc[c] : 1.f;
+            float beta = use_sh ? sh[c] : 0.f;
 
             for_(int64_t d = 0; d < D; ++d)
             for_(int64_t h = 0; h < H; ++h)
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, n, c, d, h, w);
-                float x_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                float x_hat = (src[off] - smean) * rcp_denom;
                 float res = gamma * x_hat + beta;
                 const auto v_po_vals
                         = prepare_po_vals(dst, args, v_po_masks, off);
                 res *= src_scale_val;
                 maybe_post_ops(prb->attr, res, 0.f, v_po_vals);
-                dst_ptr[off] = res * r_dst_scale_val;
+                dst[off] = res * r_dst_scale_val;
             }
         }
     });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &mean = args.find(DNNL_ARG_MEAN);
-    const dnn_mem_t &var = args.find(DNNL_ARG_VARIANCE);
-    const dnn_mem_t &d_dst = args.find(DNNL_ARG_DIFF_DST);
-    const dnn_mem_t &sc = args.find(DNNL_ARG_SCALE);
-    const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
-    const dnn_mem_t &d_sc = args.find(DNNL_ARG_DIFF_SCALE);
-    const dnn_mem_t &d_sh = args.find(DNNL_ARG_DIFF_SHIFT);
+    auto src = args.find(DNNL_ARG_SRC).get_host_f32_handle();
+    const auto mean = args.find(DNNL_ARG_MEAN).get_host_f32_handle();
+    const auto var = args.find(DNNL_ARG_VARIANCE).get_host_f32_handle();
+    const auto d_dst = args.find(DNNL_ARG_DIFF_DST).get_host_f32_handle();
+    const auto sc = args.find(DNNL_ARG_SCALE).get_host_f32_handle();
+    auto d_src = args.find(DNNL_ARG_DIFF_SRC).get_host_f32_handle();
+    auto d_sc = args.find(DNNL_ARG_DIFF_SCALE).get_host_f32_handle();
+    auto d_sh = args.find(DNNL_ARG_DIFF_SHIFT).get_host_f32_handle();
 
     const int64_t MB = prb->mb;
     const int64_t G = prb->g;
@@ -111,25 +111,25 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
 
         for (int64_t mb = 0; mb < MB; ++mb) {
             int64_t stat_off = mb * G + g;
-            float smean = mean.get_f32_elem(stat_off);
-            float svar = var.get_f32_elem(stat_off);
+            float smean = mean[stat_off];
+            float svar = var[stat_off];
             float rcp_denom = 1.f / sqrtf(svar + prb->eps);
 
             for_(int64_t d = 0; d < D; ++d)
             for_(int64_t h = 0; h < H; ++h)
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, mb, c, d, h, w);
-                float dd = d_dst.get_f32_elem(off);
-                float src_hat = (src.get_f32_elem(off) - smean) * rcp_denom;
+                float dd = d_dst[off];
+                float src_hat = (src[off] - smean) * rcp_denom;
                 d_gamma += dd * src_hat;
                 d_beta += dd;
                 // Update `src` to save on some computations.
-                src.set_f32_elem(off, src_hat);
+                src[off] = src_hat;
             }
         }
 
-        if (use_sc && (prb->dir & FLAG_WEI)) d_sc.set_f32_elem(c, d_gamma);
-        if (use_sh && (prb->dir & FLAG_WEI)) d_sh.set_f32_elem(c, d_beta);
+        if (use_sc && (prb->dir & FLAG_WEI)) d_sc[c] = d_gamma;
+        if (use_sh && (prb->dir & FLAG_WEI)) d_sh[c] = d_beta;
     });
 
     // Statistics values are computed over the `group * spatial`, it's the unit
@@ -150,7 +150,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     // The rest of values are computed at `Apply gradients` part.
     benchdnn_parallel_nd(MB, G, [&](int64_t mb, int64_t g) {
         int64_t stat_off = mb * G + g;
-        float svar = var.get_f32_elem(stat_off);
+        float svar = var[stat_off];
         float rcp_denom = 1.f / sqrtf(svar + prb->eps);
 
         float sum_dd_scaled = 0.0f;
@@ -159,13 +159,13 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
         if (!glob_stats) {
             for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                     ++c) {
-                float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
+                float gamma = use_sc ? sc[c] : 1.f;
                 for_(int64_t d = 0; d < D; ++d)
                 for_(int64_t h = 0; h < H; ++h)
                 for (int64_t w = 0; w < W; ++w) {
                     auto off = data_off(prb, mb, c, d, h, w);
-                    float dd = d_dst.get_f32_elem(off);
-                    float x_hat = src.get_f32_elem(off);
+                    float dd = d_dst[off];
+                    float x_hat = src[off];
 
                     float dd_scaled = dd * gamma;
                     sum_dd_scaled += dd_scaled;
@@ -180,21 +180,21 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
         // Apply gradients
         for (int64_t c = prb->get_c_start(g); c < prb->get_c_start(g + 1);
                 ++c) {
-            float gamma = use_sc ? sc.get_f32_elem(c) : 1.f;
+            float gamma = use_sc ? sc[c] : 1.f;
             for_(int64_t d = 0; d < D; ++d)
             for_(int64_t h = 0; h < H; ++h)
             for (int64_t w = 0; w < W; ++w) {
                 auto off = data_off(prb, mb, c, d, h, w);
-                float dd = d_dst.get_f32_elem(off);
+                float dd = d_dst[off];
 
                 if (!glob_stats) {
-                    float x_hat = src.get_f32_elem(off);
+                    float x_hat = src[off];
                     float dd_scaled = dd * gamma;
                     float ds = dd_scaled - mean_dd_scaled
                             - x_hat * mean_dd_scaled_x_hat;
-                    d_src.set_f32_elem(off, rcp_denom * ds);
+                    d_src[off] = rcp_denom * ds;
                 } else {
-                    d_src.set_f32_elem(off, dd * gamma * rcp_denom);
+                    d_src[off] = dd * gamma * rcp_denom;
                 }
             }
         }

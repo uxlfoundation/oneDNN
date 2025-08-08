@@ -566,24 +566,29 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
 
-    auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
-        if (!has_mode) return;
-        auto &def = base.selector.precisions;
+    auto add_matches = [&](const MatchParams &start,
+                               const char *(*match)(Type)) {
+        auto &def = start.selector.precisions;
         if (match(problem_.Ta)) {
-            match_params.push_back(base);
+            match_params.push_back(start);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
             match_params.back().selector.precisions[1] = def[1];
         }
         if (match(problem_.Tb)) {
-            match_params.push_back(base);
+            match_params.push_back(start);
             match_params.back().selector.precisions[0] = def[0];
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
         if (match(problem_.Ta) && match(problem_.Tb)) {
-            match_params.push_back(base);
+            match_params.push_back(start);
             match_params.back().selector.precisions[0] = match(problem_.Ta);
             match_params.back().selector.precisions[1] = match(problem_.Tb);
         }
+    };
+
+    auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
+        if (!has_mode) return;
+        add_matches(base, match);
     };
 
     add_mode_matches(fpmath_tf32, [](Type dt) -> const char * {
@@ -610,8 +615,18 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         return nullptr;
     });
 
-    add_mode_matches(true, [](Type dt) -> const char * {
-        if (dt.isF4()) return "E";
+    // Add allowed variants of each valid kernel.
+    // Should be used after all valid kernels are added to match_params
+    auto add_variants = [&](const char *(*match)(Type)) {
+        size_t npatterns = match_params.size();
+        for (size_t i = 0; i < npatterns; i++) {
+            add_matches(match_params[i], match);
+        }
+    };
+
+    add_variants([](Type dt) -> const char * {
+        // fp16 -> bf16
+        if (dt == Type::bf16) return "H";
         return nullptr;
     });
 
@@ -652,14 +667,26 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     auto update_type = [](Type &T, Type T_new, bool sz_change = false) {
         if ((T.bits() != T_new.bits()) && !sz_change) return;
         if (T.isF8() && T_new.isF8()) return;
+        if (T.isFP() && T.bits() == 16 && T_new.isFP() && T_new.bits() == 16)
+            return;
         if (T.isF4() && (T_new.isF4() || T_new.isInt4())) return;
         T = T.isSigned() ? T_new.asSigned() : T_new.asUnsigned();
     };
     update_type(problem_.Ta, Ta_new, true);
     update_type(problem_.Tb, Tb_new, true);
     update_type(problem_.Tc, Tc_new, true);
-    update_type(problem_.Ta_ext, Ta_ext_new);
-    update_type(problem_.Tb_ext, Tb_ext_new);
+
+    // If the kernel uses tf32 types, interpret the buffer as tf32 without
+    // converting from fp32. This eliminates a rounding step, but improves performance
+    auto use_tf32 = [](Type &T, const Type &newT) {
+        if (newT == Type::tf32) {
+            gpu_assert(T == Type::f32)
+                    << "Unexpected use of tf32 for non-fp32 type";
+            T = Type::tf32;
+        }
+    };
+    use_tf32(problem_.Ta_ext, Ta_ext_new);
+    use_tf32(problem_.Tb_ext, Tb_ext_new);
 
     if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
 

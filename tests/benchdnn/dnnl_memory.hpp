@@ -140,20 +140,48 @@ struct dnn_mem_t {
 
     explicit operator bool() const { return active_; }
 
-    // This interface is a shortcut version of the one below to speed up access
-    // to the memory that is guaranteedly of f32 data type.
-    // Keep the body in the header to help compiler to inline better.
-    float get_f32_elem(int64_t idx) const {
-        return static_cast<float *>(*this)[idx];
-    }
-    float get_elem(int64_t idx, int buffer_index = 0) const;
+    struct host_f32_handle_t {
+        host_f32_handle_t(float *ptr, const dnn_mem_t &root)
+            : ptr_(ptr), root_(root) {}
+        float &operator[](int64_t idx) {
+            assert(idx < nelems());
+            return ptr_[idx];
+        }
+        const float &operator[](int64_t idx) const {
+            assert(idx < nelems());
+            return ptr_[idx];
+        }
 
-    // This interface is a shortcut version of the one below to speed up access
-    // to the memory that is guaranteedly of f32 data type.
-    // Keep the body in the header to help compiler to inline better.
-    void set_f32_elem(int64_t idx, float value) const {
-        static_cast<float *>(*this)[idx] = value;
-    }
+        operator float *() { return ptr_; }
+        operator const float *() const { return ptr_; }
+        operator const dnn_mem_t &() const { return root_; }
+
+        int64_t nelems() const { return root_.nelems(); };
+        int ndims() const { return root_.ndims(); };
+        int64_t get_idx(int64_t logical_idx, int dims_mask, const int ndims,
+                const dims_t &groups = {}) const {
+            return root_.get_idx(logical_idx, dims_mask, ndims, groups);
+        }
+        int64_t get_idx(int64_t logical_idx, int dims_mask) const {
+            return root_.get_idx(logical_idx, dims_mask);
+        }
+
+        const dnnl_dims_t &dims() const { return root_.dims(); }
+
+        const dnnl_memory_desc_t &md() const { return root_.md_; }
+        dnnl_engine_t engine() const { return root_.engine(); }
+
+    private:
+        float *ptr_;
+        const dnn_mem_t &root_;
+    };
+
+    host_f32_handle_t get_host_f32_handle() const {
+        map();
+        return {get_mapped_pointer<float>(), *this};
+    };
+
+    float get_elem(int64_t idx, int buffer_index = 0) const;
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 
     int64_t get_idx(int64_t logical_idx, int dims_mask, const int ndims,

@@ -178,8 +178,10 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     const auto &scratchpad_md = query_md(r_pd, DNNL_ARG_SCRATCHPAD);
     const auto &scratchpad_engine
             = dst.engine_kind() == dnnl_gpu ? dst.engine() : src.engine();
+    // Don't prefill scratchpad since it's a write memory anyway, but might
+    // help with OOM errors by not touching memory pages.
     dnn_mem_t scratchpad(
-            scratchpad_md, scratchpad_engine, /* prefill = */ true);
+            scratchpad_md, scratchpad_engine, /* prefill = */ false);
 
     DNN_SAFE(dnnl_primitive_create(&prim_, r_pd), CRIT);
     auto prim = make_benchdnn_dnnl_wrapper(prim_);

@@ -154,7 +154,13 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         // Fallback to GPU reorder.
         auto status = dnnl_reorder_primitive_desc_create(
                 &r_pd_, src.md_, src.engine(), dst.md_, dst.engine(), attr);
-        if (status == dnnl_success) break;
+        if (status == dnnl_success) {
+            // Unmap to reduce memory usage before scratchpad allocation used
+            // during cross-engine reorder.
+            r_src->unmap();
+            r_dst->unmap();
+            break;
+        }
         if (dnnl_memory_desc_equal(src.md_, dst.md_)) {
             // If fail to create reorder pd, use plain data copy for identical
             // mds.
@@ -178,8 +184,10 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     const auto &scratchpad_md = query_md(r_pd, DNNL_ARG_SCRATCHPAD);
     const auto &scratchpad_engine
             = dst.engine_kind() == dnnl_gpu ? dst.engine() : src.engine();
+    // Don't prefill scratchpad since it's a write memory anyway, but might
+    // help with OOM errors by not touching memory pages.
     dnn_mem_t scratchpad(
-            scratchpad_md, scratchpad_engine, /* prefill = */ true);
+            scratchpad_md, scratchpad_engine, /* prefill = */ false);
 
     DNN_SAFE(dnnl_primitive_create(&prim_, r_pd), CRIT);
     auto prim = make_benchdnn_dnnl_wrapper(prim_);

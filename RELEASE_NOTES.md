@@ -78,8 +78,8 @@
 * `int8` inner product primitive with tensors exceeding 4 Gb in size may produce incorrect results on Intel Datacenter GPU Max series.
 * `bf16` pooling with tensors exceeding 4 Gb in size may produce incorrect results on Intel Datacenter GPU Max series.
 * `bf16`/`fp16` matmul with large inner dimension has  a performance regression on Intel Datacenter GPU Max Series.
-* `bf16`/`fp16` convolution with NCHW activations has  a performance regression on Intel Datacenter GPU Max Series.
-* softmax with non-trivial strides and blocked format may produce incorrect results.
+* `bf16`/`fp16` convolution with `NCHW` activations has  a performance regression on Intel Datacenter GPU Max Series.
+* Softmax with non-trivial strides and blocked format may produce incorrect results.
 * `bf16` layer normalization backpropagation may produce incorrect results on Intel Datacenter GPU Max Series.
 
 # Deprecated Functionality

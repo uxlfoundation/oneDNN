@@ -55,7 +55,7 @@ int get_brg_batchsize(
 
 int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
         bool do_initialization, int m_ker_idx, int n_ker_idx, bool is_K_tail,
-        int bs) {
+        int bs, bool is_prefetching) {
     const int max_m_ker_idx
             = bgmmc.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
     if (m_ker_idx >= max_m_ker_idx) return -1;
@@ -79,10 +79,14 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
                     && !is_runtime_value(bgmmc.LDC)))
         return -1;
 
-    int idx = 2 * max_n_ker_idx
-                    * (4 * m_ker_idx + 2 * (int)is_bs_tail
-                            + (int)do_initialization)
-            + 2 * n_ker_idx + (int)is_K_tail;
+    if (is_prefetching && !bgmmc.need_prefetch_a && !bgmmc.need_prefetch_b) {
+        return -1;
+    }
+    int idx = 2 * 2 * 2 * max_n_ker_idx * max_m_ker_idx * (int)is_prefetching
+            + 2 * 2 * 2 * max_n_ker_idx * m_ker_idx
+            + 2 * 2 * max_n_ker_idx * (int)is_bs_tail
+            + 2 * max_n_ker_idx * (int)do_initialization + 2 * n_ker_idx
+            + (int)is_K_tail;
     assert(idx < max_num_brg_kernels_matmul);
     return idx;
 }
@@ -91,19 +95,11 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
 
 template <cpu_isa_t isa>
 int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
-        bool do_initialization, int m_ker_idx, int n_ker_idx,
-        bool is_K_tail) const {
+        bool do_initialization, int m_ker_idx, int n_ker_idx, bool is_K_tail,
+        bool is_prefetching) const {
     int bs = get_brg_batchsize(bgmmc_, is_bs_tail, is_K_tail);
     return get_brg_kernel_index(bgmmc_, is_bs_tail, do_initialization,
-            m_ker_idx, n_ker_idx, is_K_tail, bs);
-}
-
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::pd_t::maybe_set_LDB2() {
-    if (bgmmc_.LDB < bgmmc_.N_blk
-            && (bgmmc_.N_blk % bgmmc_.LDB == 0 || bgmmc_.N_blk == bgmmc_.N)) {
-        bgmmc_.LDB2 = rnd_up(bgmmc_.K, bgmmc_.wei_k_blk) * bgmmc_.LDB;
-    }
+            m_ker_idx, n_ker_idx, is_K_tail, bs, is_prefetching);
 }
 
 template <cpu_isa_t isa>
@@ -295,8 +291,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                                                        : avx512_core)))
             : isa;
 
-    maybe_set_LDB2();
-
     const int i_bs_end = bgmmc_.brgemm_batch_tail_size ? 2 : 1;
     const int i_init_start = bgmmc_.K_blk != bgmmc_.K ? 0 : 1;
     const int i_K_end = bgmmc_.K_tail ? 2 : 1;
@@ -305,7 +299,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     for_(int i_init = i_init_start; i_init < 2; i_init++)
     for_(int i_M = 0; i_M < max_m_ker_idx; i_M++)
     for_(int i_N = 0; i_N < max_n_ker_idx; i_N++)
-    for (int i_K = 0; i_K < i_K_end; i_K++) {
+    for_(int i_K = 0; i_K < i_K_end; i_K++)
+    for (int prefetching = 0; prefetching < 2; prefetching++) {
         auto vbeta = (i_init) ? beta_init : beta;
         auto vM = (i_M) == 0 ? bgmmc_.M_blk
                              : (bgmmc_.is_runtime_M ? dynamic_m_tails[i_M - 1]
@@ -316,7 +311,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         auto vK = (i_K) ? bgmmc_.K_tail : bgmmc_.K_blk;
 
         int bs = get_brg_batchsize(bgmmc_, i_bs, i_K);
-        int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K);
+        int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, prefetching);
         if (idx < 0) continue;
 
         brgemm_desc_t &brg = brg_descs_[idx];
@@ -356,6 +351,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
             brgattr.hint_innermost_loop = brgemm_innermost_undef;
             brgattr.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
+
+            brgattr.hint_prfA.sprinkled = bgmmc_.need_prefetch_a && prefetching;
+            brgattr.hint_prfB.sprinkled = bgmmc_.need_prefetch_b && prefetching;
+
             if (bgmmc_.set_nt) {
                 brgattr.hint_load_nt_A = bgmmc_.is_a_nt ? brgemm_hint_nt_true
                                                         : brgemm_hint_nt_false;
@@ -398,8 +397,10 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     for_(int i_M = 0; i_M < max_m_ker_idx; i_M++)
     for_(int i_N = 0; i_N < max_n_ker_idx; i_N++)
     for_(int i_K = 0; i_K < i_K_end; i_K++)
-    for (int i_init = i_init_start; i_init < 2; i_init++) {
-        int idx = pd()->get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K);
+    for_(int i_init = i_init_start; i_init < 2; i_init++)
+    for (int prefetching = 0; prefetching < 2; prefetching++) {
+        int idx = pd()->get_brg_kernel_idx(
+                i_bs, i_init, i_M, i_N, i_K, prefetching);
         if (idx < 0) continue;
 
         brgemm_kernel_t *ker = nullptr;
@@ -451,6 +452,31 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     }
 
     return status::success;
+}
+
+template <cpu_isa_t isa>
+bool brgemm_matmul_t<isa>::determine_prefetch(const int mb, const int m_end,
+        const int nb, const int n_end, const brgemm_matmul_conf_t &bgmmc,
+        brg_matmul_exec_ctx_t &brgmm_ctx) const {
+    // Prefetch if not the last BRGEMM in the chunk and
+    // if the next BRGEMM is identical to the current one.
+
+    assert(!(bgmmc.need_prefetch_a && bgmmc.need_prefetch_b));
+    bool do_prefetch = false;
+
+    if (bgmmc.need_prefetch_a) {
+        do_prefetch = mb != m_end - 1 && //not last
+                brgmm_ctx.get_M_kernel_idx(mb)
+                        == brgmm_ctx.get_M_kernel_idx(mb + 1);
+    }
+
+    if (bgmmc.need_prefetch_b) {
+        do_prefetch = nb != n_end - 1 && //not last
+                brgmm_ctx.get_N_kernel_idx(nb)
+                        == brgmm_ctx.get_N_kernel_idx(nb + 1);
+    }
+
+    return do_prefetch;
 }
 
 template <cpu_isa_t isa>
@@ -579,6 +605,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                                 && (b_prev == b
                                         || bgmmc.bcast_A_desc
                                                    .bcast_across_all_batch_dims);
+                        bool prefetch = determine_prefetch(
+                                mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
                         for (int kb = kb_start; kb < kb_end; kb++) {
 
                             if (bgmmc.use_buffer_b && mb == m_start
@@ -593,7 +621,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
-                                    prev_ker_idx);
+                                    prev_ker_idx, prefetch);
                         }
                     }
                     kc_prev = kc;
@@ -618,7 +646,8 @@ template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::compute_kernel(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *A_data_batch_ptr,
         const char *B_data_batch_ptr, int ithr, int b_idx, int m_blk_idx,
-        int n_blk_idx, int k_blk_idx, bool do_init, int &prev_ker_idx) const {
+        int n_blk_idx, int k_blk_idx, bool do_init, int &prev_ker_idx,
+        bool prefetch) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const auto addr_batch = brgmm_ctx.get_batch_elem_ptr(ithr);
 
@@ -642,7 +671,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
     auto is_bs_tail = (gemm_batch != bgmmc.brgemm_batch_size);
     const int brg_ker_idx = pd()->get_brg_kernel_idx(
-            is_bs_tail, do_init, m_ker_idx, n_ker_idx, false);
+            is_bs_tail, do_init, m_ker_idx, n_ker_idx, false, prefetch);
     const auto ptr_bias = brgmm_ctx.get_bias_ptr(n);
     auto ptr_D = brgmm_ctx.get_data_C_ptr(
             b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true), n);
@@ -722,7 +751,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
         const bool use_init_ker = (do_init && gemm_batch == 0);
         const int brg_ker_idx = pd()->get_brg_kernel_idx(
-                false, use_init_ker, m_ker_idx, n_ker_idx, true);
+                false, use_init_ker, m_ker_idx, n_ker_idx, true, prefetch);
         if (brg_ker_idx < 0) {
             assert(!"Requested brgemm kernel was not created.");
             return;
@@ -1013,8 +1042,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                 if (bgmmc.post_ops_applicable) {
                     for (int nb = nb_start; nb < nb_end; nb++) {
                         const int n_ker_idx = brgmm_ctx.get_N_kernel_idx(nb);
-                        const int brg_ker_idx = pd()->get_brg_kernel_idx(
-                                false, false, m_ker_idx, n_ker_idx, false);
+                        const int brg_ker_idx = pd()->get_brg_kernel_idx(false,
+                                false, m_ker_idx, n_ker_idx, false, false);
                         if (brg_ker_idx == -1) {
                             assert(!"Requested brgemm kernel was not created.");
                             return;
@@ -1385,7 +1414,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         post_ops_binary_rhs_arg_vec_ = binary_injector::prepare_binary_args(
                 pd->attr()->post_ops_, ctx);
-        base_brg_ker_idx_ = pd->get_brg_kernel_idx(false, true, 0, 0, false);
+        base_brg_ker_idx_
+                = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
         vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;

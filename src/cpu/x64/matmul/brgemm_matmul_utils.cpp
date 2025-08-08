@@ -1676,6 +1676,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
+    bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
     return status::success;
 }
 

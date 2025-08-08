@@ -525,6 +525,12 @@ status_t brgemm_desc_set_attr(
             && (brg->is_tmm))
         return status::unimplemented;
 
+    // Sprinkled prefetch is supported for brgemm_batch_size is 1
+    if ((brgattr.max_bs != 1)
+            && (brgattr.hint_prfB.sprinkled || brgattr.hint_prfA.sprinkled)) {
+        return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;

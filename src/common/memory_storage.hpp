@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,6 +64,8 @@ struct memory_storage_t : public c_compatible {
     virtual status_t unmap_data(void *mapped_ptr, stream_t *stream) const = 0;
 
     virtual bool is_host_accessible() const { return false; }
+
+    virtual bool is_host_scalar() const { return false; }
 
     /** returns slice of memory storage
      *

@@ -73,6 +73,14 @@
 
 # Known Limitations
 * The group normalization with `normalization_flags::use_scale` specified produces incorrect results for backward propagation kind in oneDNN v3.9 and earlier.
+* Binary primitive with certain shapes and Graph API SDPA with bottom right causal mask may hang with SYCL debug runtime on Windows.
+* `fp8` matmul primitive may sporadically produce incorrect results on Intel Arc B-series graphics.
+* `int8` inner product primitive with tensors exceeding 4 Gb in size may produce incorrect results on Intel Datacenter GPU Max series.
+* `bf16` pooling with tensors exceeding 4 Gb in size may produce incorrect results on Intel Datacenter GPU Max series.
+* `bf16`/`fp16` matmul with large inner dimension has  a performance regression on Intel Datacenter GPU Max Series.
+* `bf16`/`fp16` convolution with NCHW activations has  a performance regression on Intel Datacenter GPU Max Series.
+* softmax with non-trivial strides and blocked format may produce incorrect results.
+* `bf16` layer normalization backpropagation may produce incorrect results on Intel Datacenter GPU Max Series.
 
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated and will be removed in future releases. If you are using this API consider switching to [matmul primitive].

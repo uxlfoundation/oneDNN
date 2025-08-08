@@ -33,7 +33,7 @@ fma_kind_t get_supported_fma_kind(
     }
     if ((hw == ngen::HW::XeLP
                 || (hw >= ngen::HW::XeHP && !hw.systolic_support()))
-            && (a.is_x8() && b.is_x8() && c.is_s32()))
+            && ((a.is_x8() || a.is_x16()) && b.is_x8() && c.is_s32()))
         return fma_kind_t::dp4a;
     if (mad_t::matches_types(hw, a, b, c)) return fma_kind_t::mad;
     return fma_kind_t::undef;
@@ -134,6 +134,7 @@ bool dpas_t::matches(const multiply_desc_t &desc) const {
 bool dpas_t::matches_types(
         const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
     if (a.is_x8() && b.is_x8() && c.is_s32()) return true;
+    if (a.is_x16() && b.is_x8() && c.is_s32()) return true;
     if (a.is_fp8() && b.is_fp8() && (c.is_f32() || c.is_bf16())) return true;
     if (a.is_fp4() && b.is_fp4() && (c.is_f32() || c.is_bf16())) return true;
     if (a.is_f16() && b.is_f16() && c.is_f32()) return true;

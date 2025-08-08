@@ -1610,6 +1610,19 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         state.Cr_layout = RegisterLayout(hw, Tc_compute, Cr_unrollM * mx, Cr_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
     }
 
+    // Prepare for temporary C memory.
+    if (state.C_buffers < componentMultiplyDepth(Ta, Tb) && (Ta.isInteger() || Tb.isInteger())) {
+        int Ct_unrollM = unrollM, Ct_unrollN = unrollN;
+        auto &Ct_unrollX = globalCM ? Ct_unrollM : Ct_unrollN;
+
+        int panel = strategy.cRepackPanel;
+        if (panel == 0)
+            panel = 2 * elementsPerGRF(hw, Tc);
+        Ct_unrollX = std::min(Ct_unrollX, panel);
+
+        state.Ct_layout = RegisterLayout(hw, Tc, Ct_unrollM * mx, Ct_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
+    }
+
     // Prepare layouts for row/column sum calculation.
     if (problem.needsASums()) {
         state.systolicSumA = strategy.systolic && globalCM;
@@ -2108,6 +2121,8 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     safeReleaseRanges(state.Br_offsetRegs, state);
     safeReleaseRanges(state.Br_scaleRegs, state);
     safeReleaseRanges(state.Bgr_regs, state);
+    safeReleaseRanges(state.Cr_regs, state);
+    safeReleaseRanges(state.Ct_regs, state);
     safeReleaseRanges(state.tempMul_regs, state);
     clearTokenAllocations(hw, state);
     releaseCoopRemainders(state);
@@ -2916,7 +2931,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 template <HW hw>
 void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
-    auto Tc = problem.Tc;
+    auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
     state.useTempC = strategy.needsTempC(problem);
@@ -2964,6 +2979,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
                || strategy.forceCopyC
                || (strategy.C.base.getModel() == ModelInvalid);
 
+	state.C_buffers = componentMultiplyDepth(Ta, Tb);
     state.Cext_strategy = strategy.C;
     state.Cext_strategy.tileR = state.Cext_strategy.tileC = 0;
 

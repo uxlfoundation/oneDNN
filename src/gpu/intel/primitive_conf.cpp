@@ -396,6 +396,8 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
         case data_type::f16: return "half";
         case data_type::f32: return "float";
         case data_type::f64: return "double";
+        case data_type::s16: return "short";
+        case data_type::u16: return "ushort";
         case data_type::s8: return "char";
         case data_type::u8: return "uchar";
         case data_type::f8_e4m3: return with_punning ? "uchar" : "f8_e4m3";
@@ -437,6 +439,14 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         case data_type::f64:
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=double -D%s_DT_F64", str, str));
+            break;
+        case data_type::s16:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=short -D%s_DT_S16", str, str));
+            break;
+        case data_type::u16:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=ushort -D%s_DT_U16", str, str));
             break;
         case data_type::s8:
             kernel_ctx.add_option(

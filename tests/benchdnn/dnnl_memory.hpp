@@ -44,7 +44,7 @@ struct dnn_mem_t {
         }
     };
 
-    dnn_mem_t() { map(); }
+    dnn_mem_t() = default;
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
@@ -134,7 +134,7 @@ struct dnn_mem_t {
 
     template <typename T>
     T *get_mapped_pointer(int index = 0) const {
-        assert(is_mapped_);
+        map();
         return static_cast<T *>(mapped_ptrs_[index]);
     }
 
@@ -180,10 +180,12 @@ struct dnn_mem_t {
     };
 
     handle_t<float> get_host_f32_handle() const {
-        assert(is_mapped());
         return {get_mapped_pointer<float>(), *this};
     }
 
+    dnnl_memory_t get_device_handle() const {
+        unmap();
+        return m_;
     }
 
     float get_elem(int64_t idx, int buffer_index = 0) const;

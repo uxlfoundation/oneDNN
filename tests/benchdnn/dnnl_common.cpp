@@ -345,14 +345,12 @@ void args_t::replace(int arg, const dnn_mem_t *mem) {
 }
 
 // Unmap before passing the memory to execute
-void execute_unmap_args(
+void get_dnnl_args(
         const args_t &args, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     dnnl_args.resize(args.size());
     for (int i = 0; i < args.size(); ++i) {
-        if (args.dnn_mem(i).is_mapped()) args.dnn_mem(i).unmap();
-
         dnnl_args[i].arg = args.arg(i);
-        dnnl_args[i].memory = args.dnn_mem(i).m_;
+        dnnl_args[i].memory = args.dnn_mem(i).get_device_handle();
     }
 }
 
@@ -369,7 +367,7 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     stream_t stream(engine);
     std::vector<dnnl_exec_arg_t> dnnl_args;
 
-    TIME_EXECUTE(execute_unmap_args(args, dnnl_args));
+    TIME_EXECUTE(get_dnnl_args(args, dnnl_args));
 
     dnnl_status_t status = dnnl_runtime_error;
     bool run_regular_exec = true;
@@ -409,7 +407,6 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     }
     if (res) res->state = EXECUTED;
 
-    TIME_EXECUTE(execute_map_args(args));
     if (status != dnnl_success) {
         if (res) res->state = FAILED;
         return FAIL;
@@ -632,9 +629,9 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
             SAFE(mem_map[j].at(arg).reorder(m), WARN);
         }
         v_args[j] = args_t(mem_map[j]);
-        execute_unmap_args(v_args[j], dnnl_args[j]);
+        get_dnnl_args(v_args[j], dnnl_args[j]);
     }
-    execute_unmap_args(args, dnnl_args[0]);
+    get_dnnl_args(args, dnnl_args[0]);
 
     auto &t = res->timer_map.perf_timer();
     // For non-DPCPP CPU: measure individual iterations.
@@ -647,12 +644,6 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
     } else {
         ret = execute_in_thr_ctx(
                 ctx, measure_perf_aggregate, t, v_stream, perf_func, dnnl_args);
-    }
-
-    if (ret != OK) res->state = FAILED;
-    execute_map_args(args);
-    for (int j = 1; j < num_streams; j++) {
-        execute_map_args(v_args[j]);
     }
 
     return ret;

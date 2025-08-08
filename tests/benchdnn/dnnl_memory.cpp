@@ -442,7 +442,7 @@ static int init_memory(
 #endif
 
 void dnn_mem_t::map() const {
-    assert(!is_mapped_ && "memory is already mapped");
+    if (is_mapped_) return;
     is_mapped_ = true;
 
     if (!m_) return;
@@ -460,7 +460,7 @@ void dnn_mem_t::map() const {
 }
 
 void dnn_mem_t::unmap() const {
-    assert(is_mapped_ && "memory is not mapped");
+    if (!is_mapped_) return;
     is_mapped_ = false;
 
     if (!m_) return;

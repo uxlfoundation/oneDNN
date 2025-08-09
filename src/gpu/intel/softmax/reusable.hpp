@@ -52,7 +52,7 @@ struct reusable_params_t {
     }
 
 #if __cplusplus >= 202002L
-    bool operator==(const reusable_softmax_params_t &) const = default;
+    bool operator==(const reusable_params_t &) const = default;
 #endif
     serialization_stream_t serialize() const {
         DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(reusable_params_t);

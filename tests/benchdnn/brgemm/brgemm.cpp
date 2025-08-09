@@ -994,6 +994,33 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
 int scales_post_processing(dnn_mem_map_t &mem_map) {
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
+    // dst scales are applied inversed in the brgemm kernel. However, for x64
+    // it's enough to have a single value, though we keep v16 just for the sake
+    // of a single code path with aarch64.
+    const bool has_dst_scale
+            = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const auto replace_mem_to_v16 = [&](dnnl_data_type_t dt, int exec_arg,
+                                            float val) {
+        dims_t dims = {16};
+        auto new_md = dnn_mem_t::init_md(1, dims.data(), dt, tag::abx);
+        dnn_mem_t new_m(new_md, get_test_engine(), /* prefill = */ true);
+        if (!new_m.is_mapped()) new_m.map();
+        for (int64_t i = 0; i < new_m.nelems(); i++) {
+            new_m.set_elem(i, val);
+        }
+        mem_map[DNNL_ARG_ATTR_SCALES | exec_arg] = std::move(new_m);
+    };
+
+    if (has_dst_scale) {
+        const auto &dst_scales_m
+                = mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+        assert(dst_scales_m.nelems() == 1);
+        // Create a v16 dst scales memory and bcast inversed dst value there.
+        replace_mem_to_v16(dst_scales_m.dt(), DNNL_ARG_DST,
+                1.f / dst_scales_m.get_elem(0));
+    }
+
 #if defined(brg_aarch64)
     // Internal API has specific implementation details w.r.t. scales.
     // If any of source or weights scales present in the descriptor, then the
@@ -1014,20 +1041,6 @@ int scales_post_processing(dnn_mem_map_t &mem_map) {
             = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const bool has_wei_scale
             = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    const bool has_dst_scale
-            = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-
-    const auto replace_mem_to_v16 = [&](dnnl_data_type_t dt, int exec_arg,
-                                            float val) {
-        dims_t dims = {16};
-        auto new_md = dnn_mem_t::init_md(1, dims.data(), dt, tag::abx);
-        dnn_mem_t new_m(new_md, get_test_engine(), /* prefill = */ true);
-        if (!new_m.is_mapped()) new_m.map();
-        for (int64_t i = 0; i < new_m.nelems(); i++) {
-            new_m.set_elem(i, val);
-        }
-        mem_map[DNNL_ARG_ATTR_SCALES | exec_arg] = std::move(new_m);
-    };
 
     if (has_wei_scale) {
         const auto &wei_scales_m
@@ -1055,15 +1068,6 @@ int scales_post_processing(dnn_mem_map_t &mem_map) {
         // Create a v16 weights scales memory and put src value there.
         replace_mem_to_v16(
                 src_scales_m.dt(), DNNL_ARG_WEIGHTS, src_scales_m.get_elem(0));
-    }
-
-    if (has_dst_scale) {
-        const auto &dst_scales_m
-                = mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-        assert(dst_scales_m.nelems() == 1);
-        // Create a v16 dst scales memory and bcast inversed dst value there.
-        replace_mem_to_v16(dst_scales_m.dt(), DNNL_ARG_DST,
-                1.f / dst_scales_m.get_elem(0));
     }
 
 #endif

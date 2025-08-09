@@ -118,6 +118,7 @@ struct brgemm_matmul_conf_t {
     brgemm_broadcast_t src_zp_type;
     brgemm_broadcast_t wei_zp_type;
     brgemm_broadcast_t dst_zp_type;
+    bool is_amx10 {false};
 
     bool use_buffer_a;
     bool use_buffer_a_tail_only;

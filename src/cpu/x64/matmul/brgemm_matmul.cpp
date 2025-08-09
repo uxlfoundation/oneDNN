@@ -400,7 +400,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgattr.mem_advice = bgmmc_.mem_advice;
         if (is_superset(kernel_isa, avx512_core_amx)) {
             brgattr.use_uker = true;
-            brgattr.use_interleave_stores = true;
+            brgattr.use_amx10 = bgmmc_.is_amx10;
+            brgattr.use_interleave_stores = !bgmmc_.is_amx10;
             brgattr.max_bs = bs;
             brgattr.wary_A_k_tail_read = bgmmc_.extendable_k;
             brgattr.extendable_k = bgmmc_.extendable_k;
@@ -2569,6 +2570,7 @@ template struct brgemm_matmul_t<avx10_2_512_amx_2>;
 template struct brgemm_matmul_t<avx512_core_amx_fp16>;
 template struct brgemm_matmul_t<avx512_core_amx>;
 template struct brgemm_matmul_t<avx10_2_512>;
+template struct brgemm_matmul_t<avx10_512_amx10>;
 template struct brgemm_matmul_t<avx512_core_fp16>;
 template struct brgemm_matmul_t<avx512_core_bf16>;
 template struct brgemm_matmul_t<avx512_core_vnni>;

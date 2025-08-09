@@ -229,11 +229,12 @@ status_t check_isa_with_datatype(
                     is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
-                    one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2))
+                    one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2,
+                            avx10_512_amx10))
             && IMPLICATION(bm_conf_utils.is_f16(),
                     one_of(isa, avx10_2_512, avx10_2_512_amx_2,
-                            avx512_core_amx_fp16, avx512_core_fp16,
-                            avx2_vnni_2))
+                            avx512_core_amx_fp16, avx512_core_fp16, avx2_vnni_2,
+                            avx10_512_amx10))
             // `avx512_core_amx_fp16` is not supported for plain upconversion
             // as HW supports native compute.
             && IMPLICATION(bm_conf_utils.is_f32_f16(),
@@ -254,7 +255,8 @@ status_t check_isa_with_datatype(
                     one_of(isa, avx512_core, avx2))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
-                            || is_superset(isa, avx10_2_512))
+                            || is_superset(isa, avx10_2_512)
+                            || is_superset(isa, avx10_512_amx10))
             && IMPLICATION(bm_conf_utils.is_bf8(),
                     is_superset(isa, avx512_core_amx_fp16))
             && IMPLICATION(bm_conf_utils.is_f4_via_convert(),
@@ -1314,6 +1316,19 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const bool is_wei_any = weights_d.format_kind() == format_kind::any
             || weights_d.is_sparse_packed_desc();
+    bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC);
+    bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
+    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
+
+    bgmmc.is_amx10 = is_superset(isa, avx10_512_amx10)
+            && ((utils::one_of(bgmmc.src_dt, s8, u8)
+                        && utils::one_of(bgmmc.wei_dt, s8, u8))
+                    || utils::everyone_is(bf16, bgmmc.src_dt, bgmmc.wei_dt)
+                    || utils::everyone_is(f16, bgmmc.src_dt, bgmmc.wei_dt)
+                    || (utils::one_of(bgmmc.src_dt, f8_e5m2, f8_e4m3)
+                            && utils::one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
+                            && utils::one_of(
+                                    bgmmc.dst_dt, f32, f8_e5m2, f8_e4m3)));
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
             src_d.format_kind() == format_kind::any, is_wei_any,
             dst_d.format_kind() == format_kind::any,
@@ -1456,10 +1471,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const int binary_ind = p.find(primitive_kind::binary);
     const int prelu_ind = p.find(primitive_kind::prelu);
     bgmmc.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
-
-    bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC);
-    bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
-    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
 
     VCONDCHECK_BG(
             IMPLICATION(!(bm_conf_utils.is_int8()
@@ -1836,7 +1847,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // Disable 'small_shape' heuristic for amx_fp16 until it is validated with
     // performance measurements.
-    is_small_shapes = is_small_shapes && (bgmmc.isa != avx512_core_amx_fp16);
+    is_small_shapes = is_small_shapes && (bgmmc.isa != avx512_core_amx_fp16)
+            && !bgmmc.is_amx10;
 
     if (bm_conf_utils.is_bf16() || bm_conf_utils.is_f16()
             || bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16()

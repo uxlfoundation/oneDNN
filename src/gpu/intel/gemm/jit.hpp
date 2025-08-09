@@ -367,7 +367,7 @@ struct gen_t : public primitive_t {
                     *(int *)result = (grfs > 128) ? 4 : 8;
                     break;
                 }
-                default: return pd_t::query(what, idx, result);
+                default: return gpu_gemm_pd_t::query(what, idx, result);
             }
             return status::success;
         }

@@ -150,7 +150,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
                     *(int *)result = 4;
                     break;
                 }
-                default: return pd_t::query(what, idx, result);
+                default: return gpu_gemm_pd_t::query(what, idx, result);
             }
             return status::success;
         }

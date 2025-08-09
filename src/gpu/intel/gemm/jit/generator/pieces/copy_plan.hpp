@@ -138,7 +138,7 @@ protected:
     }
 
 private:
-    CopyTemporary() {}
+    CopyTemporary() = default;
 };
 
 class CopyPlan

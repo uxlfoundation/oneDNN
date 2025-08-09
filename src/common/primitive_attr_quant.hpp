@@ -28,7 +28,10 @@
 // dependency between headers when it comes to inclusion of opdesc.hpp which
 // sdpa_desc_t is a part of.
 
+#include "common/c_types_map.hpp"
+#include "common/memory_desc.hpp"
 #include "common/serialization.hpp"
+#include "common/tag_traits.hpp"
 #include "common/utils.hpp"
 
 #include <algorithm>
@@ -89,6 +92,33 @@ struct quant_entry_t : public c_compatible {
         // lead to a division by zero which is fast to catch.
         if (d >= group_ndims_) return 0;
         return group_dims_[d];
+    }
+
+    status_t get_md(memory_desc_t &out_md, const memory_desc_t &base_md) const {
+        if (has_default_values()) {
+            out_md = memory_desc_t {}; // cannot use glob_zero_md due to circular dependency
+            return status::success;
+        }
+
+        dims_t quant_dims {};
+        const dims_t &in_dims = base_md.dims;
+        int ndims = base_md.ndims;
+        utils::copy_dims_with_mask(quant_dims, in_dims, ndims, mask_,
+                /* fill_with_ones = */ true);
+        if (!has_default_groups()) {
+            quant_dims[ndims - 2] /= get_group(0);
+            quant_dims[ndims - 1] /= get_group(1);
+        }
+
+        CHECK(memory_desc_init_by_tag(
+                out_md, ndims, quant_dims, data_type_, get_abx_tag(ndims)));
+        return status::success;
+    }
+
+    status_t get_md(memory_desc_t &out_md, const memory_desc_t *base_md) const {
+        assert(base_md);
+        if (base_md == nullptr) return status::invalid_arguments;
+        return get_md(out_md, *base_md);
     }
 
     // Note: keep the definition here to satisfy the

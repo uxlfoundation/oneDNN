@@ -428,7 +428,7 @@ protected:
     template <typename DT = void> void alignDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
     template <typename DT = void> void alignDown(const ngen::InstructionModifier &mod, const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
     template <typename DT = void> void alignUp(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t align, const CommonStrategy &strategy, CommonState &state);
-    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint16_t divisor, const CommonStrategy &strategy, CommonState &state);
+    template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src, uint32_t divisor, const CommonStrategy &strategy, CommonState &state);
     template <typename DT = void> void divDown(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state);
     template <typename DT = void> void divUp(const ngen::Subregister &dst, const ngen::Subregister &src0, const ngen::Subregister &src1, const ngen::Subregister &src1Recip, const ngen::FlagRegister &flag, const CommonStrategy &strategy, CommonState &state);
     void divMod(const ngen::Subregister &qot, const ngen::Subregister &rem, const ngen::Subregister &num, const ngen::Subregister &denom, const GEMMStrategy &strategy, CommonState &state, bool large = false);

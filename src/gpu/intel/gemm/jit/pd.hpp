@@ -56,7 +56,7 @@ struct pd_t : public gemm::pd_t {
     }
 
     status_t init_post_ops();
-    void init_attrs();
+    status_t init_attrs();
     bool scales_ok();
     bool zp_ok();
 
@@ -78,8 +78,8 @@ struct pd_t : public gemm::pd_t {
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    int a_q2d_group_k_ = 0;
-    int b_q2d_group_k_ = 0;
+    int a_q2d_group_k_ = 0, a_q2d_group_m_ = 0;
+    int b_q2d_group_k_ = 0, b_q2d_group_n_ = 0;
     data_type_t a_scales_type_ = data_type::undef;
     data_type_t b_scales_type_ = data_type::undef;
 
@@ -92,15 +92,13 @@ struct pd_t : public gemm::pd_t {
     int cmask_b_ = INT_MIN;
     int cmask_c_ = INT_MIN;
 
-    int b_scales_group_k_ = -1;
-    int a_scales_group_k_ = -1;
-
     const int mask_scalar = 1 << 0;
     const int mask_per_oc = 1 << 1;
     const int mask_per_ic = 1 << 2;
 
     const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
+    memory_desc_t a_zp_md_, b_zp_md_;
     bool swap_ab_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
@@ -188,8 +186,6 @@ struct pd_t : public gemm::pd_t {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
     dim_t eff_scale_stride(int idx, int arg) const;
-    void quant_entry_init(const quant_entry_t &entry, const memory_desc_t &md,
-            memory_desc_t &quant_md);
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

@@ -16,8 +16,6 @@
 
 #include "gpu/intel/zeropad/simple.hpp"
 
-#include <CL/cl.h>
-
 #include "gpu/intel/compute/utils.hpp"
 
 namespace dnnl {
@@ -49,7 +47,7 @@ status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
         blk_size[i] = 1;
     }
 
-    cl_ulong step_nelems = 1;
+    uint64_t step_nelems = 1;
     for (int i = 0; i < blocking_desc.inner_nblks; i++) {
         step_nelems *= blocking_desc.inner_blks[i];
         blk_size[blocking_desc.inner_idxs[i]] *= blocking_desc.inner_blks[i];
@@ -73,15 +71,15 @@ status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
 
     for (int i = 0; i < ndims; i++) {
         if (dims[i] == pdims[i]) continue;
-        cl_ulong stride = 1;
-        cl_ulong step_count = 1;
+        uint64_t stride = 1;
+        uint64_t step_count = 1;
 
         step_count = blocking_desc.strides[i] / step_nelems;
         stride = blocking_desc.strides[i] * (pdims[i] / blk_size[i]);
         size_t npsteps = (nelems / stride) * step_count;
 
         // Balance work unit size with parallelism
-        cl_ulong step_block = 1;
+        uint64_t step_block = 1;
         if (!engine->is_xe_hp() && !engine->is_xe_hpg()) {
             while (step_nelems / nelems_block * step_block < 4 * 1024
                     && step_count % (step_block * 2) == 0
@@ -171,7 +169,7 @@ status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
 
     const unsigned mem_dt_size = static_cast<unsigned>(mdw.data_type_size());
 
-    const cl_ulong most_inner_block_size
+    const uint64_t most_inner_block_size
             = mem_dt_size * blocking_desc.inner_blks[most_inner_nblk];
 
     compute::kernel_arg_list_t arg_list;
@@ -189,11 +187,11 @@ status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
             assert(arg_idx < 4);
             if (j < ndims) {
                 arg_list.set(5 + arg_idx,
-                        mem_dt_size * (cl_ulong)blocking_desc.strides[j]);
+                        mem_dt_size * (uint64_t)blocking_desc.strides[j]);
                 arg_list.set(9 + arg_idx++, (unsigned)dims[j]);
                 gws2 *= dims[j];
             } else {
-                arg_list.set(5 + arg_idx, cl_ulong(0));
+                arg_list.set(5 + arg_idx, uint64_t(0));
                 arg_list.set(9 + arg_idx++, unsigned(1));
             }
         }
@@ -209,10 +207,10 @@ status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
         }
         coordinates[blocking_desc.inner_idxs[most_inner_nblk]]
                 = dims[blocking_desc.inner_idxs[most_inner_nblk]];
-        const cl_ulong most_inner_block_base_offset
+        const uint64_t most_inner_block_base_offset
                 = mem_dt_size * mdw.off_v(coordinates, true);
 
-        const cl_ulong s2most_inner_block_stride = mem_dt_size
+        const uint64_t s2most_inner_block_stride = mem_dt_size
                 * blocking_desc.strides[blocking_desc.inner_idxs[most_inner_nblk
                         - 1]];
         const unsigned most_inner_block_write_multiplier = into<unsigned>(
@@ -245,7 +243,7 @@ status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
             const bool s2most_dim_lt_block_size
                     = dims[blocking_desc.inner_idxs[most_inner_nblk - 1]]
                     < blocking_desc.inner_blks[most_inner_nblk - 1];
-            const cl_ulong base_offset_b2 = (s2most_dim_lt_block_size)
+            const uint64_t base_offset_b2 = (s2most_dim_lt_block_size)
                     ? most_inner_block_base_offset
                     : most_inner_block_base_offset
                             + s2most_inner_block_stride * gws1;
@@ -266,10 +264,10 @@ status_t simple_t::execute_subg_16(const exec_ctx_t &ctx,
     }
     coordinates[blocking_desc.inner_idxs[most_inner_nblk - 1]]
             = dims[blocking_desc.inner_idxs[most_inner_nblk - 1]];
-    const cl_ulong s2most_inner_block_base_offset
+    const uint64_t s2most_inner_block_base_offset
             = mem_dt_size * mdw.off_v(coordinates, true);
 
-    const cl_ulong most_inner_block_offset = mem_dt_size
+    const uint64_t most_inner_block_offset = mem_dt_size
             * blocking_desc.strides[blocking_desc.inner_idxs[most_inner_nblk]];
 
     const unsigned most_inner_block_write_multiplier

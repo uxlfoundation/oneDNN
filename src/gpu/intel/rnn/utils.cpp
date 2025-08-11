@@ -16,8 +16,6 @@
 
 #include "gpu/intel/rnn/utils.hpp"
 
-#include <CL/cl.h>
-
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
 
@@ -299,8 +297,7 @@ void set_conf(conf_t &conf, const desc_t &rd,
     // usage. Can be removed when further improvements are made to
     // copy_diff_src_layer
     conf.scratch_diff_states_ld = get_good_ld(conf.arch_ld,
-            nstl::max(conf.slc, nstl::max(conf.sic, conf.dhc)),
-            sizeof(cl_float),
+            nstl::max(conf.slc, nstl::max(conf.sic, conf.dhc)), sizeof(float),
             utils::everyone_is(conf.slc, conf.sic, conf.dhc)
                     && conf.n_layer * conf.n_dir * conf.n_iter * conf.mb
                             > 128 * 1024);

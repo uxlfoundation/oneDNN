@@ -16,8 +16,9 @@
 
 #include "gpu/intel/zeropad/simple.hpp"
 
+#include <CL/cl.h>
+
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/zeropad/config.hpp"
 
 namespace dnnl {
 namespace impl {

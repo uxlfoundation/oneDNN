@@ -17,8 +17,6 @@
 #ifndef GPU_INTEL_JIT_GENERATOR_BASE_HPP
 #define GPU_INTEL_JIT_GENERATOR_BASE_HPP
 
-#include <CL/cl.h>
-
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/engine.hpp"
 

@@ -5257,6 +5257,11 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionSwishU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
 
+    static auto isa = dnnl_get_effective_cpu_isa();
+    SKIP_IF((isa < dnnl_cpu_isa_avx512_core)
+                    && engine->kind() == graph::engine_kind::cpu,
+            "Skip bf16 tests for systems that do not support avx512_core.");
+
     std::string qtype = "per_channel";
     const int64_t group = 4;
     int64_t in_channel = 8, out_channel = 8;
@@ -5722,6 +5727,11 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
     using dims = dnnl::impl::graph::dnnl_impl::dims;
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
+
+    static auto isa = dnnl_get_effective_cpu_isa();
+    SKIP_IF((isa < dnnl_cpu_isa_avx512_core)
+                    && engine->kind() == graph::engine_kind::cpu,
+            "Skip bf16 tests for systems that do not support avx512_core.");
 
     std::string qtype = "per_channel";
     int64_t in_channel = 8, out_channel = 8;

@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_ZEROPAD_SIMPLE_HPP
 #define GPU_INTEL_ZEROPAD_SIMPLE_HPP
 
-#include "gpu/gpu_zero_pad_pd.hpp"
 #include "gpu/intel/primitive.hpp"
+#include "gpu/intel/zeropad/config.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,8 +33,8 @@ namespace zeropad {
 
 struct simple_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public gpu_zero_pad_pd_t {
-        using gpu_zero_pad_pd_t::gpu_zero_pad_pd_t;
+    struct pd_t : public zeropad::pd_t {
+        using zeropad::pd_t::pd_t;
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_t);
         status_t init(impl::engine_t *engine) {

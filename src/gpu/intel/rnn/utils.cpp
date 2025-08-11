@@ -16,6 +16,8 @@
 
 #include "gpu/intel/rnn/utils.hpp"
 
+#include <CL/cl.h>
+
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
 

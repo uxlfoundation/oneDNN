@@ -72,7 +72,7 @@ public:
 
         // only allow SIMD-aligned channel-first layouts
         const auto &oc_blk = src.blocks()[0];
-        if ((oc_blk.dim_idx != dim_idx_t(1)) || (oc_blk.block % exec.simd()))
+        if ((oc_blk.dim.index() != 1) || (oc_blk.block % exec.simd()))
             return false;
 
         // for some reason 3D pooling works poorly on PVC at the moment
@@ -198,7 +198,7 @@ public:
 
     bool is_blocked_by_mb() const {
         const auto &blk = src_layout().user().blocks();
-        return (blk.size() > 1) && (blk[1].dim_idx == 0);
+        return (blk.size() > 1) && (blk[1].dim.index() == 0);
     }
 
     type_t acc_type(int len) const {

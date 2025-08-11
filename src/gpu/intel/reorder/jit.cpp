@@ -121,8 +121,8 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
         for (auto &eb : l.enumerated_blocks()) {
             auto &b = eb.second;
             if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim_idx) / b.block;
-                if (dims[b.dim_idx] % inner) return false;
+                dim_t inner = l.dim(b.dim) / b.block;
+                if (dims[b.dim] % inner) return false;
             }
         }
         return true;
@@ -150,13 +150,13 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
         for (auto &b : layout.blocks()) {
             if (b.block == 1) continue;
             if ((dim_t)b.stride != contiguous_inner_elems) break;
-            if (b.block > dims[b.dim_idx]) {
-                if (b.block % dims[b.dim_idx] == 0)
-                    contiguous_inner_elems *= dims[b.dim_idx];
+            if (b.block > dims[b.dim]) {
+                if (b.block % dims[b.dim] == 0)
+                    contiguous_inner_elems *= dims[b.dim];
                 break;
             }
             contiguous_inner_elems *= b.block;
-            dims[b.dim_idx] /= b.block;
+            dims[b.dim] /= b.block;
         }
         return contiguous_inner_elems;
     };

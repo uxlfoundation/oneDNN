@@ -470,7 +470,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         read_layout.for_each_tile(src_tile, [&](const icoord_t &s) {
             const dim_t off_l
                     = read_layout.offset<dim_t>(s) * read_layout.type().size();
-            const dim_t off_a = (s[0] * lg[1] + s[1]) * acc_sc_size;
+            const dim_t off_a = (s.get(0) * lg[1] + s.get(1)) * acc_sc_size;
 
             auto load = cast_t::make(
                     acc_type, load_t::make(read_type, read_buf, off_l));

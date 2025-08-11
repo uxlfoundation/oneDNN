@@ -140,48 +140,50 @@ public:
     bmnk_block_mapper_t(const bmnk_mapper_t &bmnk_mapper)
         : bmnk_mapper_(bmnk_mapper) {}
 
-    void push_blocks(abc_kind_t abc_kind, const std::vector<block_t> &blocks) {
+    void push_blocks(
+            abc_kind_t abc_kind, const std::vector<layout_block_t> &blocks) {
         for (auto &b : blocks)
             push_block(abc_kind, b);
     }
 
-    void push_block(abc_kind_t abc_kind, const block_t &b);
+    void push_block(abc_kind_t abc_kind, const layout_block_t &b);
 
     layout_t map_from_bmnk(abc_kind_t abc_kind,
             const std::vector<bmnk_kind_t> &bmnk_kinds,
             const layout_t &bmnk_layout) const;
 
 private:
-    static void pop_size_1_blocks(std::vector<block_t> &blocks) {
+    static void pop_size_1_blocks(std::vector<layout_block_t> &blocks) {
         while (!blocks.empty() && blocks.front().block == 1) {
             blocks.erase(blocks.begin());
         }
     }
 
-    std::vector<block_t> create_prb_blocks(abc_kind_t abc_kind,
-            const std::vector<std::pair<abc_kind_t, block_t>> &mn_blocks)
+    std::vector<layout_block_t> create_prb_blocks(abc_kind_t abc_kind,
+            const std::vector<std::pair<abc_kind_t, layout_block_t>> &mn_blocks)
             const {
-        std::vector<block_t> ret;
+        std::vector<layout_block_t> ret;
         ret.reserve(mn_blocks.size());
         for (auto &p : mn_blocks) {
             auto b = p.second;
-            const auto &var = bmnk_mapper_.var(p.first, b.dim_idx);
-            b.dim_idx = bmnk_mapper_.dim_idx(abc_kind, var);
+            const auto &var = bmnk_mapper_.var(p.first, b.dim);
+            b.dim = bmnk_mapper_.dim_idx(abc_kind, var);
             ret.push_back(b);
         }
         return ret;
     }
 
-    bool pop_block(std::vector<block_t> &bmnk_blocks,
-            std::vector<block_t> &prb_blocks, const block_t &bmnk_block) const;
+    bool pop_block(std::vector<layout_block_t> &bmnk_blocks,
+            std::vector<layout_block_t> &prb_blocks,
+            const layout_block_t &bmnk_block) const;
 
     bmnk_mapper_t bmnk_mapper_;
 
     // Ordered from innermost to outermost.
-    std::vector<std::pair<abc_kind_t, block_t>> b_blocks_;
-    std::vector<std::pair<abc_kind_t, block_t>> m_blocks_;
-    std::vector<std::pair<abc_kind_t, block_t>> n_blocks_;
-    std::vector<std::pair<abc_kind_t, block_t>> k_blocks_;
+    std::vector<std::pair<abc_kind_t, layout_block_t>> b_blocks_;
+    std::vector<std::pair<abc_kind_t, layout_block_t>> m_blocks_;
+    std::vector<std::pair<abc_kind_t, layout_block_t>> n_blocks_;
+    std::vector<std::pair<abc_kind_t, layout_block_t>> k_blocks_;
 };
 
 enum class loop_kind_t : uint32_t {

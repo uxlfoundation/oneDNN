@@ -304,14 +304,14 @@ private:
     static std::vector<layout_t> generate_all_layouts(
             const type_t &type, dim_t a, dim_t b) {
         std::vector<layout_t> ret;
-        std::vector<block_t> blocks;
+        std::vector<layout_block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
         return ret;
     }
 
     static void generate_all_layouts_impl(std::vector<layout_t> &layouts,
-            std::vector<block_t> &blocks, const type_t &type, dim_t a, dim_t b,
-            dim_t stride);
+            std::vector<layout_block_t> &blocks, const type_t &type, dim_t a,
+            dim_t b, dim_t stride);
 
     ngen::HW hw_;
     tile_t tile_;

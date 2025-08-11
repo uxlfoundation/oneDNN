@@ -76,7 +76,7 @@ static bool ends_with(
         const layout_t &layout, dim_idx_t i0, int b0, bool strict = false) {
     if (layout.nblocks() < 1) return false;
     auto &blocks = layout.blocks();
-    if (blocks[0].dim_idx != i0) return false;
+    if (blocks[0].dim.index() != i0) return false;
     if (strict && blocks[0].block != b0) return false;
     if (!strict && blocks[0].block % b0 != 0) return false;
     return true;
@@ -87,7 +87,7 @@ static bool ends_with(
     if (!ends_with(layout, i0, b0, /*strict=*/true)) return false;
     if (layout.nblocks() < 2) return false;
     auto &blocks = layout.blocks();
-    if (blocks[1].dim_idx != i1) return false;
+    if (blocks[1].dim.index() != i1) return false;
     if (blocks[1].block % b1 != 0) return false;
     return true;
 }
@@ -162,9 +162,9 @@ public:
     icoord_t c_to_comp(const icoord_t &c) const {
         // c:    ngcdhw or ngc[osp]
         // comp: goidhw
-        icoord_t ret(6);
-        ret[comp_g_idx_] = c[c_g_idx_];
-        ret[comp_c_idx_] = c[c_c_idx_];
+        icoord_t ret;
+        if (c.has(c_g_idx_)) ret[comp_g_idx_] = c[c_g_idx_];
+        if (c.has(c_c_idx_)) ret[comp_c_idx_] = c[c_c_idx_];
         return ret;
     }
 
@@ -204,10 +204,10 @@ private:
             bmnk_kind_t split_mn
                     = (abc == abc_kind_t::a ? bmnk_kind_t::m : bmnk_kind_t::n);
             dim_t dim = 1;
-            std::vector<block_t> mn_blocks;
+            std::vector<layout_block_t> mn_blocks;
             for (auto &b : c.blocks()) {
                 if (b.block == 1) continue;
-                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.dim_idx);
+                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.dim);
                 if (bmnk != split_mn) continue;
                 dim *= b.block;
                 mn_blocks.push_back(b);
@@ -218,8 +218,8 @@ private:
             dim_idx_t cur_idx = dim_idx::invalid;
             for (auto &b : mn_blocks) {
                 if (cur_idx == dim_idx::invalid) {
-                    cur_idx = b.dim_idx;
-                } else if (b.dim_idx != cur_idx) {
+                    cur_idx = b.dim;
+                } else if (b.dim.index() != cur_idx) {
                     return;
                 }
                 dim_t max_block = std::min(b.block, subtile_dim / cur_dim);
@@ -336,15 +336,15 @@ public:
 
         tile_t tile(b_layout_.ndims());
         for (auto &b : b_layout_.blocks()) {
-            if (b.dim_idx == kw_idx) break;
-            tile[b.dim_idx] *= b.block;
+            if (b.dim.index() == kw_idx) break;
+            tile[b.dim.index()] *= b.block;
         }
         gpu_assert(tile.elems() % sdepth_size == 0);
         wei_load = simd_bcast(load_t::make(
                 dpas_type(data_type_), (size > 1) ? dpas_buf : wei_buf, 0));
         b_layout_.for_each_tile(tile, [&](const icoord_t &start) {
             auto off = b_layout_.offset_in_bytes<int>(start);
-            auto mask = (small_ic) ? kw_var < simd_bcast(kw - start[kw_idx])
+            auto mask = (small_ic) ? kw_var < simd_bcast(kw - start.get(kw_idx))
                                    : expr_t();
             for (int i = 0; i < tile.elems(); i += sdepth_size)
                 stmt = stmt.append(store_t::make(dpas_buf, off + i, wei_load,
@@ -419,8 +419,8 @@ public:
         auto &b_comp = comp_layout_.blocks().back();
         if (b_wei.block % factor != 0) return false;
         if (b_wei.block != b_comp.block) return false;
-        if (b_wei.dim_idx != b_comp.dim_idx) return false;
-        int dim_idx = b_comp.dim_idx;
+        if (b_wei.dim != b_comp.dim) return false;
+        int dim_idx = b_comp.dim.index();
         dim_t subtile_dim = comp_layout_.dim(dim_idx);
         if (dim_idx == simd_dim_idx_ && subtile_dim < simd_) return false;
 
@@ -509,7 +509,7 @@ public:
             stmt = stmt.append(create_zp_common_mul_stmt(zp_buf, comp));
 
             // TODO: this implies that zp_wei and zp_src are scalar
-            auto mask = kw_var < simd_bcast(kw - start[kw_idx]);
+            auto mask = kw_var < simd_bcast(kw - start.get(kw_idx));
             mask = (!src_buf.is_empty())
                     ? (small_ic) ? mask : simd_bcast(expr_t(bool(true)))
                     : simd_bcast(expr_t(bool(false)));
@@ -560,7 +560,7 @@ private:
     void init_comp_layout() {
         auto blocks = wei_layout_.blocks();
         for (auto &b : blocks) {
-            if (b.dim_idx == ck_idx_) b.block = 1;
+            if (b.dim.index() == ck_idx_) b.block = 1;
         }
         comp_layout_ = layout_t(type_t::s32(), wei_layout_.ndims(), 0, blocks);
         comp_layout_ = comp_layout_.make_dense();
@@ -654,7 +654,7 @@ private:
 
     int get_zp_off(const icoord_t &_start, int ck) const {
         icoord_t start(2);
-        start[0] = _start[g_idx_];
+        if (_start.has(g_idx_)) start[0] = _start[g_idx_];
         start[1] = is_zp_common() ? 0 : ck;
         int off = zp_layout_.offset_in_bytes<int>(start);
         return off;
@@ -664,11 +664,11 @@ private:
         if (split_factor_ == 1) return true;
 
         auto &b = comp_layout_.blocks().back();
-        dim_t subtile_dim = ir_utils::safe_divide(
-                comp_layout_.dim(b.dim_idx), split_factor_);
+        dim_t subtile_dim
+                = ir_utils::safe_divide(comp_layout_.dim(b.dim), split_factor_);
         dim_t beg = subtile_idx * subtile_dim;
         dim_t end = beg + subtile_dim;
-        return start[b.dim_idx] >= beg && start[b.dim_idx] < end;
+        return start[b.dim.index()] >= beg && start[b.dim.index()] < end;
     }
 
     stmt_t create_tile_stmt(const expr_t &zp, const expr_t &wei,
@@ -809,7 +809,6 @@ struct texpr_t {
     expr_t to_expr(const coord_t &vstart, const icoord_t &vstart_inc,
             const std::vector<expr_t> &vvars, int simd_vidx) const {
         int ndims = (int)vstart.size();
-        gpu_assert((int)vstart_inc.size() == ndims);
         gpu_assert((int)vvars.size() == ndims);
         bool non_linear[max_nvdims] = {false};
         if (has_non_linear) {
@@ -829,14 +828,14 @@ struct texpr_t {
         auto ret = base;
         for (int i = 0; i < nvargs(); i++) {
             auto &s = vstart[vidxs[i]];
-            auto &s_inc = vstart_inc[vidxs[i]];
+            auto s_inc = vstart_inc.get(vidxs[i]);
             if (!is_zero(s)) ret += s * vstrides[i];
             if (s_inc != 0) ret += s_inc * vstrides[i];
         }
         if (has_non_linear) {
             for (int i = 0; i < ndims; i++) {
                 if (!non_linear[i]) continue;
-                ret = substitute(ret, vvars[i], vstart[i] + vstart_inc[i]);
+                ret = substitute(ret, vvars[i], vstart[i] + vstart_inc.get(i));
             }
         }
         return ret;
@@ -1404,7 +1403,9 @@ private:
     }
 
     int get_mask_off(const icoord_t &_start, int kw) const {
-        auto start = c_to_mask(_start);
+        // c:    ngcdhw or ngc[osp]
+        // mask: ngcdhw[kd][kh][kw] or ngc[osp][kd][kh][kw]
+        auto start = _start;
         int mask_kw_idx = mask_layout_.ndims() - 1;
         start[mask_kw_idx] = kw;
         int off = mask_layout_.offset_in_bytes<int>(start);
@@ -1414,15 +1415,6 @@ private:
     int get_c_off(const icoord_t &start, int kw) const {
         int off = c_layout_.offset_in_bytes<int>(start);
         return off;
-    }
-
-    icoord_t c_to_mask(const icoord_t &c) const {
-        // c:    ngcdhw or ngc[osp]
-        // mask: ngcdhw[kd][kh][kw] or ngc[osp][kd][kh][kw]
-        icoord_t ret(mask_layout_.ndims());
-        for (int i = 0; i < (int)c.size(); i++)
-            ret[i] = c[i];
-        return ret;
     }
 
     dim_idx_t comp_kw_idx_ = dim_idx::invalid;

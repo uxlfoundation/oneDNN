@@ -25,12 +25,6 @@ namespace intel {
 namespace reorder {
 namespace jit {
 
-pvar_t pvars[] = {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"},
-        {"j"}, {"k"}, {"l"}};
-
-static_assert(sizeof(pvars) == DNNL_MAX_NDIMS * sizeof(pvar_t),
-        "Incorrect number of pvars for reorder");
-
 config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     set_exec_cfg(ec);
 
@@ -52,7 +46,7 @@ config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     dim_idx_t grid_idx = 0;
 
     for (dim_idx_t i = 0; i < ndims; ++i) {
-        pvar_t &d = pvars[i];
+        pvar_t d(i);
 
         dim_t tg_dim = thr_tile[i];
         dim_t outer = utils::div_up(dst.dim(i), tg_dim);
@@ -65,7 +59,7 @@ config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     }
 
     for (dim_idx_t i = 0; i < ndims; ++i) {
-        pvar_t &d = pvars[i];
+        pvar_t d(i);
         dim_t tg_dim = thr_tile[i];
         dim_t outer = utils::div_up(dims[d], tg_dim);
 

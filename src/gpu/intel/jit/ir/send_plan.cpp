@@ -708,8 +708,8 @@ struct send_2d_params_t {
         for (int i = 0; i < nblocks; i++) {
             auto &b = blocks[i];
             if (use_xy) {
-                if (w_tdim.has_vidx(b.dim_idx)) continue;
-                if (h_tdim.has_vidx(b.dim_idx)) continue;
+                if (w_tdim.has_vidx(b.dim.index())) continue;
+                if (h_tdim.has_vidx(b.dim.index())) continue;
             }
             ret += (int64_t)b.stride * vblock_off[i];
         }
@@ -869,7 +869,7 @@ public:
     split_bounds_t(const layout_t &layout, int factor) {
         gpu_assert(layout.has_zero_offset()) << layout;
         auto tile_coord = layout.split_exact(factor);
-        if (tile_coord.is_empty()) return;
+        if (tile_coord.is_invalid()) return;
 
         layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {
             int off = layout.offset_in_bytes<int>(start);
@@ -1159,7 +1159,7 @@ public:
         for (auto &eb : layout.enumerated_blocks()) {
             auto &b = eb.second;
             if (b.block == 1) continue;
-            auto &m = mods[b.dim_idx];
+            auto &m = mods[b.dim];
             ret += (m % b.block) * (int64_t)b.stride;
             if (!layout.is_outermost(eb)) m /= (int64_t)b.block;
         }
@@ -1202,15 +1202,15 @@ struct layout_2d_wrapper_t {
         int ret = 0;
         for (auto &b : l.blocks()) {
             if (b.block == 1) continue;
-            if (idx == dim_idx::invalid || b.dim_idx == idx) ret++;
+            if (idx == dim_idx::invalid || b.dim.index() == idx) ret++;
         }
         return ret;
     }
-    const block_t &w_block() const {
+    const layout_block_t &w_block() const {
         gpu_assert(nblocks() >= 2);
         return l.blocks()[0];
     }
-    const block_t &h_block() const {
+    const layout_block_t &h_block() const {
         gpu_assert(nblocks() >= 2);
         return l.blocks()[1];
     }
@@ -1218,8 +1218,8 @@ struct layout_2d_wrapper_t {
     int64_t h_stride() const { return h_block().stride; }
     dim_t w_dim() const { return w_block().block; }
     dim_t h_dim() const { return h_block().block; }
-    dim_idx_t w_idx() const { return w_block().dim_idx; }
-    dim_idx_t h_idx() const { return h_block().dim_idx; }
+    dim_idx_t w_idx() const { return w_block().dim.index(); }
+    dim_idx_t h_idx() const { return h_block().dim.index(); }
 
     const layout_t &l;
 };
@@ -1442,7 +1442,7 @@ private:
                 break;
             }
             dim_t factor;
-            if (has_vidx_mask(mask_descs_, b.dim_idx, dims[b.dim_idx], b.block,
+            if (has_vidx_mask(mask_descs_, b.dim, dims[b.dim.index()], b.block,
                         factor)) {
                 inner_idx = eb.first;
                 if (factor == 1) return layout;
@@ -1451,7 +1451,7 @@ private:
                     return layout.split_block(eb, factor, b.block / factor);
             }
             stride *= b.block;
-            dims[b.dim_idx] *= b.block;
+            dims[b.dim] *= b.block;
         }
         return layout;
     }
@@ -1647,8 +1647,8 @@ public:
         auto &w_tdim = info_.vidx_to_tdim(lw.w_idx());
         auto &h_tdim = info_.vidx_to_tdim(lw.h_idx());
 
-        int w_vidx = lw.w_idx();
-        int h_vidx = lw.h_idx();
+        auto w_vidx = lw.w_idx();
+        auto h_vidx = lw.h_idx();
         dim_idx_t w_tidx = w_tdim.tidx();
         dim_idx_t h_tidx = h_tdim.tidx();
         bool use_xy = true;
@@ -1656,8 +1656,8 @@ public:
         int w_tcount = 0;
         int h_tcount = 0;
         for (auto &b : info_.view().tlayout().blocks()) {
-            w_tcount += (b.dim_idx == w_tidx);
-            h_tcount += (b.dim_idx == h_tidx);
+            w_tcount += (b.dim.index() == w_tidx);
+            h_tcount += (b.dim.index() == h_tidx);
         }
 
         if (w_tcount > 1 || h_tcount > 1) use_xy = false;
@@ -1839,8 +1839,8 @@ public:
         std::vector<int> dims(info_.vlayout().ndims(), 1);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            block_dims_[i] = dims[b.dim_idx];
-            dims[b.dim_idx] *= (int)b.block;
+            block_dims_[i] = dims[b.dim.index()];
+            dims[b.dim.index()] *= (int)b.block;
         }
     }
 
@@ -1865,7 +1865,7 @@ public:
 
     int nblocks() const { return (int)blocks().size(); }
 
-    const std::vector<block_t> &blocks() const {
+    const std::vector<layout_block_t> &blocks() const {
         return info_.vlayout().blocks();
     }
 
@@ -1883,7 +1883,7 @@ public:
         off_.assign(info_.vlayout().ndims(), 0);
         for (int i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            off_[b.dim_idx] += block_off_[i] * block_dims_[i];
+            off_[b.dim.index()] += block_off_[i] * block_dims_[i];
         }
         mask.merge(get_mask(mask_bits, slots));
         addr.merge(get_addr(slots, slot_size));
@@ -2321,6 +2321,7 @@ public:
     stmt_t create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
             int subtile_idx, const expr_t &pattern) const override {
         auto stmt = access_.stmt();
+        if (stmt.is_empty()) return stmt_t();
         stmt = substitute(stmt, dummy_mem_buf_, mem_buf);
         stmt = substitute(stmt, dummy_reg_buf_, reg_buf);
         split_bounds_t bounds(reg_layout(), split_factor_);
@@ -2513,7 +2514,7 @@ send_group_t init_block(const view_info_t &info, view_iterator_t &it,
     auto &vlayout = info.vlayout();
     auto &blocks = vlayout.blocks();
     reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
-            std::vector<block_t>(
+            std::vector<layout_block_t>(
                     blocks.begin(), blocks.begin() + info.outer_idx()));
     return ret;
 }
@@ -2549,7 +2550,7 @@ send_group_t init_scattered(const view_info_t &info,
     ret.addr_inc = std::move(addr_base);
     ret.mask_inc = std::move(mask_base);
     reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
-            std::vector<block_t>(
+            std::vector<layout_block_t>(
                     blocks.begin(), blocks.begin() + info.outer_idx()));
     reg_layout = reg_layout.make_dense();
     if (slot_stride != slot_size) {
@@ -2713,7 +2714,7 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
             stride, base_group.pad_bytes * type.packing() / type.size());
     for (int i = outer_idx; i < (int)blocks.size(); i++) {
         auto &b = blocks[i];
-        reg_layout = reg_layout.add_outer_block(b.dim_idx, b.block, stride);
+        reg_layout = reg_layout.add_outer_block(b.dim, b.block, stride);
         stride *= b.block;
     }
 

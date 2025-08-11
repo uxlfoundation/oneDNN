@@ -556,7 +556,7 @@ private:
     void build_x_reduce_store() {
         auto &gemm_schedule = plan_.gemm_schedule;
         bool use_atomic = (gemm_schedule.with_kernel_grid_k_slicing()
-                || !plan_.slm.x_reduce_tile_coord.is_empty());
+                || !plan_.slm.x_reduce_tile_coord.is_invalid());
         auto x_reduce_buf = buf_mgr_.find("x_reduce", /*allow_empty=*/true).buf;
         if (x_reduce_buf.is_empty()) return;
         auto x_reduce_dummy_buf

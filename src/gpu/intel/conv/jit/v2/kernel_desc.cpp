@@ -120,8 +120,8 @@ void specialization_t::parse(std::istream &in) {
         if (found) continue;
         auto tile = jit::parse<tile_t>(p);
         for (auto &d : tile) {
-            if (d.name().back() == '@') {
-                dim_mods[pvar_t(d.name().substr(0, d.name().size() - 1))]
+            if (d.str().back() == '@') {
+                dim_mods[pvar_t(d.str().substr(0, d.str().size() - 1))]
                         = tile[d];
             } else {
                 dim_values[d] = tile[d];

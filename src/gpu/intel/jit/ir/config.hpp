@@ -200,7 +200,7 @@ public:
 
     void set(const pvar_map_t<int> &tile) {
         for (auto &d : tile) {
-            set(d.str(), tile[d]);
+            set(pvar_t(d.str()), tile[d]);
         }
     }
 

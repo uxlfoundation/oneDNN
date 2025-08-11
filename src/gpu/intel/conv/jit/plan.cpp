@@ -89,7 +89,7 @@ static dim_tile_t create_tile(gemm_schedule_t &gemm_schedule,
                           : get_kernel_grid_dims(cfg);
         for (auto &tile : grid)
             for (auto &d : tile)
-                if (dim_name == d.name()) return true;
+                if (dim_name == d.str()) return true;
         return false;
     };
 
@@ -815,8 +815,8 @@ bool x2r_plan_t::can_split(abc_kind_t abc, int factor) const {
     auto &reorder = (is_a ? a_reorder : b_reorder);
     auto &layout = (is_a ? a_layout : b_layout);
     if (!layout.has_outer_block(factor)) return false;
-    int dim_idx = layout.blocks().back().dim_idx;
-    if (reorder && !reorder.src.has_outer_block(factor, dim_idx)) return false;
+    auto &dim = layout.blocks().back().dim;
+    if (reorder && !reorder.src.has_outer_block(factor, dim)) return false;
     if (!load.can_split(factor)) return false;
     if (!x_reduce.can_split(factor)) return false;
     return true;
@@ -874,14 +874,14 @@ std::string x2r_plan_t::str() const {
     return add_indent("x2r_plan", oss.str());
 }
 
-int get_dpas_block_rcount(const layout_t &layout, dim_idx_t dim_idx) {
+int get_dpas_block_rcount(const layout_t &layout, const pvar_t &dim) {
     if (layout.nblocks() < 2) return 1;
 
     auto &b0 = layout.blocks()[0];
     if (b0.block * layout.type().size() > 32) return 1;
 
     auto &b1 = layout.blocks()[1];
-    if (b1.dim_idx != dim_idx) return 1;
+    if (b1.dim != dim) return 1;
 
     int block_rcount = (int)b1.block;
     int max_rcount = 8;
@@ -904,7 +904,7 @@ bool fma_plan_t::can_split(abc_kind_t abc, int factor) const {
     auto &blocks = layout.blocks();
     if (blocks.empty()) return false;
     auto &b = blocks.back();
-    if (b.dim_idx != mn_idx) return false;
+    if (b.dim.index() != mn_idx) return false;
     if ((int)b.block % factor != 0) return false;
     return true;
 }
@@ -1324,7 +1324,7 @@ struct fma_context_t {
         if (is_dpas) {
             int sdepth = 8;
             int dword_size = 4;
-            std::vector<std::pair<int, dim_t>> blocks;
+            std::vector<std::pair<pvar_t, dim_t>> blocks;
             auto bmnks = get_bmnk_kinds(abc);
             if (is_a) {
                 // A -> src2
@@ -1356,7 +1356,7 @@ struct fma_context_t {
             auto ret = maybe_retype_layout_for_mad(is_a, layout);
             auto &hint = layout_hint(abc);
             if (hint.is_empty()) return ret;
-            std::vector<std::pair<int, dim_t>> blocks;
+            std::vector<std::pair<pvar_t, dim_t>> blocks;
             blocks.emplace_back(hint.vec_dim_idx, vec_size);
             auto bmnks = get_bmnk_kinds(abc, /*with_batch=*/true);
             auto bmnk_layout = mapper.map_to_bmnk(abc, bmnks, ret);
@@ -1585,10 +1585,10 @@ reduce_mask_t reduce_mask(const config_t &cfg, abc_kind_t abc) {
     return reduce_mask_t((1 << 1) | (1 << 2));
 }
 
-std::vector<int> get_reduce_dim_map(uint32_t mask, int &ndims) {
+std::vector<int> get_reduce_dim_map(uint32_t mask, dim_idx_t &ndims) {
     std::vector<int> ret(ndims, -1);
-    int dst_idx = 0;
-    for (int i = 0; i < ndims; i++) {
+    dim_idx_t dst_idx = 0;
+    for (dim_idx_t i = 0; i < ndims; i++) {
         if ((mask & (1 << i)) == 0) continue;
         ret[i] = dst_idx++;
     }
@@ -1596,28 +1596,29 @@ std::vector<int> get_reduce_dim_map(uint32_t mask, int &ndims) {
     return ret;
 }
 
-tile_coord_t to_reduce_tensor(const tile_coord_t &tile_coord, uint32_t mask) {
-    int reduce_ndims = into<int>(tile_coord.size());
+tile_coord_t to_reduce_tensor(
+        dim_idx_t ndims, const tile_coord_t &tile_coord, uint32_t mask) {
+    dim_idx_t reduce_ndims = ndims;
     auto map = get_reduce_dim_map(mask, reduce_ndims);
-    tile_t reduce_dims(reduce_ndims);
-    coord_t reduce_start(reduce_ndims);
-    for (dim_idx_t i = 0; i < tile_coord.size(); i++) {
+    tile_t reduce_dims;
+    coord_t reduce_start;
+    for (dim_idx_t i = 0; i < ndims; i++) {
         if (map[i] == -1) continue;
-        reduce_dims[map[i]] = tile_coord.tile[i];
-        reduce_start[map[i]] = tile_coord.coord[i];
+        reduce_dims[map[i]] = tile_coord.tile.get(i);
+        reduce_start[map[i]] = tile_coord.coord.get(i);
     }
     return tile_coord_t(reduce_dims, reduce_start);
 }
 
 layout_t to_reduce_layout(
         const config_t &cfg, const layout_t &layout, uint32_t mask) {
-    int reduce_ndims = layout.ndims();
+    dim_idx_t reduce_ndims = layout.ndims();
     auto map = get_reduce_dim_map(mask, reduce_ndims);
-    std::vector<block_t> reduce_blocks;
+    std::vector<layout_block_t> reduce_blocks;
     for (auto &b : layout.blocks()) {
-        if (map[b.dim_idx] == -1) continue;
+        if (map[b.dim] == -1) continue;
         auto bb = b;
-        bb.dim_idx = map[b.dim_idx];
+        bb.dim = map[b.dim];
         reduce_blocks.push_back(bb);
     }
     auto type = get_accumulation_type(cfg, layout.type(), layout.type());
@@ -1644,14 +1645,14 @@ public:
     layout_t transform(const layout_t &layout) const {
         gpu_assert((bool)*this);
         gpu_assert(fused_tidx_ != dim_idx::invalid);
-        std::vector<block_t> blocks;
+        std::vector<layout_block_t> blocks;
         bool seen = false;
         for (auto &b : layout.blocks()) {
             if (b.block == 1) continue;
-            auto &tdim = view_.tdim(b.dim_idx);
-            if (b.dim_idx != fused_tidx_) {
+            auto &tdim = view_.tdim(b.dim);
+            if (b.dim.index() != fused_tidx_) {
                 auto vb = b;
-                vb.dim_idx = tdim.vidx(0);
+                vb.dim = tdim.vidx(0);
                 blocks.push_back(vb);
                 continue;
             }
@@ -1661,7 +1662,7 @@ public:
                 int vidx = tdim.vidx(i);
                 dim_t vstride = (dim_t)tdim.vstride(i);
                 auto vb = b;
-                vb.dim_idx = vidx;
+                vb.dim = vidx;
                 vb.block = view_.vdims()[vidx];
                 vb.stride = b.stride * vstride;
                 blocks.push_back(vb);
@@ -1761,7 +1762,7 @@ private:
 layout_t add_batch(const layout_t &layout) {
     auto blocks = layout.blocks();
     for (auto &b : blocks) {
-        b.dim_idx++;
+        b.dim = b.dim + 1;
     }
     return layout_t(layout.type(), layout.ndims(), layout.offset(), blocks);
 }
@@ -1794,17 +1795,17 @@ bool is_dpas_src2_compatible(int simd, bool transpose, const layout_t &layout) {
 
 layout_t get_c_layout(const layout_t &a_layout, const layout_t &b_layout,
         const layout_t &c_blk_layout) {
-    std::vector<block_t> blocks;
+    std::vector<layout_block_t> blocks;
     const bmnk_kind_t a_bmnks[3]
             = {bmnk_kind_t::b, bmnk_kind_t::m, bmnk_kind_t::k};
     const bmnk_kind_t b_bmnks[3]
             = {bmnk_kind_t::b, bmnk_kind_t::k, bmnk_kind_t::n};
     for (auto &b : a_layout.blocks()) {
-        if (a_bmnks[b.dim_idx] == bmnk_kind_t::k) continue;
+        if (a_bmnks[b.dim] == bmnk_kind_t::k) continue;
         blocks.push_back(b);
     }
     for (auto &b : b_layout.blocks()) {
-        if (utils::one_of(b_bmnks[b.dim_idx], bmnk_kind_t::b, bmnk_kind_t::k))
+        if (utils::one_of(b_bmnks[b.dim], bmnk_kind_t::b, bmnk_kind_t::k))
             continue;
         blocks.push_back(b);
     }
@@ -2089,8 +2090,8 @@ private:
         auto &dst = g2s_store.reg_layout();
         reorder = create_reorder_plan(cfg_.hw(), src, dst);
         if (reduce_mask && cfg_.allow_global_reduction()) {
-            *reduce_tile_coord
-                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
+            *reduce_tile_coord = to_reduce_tensor(
+                    src.ndims(), abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout = to_reduce_layout(cfg_, src, reduce_mask.mask);
             *reduce = create_reduce_plan(
                     cfg_.hw(), src, reduce_layout, reduce_mask.mask);
@@ -2155,8 +2156,8 @@ private:
         load = create_send_plan(cfg_.exec_cfg(), thr_view, params);
         layout = load.reg_layout();
         if (reduce_mask && !cfg_.allow_global_reduction()) {
-            *reduce_tile_coord
-                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
+            *reduce_tile_coord = to_reduce_tensor(
+                    layout.ndims(), abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout
                     = to_reduce_layout(cfg_, layout, reduce_mask.mask);
             *reduce = create_reduce_plan(
@@ -2199,8 +2200,8 @@ private:
 
         if (reduce_mask) {
             gpu_assert(!direct_view);
-            *reduce_tile_coord
-                    = to_reduce_tensor(abs_thr_tile_coord, reduce_mask.mask);
+            *reduce_tile_coord = to_reduce_tensor(
+                    reg_layout.ndims(), abs_thr_tile_coord, reduce_mask.mask);
             auto reduce_layout
                     = to_reduce_layout(cfg_, reg_layout, reduce_mask.mask);
             *reduce = create_reduce_plan(
@@ -2243,7 +2244,7 @@ private:
                 if (b.block % j != 0) continue;
                 if (outer * j > k_tg) break;
                 if (outer * j == k_tg || j == b.block) {
-                    rem_dims[b.dim_idx] /= j;
+                    rem_dims[b.dim] /= j;
                     outer *= j;
                     break;
                 }
@@ -2274,9 +2275,9 @@ private:
             layout_t k_layout = layout_t(type_t::u8(), 0,
                     std::vector<dim_t>(layout_t::max_ndims, 1));
             for (auto &b : l.blocks()) {
-                auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim_idx);
+                auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim);
                 if (bmnk_kind != bmnk_kind_t::k) continue;
-                auto &var = bmnk_mapper.var(abc_kind, b.dim_idx);
+                auto &var = bmnk_mapper.var(abc_kind, b.dim);
                 auto ret = k_vars.emplace(var, (int)k_vars.size());
                 k_layout = k_layout.add_outer_block(ret.first->second, b.block);
             }
@@ -2293,16 +2294,14 @@ private:
             auto &a1 = a_k.blocks()[1];
             auto &b0 = b_k.blocks()[0];
             auto &b1 = b_k.blocks()[1];
-            bool dims_ok
-                    = (a0.dim_idx == b1.dim_idx) && (a1.dim_idx == b0.dim_idx);
+            bool dims_ok = (a0.dim == b1.dim) && (a1.dim == b0.dim);
             bool blocks_ok = (a0.block == b1.block) && (a1.block == b0.block);
             if (dims_ok && blocks_ok) {
                 auto a_blocks = a.blocks();
                 int i0 = -1;
                 int i1 = -1;
                 for (int i = 0; i < a.nblocks(); i++) {
-                    if (bmnk_mapper.bmnk_kind(
-                                abc_kind_t::a, a_blocks[i].dim_idx)
+                    if (bmnk_mapper.bmnk_kind(abc_kind_t::a, a_blocks[i].dim)
                             == bmnk_kind_t::k) {
                         if (i0 == -1) {
                             i0 = i;

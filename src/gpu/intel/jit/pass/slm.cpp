@@ -206,7 +206,7 @@ private:
         auto &d0 = dst_blocks[0];
         auto &d1 = dst_blocks[1];
 
-        if (s0.dim_idx != d1.dim_idx || s1.dim_idx != d0.dim_idx) return false;
+        if (s0.dim != d1.dim || s1.dim != d0.dim) return false;
         gpu_assert(s0.block == d1.block);
         gpu_assert(s1.block == d0.block);
 

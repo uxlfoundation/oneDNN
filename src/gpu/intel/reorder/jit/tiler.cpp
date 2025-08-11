@@ -114,19 +114,19 @@ message_info_t estimate_message_info(
 
     for (auto &blk : layout.blocks()) {
         auto block = blk.block;
-        auto dim_idx = blk.dim_idx;
+        auto dim = blk.dim;
         if (block == 1) continue;
-        if (outer[dim_idx] < block) {
-            if (block % outer[dim_idx] == 0) {
-                inner_elems *= outer[dim_idx];
-                outer[dim_idx] = 1;
+        if (outer[dim] < block) {
+            if (block % outer[dim] == 0) {
+                inner_elems *= outer[dim];
+                outer[dim] = 1;
             }
             break;
         }
 
-        can_use_block_messages &= (outer[dim_idx] % block == 0);
+        can_use_block_messages &= (outer[dim] % block == 0);
         inner_elems *= block;
-        outer[dim_idx] = utils::div_up(outer[dim_idx], block);
+        outer[dim] = utils::div_up(outer[dim], block);
     }
 
     auto inner_bytes = utils::div_up(
@@ -156,12 +156,12 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
 
     // Pad src/dst layouts to match each other.
     auto pad_layout = [&](layout_t &l) {
-        std::vector<block_t> padded_blocks;
+        std::vector<layout_block_t> padded_blocks;
         for (auto &eb : l.enumerated_blocks()) {
             auto b = eb.second;
             if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim_idx) / b.block;
-                b.block = ir_utils::safe_divide(dims[b.dim_idx], inner);
+                dim_t inner = l.dim(b.dim) / b.block;
+                b.block = ir_utils::safe_divide(dims[b.dim], inner);
             }
             padded_blocks.push_back(b);
         }
@@ -174,7 +174,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     auto can_be_mapped = [](const layout_t &l, const tile_t &t) {
         std::vector<dim_t> rem_dims = t.values();
         for (auto &b : l.blocks()) {
-            auto &rem_dim = rem_dims[b.dim_idx];
+            auto &rem_dim = rem_dims[b.dim];
             if (rem_dim >= b.block) {
                 if (rem_dim % b.block != 0) return false;
                 rem_dim /= b.block;

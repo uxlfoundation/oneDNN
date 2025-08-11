@@ -42,17 +42,57 @@ enum class tensor_kind_t {
 
 std::string to_string(tensor_kind_t tensor);
 
+class pvar_name_t {
+public:
+    pvar_name_t() = default;
+    explicit pvar_name_t(dim_idx_t idx) { data_[0] = into<char>('a' + idx); }
+    explicit pvar_name_t(const std::string &s);
+
+    bool operator==(const pvar_name_t &other) const {
+        return std::strncmp(data_, other.data_, max_len) == 0;
+    }
+
+    bool operator!=(const pvar_name_t &other) const {
+        return !operator==(other);
+    }
+
+    bool operator<(const pvar_name_t &other) const {
+        return std::strncmp(data_, other.data_, max_len) < 0;
+    }
+
+    dim_idx_t index() const {
+        gpu_assert(into<int>(length()) == 1);
+        dim_idx_t idx = into<dim_idx_t>(data_[0]);
+        gpu_assert('a' <= idx && idx <= 'z');
+        return into<dim_idx_t>(idx - 'a');
+    }
+
+    size_t length() const { return std::strlen(data_); }
+    bool is_empty() const { return std::strlen(data_) == 0; }
+    size_t get_hash() const;
+    std::string str() const;
+
+    IR_DEFINE_DUMP()
+
+private:
+    static const size_t max_len = 8;
+    char data_[max_len + 1] = {};
+};
+
 class pvar_t {
 public:
     pvar_t() = default;
-    pvar_t(const std::string &name) : name_(name) { gpu_assert(!name.empty()); }
-    const std::string &name() const { return name_; }
-    bool is_undef() const { return name_.empty(); }
+    pvar_t(size_t idx) : name_(into<dim_idx_t>(idx)) {}
+    explicit pvar_t(const std::string &name) : name_(name) {}
+    bool is_undef() const { return name_.is_empty(); }
     bool operator==(const pvar_t &other) const { return name_ == other.name_; }
     bool operator!=(const pvar_t &other) const { return name_ != other.name_; }
     bool operator<(const pvar_t &other) const { return name_ < other.name_; }
+    dim_idx_t index() const { return name_.index(); }
+    operator dim_idx_t() const { return index(); }
     size_t get_hash() const { return ir_utils::get_hash(name_); }
-    std::string str() const { return name_; }
+    const pvar_name_t &name() const { return name_; }
+    std::string str() const { return name_.str(); }
 
     IR_DEFINE_DUMP()
 
@@ -65,7 +105,7 @@ public:
     int spatial_index() const;
 
 private:
-    std::string name_;
+    pvar_name_t name_;
 };
 
 namespace pvars {
@@ -138,13 +178,18 @@ public:
 
     virtual ~pvar_map_t() = default;
 
+    virtual ValueT default_value() const { return ValueT(); }
+
     bool has(const pvar_t &key) const { return map_.count(key) != 0; }
     iterator_t begin() const { return iterator_t(map_.begin()); }
     iterator_t end() const { return iterator_t(map_.end()); }
     size_t size() const { return map_.size(); }
     bool is_empty() const { return map_.empty(); }
+    bool is_valid() const { return is_valid_; }
+    bool is_invalid() const { return !is_valid_; }
 
     void set(const pvar_t &key, const ValueT &value) { map_[key] = value; }
+    void set_valid(bool value) { is_valid_ = value; }
 
     void unset(const pvar_t &key) {
         if (!has(key)) return;
@@ -164,38 +209,19 @@ public:
     }
 
     ValueT &operator[](const pvar_t &key) {
-        if (!has(key)) set(key, ValueT());
+        if (!has(key)) set(key, default_value());
         return map_[key];
     }
 
-    const ValueT &operator[](size_t idx) const {
-        gpu_assert(idx < size()) << "Index not found: " << idx;
-        auto it = map_.begin();
-        for (size_t i = 0; i < idx; i++)
-            it = std::next(it);
-        return it->second;
-    }
-
-    ValueT &operator[](size_t idx) {
-        gpu_assert(idx < size()) << "Index not found: " << idx;
-        auto it = map_.begin();
-        for (size_t i = 0; i < idx; i++)
-            it = std::next(it);
-        return it->second;
-    }
-
     const ValueT &at(const pvar_t &key) const { return operator[](key); }
-    const ValueT &at(size_t idx) const { return operator[](idx); }
-    ValueT get(
-            const pvar_t &key, const ValueT &default_value = ValueT()) const {
-        if (!has(key)) return default_value;
+    const ValueT &at(size_t idx) const {
+        return operator[](into<dim_idx_t>(idx));
+    }
+    ValueT get(const pvar_t &key, const ValueT &_default) const {
+        if (!has(key)) return _default;
         return at(key);
     }
-    ValueT get(
-            const size_t &idx, const ValueT &default_value = ValueT()) const {
-        if (idx >= size()) return default_value;
-        return at(idx);
-    }
+    ValueT get(const pvar_t &key) const { return get(key, default_value()); }
     void erase(const pvar_t &key) { map_.erase(key); }
 
     std::vector<ValueT> values() const {
@@ -208,7 +234,7 @@ public:
     std::unordered_map<std::string, dim_t> to_string_map() const {
         std::unordered_map<std::string, dim_t> ret;
         for (auto &kv : map_)
-            ret[kv.first.name()] = kv.second;
+            ret[kv.first.str()] = kv.second;
         return ret;
     }
 
@@ -248,7 +274,7 @@ public:
         pvar_map_t ret;
         for (auto &d : *this) {
             if (ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
-                        at(d), ValueT()))
+                        at(d), default_value()))
                 continue;
             ret[d] = at(d);
         }
@@ -258,6 +284,7 @@ public:
     size_t get_hash() const { return ir_utils::get_hash(map_); }
 
     void stringify(std::ostream &out) const {
+        gpu_assert(is_valid());
         if (is_empty()) {
             out << "x";
             return;
@@ -277,6 +304,7 @@ public:
     }
 
     std::string str_impl(bool multiline) const {
+        if (is_invalid()) return "(invalid)";
         if (is_empty()) return "x";
         ostringstream_t oss;
         bool is_first = true;
@@ -302,6 +330,7 @@ public:
     IR_DEFINE_DUMP()
 
 private:
+    bool is_valid_ = true;
     std::map<pvar_t, ValueT> map_;
 };
 
@@ -315,6 +344,8 @@ public:
         for (size_t i = 0; i < values.size(); i++)
             set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
     }
+
+    dim_t default_value() const override { return 1; }
 
     dim_t elems() const {
         dim_t ret = 1;
@@ -353,6 +384,12 @@ public:
 #endif
 
     std::string str() const override { return str_impl(/*multiline=*/false); }
+
+    static tile_t invalid() {
+        tile_t ret;
+        ret.set_valid(false);
+        return ret;
+    }
 };
 
 class coord_t;
@@ -369,6 +406,12 @@ public:
             set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
     }
     icoord_t(const coord_t &coord);
+    dim_t default_value() const override { return 0; }
+    static icoord_t invalid() {
+        icoord_t ret;
+        ret.set_valid(false);
+        return ret;
+    }
 };
 
 // Coordinate with expression values.
@@ -385,6 +428,12 @@ public:
     coord_t(const icoord_t &icoord) {
         for (auto &d : icoord)
             set(d, icoord[d]);
+    }
+    expr_t default_value() const override { return expr_t(0); }
+    static coord_t invalid() {
+        coord_t ret;
+        ret.set_valid(false);
+        return ret;
     }
 };
 
@@ -423,13 +472,8 @@ struct tile_coord_t {
 
     tile_coord_t() = default;
     tile_coord_t(const tile_t &tile, const coord_t &coord = {})
-        : tile(tile), coord(coord) {
-        if (coord.is_empty()) {
-            for (auto &d : tile)
-                this->coord[d] = expr_t(0);
-        }
-    }
-    bool is_empty() const { return tile.is_empty(); }
+        : tile(tile), coord(coord) {}
+    bool is_invalid() const { return tile.is_invalid() || coord.is_invalid(); }
     size_t size() const { return tile.size(); }
     dim_t elems() const { return tile.elems(); }
     bool has_zero_coord() const {
@@ -441,11 +485,9 @@ struct tile_coord_t {
 
     tile_coord_t sub(
             const tile_t &sub_tile, const coord_t &sub_coord = {}) const {
-        gpu_assert(size() == sub_tile.size()) << "Incompatible sizes.";
-        gpu_assert(size() == sub_coord.size()) << "Incompatible sizes.";
         coord_t new_coord = coord;
-        for (size_t i = 0; i < size(); i++)
-            new_coord[i] += sub_coord[i];
+        for (auto &d : sub_coord)
+            new_coord[d] += sub_coord[d];
         return tile_coord_t(sub_tile, new_coord);
     }
 
@@ -461,6 +503,10 @@ struct tile_coord_t {
     }
 
     IR_DEFINE_DUMP()
+
+    static tile_coord_t invalid() {
+        return tile_coord_t(tile_t::invalid(), coord_t::invalid());
+    }
 };
 
 template <typename F>
@@ -493,7 +539,7 @@ namespace std {
 template <>
 struct hash<dnnl::impl::gpu::intel::jit::pvar_t> {
     size_t operator()(const dnnl::impl::gpu::intel::jit::pvar_t &pvar) const {
-        return std::hash<std::string>()(pvar.name());
+        return pvar.get_hash();
     }
 };
 } // namespace std

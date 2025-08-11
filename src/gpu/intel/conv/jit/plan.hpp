@@ -88,7 +88,7 @@ struct slm_plan_t : public base_plan_t {
     layout_t b_layout;
     send_plan_t a_g2s_load;
     send_plan_t b_g2s_load;
-    tile_coord_t x_reduce_tile_coord;
+    tile_coord_t x_reduce_tile_coord = tile_coord_t::invalid();
     reduce_plan_t x_reduce;
     reorder_plan_t a_reorder;
     reorder_plan_t b_reorder;
@@ -131,7 +131,7 @@ struct prefetch_plan_t : public base_plan_t {
 struct x2r_plan_t : public base_plan_t {
     send_plan_t a_load;
     send_plan_t b_load;
-    tile_coord_t x_reduce_tile_coord;
+    tile_coord_t x_reduce_tile_coord = tile_coord_t::invalid();
     reduce_plan_t x_reduce;
     reorder_plan_t a_reorder;
     reorder_plan_t b_reorder;
@@ -234,8 +234,10 @@ struct plan_t : public base_plan_t {
         : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}
 
     const tile_coord_t &x_reduce_tile_coord() const {
-        if (!x2r.x_reduce_tile_coord.is_empty()) return x2r.x_reduce_tile_coord;
-        if (!slm.x_reduce_tile_coord.is_empty()) return slm.x_reduce_tile_coord;
+        if (!x2r.x_reduce_tile_coord.is_invalid())
+            return x2r.x_reduce_tile_coord;
+        if (!slm.x_reduce_tile_coord.is_invalid())
+            return slm.x_reduce_tile_coord;
         gpu_error_not_expected();
         return x2r.x_reduce_tile_coord;
     }

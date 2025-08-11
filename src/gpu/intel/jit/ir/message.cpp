@@ -327,13 +327,12 @@ private:
         auto l = view_.create_pseudo_vlayout();
         // Find the maximum innermost dense tile.
         stride_t stride = 1;
-        std::vector<dim_t> dims(l.ndims(), 1);
+        tile_t tile;
         for (auto &b : l.blocks()) {
             if (b.stride != stride) break;
-            dims[b.dim_idx] *= b.block;
+            tile[b.dim] *= b.block;
             stride = b.block * b.stride;
         }
-        tile_t tile(dims);
         dense_block_size_ = tile.elems() * type().size() / type().packing();
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
@@ -581,7 +580,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     auto &b0 = blocks[0];
     auto &b1 = blocks[1];
-    gpu_assert(b0.dim_idx != b1.dim_idx);
+    gpu_assert(b0.dim != b1.dim);
     if (b0.stride != stride_t(1)) return false;
     if (!b1.stride.is_fixed()) return false;
 
@@ -602,8 +601,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     int w_tstride = 0;
     int h_tstride = 0;
-    dim_idx_t w_dim_idx = get_tdim_idx(b0.dim_idx, w_tstride);
-    dim_idx_t h_dim_idx = get_tdim_idx(b1.dim_idx, h_tstride);
+    dim_idx_t w_dim_idx = get_tdim_idx(b0.dim, w_tstride);
+    dim_idx_t h_dim_idx = get_tdim_idx(b1.dim, h_tstride);
 
     if (w_tstride != 1) return false;
 
@@ -660,43 +659,41 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
                 hint.vnni_permute_factor))
         return false;
 
-    std::vector<dim_t> dims(vlayout.ndims(), 1);
-    dims[b0.dim_idx] = count * width;
-    dims[b1.dim_idx] = height;
-    tile_t tile(dims);
+    tile_t tile;
+    tile[b0.dim] = count * width;
+    tile[b1.dim] = height;
 
     reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type, 0,
             std::vector<dim_t>(vlayout.ndims(), 1));
     int h_inner = vnni ? 4 / send_type.size() : 1;
     int h_outer = ir_utils::safe_divide(height, h_inner);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim_idx, h_inner);
+    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_inner);
     if (transpose) {
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim_idx, h_outer);
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim_idx, width);
+        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
+        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
     } else {
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim_idx, width);
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim_idx, h_outer);
+        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
+        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
     }
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim_idx, count);
+    reg_layout_ = reg_layout_.add_outer_block(b0.dim, count);
 
-    int w_outermost
-            = ir_utils::safe_divide(vlayout.dim(b0.dim_idx), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.dim(b1.dim_idx), height);
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim_idx, w_outermost);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim_idx, h_outermost);
+    int w_outermost = ir_utils::safe_divide(vlayout.dim(b0.dim), count * width);
+    int h_outermost = ir_utils::safe_divide(vlayout.dim(b1.dim), height);
+    reg_layout_ = reg_layout_.add_outer_block(b0.dim, w_outermost);
+    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outermost);
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();
         reg_layout_ = layout_t(
                 mem_type_, 0, std::vector<dim_t>(vlayout.ndims(), 1));
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim_idx, type_factor);
+        reg_layout_ = reg_layout_.add_outer_block(b0.dim, type_factor);
         for (auto &b : blocks)
-            reg_layout_ = reg_layout_.add_outer_block(b.dim_idx, b.block);
+            reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
     }
 
     for (auto &b : blocks) {
-        if (utils::one_of(b.dim_idx, b0.dim_idx, b1.dim_idx)) continue;
-        reg_layout_ = reg_layout_.add_outer_block(b.dim_idx, b.block);
+        if (utils::one_of(b.dim, b0.dim, b1.dim)) continue;
+        reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
     }
 
     reg_layout_walker_
@@ -745,8 +742,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
         auto vstart = vstart0;
         for (dim_idx_t i = 0; i < into<dim_idx_t>(vlayout.ndims()); i++) {
-            if (start[i] == 0) continue;
-            int factor = (i == b0.dim_idx ? type_factor : 1);
+            if (start.get(i) == 0) continue;
+            int factor = (i == b0.dim.index() ? type_factor : 1);
             vstart[i] += factor * start[i];
         }
         auto tstart
@@ -766,7 +763,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
             if (h_tstride != 1) {
                 if (!stride_dimension_ok(
-                            mem_view_, h_dim_idx, b1.dim_idx, vstart)) {
+                            mem_view_, h_dim_idx, b1.dim, vstart)) {
                     if (send.is_prefetch_2d()) {
                         skip_send = true;
                     } else {
@@ -1120,7 +1117,7 @@ bool send_2d_vlayout_ok(const layout_t &vlayout) {
 
     const auto &b0 = blocks[0];
     const auto &b1 = blocks[1];
-    if (b0.dim_idx == b1.dim_idx) return false;
+    if (b0.dim == b1.dim) return false;
     if (b0.stride != stride_t(1)) return false;
     if (b1.stride.is_unknown()) return false;
     return true;
@@ -1167,8 +1164,8 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
         int mn_blk = (is_dpas_src1 ? m_blk : n_blk);
         int k_blk = 32 / view.type().size();
         auto &bmnk_mapper = gemm_schedule.bmnk_mapper();
-        bool is_b0_k = (bmnk_mapper.bmnk_kind(abc_kind, b0.dim_idx)
-                == bmnk_kind_t::k);
+        bool is_b0_k
+                = (bmnk_mapper.bmnk_kind(abc_kind, b0.dim) == bmnk_kind_t::k);
         bool transpose = (is_dpas_src1 == is_b0_k);
         int b0_blk = is_b0_k ? k_blk : mn_blk;
         int b1_blk = !is_b0_k ? k_blk : mn_blk;

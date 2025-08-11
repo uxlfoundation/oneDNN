@@ -61,7 +61,7 @@ public:
     // bounds) convolution computes an out-of-bound element which is not
     // generally zero. This requires special handling if there are post-ops
     // followed the convolution.
-    bool is_spurious_spatial(dim_idx_t dim_idx) const override;
+    bool is_spurious_spatial(const pvar_t &dim) const override;
     bool need_to_restore_zero_padding() const override;
     bool use_dst_in_sum_post_op() const override;
     bool can_use_scales() const override;

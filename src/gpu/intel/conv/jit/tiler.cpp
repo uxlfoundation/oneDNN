@@ -167,7 +167,7 @@ int get_layout_unit(const config_t &cfg, const layout_t &layout,
 
     std::vector<dim_t> blocks;
     for (auto &b : layout.blocks()) {
-        if (b.dim_idx == dim_idx) blocks.push_back(b.block);
+        if (b.dim.index() == dim_idx) blocks.push_back(b.block);
     }
     if (blocks.size() <= 1) return 1;
     blocks.resize(blocks.size() - 1);
@@ -356,12 +356,12 @@ private:
         gpu_assert(info1.min_iter_blk == tile_info_t::default_min_iter_blk);
 
         int unit = 32 / prb.a_data_type_size;
-        x2_tile_info_t x2_info(d0, d1);
+        x2_tile_infos_.emplace_back(d0, d1);
+        auto &x2_info = x2_tile_infos_.back();
         x2_info.add(flags);
         x2_info.set_iter_unit(unit);
         x2_info.d0 = info0.div_info;
         x2_info.d1 = info1.div_info;
-        x2_tile_infos_.push_back(std::move(x2_info));
     }
 
     void finalize_loop_dims(const config_t &cfg) {
@@ -391,12 +391,12 @@ private:
             for (auto &d : loop_) {
                 if (any(tile_info(d).flags & tile_flags_t::loop_iter_unroll))
                     continue;
-                loop_dim_t ld;
+                loop_dims.emplace_back();
+                auto &ld = loop_dims.back();
                 ld.dim = d;
                 ld.size = shape.get(d, 1);
                 if (iter_.has(d))
                     ld.size = utils::div_up(ld.size, iter_dim_hint);
-                loop_dims.push_back(std::move(ld));
             }
             std::sort(loop_dims.begin(), loop_dims.end(),
                     [&](const loop_dim_t &a, const loop_dim_t &b) {
@@ -452,7 +452,7 @@ dim_t inner_stride(
     gpu_assert(dim_idx != dim_idx::invalid);
     auto &layout = compute_layout(cfg, tensor_kind);
     for (auto &b : layout.blocks()) {
-        if (b.dim_idx == dim_idx) return (dim_t)b.stride;
+        if (b.dim.index() == dim_idx) return (dim_t)b.stride;
     }
     return 0;
 }
@@ -808,7 +808,7 @@ private:
         if (dim_idx == dim_idx::invalid) return true;
         std::vector<dim_t> blocks;
         for (auto &b : layout.blocks()) {
-            if (b.dim_idx == dim_idx) blocks.push_back(b.block);
+            if (b.dim.index() == dim_idx) blocks.push_back(b.block);
         }
         if (blocks.size() <= 1) return true;
         blocks.resize(blocks.size() - 1);

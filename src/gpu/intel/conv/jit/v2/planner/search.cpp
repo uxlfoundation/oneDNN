@@ -36,9 +36,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 
 // Flags specifying blocking restrictions for a convolution dimension.
@@ -410,7 +410,7 @@ private:
                 auto d_key = jit::stringify(d);
                 if (seen.count(d_key) > 0) continue;
                 seen.insert(std::move(d_key));
-                if (!create_conv_plan(d, bench_mger_.hw())) {
+                if (!create_plan(d, bench_mger_.hw())) {
                     std::cout << d.brief_str() << ": \033[1;31mFAIL\033[0m"
                               << std::endl;
                     continue;
@@ -436,7 +436,7 @@ private:
             for (int dist : prefetch_dists) {
                 auto _d = d;
                 _d.prefetch = prefetch_desc_t(dist, true, true);
-                if (!create_conv_plan(_d, bench_mger_.hw())) {
+                if (!create_plan(_d, bench_mger_.hw())) {
                     std::cout << d.brief_str() << ": \033[1;31mFAIL\033[0m"
                               << std::endl;
                     continue;
@@ -662,9 +662,9 @@ void search(const bench_manager_t &bench_mger, const planner_params_t &params) {
 }
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

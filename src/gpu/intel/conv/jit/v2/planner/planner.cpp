@@ -30,9 +30,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 
 static planner_params_t params;
@@ -136,7 +136,7 @@ void DNNL_API planner_main(int argc, const char **argv) {
     init_params(argc, argv, bench_mger);
     switch (params.mode) {
         case planner_mode_t::trace: {
-            plan_t plan = create_conv_plan(params.desc, bench_mger.hw());
+            plan_t plan = create_plan(params.desc, bench_mger.hw());
             if (!plan) {
                 std::cout << "Error: cannot create plan\n";
                 exit(1);
@@ -168,9 +168,9 @@ void DNNL_API planner_main(int argc, const char **argv) {
 }
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

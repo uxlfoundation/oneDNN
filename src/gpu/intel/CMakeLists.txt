@@ -47,8 +47,9 @@ gen_gpu_kernel_list(
     "${CL_HEADERS}")
 
 list(APPEND SOURCES ${kernel_list_src})
-if (NOT DNNL_EXPERIMENTAL OR NOT DNNL_DEV_MODE)
 list(FILTER SOURCES EXCLUDE REGEX "conv/jit/v2/planner")
+if (DNNL_EXPERIMENTAL AND DNNL_DEV_MODE)
+add_subdirectory("conv/jit/v2/planner")
 endif()
 
 add_subdirectory(compute)

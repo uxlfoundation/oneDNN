@@ -25,9 +25,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 
 enum class planner_mode_t {
@@ -46,9 +46,9 @@ struct planner_params_t {
 };
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

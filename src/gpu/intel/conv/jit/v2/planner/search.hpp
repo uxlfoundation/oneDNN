@@ -24,9 +24,9 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 
 class kernel_desc_t;
 
@@ -35,9 +35,9 @@ namespace planner {
 void search(const bench_manager_t &bench_mger, const planner_params_t &params);
 
 } // namespace planner
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl

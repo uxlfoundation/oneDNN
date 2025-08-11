@@ -20,21 +20,21 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace conv {
 namespace jit {
 namespace v2 {
-namespace conv {
 namespace planner {
 void DNNL_API planner_main(int argc, const char **argv);
 }
-} // namespace conv
 } // namespace v2
 } // namespace jit
+} // namespace conv
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
 int main(int argc, const char **argv) {
-    dnnl::impl::gpu::intel::jit::v2::conv::planner::planner_main(argc, argv);
+    dnnl::impl::gpu::intel::conv::jit::v2::planner::planner_main(argc, argv);
     return 0;
 }

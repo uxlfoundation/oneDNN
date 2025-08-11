@@ -143,6 +143,9 @@ jobs:
       - name: Rename to ComputeLibrary_base
         run: cp -r ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
+      - name: Clean up ComputeLibrary before cloning new ACL
+        run: rm -rf ${{ github.workspace }}/ComputeLibrary
+
       - name: Clone new ACL
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
         env:

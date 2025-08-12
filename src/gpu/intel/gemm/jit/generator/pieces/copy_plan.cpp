@@ -1299,9 +1299,9 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
             i0.dst.stride *= 2;
             i0.src0.stride *= 2;
             i0.simd /= 2;
-            auto &i1 = split(i, false);
-            i1.dst.offset += i1.dst.stride / 2;
-            i1.src0.offset += i1.src0.stride / 2;
+            split(i, true);
+            i0.dst.offset += i0.dst.stride / 2;
+            i0.src0.offset += i0.src0.stride / 2;
         }
     } else {
         bool even = (i.src0.offset % 2 == 0);

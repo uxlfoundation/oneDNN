@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -141,9 +142,9 @@ static const std::string help_runtime_dims_masks
 bool parse_legacy_dt(std::vector<dnnl_data_type_t> &dt,
         const std::vector<dnnl_data_type_t> &def_dt, const char *str,
         const std::string &option_name /* = "dt"*/) {
-    // TODO: uncomment in v3.8
-    // BENCHDNN_PRINT(0, "%s\n", "Warning: \'--bia_dt\' option is deprecated.
-    //         Please use the \'--bia-dt\' one.");
+    BENCHDNN_PRINT(0, "%s\n",
+            "Warning: \'--bia_dt\' option is deprecated. Please use the "
+            "\'--bia-dt\' one.");
     return parser::parse_dt(dt, def_dt, str, option_name);
 }
 

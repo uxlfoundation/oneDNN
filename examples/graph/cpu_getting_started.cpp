@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cpu_getting_started.cpp
-/// @copybrief graph_cpu_getting_started_cpp
 /// > Annotated version: @ref graph_cpu_getting_started_cpp
 
 /// @page graph_cpu_getting_started_cpp Getting started on CPU with Graph API
@@ -45,6 +44,7 @@
 ///
 /// @page graph_cpu_getting_started_cpp
 /// @snippet cpu_getting_started.cpp Headers and namespace
+
 //[Headers and namespace]
 #include <iostream>
 #include <memory>

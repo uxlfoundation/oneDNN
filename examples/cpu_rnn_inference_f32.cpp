@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2022 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cpu_rnn_inference_f32.cpp
-/// @copybrief cpu_rnn_inference_f32_cpp
 /// > Annotated version: @ref cpu_rnn_inference_f32_cpp
 
 /// @page cpu_rnn_inference_f32_cpp RNN f32 inference example

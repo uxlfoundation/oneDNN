@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example sycl_getting_started.cpp
-/// @copybrief graph_sycl_getting_started_cpp
 /// > Annotated version: @ref graph_sycl_getting_started_cpp
 
 /// @page graph_sycl_getting_started_cpp Getting started with SYCL extensions API and Graph API
@@ -47,6 +46,7 @@
 /// in namespace `dnnl::graph`.
 /// @page graph_sycl_getting_started_cpp
 /// @snippet sycl_getting_started.cpp Headers and namespace
+
 //[Headers and namespace]
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_graph_sycl.hpp"

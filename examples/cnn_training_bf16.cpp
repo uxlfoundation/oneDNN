@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cnn_training_bf16.cpp
-/// @copybrief cnn_training_bf16_cpp
 /// > Annotated version: @ref cnn_training_bf16_cpp
 ///
 /// @page cnn_training_bf16_cpp CNN bf16 training example

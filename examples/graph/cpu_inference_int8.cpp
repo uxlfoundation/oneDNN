@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cpu_inference_int8.cpp
-/// @copybrief graph_cpu_inference_int8_cpp
 /// Annotated version: @ref graph_cpu_inference_int8_cpp
 
 /// @page graph_cpu_inference_int8_cpp Convolution int8 inference example with Graph API
@@ -38,6 +37,7 @@
 ///
 /// @page graph_cpu_inference_int8_cpp
 /// @snippet cpu_inference_int8.cpp Headers and namespace
+
 //[Headers and namespace]
 #include <iostream>
 #include <memory>

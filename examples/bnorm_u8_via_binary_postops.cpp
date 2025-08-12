@@ -15,12 +15,8 @@
 *******************************************************************************/
 
 /// @example bnorm_u8_via_binary_postops.cpp
-/// @copybrief bnorm_u8_via_binary_postops_cpp
 /// > Annotated version: @ref bnorm_u8_via_binary_postops_cpp
-///
-/// @page bnorm_u8_via_binary_postops_cpp_short
-/// Bnorm u8 via binary postops example.
-///
+
 /// @page bnorm_u8_via_binary_postops_cpp Bnorm u8 by binary post-ops example
 /// The example implements the Batch normalization u8 via the following
 /// operations: binary_sub(src, mean), binary_div(tmp_dst, variance),

@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example performance_profiling.cpp
-/// @copybrief performance_profiling_cpp
 /// > Annotated version: @ref performance_profiling_cpp
 
 /// @page performance_profiling_cpp Performance Profiling Example
@@ -86,7 +85,6 @@
 ///
 /// The following descriptions of each implementation will reference each other,
 /// and are meant to be read in order.
-///
 
 #include <iostream>
 #include <stdexcept>

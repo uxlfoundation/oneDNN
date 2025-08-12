@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example gpu_opencl_getting_started.cpp
-/// @copybrief graph_gpu_opencl_getting_started_cpp
 /// > Annotated version: @ref graph_gpu_opencl_getting_started_cpp
 
 /// @page graph_gpu_opencl_getting_started_cpp Getting started with OpenCL extensions and Graph API
@@ -46,6 +45,7 @@
 /// in namespace `dnnl::graph`.
 /// @page graph_gpu_opencl_getting_started_cpp
 /// @snippet gpu_opencl_getting_started.cpp Headers and namespace
+
 //[Headers and namespace]
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_ocl.hpp"

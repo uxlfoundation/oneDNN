@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example getting_started.cpp
-/// @copybrief getting_started_cpp
 /// > Annotated version: @ref getting_started_cpp
 
 #include <cmath>
@@ -29,12 +28,8 @@
 #include "example_utils.hpp"
 
 using namespace dnnl;
-// [Prologue]
 
 /// @page getting_started_cpp oneDNN API Basic Workflow Tutorial
-///
-/// This C++ API example demonstrates the basics of the oneDNN programming model.
-///
 /// > Example code: @ref getting_started.cpp
 ///
 /// This C++ API example demonstrates the basics of the oneDNN programming model:
@@ -63,8 +58,6 @@ using namespace dnnl;
 /// header file in the program. We also include @ref dnnl_debug.h in
 /// example_utils.hpp, which contains some debugging facilities like returning
 /// a string representation for common oneDNN C types.
-
-// [Prologue]
 
 /// @page getting_started_cpp
 /// @section getting_started_cpp_tutorial getting_started_tutorial() function

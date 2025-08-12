@@ -167,3 +167,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     compare_two_benchdnn(args.file1, args.file2, check=args.check)
+         

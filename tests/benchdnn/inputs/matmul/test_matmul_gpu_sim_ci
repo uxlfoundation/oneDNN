@@ -29,3 +29,18 @@
 --reset
 --dt=bf16:bf16:f8_e5m2 
 8x8x8x1x8:8x8x1x8x8
+
+# fp4
+--reset
+--stag=any,ab --wtag=any,ab --dtag=ab,any
+--skip-impl=ref
+--attr-post-ops=
+--dt=f4_e2m1,f4_e3m0,f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
+--attr-scales=
+
+24x32:32x64
+25x32:32x16
+96x96:96x64
+14x96:96x32
+1x30:30x20
+10x30:30x20

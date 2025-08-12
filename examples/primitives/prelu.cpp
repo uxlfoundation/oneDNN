@@ -16,15 +16,11 @@
 
 /// @example prelu.cpp
 /// > Annotated version: @ref prelu_example_cpp
-///
-/// @page prelu_example_cpp_short
-///
+
+/// @page prelu_example_cpp Primitive Example
 /// This C++ API example demonstrates how to create and execute an
 /// [PReLU](@ref dev_guide_prelu) primitive in forward training
 /// propagation mode.
-///
-/// @page prelu_example_cpp Primitive Example
-/// @copydetails prelu_example_cpp_short
 ///
 /// @include prelu.cpp
 

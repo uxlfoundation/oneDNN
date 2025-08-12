@@ -16,8 +16,8 @@
 
 /// @example batch_normalization.cpp
 /// > Annotated version: @ref batch_normalization_example_cpp
-///
-/// @page batch_normalization_example_cpp_short
+
+/// @page batch_normalization_example_cpp Batch Normalization Primitive Example
 ///
 /// This C++ API example demonstrates how to create and execute a
 /// [Batch Normalization](@ref dev_guide_batch_normalization) primitive in
@@ -27,9 +27,6 @@
 /// - In-place primitive execution;
 /// - Source memory format for an optimized primitive implementation;
 /// - Fused post-ops via primitive descriptor flags;
-///
-/// @page batch_normalization_example_cpp Batch Normalization Primitive Example
-/// @copydetails batch_normalization_example_cpp_short
 ///
 /// @include batch_normalization.cpp
 

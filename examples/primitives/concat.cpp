@@ -16,9 +16,8 @@
 
 /// @example concat.cpp
 /// > Annotated version: @ref concat_example_cpp
-///
-/// @page concat_example_cpp_short
-///
+
+/// @page concat_example_cpp Concat Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Concat](@ref dev_guide_concat) primitive.
 ///
@@ -26,9 +25,6 @@
 /// - Identical source (src) memory formats.
 /// - Creation of optimized memory format for destination (dst) from the
 ///   primitive descriptor
-///
-/// @page concat_example_cpp Concat Primitive Example
-/// @copydetails concat_example_cpp_short
 ///
 /// @include concat.cpp
 

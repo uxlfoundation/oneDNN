@@ -106,8 +106,7 @@ meaning associated with any of the dimensions of a tensor.
 1. Whenever possible, avoid specifying different memory formats for source
    and destination tensors.
 
-## Example
+## Examples
 
-[Reduction Primitive Example](@ref reduction_example_cpp)
+* @ref reduction_example_cpp
 
-@copydetails reduction_example_cpp_short

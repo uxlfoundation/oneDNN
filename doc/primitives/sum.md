@@ -86,8 +86,6 @@ meaning associated with any logical dimensions.
 
  * Use in-place operations whenever possible (see caveats in General Notes).
 
-## Example
+## Examples
 
-[**Sum Primitive Example**](@ref sum_example_cpp)
-
-@copydetails sum_example_cpp_short
+* @ref sum_example_cpp

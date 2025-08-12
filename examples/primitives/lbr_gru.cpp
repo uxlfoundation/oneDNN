@@ -16,18 +16,14 @@
 
 /// @example lbr_gru.cpp
 /// > Annotated version: @ref lbr_gru_example_cpp
-///
-/// @page lbr_gru_example_cpp_short
-///
+
+/// @page lbr_gru_example_cpp Linear-Before-Reset GRU RNN Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Linear-Before-Reset GRU RNN](@ref dev_guide_rnn) primitive in forward
 /// training propagation mode.
 ///
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor.
-///
-/// @page lbr_gru_example_cpp Linear-Before-Reset GRU RNN Primitive Example
-/// @copydetails lbr_gru_example_cpp_short
 ///
 /// @include lbr_gru.cpp
 

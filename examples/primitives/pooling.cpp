@@ -16,15 +16,11 @@
 
 /// @example pooling.cpp
 /// > Annotated version: @ref pooling_example_cpp
-///
-/// @page pooling_example_cpp_short
-///
+
+/// @page pooling_example_cpp Pooling Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Pooling](@ref dev_guide_pooling) primitive in forward training propagation
 /// mode.
-///
-/// @page pooling_example_cpp Pooling Primitive Example
-/// @copydetails pooling_example_cpp_short
 ///
 /// @include pooling.cpp
 

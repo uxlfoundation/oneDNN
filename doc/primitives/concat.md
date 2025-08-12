@@ -92,8 +92,6 @@ meaning associated with any logical dimensions.
    Consider reordering sources to the same data format before using the concat
    primitive.
 
-## Example
+## Examples
 
-[Concat Primitive Example](@ref concat_example_cpp)
-
-@copydetails concat_example_cpp_short
+* @ref concat_example_cpp

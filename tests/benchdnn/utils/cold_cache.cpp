@@ -167,9 +167,13 @@ cold_cache_t::cold_cache_t(
         auto orig_cc_mem_md = query_md(orig_mem);
 
         for (size_t i = 0; i < n_buffers_; i++) {
-            // Data will be filled/reordered, no need to prefill it.
-            cc_entry[i] = dnn_mem_t(
-                    orig_cc_mem_md, get_test_engine(), /* prefill = */ false);
+            // If there are multiple buffers, don't rely on reorders because it
+            // takes a long time. Rely on a default initialization in this case.
+            //
+            // Note: despite `gpu_n_buffers_top_limit_` is taken as a limit, it
+            // applies for CPU as well to avoid numerous reorders.
+            const bool prefill = n_mem_pool_buffers > gpu_n_buffers_top_limit_;
+            cc_entry[i] = dnn_mem_t(orig_cc_mem_md, get_test_engine(), prefill);
 
             // Sparse memories require this call to replicate the exact original
             // data distribution because the data structure affects performance
@@ -184,48 +188,49 @@ cold_cache_t::cold_cache_t(
                             i, __FILE__, __LINE__);
                     return;
                 }
-            } else {
-                // Reorders are expensive. If there are multiple buffers to
-                // fill, simply rely on default memory initialization.
-                if (n_mem_pool_buffers > 100) continue;
-
                 if (cc_entry[i].is_mapped()) cc_entry[i].unmap();
-                const auto &dst_memory = cc_entry[i].m_;
-                benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> reorder_pdw;
-                dnnl_primitive_desc_t reorder_pd {};
-                dnnl_status_t status = dnnl_reorder_primitive_desc_create(
-                        &reorder_pd, orig_cc_mem_md, query_engine(orig_mem),
-                        orig_cc_mem_md, query_engine(dst_memory), nullptr);
-                if (status != dnnl_success) {
-                    BENCHDNN_PRINT(0,
-                            "Error: cold-cache reorder failed for %s arg and "
-                            "%zu buffer (out of %zu).\n",
-                            data_kind2str(exec_arg2data_kind(arg)), i,
-                            n_buffers_);
-                    assert(status == dnnl_success);
-                    return;
-                }
-                reorder_pdw.reset(reorder_pd);
-
-                benchdnn_dnnl_wrapper_t<dnnl_primitive_t> reorder_w;
-                dnnl_primitive_t reorder {};
-                status = dnnl_primitive_create(&reorder, reorder_pdw);
-                assert(status == dnnl_success);
-                if (status != dnnl_success) { return; }
-                reorder_w.reset(reorder);
-
-                std::vector<dnnl_exec_arg_t> dnnl_args;
-                dnnl_args.resize(2);
-                dnnl_args[0].arg = DNNL_ARG_FROM;
-                dnnl_args[0].memory = orig_mem;
-                dnnl_args[1].arg = DNNL_ARG_TO;
-                dnnl_args[1].memory = dst_memory;
-
-                status = dnnl_primitive_execute(reorder_w, stream,
-                        (int)dnnl_args.size(), dnnl_args.data());
-                assert(status == dnnl_success);
-                if (status != dnnl_success) { return; }
+                continue;
             }
+
+            // Reorders are expensive. If there are multiple buffers to
+            // fill, simply rely on default memory initialization.
+            if (prefill) continue;
+
+            if (cc_entry[i].is_mapped()) cc_entry[i].unmap();
+            const auto &dst_memory = cc_entry[i].m_;
+            benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> reorder_pdw;
+            dnnl_primitive_desc_t reorder_pd {};
+            dnnl_status_t status = dnnl_reorder_primitive_desc_create(
+                    &reorder_pd, orig_cc_mem_md, query_engine(orig_mem),
+                    orig_cc_mem_md, query_engine(dst_memory), nullptr);
+            if (status != dnnl_success) {
+                BENCHDNN_PRINT(0,
+                        "Error: cold-cache reorder failed for %s arg and "
+                        "%zu buffer (out of %zu).\n",
+                        data_kind2str(exec_arg2data_kind(arg)), i, n_buffers_);
+                assert(status == dnnl_success);
+                return;
+            }
+            reorder_pdw.reset(reorder_pd);
+
+            benchdnn_dnnl_wrapper_t<dnnl_primitive_t> reorder_w;
+            dnnl_primitive_t reorder {};
+            status = dnnl_primitive_create(&reorder, reorder_pdw);
+            assert(status == dnnl_success);
+            if (status != dnnl_success) { return; }
+            reorder_w.reset(reorder);
+
+            std::vector<dnnl_exec_arg_t> dnnl_args;
+            dnnl_args.resize(2);
+            dnnl_args[0].arg = DNNL_ARG_FROM;
+            dnnl_args[0].memory = orig_mem;
+            dnnl_args[1].arg = DNNL_ARG_TO;
+            dnnl_args[1].memory = dst_memory;
+
+            status = dnnl_primitive_execute(
+                    reorder_w, stream, (int)dnnl_args.size(), dnnl_args.data());
+            assert(status == dnnl_success);
+            if (status != dnnl_success) { return; }
             if (cc_entry[i].is_mapped()) cc_entry[i].unmap();
         }
     }

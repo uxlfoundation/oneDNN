@@ -42,12 +42,12 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
             = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     OCL_CHECK(err);
 
-    init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
-            gpu_product_family_, stepping_id_, native_extensions_,
+    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
+            gpu_product_, native_extensions_,
 #if XE3P
-            mayiuse_systolic_, mayiuse_ngen_kernels_, is_efficient_64bit_);
+            mayiuse_systolic_, mayiuse_ngen_kernels_, is_efficient_64bit_));
 #else
-            mayiuse_systolic_, mayiuse_ngen_kernels_);
+            mayiuse_systolic_, mayiuse_ngen_kernels_));
 #endif
 
     err = clReleaseContext(context);
@@ -170,32 +170,6 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
 #endif
 
     return status::success;
-}
-
-std::string device_info_t::get_cl_ext_options() const {
-    using namespace compute;
-
-    std::string opts;
-    for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
-            i_ext <<= 1) {
-        auto ext = (device_ext_t)i_ext;
-
-        // Use real GPU extensions
-        if (!has(ext)) continue;
-
-        // These extensions are not handled properly by the OpenCL runtime.
-        // Pass macros for them manually.
-        if (utils::one_of(ext, device_ext_t::intel_global_float_atomics,
-                    device_ext_t::intel_subgroup_matrix_multiply_accumulate,
-                    device_ext_t::
-                            intel_subgroup_split_matrix_multiply_accumulate,
-                    device_ext_t::intel_global_float_atomics,
-                    device_ext_t::future_bf16_cvt,
-                    device_ext_t::intel_dot_accumulate))
-            opts += std::string("-D") + ext2cl_str(ext) + " ";
-    }
-
-    return opts;
 }
 
 } // namespace ocl

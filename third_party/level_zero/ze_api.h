@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: MIT
  *
  * @file ze_api.h
- * @version v1.11-r1.11.8
+ * @version v1.13-r1.13.1
  *
  */
 #ifndef _ZE_API_H
@@ -249,8 +249,15 @@ typedef enum _ze_result_t
                                                                             ///< memory
     ZE_RESULT_WARNING_ACTION_REQUIRED = 0x7800001b,                         ///< [Sysman] an action is required to complete the desired operation
     ZE_RESULT_ERROR_INVALID_KERNEL_HANDLE = 0x7800001c,                     ///< [Core, Validation] kernel handle is invalid for the operation
+    ZE_RESULT_EXT_RTAS_BUILD_RETRY = 0x7800001d,                            ///< [Core, Extension] ray tracing acceleration structure build operation
+                                                                            ///< failed due to insufficient resources, retry with a larger acceleration
+                                                                            ///< structure buffer allocation
+    ZE_RESULT_EXT_RTAS_BUILD_DEFERRED = 0x7800001e,                         ///< [Core, Extension] ray tracing acceleration structure build operation
+                                                                            ///< deferred to parallel operation join
+    ZE_RESULT_EXT_ERROR_OPERANDS_INCOMPATIBLE = 0x7800001f,                 ///< [Core, Extension] operands of comparison are not compatible
+    ZE_RESULT_ERROR_SURVIVABILITY_MODE_DETECTED = 0x78000020,               ///< [Sysman] device is in survivability mode, firmware update needed
     ZE_RESULT_ERROR_UNKNOWN = 0x7ffffffe,                                   ///< [Core] unknown or internal error
-    ZE_RESULT_FORCE_UINT32 = 0x7fffffff
+    ZE_RESULT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RESULT_* ENUMs
 
 } ze_result_t;
 
@@ -345,7 +352,21 @@ typedef enum _ze_structure_type_t
     ZE_STRUCTURE_TYPE_PITCHED_IMAGE_EXP_DESC = 0x0002001F,                  ///< ::ze_image_pitched_exp_desc_t
     ZE_STRUCTURE_TYPE_MUTABLE_GRAPH_ARGUMENT_EXP_DESC = 0x00020020,         ///< ::ze_mutable_graph_argument_exp_desc_t
     ZE_STRUCTURE_TYPE_INIT_DRIVER_TYPE_DESC = 0x00020021,                   ///< ::ze_init_driver_type_desc_t
-    ZE_STRUCTURE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_EXT_DESC = 0x00020022,             ///< ::ze_external_semaphore_ext_desc_t
+    ZE_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_WIN32_EXT_DESC = 0x00020023,       ///< ::ze_external_semaphore_win32_ext_desc_t
+    ZE_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_FD_EXT_DESC = 0x00020024,          ///< ::ze_external_semaphore_fd_ext_desc_t
+    ZE_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS_EXT = 0x00020025,    ///< ::ze_external_semaphore_signal_params_ext_t
+    ZE_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_WAIT_PARAMS_EXT = 0x00020026,      ///< ::ze_external_semaphore_wait_params_ext_t
+    ZE_STRUCTURE_TYPE_DRIVER_DDI_HANDLES_EXT_PROPERTIES = 0x00020027,       ///< ::ze_driver_ddi_handles_ext_properties_t
+    ZE_STRUCTURE_TYPE_DEVICE_CACHELINE_SIZE_EXT = 0x00020028,               ///< ::ze_device_cache_line_size_ext_t
+    ZE_STRUCTURE_TYPE_DEVICE_VECTOR_WIDTH_PROPERTIES_EXT = 0x00020029,      ///< ::ze_device_vector_width_properties_ext_t
+    ZE_STRUCTURE_TYPE_RTAS_BUILDER_EXT_DESC = 0x00020030,                   ///< ::ze_rtas_builder_ext_desc_t
+    ZE_STRUCTURE_TYPE_RTAS_BUILDER_BUILD_OP_EXT_DESC = 0x00020031,          ///< ::ze_rtas_builder_build_op_ext_desc_t
+    ZE_STRUCTURE_TYPE_RTAS_BUILDER_EXT_PROPERTIES = 0x00020032,             ///< ::ze_rtas_builder_ext_properties_t
+    ZE_STRUCTURE_TYPE_RTAS_PARALLEL_OPERATION_EXT_PROPERTIES = 0x00020033,  ///< ::ze_rtas_parallel_operation_ext_properties_t
+    ZE_STRUCTURE_TYPE_RTAS_DEVICE_EXT_PROPERTIES = 0x00020034,              ///< ::ze_rtas_device_ext_properties_t
+    ZE_STRUCTURE_TYPE_RTAS_GEOMETRY_AABBS_EXT_CB_PARAMS = 0x00020035,       ///< ::ze_rtas_geometry_aabbs_ext_cb_params_t
+    ZE_STRUCTURE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_STRUCTURE_TYPE_* ENUMs
 
 } ze_structure_type_t;
 
@@ -363,7 +384,7 @@ typedef enum _ze_external_memory_type_flag_t
                                                                             ///< resource
     ZE_EXTERNAL_MEMORY_TYPE_FLAG_D3D12_HEAP = ZE_BIT(6),                    ///< an NT handle referring to a Direct3D 12 heap resource
     ZE_EXTERNAL_MEMORY_TYPE_FLAG_D3D12_RESOURCE = ZE_BIT(7),                ///< an NT handle referring to a Direct3D 12 committed resource
-    ZE_EXTERNAL_MEMORY_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_EXTERNAL_MEMORY_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EXTERNAL_MEMORY_TYPE_FLAG_* ENUMs
 
 } ze_external_memory_type_flag_t;
 
@@ -374,7 +395,7 @@ typedef enum _ze_bandwidth_unit_t
     ZE_BANDWIDTH_UNIT_UNKNOWN = 0,                                          ///< The unit used for bandwidth is unknown
     ZE_BANDWIDTH_UNIT_BYTES_PER_NANOSEC = 1,                                ///< Bandwidth is provided in bytes/nanosec
     ZE_BANDWIDTH_UNIT_BYTES_PER_CLOCK = 2,                                  ///< Bandwidth is provided in bytes/clock
-    ZE_BANDWIDTH_UNIT_FORCE_UINT32 = 0x7fffffff
+    ZE_BANDWIDTH_UNIT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_BANDWIDTH_UNIT_* ENUMs
 
 } ze_bandwidth_unit_t;
 
@@ -387,7 +408,7 @@ typedef enum _ze_latency_unit_t
     ZE_LATENCY_UNIT_CLOCK = 2,                                              ///< Latency is provided in clocks
     ZE_LATENCY_UNIT_HOP = 3,                                                ///< Latency is provided in hops (normalized so that the lowest latency
                                                                             ///< link has a latency of 1 hop)
-    ZE_LATENCY_UNIT_FORCE_UINT32 = 0x7fffffff
+    ZE_LATENCY_UNIT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_LATENCY_UNIT_* ENUMs
 
 } ze_latency_unit_t;
 
@@ -690,6 +711,110 @@ typedef struct _ze_float_atomic_ext_properties_t ze_float_atomic_ext_properties_
 typedef struct _ze_relaxed_allocation_limits_exp_desc_t ze_relaxed_allocation_limits_exp_desc_t;
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_driver_ddi_handles_ext_properties_t
+typedef struct _ze_driver_ddi_handles_ext_properties_t ze_driver_ddi_handles_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_external_semaphore_ext_desc_t
+typedef struct _ze_external_semaphore_ext_desc_t ze_external_semaphore_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_external_semaphore_win32_ext_desc_t
+typedef struct _ze_external_semaphore_win32_ext_desc_t ze_external_semaphore_win32_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_external_semaphore_fd_ext_desc_t
+typedef struct _ze_external_semaphore_fd_ext_desc_t ze_external_semaphore_fd_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_external_semaphore_signal_params_ext_t
+typedef struct _ze_external_semaphore_signal_params_ext_t ze_external_semaphore_signal_params_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_external_semaphore_wait_params_ext_t
+typedef struct _ze_external_semaphore_wait_params_ext_t ze_external_semaphore_wait_params_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_device_cache_line_size_ext_t
+typedef struct _ze_device_cache_line_size_ext_t ze_device_cache_line_size_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_ext_desc_t
+typedef struct _ze_rtas_builder_ext_desc_t ze_rtas_builder_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_ext_properties_t
+typedef struct _ze_rtas_builder_ext_properties_t ze_rtas_builder_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_parallel_operation_ext_properties_t
+typedef struct _ze_rtas_parallel_operation_ext_properties_t ze_rtas_parallel_operation_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_device_ext_properties_t
+typedef struct _ze_rtas_device_ext_properties_t ze_rtas_device_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_float3_ext_t
+typedef struct _ze_rtas_float3_ext_t ze_rtas_float3_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_transform_float3x4_column_major_ext_t
+typedef struct _ze_rtas_transform_float3x4_column_major_ext_t ze_rtas_transform_float3x4_column_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_transform_float3x4_aligned_column_major_ext_t
+typedef struct _ze_rtas_transform_float3x4_aligned_column_major_ext_t ze_rtas_transform_float3x4_aligned_column_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_transform_float3x4_row_major_ext_t
+typedef struct _ze_rtas_transform_float3x4_row_major_ext_t ze_rtas_transform_float3x4_row_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_aabb_ext_t
+typedef struct _ze_rtas_aabb_ext_t ze_rtas_aabb_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_triangle_indices_uint32_ext_t
+typedef struct _ze_rtas_triangle_indices_uint32_ext_t ze_rtas_triangle_indices_uint32_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_quad_indices_uint32_ext_t
+typedef struct _ze_rtas_quad_indices_uint32_ext_t ze_rtas_quad_indices_uint32_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_geometry_info_ext_t
+typedef struct _ze_rtas_builder_geometry_info_ext_t ze_rtas_builder_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_triangles_geometry_info_ext_t
+typedef struct _ze_rtas_builder_triangles_geometry_info_ext_t ze_rtas_builder_triangles_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_quads_geometry_info_ext_t
+typedef struct _ze_rtas_builder_quads_geometry_info_ext_t ze_rtas_builder_quads_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_geometry_aabbs_ext_cb_params_t
+typedef struct _ze_rtas_geometry_aabbs_ext_cb_params_t ze_rtas_geometry_aabbs_ext_cb_params_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_procedural_geometry_info_ext_t
+typedef struct _ze_rtas_builder_procedural_geometry_info_ext_t ze_rtas_builder_procedural_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_instance_geometry_info_ext_t
+typedef struct _ze_rtas_builder_instance_geometry_info_ext_t ze_rtas_builder_instance_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_rtas_builder_build_op_ext_desc_t
+typedef struct _ze_rtas_builder_build_op_ext_desc_t ze_rtas_builder_build_op_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Forward-declare ze_device_vector_width_properties_ext_t
+typedef struct _ze_device_vector_width_properties_ext_t ze_device_vector_width_properties_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Forward-declare ze_cache_reservation_ext_desc_t
 typedef struct _ze_cache_reservation_ext_desc_t ze_cache_reservation_ext_desc_t;
 
@@ -960,7 +1085,7 @@ typedef enum _ze_init_flag_t
 {
     ZE_INIT_FLAG_GPU_ONLY = ZE_BIT(0),                                      ///< only initialize GPU drivers
     ZE_INIT_FLAG_VPU_ONLY = ZE_BIT(1),                                      ///< only initialize VPU drivers
-    ZE_INIT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_INIT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_INIT_FLAG_* ENUMs
 
 } ze_init_flag_t;
 
@@ -1057,7 +1182,7 @@ typedef enum _ze_init_driver_type_flag_t
 {
     ZE_INIT_DRIVER_TYPE_FLAG_GPU = ZE_BIT(0),                               ///< initialize and retrieve GPU drivers
     ZE_INIT_DRIVER_TYPE_FLAG_NPU = ZE_BIT(1),                               ///< initialize and retrieve NPU drivers
-    ZE_INIT_DRIVER_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_INIT_DRIVER_TYPE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_INIT_DRIVER_TYPE_FLAG_* ENUMs
 
 } ze_init_driver_type_flag_t;
 
@@ -1083,11 +1208,11 @@ typedef struct _ze_init_driver_type_desc_t
 ///       other function. (zeInit is [Deprecated] and is replaced by
 ///       zeInitDrivers)
 ///     - Calls to zeInit[Deprecated] or InitDrivers will not alter the drivers
-///       retrieved thru either api.
-///     - Drivers init thru zeInit[Deprecated] or InitDrivers will not be
+///       retrieved through either api.
+///     - Drivers init through zeInit[Deprecated] or InitDrivers will not be
 ///       reInitialized once init in an application. The Loader will determine
-///       if the already init driver needs to be delivered to the user thru the
-///       init type flags.
+///       if the already init driver needs to be delivered to the user through
+///       the init type flags.
 ///     - Already init Drivers will not be uninitialized if the call to
 ///       InitDrivers does not include that driver's type. Those init drivers
 ///       which don't match the init flags will not have their driver handles
@@ -1155,15 +1280,17 @@ typedef enum _ze_api_version_t
     ZE_API_VERSION_1_9 = ZE_MAKE_VERSION( 1, 9 ),                           ///< version 1.9
     ZE_API_VERSION_1_10 = ZE_MAKE_VERSION( 1, 10 ),                         ///< version 1.10
     ZE_API_VERSION_1_11 = ZE_MAKE_VERSION( 1, 11 ),                         ///< version 1.11
-    ZE_API_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 11 ),                      ///< latest known version
-    ZE_API_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_API_VERSION_1_12 = ZE_MAKE_VERSION( 1, 12 ),                         ///< version 1.12
+    ZE_API_VERSION_1_13 = ZE_MAKE_VERSION( 1, 13 ),                         ///< version 1.13
+    ZE_API_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 13 ),                      ///< latest known version
+    ZE_API_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_API_VERSION_* ENUMs
 
 } ze_api_version_t;
 
 ///////////////////////////////////////////////////////////////////////////////
 #ifndef ZE_API_VERSION_CURRENT_M
 /// @brief Current API version as a macro
-#define ZE_API_VERSION_CURRENT_M  ZE_MAKE_VERSION( 1, 11 )
+#define ZE_API_VERSION_CURRENT_M  ZE_MAKE_VERSION( 1, 13 )
 #endif // ZE_API_VERSION_CURRENT_M
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1253,7 +1380,7 @@ typedef enum _ze_ipc_property_flag_t
                                                                             ///< ::zeMemGetIpcHandle.
     ZE_IPC_PROPERTY_FLAG_EVENT_POOL = ZE_BIT(1),                            ///< Supports passing event pools between processes. See
                                                                             ///< ::zeEventPoolGetIpcHandle.
-    ZE_IPC_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_IPC_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IPC_PROPERTY_FLAG_* ENUMs
 
 } ze_ipc_property_flag_t;
 
@@ -1520,7 +1647,7 @@ typedef enum _ze_device_type_t
     ZE_DEVICE_TYPE_FPGA = 3,                                                ///< Field Programmable Gate Array
     ZE_DEVICE_TYPE_MCA = 4,                                                 ///< Memory Copy Accelerator
     ZE_DEVICE_TYPE_VPU = 5,                                                 ///< Vision Processing Unit
-    ZE_DEVICE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_TYPE_* ENUMs
 
 } ze_device_type_t;
 
@@ -1553,7 +1680,7 @@ typedef enum _ze_device_property_flag_t
     ZE_DEVICE_PROPERTY_FLAG_SUBDEVICE = ZE_BIT(1),                          ///< Device handle used for query represents a sub-device.
     ZE_DEVICE_PROPERTY_FLAG_ECC = ZE_BIT(2),                                ///< Device supports error correction memory access.
     ZE_DEVICE_PROPERTY_FLAG_ONDEMANDPAGING = ZE_BIT(3),                     ///< Device supports on-demand page-faulting.
-    ZE_DEVICE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_PROPERTY_FLAG_* ENUMs
 
 } ze_device_property_flag_t;
 
@@ -1717,7 +1844,7 @@ typedef enum _ze_device_module_flag_t
     ZE_DEVICE_MODULE_FLAG_FP64 = ZE_BIT(1),                                 ///< Device supports 64-bit floating-point operations
     ZE_DEVICE_MODULE_FLAG_INT64_ATOMICS = ZE_BIT(2),                        ///< Device supports 64-bit atomic operations
     ZE_DEVICE_MODULE_FLAG_DP4A = ZE_BIT(3),                                 ///< Device supports four component dot product and accumulate operations
-    ZE_DEVICE_MODULE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_MODULE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_MODULE_FLAG_* ENUMs
 
 } ze_device_module_flag_t;
 
@@ -1735,7 +1862,7 @@ typedef enum _ze_device_fp_flag_t
     ZE_DEVICE_FP_FLAG_ROUNDED_DIVIDE_SQRT = ZE_BIT(6),                      ///< Supports rounding as defined by IEEE754 for divide and sqrt
                                                                             ///< operations.
     ZE_DEVICE_FP_FLAG_SOFT_FLOAT = ZE_BIT(7),                               ///< Uses software implementation for basic floating-point operations.
-    ZE_DEVICE_FP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_FP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_FP_FLAG_* ENUMs
 
 } ze_device_fp_flag_t;
 
@@ -1803,7 +1930,7 @@ typedef enum _ze_command_queue_group_property_flag_t
     ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COOPERATIVE_KERNELS = ZE_BIT(2),   ///< Command queue group supports cooperative kernels.
                                                                             ///< See ::zeCommandListAppendLaunchCooperativeKernel for more details.
     ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_METRICS = ZE_BIT(3),               ///< Command queue groups supports metric queries.
-    ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_* ENUMs
 
 } ze_command_queue_group_property_flag_t;
 
@@ -1872,7 +1999,7 @@ typedef uint32_t ze_device_memory_property_flags_t;
 typedef enum _ze_device_memory_property_flag_t
 {
     ZE_DEVICE_MEMORY_PROPERTY_FLAG_TBD = ZE_BIT(0),                         ///< reserved for future use
-    ZE_DEVICE_MEMORY_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_MEMORY_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_MEMORY_PROPERTY_FLAG_* ENUMs
 
 } ze_device_memory_property_flag_t;
 
@@ -1948,7 +2075,7 @@ typedef enum _ze_memory_access_cap_flag_t
     ZE_MEMORY_ACCESS_CAP_FLAG_ATOMIC = ZE_BIT(1),                           ///< Supports atomic access
     ZE_MEMORY_ACCESS_CAP_FLAG_CONCURRENT = ZE_BIT(2),                       ///< Supports concurrent access
     ZE_MEMORY_ACCESS_CAP_FLAG_CONCURRENT_ATOMIC = ZE_BIT(3),                ///< Supports concurrent atomic access
-    ZE_MEMORY_ACCESS_CAP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_ACCESS_CAP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_ACCESS_CAP_FLAG_* ENUMs
 
 } ze_memory_access_cap_flag_t;
 
@@ -2006,7 +2133,7 @@ typedef uint32_t ze_device_cache_property_flags_t;
 typedef enum _ze_device_cache_property_flag_t
 {
     ZE_DEVICE_CACHE_PROPERTY_FLAG_USER_CONTROL = ZE_BIT(0),                 ///< Device support User Cache Control (i.e. SLM section vs Generic Cache)
-    ZE_DEVICE_CACHE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_CACHE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_CACHE_PROPERTY_FLAG_* ENUMs
 
 } ze_device_cache_property_flag_t;
 
@@ -2154,7 +2281,7 @@ typedef enum _ze_device_p2p_property_flag_t
 {
     ZE_DEVICE_P2P_PROPERTY_FLAG_ACCESS = ZE_BIT(0),                         ///< Device supports access between peer devices.
     ZE_DEVICE_P2P_PROPERTY_FLAG_ATOMICS = ZE_BIT(1),                        ///< Device supports atomics between peer devices.
-    ZE_DEVICE_P2P_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_P2P_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_P2P_PROPERTY_FLAG_* ENUMs
 
 } ze_device_p2p_property_flag_t;
 
@@ -2306,7 +2433,7 @@ typedef uint32_t ze_context_flags_t;
 typedef enum _ze_context_flag_t
 {
     ZE_CONTEXT_FLAG_TBD = ZE_BIT(0),                                        ///< reserved for future use
-    ZE_CONTEXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_CONTEXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_CONTEXT_FLAG_* ENUMs
 
 } ze_context_flag_t;
 
@@ -2461,6 +2588,8 @@ typedef enum _ze_command_queue_flag_t
                                                                             ///< work across multiple engines.
                                                                             ///< this flag should be used when applications want full control over
                                                                             ///< multi-engine submission and scheduling.
+                                                                            ///< This flag is **DEPRECATED** as flag
+                                                                            ///< ${X}_COMMAND_LIST_FLAG_EXPLICIT_ONLY is **DEPRECATED**.
     ZE_COMMAND_QUEUE_FLAG_IN_ORDER = ZE_BIT(1),                             ///< To be used only when creating immediate command lists. Commands
                                                                             ///< appended to the immediate command
                                                                             ///< list are executed in-order, with driver implementation enforcing
@@ -2470,7 +2599,7 @@ typedef enum _ze_command_queue_flag_t
                                                                             ///< the next to define an in-order list, and application is allowed to
                                                                             ///< pass signal and wait events
                                                                             ///< to each appended command to implement more complex dependency graphs.
-    ZE_COMMAND_QUEUE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_QUEUE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_QUEUE_FLAG_* ENUMs
 
 } ze_command_queue_flag_t;
 
@@ -2483,7 +2612,7 @@ typedef enum _ze_command_queue_mode_t
                                                                             ///< Host thread is blocked using wait on implicit synchronization object
     ZE_COMMAND_QUEUE_MODE_ASYNCHRONOUS = 2,                                 ///< Device execution is scheduled and will complete in future;
                                                                             ///< explicit synchronization object must be used to determine completeness
-    ZE_COMMAND_QUEUE_MODE_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_QUEUE_MODE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_QUEUE_MODE_* ENUMs
 
 } ze_command_queue_mode_t;
 
@@ -2494,7 +2623,7 @@ typedef enum _ze_command_queue_priority_t
     ZE_COMMAND_QUEUE_PRIORITY_NORMAL = 0,                                   ///< [default] normal priority
     ZE_COMMAND_QUEUE_PRIORITY_PRIORITY_LOW = 1,                             ///< lower priority than normal
     ZE_COMMAND_QUEUE_PRIORITY_PRIORITY_HIGH = 2,                            ///< higher priority than normal
-    ZE_COMMAND_QUEUE_PRIORITY_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_QUEUE_PRIORITY_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_QUEUE_PRIORITY_* ENUMs
 
 } ze_command_queue_priority_t;
 
@@ -2507,7 +2636,7 @@ typedef struct _ze_command_queue_desc_t
                                                                             ///< structure (i.e. contains stype and pNext).
     uint32_t ordinal;                                                       ///< [in] command queue group ordinal
     uint32_t index;                                                         ///< [in] command queue index within the group;
-                                                                            ///< must be zero if ::ZE_COMMAND_QUEUE_FLAG_EXPLICIT_ONLY is not set
+                                                                            ///< must be zero. 
     ze_command_queue_flags_t flags;                                         ///< [in] usage flags.
                                                                             ///< must be 0 (default) or a valid combination of ::ze_command_queue_flag_t;
                                                                             ///< default behavior may use implicit driver-based heuristics to balance
@@ -2738,6 +2867,8 @@ typedef enum _ze_command_list_flag_t
                                                                             ///< work across multiple engines.
                                                                             ///< this flag should be used when applications want full control over
                                                                             ///< multi-engine submission and scheduling.
+                                                                            ///< This flag is **DEPRECATED** and implementations are not expected to
+                                                                            ///< support this feature.
     ZE_COMMAND_LIST_FLAG_IN_ORDER = ZE_BIT(3),                              ///< commands appended to this command list are executed in-order, with
                                                                             ///< driver implementation
                                                                             ///< enforcing dependencies between them. Application is not required to
@@ -2749,7 +2880,7 @@ typedef enum _ze_command_list_flag_t
                                                                             ///< more complex dependency graphs. Cannot be combined with ::ZE_COMMAND_LIST_FLAG_RELAXED_ORDERING.
     ZE_COMMAND_LIST_FLAG_EXP_CLONEABLE = ZE_BIT(4),                         ///< this command list may be cloned using ::zeCommandListCreateCloneExp
                                                                             ///< after ::zeCommandListClose.
-    ZE_COMMAND_LIST_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_LIST_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_LIST_FLAG_* ENUMs
 
 } ze_command_list_flag_t;
 
@@ -3739,7 +3870,7 @@ typedef enum _ze_memory_advice_t
     ZE_MEMORY_ADVICE_SET_SYSTEM_MEMORY_PREFERRED_LOCATION = 8,              ///< hint that the preferred memory location is host memory
     ZE_MEMORY_ADVICE_CLEAR_SYSTEM_MEMORY_PREFERRED_LOCATION = 9,            ///< removes the effect of
                                                                             ///< ::ZE_MEMORY_ADVICE_SET_SYSTEM_MEMORY_PREFERRED_LOCATION
-    ZE_MEMORY_ADVICE_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_ADVICE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_ADVICE_* ENUMs
 
 } ze_memory_advice_t;
 
@@ -3807,7 +3938,7 @@ typedef enum _ze_event_pool_flag_t
     ZE_EVENT_POOL_FLAG_KERNEL_MAPPED_TIMESTAMP = ZE_BIT(3),                 ///< Indicates all events in pool will contain kernel timestamps
                                                                             ///< synchronized to host time domain; cannot be combined with
                                                                             ///< ::ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP
-    ZE_EVENT_POOL_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_POOL_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_POOL_FLAG_* ENUMs
 
 } ze_event_pool_flag_t;
 
@@ -3903,7 +4034,7 @@ typedef enum _ze_event_scope_flag_t
                                                                             ///< device access and peer device access
     ZE_EVENT_SCOPE_FLAG_HOST = ZE_BIT(2),                                   ///< cache hierarchies are flushed or invalidated sufficient for device and
                                                                             ///< host access
-    ZE_EVENT_SCOPE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_SCOPE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_SCOPE_FLAG_* ENUMs
 
 } ze_event_scope_flag_t;
 
@@ -4577,7 +4708,7 @@ typedef uint32_t ze_fence_flags_t;
 typedef enum _ze_fence_flag_t
 {
     ZE_FENCE_FLAG_SIGNALED = ZE_BIT(0),                                     ///< fence is created in the signaled state, otherwise not signaled.
-    ZE_FENCE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_FENCE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_FENCE_FLAG_* ENUMs
 
 } ze_fence_flag_t;
 
@@ -4757,7 +4888,7 @@ typedef enum _ze_image_flag_t
 {
     ZE_IMAGE_FLAG_KERNEL_WRITE = ZE_BIT(0),                                 ///< kernels will write contents
     ZE_IMAGE_FLAG_BIAS_UNCACHED = ZE_BIT(1),                                ///< device should not cache contents
-    ZE_IMAGE_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_FLAG_* ENUMs
 
 } ze_image_flag_t;
 
@@ -4771,7 +4902,7 @@ typedef enum _ze_image_type_t
     ZE_IMAGE_TYPE_2DARRAY = 3,                                              ///< 2D array
     ZE_IMAGE_TYPE_3D = 4,                                                   ///< 3D
     ZE_IMAGE_TYPE_BUFFER = 5,                                               ///< Buffer
-    ZE_IMAGE_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_TYPE_* ENUMs
 
 } ze_image_type_t;
 
@@ -4825,7 +4956,7 @@ typedef enum _ze_image_format_layout_t
     ZE_IMAGE_FORMAT_LAYOUT_8_8_8 = 43,                                      ///< 3-component 8-bit layout
     ZE_IMAGE_FORMAT_LAYOUT_16_16_16 = 44,                                   ///< 3-component 16-bit layout
     ZE_IMAGE_FORMAT_LAYOUT_32_32_32 = 45,                                   ///< 3-component 32-bit layout
-    ZE_IMAGE_FORMAT_LAYOUT_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_FORMAT_LAYOUT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_FORMAT_LAYOUT_* ENUMs
 
 } ze_image_format_layout_t;
 
@@ -4838,7 +4969,7 @@ typedef enum _ze_image_format_type_t
     ZE_IMAGE_FORMAT_TYPE_UNORM = 2,                                         ///< Unsigned normalized integer
     ZE_IMAGE_FORMAT_TYPE_SNORM = 3,                                         ///< Signed normalized integer
     ZE_IMAGE_FORMAT_TYPE_FLOAT = 4,                                         ///< Float
-    ZE_IMAGE_FORMAT_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_FORMAT_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_FORMAT_TYPE_* ENUMs
 
 } ze_image_format_type_t;
 
@@ -4853,7 +4984,7 @@ typedef enum _ze_image_format_swizzle_t
     ZE_IMAGE_FORMAT_SWIZZLE_0 = 4,                                          ///< Zero
     ZE_IMAGE_FORMAT_SWIZZLE_1 = 5,                                          ///< One
     ZE_IMAGE_FORMAT_SWIZZLE_X = 6,                                          ///< Don't care
-    ZE_IMAGE_FORMAT_SWIZZLE_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_FORMAT_SWIZZLE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_FORMAT_SWIZZLE_* ENUMs
 
 } ze_image_format_swizzle_t;
 
@@ -4918,7 +5049,7 @@ typedef enum _ze_image_sampler_filter_flag_t
 {
     ZE_IMAGE_SAMPLER_FILTER_FLAG_POINT = ZE_BIT(0),                         ///< device supports point filtering
     ZE_IMAGE_SAMPLER_FILTER_FLAG_LINEAR = ZE_BIT(1),                        ///< device supports linear filtering
-    ZE_IMAGE_SAMPLER_FILTER_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_SAMPLER_FILTER_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_SAMPLER_FILTER_FLAG_* ENUMs
 
 } ze_image_sampler_filter_flag_t;
 
@@ -5040,7 +5171,7 @@ typedef enum _ze_device_mem_alloc_flag_t
     ZE_DEVICE_MEM_ALLOC_FLAG_BIAS_CACHED = ZE_BIT(0),                       ///< device should cache allocation
     ZE_DEVICE_MEM_ALLOC_FLAG_BIAS_UNCACHED = ZE_BIT(1),                     ///< device should not cache allocation (UC)
     ZE_DEVICE_MEM_ALLOC_FLAG_BIAS_INITIAL_PLACEMENT = ZE_BIT(2),            ///< optimize shared allocation for first access on the device
-    ZE_DEVICE_MEM_ALLOC_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_MEM_ALLOC_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_MEM_ALLOC_FLAG_* ENUMs
 
 } ze_device_mem_alloc_flag_t;
 
@@ -5068,7 +5199,7 @@ typedef enum _ze_host_mem_alloc_flag_t
     ZE_HOST_MEM_ALLOC_FLAG_BIAS_UNCACHED = ZE_BIT(1),                       ///< host should not cache allocation (UC)
     ZE_HOST_MEM_ALLOC_FLAG_BIAS_WRITE_COMBINED = ZE_BIT(2),                 ///< host memory should be allocated write-combined (WC)
     ZE_HOST_MEM_ALLOC_FLAG_BIAS_INITIAL_PLACEMENT = ZE_BIT(3),              ///< optimize shared allocation for first access on the host
-    ZE_HOST_MEM_ALLOC_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_HOST_MEM_ALLOC_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_HOST_MEM_ALLOC_FLAG_* ENUMs
 
 } ze_host_mem_alloc_flag_t;
 
@@ -5233,8 +5364,11 @@ zeMemAllocHost(
 /// @details
 ///     - The application must ensure the device is not currently referencing
 ///       the memory before it is freed
-///     - The implementation of this function may immediately free all Host and
-///       Device allocations associated with this memory
+///     - The implementation will use the default and immediate policy to
+///       schedule all Host and Device allocations associated with this memory
+///       to be freed, without any safety checking. Actual freeing of memory is
+///       specific to user mode driver and kernel mode driver implementation and
+///       may be done asynchronously.
 ///     - The application must **not** call this function from simultaneous
 ///       threads with the same pointer.
 ///     - The implementation of this function must be thread-safe.
@@ -5263,7 +5397,7 @@ typedef enum _ze_memory_type_t
     ZE_MEMORY_TYPE_HOST = 1,                                                ///< the memory pointed to is a host allocation
     ZE_MEMORY_TYPE_DEVICE = 2,                                              ///< the memory pointed to is a device allocation
     ZE_MEMORY_TYPE_SHARED = 3,                                              ///< the memory pointed to is a shared ownership allocation
-    ZE_MEMORY_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_TYPE_* ENUMs
 
 } ze_memory_type_t;
 
@@ -5455,7 +5589,7 @@ typedef enum _ze_ipc_memory_flag_t
 {
     ZE_IPC_MEMORY_FLAG_BIAS_CACHED = ZE_BIT(0),                             ///< device should cache allocation
     ZE_IPC_MEMORY_FLAG_BIAS_UNCACHED = ZE_BIT(1),                           ///< device should not cache allocation (UC)
-    ZE_IPC_MEMORY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_IPC_MEMORY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IPC_MEMORY_FLAG_* ENUMs
 
 } ze_ipc_memory_flag_t;
 
@@ -5656,7 +5790,7 @@ typedef enum _ze_memory_atomic_attr_exp_flag_t
     ZE_MEMORY_ATOMIC_ATTR_EXP_FLAG_SYSTEM_ATOMICS = ZE_BIT(6),              ///< Concurrent atomics on the pointer from both host and device are
                                                                             ///< allowed. Requires ::ZE_MEMORY_ACCESS_CAP_FLAG_CONCURRENT_ATOMIC
                                                                             ///< returned by ::zeDeviceGetMemoryAccessProperties.
-    ZE_MEMORY_ATOMIC_ATTR_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_ATOMIC_ATTR_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_ATOMIC_ATTR_EXP_FLAG_* ENUMs
 
 } ze_memory_atomic_attr_exp_flag_t;
 
@@ -5670,7 +5804,7 @@ typedef enum _ze_memory_atomic_attr_exp_flag_t
 ///       passed in hDevice, then the atomic attributes are set in all devices
 ///       associated with the allocation.
 ///     - If the atomic access attribute select is not supported by the driver,
-///       ::ZE_RESULT_INVALID_ARGUMENT is returned.
+///       ::ZE_RESULT_ERROR_INVALID_ARGUMENT is returned.
 ///     - The atomic access attribute may be only supported at a device-specific
 ///       granularity, such as at a page boundary. In this case, the memory range
 ///       may be expanded such that the start and end of the range satisfy granularity
@@ -5749,7 +5883,7 @@ typedef enum _ze_module_format_t
 {
     ZE_MODULE_FORMAT_IL_SPIRV = 0,                                          ///< Format is SPIRV IL format
     ZE_MODULE_FORMAT_NATIVE = 1,                                            ///< Format is device native format
-    ZE_MODULE_FORMAT_FORCE_UINT32 = 0x7fffffff
+    ZE_MODULE_FORMAT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MODULE_FORMAT_* ENUMs
 
 } ze_module_format_t;
 
@@ -6074,7 +6208,7 @@ typedef enum _ze_module_property_flag_t
 {
     ZE_MODULE_PROPERTY_FLAG_IMPORTS = ZE_BIT(0),                            ///< Module has imports (i.e. imported global variables and/or kernels).
                                                                             ///< See ::zeModuleDynamicLink.
-    ZE_MODULE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MODULE_PROPERTY_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MODULE_PROPERTY_FLAG_* ENUMs
 
 } ze_module_property_flag_t;
 
@@ -6120,7 +6254,7 @@ typedef enum _ze_kernel_flag_t
     ZE_KERNEL_FLAG_FORCE_RESIDENCY = ZE_BIT(0),                             ///< force all device allocations to be resident during execution
     ZE_KERNEL_FLAG_EXPLICIT_RESIDENCY = ZE_BIT(1),                          ///< application is responsible for all residency of device allocations.
                                                                             ///< driver may disable implicit residency management.
-    ZE_KERNEL_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_KERNEL_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_KERNEL_FLAG_* ENUMs
 
 } ze_kernel_flag_t;
 
@@ -6348,7 +6482,7 @@ typedef enum _ze_kernel_indirect_access_flag_t
     ZE_KERNEL_INDIRECT_ACCESS_FLAG_HOST = ZE_BIT(0),                        ///< Indicates that the kernel accesses host allocations indirectly.
     ZE_KERNEL_INDIRECT_ACCESS_FLAG_DEVICE = ZE_BIT(1),                      ///< Indicates that the kernel accesses device allocations indirectly.
     ZE_KERNEL_INDIRECT_ACCESS_FLAG_SHARED = ZE_BIT(2),                      ///< Indicates that the kernel accesses shared allocations indirectly.
-    ZE_KERNEL_INDIRECT_ACCESS_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_KERNEL_INDIRECT_ACCESS_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_KERNEL_INDIRECT_ACCESS_FLAG_* ENUMs
 
 } ze_kernel_indirect_access_flag_t;
 
@@ -6430,10 +6564,14 @@ zeKernelGetSourceAttributes(
     char** pString                                                          ///< [in,out][optional] pointer to application-managed character array
                                                                             ///< (string data).
                                                                             ///< If NULL, the string length of the kernel source attributes, including
-                                                                            ///< a null-terminating character, is returned in pSize.
-                                                                            ///< Otherwise, pString must point to valid application memory that is
-                                                                            ///< greater than or equal to *pSize bytes in length, and on return the
-                                                                            ///< pointed-to string will contain a space-separated list of kernel source attributes.
+                                                                            ///< a null-terminating character, is returned in pSize. Otherwise, pString
+                                                                            ///< must point to valid application memory that is greater than or equal
+                                                                            ///< to *pSize bytes in length, and on return the pointed-to string will
+                                                                            ///< contain a space-separated list of kernel source attributes. Note: This
+                                                                            ///< API was originally intended to ship with a char *pString, however this
+                                                                            ///< typo was introduced. Thus the API has to stay this way for backwards
+                                                                            ///< compatible reasons. It can be corrected in v2.0. Suggestion is to
+                                                                            ///< create your own char *pString and then pass to this API with &pString.
     );
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -6443,7 +6581,7 @@ typedef enum _ze_cache_config_flag_t
 {
     ZE_CACHE_CONFIG_FLAG_LARGE_SLM = ZE_BIT(0),                             ///< Large SLM size
     ZE_CACHE_CONFIG_FLAG_LARGE_DATA = ZE_BIT(1),                            ///< Large General Data size
-    ZE_CACHE_CONFIG_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_CACHE_CONFIG_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_CACHE_CONFIG_FLAG_* ENUMs
 
 } ze_cache_config_flag_t;
 
@@ -6802,7 +6940,7 @@ typedef enum _ze_module_program_exp_version_t
 {
     ZE_MODULE_PROGRAM_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),            ///< version 1.0
     ZE_MODULE_PROGRAM_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),        ///< latest known version
-    ZE_MODULE_PROGRAM_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_MODULE_PROGRAM_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MODULE_PROGRAM_EXP_VERSION_* ENUMs
 
 } ze_module_program_exp_version_t;
 
@@ -6855,7 +6993,7 @@ typedef enum _ze_raytracing_ext_version_t
 {
     ZE_RAYTRACING_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                ///< version 1.0
     ZE_RAYTRACING_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),            ///< latest known version
-    ZE_RAYTRACING_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_RAYTRACING_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RAYTRACING_EXT_VERSION_* ENUMs
 
 } ze_raytracing_ext_version_t;
 
@@ -6865,7 +7003,7 @@ typedef uint32_t ze_device_raytracing_ext_flags_t;
 typedef enum _ze_device_raytracing_ext_flag_t
 {
     ZE_DEVICE_RAYTRACING_EXT_FLAG_RAYQUERY = ZE_BIT(0),                     ///< Supports rayquery
-    ZE_DEVICE_RAYTRACING_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_RAYTRACING_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_RAYTRACING_EXT_FLAG_* ENUMs
 
 } ze_device_raytracing_ext_flag_t;
 
@@ -6891,7 +7029,7 @@ typedef uint32_t ze_raytracing_mem_alloc_ext_flags_t;
 typedef enum _ze_raytracing_mem_alloc_ext_flag_t
 {
     ZE_RAYTRACING_MEM_ALLOC_EXT_FLAG_TBD = ZE_BIT(0),                       ///< reserved for future use
-    ZE_RAYTRACING_MEM_ALLOC_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RAYTRACING_MEM_ALLOC_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RAYTRACING_MEM_ALLOC_EXT_FLAG_* ENUMs
 
 } ze_raytracing_mem_alloc_ext_flag_t;
 
@@ -7053,7 +7191,7 @@ typedef enum _ze_sampler_address_mode_t
                                                                             ///< 0.0f, 0.0f, 0.0f) if image format swizzle contains alpha, otherwise
                                                                             ///< (0.0f, 0.0f, 0.0f, 1.0f).
     ZE_SAMPLER_ADDRESS_MODE_MIRROR = 4,                                     ///< Out-of-bounds coordinates are mirrored starting from edge.
-    ZE_SAMPLER_ADDRESS_MODE_FORCE_UINT32 = 0x7fffffff
+    ZE_SAMPLER_ADDRESS_MODE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SAMPLER_ADDRESS_MODE_* ENUMs
 
 } ze_sampler_address_mode_t;
 
@@ -7063,7 +7201,7 @@ typedef enum _ze_sampler_filter_mode_t
 {
     ZE_SAMPLER_FILTER_MODE_NEAREST = 0,                                     ///< No coordinate modifications for out of bounds image access.
     ZE_SAMPLER_FILTER_MODE_LINEAR = 1,                                      ///< Out-of-bounds coordinates are wrapped back around.
-    ZE_SAMPLER_FILTER_MODE_FORCE_UINT32 = 0x7fffffff
+    ZE_SAMPLER_FILTER_MODE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SAMPLER_FILTER_MODE_* ENUMs
 
 } ze_sampler_filter_mode_t;
 
@@ -7153,7 +7291,7 @@ typedef enum _ze_memory_access_attribute_t
     ZE_MEMORY_ACCESS_ATTRIBUTE_NONE = 0,                                    ///< Indicates the memory page is inaccessible.
     ZE_MEMORY_ACCESS_ATTRIBUTE_READWRITE = 1,                               ///< Indicates the memory page supports read write access.
     ZE_MEMORY_ACCESS_ATTRIBUTE_READONLY = 2,                                ///< Indicates the memory page supports read-only access.
-    ZE_MEMORY_ACCESS_ATTRIBUTE_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_ACCESS_ATTRIBUTE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_ACCESS_ATTRIBUTE_* ENUMs
 
 } ze_memory_access_attribute_t;
 
@@ -7261,7 +7399,7 @@ typedef enum _ze_physical_mem_flag_t
 {
     ZE_PHYSICAL_MEM_FLAG_ALLOCATE_ON_DEVICE = ZE_BIT(0),                    ///< [default] allocate physical device memory.
     ZE_PHYSICAL_MEM_FLAG_ALLOCATE_ON_HOST = ZE_BIT(1),                      ///< Allocate physical host memory instead.
-    ZE_PHYSICAL_MEM_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_PHYSICAL_MEM_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_PHYSICAL_MEM_FLAG_* ENUMs
 
 } ze_physical_mem_flag_t;
 
@@ -7510,7 +7648,7 @@ typedef enum _ze_float_atomics_ext_version_t
 {
     ZE_FLOAT_ATOMICS_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),             ///< version 1.0
     ZE_FLOAT_ATOMICS_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),         ///< latest known version
-    ZE_FLOAT_ATOMICS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_FLOAT_ATOMICS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_FLOAT_ATOMICS_EXT_VERSION_* ENUMs
 
 } ze_float_atomics_ext_version_t;
 
@@ -7525,7 +7663,7 @@ typedef enum _ze_device_fp_atomic_ext_flag_t
     ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_LOAD_STORE = ZE_BIT(16),             ///< Supports atomic load, store, and exchange
     ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_ADD = ZE_BIT(17),                    ///< Supports atomic add and subtract
     ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_MIN_MAX = ZE_BIT(18),                ///< Supports atomic min and max
-    ZE_DEVICE_FP_ATOMIC_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_FP_ATOMIC_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_FP_ATOMIC_EXT_FLAG_* ENUMs
 
 } ze_device_fp_atomic_ext_flag_t;
 
@@ -7568,7 +7706,7 @@ typedef enum _ze_global_offset_exp_version_t
 {
     ZE_GLOBAL_OFFSET_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),             ///< version 1.0
     ZE_GLOBAL_OFFSET_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),         ///< latest known version
-    ZE_GLOBAL_OFFSET_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_GLOBAL_OFFSET_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_GLOBAL_OFFSET_EXP_VERSION_* ENUMs
 
 } ze_global_offset_exp_version_t;
 
@@ -7617,7 +7755,7 @@ typedef enum _ze_relaxed_allocation_limits_exp_version_t
 {
     ZE_RELAXED_ALLOCATION_LIMITS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ), ///< version 1.0
     ZE_RELAXED_ALLOCATION_LIMITS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ), ///< latest known version
-    ZE_RELAXED_ALLOCATION_LIMITS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_RELAXED_ALLOCATION_LIMITS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RELAXED_ALLOCATION_LIMITS_EXP_VERSION_* ENUMs
 
 } ze_relaxed_allocation_limits_exp_version_t;
 
@@ -7628,7 +7766,7 @@ typedef enum _ze_relaxed_allocation_limits_exp_flag_t
 {
     ZE_RELAXED_ALLOCATION_LIMITS_EXP_FLAG_MAX_SIZE = ZE_BIT(0),             ///< Allocation size may exceed the `maxMemAllocSize` member of
                                                                             ///< ::ze_device_properties_t.
-    ZE_RELAXED_ALLOCATION_LIMITS_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RELAXED_ALLOCATION_LIMITS_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RELAXED_ALLOCATION_LIMITS_EXP_FLAG_* ENUMs
 
 } ze_relaxed_allocation_limits_exp_flag_t;
 
@@ -7665,6 +7803,16 @@ typedef struct _ze_relaxed_allocation_limits_exp_desc_t
 #endif // ZE_GET_KERNEL_BINARY_EXP_NAME
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Get Kernel Binary Extension Version(s)
+typedef enum _ze_kernel_get_binary_exp_version_t
+{
+    ZE_KERNEL_GET_BINARY_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),         ///< version 1.0
+    ZE_KERNEL_GET_BINARY_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),     ///< latest known version
+    ZE_KERNEL_GET_BINARY_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_KERNEL_GET_BINARY_EXP_VERSION_* ENUMs
+
+} ze_kernel_get_binary_exp_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Retrieves kernel binary program data (ISA GEN format).
 /// 
 /// @details
@@ -7695,6 +7843,1362 @@ zeKernelGetBinaryExp(
 #if !defined(__GNUC__)
 #pragma endregion
 #endif
+// Intel 'oneAPI' Level-Zero Extension for Driver Direct Device Interface (DDI) Handles
+#if !defined(__GNUC__)
+#pragma region driverDDIHandles
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZE_DRIVER_DDI_HANDLES_EXT_NAME
+/// @brief Driver Direct Device Interface (DDI) Handles Extension Name
+#define ZE_DRIVER_DDI_HANDLES_EXT_NAME  "ZE_extension_driver_ddi_handles"
+#endif // ZE_DRIVER_DDI_HANDLES_EXT_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Driver Direct Device Interface (DDI) Handles Extension Version(s)
+typedef enum _ze_driver_ddi_handles_ext_version_t
+{
+    ZE_DRIVER_DDI_HANDLES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),        ///< version 1.0
+    ZE_DRIVER_DDI_HANDLES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),    ///< latest known version
+    ZE_DRIVER_DDI_HANDLES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DRIVER_DDI_HANDLES_EXT_VERSION_* ENUMs
+
+} ze_driver_ddi_handles_ext_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Driver Direct Device Interface (DDI) Handle Extension Flags
+typedef uint32_t ze_driver_ddi_handle_ext_flags_t;
+typedef enum _ze_driver_ddi_handle_ext_flag_t
+{
+    ZE_DRIVER_DDI_HANDLE_EXT_FLAG_DDI_HANDLE_EXT_SUPPORTED = ZE_BIT(0),     ///< Driver Supports DDI Handles Extension
+    ZE_DRIVER_DDI_HANDLE_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DRIVER_DDI_HANDLE_EXT_FLAG_* ENUMs
+
+} ze_driver_ddi_handle_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Driver DDI Handles properties queried using ::zeDriverGetProperties
+/// 
+/// @details
+///     - This structure may be returned from ::zeDriverGetProperties, via the
+///       `pNext` member of ::ze_driver_properties_t.
+typedef struct _ze_driver_ddi_handles_ext_properties_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_driver_ddi_handle_ext_flags_t flags;                                 ///< [out] 0 (none) or a valid combination of ::ze_driver_ddi_handle_ext_flags_t
+
+} ze_driver_ddi_handles_ext_properties_t;
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
+// Intel 'oneAPI' Level-Zero Extension for external semaphores
+#if !defined(__GNUC__)
+#pragma region externalSemaphores
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZE_EXTERNAL_SEMAPHORES_EXTENSION_NAME
+/// @brief External Semaphores Extension Name
+#define ZE_EXTERNAL_SEMAPHORES_EXTENSION_NAME  "ZE_extension_external_semaphores"
+#endif // ZE_EXTERNAL_SEMAPHORES_EXTENSION_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphores Extension Version
+typedef enum _ze_external_semaphore_ext_version_t
+{
+    ZE_EXTERNAL_SEMAPHORE_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),        ///< version 1.0
+    ZE_EXTERNAL_SEMAPHORE_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),    ///< latest known version
+    ZE_EXTERNAL_SEMAPHORE_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EXTERNAL_SEMAPHORE_EXT_VERSION_* ENUMs
+
+} ze_external_semaphore_ext_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Handle of external semaphore object
+typedef struct _ze_external_semaphore_ext_handle_t *ze_external_semaphore_ext_handle_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphores Type Flags
+typedef uint32_t ze_external_semaphore_ext_flags_t;
+typedef enum _ze_external_semaphore_ext_flag_t
+{
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_OPAQUE_FD = ZE_BIT(0),                   ///< Semaphore is an Linux opaque file descriptor
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_OPAQUE_WIN32 = ZE_BIT(1),                ///< Semaphore is an opaque Win32 handle for monitored fence
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_OPAQUE_WIN32_KMT = ZE_BIT(2),            ///< Semaphore is an opaque Win32 KMT handle for monitored fence
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D12_FENCE = ZE_BIT(3),                 ///< Semaphore is a D3D12 fence
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D11_FENCE = ZE_BIT(4),                 ///< Semaphore is a D3D11 fence
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_KEYED_MUTEX = ZE_BIT(5),                 ///< Semaphore is a keyed mutex for Win32
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_KEYED_MUTEX_KMT = ZE_BIT(6),             ///< Semaphore is a keyed mutex for Win32 KMT
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_VK_TIMELINE_SEMAPHORE_FD = ZE_BIT(7),    ///< Semaphore is a Vulkan Timeline semaphore for Linux
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_VK_TIMELINE_SEMAPHORE_WIN32 = ZE_BIT(8), ///< Semaphore is a Vulkan Timeline semaphore for Win32
+    ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_* ENUMs
+
+} ze_external_semaphore_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphore Descriptor
+typedef struct _ze_external_semaphore_ext_desc_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_external_semaphore_ext_flags_t flags;                                ///< [in] The flags describing the type of the semaphore.
+                                                                            ///< must be 0 (default) or a valid combination of ::ze_external_semaphore_ext_flag_t.
+                                                                            ///< When importing a semaphore, pNext should be pointing to one of the
+                                                                            ///< following structures: ::ze_external_semaphore_win32_ext_desc_t or ::ze_external_semaphore_fd_ext_desc_t.
+
+} ze_external_semaphore_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphore Win32 Descriptor
+typedef struct _ze_external_semaphore_win32_ext_desc_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    void* handle;                                                           ///< [in] Win32 handle of the semaphore.
+                                                                            ///< Must be a valid Win32 handle.
+    const char* name;                                                       ///< [in] Name of the semaphore.
+                                                                            ///< Must be a valid null-terminated string.
+
+} ze_external_semaphore_win32_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphore FD Descriptor
+typedef struct _ze_external_semaphore_fd_ext_desc_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    int fd;                                                                 ///< [in] File descriptor of the semaphore.
+                                                                            ///< Must be a valid file descriptor.
+
+} ze_external_semaphore_fd_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphore Signal parameters
+typedef struct _ze_external_semaphore_signal_params_ext_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    uint64_t value;                                                         ///< [in] [optional] Value to signal.
+                                                                            ///< Specified by user as an expected value with some of semaphore types,
+                                                                            ///< such as ::ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D12_FENCE.
+
+} ze_external_semaphore_signal_params_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief External Semaphore Wait parameters
+typedef struct _ze_external_semaphore_wait_params_ext_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    uint64_t value;                                                         ///< [in] [optional] Value to wait for.
+                                                                            ///< Specified by user as an expected value with some of semaphore types,
+                                                                            ///< such as ::ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D12_FENCE.
+
+} ze_external_semaphore_wait_params_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Import an external semaphore
+/// 
+/// @details
+///     - Imports an external semaphore.
+///     - This function may be called from simultaneous threads with the same
+///       device handle.
+///     - The implementation of this function should be lock-free.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDevice`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == desc`
+///         + `nullptr == phSemaphore`
+///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
+///         + `0x1ff < desc->flags`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeDeviceImportExternalSemaphoreExt(
+    ze_device_handle_t hDevice,                                             ///< [in] The device handle.
+    const ze_external_semaphore_ext_desc_t* desc,                           ///< [in] The pointer to external semaphore descriptor.
+    ze_external_semaphore_ext_handle_t* phSemaphore                         ///< [out] The handle of the external semaphore imported.
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Release an external semaphore
+/// 
+/// @details
+///     - The application must ensure the device is not currently referencing
+///       the semaphore before it is released.
+///     - The application must **not** call this function from simultaneous
+///       threads with the same semaphore handle.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hSemaphore`
+///     - ::ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeDeviceReleaseExternalSemaphoreExt(
+    ze_external_semaphore_ext_handle_t hSemaphore                           ///< [in] The handle of the external semaphore.
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Signal an external semaphore
+/// 
+/// @details
+///     - Signals an external semaphore.
+///     - This function must only be used with an immediate command list.
+///     - This function may be called from simultaneous threads with the same
+///       command list handle.
+///     - The implementation of this function should be lock-free.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hCommandList`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == phSemaphores`
+///         + `nullptr == signalParams`
+///     - ::ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT
+///     - ::ZE_RESULT_ERROR_INVALID_SIZE
+///         + `(nullptr == phWaitEvents) && (0 < numWaitEvents)`
+///         + `(nullptr == phSemaphores) && (0 < numSemaphores)`
+///         + `(nullptr == signalParams) && (0 < numSemaphores)`
+///     - ::ZE_RESULT_ERROR_INVALID_ARGUMENT
+///         + Commandlist handle does not correspond to an immediate command list
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeCommandListAppendSignalExternalSemaphoreExt(
+    ze_command_list_handle_t hCommandList,                                  ///< [in] The command list handle.
+    uint32_t numSemaphores,                                                 ///< [in] The number of external semaphores.
+    ze_external_semaphore_ext_handle_t* phSemaphores,                       ///< [in][range(0, numSemaphores)] The vector of external semaphore handles
+                                                                            ///< to be appended into command list.
+    ze_external_semaphore_signal_params_ext_t* signalParams,                ///< [in] Signal parameters.
+    ze_event_handle_t hSignalEvent,                                         ///< [in][optional] handle of the event to signal on completion
+    uint32_t numWaitEvents,                                                 ///< [in][optional] number of events to wait on before launching; must be 0
+                                                                            ///< if `nullptr == phWaitEvents`
+    ze_event_handle_t* phWaitEvents                                         ///< [in][optional][range(0, numWaitEvents)] handle of the events to wait
+                                                                            ///< on before launching
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Wait on external semaphores
+/// 
+/// @details
+///     - Waits on external semaphores.
+///     - This function must only be used with an immediate command list.
+///     - This function may be called from simultaneous threads with the same
+///       command list handle.
+///     - The implementation of this function should be lock-free.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hCommandList`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == phSemaphores`
+///         + `nullptr == waitParams`
+///     - ::ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT
+///     - ::ZE_RESULT_ERROR_INVALID_SIZE
+///         + `(nullptr == phWaitEvents) && (0 < numWaitEvents)`
+///         + `(nullptr == phSemaphores) && (0 < numSemaphores)`
+///         + `(nullptr == waitParams) && (0 < numSemaphores)`
+///     - ::ZE_RESULT_ERROR_INVALID_ARGUMENT
+///         + Commandlist handle does not correspond to an immediate command list
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeCommandListAppendWaitExternalSemaphoreExt(
+    ze_command_list_handle_t hCommandList,                                  ///< [in] The command list handle.
+    uint32_t numSemaphores,                                                 ///< [in] The number of external semaphores.
+    ze_external_semaphore_ext_handle_t* phSemaphores,                       ///< [in] [range(0,numSemaphores)] The vector of external semaphore handles
+                                                                            ///< to append into command list.
+    ze_external_semaphore_wait_params_ext_t* waitParams,                    ///< [in] Wait parameters.
+    ze_event_handle_t hSignalEvent,                                         ///< [in][optional] handle of the event to signal on completion
+    uint32_t numWaitEvents,                                                 ///< [in][optional] number of events to wait on before launching; must be 0
+                                                                            ///< if `nullptr == phWaitEvents`
+    ze_event_handle_t* phWaitEvents                                         ///< [in][optional][range(0, numWaitEvents)] handle of the events to wait
+                                                                            ///< on before launching
+    );
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
+// Intel 'oneAPI' Level-Zero Extension APIs for CacheLine Size
+#if !defined(__GNUC__)
+#pragma region CacheLineSize
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZE_CACHELINE_SIZE_EXT_NAME
+/// @brief CacheLine Size Extension Name
+#define ZE_CACHELINE_SIZE_EXT_NAME  "ZE_extension_device_cache_line_size"
+#endif // ZE_CACHELINE_SIZE_EXT_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief CacheLine Size Extension Version(s)
+typedef enum _ze_device_cache_line_size_ext_version_t
+{
+    ZE_DEVICE_CACHE_LINE_SIZE_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),    ///< version 1.0
+    ZE_DEVICE_CACHE_LINE_SIZE_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),///< latest known version
+    ZE_DEVICE_CACHE_LINE_SIZE_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_CACHE_LINE_SIZE_EXT_VERSION_* ENUMs
+
+} ze_device_cache_line_size_ext_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief CacheLine Size queried using ::zeDeviceGetCacheProperties
+/// 
+/// @details
+///     - This structure may be returned from ::zeDeviceGetCacheProperties via
+///       the `pNext` member of ::ze_device_cache_properties_t.
+///     - Used for determining the cache line size supported on a device.
+typedef struct _ze_device_cache_line_size_ext_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    size_t cacheLineSize;                                                   ///< [out] The cache line size in bytes.
+
+} ze_device_cache_line_size_ext_t;
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
+// Intel 'oneAPI' Level-Zero Extension for supporting ray tracing acceleration structure.
+#if !defined(__GNUC__)
+#pragma region RTAS
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZE_RTAS_EXT_NAME
+/// @brief Ray Tracing Acceleration Structure Extension Name
+#define ZE_RTAS_EXT_NAME  "ZE_extension_rtas"
+#endif // ZE_RTAS_EXT_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray Tracing Acceleration Structure Builder Extension Version(s)
+typedef enum _ze_rtas_builder_ext_version_t
+{
+    ZE_RTAS_BUILDER_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),              ///< version 1.0
+    ZE_RTAS_BUILDER_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),          ///< latest known version
+    ZE_RTAS_BUILDER_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_EXT_VERSION_* ENUMs
+
+} ze_rtas_builder_ext_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure device flags
+typedef uint32_t ze_rtas_device_ext_flags_t;
+typedef enum _ze_rtas_device_ext_flag_t
+{
+    ZE_RTAS_DEVICE_EXT_FLAG_RESERVED = ZE_BIT(0),                           ///< reserved for future use
+    ZE_RTAS_DEVICE_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_DEVICE_EXT_FLAG_* ENUMs
+
+} ze_rtas_device_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure format
+/// 
+/// @details
+///     - This is an opaque ray tracing acceleration structure format
+///       identifier.
+typedef enum _ze_rtas_format_ext_t
+{
+    ZE_RTAS_FORMAT_EXT_INVALID = 0x0,                                       ///< Invalid acceleration structure format code
+    ZE_RTAS_FORMAT_EXT_MAX = 0x7ffffffe,                                    ///< Maximum acceleration structure format code
+    ZE_RTAS_FORMAT_EXT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_FORMAT_EXT_* ENUMs
+
+} ze_rtas_format_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder flags
+typedef uint32_t ze_rtas_builder_ext_flags_t;
+typedef enum _ze_rtas_builder_ext_flag_t
+{
+    ZE_RTAS_BUILDER_EXT_FLAG_RESERVED = ZE_BIT(0),                          ///< Reserved for future use
+    ZE_RTAS_BUILDER_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_EXT_FLAG_* ENUMs
+
+} ze_rtas_builder_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder parallel operation flags
+typedef uint32_t ze_rtas_parallel_operation_ext_flags_t;
+typedef enum _ze_rtas_parallel_operation_ext_flag_t
+{
+    ZE_RTAS_PARALLEL_OPERATION_EXT_FLAG_RESERVED = ZE_BIT(0),               ///< Reserved for future use
+    ZE_RTAS_PARALLEL_OPERATION_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_PARALLEL_OPERATION_EXT_FLAG_* ENUMs
+
+} ze_rtas_parallel_operation_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder geometry flags
+typedef uint32_t ze_rtas_builder_geometry_ext_flags_t;
+typedef enum _ze_rtas_builder_geometry_ext_flag_t
+{
+    ZE_RTAS_BUILDER_GEOMETRY_EXT_FLAG_NON_OPAQUE = ZE_BIT(0),               ///< non-opaque geometries invoke an any-hit shader
+    ZE_RTAS_BUILDER_GEOMETRY_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_GEOMETRY_EXT_FLAG_* ENUMs
+
+} ze_rtas_builder_geometry_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Packed ray tracing acceleration structure builder geometry flags (see
+///        ::ze_rtas_builder_geometry_ext_flags_t)
+typedef uint8_t ze_rtas_builder_packed_geometry_ext_flags_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder instance flags
+typedef uint32_t ze_rtas_builder_instance_ext_flags_t;
+typedef enum _ze_rtas_builder_instance_ext_flag_t
+{
+    ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_TRIANGLE_CULL_DISABLE = ZE_BIT(0),    ///< disables culling of front-facing and back-facing triangles
+    ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE = ZE_BIT(1),  ///< reverses front and back face of triangles
+    ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_TRIANGLE_FORCE_OPAQUE = ZE_BIT(2),    ///< forces instanced geometry to be opaque, unless ray flag forces it to
+                                                                            ///< be non-opaque
+    ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_TRIANGLE_FORCE_NON_OPAQUE = ZE_BIT(3),///< forces instanced geometry to be non-opaque, unless ray flag forces it
+                                                                            ///< to be opaque
+    ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_INSTANCE_EXT_FLAG_* ENUMs
+
+} ze_rtas_builder_instance_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Packed ray tracing acceleration structure builder instance flags (see
+///        ::ze_rtas_builder_instance_ext_flags_t)
+typedef uint8_t ze_rtas_builder_packed_instance_ext_flags_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder build operation flags
+/// 
+/// @details
+///     - These flags allow the application to tune the acceleration structure
+///       build operation.
+///     - The acceleration structure builder implementation might choose to use
+///       spatial splitting to split large or long primitives into smaller
+///       pieces. This may result in any-hit shaders being invoked multiple
+///       times for non-opaque primitives, unless
+///       ::ZE_RTAS_BUILDER_BUILD_OP_EXT_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION is specified.
+///     - Usage of any of these flags may reduce ray tracing performance.
+typedef uint32_t ze_rtas_builder_build_op_ext_flags_t;
+typedef enum _ze_rtas_builder_build_op_ext_flag_t
+{
+    ZE_RTAS_BUILDER_BUILD_OP_EXT_FLAG_COMPACT = ZE_BIT(0),                  ///< build more compact acceleration structure
+    ZE_RTAS_BUILDER_BUILD_OP_EXT_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION = ZE_BIT(1),   ///< guarantees single any-hit shader invocation per primitive
+    ZE_RTAS_BUILDER_BUILD_OP_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_BUILD_OP_EXT_FLAG_* ENUMs
+
+} ze_rtas_builder_build_op_ext_flag_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder build quality hint
+/// 
+/// @details
+///     - Depending on use case different quality modes for acceleration
+///       structure build are supported.
+///     - A low-quality build builds an acceleration structure fast, but at the
+///       cost of some reduction in ray tracing performance. This mode is
+///       recommended for dynamic content, such as animated characters.
+///     - A medium-quality build uses a compromise between build quality and ray
+///       tracing performance. This mode should be used by default.
+///     - Higher ray tracing performance can be achieved by using a high-quality
+///       build, but acceleration structure build performance might be
+///       significantly reduced.
+typedef enum _ze_rtas_builder_build_quality_hint_ext_t
+{
+    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_LOW = 0,                         ///< build low-quality acceleration structure (fast)
+    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_MEDIUM = 1,                      ///< build medium-quality acceleration structure (slower)
+    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_HIGH = 2,                        ///< build high-quality acceleration structure (slow)
+    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_* ENUMs
+
+} ze_rtas_builder_build_quality_hint_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder geometry type
+typedef enum _ze_rtas_builder_geometry_type_ext_t
+{
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_TRIANGLES = 0,                        ///< triangle mesh geometry type
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_QUADS = 1,                            ///< quad mesh geometry type
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_PROCEDURAL = 2,                       ///< procedural geometry type
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_INSTANCE = 3,                         ///< instance geometry type
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_* ENUMs
+
+} ze_rtas_builder_geometry_type_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Packed ray tracing acceleration structure builder geometry type (see
+///        ::ze_rtas_builder_geometry_type_ext_t)
+typedef uint8_t ze_rtas_builder_packed_geometry_type_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure data buffer element format
+/// 
+/// @details
+///     - Specifies the format of data buffer elements.
+///     - Data buffers may contain instancing transform matrices, triangle/quad
+///       vertex indices, etc...
+typedef enum _ze_rtas_builder_input_data_format_ext_t
+{
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3 = 0,                       ///< 3-component float vector (see ::ze_rtas_float3_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3X4_COLUMN_MAJOR = 1,        ///< 3x4 affine transformation in column-major format (see
+                                                                            ///< ::ze_rtas_transform_float3x4_column_major_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3X4_ALIGNED_COLUMN_MAJOR = 2,///< 3x4 affine transformation in column-major format (see
+                                                                            ///< ::ze_rtas_transform_float3x4_aligned_column_major_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3X4_ROW_MAJOR = 3,           ///< 3x4 affine transformation in row-major format (see
+                                                                            ///< ::ze_rtas_transform_float3x4_row_major_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_AABB = 4,                         ///< 3-dimensional axis-aligned bounding-box (see ::ze_rtas_aabb_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_TRIANGLE_INDICES_UINT32 = 5,      ///< Unsigned 32-bit triangle indices (see
+                                                                            ///< ::ze_rtas_triangle_indices_uint32_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_QUAD_INDICES_UINT32 = 6,          ///< Unsigned 32-bit quad indices (see ::ze_rtas_quad_indices_uint32_ext_t)
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_* ENUMs
+
+} ze_rtas_builder_input_data_format_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Packed ray tracing acceleration structure data buffer element format
+///        (see ::ze_rtas_builder_input_data_format_ext_t)
+typedef uint8_t ze_rtas_builder_packed_input_data_format_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Handle of ray tracing acceleration structure builder object
+typedef struct _ze_rtas_builder_ext_handle_t *ze_rtas_builder_ext_handle_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Handle of ray tracing acceleration structure builder parallel
+///        operation object
+typedef struct _ze_rtas_parallel_operation_ext_handle_t *ze_rtas_parallel_operation_ext_handle_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder descriptor
+typedef struct _ze_rtas_builder_ext_desc_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_rtas_builder_ext_version_t builderVersion;                           ///< [in] ray tracing acceleration structure builder version
+
+} ze_rtas_builder_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder properties
+typedef struct _ze_rtas_builder_ext_properties_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_rtas_builder_ext_flags_t flags;                                      ///< [out] ray tracing acceleration structure builder flags
+    size_t rtasBufferSizeBytesExpected;                                     ///< [out] expected size (in bytes) required for acceleration structure buffer
+                                                                            ///<    - When using an acceleration structure buffer of this size, the
+                                                                            ///< build is expected to succeed; however, it is possible that the build
+                                                                            ///< may fail with ::ZE_RESULT_EXT_RTAS_BUILD_RETRY
+    size_t rtasBufferSizeBytesMaxRequired;                                  ///< [out] worst-case size (in bytes) required for acceleration structure buffer
+                                                                            ///<    - When using an acceleration structure buffer of this size, the
+                                                                            ///< build is guaranteed to not run out of memory.
+    size_t scratchBufferSizeBytes;                                          ///< [out] scratch buffer size (in bytes) required for acceleration
+                                                                            ///< structure build.
+
+} ze_rtas_builder_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder parallel operation
+///        properties
+typedef struct _ze_rtas_parallel_operation_ext_properties_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_rtas_parallel_operation_ext_flags_t flags;                           ///< [out] ray tracing acceleration structure builder parallel operation
+                                                                            ///< flags
+    uint32_t maxConcurrency;                                                ///< [out] maximum number of threads that may join the parallel operation
+
+} ze_rtas_parallel_operation_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure device properties
+/// 
+/// @details
+///     - This structure may be passed to ::zeDeviceGetProperties, via `pNext`
+///       member of ::ze_device_properties_t.
+///     - The implementation shall populate `format` with a value other than
+///       ::ZE_RTAS_FORMAT_EXT_INVALID when the device supports ray tracing.
+typedef struct _ze_rtas_device_ext_properties_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_rtas_device_ext_flags_t flags;                                       ///< [out] ray tracing acceleration structure device flags
+    ze_rtas_format_ext_t rtasFormat;                                        ///< [out] ray tracing acceleration structure format
+    uint32_t rtasBufferAlignment;                                           ///< [out] required alignment of acceleration structure buffer
+
+} ze_rtas_device_ext_properties_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief A 3-component vector type
+typedef struct _ze_rtas_float3_ext_t
+{
+    float x;                                                                ///< [in] x-coordinate of float3 vector
+    float y;                                                                ///< [in] y-coordinate of float3 vector
+    float z;                                                                ///< [in] z-coordinate of float3 vector
+
+} ze_rtas_float3_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief 3x4 affine transformation in column-major layout
+/// 
+/// @details
+///     - A 3x4 affine transformation in column major layout, consisting of vectors
+///          - vx=(vx_x, vx_y, vx_z),
+///          - vy=(vy_x, vy_y, vy_z),
+///          - vz=(vz_x, vz_y, vz_z), and
+///          - p=(p_x, p_y, p_z)
+///     - The transformation transforms a point (x, y, z) to: `x*vx + y*vy +
+///       z*vz + p`.
+typedef struct _ze_rtas_transform_float3x4_column_major_ext_t
+{
+    float vx_x;                                                             ///< [in] element 0 of column 0 of 3x4 matrix
+    float vx_y;                                                             ///< [in] element 1 of column 0 of 3x4 matrix
+    float vx_z;                                                             ///< [in] element 2 of column 0 of 3x4 matrix
+    float vy_x;                                                             ///< [in] element 0 of column 1 of 3x4 matrix
+    float vy_y;                                                             ///< [in] element 1 of column 1 of 3x4 matrix
+    float vy_z;                                                             ///< [in] element 2 of column 1 of 3x4 matrix
+    float vz_x;                                                             ///< [in] element 0 of column 2 of 3x4 matrix
+    float vz_y;                                                             ///< [in] element 1 of column 2 of 3x4 matrix
+    float vz_z;                                                             ///< [in] element 2 of column 2 of 3x4 matrix
+    float p_x;                                                              ///< [in] element 0 of column 3 of 3x4 matrix
+    float p_y;                                                              ///< [in] element 1 of column 3 of 3x4 matrix
+    float p_z;                                                              ///< [in] element 2 of column 3 of 3x4 matrix
+
+} ze_rtas_transform_float3x4_column_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief 3x4 affine transformation in column-major layout with aligned column
+///        vectors
+/// 
+/// @details
+///     - A 3x4 affine transformation in column major layout, consisting of vectors
+///        - vx=(vx_x, vx_y, vx_z),
+///        - vy=(vy_x, vy_y, vy_z),
+///        - vz=(vz_x, vz_y, vz_z), and
+///        - p=(p_x, p_y, p_z)
+///     - The transformation transforms a point (x, y, z) to: `x*vx + y*vy +
+///       z*vz + p`.
+///     - The column vectors are aligned to 16-bytes and pad members are
+///       ignored.
+typedef struct _ze_rtas_transform_float3x4_aligned_column_major_ext_t
+{
+    float vx_x;                                                             ///< [in] element 0 of column 0 of 3x4 matrix
+    float vx_y;                                                             ///< [in] element 1 of column 0 of 3x4 matrix
+    float vx_z;                                                             ///< [in] element 2 of column 0 of 3x4 matrix
+    float pad0;                                                             ///< [in] ignored padding
+    float vy_x;                                                             ///< [in] element 0 of column 1 of 3x4 matrix
+    float vy_y;                                                             ///< [in] element 1 of column 1 of 3x4 matrix
+    float vy_z;                                                             ///< [in] element 2 of column 1 of 3x4 matrix
+    float pad1;                                                             ///< [in] ignored padding
+    float vz_x;                                                             ///< [in] element 0 of column 2 of 3x4 matrix
+    float vz_y;                                                             ///< [in] element 1 of column 2 of 3x4 matrix
+    float vz_z;                                                             ///< [in] element 2 of column 2 of 3x4 matrix
+    float pad2;                                                             ///< [in] ignored padding
+    float p_x;                                                              ///< [in] element 0 of column 3 of 3x4 matrix
+    float p_y;                                                              ///< [in] element 1 of column 3 of 3x4 matrix
+    float p_z;                                                              ///< [in] element 2 of column 3 of 3x4 matrix
+    float pad3;                                                             ///< [in] ignored padding
+
+} ze_rtas_transform_float3x4_aligned_column_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief 3x4 affine transformation in row-major layout
+/// 
+/// @details
+///     - A 3x4 affine transformation in row-major layout, consisting of vectors
+///          - vx=(vx_x, vx_y, vx_z),
+///          - vy=(vy_x, vy_y, vy_z),
+///          - vz=(vz_x, vz_y, vz_z), and
+///          - p=(p_x, p_y, p_z)
+///     - The transformation transforms a point (x, y, z) to: `x*vx + y*vy +
+///       z*vz + p`.
+typedef struct _ze_rtas_transform_float3x4_row_major_ext_t
+{
+    float vx_x;                                                             ///< [in] element 0 of row 0 of 3x4 matrix
+    float vy_x;                                                             ///< [in] element 1 of row 0 of 3x4 matrix
+    float vz_x;                                                             ///< [in] element 2 of row 0 of 3x4 matrix
+    float p_x;                                                              ///< [in] element 3 of row 0 of 3x4 matrix
+    float vx_y;                                                             ///< [in] element 0 of row 1 of 3x4 matrix
+    float vy_y;                                                             ///< [in] element 1 of row 1 of 3x4 matrix
+    float vz_y;                                                             ///< [in] element 2 of row 1 of 3x4 matrix
+    float p_y;                                                              ///< [in] element 3 of row 1 of 3x4 matrix
+    float vx_z;                                                             ///< [in] element 0 of row 2 of 3x4 matrix
+    float vy_z;                                                             ///< [in] element 1 of row 2 of 3x4 matrix
+    float vz_z;                                                             ///< [in] element 2 of row 2 of 3x4 matrix
+    float p_z;                                                              ///< [in] element 3 of row 2 of 3x4 matrix
+
+} ze_rtas_transform_float3x4_row_major_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief A 3-dimensional axis-aligned bounding-box with lower and upper bounds
+///        in each dimension
+typedef struct _ze_rtas_aabb_ext_t
+{
+    ze_rtas_float3_ext_t lower;                                             ///< [in] lower bounds of AABB
+    ze_rtas_float3_ext_t upper;                                             ///< [in] upper bounds of AABB
+
+} ze_rtas_aabb_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Triangle represented using 3 vertex indices
+/// 
+/// @details
+///     - Represents a triangle using 3 vertex indices that index into a vertex
+///       array that needs to be provided together with the index array.
+///     - The linear barycentric u/v parametrization of the triangle is defined as:
+///          - (u=0, v=0) at v0,
+///          - (u=1, v=0) at v1, and
+///          - (u=0, v=1) at v2
+typedef struct _ze_rtas_triangle_indices_uint32_ext_t
+{
+    uint32_t v0;                                                            ///< [in] first index pointing to the first triangle vertex in vertex array
+    uint32_t v1;                                                            ///< [in] second index pointing to the second triangle vertex in vertex
+                                                                            ///< array
+    uint32_t v2;                                                            ///< [in] third index pointing to the third triangle vertex in vertex array
+
+} ze_rtas_triangle_indices_uint32_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Quad represented using 4 vertex indices
+/// 
+/// @details
+///     - Represents a quad composed of 4 indices that index into a vertex array
+///       that needs to be provided together with the index array.
+///     - A quad is a triangle pair represented using 4 vertex indices v0, v1,
+///       v2, v3.
+///       The first triangle is made out of indices v0, v1, v3 and the second triangle
+///       from indices v2, v3, v1. The piecewise linear barycentric u/v parametrization
+///       of the quad is defined as:
+///          - (u=0, v=0) at v0,
+///          - (u=1, v=0) at v1,
+///          - (u=0, v=1) at v3, and
+///          - (u=1, v=1) at v2
+///       This is achieved by correcting the u'/v' coordinates of the second
+///       triangle by
+///       *u = 1-u'* and *v = 1-v'*, yielding a piecewise linear parametrization.
+typedef struct _ze_rtas_quad_indices_uint32_ext_t
+{
+    uint32_t v0;                                                            ///< [in] first index pointing to the first quad vertex in vertex array
+    uint32_t v1;                                                            ///< [in] second index pointing to the second quad vertex in vertex array
+    uint32_t v2;                                                            ///< [in] third index pointing to the third quad vertex in vertex array
+    uint32_t v3;                                                            ///< [in] fourth index pointing to the fourth quad vertex in vertex array
+
+} ze_rtas_quad_indices_uint32_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder geometry info
+typedef struct _ze_rtas_builder_geometry_info_ext_t
+{
+    ze_rtas_builder_packed_geometry_type_ext_t geometryType;                ///< [in] geometry type
+
+} ze_rtas_builder_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder triangle mesh geometry info
+/// 
+/// @details
+///     - The linear barycentric u/v parametrization of the triangle is defined as:
+///          - (u=0, v=0) at v0,
+///          - (u=1, v=0) at v1, and
+///          - (u=0, v=1) at v2
+typedef struct _ze_rtas_builder_triangles_geometry_info_ext_t
+{
+    ze_rtas_builder_packed_geometry_type_ext_t geometryType;                ///< [in] geometry type, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_TRIANGLES
+    ze_rtas_builder_packed_geometry_ext_flags_t geometryFlags;              ///< [in] 0 or some combination of ::ze_rtas_builder_geometry_ext_flag_t
+                                                                            ///< bits representing the geometry flags for all primitives of this
+                                                                            ///< geometry
+    uint8_t geometryMask;                                                   ///< [in] 8-bit geometry mask for ray masking
+    ze_rtas_builder_packed_input_data_format_ext_t triangleFormat;          ///< [in] format of triangle buffer data, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_TRIANGLE_INDICES_UINT32
+    ze_rtas_builder_packed_input_data_format_ext_t vertexFormat;            ///< [in] format of vertex buffer data, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3
+    uint32_t triangleCount;                                                 ///< [in] number of triangles in triangle buffer
+    uint32_t vertexCount;                                                   ///< [in] number of vertices in vertex buffer
+    uint32_t triangleStride;                                                ///< [in] stride (in bytes) of triangles in triangle buffer
+    uint32_t vertexStride;                                                  ///< [in] stride (in bytes) of vertices in vertex buffer
+    void* pTriangleBuffer;                                                  ///< [in] pointer to array of triangle indices in specified format
+    void* pVertexBuffer;                                                    ///< [in] pointer to array of triangle vertices in specified format
+
+} ze_rtas_builder_triangles_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder quad mesh geometry info
+/// 
+/// @details
+///     - A quad is a triangle pair represented using 4 vertex indices v0, v1,
+///       v2, v3.
+///       The first triangle is made out of indices v0, v1, v3 and the second triangle
+///       from indices v2, v3, v1. The piecewise linear barycentric u/v parametrization
+///       of the quad is defined as:
+///          - (u=0, v=0) at v0,
+///          - (u=1, v=0) at v1,
+///          - (u=0, v=1) at v3, and
+///          - (u=1, v=1) at v2
+///       This is achieved by correcting the u'/v' coordinates of the second
+///       triangle by
+///       *u = 1-u'* and *v = 1-v'*, yielding a piecewise linear parametrization.
+typedef struct _ze_rtas_builder_quads_geometry_info_ext_t
+{
+    ze_rtas_builder_packed_geometry_type_ext_t geometryType;                ///< [in] geometry type, must be ::ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_QUADS
+    ze_rtas_builder_packed_geometry_ext_flags_t geometryFlags;              ///< [in] 0 or some combination of ::ze_rtas_builder_geometry_ext_flag_t
+                                                                            ///< bits representing the geometry flags for all primitives of this
+                                                                            ///< geometry
+    uint8_t geometryMask;                                                   ///< [in] 8-bit geometry mask for ray masking
+    ze_rtas_builder_packed_input_data_format_ext_t quadFormat;              ///< [in] format of quad buffer data, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_QUAD_INDICES_UINT32
+    ze_rtas_builder_packed_input_data_format_ext_t vertexFormat;            ///< [in] format of vertex buffer data, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXT_FLOAT3
+    uint32_t quadCount;                                                     ///< [in] number of quads in quad buffer
+    uint32_t vertexCount;                                                   ///< [in] number of vertices in vertex buffer
+    uint32_t quadStride;                                                    ///< [in] stride (in bytes) of quads in quad buffer
+    uint32_t vertexStride;                                                  ///< [in] stride (in bytes) of vertices in vertex buffer
+    void* pQuadBuffer;                                                      ///< [in] pointer to array of quad indices in specified format
+    void* pVertexBuffer;                                                    ///< [in] pointer to array of quad vertices in specified format
+
+} ze_rtas_builder_quads_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief AABB callback function parameters
+typedef struct _ze_rtas_geometry_aabbs_ext_cb_params_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    uint32_t primID;                                                        ///< [in] first primitive to return bounds for
+    uint32_t primIDCount;                                                   ///< [in] number of primitives to return bounds for
+    void* pGeomUserPtr;                                                     ///< [in] pointer provided through geometry descriptor
+    void* pBuildUserPtr;                                                    ///< [in] pointer provided through ::zeRTASBuilderBuildExt function
+    ze_rtas_aabb_ext_t* pBoundsOut;                                         ///< [out] destination buffer to write AABB bounds to
+
+} ze_rtas_geometry_aabbs_ext_cb_params_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Callback function pointer type to return AABBs for a range of
+///        procedural primitives
+typedef void (*ze_rtas_geometry_aabbs_cb_ext_t)(
+        ze_rtas_geometry_aabbs_ext_cb_params_t* params                          ///< [in] callback function parameters structure
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder procedural primitives
+///        geometry info
+/// 
+/// @details
+///     - A host-side bounds callback function is invoked by the acceleration
+///       structure builder to query the bounds of procedural primitives on
+///       demand. The callback is passed some `pGeomUserPtr` that can point to
+///       an application-side representation of the procedural primitives.
+///       Further, a second `pBuildUserPtr`, which is set by a parameter to
+///       ::zeRTASBuilderBuildExt, is passed to the callback. This allows the
+///       build to change the bounds of the procedural geometry, for example, to
+///       build a BVH only over a short time range to implement multi-segment
+///       motion blur.
+typedef struct _ze_rtas_builder_procedural_geometry_info_ext_t
+{
+    ze_rtas_builder_packed_geometry_type_ext_t geometryType;                ///< [in] geometry type, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_PROCEDURAL
+    ze_rtas_builder_packed_geometry_ext_flags_t geometryFlags;              ///< [in] 0 or some combination of ::ze_rtas_builder_geometry_ext_flag_t
+                                                                            ///< bits representing the geometry flags for all primitives of this
+                                                                            ///< geometry
+    uint8_t geometryMask;                                                   ///< [in] 8-bit geometry mask for ray masking
+    uint8_t reserved;                                                       ///< [in] reserved for future use
+    uint32_t primCount;                                                     ///< [in] number of primitives in geometry
+    ze_rtas_geometry_aabbs_cb_ext_t pfnGetBoundsCb;                         ///< [in] pointer to callback function to get the axis-aligned bounding-box
+                                                                            ///< for a range of primitives
+    void* pGeomUserPtr;                                                     ///< [in] user data pointer passed to callback
+
+} ze_rtas_builder_procedural_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Ray tracing acceleration structure builder instance geometry info
+typedef struct _ze_rtas_builder_instance_geometry_info_ext_t
+{
+    ze_rtas_builder_packed_geometry_type_ext_t geometryType;                ///< [in] geometry type, must be
+                                                                            ///< ::ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXT_INSTANCE
+    ze_rtas_builder_packed_instance_ext_flags_t instanceFlags;              ///< [in] 0 or some combination of ::ze_rtas_builder_geometry_ext_flag_t
+                                                                            ///< bits representing the geometry flags for all primitives of this
+                                                                            ///< geometry
+    uint8_t geometryMask;                                                   ///< [in] 8-bit geometry mask for ray masking
+    ze_rtas_builder_packed_input_data_format_ext_t transformFormat;         ///< [in] format of the specified transformation
+    uint32_t instanceUserID;                                                ///< [in] user-specified identifier for the instance
+    void* pTransform;                                                       ///< [in] object-to-world instance transformation in specified format
+    ze_rtas_aabb_ext_t* pBounds;                                            ///< [in] object-space axis-aligned bounding-box of the instanced
+                                                                            ///< acceleration structure
+    void* pAccelerationStructure;                                           ///< [in] device pointer to acceleration structure to instantiate
+
+} ze_rtas_builder_instance_geometry_info_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief 
+typedef struct _ze_rtas_builder_build_op_ext_desc_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    ze_rtas_format_ext_t rtasFormat;                                        ///< [in] ray tracing acceleration structure format
+    ze_rtas_builder_build_quality_hint_ext_t buildQuality;                  ///< [in] acceleration structure build quality hint
+    ze_rtas_builder_build_op_ext_flags_t buildFlags;                        ///< [in] 0 or some combination of ::ze_rtas_builder_build_op_ext_flag_t
+                                                                            ///< flags
+    const ze_rtas_builder_geometry_info_ext_t** ppGeometries;               ///< [in][optional][range(0, `numGeometries`)] NULL or a valid array of
+                                                                            ///< pointers to geometry infos
+    uint32_t numGeometries;                                                 ///< [in] number of geometries in geometry infos array, can be zero when
+                                                                            ///< `ppGeometries` is NULL
+
+} ze_rtas_builder_build_op_ext_desc_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Creates a ray tracing acceleration structure builder object
+/// 
+/// @details
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function must be thread-safe.
+///     - The implementation must support ::ZE_extension_rtas extension.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDriver`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == pDescriptor`
+///         + `nullptr == phBuilder`
+///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
+///         + `::ZE_RTAS_BUILDER_EXT_VERSION_CURRENT < pDescriptor->builderVersion`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASBuilderCreateExt(
+    ze_driver_handle_t hDriver,                                             ///< [in] handle of driver object
+    const ze_rtas_builder_ext_desc_t* pDescriptor,                          ///< [in] pointer to builder descriptor
+    ze_rtas_builder_ext_handle_t* phBuilder                                 ///< [out] handle of builder object
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Retrieves ray tracing acceleration structure builder properties
+/// 
+/// @details
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hBuilder`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == pBuildOpDescriptor`
+///         + `nullptr == pProperties`
+///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
+///         + `::ZE_RTAS_FORMAT_EXT_MAX < pBuildOpDescriptor->rtasFormat`
+///         + `::ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_HIGH < pBuildOpDescriptor->buildQuality`
+///         + `0x3 < pBuildOpDescriptor->buildFlags`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASBuilderGetBuildPropertiesExt(
+    ze_rtas_builder_ext_handle_t hBuilder,                                  ///< [in] handle of builder object
+    const ze_rtas_builder_build_op_ext_desc_t* pBuildOpDescriptor,          ///< [in] pointer to build operation descriptor
+    ze_rtas_builder_ext_properties_t* pProperties                           ///< [in,out] query result for builder properties
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Checks ray tracing acceleration structure format compatibility
+/// 
+/// @details
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDriver`
+///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
+///         + `::ZE_RTAS_FORMAT_EXT_MAX < rtasFormatA`
+///         + `::ZE_RTAS_FORMAT_EXT_MAX < rtasFormatB`
+///     - ::ZE_RESULT_SUCCESS
+///         + An acceleration structure built with `rtasFormatA` is compatible with devices that report `rtasFormatB`.
+///     - ::ZE_RESULT_EXT_ERROR_OPERANDS_INCOMPATIBLE
+///         + An acceleration structure built with `rtasFormatA` is **not** compatible with devices that report `rtasFormatB`.
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeDriverRTASFormatCompatibilityCheckExt(
+    ze_driver_handle_t hDriver,                                             ///< [in] handle of driver object
+    ze_rtas_format_ext_t rtasFormatA,                                       ///< [in] operand A
+    ze_rtas_format_ext_t rtasFormatB                                        ///< [in] operand B
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Build ray tracing acceleration structure
+/// 
+/// @details
+///     - This function builds an acceleration structure of the scene consisting
+///       of the specified geometry information and writes the acceleration
+///       structure to the provided destination buffer. All types of geometries
+///       can get freely mixed inside a scene.
+///     - Before an acceleration structure can be built, the user must allocate
+///       the memory for the acceleration structure buffer and scratch buffer
+///       using sizes queried with the ::zeRTASBuilderGetBuildPropertiesExt function.
+///     - When using the "worst-case" size for the acceleration structure
+///       buffer, the acceleration structure construction will never fail with ::ZE_RESULT_EXT_RTAS_BUILD_RETRY.
+///     - When using the "expected" size for the acceleration structure buffer,
+///       the acceleration structure construction may fail with
+///       ::ZE_RESULT_EXT_RTAS_BUILD_RETRY. If this happens, the user may resize
+///       their acceleration structure buffer using the returned
+///       `*pRtasBufferSizeBytes` value, which will be updated with an improved
+///       size estimate that will likely result in a successful build.
+///     - The acceleration structure construction is run on the host and is
+///       synchronous, thus after the function returns with a successful result,
+///       the acceleration structure may be used.
+///     - All provided data buffers must be host-accessible. The referenced
+///       scene data (index- and vertex- buffers) have to be accessible from the
+///       host, and will **not** be referenced by the build acceleration structure.
+///     - The acceleration structure buffer is typicall a host allocation that
+///       is later manually copied to a device allocation. Alternatively one can
+///       also use a shared USM allocation as acceration structure buffer and
+///       skip the copy.
+///     - A successfully constructed acceleration structure is entirely
+///       self-contained. There is no requirement for input data to persist
+///       beyond build completion.
+///     - A successfully constructed acceleration structure is non-copyable.
+///     - Acceleration structure construction may be parallelized by passing a
+///       valid handle to a parallel operation object and joining that parallel
+///       operation using ::zeRTASParallelOperationJoinExt with user-provided
+///       worker threads.
+///     - A successfully constructed acceleration structure is generally
+///       non-copyable. It can only get copied from host to device using the
+///       special ::zeRTASBuilderCommandListAppendCopyExt function.
+///     - **Additional Notes**
+///        - "The geometry infos array, geometry infos, and scratch buffer must
+///       all be standard host memory allocations."
+///        - "A pointer to a geometry info can be a null pointer, in which case
+///       the geometry is treated as empty."
+///        - "If no parallel operation handle is provided, the build is run
+///       sequentially on the current thread."
+///        - "A parallel operation object may only be associated with a single
+///       acceleration structure build at a time."
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hBuilder`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == pBuildOpDescriptor`
+///         + `nullptr == pScratchBuffer`
+///         + `nullptr == pRtasBuffer`
+///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
+///         + `::ZE_RTAS_FORMAT_EXT_MAX < pBuildOpDescriptor->rtasFormat`
+///         + `::ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXT_HIGH < pBuildOpDescriptor->buildQuality`
+///         + `0x3 < pBuildOpDescriptor->buildFlags`
+///     - ::ZE_RESULT_EXT_RTAS_BUILD_DEFERRED
+///         + Acceleration structure build completion is deferred to parallel operation join.
+///     - ::ZE_RESULT_EXT_RTAS_BUILD_RETRY
+///         + Acceleration structure build failed due to insufficient resources, retry the build operation with a larger acceleration structure buffer allocation.
+///     - ::ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE
+///         + Acceleration structure build failed due to parallel operation object participation in another build operation.
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASBuilderBuildExt(
+    ze_rtas_builder_ext_handle_t hBuilder,                                  ///< [in] handle of builder object
+    const ze_rtas_builder_build_op_ext_desc_t* pBuildOpDescriptor,          ///< [in] pointer to build operation descriptor
+    void* pScratchBuffer,                                                   ///< [in][range(0, `scratchBufferSizeBytes`)] scratch buffer to be used
+                                                                            ///< during acceleration structure construction
+    size_t scratchBufferSizeBytes,                                          ///< [in] size of scratch buffer, in bytes
+    void* pRtasBuffer,                                                      ///< [in] pointer to destination buffer
+    size_t rtasBufferSizeBytes,                                             ///< [in] destination buffer size, in bytes
+    ze_rtas_parallel_operation_ext_handle_t hParallelOperation,             ///< [in][optional] handle to parallel operation object
+    void* pBuildUserPtr,                                                    ///< [in][optional] pointer passed to callbacks
+    ze_rtas_aabb_ext_t* pBounds,                                            ///< [in,out][optional] pointer to destination address for acceleration
+                                                                            ///< structure bounds
+    size_t* pRtasBufferSizeBytes                                            ///< [out][optional] updated acceleration structure size requirement, in
+                                                                            ///< bytes
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Copies a ray tracing acceleration structure (RTAS) from host to device
+///        memory.
+/// 
+/// @details
+///     - The memory pointed to by srcptr must be host memory containing a valid
+///       ray tracing acceleration structure.
+///     - The number of bytes to copy must be larger or equal to the size of the
+///       ray tracing acceleration structure.
+///     - The application must ensure the memory pointed to by dstptr and srcptr
+///       is accessible by the device on which the command list was created.
+///     - The implementation must not access the memory pointed to by dstptr and
+///       srcptr as they are free to be modified by either the Host or device up
+///       until execution.
+///     - The application must ensure the events are accessible by the device on
+///       which the command list was created.
+///     - The application must ensure the command list and events were created,
+///       and the memory was allocated, on the same context.
+///     - The application must **not** call this function from simultaneous
+///       threads with the same command list handle.
+///     - The implementation of this function should be lock-free.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hCommandList`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == dstptr`
+///         + `nullptr == srcptr`
+///     - ::ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT
+///     - ::ZE_RESULT_ERROR_INVALID_SIZE
+///         + `(nullptr == phWaitEvents) && (0 < numWaitEvents)`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASBuilderCommandListAppendCopyExt(
+    ze_command_list_handle_t hCommandList,                                  ///< [in] handle of command list
+    void* dstptr,                                                           ///< [in] pointer to destination in device memory to copy the ray tracing
+                                                                            ///< acceleration structure to
+    const void* srcptr,                                                     ///< [in] pointer to a valid source ray tracing acceleration structure in
+                                                                            ///< host memory to copy from
+    size_t size,                                                            ///< [in] size in bytes to copy
+    ze_event_handle_t hSignalEvent,                                         ///< [in][optional] handle of the event to signal on completion
+    uint32_t numWaitEvents,                                                 ///< [in][optional] number of events to wait on before launching; must be 0
+                                                                            ///< if `nullptr == phWaitEvents`
+    ze_event_handle_t* phWaitEvents                                         ///< [in][optional][range(0, numWaitEvents)] handle of the events to wait
+                                                                            ///< on before launching
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Destroys a ray tracing acceleration structure builder object
+/// 
+/// @details
+///     - The implementation of this function may immediately release any
+///       internal Host and Device resources associated with this builder.
+///     - The application must **not** call this function from simultaneous
+///       threads with the same builder handle.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hBuilder`
+///     - ::ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASBuilderDestroyExt(
+    ze_rtas_builder_ext_handle_t hBuilder                                   ///< [in][release] handle of builder object to destroy
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Creates a ray tracing acceleration structure builder parallel
+///        operation object
+/// 
+/// @details
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function must be thread-safe.
+///     - The implementation must support ::ZE_extension_rtas extension.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDriver`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == phParallelOperation`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASParallelOperationCreateExt(
+    ze_driver_handle_t hDriver,                                             ///< [in] handle of driver object
+    ze_rtas_parallel_operation_ext_handle_t* phParallelOperation            ///< [out] handle of parallel operation object
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Retrieves ray tracing acceleration structure builder parallel
+///        operation properties
+/// 
+/// @details
+///     - The application must first bind the parallel operation object to a
+///       build operation before it may query the parallel operation properties.
+///       In other words, the application must first call
+///       ::zeRTASBuilderBuildExt with **hParallelOperation** before calling
+///       this function.
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hParallelOperation`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == pProperties`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASParallelOperationGetPropertiesExt(
+    ze_rtas_parallel_operation_ext_handle_t hParallelOperation,             ///< [in] handle of parallel operation object
+    ze_rtas_parallel_operation_ext_properties_t* pProperties                ///< [in,out] query result for parallel operation properties
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Joins a parallel build operation
+/// 
+/// @details
+///     - All worker threads return the same error code for the parallel build
+///       operation upon build completion
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hParallelOperation`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASParallelOperationJoinExt(
+    ze_rtas_parallel_operation_ext_handle_t hParallelOperation              ///< [in] handle of parallel operation object
+    );
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Destroys a ray tracing acceleration structure builder parallel
+///        operation object
+/// 
+/// @details
+///     - The implementation of this function may immediately release any
+///       internal Host and Device resources associated with this parallel
+///       operation.
+///     - The application must **not** call this function from simultaneous
+///       threads with the same parallel operation handle.
+///     - The implementation of this function must be thread-safe.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hParallelOperation`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeRTASParallelOperationDestroyExt(
+    ze_rtas_parallel_operation_ext_handle_t hParallelOperation              ///< [in][release] handle of parallel operation object to destroy
+    );
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
+// Intel 'oneAPI' Level-Zero Extension for Device Vector Sizes Query
+#if !defined(__GNUC__)
+#pragma region deviceVectorSizes
+#endif
+///////////////////////////////////////////////////////////////////////////////
+#ifndef ZE_DEVICE_VECTOR_SIZES_EXT_NAME
+/// @brief Device Vector Sizes Query Extension Name
+#define ZE_DEVICE_VECTOR_SIZES_EXT_NAME  "ZE_extension_device_vector_sizes"
+#endif // ZE_DEVICE_VECTOR_SIZES_EXT_NAME
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Device Vector Sizes Query Extension Version(s)
+typedef enum _ze_device_vector_sizes_ext_version_t
+{
+    ZE_DEVICE_VECTOR_SIZES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),       ///< version 1.0
+    ZE_DEVICE_VECTOR_SIZES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),   ///< latest known version
+    ZE_DEVICE_VECTOR_SIZES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_VECTOR_SIZES_EXT_VERSION_* ENUMs
+
+} ze_device_vector_sizes_ext_version_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Device Vector Width Properties queried using
+///        $DeviceGetVectorWidthPropertiesExt
+typedef struct _ze_device_vector_width_properties_ext_t
+{
+    ze_structure_type_t stype;                                              ///< [in] type of this structure
+    void* pNext;                                                            ///< [in,out][optional] must be null or a pointer to an extension-specific
+                                                                            ///< structure (i.e. contains stype and pNext).
+    uint32_t vector_width_size;                                             ///< [out] The associated vector width size supported by the device.
+    uint32_t preferred_vector_width_char;                                   ///< [out] The preferred vector width size for char type supported by the device.
+    uint32_t preferred_vector_width_short;                                  ///< [out] The preferred vector width size for short type supported by the device.
+    uint32_t preferred_vector_width_int;                                    ///< [out] The preferred vector width size for int type supported by the device.
+    uint32_t preferred_vector_width_long;                                   ///< [out] The preferred vector width size for long type supported by the device.
+    uint32_t preferred_vector_width_float;                                  ///< [out] The preferred vector width size for float type supported by the device.
+    uint32_t preferred_vector_width_double;                                 ///< [out] The preferred vector width size for double type supported by the device.
+    uint32_t preferred_vector_width_half;                                   ///< [out] The preferred vector width size for half type supported by the device.
+    uint32_t native_vector_width_char;                                      ///< [out] The native vector width size for char type supported by the device.
+    uint32_t native_vector_width_short;                                     ///< [out] The native vector width size for short type supported by the device.
+    uint32_t native_vector_width_int;                                       ///< [out] The native vector width size for int type supported by the device.
+    uint32_t native_vector_width_long;                                      ///< [out] The native vector width size for long type supported by the device.
+    uint32_t native_vector_width_float;                                     ///< [out] The native vector width size for float type supported by the device.
+    uint32_t native_vector_width_double;                                    ///< [out] The native vector width size for double type supported by the device.
+    uint32_t native_vector_width_half;                                      ///< [out] The native vector width size for half type supported by the device.
+
+} ze_device_vector_width_properties_ext_t;
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Retrieves the vector width properties of the device.
+/// 
+/// @details
+///     - Properties are reported for each vector width supported by the device.
+///     - Multiple calls to this function will return properties in the same
+///       order.
+///     - The number of vector width properties is reported thru the pCount
+///       parameter which is updated by the driver given pCount == 0.
+///     - The application may provide a buffer that is larger than the number of
+///       properties, but the application must set pCount to the number of
+///       properties to retrieve.
+///     - The application may call this function from simultaneous threads.
+///     - The implementation of this function should be lock-free.
+/// 
+/// @returns
+///     - ::ZE_RESULT_SUCCESS
+///     - ::ZE_RESULT_ERROR_UNINITIALIZED
+///     - ::ZE_RESULT_ERROR_DEVICE_LOST
+///     - ::ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY
+///     - ::ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
+///         + `nullptr == hDevice`
+///     - ::ZE_RESULT_ERROR_INVALID_NULL_POINTER
+///         + `nullptr == pCount`
+ZE_APIEXPORT ze_result_t ZE_APICALL
+zeDeviceGetVectorWidthPropertiesExt(
+    ze_device_handle_t hDevice,                                             ///< [in] handle of the device
+    uint32_t* pCount,                                                       ///< [in,out] pointer to the number of vector width properties.
+                                                                            ///< if count is zero, then the driver shall update the value with the
+                                                                            ///< total number of vector width properties available.
+                                                                            ///< if count is greater than the number of vector width properties
+                                                                            ///< available, then the driver shall update the value with the correct
+                                                                            ///< number of vector width properties available.
+    ze_device_vector_width_properties_ext_t* pVectorWidthProperties         ///< [in,out][optional][range(0, *pCount)] array of vector width properties.
+                                                                            ///< if count is less than the number of properties available, then the
+                                                                            ///< driver will return only the number requested.
+    );
+
+#if !defined(__GNUC__)
+#pragma endregion
+#endif
 // Intel 'oneAPI' Level-Zero Extension APIs for Cache Reservation
 #if !defined(__GNUC__)
 #pragma region cacheReservation
@@ -7711,7 +9215,7 @@ typedef enum _ze_cache_reservation_ext_version_t
 {
     ZE_CACHE_RESERVATION_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),         ///< version 1.0
     ZE_CACHE_RESERVATION_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),     ///< latest known version
-    ZE_CACHE_RESERVATION_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_CACHE_RESERVATION_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_CACHE_RESERVATION_EXT_VERSION_* ENUMs
 
 } ze_cache_reservation_ext_version_t;
 
@@ -7728,7 +9232,7 @@ typedef enum _ze_cache_ext_region_t
     ZE_CACHE_EXT_REGION_DEFAULT = 0,                                        ///< utilize driver default scheme
     ZE_CACHE_EXT_REGION_RESERVED = 1,                                       ///< utilize reserved region
     ZE_CACHE_EXT_REGION_NON_RESERVED = 2,                                   ///< utilize non-reserverd region
-    ZE_CACHE_EXT_REGION_FORCE_UINT32 = 0x7fffffff
+    ZE_CACHE_EXT_REGION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_CACHE_EXT_REGION_* ENUMs
 
 } ze_cache_ext_region_t;
 
@@ -7824,7 +9328,7 @@ typedef enum _ze_event_query_timestamps_exp_version_t
 {
     ZE_EVENT_QUERY_TIMESTAMPS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),    ///< version 1.0
     ZE_EVENT_QUERY_TIMESTAMPS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),///< latest known version
-    ZE_EVENT_QUERY_TIMESTAMPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_QUERY_TIMESTAMPS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_QUERY_TIMESTAMPS_EXP_VERSION_* ENUMs
 
 } ze_event_query_timestamps_exp_version_t;
 
@@ -7891,7 +9395,7 @@ typedef enum _ze_image_memory_properties_exp_version_t
 {
     ZE_IMAGE_MEMORY_PROPERTIES_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),   ///< version 1.0
     ZE_IMAGE_MEMORY_PROPERTIES_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),   ///< latest known version
-    ZE_IMAGE_MEMORY_PROPERTIES_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_MEMORY_PROPERTIES_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_MEMORY_PROPERTIES_EXP_VERSION_* ENUMs
 
 } ze_image_memory_properties_exp_version_t;
 
@@ -7956,7 +9460,7 @@ typedef enum _ze_image_view_ext_version_t
 {
     ZE_IMAGE_VIEW_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                ///< version 1.0
     ZE_IMAGE_VIEW_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),            ///< latest known version
-    ZE_IMAGE_VIEW_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_VIEW_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_VIEW_EXT_VERSION_* ENUMs
 
 } ze_image_view_ext_version_t;
 
@@ -8018,7 +9522,7 @@ typedef enum _ze_image_view_exp_version_t
 {
     ZE_IMAGE_VIEW_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                ///< version 1.0
     ZE_IMAGE_VIEW_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),            ///< latest known version
-    ZE_IMAGE_VIEW_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_VIEW_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_VIEW_EXP_VERSION_* ENUMs
 
 } ze_image_view_exp_version_t;
 
@@ -8090,7 +9594,7 @@ typedef enum _ze_image_view_planar_ext_version_t
 {
     ZE_IMAGE_VIEW_PLANAR_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),         ///< version 1.0
     ZE_IMAGE_VIEW_PLANAR_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),     ///< latest known version
-    ZE_IMAGE_VIEW_PLANAR_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_VIEW_PLANAR_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_VIEW_PLANAR_EXT_VERSION_* ENUMs
 
 } ze_image_view_planar_ext_version_t;
 
@@ -8117,7 +9621,7 @@ typedef enum _ze_image_view_planar_exp_version_t
 {
     ZE_IMAGE_VIEW_PLANAR_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),         ///< version 1.0
     ZE_IMAGE_VIEW_PLANAR_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),     ///< latest known version
-    ZE_IMAGE_VIEW_PLANAR_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_VIEW_PLANAR_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_VIEW_PLANAR_EXP_VERSION_* ENUMs
 
 } ze_image_view_planar_exp_version_t;
 
@@ -8128,7 +9632,8 @@ typedef struct _ze_image_view_planar_exp_desc_t
     ze_structure_type_t stype;                                              ///< [in] type of this structure
     const void* pNext;                                                      ///< [in][optional] must be null or a pointer to an extension-specific
                                                                             ///< structure (i.e. contains stype and pNext).
-    uint32_t planeIndex;                                                    ///< [in] the 0-based plane index (e.g. NV12 is 0 = Y plane, 1 UV plane)
+    uint32_t planeIndex;                                                    ///< [DEPRECATED] no longer supported, use
+                                                                            ///< ::ze_image_view_planar_ext_desc_t instead
 
 } ze_image_view_planar_exp_desc_t;
 
@@ -8151,7 +9656,7 @@ typedef enum _ze_scheduling_hints_exp_version_t
 {
     ZE_SCHEDULING_HINTS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),          ///< version 1.0
     ZE_SCHEDULING_HINTS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),      ///< latest known version
-    ZE_SCHEDULING_HINTS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_SCHEDULING_HINTS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SCHEDULING_HINTS_EXP_VERSION_* ENUMs
 
 } ze_scheduling_hints_exp_version_t;
 
@@ -8163,7 +9668,7 @@ typedef enum _ze_scheduling_hint_exp_flag_t
     ZE_SCHEDULING_HINT_EXP_FLAG_OLDEST_FIRST = ZE_BIT(0),                   ///< Hint that the kernel prefers oldest-first scheduling
     ZE_SCHEDULING_HINT_EXP_FLAG_ROUND_ROBIN = ZE_BIT(1),                    ///< Hint that the kernel prefers round-robin scheduling
     ZE_SCHEDULING_HINT_EXP_FLAG_STALL_BASED_ROUND_ROBIN = ZE_BIT(2),        ///< Hint that the kernel prefers stall-based round-robin scheduling
-    ZE_SCHEDULING_HINT_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_SCHEDULING_HINT_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SCHEDULING_HINT_EXP_FLAG_* ENUMs
 
 } ze_scheduling_hint_exp_flag_t;
 
@@ -8250,7 +9755,7 @@ typedef enum _ze_linkonce_odr_ext_version_t
 {
     ZE_LINKONCE_ODR_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),              ///< version 1.0
     ZE_LINKONCE_ODR_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),          ///< latest known version
-    ZE_LINKONCE_ODR_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_LINKONCE_ODR_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_LINKONCE_ODR_EXT_VERSION_* ENUMs
 
 } ze_linkonce_odr_ext_version_t;
 
@@ -8273,7 +9778,7 @@ typedef enum _ze_power_saving_hint_exp_version_t
 {
     ZE_POWER_SAVING_HINT_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),         ///< version 1.0
     ZE_POWER_SAVING_HINT_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),     ///< latest known version
-    ZE_POWER_SAVING_HINT_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_POWER_SAVING_HINT_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_POWER_SAVING_HINT_EXP_VERSION_* ENUMs
 
 } ze_power_saving_hint_exp_version_t;
 
@@ -8285,7 +9790,7 @@ typedef enum _ze_power_saving_hint_type_t
                                                                             ///< while executing work submitted to this context.
     ZE_POWER_SAVING_HINT_TYPE_MAX = 100,                                    ///< Maximum power savings. The device will do everything to bring power to
                                                                             ///< a minimum while executing work submitted to this context.
-    ZE_POWER_SAVING_HINT_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_POWER_SAVING_HINT_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_POWER_SAVING_HINT_TYPE_* ENUMs
 
 } ze_power_saving_hint_type_t;
 
@@ -8320,7 +9825,7 @@ typedef enum _ze_subgroup_ext_version_t
 {
     ZE_SUBGROUP_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                  ///< version 1.0
     ZE_SUBGROUP_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),              ///< latest known version
-    ZE_SUBGROUP_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_SUBGROUP_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SUBGROUP_EXT_VERSION_* ENUMs
 
 } ze_subgroup_ext_version_t;
 
@@ -8343,7 +9848,7 @@ typedef enum _ze_eu_count_ext_version_t
 {
     ZE_EU_COUNT_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                  ///< version 1.0
     ZE_EU_COUNT_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),              ///< latest known version
-    ZE_EU_COUNT_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_EU_COUNT_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EU_COUNT_EXT_VERSION_* ENUMs
 
 } ze_eu_count_ext_version_t;
 
@@ -8382,7 +9887,7 @@ typedef enum _ze_pci_properties_ext_version_t
 {
     ZE_PCI_PROPERTIES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),            ///< version 1.0
     ZE_PCI_PROPERTIES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),        ///< latest known version
-    ZE_PCI_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_PCI_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_PCI_PROPERTIES_EXT_VERSION_* ENUMs
 
 } ze_pci_properties_ext_version_t;
 
@@ -8475,7 +9980,7 @@ typedef enum _ze_srgb_ext_version_t
 {
     ZE_SRGB_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                      ///< version 1.0
     ZE_SRGB_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),                  ///< latest known version
-    ZE_SRGB_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_SRGB_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SRGB_EXT_VERSION_* ENUMs
 
 } ze_srgb_ext_version_t;
 
@@ -8514,7 +10019,7 @@ typedef enum _ze_image_copy_ext_version_t
 {
     ZE_IMAGE_COPY_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),                ///< version 1.0
     ZE_IMAGE_COPY_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),            ///< latest known version
-    ZE_IMAGE_COPY_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_COPY_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_COPY_EXT_VERSION_* ENUMs
 
 } ze_image_copy_ext_version_t;
 
@@ -8665,7 +10170,7 @@ typedef enum _ze_image_query_alloc_properties_ext_version_t
 {
     ZE_IMAGE_QUERY_ALLOC_PROPERTIES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_IMAGE_QUERY_ALLOC_PROPERTIES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_IMAGE_QUERY_ALLOC_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_QUERY_ALLOC_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_QUERY_ALLOC_PROPERTIES_EXT_VERSION_* ENUMs
 
 } ze_image_query_alloc_properties_ext_version_t;
 
@@ -8724,7 +10229,7 @@ typedef enum _ze_linkage_inspection_ext_version_t
 {
     ZE_LINKAGE_INSPECTION_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),        ///< version 1.0
     ZE_LINKAGE_INSPECTION_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),    ///< latest known version
-    ZE_LINKAGE_INSPECTION_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_LINKAGE_INSPECTION_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_LINKAGE_INSPECTION_EXT_VERSION_* ENUMs
 
 } ze_linkage_inspection_ext_version_t;
 
@@ -8736,7 +10241,7 @@ typedef enum _ze_linkage_inspection_ext_flag_t
     ZE_LINKAGE_INSPECTION_EXT_FLAG_IMPORTS = ZE_BIT(0),                     ///< List all imports of modules
     ZE_LINKAGE_INSPECTION_EXT_FLAG_UNRESOLVABLE_IMPORTS = ZE_BIT(1),        ///< List all imports of modules that do not have a corresponding export
     ZE_LINKAGE_INSPECTION_EXT_FLAG_EXPORTS = ZE_BIT(2),                     ///< List all exports of modules
-    ZE_LINKAGE_INSPECTION_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_LINKAGE_INSPECTION_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_LINKAGE_INSPECTION_EXT_FLAG_* ENUMs
 
 } ze_linkage_inspection_ext_flag_t;
 
@@ -8807,7 +10312,7 @@ typedef enum _ze_memory_compression_hints_ext_version_t
 {
     ZE_MEMORY_COMPRESSION_HINTS_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_MEMORY_COMPRESSION_HINTS_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_MEMORY_COMPRESSION_HINTS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_COMPRESSION_HINTS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_COMPRESSION_HINTS_EXT_VERSION_* ENUMs
 
 } ze_memory_compression_hints_ext_version_t;
 
@@ -8818,7 +10323,7 @@ typedef enum _ze_memory_compression_hints_ext_flag_t
 {
     ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_COMPRESSED = ZE_BIT(0),            ///< Hint Driver implementation to make allocation compressible
     ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_UNCOMPRESSED = ZE_BIT(1),          ///< Hint Driver implementation to make allocation not compressible
-    ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_* ENUMs
 
 } ze_memory_compression_hints_ext_flag_t;
 
@@ -8862,7 +10367,7 @@ typedef enum _ze_memory_free_policies_ext_version_t
 {
     ZE_MEMORY_FREE_POLICIES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),      ///< version 1.0
     ZE_MEMORY_FREE_POLICIES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_MEMORY_FREE_POLICIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_MEMORY_FREE_POLICIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MEMORY_FREE_POLICIES_EXT_VERSION_* ENUMs
 
 } ze_memory_free_policies_ext_version_t;
 
@@ -8871,9 +10376,16 @@ typedef enum _ze_memory_free_policies_ext_version_t
 typedef uint32_t ze_driver_memory_free_policy_ext_flags_t;
 typedef enum _ze_driver_memory_free_policy_ext_flag_t
 {
-    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_BLOCKING_FREE = ZE_BIT(0),        ///< blocks until all commands using the memory are complete before freeing
-    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_DEFER_FREE = ZE_BIT(1),           ///< schedules the memory to be freed but does not free immediately
-    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_BLOCKING_FREE = ZE_BIT(0),        ///< Blocks until all commands using the memory are complete before
+                                                                            ///< scheduling memory to be freed. Does not guarantee memory is freed upon
+                                                                            ///< return, only that it is safe and is scheduled to be freed. Actual
+                                                                            ///< freeing of memory is specific to user mode driver and kernel mode
+                                                                            ///< driver implementation and may be done asynchronously.
+    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_DEFER_FREE = ZE_BIT(1),           ///< Immediately schedules the memory to be freed and returns without
+                                                                            ///< blocking. Memory may be freed after all commands using the memory are
+                                                                            ///< complete. Actual freeing of memory is specific to user mode driver and
+                                                                            ///< kernel mode driver implementation and may be done asynchronously.
+    ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DRIVER_MEMORY_FREE_POLICY_EXT_FLAG_* ENUMs
 
 } ze_driver_memory_free_policy_ext_flag_t;
 
@@ -8909,11 +10421,13 @@ typedef struct _ze_memory_free_ext_desc_t
 } ze_memory_free_ext_desc_t;
 
 ///////////////////////////////////////////////////////////////////////////////
-/// @brief Frees allocated host memory, device memory, or shared memory using the
-///        specified free policy.
+/// @brief Frees allocated host memory, device memory, or shared memory on the
+///        context using the specified free policy.
 /// 
 /// @details
-///     - The memory free policy is specified by the memory free descriptor.
+///     - Similar to zeMemFree, with added parameter to choose the free policy.
+///     - Does not gaurantee memory is freed upon return. See free policy
+///       descriptions for details.
 ///     - The application must **not** call this function from simultaneous
 ///       threads with the same pointer.
 ///     - The implementation of this function must be thread-safe.
@@ -9012,7 +10526,7 @@ typedef enum _ze_device_luid_ext_version_t
 {
     ZE_DEVICE_LUID_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),               ///< version 1.0
     ZE_DEVICE_LUID_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),           ///< latest known version
-    ZE_DEVICE_LUID_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_LUID_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_LUID_EXT_VERSION_* ENUMs
 
 } ze_device_luid_ext_version_t;
 
@@ -9084,7 +10598,7 @@ typedef enum _ze_fabric_vertex_exp_type_t
     ZE_FABRIC_VERTEX_EXP_TYPE_DEVICE = 1,                                   ///< Fabric vertex represents a device
     ZE_FABRIC_VERTEX_EXP_TYPE_SUBDEVICE = 2,                                ///< Fabric vertex represents a subdevice
     ZE_FABRIC_VERTEX_EXP_TYPE_SWITCH = 3,                                   ///< Fabric vertex represents a switch
-    ZE_FABRIC_VERTEX_EXP_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_FABRIC_VERTEX_EXP_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_FABRIC_VERTEX_EXP_TYPE_* ENUMs
 
 } ze_fabric_vertex_exp_type_t;
 
@@ -9097,7 +10611,7 @@ typedef enum _ze_fabric_edge_exp_duplexity_t
                                                                             ///< one direction at time
     ZE_FABRIC_EDGE_EXP_DUPLEXITY_FULL_DUPLEX = 2,                           ///< Fabric edge is full duplex, i.e. stated bandwidth is supported in both
                                                                             ///< directions simultaneously
-    ZE_FABRIC_EDGE_EXP_DUPLEXITY_FORCE_UINT32 = 0x7fffffff
+    ZE_FABRIC_EDGE_EXP_DUPLEXITY_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_FABRIC_EDGE_EXP_DUPLEXITY_* ENUMs
 
 } ze_fabric_edge_exp_duplexity_t;
 
@@ -9399,7 +10913,7 @@ typedef enum _ze_device_memory_properties_ext_version_t
 {
     ZE_DEVICE_MEMORY_PROPERTIES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_DEVICE_MEMORY_PROPERTIES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_DEVICE_MEMORY_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_MEMORY_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_MEMORY_PROPERTIES_EXT_VERSION_* ENUMs
 
 } ze_device_memory_properties_ext_version_t;
 
@@ -9429,7 +10943,7 @@ typedef enum _ze_device_memory_ext_type_t
     ZE_DEVICE_MEMORY_EXT_TYPE_GDDR6 = 19,                                   ///< GDDR6 memory
     ZE_DEVICE_MEMORY_EXT_TYPE_GDDR6X = 20,                                  ///< GDDR6X memory
     ZE_DEVICE_MEMORY_EXT_TYPE_GDDR7 = 21,                                   ///< GDDR7 memory
-    ZE_DEVICE_MEMORY_EXT_TYPE_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_MEMORY_EXT_TYPE_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_MEMORY_EXT_TYPE_* ENUMs
 
 } ze_device_memory_ext_type_t;
 
@@ -9473,7 +10987,7 @@ typedef enum _ze_bfloat16_conversions_ext_version_t
 {
     ZE_BFLOAT16_CONVERSIONS_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),      ///< version 1.0
     ZE_BFLOAT16_CONVERSIONS_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_BFLOAT16_CONVERSIONS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_BFLOAT16_CONVERSIONS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_BFLOAT16_CONVERSIONS_EXT_VERSION_* ENUMs
 
 } ze_bfloat16_conversions_ext_version_t;
 
@@ -9496,7 +11010,7 @@ typedef enum _ze_device_ip_version_version_t
 {
     ZE_DEVICE_IP_VERSION_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),             ///< version 1.0
     ZE_DEVICE_IP_VERSION_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),         ///< latest known version
-    ZE_DEVICE_IP_VERSION_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_DEVICE_IP_VERSION_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_DEVICE_IP_VERSION_VERSION_* ENUMs
 
 } ze_device_ip_version_version_t;
 
@@ -9536,7 +11050,7 @@ typedef enum _ze_kernel_max_group_size_properties_ext_version_t
 {
     ZE_KERNEL_MAX_GROUP_SIZE_PROPERTIES_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_KERNEL_MAX_GROUP_SIZE_PROPERTIES_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_KERNEL_MAX_GROUP_SIZE_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_KERNEL_MAX_GROUP_SIZE_PROPERTIES_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_KERNEL_MAX_GROUP_SIZE_PROPERTIES_EXT_VERSION_* ENUMs
 
 } ze_kernel_max_group_size_properties_ext_version_t;
 
@@ -9581,7 +11095,7 @@ typedef enum _ze_sub_allocations_exp_version_t
 {
     ZE_SUB_ALLOCATIONS_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),           ///< version 1.0
     ZE_SUB_ALLOCATIONS_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),       ///< latest known version
-    ZE_SUB_ALLOCATIONS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_SUB_ALLOCATIONS_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_SUB_ALLOCATIONS_EXP_VERSION_* ENUMs
 
 } ze_sub_allocations_exp_version_t;
 
@@ -9635,7 +11149,7 @@ typedef enum _ze_event_query_kernel_timestamps_ext_version_t
 {
     ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ), ///< version 1.0
     ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ), ///< latest known version
-    ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_VERSION_* ENUMs
 
 } ze_event_query_kernel_timestamps_ext_version_t;
 
@@ -9646,7 +11160,7 @@ typedef enum _ze_event_query_kernel_timestamps_ext_flag_t
 {
     ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_FLAG_KERNEL = ZE_BIT(0),           ///< Kernel timestamp results
     ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_FLAG_SYNCHRONIZED = ZE_BIT(1),     ///< Device event timestamps synchronized to the host time domain
-    ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_QUERY_KERNEL_TIMESTAMPS_EXT_FLAG_* ENUMs
 
 } ze_event_query_kernel_timestamps_ext_flag_t;
 
@@ -9775,7 +11289,7 @@ typedef enum _ze_rtas_builder_exp_version_t
 {
     ZE_RTAS_BUILDER_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),              ///< version 1.0
     ZE_RTAS_BUILDER_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),          ///< latest known version
-    ZE_RTAS_BUILDER_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_EXP_VERSION_* ENUMs
 
 } ze_rtas_builder_exp_version_t;
 
@@ -9785,7 +11299,7 @@ typedef uint32_t ze_rtas_device_exp_flags_t;
 typedef enum _ze_rtas_device_exp_flag_t
 {
     ZE_RTAS_DEVICE_EXP_FLAG_RESERVED = ZE_BIT(0),                           ///< reserved for future use
-    ZE_RTAS_DEVICE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_DEVICE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_DEVICE_EXP_FLAG_* ENUMs
 
 } ze_rtas_device_exp_flag_t;
 
@@ -9798,7 +11312,8 @@ typedef enum _ze_rtas_device_exp_flag_t
 typedef enum _ze_rtas_format_exp_t
 {
     ZE_RTAS_FORMAT_EXP_INVALID = 0,                                         ///< Invalid acceleration structure format
-    ZE_RTAS_FORMAT_EXP_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_FORMAT_EXP_MAX = 0x7ffffffe,                                    ///< Maximum acceleration structure format code
+    ZE_RTAS_FORMAT_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_FORMAT_EXP_* ENUMs
 
 } ze_rtas_format_exp_t;
 
@@ -9808,7 +11323,7 @@ typedef uint32_t ze_rtas_builder_exp_flags_t;
 typedef enum _ze_rtas_builder_exp_flag_t
 {
     ZE_RTAS_BUILDER_EXP_FLAG_RESERVED = ZE_BIT(0),                          ///< Reserved for future use
-    ZE_RTAS_BUILDER_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_EXP_FLAG_* ENUMs
 
 } ze_rtas_builder_exp_flag_t;
 
@@ -9818,7 +11333,7 @@ typedef uint32_t ze_rtas_parallel_operation_exp_flags_t;
 typedef enum _ze_rtas_parallel_operation_exp_flag_t
 {
     ZE_RTAS_PARALLEL_OPERATION_EXP_FLAG_RESERVED = ZE_BIT(0),               ///< Reserved for future use
-    ZE_RTAS_PARALLEL_OPERATION_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_PARALLEL_OPERATION_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_PARALLEL_OPERATION_EXP_FLAG_* ENUMs
 
 } ze_rtas_parallel_operation_exp_flag_t;
 
@@ -9828,7 +11343,7 @@ typedef uint32_t ze_rtas_builder_geometry_exp_flags_t;
 typedef enum _ze_rtas_builder_geometry_exp_flag_t
 {
     ZE_RTAS_BUILDER_GEOMETRY_EXP_FLAG_NON_OPAQUE = ZE_BIT(0),               ///< non-opaque geometries invoke an any-hit shader
-    ZE_RTAS_BUILDER_GEOMETRY_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_GEOMETRY_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_GEOMETRY_EXP_FLAG_* ENUMs
 
 } ze_rtas_builder_geometry_exp_flag_t;
 
@@ -9848,7 +11363,7 @@ typedef enum _ze_rtas_builder_instance_exp_flag_t
                                                                             ///< be non-opaque
     ZE_RTAS_BUILDER_INSTANCE_EXP_FLAG_TRIANGLE_FORCE_NON_OPAQUE = ZE_BIT(3),///< forces instanced geometry to be non-opaque, unless ray flag forces it
                                                                             ///< to be opaque
-    ZE_RTAS_BUILDER_INSTANCE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_INSTANCE_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_INSTANCE_EXP_FLAG_* ENUMs
 
 } ze_rtas_builder_instance_exp_flag_t;
 
@@ -9874,7 +11389,7 @@ typedef enum _ze_rtas_builder_build_op_exp_flag_t
 {
     ZE_RTAS_BUILDER_BUILD_OP_EXP_FLAG_COMPACT = ZE_BIT(0),                  ///< build more compact acceleration structure
     ZE_RTAS_BUILDER_BUILD_OP_EXP_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION = ZE_BIT(1),   ///< guarantees single any-hit shader invocation per primitive
-    ZE_RTAS_BUILDER_BUILD_OP_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_BUILD_OP_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_BUILD_OP_EXP_FLAG_* ENUMs
 
 } ze_rtas_builder_build_op_exp_flag_t;
 
@@ -9897,7 +11412,7 @@ typedef enum _ze_rtas_builder_build_quality_hint_exp_t
     ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_LOW = 0,                         ///< build low-quality acceleration structure (fast)
     ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_MEDIUM = 1,                      ///< build medium-quality acceleration structure (slower)
     ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_HIGH = 2,                        ///< build high-quality acceleration structure (slow)
-    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_* ENUMs
 
 } ze_rtas_builder_build_quality_hint_exp_t;
 
@@ -9909,7 +11424,7 @@ typedef enum _ze_rtas_builder_geometry_type_exp_t
     ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_QUADS = 1,                            ///< quad mesh geometry type
     ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_PROCEDURAL = 2,                       ///< procedural geometry type
     ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_INSTANCE = 3,                         ///< instance geometry type
-    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_GEOMETRY_TYPE_EXP_* ENUMs
 
 } ze_rtas_builder_geometry_type_exp_t;
 
@@ -9938,7 +11453,7 @@ typedef enum _ze_rtas_builder_input_data_format_exp_t
     ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXP_TRIANGLE_INDICES_UINT32 = 5,      ///< Unsigned 32-bit triangle indices (see
                                                                             ///< ::ze_rtas_triangle_indices_uint32_exp_t)
     ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXP_QUAD_INDICES_UINT32 = 6,          ///< Unsigned 32-bit quad indices (see ::ze_rtas_quad_indices_uint32_exp_t)
-    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXP_FORCE_UINT32 = 0x7fffffff
+    ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXP_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_RTAS_BUILDER_INPUT_DATA_FORMAT_EXP_* ENUMs
 
 } ze_rtas_builder_input_data_format_exp_t;
 
@@ -10387,7 +11902,7 @@ zeRTASBuilderCreateExp(
 ///         + `nullptr == pBuildOpDescriptor`
 ///         + `nullptr == pProperties`
 ///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
-///         + `::ZE_RTAS_FORMAT_EXP_INVALID < pBuildOpDescriptor->rtasFormat`
+///         + `::ZE_RTAS_FORMAT_EXP_MAX < pBuildOpDescriptor->rtasFormat`
 ///         + `::ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_HIGH < pBuildOpDescriptor->buildQuality`
 ///         + `0x3 < pBuildOpDescriptor->buildFlags`
 ZE_APIEXPORT ze_result_t ZE_APICALL
@@ -10413,8 +11928,8 @@ zeRTASBuilderGetBuildPropertiesExp(
 ///     - ::ZE_RESULT_ERROR_INVALID_NULL_HANDLE
 ///         + `nullptr == hDriver`
 ///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
-///         + `::ZE_RTAS_FORMAT_EXP_INVALID < rtasFormatA`
-///         + `::ZE_RTAS_FORMAT_EXP_INVALID < rtasFormatB`
+///         + `::ZE_RTAS_FORMAT_EXP_MAX < rtasFormatA`
+///         + `::ZE_RTAS_FORMAT_EXP_MAX < rtasFormatB`
 ///     - ::ZE_RESULT_SUCCESS
 ///         + An acceleration structure built with `rtasFormatA` is compatible with devices that report `rtasFormatB`.
 ///     - ::ZE_RESULT_EXP_ERROR_OPERANDS_INCOMPATIBLE
@@ -10489,7 +12004,7 @@ zeDriverRTASFormatCompatibilityCheckExp(
 ///         + `nullptr == pScratchBuffer`
 ///         + `nullptr == pRtasBuffer`
 ///     - ::ZE_RESULT_ERROR_INVALID_ENUMERATION
-///         + `::ZE_RTAS_FORMAT_EXP_INVALID < pBuildOpDescriptor->rtasFormat`
+///         + `::ZE_RTAS_FORMAT_EXP_MAX < pBuildOpDescriptor->rtasFormat`
 ///         + `::ZE_RTAS_BUILDER_BUILD_QUALITY_HINT_EXP_HIGH < pBuildOpDescriptor->buildQuality`
 ///         + `0x3 < pBuildOpDescriptor->buildFlags`
 ///     - ::ZE_RESULT_EXP_RTAS_BUILD_DEFERRED
@@ -10658,7 +12173,7 @@ typedef enum _ze_event_pool_counter_based_exp_version_t
 {
     ZE_EVENT_POOL_COUNTER_BASED_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),  ///< version 1.0
     ZE_EVENT_POOL_COUNTER_BASED_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),  ///< latest known version
-    ZE_EVENT_POOL_COUNTER_BASED_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_POOL_COUNTER_BASED_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_POOL_COUNTER_BASED_EXP_VERSION_* ENUMs
 
 } ze_event_pool_counter_based_exp_version_t;
 
@@ -10669,7 +12184,7 @@ typedef enum _ze_event_pool_counter_based_exp_flag_t
 {
     ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_IMMEDIATE = ZE_BIT(0),             ///< Counter-based event pool is used for immediate command lists (default)
     ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_NON_IMMEDIATE = ZE_BIT(1),         ///< Counter-based event pool is for non-immediate command lists
-    ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_EVENT_POOL_COUNTER_BASED_EXP_FLAG_* ENUMs
 
 } ze_event_pool_counter_based_exp_flag_t;
 
@@ -10708,7 +12223,7 @@ typedef enum _ze_bindless_image_exp_version_t
 {
     ZE_BINDLESS_IMAGE_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),            ///< version 1.0
     ZE_BINDLESS_IMAGE_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),        ///< latest known version
-    ZE_BINDLESS_IMAGE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_BINDLESS_IMAGE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_BINDLESS_IMAGE_EXP_VERSION_* ENUMs
 
 } ze_bindless_image_exp_version_t;
 
@@ -10722,7 +12237,7 @@ typedef enum _ze_image_bindless_exp_flag_t
     ZE_IMAGE_BINDLESS_EXP_FLAG_SAMPLED_IMAGE = ZE_BIT(1),                   ///< Bindless sampled images are created with ::zeImageCreate by combining
                                                                             ///< BINDLESS and SAMPLED_IMAGE.
                                                                             ///< Create sampled image view from bindless unsampled image using SAMPLED_IMAGE.
-    ZE_IMAGE_BINDLESS_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_IMAGE_BINDLESS_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMAGE_BINDLESS_EXP_FLAG_* ENUMs
 
 } ze_image_bindless_exp_flag_t;
 
@@ -10851,7 +12366,7 @@ typedef enum _ze_command_list_clone_exp_version_t
 {
     ZE_COMMAND_LIST_CLONE_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),        ///< version 1.0
     ZE_COMMAND_LIST_CLONE_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ),    ///< latest known version
-    ZE_COMMAND_LIST_CLONE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_COMMAND_LIST_CLONE_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_COMMAND_LIST_CLONE_EXP_VERSION_* ENUMs
 
 } ze_command_list_clone_exp_version_t;
 
@@ -10908,7 +12423,7 @@ typedef enum _ze_immediate_command_list_append_exp_version_t
 {
     ZE_IMMEDIATE_COMMAND_LIST_APPEND_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ), ///< version 1.0
     ZE_IMMEDIATE_COMMAND_LIST_APPEND_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 0 ), ///< latest known version
-    ZE_IMMEDIATE_COMMAND_LIST_APPEND_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_IMMEDIATE_COMMAND_LIST_APPEND_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_IMMEDIATE_COMMAND_LIST_APPEND_EXP_VERSION_* ENUMs
 
 } ze_immediate_command_list_append_exp_version_t;
 
@@ -10970,7 +12485,7 @@ typedef enum _ze_mutable_command_list_exp_version_t
     ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_1_0 = ZE_MAKE_VERSION( 1, 0 ),      ///< version 1.0
     ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_1_1 = ZE_MAKE_VERSION( 1, 1 ),      ///< version 1.1
     ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_CURRENT = ZE_MAKE_VERSION( 1, 1 ),  ///< latest known version
-    ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_FORCE_UINT32 = 0x7fffffff
+    ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MUTABLE_COMMAND_LIST_EXP_VERSION_* ENUMs
 
 } ze_mutable_command_list_exp_version_t;
 
@@ -10987,7 +12502,7 @@ typedef enum _ze_mutable_command_exp_flag_t
     ZE_MUTABLE_COMMAND_EXP_FLAG_WAIT_EVENTS = ZE_BIT(5),                    ///< command wait events
     ZE_MUTABLE_COMMAND_EXP_FLAG_KERNEL_INSTRUCTION = ZE_BIT(6),             ///< command kernel
     ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENTS = ZE_BIT(7),                ///< graph arguments
-    ZE_MUTABLE_COMMAND_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MUTABLE_COMMAND_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MUTABLE_COMMAND_EXP_FLAG_* ENUMs
 
 } ze_mutable_command_exp_flag_t;
 
@@ -11012,7 +12527,7 @@ typedef uint32_t ze_mutable_command_list_exp_flags_t;
 typedef enum _ze_mutable_command_list_exp_flag_t
 {
     ZE_MUTABLE_COMMAND_LIST_EXP_FLAG_RESERVED = ZE_BIT(0),                  ///< reserved
-    ZE_MUTABLE_COMMAND_LIST_EXP_FLAG_FORCE_UINT32 = 0x7fffffff
+    ZE_MUTABLE_COMMAND_LIST_EXP_FLAG_FORCE_UINT32 = 0x7fffffff, ///< Value marking end of ZE_MUTABLE_COMMAND_LIST_EXP_FLAG_* ENUMs
 
 } ze_mutable_command_list_exp_flag_t;
 

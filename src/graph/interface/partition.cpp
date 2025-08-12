@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -618,7 +618,7 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
         size_t seed = 0;
         seed = partition_hashing::get_unordered_array_hash(seed, key.ins_);
         seed = partition_hashing::get_unordered_array_hash(seed, key.outs_);
-        std::stringstream filename;
+        dnnl::impl::stringstream_t filename;
         filename << "graph-" << id() << "-" << seed << ".json";
         agraph.serialize(filename.str());
     }
@@ -679,10 +679,17 @@ status_t dnnl_graph_partition::compile(
 
     compiled_partition.first->init(result.value->pimpl_);
     compiled_partition.second = context.cache_status;
+    if (context.cache_status == cache_state_t::compiled_partition_hit
+            && aengine != compiled_partition.first->get_engine()) {
+        compiled_partition_t *cp = compiled_partition.first;
+        cp->reset_engine(aengine);
+    }
 
     return result.status;
 }
-
+status_t dnnl_graph_compiled_partition::reset_engine(const engine_t *e) {
+    return pimpl_->reset_engine(e);
+}
 status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) const {

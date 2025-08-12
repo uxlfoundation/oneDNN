@@ -93,7 +93,7 @@ int getenv_int_internal(const char *name, int default_value);
 bool check_verbose_string_user(const char *name, const char *expected);
 
 inline std::string thread_id_to_str(std::thread::id id) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << id;
     return ss.str();
 }
@@ -108,7 +108,7 @@ inline int div_and_floor(float x, float y) {
 
 template <typename T, typename... Args>
 inline std::string set2str(const std::set<T, Args...> &obj) {
-    std::ostringstream oss;
+    ostringstream_t oss;
 
     oss << '{';
     auto it = obj.cbegin();
@@ -123,7 +123,7 @@ inline std::string set2str(const std::set<T, Args...> &obj) {
 
 template <typename T, typename F, typename... Args>
 inline std::string set2str(const std::set<T, Args...> &obj, F f) {
-    std::ostringstream oss;
+    ostringstream_t oss;
 
     oss << '{';
     auto it = obj.cbegin();
@@ -138,7 +138,7 @@ inline std::string set2str(const std::set<T, Args...> &obj, F f) {
 
 inline std::vector<std::string> split(const std::string &str, char delimiter) {
     std::vector<std::string> strs;
-    std::istringstream f(str);
+    dnnl::impl::istringstream_t f(str);
     std::string s;
     while (std::getline(f, s, delimiter)) {
         strs.push_back(s);

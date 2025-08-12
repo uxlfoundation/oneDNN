@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/tag_traits.hpp"
 #include "gpu/gpu_gemm_pd.hpp"
 #include "gpu/intel/gpu_post_ops.hpp"
 
@@ -66,7 +67,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     const std::vector<binary_src_t> &binary_srcs() const {
         return binary_srcs_;
     }
-    bool valid_2d_mask(int mask, int ndims);
+    bool valid_2d_mask(int mask, int ndims, bool per_tensor_ok = true);
 
     float beta_ = 0.0f;
 
@@ -74,39 +75,33 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     bool sum_at_begin_ = false;
 
     bool bias_via_binary_ = false;
-    bool wei_scales_2d_ = false;
-    bool src_scales_2d_ = false;
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    int wei_q2d_group_k_ = 0;
-    int src_q2d_group_k_ = 0;
-    bool src_po_sc_ = false;
-    data_type_t wei_scales_type_ = data_type::undef;
-    data_type_t src_scales_type_ = data_type::undef;
+    int a_q2d_group_k_ = 0;
+    int b_q2d_group_k_ = 0;
+    data_type_t a_scales_type_ = data_type::undef;
+    data_type_t b_scales_type_ = data_type::undef;
 
     int ao_dims_ = -1, bo_dims_ = -1;
+    int asc_dims_ = -1, bsc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
 
-    int zp_group_k_a_ = -1;
-    int zp_group_k_b_ = -1;
+    int cmask_a_ = INT_MIN;
+    int cmask_b_ = INT_MIN;
+    int cmask_c_ = INT_MIN;
 
-    int cmask_a_ = -1;
-    int cmask_b_ = -1;
-    int cmask_c_ = -1;
-
-    int src_scales_group_k_ = -1;
-    int wei_scales_group_k_ = -1;
+    int b_scales_group_k_ = -1;
+    int a_scales_group_k_ = -1;
 
     const int mask_scalar = 1 << 0;
     const int mask_per_oc = 1 << 1;
     const int mask_per_ic = 1 << 2;
 
     const int idx_a = DNNL_ARG_WEIGHTS;
-    memory_desc_t wei_scales_md, src_scales_md, c_scales_md, prelu_wei_md;
+    memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
     bool swap_ab_ = false;
-    bool a_zp_ = false, b_zp_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
     bool with_sround_ = false;
@@ -134,8 +129,8 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         return sum_ab();
     }
 
-    bool wei_zp_2d() const { return ao_dims_ == 2; }
-    bool src_zp_2d() const { return bo_dims_ == 2; }
+    bool a_zp_2d() const { return ao_dims_ == 2; }
+    bool b_zp_2d() const { return bo_dims_ == 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
@@ -147,6 +142,11 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
             case sum_ab::sum_b_col: return 2;
         }
     }
+    bool with_a_scales() const { return (asc_dims_ >= 0); }
+    bool with_b_scales() const { return (bsc_dims_ >= 0); }
+    bool with_c_scales() const {
+        return !attr()->scales_.has_default_values(DNNL_ARG_DST);
+    }
 
     bool with_a_zero_points() const { return (ao_dims_ >= 0); }
     bool with_b_zero_points() const { return (bo_dims_ >= 0); }
@@ -155,12 +155,9 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     }
     bool with_sround() const { return with_sround_; }
 
-    bool wei_scales_2d() const { return wei_scales_2d_; }
-    bool src_scales_2d() const { return src_scales_2d_; }
+    bool a_scales_2d() const { return asc_dims_ > 1; }
+    bool b_scales_2d() const { return bsc_dims_ > 1; }
 
-    bool quant_attr_2d(int arg, const quant_entries_t &attr) const;
-
-    int quant_attr_cmask(int arg, const quant_entries_t &attr) const;
     bool dy_quant_enabled();
     bool wei_decomp();
     bool quant_enabled();
@@ -190,6 +187,9 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     data_type_t eff_b_type() const {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
+    dim_t eff_scale_stride(int idx, int arg) const;
+    void quant_entry_init(const quant_entry_t &entry, const memory_desc_t &md,
+            memory_desc_t &quant_md);
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

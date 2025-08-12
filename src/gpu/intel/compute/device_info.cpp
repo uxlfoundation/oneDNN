@@ -19,10 +19,10 @@
 #include <type_traits>
 
 #include "common/type_helpers.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
+#include "ngen.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/engine.hpp"
@@ -40,8 +40,6 @@ uint64_t get_future_extensions(
 
     uint64_t extensions = 0;
     switch (gpu_arch) {
-        case gpu_arch_t::gen9:
-        case gpu_arch_t::gen11: break;
         case gpu_arch_t::xe_hp:
         case gpu_arch_t::xe_hpg:
         case gpu_arch_t::xe2:
@@ -72,15 +70,43 @@ uint64_t get_future_extensions(
     return extensions;
 }
 
+int device_info_t::stepping_id() const {
+    ngen::Product p = jit::get_ngen_product(*this);
+    return p.stepping;
+}
+
 bool device_info_t::is_integrated() const {
-    auto family = static_cast<ngen::ProductFamily>(gpu_product_family_);
-    return ngen::getPlatformType(family) == ngen::PlatformType::Integrated;
+    ngen::Product p = jit::get_ngen_product(*this);
+    return p.type == ngen::PlatformType::Integrated;
+}
+
+std::string device_info_t::get_cl_ext_options() const {
+    using namespace compute;
+
+    std::string opts;
+    for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
+            i_ext <<= 1) {
+        auto ext = (device_ext_t)i_ext;
+
+        // Use real GPU extensions
+        if (!has(ext)) continue;
+
+        // These extensions are not handled properly by the OpenCL runtime.
+        // Pass macros for them manually.
+        if (utils::one_of(ext, device_ext_t::intel_global_float_atomics,
+                    device_ext_t::intel_subgroup_matrix_multiply_accumulate,
+                    device_ext_t::
+                            intel_subgroup_split_matrix_multiply_accumulate,
+                    device_ext_t::intel_global_float_atomics,
+                    device_ext_t::future_bf16_cvt,
+                    device_ext_t::intel_dot_accumulate))
+            opts += std::string("-D") + ext2cl_str(ext) + " ";
+    }
+    return opts;
 }
 
 bool device_info_t::mayiuse_sub_group(int size) const {
     switch (gpu_arch()) {
-        case gpu_arch_t::gen9:
-        case gpu_arch_t::gen11:
         case gpu_arch_t::xe_lp:
         case gpu_arch_t::xe_hp:
         case gpu_arch_t::xe_hpg: return utils::one_of(size, 8, 16, 32);
@@ -118,8 +144,6 @@ bool device_info_t::has_native(data_type_t type) const {
 
 int device_info_t::max_eus_per_wg(gpu_arch_t gpu_arch) {
     switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::gen9:
-        case gpu::intel::compute::gpu_arch_t::gen11:
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
@@ -139,8 +163,6 @@ int device_info_t::max_eus_per_wg(gpu_arch_t gpu_arch) {
 
 int device_info_t::max_subgroup_size(gpu_arch_t gpu_arch) {
     switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::gen9: return 16;
-        case gpu::intel::compute::gpu_arch_t::gen11:
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
@@ -165,8 +187,6 @@ int device_info_t::grf_size(gpu_arch_t gpu_arch) {
 
 int device_info_t::min_subgroup_size() const {
     switch (gpu_arch()) {
-        case gpu_arch_t::gen9:
-        case gpu_arch_t::gen11:
         case gpu_arch_t::xe_lp:
         case gpu_arch_t::xe_hp:
         case gpu_arch_t::xe_hpg: return 8;
@@ -221,8 +241,6 @@ size_t device_info_t::max_wg_size(
 
 int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
     switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::gen9:
-        case gpu::intel::compute::gpu_arch_t::gen11:
         case gpu::intel::compute::gpu_arch_t::xe_lp: return 7;
         case gpu::intel::compute::gpu_arch_t::xe_hp:
         case gpu::intel::compute::gpu_arch_t::xe_hpg:
@@ -244,8 +262,6 @@ int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
 int device_info_t::max_slm_size(gpu_arch_t gpu_arch) {
     int slm_size = 0; // SLM size per SS or DSS.
     switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::gen9:
-        case gpu::intel::compute::gpu_arch_t::gen11:
         case gpu::intel::compute::gpu_arch_t::xe_lp:
             slm_size = (1 << 16);
             break;
@@ -288,8 +304,6 @@ int device_info_t::max_slm_size_per_tg(
 
 size_t device_info_t::icache_size() const {
     switch (gpu_arch_) {
-        case gpu::intel::compute::gpu_arch_t::gen9:
-        case gpu::intel::compute::gpu_arch_t::gen11:
         case gpu::intel::compute::gpu_arch_t::xe_lp:
         case gpu::intel::compute::gpu_arch_t::xe_hp: return 48 * 1024;
         case gpu::intel::compute::gpu_arch_t::xe_hpg: return 96 * 1024;
@@ -340,8 +354,7 @@ status_t device_info_t::init_serialized_device_info(
     }
 
     serialized_device_info_.append(gpu_arch_);
-    serialized_device_info_.append(gpu_product_family_);
-    serialized_device_info_.append(stepping_id_);
+    serialized_device_info_.append(gpu_product_);
     serialized_device_info_.append(ip_version_);
     serialized_device_info_.append(runtime_version_.major);
     serialized_device_info_.append(runtime_version_.minor);
@@ -380,8 +393,7 @@ status_t device_info_t::init_from_cache_blob(
     pos += sizeof(expected_type);
 
     DESERIALIZE(gpu_arch_, compute::gpu_arch_t);
-    DESERIALIZE(gpu_product_family_, int);
-    DESERIALIZE(stepping_id_, int);
+    DESERIALIZE(gpu_product_, compute::gpu_product_t);
     DESERIALIZE(ip_version_, uint32_t);
     DESERIALIZE(runtime_version_.major, int);
     DESERIALIZE(runtime_version_.minor, int);
@@ -423,11 +435,10 @@ void device_info_t::fixup_l3_cache_size() {
     }
 }
 
-gpu_arch_t gpu_arch(impl::engine_t *engine) {
-    return utils::downcast<compute_engine_t *>(engine)
-            ->device_info()
-            ->gpu_arch();
-}
+static_assert(std::is_trivially_copyable<ngen::Product>(),
+        "ngen::Product cannot safely be copied into gpu_product_t");
+static_assert(sizeof(ngen::Product) == sizeof(compute::gpu_product_t),
+        "ngen::Product cannot safely be copied into gpu_product_t");
 
 } // namespace compute
 } // namespace intel

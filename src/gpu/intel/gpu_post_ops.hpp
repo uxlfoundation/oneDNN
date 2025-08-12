@@ -20,7 +20,6 @@
 #include "common/primitive_attr.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,6 +31,10 @@ const alg_kind_t binary_prelu = eltwise_relu;
 
 namespace gpu {
 namespace intel {
+
+namespace jit {
+class expr_t;
+} // namespace jit
 
 namespace post_op {
 
@@ -207,7 +210,9 @@ struct relative_md_t {
         rmd.broadcast_mask = ~0;
         uint16_t mask_bit = 1;
         for (int i = ndims - 1; i >= 0; i--) {
-            if (ndim_normalizer.dim(i, md) > 1) rmd.broadcast_mask &= ~mask_bit;
+            auto d = ndim_normalizer.dim(i, md);
+            if (d > 1 || d == DNNL_RUNTIME_DIM_VAL)
+                rmd.broadcast_mask &= ~mask_bit;
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 
@@ -222,6 +227,22 @@ struct relative_md_t {
         if (rmd.inner_dim.is_unset()) rmd.inner_dim = {0};
 
         return status::success;
+    }
+
+    std::string ocl_defines(const std::string &prefix,
+            const std::array<std::string, MAX_NDIMS> &strides, int ndims) const;
+
+    jit::expr_t get_offset(const std::vector<jit::expr_t> &dim_idxs,
+            const std::vector<jit::expr_t> &strides) const;
+
+    bool is_broadcast(int idx, int ndims) const {
+        idx_t norm = from_md_idx(idx, ndims, {});
+        if (norm.is_unset()) return true;
+        return (1 << norm.as_int()) & broadcast_mask;
+    }
+
+    bool is_inner_dim(int idx, int ndims) const {
+        return idx == to_md_idx(inner_dim, ndims);
     }
 
     // Implicitly removes size 1 outer-dimensions from the original memory

@@ -185,6 +185,7 @@
 --skip-impl=ref
 --dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
 --wtag=any,abc,acb
+--attr-fpmath=f16:true
 --attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
 2x40x256:2x256x64
 7x41x256:1x256x64
@@ -195,9 +196,48 @@
 --skip-impl=ref
 --dt=f16:f8_e5m2:f16,f16:f8_e4m3:f16
 --wtag=any,ab,ba
+--attr-fpmath=f16:true
 --attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
 1x4096:4096x4096
 
+# fp4 weights decompression
+--reset
+--skip-impl=ref
+--dt=f16:f4_e2m1:f16,f16:f4_e3m0:f16
+--wtag=any,abc,acb
+--attr-fpmath=f16:true
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--reset
+--skip-impl=ref
+--dt=f16:f4_e2m1:f16,f16:f4_e3m0:f16
+--wtag=any,ab,ba
+--attr-fpmath=f16:true
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+1x4096:4096x4096
+
+--reset
+--skip-impl=ref
+--dt=bf16:f4_e2m1:bf16,bf16:f4_e3m0:bf16
+--wtag=any,abc,acb
+--attr-fpmath=bf16:true
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--reset
+--skip-impl=ref
+--dt=f16:f4_e2m1:f16,f16:f4_e3m0:f16
+--wtag=any,ab,ba
+--attr-fpmath=f16:true
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+1x4096:4096x4096
 # Dynamic quantization (int8 src, int4/int8 weights)
 --reset
 --skip-impl=ref

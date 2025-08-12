@@ -51,6 +51,13 @@ namespace v2 {
 namespace conv {
 namespace planner {
 
+bench_manager_t::bench_manager_t()
+    : engine_(engine::kind::gpu, 0)
+    , stream_(engine_,
+              static_cast<stream::flags>(
+                      stream_flags::in_order | stream_flags::profiling))
+    , hw_(engine_.get()) {}
+
 bench_manager_t::~bench_manager_t() {
     dump_plan_registry();
 }
@@ -61,8 +68,9 @@ static void fill_mem(stream &strm, const memory &mem) {
     auto md = mem.get_desc();
     size_t size = md.get_size();
     uint8_t pattern = 0;
-    impl::gpu::intel::ocl::usm::fill(strm.get(), ptr, &pattern, sizeof(pattern),
-            size, 0, nullptr, nullptr);
+    status_t status = impl::gpu::intel::ocl::usm::fill(strm.get(), ptr,
+            &pattern, sizeof(pattern), size, 0, nullptr, nullptr);
+    if (status != status::success) throw std::runtime_error("Fill failed");
 }
 
 class memory_pool_t {
@@ -209,7 +217,7 @@ using problem_t = dnnl::impl::gpu::intel::jit::v2::conv::problem_t;
 using kernel_desc_t = dnnl::impl::gpu::intel::jit::v2::conv::kernel_desc_t;
 using bench_data_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_data_t;
 using bench_time_t = dnnl::impl::gpu::intel::jit::v2::conv::bench_time_t;
-using pvar_tile_t = dnnl::impl::gpu::intel::jit::pvar_tile_t;
+using tile_t = dnnl::impl::gpu::intel::jit::tile_t;
 namespace pvars = dnnl::impl::gpu::intel::jit::pvars;
 
 std::string c_pd_name(dnnl_primitive_desc_t pd) {
@@ -367,7 +375,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "g" << g;
         oss << "mb" << mb;
         oss << "ic" << ic;
@@ -477,8 +485,7 @@ random_dim_set_t operator|(const random_dim_t &a, const random_dim_set_t &b) {
     return random_dim_set_t(a) | b;
 }
 
-pvar_tile_t random_shape(
-        const bench_input_params_t &params, const pvar_tile_t &tile) {
+tile_t random_shape(const bench_input_params_t &params, const tile_t &tile) {
     auto make_random_dim = [&](const pvar_t &dim, dim_t lo = 0, dim_t hi = 0) {
         auto ret = random_dim_t(dim, tile.get(dim, 1));
         return ret.with_range(lo, hi);
@@ -491,7 +498,7 @@ pvar_tile_t random_shape(
                   auto d_l = d.with_range(m + 1, l);
                   return d_s | d_m | d_l;
               };
-    pvar_tile_t s = problem_t::default_shape();
+    tile_t s = problem_t::default_shape();
     auto g = make_random_dim(pvars::g, 2, 512);
     auto mb = make_random_dim_set(pvars::mb, 1, 16, 128);
     auto ic = make_random_dim_set(pvars::ic, 64, 512, 2048);
@@ -523,7 +530,7 @@ pvar_tile_t random_shape(
 }
 
 double footprint(const layout_tag_t &src, const layout_tag_t &wei,
-        const layout_tag_t &dst, const pvar_tile_t &shape) {
+        const layout_tag_t &dst, const tile_t &shape) {
 #define GET(name) shape[pvars::name]
     double src_elems
             = (double)GET(g) * GET(mb) * GET(ic) * GET(id) * GET(ih) * GET(iw);
@@ -539,9 +546,9 @@ double footprint(const layout_tag_t &src, const layout_tag_t &wei,
     return ret;
 }
 
-pvar_tile_t expand_tile(
-        prop_kind_t prop, const prb_reqs_t &reqs, const pvar_tile_t &_tile) {
-    pvar_tile_t tile = _tile;
+tile_t expand_tile(
+        prop_kind_t prop, const prb_reqs_t &reqs, const tile_t &_tile) {
+    tile_t tile = _tile;
     for (auto &d : conv_index_dims(prop)) {
         dim_t mod = reqs.max_factor(d);
         mod = math::lcm(mod, tile.get(d, 1));
@@ -625,11 +632,16 @@ bench_data_t bench(const bench_manager_t &bench_mger,
     }
 
     bench_data_t bd(0, _kernel_desc);
-    dnnl_reset_profiling(strm.get());
+    status_t status = dnnl_reset_profiling(strm.get());
+    if (status != status::success)
+        throw std::runtime_error("Reset profiling failed.");
     for (int i = 0; i < ntasks; i++) {
-        tasks[i].bench_async(strm, mem_pool);
+        status = tasks[i].bench_async(strm, mem_pool);
+        if (status != status::success)
+            throw std::runtime_error("Benchmark failed.");
     }
-    bench_task_base_t::sync(strm, tasks);
+    status = bench_task_base_t::sync(strm, tasks);
+    if (status != status::success) throw std::runtime_error("Sync failed.");
     for (int i = 0; i < ntasks; i++) {
         bd.add(tasks[i].prb(), tasks[i].time());
     }

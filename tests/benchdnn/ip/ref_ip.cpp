@@ -52,7 +52,7 @@ void compute_ref_fwd_ip(const prb_t *prb, const args_t &args) {
     gemm("C", "N", "T", M, N, K, 1.f, (float *)src_m, K, (float *)wei_m, K, 0.f,
             (float *)dst_tmp, N);
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(prb->mb, prb->oc, [&](int64_t mb, int64_t oc) {
         size_t dst_off = dst_off_f(prb, mb, oc);
         float &dst = ((float *)dst_m)[dst_off];

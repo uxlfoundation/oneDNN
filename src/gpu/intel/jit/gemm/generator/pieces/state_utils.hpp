@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,18 +18,18 @@
 #ifndef GEMMSTONE_GUARD_STATE_UTILS_HPP
 #define GEMMSTONE_GUARD_STATE_UTILS_HPP
 
-#include "type.hpp"
+#include "gemmstone/type.hpp"
 #include "state.hpp"
 #include "alloc_utils.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Release various m/n loop remainder variables.
 void releaseFusedRemainders(GEMMState &state);
 void releaseCoopRemainders(GEMMState &state);
 
 // Allocate temporaries for emulated atomic add.
-void allocEAtomicAddRegs(ngen::HW hw, Type T, const std::vector<RegisterBlock> &layout,
+void allocEAtomicAddRegs(ngen::HW hw, Type T, const RegisterLayout &layout,
                          const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, CommonState &state,
                          const ngen::FlagRegister &flag = ngen::FlagRegister());
 
@@ -67,6 +67,6 @@ static inline void kLoopModifiedFlagAP(GEMMState &state) {
     state.lastThresh = 0;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

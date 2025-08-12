@@ -24,7 +24,6 @@
 #include "gpu/intel/jit/emulated_generator.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/reduction_injector.hpp"
-#include "gpu/intel/utils.hpp"
 #include "ngen_core.hpp"
 #include "ngen_interface.hpp"
 
@@ -94,8 +93,8 @@ public:
         ra().release(outer_off);
 
         ngen::GRFRange acc = ra().alloc_range(nregs);
-        reduction_injector_f32_t<generator_t<hw>> reduce(
-                *this, alg, ra(), device_info.stepping_id());
+        reduction_injector_f32_t<typename generator_t<hw>::RootCodeGenerator>
+                reduce(*this, alg, ra(), device_info.stepping_id());
         reduce.compute(src_addr, acc, stride, iters);
         ra().release(src_addr);
 

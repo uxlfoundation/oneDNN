@@ -515,7 +515,7 @@ std::string md2fmt_strides_str(const memory_desc_t *md) {
 // is not initialized b the library, and format information will be missed.
 std::string md2fmt_str(
         const char *name, const memory_desc_t *md, format_kind_t user_format) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << name << ":";
     if (!md || types::is_zero_md(md)) {
         ss << data_type::undef << "::" << format_kind::undef << ":::";
@@ -823,7 +823,7 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
 }
 
 std::string attr2str(const primitive_attr_t *attr) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << attr;
     return ss.str();
 }
@@ -833,7 +833,7 @@ namespace {
 
 template <typename pd_t>
 std::string init_info_batch_normalization(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -855,7 +855,7 @@ std::string init_info_batch_normalization(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_binary(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -886,7 +886,7 @@ std::string init_info_binary(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_concat(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -912,7 +912,7 @@ std::string init_info_concat(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_convolution(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -994,7 +994,7 @@ std::string init_info_deconvolution(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_eltwise(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1021,7 +1021,7 @@ std::string init_info_eltwise(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_gemm(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1060,7 +1060,7 @@ std::string init_info_gemm(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_group_normalization(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1083,7 +1083,7 @@ std::string init_info_group_normalization(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_inner_product(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1110,7 +1110,7 @@ std::string init_info_inner_product(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_layer_normalization(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1163,7 +1163,7 @@ std::string init_info_layer_normalization(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_lrn(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1200,7 +1200,7 @@ std::string mds2str_matmul(const memory_desc_t *src_md,
         return mask;
     };
 
-    std::stringstream ss;
+    stringstream_t ss;
 
     ss << md2fmt_str("src", src_md, src_user_format_kind) << " ";
     ss << md2fmt_str("wei", wei_md, wei_user_format_kind) << " ";
@@ -1222,7 +1222,7 @@ std::string dims2fmt_str_matmul(
 
 template <typename pd_t>
 std::string init_info_matmul(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1248,7 +1248,7 @@ std::string init_info_matmul(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_pooling(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1281,7 +1281,7 @@ std::string init_info_pooling(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_prelu(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1311,7 +1311,7 @@ std::string init_info_prelu(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_reduction(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1346,7 +1346,7 @@ std::string dims2fmt_str_reorder(const memory_desc_t *src_md) {
 
 template <typename pd_t>
 std::string init_info_reorder(const engine_t *e, pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
 
     const auto src_ek = pd->desc()->src_engine_kind;
     const auto dst_ek = pd->desc()->dst_engine_kind;
@@ -1376,7 +1376,7 @@ std::string init_info_reorder(const engine_t *e, pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_resampling(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1400,7 +1400,7 @@ std::string init_info_resampling(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_rnn(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1497,7 +1497,7 @@ std::string init_info_rnn(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_shuffle(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1514,7 +1514,7 @@ std::string init_info_shuffle(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_softmax(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
        << pd->desc()->prop_kind << ",";
 
@@ -1540,7 +1540,7 @@ std::string init_info_softmax(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_sum(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1560,7 +1560,7 @@ std::string init_info_sum(const engine_t *e, const pd_t *pd) {
 
 template <typename pd_t>
 std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
-    std::stringstream ss;
+    stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
        << ",";
 
@@ -1584,11 +1584,11 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << delimiter << "attr-scales:";
         delimiter = "";
         if (pd->with_key_scales()) {
-            ss << delimiter << "kq:" << desc->kq_scales;
+            ss << delimiter << "key:" << desc->kq_scales;
             delimiter = "+";
         }
         if (pd->with_value_scales()) {
-            ss << delimiter << "vs:" << desc->vs_scales;
+            ss << delimiter << "val:" << desc->vs_scales;
             delimiter = "+";
         }
         delimiter = " ";
@@ -1597,25 +1597,38 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
         ss << delimiter << "attr-zero-points:";
         delimiter = "";
         if (pd->with_key_zp()) {
-            ss << delimiter << "kq:" << desc->kq_zero_points;
+            ss << delimiter << "key:" << desc->kq_zero_points;
             delimiter = "+";
         }
         if (pd->with_value_zp()) {
-            ss << delimiter << "vs:" << desc->vs_zero_points;
+            ss << delimiter << "val:" << desc->vs_zero_points;
             delimiter = "+";
         }
+        delimiter = " ";
     }
-    ss << ",";
+    ss << delimiter << pd->attr();
 
+    delimiter = " ";
+    ss << ",alg:" << desc->softmax_alg;
     if (pd->with_attn_mask()) {
         auto *md = pd->attn_mask_md();
-        ss << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
+        ss << delimiter << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
+        ss << delimiter;
         if (desc->mask_type == attn_mask_type::top_left)
             ss << "msk:causal:top_left";
         else
             ss << "msk:causal:bottom_right";
     }
+    if (pd->with_attn_scale()) {
+        ss << delimiter << "scl:";
+        if (desc->invert_scale)
+            ss << "div:";
+        else
+            ss << "mul:";
+        ss << dnnl_dt2str(desc->scale_dt);
+    }
+
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
        << ":" << md2dim_str(pd->val_md());
 

@@ -371,7 +371,7 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
                         (float *)&(M(j, k, g, 0, 0, 0, 0)), p_dim);
             });
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(G, MB, OCG, sp.h_tiles, sp.w_tiles,
             [&](int64_t g, int64_t img, int64_t oc, int64_t hfm, int64_t wfm) {
                 float O[4][4] = {};

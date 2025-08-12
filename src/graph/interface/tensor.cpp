@@ -34,7 +34,7 @@ static const size_t DNNL_SYCL_MEMALIGNMENT = 64;
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "xpu/ocl/engine_factory.hpp"
 static const size_t DNNL_OCL_MEMALIGNMENT = 0;
-using namespace dnnl::impl::gpu::intel;
+
 #endif
 
 using namespace dnnl::impl::graph;
@@ -61,7 +61,8 @@ static void *tensor_malloc(
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         return alc->allocate(size, *dev, *ctx, {type, DNNL_SYCL_MEMALIGNMENT});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(eng);
+        auto *ocl_engine = utils::downcast<
+                const dnnl::impl::gpu::intel::ocl::engine_t *>(eng);
         const cl_device_id &ocl_dev = ocl_engine->device();
         const cl_context &ocl_ctx = ocl_engine->context();
         return alc->allocate(
@@ -97,7 +98,8 @@ static void tensor_free(void *p, const engine_t *eng) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         alc->deallocate(p, *dev, *ctx, {});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(eng);
+        auto *ocl_engine = utils::downcast<
+                const dnnl::impl::gpu::intel::ocl::engine_t *>(eng);
         const cl_device_id &ocl_dev = ocl_engine->device();
         const cl_context &ocl_ctx = ocl_engine->context();
         return alc->deallocate(p, ocl_dev, ocl_ctx, {});
@@ -136,6 +138,9 @@ status_t DNNL_API dnnl_graph_tensor_create(tensor_t **tensor,
     if (utils::any_null(tensor, logical_tensor, eng))
         return status::invalid_arguments;
 
+    const auto ltw = logical_tensor_wrapper_t(logical_tensor);
+    if (ltw.is_host_scalar()) return status::invalid_arguments;
+
     *tensor = new tensor_t {*logical_tensor, eng, handle};
     if (*tensor == nullptr) return status::out_of_memory;
     if (handle == DNNL_MEMORY_ALLOCATE
@@ -144,6 +149,25 @@ status_t DNNL_API dnnl_graph_tensor_create(tensor_t **tensor,
         *tensor = nullptr;
         return status::out_of_memory;
     }
+    return status::success;
+}
+
+status_t DNNL_API dnnl_graph_tensor_create_scalar(tensor_t **tensor,
+        const logical_tensor_t *logical_tensor, void *handle) {
+    if (utils::any_null(tensor, logical_tensor))
+        return status::invalid_arguments;
+
+    const auto ltw = logical_tensor_wrapper_t(logical_tensor);
+    if (!ltw.is_host_scalar()) return status::invalid_arguments;
+
+    // TODO(xxx): extend for library allocated host scalar?
+    if (nullptr == handle || DNNL_MEMORY_ALLOCATE == handle) {
+        return status::invalid_arguments;
+    }
+
+    *tensor = new tensor_t {*logical_tensor, nullptr, handle};
+    if (*tensor == nullptr) return status::out_of_memory;
+
     return status::success;
 }
 
@@ -156,7 +180,12 @@ status_t DNNL_API dnnl_graph_tensor_get_data_handle(
         const tensor_t *tensor, void **handle) {
     if (utils::any_null(tensor, handle)) return status::invalid_arguments;
 
-    *handle = tensor->get_data_handle();
+    const auto ltw = logical_tensor_wrapper_t(tensor->get_logical_tensor());
+    if (ltw.is_host_scalar()) {
+        *handle = nullptr;
+    } else {
+        *handle = tensor->get_data_handle();
+    }
     return status::success;
 }
 
@@ -164,15 +193,23 @@ status_t DNNL_API dnnl_graph_tensor_set_data_handle(
         tensor_t *tensor, void *handle) {
     if (tensor == nullptr) return status::invalid_arguments;
 
-    tensor->set_data_handle(handle);
-    return status::success;
+    const auto ltw = logical_tensor_wrapper_t(tensor->get_logical_tensor());
+    if (ltw.is_host_scalar()) return status::invalid_arguments;
+
+    auto ret = tensor->set_data_handle(handle);
+    return ret;
 }
 
 status_t DNNL_API dnnl_graph_tensor_get_engine(
         const tensor_t *tensor, engine_t **engine) {
     if (utils::any_null(tensor, engine)) return status::invalid_arguments;
 
-    *engine = const_cast<engine_t *>(tensor->get_engine());
+    const auto ltw = logical_tensor_wrapper_t(tensor->get_logical_tensor());
+    if (ltw.is_host_scalar()) {
+        *engine = nullptr;
+    } else {
+        *engine = const_cast<engine_t *>(tensor->get_engine());
+    }
 
     return status::success;
 }

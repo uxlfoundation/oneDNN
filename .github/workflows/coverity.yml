@@ -1,0 +1,88 @@
+# *******************************************************************************
+# Copyright 2024-2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: Coverity Scan
+
+on:
+  schedule:
+    #* set to run each Friday at 12:00 UTC
+    - cron: '0 12 * * 5'
+  #* allows this workflow to be invoked by another workflow
+  workflow_call:
+  #* allows manual trigger of workflow when needed
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  COVERITY_PROJECT: uxlfoundation%2FoneDNN
+  COVERITY_PROJECT_ID: 32045
+
+jobs:
+  coverity_linux:
+    name: Coverity Linux
+    if: github.repository == 'uxlfoundation/oneDNN'
+    runs-on: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Coverity Build Tool (linux64)
+        run: |
+          curl --fail https://scan.coverity.com/download/cxx/linux64 --output ${GITHUB_WORKSPACE}/cov-linux64-tool.tar.gz \
+            --data "token=${{secrets.COVERITY_TOKEN}}&project=${{env.COVERITY_PROJECT}}" || { echo "Download failed"; exit 1; }
+          mkdir cov-linux64-tool
+          tar -xzf cov-linux64-tool.tar.gz --strip 1 -C cov-linux64-tool
+
+      - name: Prepare and run Coverity build
+        run: |
+          export CC=gcc
+          export CXX=g++
+          export PATH="${PWD}/cov-linux64-tool/bin:${PATH}"
+          mkdir -p build && cd build
+          cmake ..
+          cov-build --dir cov-int cmake --build . --parallel $(nproc)
+
+      - name: Archive Coverity build results
+        run: |
+          cd build
+          tar -czvf cov-int.tgz cov-int
+          size=$(du -m cov-int.tgz | cut -f1)
+          echo "Artifact size: $size MB"
+          echo "size=$size" >> $GITHUB_OUTPUT
+
+      - name: Submit Coverity results for analysis
+        run: |
+          cd build
+          curl -X POST \
+            -d version="${GITHUB_SHA}" \
+            -d description="" \
+            -d email="${{secrets.COVERITY_EMAIL}}" \
+            -d token="${{secrets.COVERITY_TOKEN}}" \
+            -d file_name=@cov-int.tgz \
+            https://scan.coverity.com/projects/${{env.COVERITY_PROJECT_ID}}/builds/init \
+            | tee response
+          upload_url=$(jq -r '.url' response)
+          if [ -z "$upload_url" ] || [ "$upload_url" == "null" ]; then
+            echo "Error: Failed to extract 'url' from API response." >&2
+            cat response >&2
+            exit 1
+          fi
+          build_id=$(jq -r '.build_id' response)
+          curl -X PUT \
+            --header 'Content-Type: application/json' \
+            --upload-file cov-int.tgz \
+            $upload_url

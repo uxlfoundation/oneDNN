@@ -85,6 +85,9 @@ struct gemm_pd_t : public primitive_desc_t {
 
     int n_inputs() const override { return 2; }
     int n_outputs() const override { return 1; }
+    int ndims() const { return desc_.c_desc.ndims; }
+
+    int full_tensor_mask() const { return (1 << ndims()) - 1; }
 
 protected:
     // Note: we do not copy memory desc locally to avoid

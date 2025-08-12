@@ -156,7 +156,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_matmul_primitive_desc_create(
             &init_pd_args.pd, init_pd_args.engine,
@@ -403,14 +403,16 @@ int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
 
     const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);
     const bool has_src_zp = !e_zp_src.is_def();
-    const int src_zp_mask = attr_t::get_default_mask(e_zp_src.policy);
+    const int src_zp_mask
+            = attr_t::get_default_mask(e_zp_src.policy, prb->ndims);
     // Apply src_zp for source tensor only.
     int src_zp = kind == SRC && has_src_zp && src_zp_mask == 0 ? e_zp_src.value
                                                                : 0;
 
     const auto &e_zp_wei = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
     const bool has_wei_zp = !e_zp_wei.is_def();
-    const int wei_zp_mask = attr_t::get_default_mask(e_zp_wei.policy);
+    const int wei_zp_mask
+            = attr_t::get_default_mask(e_zp_wei.policy, prb->ndims);
     // Apply wei_zp for weights tensor only.
     int wei_zp = kind == WEI && has_wei_zp && wei_zp_mask == 0 ? e_zp_wei.value
                                                                : 0;
@@ -642,16 +644,28 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        if (((prb->src_dt() == dnnl_f8_e4m3 || prb->wei_dt() == dnnl_f8_e4m3
-                     || prb->dst_dt() == dnnl_f8_e4m3)
-                    || (prb->src_dt() == dnnl_f8_e5m2
-                            || prb->wei_dt() == dnnl_f8_e5m2
-                            || prb->dst_dt() == dnnl_f8_e5m2))
+        if ((dnnl::impl::utils::one_of(
+                     dnnl_f8_e4m3, prb->src_dt(), prb->wei_dt(), prb->dst_dt())
+                    || dnnl::impl::utils::one_of(dnnl_f8_e5m2, prb->src_dt(),
+                            prb->wei_dt(), prb->dst_dt()))
                 && (!po.is_def() || !prb->attr.scales.is_def())) {
             BENCHDNN_PRINT(2,
-                    "[SKIP][%s:%d]: GPU supports fp8 through ref only for "
-                    "f8_e4m3 on all platformas and for f8_e5m2 pre-XeHPC with "
-                    "limited post-op support.\n",
+                    "[SKIP][%s:%d]: GPU supports fp8 through ref only on "
+                    "pre-XeHPC platforms with limited post-op support.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+
+        if ((dnnl::impl::utils::one_of(
+                     dnnl_f4_e3m0, prb->src_dt(), prb->wei_dt(), prb->dst_dt())
+                    || dnnl::impl::utils::one_of(dnnl_f4_e2m1, prb->src_dt(),
+                            prb->wei_dt(), prb->dst_dt()))
+                && (!po.is_def() || !prb->attr.scales.is_def())) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: GPU supports fp4 through ref only on "
+                    "pre-XeHPC platforms with limited post-op support.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;

@@ -30,9 +30,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/reduction_generator.hpp"
-#include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/primitive_conf.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -57,8 +55,9 @@ struct reduction_t : public gpu_primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
 #if XE4
+            auto *compute_engine = utils::downcast<compute::compute_engine_t *>(engine);
             VDISPATCH_REDUCTION(
-                    compute::gpu_arch(engine) < compute::gpu_arch_t::xe4,
+                    compute_engine->device_info()->gpu_arch() < compute::gpu_arch_t::xe4,
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
 #endif
             VDISPATCH_REDUCTION_SC(

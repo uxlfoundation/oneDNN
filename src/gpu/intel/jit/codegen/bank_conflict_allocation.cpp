@@ -58,7 +58,7 @@ struct hw_context_t {
                 // Ensure bank/bundle pattern is repeated.
                 int j = (i % 64);
                 gpu_assert((bank_masks[bank] & (1ull << j)) != 0);
-                //XeLP and Gen9 only have two bundles
+                // XeLP only has two bundles
                 if (hw > ngen::HW::XeLP)
                     gpu_assert((bundle_masks[bundle] & (1ull << j)) != 0);
             }
@@ -77,9 +77,6 @@ struct hw_context_t {
 
     int hw_simd() const {
         switch (hw) {
-            case ngen::HW::Gen9:
-            case ngen::HW::Gen10:
-            case ngen::HW::Gen11:
             case ngen::HW::XeLP:
             case ngen::HW::XeHP:
             case ngen::HW::XeHPG: return 8;
@@ -251,7 +248,7 @@ struct reg_mask_t {
 
     std::string str() const {
         UNUSED(&reg_mask_t::str);
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int i = hw_ctx->regs - 1; i >= 0; i--) {
             oss << (test(i) ? "1" : "0");
         }
@@ -343,7 +340,7 @@ struct reg_block_mask_t {
 
     std::string str() const {
         UNUSED(&reg_block_mask_t::str);
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int i = 0; i < regs; i++) {
             oss << "#" << i << " mask: " << masks[i].str();
             if (i != regs - 1) oss << std::endl;
@@ -383,7 +380,7 @@ struct reg_t {
     std::string str() const {
         UNUSED(&reg_t::str);
         if (is_empty()) return "null";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (block->is_assigned()) {
             int reg = block->masks[off].bsf();
             oss << "r" << reg;

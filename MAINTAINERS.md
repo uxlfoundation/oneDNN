@@ -141,15 +141,18 @@ Team: @uxlfoundation/onednn-graph
 
 Team: @uxlfoundation/onednn-cpu-x64
 
-| Name               | Github ID             | Affiliation       | Role       |
-| ------------------ | --------------------- | ----------------- | ---------- |
-| Andrey Kalinin     | @ankalinin            | Intel Corporation | Maintainer |
-| Tatyana Primak     | @tprimak              | Intel Corporation | Maintainer |
-| Alexey Makarevich  | @amakarev             | Intel Corporation | Code Owner |
-| David Eberius      | @davideberius         | Intel Corporation | Code Owner |
-| Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
-| Tomasz Czeszun     | @tczeszun             | Intel Corporation | Code Owner |
-| Xuxin Zeng         | @xuxinzen             | Intel Corporation | Code Owner |
+| Name                | Github ID             | Affiliation       | Role       |
+| ------------------- | --------------------- | ----------------- | ---------- |
+| Andrey Kalinin      | @ankalinin            | Intel Corporation | Maintainer |
+| Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
+| Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
+| Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |
+| David Eberius       | @davideberius         | Intel Corporation | Code Owner |
+| Dmitriy Ovchinnikov | @inteldimitrius       | Intel Corporation | Code Owner |
+| Stefan Palicki      | @spalicki             | Intel Corporation | Code Owner |
+| Tomasz Czeszun      | @tczeszun             | Intel Corporation | Code Owner |
+| Yair Obodovsky      | @yair-obodovsky       | Intel Corporation | Code Owner |
+| Xuxin Zeng          | @xuxinzen             | Intel Corporation | Code Owner |
 
 ### AArch64
 
@@ -165,6 +168,7 @@ Team: @uxlfoundation/onednn-cpu-aarch64
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 | Sunita Nadampalli  | @snadampal            | Amazon.com, Inc.  | Code Owner |
 | Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Renato Arantes     | @renato-arantes       | Arm Ltd           | Code Owner |
 
 ### OpenPOWER (PPC64)
 

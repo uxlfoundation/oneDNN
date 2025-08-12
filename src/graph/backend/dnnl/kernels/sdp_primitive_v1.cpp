@@ -59,7 +59,7 @@ status_t sdp_primitive_v1_kernel_t::compile_impl(
                     p_engine_, part->get_fpmath_mode(), false, true);
     CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
-    CHECK(cfg_.initial_check(subgraph_, inputs, true));
+    CHECK(cfg_.initial_check(subgraph_, inputs, outputs, true));
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
         return this->memory_planner_.get_memory_info(val);

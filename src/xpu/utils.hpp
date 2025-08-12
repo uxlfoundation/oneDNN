@@ -32,9 +32,11 @@ namespace xpu {
 using binary_t = std::vector<uint8_t>;
 using device_uuid_t = std::tuple<uint64_t, uint64_t>;
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 struct device_uuid_hasher_t {
     size_t operator()(const device_uuid_t &uuid) const;
 };
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 struct runtime_version_t {
     int major;

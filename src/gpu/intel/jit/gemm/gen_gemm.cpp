@@ -81,24 +81,22 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
 
     if (pd()->with_a_zero_points()) arg_list.set(argn++, *ao);
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
-    if (problem->aScale2D) arg_list.set(argn++, *a_scales);
-    if (problem->bScale2D) arg_list.set(argn++, *b_scales);
-    if (problem->aoPtrDims == 2 || problem->aScale2D) {
-        auto layout = problem->aScale2D ? problem->A_scale.layout
-                                        : problem->AO.layout;
+    if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
+    if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
+    if (problem->aoPtrDims == 2 || problem->aScale2D()) {
+        auto layout = problem->aScale2D() ? problem->A_scale.layout
+                                          : problem->AO.layout;
         int32_t ldaq = isColMajor(layout)
                 ? pd()->eff_m()
                 : utils::div_up(pd()->desc()->k(), problem->aqGroupK);
-        if (pd()->src_po_sc_ && swapab) ldaq = 0;
         arg_list.set(argn++, ldaq);
     }
-    if (problem->boPtrDims == 2 || problem->bScale2D) {
-        auto layout = problem->bScale2D ? problem->B_scale.layout
-                                        : problem->BO.layout;
+    if (problem->boPtrDims == 2 || problem->bScale2D()) {
+        auto layout = problem->bScale2D() ? problem->B_scale.layout
+                                          : problem->BO.layout;
         int32_t ldbq = !isColMajor(layout)
                 ? pd()->eff_n()
                 : utils::div_up(pd()->desc()->k(), problem->bqGroupK);
-        if (pd()->src_po_sc_ && !swapab) ldbq = 0;
         arg_list.set(argn++, ldbq);
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
@@ -142,6 +140,12 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
+            if (problem->asPtrDims > 2) {
+                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
+            }
+            if (problem->bsPtrDims > 2) {
+                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+            }
         }
         for (int i = 0; i < po_count; i++) {
             if (problem->postOps.binaryBatch[i]) {
@@ -213,9 +217,9 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    if (pd()->ao_dims_ > 0 || problem->aScale2D)
+    if (pd()->ao_dims_ > 0 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (pd()->bo_dims_ > 0 || problem->bScale2D)
+    if (pd()->bo_dims_ > 0 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -377,9 +381,9 @@ status_t gen_gemm_t::execute(const gemm_exec_ctx_t &ctx) const {
         if (swapab) std::swap(ao, bo);
     }
 
-    if (pd()->wei_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
+    if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
 
-    if (pd()->src_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
+    if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
     if (swapab) std::swap(a_scales, b_scales);
 
     if (swapab) {

@@ -27,10 +27,13 @@ namespace graph {
 enum class filling_type_t {
     undef = 0,
     quantization,
+    compressed_sdpa,
     causal_mask,
     // Fill pre-defined fixed values for data filling, such as 0, 1, -inf, and
     // specified shape information for scalar input.
     fixed_setting,
+    // Fill softmax stats for sdpa backward graph by recomputing the forward graph
+    softmax_stats,
 };
 struct displace_args_t {
 
@@ -58,7 +61,16 @@ public:
     partition_data_displacer_t() = default;
     partition_data_displacer_t(
             const deserialized_graph_t &dg, const dnnl::graph::partition &par);
-    int displace_input_data(size_t lt_id, dnn_mem_t &mem, res_t *res);
+    // TODO: some arguments of displace_input_data() are redundant
+    // and can be removed in the future.
+    int displace_input_data(size_t lt_id, dnn_mem_t &mem,
+            const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
+            res_t *res);
+    filling_type_t get_filling_type(size_t lt_id) const {
+        auto it = displace_args_.find(lt_id);
+        if (it == displace_args_.end()) return filling_type_t::undef;
+        return it->second.filling_type_;
+    }
 
 private:
     const deserialized_graph_t *dg_ = nullptr;
@@ -69,6 +81,8 @@ private:
 
     int gen_quantize_filling(const ::graph::deserialized_op_t &main_op, int arg,
             dnn_mem_t &mem, const ::std::string &dt, res_t *res);
+    int gen_compressed_sdpa_filling(const ::graph::deserialized_op_t &main_op,
+            int arg, dnn_mem_t &mem, const ::std::string &dt, res_t *res);
     // Generates values in the target memory based on predefined set of values
     // from `fill_cfg`.
     int gen_fixed_set_filling(dnn_mem_t &mem, const_dnnl_memory_desc_t md,
@@ -76,6 +90,9 @@ private:
     // Generates causal mask filling for "Add" operation.
     int gen_causal_mask_filling(
             dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const;
+    int gen_softmax_stats_filling(const ::graph::deserialized_op_t &main_op,
+            int arg, const dnn_mem_t &src_mem, dnn_mem_t &mem,
+            const_dnnl_memory_desc_t md, res_t *res) const;
 };
 
 } // namespace graph

@@ -61,6 +61,8 @@ public:
 
     bool invert_scale_ = false;
     bool quantized_ = false;
+    bool is_compressed_ = false;
+
     attn_mask_type_t mask_type_ = attn_mask_type::undef;
     dim_t kv_head_number_;
     std::string softmax_mode_ = "none";
@@ -84,6 +86,7 @@ public:
     // 3. only support 4-dims tensor
     status_t initial_check(const std::shared_ptr<subgraph_t> &sg,
             const std::vector<logical_tensor_t> &inputs,
+            const std::vector<logical_tensor_t> &outputs,
             bool v1_kernel = false);
 
     // Initialize parameters and primitive.

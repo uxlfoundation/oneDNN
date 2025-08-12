@@ -169,9 +169,6 @@ namespace custom {
             op_setting.alg = ::custom::alg_t::GENINDEX;
             base_op_ref.get_attr_s64(op_setting.axis, "axis");
             break;
-        case ::graph::op::kind::Select:
-            op_setting.alg = ::custom::alg_t::SELECT;
-            break;
         case ::graph::op::kind::StaticTranspose:
             op_setting.alg = ::custom::alg_t::TRANSPOSE;
             base_op_ref.get_attr_s64_vector(op_setting.order, "order");
@@ -232,6 +229,15 @@ bool get_binary_prb_vdims(
     auto &src1_dims = base_op.in_lts_[1].shape_;
     auto &dst_dims = base_op.out_lts_[0].shape_;
     const auto &ndims = dst_dims.size();
+    if (base_op_ref.kind_ == "Select") {
+        const auto &src2_dims = base_op.in_lts_[2].shape_;
+
+        ::graph::extend_dims(base_op.in_lts_[0], ndims);
+        ::graph::extend_dims(base_op.in_lts_[1], ndims);
+        ::graph::extend_dims(base_op.in_lts_[2], ndims);
+        prb_vdims = prb_vdims_t({src1_dims, src2_dims, src0_dims});
+        return true;
+    }
     // use Add to implement BiasAdd, need to align channel dims of src1
     if (base_op_ref.kind_ == "BiasAdd") {
         if (ndims == 1 && src0_dims[0] != src1_dims[0] && src1_dims[0] != 1) {
@@ -272,11 +278,18 @@ bool get_binary_prb_vdims(
 
 bool get_binary_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::binary::settings_t &op_setting) {
-    auto sdt0 = convert_dt(base_op_ref.in_lts_[0].get_data_type());
-    auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
-    auto ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "Select") {
+        auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+        auto sdt2 = convert_dt(base_op_ref.in_lts_[2].get_data_type());
+        op_setting.sdt = {{sdt1, sdt2}};
+    } else {
+        auto sdt0 = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+        auto sdt1 = convert_dt(base_op_ref.in_lts_[1].get_data_type());
+        op_setting.sdt = {{sdt0, sdt1}};
+    }
 
-    op_setting.sdt = {{sdt0, sdt1}};
+    auto ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
     op_setting.ddt.front() = ddt;
     return true;
 }
@@ -290,7 +303,16 @@ bool get_binary_stag_and_dtag(const deserialized_op_t &base_op_ref,
             || !get_driver_tag_by_idx(base_op_ref, stag0, 0, false)) {
         return false;
     }
-    op_setting.stag = {{std::move(stag0), std::move(stag1)}};
+
+    const auto &op_kind = base_op_ref.kind_;
+    if (op_kind == "Select") {
+        std::string stag2;
+        if (!get_driver_tag_by_idx(base_op_ref, stag2, 2, false)) return false;
+        op_setting.stag
+                = {{std::move(stag1), std::move(stag2), std::move(stag0)}};
+    } else {
+        op_setting.stag = {{std::move(stag0), std::move(stag1)}};
+    }
     op_setting.dtag.front() = std::move(dtag);
     return true;
 }
@@ -305,7 +327,8 @@ bool get_binary_alg(
                     {"Minimum", ::binary::alg_t::MIN},
                     {"Multiply", ::binary::alg_t::MUL},
                     {"Subtract", ::binary::alg_t::SUB},
-                    {"GreaterEqual", ::binary::alg_t::GE}};
+                    {"GreaterEqual", ::binary::alg_t::GE},
+                    {"Select", ::binary::alg_t::SELECT}};
 
     const auto &op_kind = base_op_ref.kind_;
     if (map_kind_to_alg.find(op_kind) == map_kind_to_alg.end()) return false;
@@ -1312,8 +1335,9 @@ bool get_matmul_dt(const deserialized_op_t &base_op_ref,
     return true;
 }
 
-bool get_matmul_tags(const deserialized_op_t &base_op_ref, std::string &stag,
-        std::string &wtag, std::string &dtag, const int &ndims) {
+bool get_matmul_tags_or_strides(const deserialized_op_t &base_op_ref,
+        std::string &stag, std::string &wtag, std::string &dtag,
+        vdims_t &prb_strides, const int &ndims) {
     logical_tensor::dims src_strides = base_op_ref.in_lts_[0].stride_;
     logical_tensor::dims wei_strides = base_op_ref.in_lts_[1].stride_;
     const logical_tensor::dims &dst_strides = base_op_ref.out_lts_[0].stride_;
@@ -1330,6 +1354,14 @@ bool get_matmul_tags(const deserialized_op_t &base_op_ref, std::string &stag,
     stag = strides2memory_tag(ndims, src_strides, true);
     wtag = strides2memory_tag(ndims, wei_strides, true);
     dtag = strides2memory_tag(ndims, dst_strides, true);
+
+    if (!is_contiguous_memory(src_strides, base_op_ref.in_lts_[0].shape_, stag)
+            || !is_contiguous_memory(
+                    wei_strides, base_op_ref.in_lts_[1].shape_, wtag)
+            || !is_contiguous_memory(
+                    dst_strides, base_op_ref.out_lts_[0].shape_, dtag)) {
+        prb_strides = {src_strides, wei_strides, dst_strides};
+    }
     return true;
 }
 
@@ -1363,6 +1395,12 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             matmul::get_matmul_prb_vdims(base_op_ref, op_setting.prb_vdims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
+            matmul::get_matmul_tags_or_strides(base_op_ref,
+                    op_setting.stag.front(), op_setting.wtag.front(),
+                    op_setting.dtag.front(), op_setting.strides.front(),
+                    op_setting.prb_vdims.ndims),
+            res);
+    DNN_GRAPH_CHECK_SETTINGS(
             matmul::get_matmul_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_bia_dt(base_op_ref, op_setting.bia_dt.front(),
@@ -1370,11 +1408,6 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             res);
     DNN_GRAPH_CHECK_SETTINGS(matmul::get_matmul_bia_mask(
                                      base_op_ref, op_setting.bia_mask.front()),
-            res);
-    DNN_GRAPH_CHECK_SETTINGS(
-            matmul::get_matmul_tags(base_op_ref, op_setting.stag.front(),
-                    op_setting.wtag.front(), op_setting.dtag.front(),
-                    op_setting.prb_vdims.ndims),
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
@@ -1941,9 +1974,25 @@ bool get_softmax_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
 
 bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
-    const auto &dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
-    op_setting.sdt.front() = dt;
-    op_setting.ddt.front() = dt;
+    const auto &sdt = convert_dt(base_op_ref.in_lts_[0].get_data_type());
+    op_setting.sdt.front() = sdt;
+    const auto &ddt = convert_dt(base_op_ref.out_lts_[0].get_data_type());
+    op_setting.ddt.front() = ddt;
+
+    return true;
+}
+
+bool get_softmax_stag_and_dtag(const deserialized_op_t &base_op_ref,
+        ::softmax::settings_t &op_setting) {
+    std::string stag, dtag;
+
+    if (!get_driver_tag_by_idx(base_op_ref, stag, 0, /*from_output*/ false)
+            || !get_driver_tag_by_idx(
+                    base_op_ref, dtag, 0, /*from_output*/ true))
+        return false;
+
+    op_setting.stag.front() = std::move(stag);
+    op_setting.dtag.front() = std::move(dtag);
     return true;
 }
 
@@ -1979,15 +2028,17 @@ bool get_softmax_alg(
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_sdt_and_ddt(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
-            get_driver_stag_and_dtag(base_op_ref, op_setting.stag.front(),
-                    op_setting.dtag.front()),
-            res);
+            softmax::get_softmax_stag_and_dtag(base_op_ref, op_setting), res);
     DNN_GRAPH_CHECK_SETTINGS(
             softmax::get_softmax_alg(base_op_ref, op_setting.alg.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_axis(base_op_ref, op_setting.axis.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+    // softmax has stats only when it has more than one output
+    if (base_op_ref.out_lts_.size() > 1) {
+        op_setting.has_stats.front() = true;
+    }
 
     return op_setting;
 }

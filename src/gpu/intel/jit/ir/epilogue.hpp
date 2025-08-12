@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ namespace jit {
 
 stmt_t create_epilogue_stmt(const exec_config_t &exec_cfg, ir_context_t &ir_ctx,
         const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
-        const post_op_context_t &post_op_ctx, const tensor_t &thr_tile,
-        const layout_t &c_reg_layout, const expr_t &c_mem_buf,
-        const expr_t &c_reg_buf, int &c_reg_buf_size);
+        const post_op_context_t &post_op_ctx,
+        const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,
+        const expr_t &c_mem_buf, const expr_t &c_reg_buf, int &c_reg_buf_size);
 
 } // namespace jit
 } // namespace intel

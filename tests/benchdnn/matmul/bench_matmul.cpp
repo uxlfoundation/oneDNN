@@ -76,7 +76,7 @@ int verify_input(const settings_t &s, const settings_t &def) {
 
     for (const auto &i_strides : s.strides) {
         if (i_strides.size() != n_inputs) {
-            std::stringstream ss;
+            dnnl::impl::stringstream_t ss;
             ss << i_strides;
             fprintf(stderr,
                     "ERROR: matmul driver: `strides` option expects three "

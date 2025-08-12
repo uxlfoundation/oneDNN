@@ -125,6 +125,26 @@ bool check_softmax_dtype(const op_t *n) {
     return true;
 }
 
+// For SoftMaxBackward, diff_src should be f32,  or the same data type as dst
+// and diff_dst.
+bool check_softmax_bwd_output_dtype(const op_t *n) {
+    const auto &inputs = n->get_input_values();
+    const auto &outputs = n->get_output_values();
+
+    const logical_tensor_t &diff_dst = inputs[0]->get_logical_tensor();
+    const logical_tensor_t &diff_src = outputs[0]->get_logical_tensor();
+    if (diff_src.data_type != diff_dst.data_type
+            && diff_src.data_type != data_type::f32) {
+        VCHECK_SHAPE_INFER(false,
+                "%s, %s diff_dst + %s diff_src is not supported",
+                op_t::kind2str(n->get_kind()).c_str(),
+                dnnl_dt2str(diff_dst.data_type),
+                dnnl_dt2str(diff_src.data_type));
+    }
+
+    return true;
+}
+
 // check function for data_type of LayerNorm and GroupNorm.
 // only when data is bf16, gamma/beta/mean/var can be bf16.
 // If data is bf16, gamma/beta/mean/var can be f32 or bf16.

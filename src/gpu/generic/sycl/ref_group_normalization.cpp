@@ -115,6 +115,10 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
 
 status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
+    // TODO: remove me
+    VDISPATCH_GNORM(
+            false, "The implementation doesn't return the correct result");
+
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_GNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_GNORM(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

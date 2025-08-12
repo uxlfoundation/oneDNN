@@ -179,6 +179,8 @@ struct matmul_pd_t : public primitive_desc_t {
         return 1 << (wei_ndims - 2);
     }
 
+    int full_tensor_mask() const { return (1 << ndims()) - 1; }
+
     int dst_qmask_N() const { return wei_qmask_N(); }
 
     int dst_qmask_M() const { return src_qmask_M(); }
@@ -199,12 +201,7 @@ struct matmul_pd_t : public primitive_desc_t {
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g1 == 0);
                 const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g0 == 0);
 
-                // Any group is allowed to be greater than 1 but only one at a
-                // time, not both.
-                ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                utils::one_of(1, g0, g1) && wei_k_group_ok
-                                        && wei_n_group_ok);
+                ok = ok && wei_k_group_ok && wei_n_group_ok;
 
                 // Mask over K dim is allowed for decompression feature only.
                 const bool is_decompression_or_dynquant
@@ -219,7 +216,8 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_SRC) {
                 ok = ok
                         && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K());
+                                src_qmask_M() + src_qmask_K(),
+                                full_tensor_mask());
                 ok = ok
                         && IMPLICATION((mask & src_qmask_K()),
                                 !scales.get(arg).has_default_groups());

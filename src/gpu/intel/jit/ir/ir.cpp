@@ -100,8 +100,6 @@ public:
         out_ << obj.line_str() << "\n";
     }
 
-    void _visit(const func_impl_t &obj) override { out_ << obj.str(); }
-
     void _visit(const if_t &obj) override {
         print_indent();
         out_ << obj.line_str() << " {\n";
@@ -228,6 +226,8 @@ public:
 
     void _visit(const var_t &obj) override { out_ << obj.name; }
 
+    void _visit(const ref_t &obj) override { out_ << obj.str(); }
+
     void _visit(const while_t &obj) override {
         print_indent();
         out_ << obj.line_str() << " {\n";
@@ -284,7 +284,7 @@ public:
         return ir_mutator_t::_mutate(obj); \
     };
 
-    HANDLE_TRAVERSE_TARGETS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -317,7 +317,7 @@ public:
         //
         // tmp0.s32            -> tmp0_0.u64
         // tmp1.s32 = tmp0.s32 -> tmp1.s32 = tmp0_0.u64
-        if (!value.is_empty()) {
+        if (value) {
             auto value_type = expr_t(value).type();
             if (var.as<var_t>().type != value_type) {
                 auto var_old = var;
@@ -346,7 +346,7 @@ public:
         return _mutate_after(obj); \
     };
 
-    HANDLE_ALL_IR_OBJECTS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -366,7 +366,7 @@ public:
         if (obj.is_stmt()) stmts.emplace_back(obj); \
     }
 
-    HANDLE_ALL_IR_OBJECTS()
+    HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -405,7 +405,7 @@ private:
     template <typename T>
     object_t mutate_stmt(const T &obj) {
         if (in_ctor_) return ir_mutator_t::_mutate(obj);
-        if (T::_type_id() == ir_type_id_t::stmt_seq_t) {
+        if (T::_type_info().type_id == stmt_seq_t::_type_info().type_id) {
             return mutate_stmt_seq(obj);
         }
         auto undef_bufs = get_undef_bufs();
@@ -536,10 +536,24 @@ private:
     object_map_t<expr_t, int> buf_cur_refs_;
 };
 
+class alloc_remover_t : public ir_mutator_t {
+public:
+    alloc_remover_t(std::vector<stmt_t> &allocs) : allocs_(allocs) {}
+
+    object_t _mutate(const alloc_t &obj) override {
+        allocs_.push_back(
+                alloc_t::make(obj.buf, obj.size, obj.kind, obj.attrs));
+        return mutate(obj.body);
+    }
+
+private:
+    std::vector<stmt_t> &allocs_;
+};
+
 } // namespace
 
 std::string object_impl_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     ir_printer_t printer(oss);
     printer.visit(this);
     return oss.str();
@@ -572,7 +586,10 @@ std::vector<stmt_t> flatten_statements(const stmt_t &root) {
 }
 
 stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
-        bool put_innermost) {
+        bool put_innermost, bool update_existing) {
+    if (update_existing)
+        gpu_assert(put_innermost)
+                << "update_existing can be used only with put_innermost.";
     if (!put_innermost) {
         auto ret = stmt;
         for (auto &_a : allocs) {
@@ -580,6 +597,13 @@ stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
             ret = alloc_t::make(a.buf, a.size, a.kind, a.attrs, ret);
         }
         return ret;
+    }
+    if (update_existing) {
+        std::vector<stmt_t> _allocs;
+        alloc_remover_t remover(_allocs);
+        auto _stmt = remover.mutate(stmt);
+        _allocs.insert(_allocs.end(), allocs.begin(), allocs.end());
+        return inject_alloc_stmts(_stmt, _allocs, put_innermost);
     }
     alloc_injector_t injector(stmt, allocs);
     return injector.mutate(stmt);
@@ -745,24 +769,6 @@ expr_t cast(const expr_t &e, const type_t &type, bool saturate) {
     return const_fold(cast_t::make(type, e, saturate));
 }
 
-bool is_zero(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(0, e.type()));
-}
-
-bool is_one(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(1, e.type()));
-}
-
-bool is_minus_one(const expr_t &e) {
-    if (e.is_empty()) return false;
-    if (!e.type().is_scalar() || e.type().is_ptr()) return false;
-    return e.is_equal(to_expr(-1, e.type()));
-}
-
 bool is_const_broadcast(const expr_t &e) {
     auto *shuffle = e.as_ptr<shuffle_t>();
     if (!shuffle) return false;
@@ -781,17 +787,17 @@ expr_t make_buffer(const std::string &name) {
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).
 int count_object(const object_t &root, const object_t &obj) {
-    gpu_assert(!obj.is_empty());
+    gpu_assert(obj);
 
     std::vector<object_t> found;
     do {
 #define HANDLE_IR_OBJECT(type) \
-    if (obj.dispatch_type_id() == type::_dispatch_type_id()) { \
+    if (obj.type_info() == type::_type_info()) { \
         found = find_objects<type>(root); \
         break; \
     }
 
-        HANDLE_ALL_IR_OBJECTS()
+        HANDLE_CORE_IR_OBJECTS()
 
 #undef HANDLE_IR_OBJECT
 
@@ -819,13 +825,12 @@ std::vector<stmt_t> find_stmt_groups(
     return ret;
 }
 
-utils::optional_t<stmt_t> find_stmt_group(
-        const object_t &root, const stmt_label_t &label) {
+stmt_t find_stmt_group(const object_t &root, const stmt_label_t &label) {
     auto groups = find_stmt_groups(root, label);
     if (groups.size() == 1)
         return groups[0];
     else
-        return utils::nullopt;
+        return {};
 }
 
 class stmt_group_remover_t : public ir_mutator_t {
@@ -923,22 +928,6 @@ int get_peak_regs(
     grf_usage_visitor_t visitor(grf_size, external_regs, skip_let);
     visitor.visit(stmt);
     return utils::div_up(visitor.peak_regs(), grf_size);
-}
-
-class has_send_atomics_visitor_t : public ir_visitor_t {
-public:
-    void _visit(const func_call_t &obj) override {
-        auto *send = obj.func.as_ptr<send_t>();
-        if (send && send->is_atomic()) found = true;
-    }
-
-    bool found = false;
-};
-
-bool has_send_atomics(const stmt_t &s) {
-    has_send_atomics_visitor_t visitor;
-    visitor.visit(s);
-    return visitor.found;
 }
 
 bool relation_t::implies(const relation_t &other) const {
@@ -1193,8 +1182,16 @@ void constraint_set_t::add_constraint(const expr_t &e) {
         return;
     }
 
-    // Propagate constraints from y for (x == y) equalities.
     auto *binary_op = e.as_ptr<binary_op_t>();
+
+    // Propagate constraints from chained ands like a & b & c
+    if (binary_op && binary_op->op_kind == op_kind_t::_and) {
+        add_constraint(binary_op->a);
+        add_constraint(binary_op->b);
+        return;
+    }
+
+    // Propagate constraints from y for (x == y) equalities.
     if (binary_op && binary_op->op_kind == op_kind_t::_eq) {
         auto &a = binary_op->a;
         auto &b = binary_op->b;
@@ -1258,7 +1255,7 @@ bool constraint_set_t::is_single_value(const expr_t &e, expr_t &value) const {
         }
         if (do_break) break;
     }
-    bool ret = !lo.is_empty() && lo.is_equal(hi);
+    bool ret = lo && lo.is_equal(hi);
     if (ret) value = std::move(lo);
     return ret;
 }

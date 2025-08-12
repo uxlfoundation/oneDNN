@@ -768,7 +768,7 @@ TEST(test_eltwise_execute_subgraph_fp32, ReciprocalMul) {
     ASSERT_EQ(g.add_op(&mul_op), graph::status::success);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("reciprocal_multiply_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_reciprocal_multiply");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1012,7 +1012,7 @@ public:
         g.add_op(&binary_op);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("eltwise_binary_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_eltwise_binary");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

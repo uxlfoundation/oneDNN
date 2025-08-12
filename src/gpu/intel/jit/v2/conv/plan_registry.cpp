@@ -31,11 +31,11 @@ const char **get_plan_registry_entries();
 plan_registry_t::plan_registry_t(const char **entries) {
     while (*entries) {
         plan_registry_t::entry_t e;
-        std::istringstream iss(*entries);
+        istringstream_t iss(*entries);
         e.parse(iss);
 #ifdef DNNL_DEV_MODE
         {
-            std::ostringstream oss;
+            ostringstream_t oss;
             e.stringify(oss);
             if (oss.str() != *entries) {
                 gpu_warning() << "parsed from:\n  " << *entries
@@ -111,7 +111,7 @@ void plan_registry_t::entry_t::parse(std::istream &in) {
 
 std::string plan_registry_t::entry_t::str() const {
     if (is_empty()) return "(empty)";
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << ir_utils::add_tag("Desc", desc.str());
     if (!model_set.is_empty()) {
         oss << std::endl;
@@ -123,7 +123,7 @@ std::string plan_registry_t::entry_t::str() const {
 std::string plan_registry_t::entry_t::registry_str() const {
     gpu_assert(!desc.is_empty() && !model_set.is_empty())
             << "Need both descriptor/model for kernel registry";
-    std::ostringstream oss;
+    ostringstream_t oss;
     jit::stringify(oss, desc);
     oss << " model=";
     model_set.stringify(oss);
@@ -155,7 +155,7 @@ struct plan_registry_instance_t {
     void dump() const {
         if (registry_path.empty()) return;
         // Serialize to a text file.
-        std::ostringstream oss;
+        ostringstream_t oss;
         jit::stringify(oss, registry);
 
         std::ofstream out(registry_path);

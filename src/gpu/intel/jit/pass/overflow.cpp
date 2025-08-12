@@ -238,7 +238,7 @@ public:
         expr_t value = mutate(obj.value);
         stmt_t body = mutate(obj.body);
         if (value.is_same(obj.value) && body.is_same(obj.body)) return obj;
-        if (!value.is_empty() && !value.type().is_bool()
+        if (value && !value.type().is_bool()
                 && value.type() != obj.value.type()) {
             auto old_var = var;
             var = ir_ctx_.create_tmp_var(

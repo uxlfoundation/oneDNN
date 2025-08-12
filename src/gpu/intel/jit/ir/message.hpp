@@ -59,14 +59,11 @@ enum class send_op_t {
     store,
     store_2d,
 };
-bool is_atomic(send_op_t op);
-send_op_t atomic_send_op(const type_t &type, bool has_atomic_fp64);
 
 static auto send_op_names = nstl::to_array({
         make_enum_name(send_op_t::undef, "undef"),
         make_enum_name(send_op_t::atomic_add, "atomic_add"),
         make_enum_name(send_op_t::atomic_fadd, "atomic_fadd"),
-        make_enum_name(send_op_t::atomic_bfadd, "atomic_bfadd"),
         make_enum_name(send_op_t::atomic_cmpwr, "atomic_cmpwr"),
         make_enum_name(send_op_t::load, "load"),
         make_enum_name(send_op_t::load_2d, "load_2d"),
@@ -85,6 +82,7 @@ enum class send_address_t {
 
 enum class send_cache_hint_t {
     undef,
+    hw_default,
     load_once,
 };
 
@@ -96,21 +94,21 @@ static auto send_cache_hint_names = nstl::to_array({
 GPU_DEFINE_PARSE_ENUM(send_cache_hint_t, send_cache_hint_names)
 
 struct block_2d_info_t {
-    bool is_empty() const { return surface_width == 0; }
+    bool is_empty() const { return surface_width.is_empty(); }
 
     bool operator==(const block_2d_info_t &other) const {
         if (is_empty() != other.is_empty()) return false;
         if (is_empty()) return true;
-        return (surface_width == other.surface_width)
-                && (surface_height == other.surface_height)
-                && (surface_pitch == other.surface_pitch)
+        return (surface_width.is_equal(other.surface_width))
+                && (surface_height.is_equal(other.surface_height))
+                && (surface_pitch.is_equal(other.surface_pitch))
                 && (width == other.width) && (height == other.height)
                 && (count == other.count) && (vnni == other.vnni)
                 && (transpose == other.transpose);
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << count << "x";
         oss << height << "x";
         oss << width;
@@ -123,9 +121,9 @@ struct block_2d_info_t {
     }
 
     // Encoded in header.
-    int surface_width = 0;
-    int surface_height = 0;
-    int surface_pitch = 0;
+    expr_t surface_width;
+    expr_t surface_height;
+    expr_t surface_pitch;
     int width = 0;
     int height = 0;
     int count = 0;
@@ -137,7 +135,7 @@ struct block_2d_info_t {
 // Function representing send messages.
 class send_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(send_t, func_impl_t)
+    IR_DECL_TYPE(send_t)
 
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,
@@ -169,13 +167,14 @@ public:
     }
 
     static func_t make_2d(const hw_t &hw, send_op_t op, const type_t &type,
-            int surface_width, int surface_height, int surface_pitch, int width,
-            int height, int count, bool vnni, bool transpose, bool zero_out,
+            expr_t surface_width, expr_t surface_height, expr_t surface_pitch,
+            int width, int height, int count, bool vnni, bool transpose,
+            bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         block_2d_info_t info;
-        info.surface_width = surface_width;
-        info.surface_height = surface_height;
-        info.surface_pitch = surface_pitch;
+        info.surface_width = std::move(surface_width);
+        info.surface_height = std::move(surface_height);
+        info.surface_pitch = std::move(surface_pitch);
         info.width = width;
         info.height = height;
         info.count = count;
@@ -188,8 +187,9 @@ public:
             int width, int height, int count, bool vnni, bool transpose,
             bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
-        return make_2d(hw, op, type, /*surface_width=*/0, /*surface_height=*/0,
-                /*surface_pitch=*/0, width, height, count, vnni, transpose,
+        return make_2d(hw, op, type, /*surface_width=*/ {},
+                /*surface_height=*/ {},
+                /*surface_pitch=*/ {}, width, height, count, vnni, transpose,
                 zero_out, cache_hint);
     }
 
@@ -206,7 +206,7 @@ public:
                 && (cache_hint == other.cache_hint);
     }
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op);
         oss << ".";
         oss << type.str();
@@ -245,7 +245,7 @@ public:
 
     bool is_atomic() const {
         return utils::one_of(op, send_op_t::atomic_add, send_op_t::atomic_fadd,
-                send_op_t::atomic_bfadd, send_op_t::atomic_cmpwr);
+                send_op_t::atomic_cmpwr);
     }
     bool is_load() const { return op == send_op_t::load; }
     bool is_load_2d() const { return op == send_op_t::load_2d; }
@@ -483,7 +483,7 @@ public:
     const stmt_t &stmt() const { return stmt_; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "Memory view:          " << mem_view_ << std::endl;
         oss << "Register layout:      " << reg_layout_ << std::endl;
         oss << "Register buffer:      " << reg_buf_ << std::endl;
@@ -501,8 +501,9 @@ private:
             bool transpose, bool use_xy, int &W, int &H, int &P, int &w, int &h,
             int &c, int &vnni_permute_factor);
 
-    bool check_2d_mask(const tensor_t &tile, bool use_virtual_surface,
-            dim_idx_t w_idx, dim_idx_t h_idx, expr_t &mask) const;
+    bool check_2d_mask(const tile_t &tile, const coord_t &coord,
+            bool use_virtual_surface, dim_idx_t w_idx, dim_idx_t h_idx,
+            expr_t &mask) const;
 
     std::vector<layout_t> candidate_payload_layouts() const;
     stmt_t create_send_stmt(

@@ -19,7 +19,6 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
-#include "gpu/intel/utils.hpp"
 
 #include <set>
 
@@ -32,9 +31,9 @@ namespace jit {
 class blocking_t {
 public:
     int simd() const { return simd_; }
-    const pvar_tile_t &loop() const { return loop_; }
-    const pvar_tile_t &thread_group() const { return thread_group_; }
-    const pvar_tile_t &iter() const { return iter_; }
+    const tile_t &loop() const { return loop_; }
+    const tile_t &thread_group() const { return thread_group_; }
+    const tile_t &iter() const { return iter_; }
 
     dim_t loop_dim(const pvar_t &d) const { return loop_[d]; }
     dim_t thread_group_dim(const pvar_t &d) const { return thread_group_[d]; }
@@ -94,7 +93,7 @@ public:
     }
 
     std::string str(bool csv = false) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (csv) {
             oss << simd_;
             oss << "," << loop_;
@@ -110,7 +109,7 @@ public:
     }
 
     // Returns the ratio of all operations (with padding) to "useful" operations
-    double get_efficiency(const pvar_tile_t &shape) const {
+    double get_efficiency(const tile_t &shape) const {
         double ret = 1;
         for (auto &d : shape) {
             dim_t loop = loop_.get(d, 1);
@@ -127,9 +126,9 @@ public:
 
 private:
     int simd_ = 0;
-    pvar_tile_t loop_;
-    pvar_tile_t thread_group_;
-    pvar_tile_t iter_;
+    tile_t loop_;
+    tile_t thread_group_;
+    tile_t iter_;
 };
 
 struct blocking_hash_t {
@@ -237,7 +236,7 @@ public:
 
     std::string str() const {
         if (utils::everyone_is(0, loop, thread_group, iter)) return "x";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (loop != 0) oss << "l" << loop;
         if (thread_group != 0) oss << "T" << thread_group;
         if (iter != 0) oss << "i" << iter;
@@ -301,7 +300,7 @@ public:
     }
 
     virtual level_tile_set_t make_level_tile_set(
-            const pvar_tile_t &padded_shape) const {
+            const tile_t &padded_shape) const {
         const auto all_dims = dims();
         const int ndims = int(all_dims.size());
         const std::vector<int> deps(ndims, -1);
@@ -337,7 +336,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "l:" << loop_;
         oss << " T:" << thread_group_;
         oss << " i:" << iter_;
@@ -398,9 +397,9 @@ private:
     }
 
 protected:
-    pvar_tile_t loop_;
-    pvar_tile_t thread_group_;
-    pvar_tile_t iter_;
+    tile_t loop_;
+    tile_t thread_group_;
+    tile_t iter_;
     std::map<pvar_t, tile_info_t> tile_infos_;
 };
 
@@ -484,7 +483,7 @@ public:
     }
 
     std::string str(bool csv = false) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (csv) {
             oss << blocking_.str(csv);
             oss << "," << bufs_hint_;
@@ -639,7 +638,7 @@ const tiler_params_t &tiler_params();
 class tile_to_vec_t {
 public:
     tile_to_vec_t() = default;
-    tile_to_vec_t(const std::vector<std::vector<pvar_tile_t>> &tiles,
+    tile_to_vec_t(const std::vector<std::vector<tile_t>> &tiles,
             const std::vector<int> &ids = {});
 
     float dist(int id0, int id1) const {
@@ -689,7 +688,7 @@ private:
             dim_mappers_[d].add(value);
         }
 
-        void add(const pvar_tile_t &t) {
+        void add(const tile_t &t) {
             for (auto &d : t) {
                 add(d, t[d]);
             }
@@ -704,7 +703,7 @@ private:
             return dim_mappers_.at(d).to_index(value);
         }
 
-        std::vector<dim_idx_t> to_index(const pvar_tile_t &t) const {
+        std::vector<dim_idx_t> to_index(const tile_t &t) const {
             std::vector<dim_idx_t> ret;
             for (auto &kv : dim_mappers_) {
                 auto &m = kv.second;

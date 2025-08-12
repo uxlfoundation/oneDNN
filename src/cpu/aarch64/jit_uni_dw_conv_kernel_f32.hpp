@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,9 +42,9 @@ struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator {
     jit_uni_dw_conv_fwd_kernel_f32_t(jit_conv_conf_t ajcp)
         : jcp(ajcp), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
-            eltwise_injector_
-                    = utils::make_unique<jit_uni_eltwise_injector_f32<isa>>(
-                            this, jcp.eltwise);
+            eltwise_injector_ = utils::make_unique<
+                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
+                    this, jcp.eltwise);
     }
 
     ~jit_uni_dw_conv_fwd_kernel_f32_t() = default;
@@ -135,7 +136,8 @@ private:
                 format_tag::nwc);
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+            eltwise_injector_;
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_f32_t)
     void generate() override;
 };

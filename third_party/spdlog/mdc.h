@@ -12,12 +12,14 @@
 
 #include <spdlog/common.h>
 
-// MDC is a simple map of key->string values stored in thread local storage whose content will be printed by the loggers.
-// Note: Not supported in async mode (thread local storage - so the async thread pool have different copy).
+// MDC is a simple map of key->string values stored in thread local storage whose content will be
+// printed by the loggers. Note: Not supported in async mode (thread local storage - so the async
+// thread pool have different copy).
 //
 // Usage example:
 // spdlog::mdc::put("mdc_key_1", "mdc_value_1");
-// spdlog::info("Hello, {}", "World!");  // => [2024-04-26 02:08:05.040] [info] [mdc_key_1:mdc_value_1] Hello, World!
+// spdlog::info("Hello, {}", "World!");  // => [2024-04-26 02:08:05.040] [info]
+// [mdc_key_1:mdc_value_1] Hello, World!
 
 namespace spdlog {
 class SPDLOG_API mdc {

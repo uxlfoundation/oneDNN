@@ -64,9 +64,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // weights decompression.
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    const bool wei_is_fp8
-            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (wei_is_int || wei_is_fp8) {
+    const bool wei_is_fp8_fp4 = utils::one_of(wei_dt, data_type::f8_e5m2,
+            data_type::f8_e4m3, data_type::f4_e2m1, data_type::f4_e3m0);
+    if (wei_is_int || wei_is_fp8_fp4) {
         attr_mask |= smask_t::zero_points_data_type;
         attr_mask |= smask_t::zero_points_groups;
         attr_mask |= smask_t::scales_groups;
@@ -97,6 +97,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int dst_qmask_M = src_qmask_K;
     int dst_qmask_N = wei_qmask_N;
 
+    int full_tensor_mask = (1 << ndims_src) - 1;
+
     // Check scales
     if (!attr->scales_.has_default_values()) {
         const auto &sc = attr->scales_;
@@ -105,8 +107,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
-            VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                         src_qmask_M + src_qmask_K),
+            VCHECK_MATMUL_UNIMPL(
+                    utils::one_of(mask_src, 0, src_qmask_K,
+                            src_qmask_M + src_qmask_K, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {

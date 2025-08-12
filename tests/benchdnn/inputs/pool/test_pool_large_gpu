@@ -7,8 +7,8 @@
 --impl=jit
 --batch=shapes_large_pool
 
-# Test both gen_pooling and gen9_global pooling in the same pass
---impl=gen9
+# Test both gen_pooling and xe_global pooling in the same pass
+--impl=xe
 --batch=shapes_large_pool
 
 --impl=ref

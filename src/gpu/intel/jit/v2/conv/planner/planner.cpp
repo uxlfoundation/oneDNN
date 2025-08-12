@@ -78,7 +78,7 @@ Optional arguments:
 
 void init_params(
         int argc, const char **argv, const bench_manager_t &bench_mger) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (int i = 1; i < argc; i++)
         oss << " " << argv[i];
     auto cmd_args = oss.str();

@@ -29,6 +29,7 @@
 #include "gpu/intel/gpu_primitive.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 #include "xpu/utils.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -50,8 +51,6 @@ namespace intel {
 namespace jit {
 
 using gpu_gen_t = ngen::HW;
-constexpr gpu_gen_t gpu_gen9 = ngen::HW::Gen9;
-constexpr gpu_gen_t gpu_gen11 = ngen::HW::Gen11;
 constexpr gpu_gen_t gpu_xe_lp = ngen::HW::XeLP;
 constexpr gpu_gen_t gpu_xe_hp = ngen::HW::XeHP;
 constexpr gpu_gen_t gpu_xe_hpg = ngen::HW::XeHPG;
@@ -65,14 +64,6 @@ constexpr gpu_gen_t gpu_xe3p = ngen::HW::Xe3p;
 constexpr gpu_gen_t gpu_xe4 = ngen::HW::Xe4;
 #endif
 
-template <typename ngen_generator_t>
-struct eltwise_injector_f32_t;
-
-template <typename ngen_generator_t>
-struct reduction_injector_f32_t;
-
-template <typename ngen_generator_t>
-struct post_op_injector_t;
 
 #if (!defined(NDEBUG) || defined(DNNL_DEV_MODE))
 #define GENERATOR_NAME __FILE__
@@ -83,8 +74,18 @@ struct post_op_injector_t;
 #endif
 
 struct debug_config_t {
+#ifdef DNNL_DEV_MODE
+    static constexpr bool enable_debug_lines = true;
+#else
+    static constexpr bool enable_debug_lines = false;
+#endif
+
     const char *name;
     uint32_t line;
+
+    operator ngen::DebugConfig() const {
+        return ngen::DebugConfig(name, line, enable_debug_lines);
+    }
 };
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -97,23 +98,18 @@ template <gpu_gen_t hw>
 using ngen_code_generator_t = ngen::OpenCLCodeGenerator<hw>;
 #endif
 
+void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
+        const compute::compute_engine_t *engine);
+
 template <gpu_gen_t hw>
 class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
-    friend struct eltwise_injector_f32_t<generator_t>;
-    friend struct reduction_injector_f32_t<generator_t>;
-    friend struct post_op_injector_t<generator_t>;
-    friend struct ngen::EmulationImplementation;
-
-private:
-#ifdef DNNL_DEV_MODE
-    static constexpr bool enable_debug_lines = true;
-#else
-    static constexpr bool enable_debug_lines = false;
-#endif
 public:
     generator_t(const debug_config_t &debug_config)
-        : ngen_code_generator_t<hw>(0,
-                {debug_config.name, debug_config.line, enable_debug_lines}) {};
+        : ngen_code_generator_t<hw>(0, debug_config) {}
+
+    generator_t(
+            const ngen::Product &product, const debug_config_t &debug_config)
+        : ngen_code_generator_t<hw>(product, debug_config) {}
 
     const char *kernel_name() const override {
         return ngen_code_generator_t<hw>::getExternalName().c_str();
@@ -121,6 +117,8 @@ public:
 
     status_t get_kernel(compute::kernel_t &kernel,
             const compute::compute_engine_t *engine) override {
+        check_kernel_size(kernel_name(),
+                ngen_code_generator_t<hw>::getRootStreamLength(), engine);
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
         auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(
@@ -136,20 +134,18 @@ public:
     }
 };
 
-void check_kernel_size(
-        const std::string &kernel_name, size_t kernel_size, size_t icache_size);
-
-template <template <ngen::HW> class KernelT, ngen::HW arch, typename... ArgsT>
-std::unique_ptr<jit::generator_base_t> make_generator(
-        const compute::device_info_t &device_info, ArgsT &&...args) {
-
-    auto raw_kernel = new KernelT<arch>(std::forward<ArgsT>(args)...);
-    check_kernel_size(raw_kernel->kernel_name(),
-            raw_kernel->getRootStreamLength(), device_info.icache_size());
-    return std::unique_ptr<jit::generator_base_t>(raw_kernel);
+inline ngen::HW to_ngen_hw(const impl::engine_t *engine) {
+    auto *compute_engine
+            = utils::downcast<const compute::compute_engine_t *>(engine);
+    auto *device_info = compute_engine->device_info();
+    return convert_dnnl_arch_to_ngen(device_info->gpu_arch());
 }
 
-template <template <ngen::HW> class KernelT, typename... ArgsT>
+inline ngen::HW to_ngen_hw(const impl::engine_t &engine) {
+    return to_ngen_hw(&engine);
+}
+
+template <class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
     using namespace compute;
@@ -162,41 +158,31 @@ compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
         return kernel;
     }
 
-    auto *compute_engine = utils::downcast<compute_engine_t *>(engine);
-    auto *device_info = compute_engine->device_info();
-    auto arch = convert_dnnl_arch_to_ngen(device_info->gpu_arch());
-
-    std::unique_ptr<jit::generator_base_t> jit_kernel;
-#define CASE(gpu_arch) \
-    case gpu_arch: \
-        jit_kernel = make_generator<KernelT, gpu_arch>( \
-                *device_info, std::forward<ArgsT>(args)...); \
-        break;
-    switch (arch) {
-        REG_GEN9_ISA(CASE(gpu_gen9));
-        REG_GEN11_ISA(CASE(gpu_gen11));
-        REG_XELP_ISA(CASE(gpu_xe_lp));
-        REG_XEHP_ISA(CASE(gpu_xe_hp));
-        REG_XEHPG_ISA(CASE(gpu_xe_hpg));
-        REG_XEHPC_ISA(CASE(gpu_xe_hpc));
-        REG_XE2_ISA(CASE(gpu_xe2));
-        REG_XE3_ISA(CASE(gpu_xe3));
-#if XE3P
-        REG_XE3P_ISA(CASE(gpu_xe3p));
-#endif
-#if XE4
-        REG_XE4_ISA(CASE(gpu_xe4));
-#endif
-        default: break;
-    }
-#undef CASE
-
-    if (!jit_kernel) return kernel_t();
-
+    KernelT jit_kernel(std::forward<ArgsT>(args)...);
     status_t status = primitive->create_kernel(
-            engine, &kernel, jit_kernel.get(), register_kernel);
+            engine, &kernel, &jit_kernel, register_kernel);
     if (status != status::success) return kernel_t();
     return kernel;
+}
+
+template <class KernelT, typename... ArgsT>
+compute::kernel_t make_kernel(
+        gpu_primitive_t *primitive, impl::engine_t *engine, ArgsT &&...args) {
+    return make_kernel<KernelT>(primitive, /*register_kernel=*/true, engine,
+            std::forward<ArgsT>(args)...);
+}
+
+template <template <ngen::HW> class KernelT, typename... ArgsT>
+compute::kernel_t make_kernel(gpu_primitive_t *primitive, bool register_kernel,
+        impl::engine_t *engine, ArgsT &&...args) {
+#define GPU_HW_CASE(hw) \
+    return make_kernel<KernelT<(hw)>>( \
+            primitive, register_kernel, engine, std::forward<ArgsT>(args)...);
+
+    GPU_HW_SWITCH(to_ngen_hw(engine))
+
+#undef GPU_HW_CASE
+    return compute::kernel_t();
 }
 
 template <template <ngen::HW> class KernelT, typename... ArgsT>

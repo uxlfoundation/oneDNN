@@ -481,47 +481,26 @@ struct sycl_rnn_copy_conf_t {
     bool sum;
 };
 
-struct sycl_rnn_bias_conf_t {
-    xpu::sycl::md_t dst_md;
-    data_type_t bias_type;
+struct sycl_rnn_bias_common_conf_t {
     dim_t batch;
     dim_t dhc;
     dim_t gates_ws_ld;
     dim_t states_ws_ld;
     dnnl_alg_kind_t activation_kind;
+    data_type_t gates_type;
     float alpha;
 };
 
-template <size_t ndims>
-using strides_t = std::array<dim_t, ndims>;
-struct outer_strides_getter_t {
-    template <size_t ndims>
-    operator strides_t<ndims>() const {
-        strides_t<ndims> ret;
-        assert(static_cast<dim_t>(ndims) >= md.ndims());
-        for (int d = ndims - 1; d >= 0; d--) {
-            // Assumes size 1 dimensions are dense with respect to the neighboring
-            // dimension so they can be used for size calculations in some layouts
-            ret[d] = [&]() {
-                if (d >= md.ndims())
-                    return static_cast<dim_t>(0);
-                else if (md.padded_dims()[d] > 1)
-                    return md.strides()[d];
-                else if (d == md.ndims() - 1)
-                    return static_cast<dim_t>(1);
-                else
-                    return ret[d + 1] * md.padded_dims()[d + 1];
-            }();
-        }
-        return ret;
-    }
-
-    const memory_desc_wrapper &md;
+struct sycl_rnn_bias_fwd_conf_t : sycl_rnn_bias_common_conf_t {
+    data_type_t bias_type;
+    data_type_t states_data_type;
 };
 
-inline outer_strides_getter_t get_outer_strides(const memory_desc_wrapper &md) {
-    return {md};
-}
+struct sycl_rnn_bias_bwd_conf_t : sycl_rnn_bias_common_conf_t {
+    data_type_t diff_states_type;
+    data_type_t diff_gates_type;
+    dim_t scratch_diff_states_ld;
+};
 
 struct sycl_group_norm_conf_t {
     xpu::sycl::md_t src_desc;
@@ -568,7 +547,8 @@ CHECK_SYCL_KERNEL_ARG_TYPE(sycl_convolution_bwd_weights_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_simple_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_reduction_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_copy_conf_t);
-CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_fwd_conf_t);
+CHECK_SYCL_KERNEL_ARG_TYPE(sycl_rnn_bias_bwd_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_group_norm_conf_t);
 CHECK_SYCL_KERNEL_ARG_TYPE(sycl_gnorm_bwd_conf_t);
 

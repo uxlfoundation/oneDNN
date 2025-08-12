@@ -33,6 +33,11 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
+enum { OCL_BUFFER_ALIGNMENT = 128 };
+
+const char *get_kernel_header(const std::string &name);
+const char *get_kernel_source(const char *name);
+
 #define MAX_NDIMS 6
 #define MAX_POST_OPS_SUPPORTED 32
 
@@ -92,7 +97,7 @@ private:
 
         const char *file;
         int line;
-        std::ostringstream out;
+        ostringstream_t out;
     };
 
     data_t *data_;
@@ -217,7 +222,7 @@ inline std::vector<std::string> split(const std::string &s,
 
 inline std::string join(
         const std::string &delimiter, const std::vector<std::string> &parts) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &p : parts) {
         if (!is_first) oss << delimiter;

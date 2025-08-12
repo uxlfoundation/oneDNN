@@ -166,7 +166,8 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
         case op_kind_t::_minus: {
             auto &t = a.type();
             if (!t.is_int()) return t;
-            if (t.size() < int(sizeof(int32_t))) return type_t::s32(t.elems());
+            if (t.size() < int(sizeof(int32_t)))
+                return type_t::s32(t.elems(), a.type().attr());
             return t;
         }
         default:
@@ -175,9 +176,15 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
     return type_t::undef();
 }
 
+type_attr_t common_attr(const type_t &a, const type_t &b) {
+    gpu_assert(!a.is_ptr() && !b.is_ptr());
+    return (a.attr() | b.attr()) & ~type_attr_t::mut;
+}
+
 type_t common_int_type(const type_t &_a, const type_t &_b) {
     gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
 
+    type_attr_t attr = common_attr(_a, _b);
     int elems = _a.elems();
 
     // Promote to s32 first.
@@ -189,20 +196,20 @@ type_t common_int_type(const type_t &_a, const type_t &_b) {
     // Integer promotion, follow C++ rules.
     int common_bits = 8 * std::max(a.size(), b.size());
     if (a.is_signed() == b.is_signed()) {
-        if (a.is_signed()) return type_t::s(common_bits, elems);
-        return type_t::u(common_bits, elems);
+        if (a.is_signed()) return type_t::s(common_bits, elems, attr);
+        return type_t::u(common_bits, elems, attr);
     }
 
     if (a.size() >= b.size() && a.is_unsigned())
-        return type_t::u(common_bits, elems);
+        return type_t::u(common_bits, elems, attr);
     if (b.size() >= a.size() && b.is_unsigned())
-        return type_t::u(common_bits, elems);
+        return type_t::u(common_bits, elems, attr);
     if (a.size() > b.size() && a.is_signed())
-        return type_t::s(common_bits, elems);
+        return type_t::s(common_bits, elems, attr);
     if (b.size() > a.size() && b.is_signed())
-        return type_t::s(common_bits, elems);
+        return type_t::s(common_bits, elems, attr);
 
-    return type_t::u(common_bits, elems);
+    return type_t::u(common_bits, elems, attr);
 }
 
 type_t common_type(const type_t &a, const type_t &b) {
@@ -225,12 +232,15 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
     if (a.is_undef() || b.is_undef()) return type_t::undef();
     gpu_assert(a.elems() == b.elems())
             << "Types must have the same number of components.";
-    if (is_cmp_op(op_kind)) return type_t::_bool(a.elems());
+
+    type_attr_t attr = common_attr(a, b);
+    if (is_cmp_op(op_kind)) return type_t::_bool(a.elems(), attr);
     if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
         gpu_assert(a.is_unsigned())
                 << "a must be unsigned for shift left/right.";
-        return type_t::u32(a.elems());
+        return type_t::u32(a.elems(), attr);
     }
+
     if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
         if (a == b) return a;
         if (is_const(a_expr)) return b;
@@ -239,7 +249,7 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
     }
     if (utils::one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
             && b.is_int()) {
-        return (a.is_signed() ? type_t::s32() : type_t::u32());
+        return (a.is_signed() ? type_t::s32() : type_t::u32()).with_attr(attr);
     }
     return common_type(a, b);
 }
@@ -277,7 +287,7 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
 }
 
 void ptr_t::normalize(expr_t &base, expr_t &off, op_kind_t op_kind) {
-    gpu_assert(base.type().is_ptr()) << "base is not a pointer: " << base;
+    // Normalize (base + off1) + off2 -> base + (off1 + off2)
     gpu_assert(off.type().is_int()) << "off is not an integer: " << off;
     gpu_assert(utils::one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
             << "Can't apply this operation to pointer: " << to_string(op_kind);
@@ -347,6 +357,8 @@ expr_t expr_t::operator[](const expr_t &off) const {
         int idx = shuffle.idx[to_cpp<int>(off)];
         return shuffle.vec[idx];
     }
+    gpu_assert(type().is_ptr()
+            || (is_const(off) && to_cpp<int>(off) < type().size()));
     return shift_ptr(op_kind_t::_add, *this, off);
 }
 
@@ -424,7 +436,6 @@ void object_impl_t::_visit(ir_visitor_t &visitor) const {}
 DECL_TRAVERSE_LEAF(bool_imm_t)
 DECL_TRAVERSE_LEAF(const_var_t)
 DECL_TRAVERSE_LEAF(float_imm_t)
-DECL_TRAVERSE_LEAF(func_impl_t)
 DECL_TRAVERSE_LEAF(int_imm_t)
 DECL_TRAVERSE_LEAF(var_t)
 
@@ -443,6 +454,14 @@ void ir_visitor_t::_visit(const alloc_t &obj) {
     visit(obj.buf);
     visit(obj.body);
 }
+
+object_t ir_mutator_t::_mutate(const ref_t &obj) {
+    auto var = mutate(obj.var);
+    if (var.impl() == obj.var.impl()) return obj;
+    return ref_t::make(var, obj.off, obj.elems);
+}
+
+void ir_visitor_t::_visit(const ref_t &obj) {}
 
 object_t ir_mutator_t::_mutate(const binary_op_t &obj) {
     auto a = mutate(obj.a);
@@ -492,16 +511,14 @@ void ir_visitor_t::_visit(const for_t &obj) {
 }
 
 object_t ir_mutator_t::_mutate(const func_call_t &obj) {
-    auto func = mutate(obj.func);
     auto args = mutate(obj.args);
 
-    if (func.is_same(obj.func) && ir_utils::is_same(args, obj.args)) return obj;
+    if (ir_utils::is_same(args, obj.args)) return obj;
 
-    return func_call_t::make(func, args, obj.attr);
+    return func_call_t::make(obj.func, args, obj.attr);
 }
 
 void ir_visitor_t::_visit(const func_call_t &obj) {
-    visit(obj.func);
     visit(obj.args);
 }
 
@@ -688,23 +705,6 @@ object_t ir_mutator_t::_mutate(const while_t &obj) {
 void ir_visitor_t::_visit(const while_t &obj) {
     visit(obj.cond);
     visit(obj.body);
-}
-
-// Catch missing mutates that are not expected to dispatch to the base
-// mutator
-object_t ir_mutator_t::_mutate(const nary_op_t &obj) {
-    gpu_error_not_expected() << "Can't handle type: nary_op_t";
-    return {};
-}
-void ir_visitor_t::_visit(const nary_op_t &obj) {
-    gpu_error_not_expected() << "Can't handle type: nary_op_t";
-}
-object_t ir_mutator_t::_mutate(const pexpr_t &obj) {
-    gpu_error_not_expected() << "Can't handle type: pexpr_t";
-    return {};
-}
-void ir_visitor_t::_visit(const pexpr_t &obj) {
-    gpu_error_not_expected() << "Can't handle type: pexpr_t";
 }
 
 } // namespace jit

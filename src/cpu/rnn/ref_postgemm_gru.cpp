@@ -344,7 +344,8 @@ void gru_bwd_part1_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
             rnn, src_iter_, src_iter_ld);
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_src_iter(
             rnn, diff_src_iter_);
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(
@@ -393,7 +394,8 @@ void gru_bwd_part2_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
             rnn, src_iter_, src_iter_ld);
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const ws_diff_states_layer_aoc_t<acc_data_t> diff_dst_layer(
             rnn, diff_dst_layer_);
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(

@@ -107,25 +107,30 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
 
             using namespace dnnl::impl::cpu::binary_injector_utils;
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
-                    with_binary_per_mb_bcast_, with_binary_channel_bcast_,
-                    with_binary_per_mb_w_bcast_, with_binary_per_w_bcast_,
+                    with_binary_per_oc_d_bcast_, with_binary_per_mb_bcast_,
+                    with_binary_channel_bcast_, with_binary_per_mb_w_bcast_,
+                    with_binary_per_w_bcast_, with_binary_spatial_bcast_,
                     with_binary_batch_bcast_, with_binary_spatial_bcast_,
                     with_binary_no_bcast_)
                     = bcast_strategies_present_tup(brg.attr()->post_ops_.entry_,
                             dst_md_wrapper, broadcasting_strategy_t::per_oc,
                             broadcasting_strategy_t::per_oc_spatial,
+                            broadcasting_strategy_t::per_oc_d,
                             broadcasting_strategy_t::per_mb,
                             broadcasting_strategy_t::per_mb_spatial,
                             broadcasting_strategy_t::per_mb_w,
                             broadcasting_strategy_t::per_w,
+                            broadcasting_strategy_t::per_hw,
                             broadcasting_strategy_t::batch,
                             broadcasting_strategy_t::spatial,
                             broadcasting_strategy_t::no_broadcast);
             handle_binary_po_offset_ = with_binary_per_oc_bcast_
-                    || with_binary_per_oc_sp_bcast_ || with_binary_per_mb_bcast_
+                    || with_binary_per_oc_sp_bcast_
+                    || with_binary_per_oc_d_bcast_ || with_binary_per_mb_bcast_
                     || with_binary_channel_bcast_ || with_binary_per_mb_w_bcast_
-                    || with_binary_per_w_bcast_ || with_binary_batch_bcast_
-                    || with_binary_spatial_bcast_ || with_binary_no_bcast_;
+                    || with_binary_per_w_bcast_ || with_binary_per_hw_bcast_
+                    || with_binary_batch_bcast_ || with_binary_spatial_bcast_
+                    || with_binary_no_bcast_;
         }
         use_ils_ = brg.brgattr.use_interleave_stores;
     }
@@ -203,12 +208,14 @@ private:
     bool handle_binary_po_offset_ = false;
     bool with_binary_per_oc_bcast_ = false;
     bool with_binary_per_oc_sp_bcast_ = false;
+    bool with_binary_per_oc_d_bcast_ = false;
     bool with_binary_channel_bcast_ = false;
     bool with_binary_per_mb_bcast_ = false;
     bool with_binary_per_mb_w_bcast_ = false;
     bool with_binary_per_w_bcast_ = false;
     bool with_binary_batch_bcast_ = false;
     bool with_binary_spatial_bcast_ = false;
+    bool with_binary_per_hw_bcast_ = false;
     bool with_binary_no_bcast_ = false;
     bool prepare_post_ops_registers_once_ = false;
 
@@ -396,6 +403,7 @@ private:
             prf1C;
 
     bool dt_requires_saturation_ = false;
+    bool use_sat_cvt_ = false;
 
     bool ununroll_bd_loop = false;
 
@@ -1008,7 +1016,8 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
 void jit_brgemm_amx_uker_base_t::maybe_saturation(Xbyak::Zmm &zmm) {
     if (!dt_requires_saturation_) return;
-    saturate_cvt_f32(zmm, zmm_lbound, zmm_ubound, brg.dt_d);
+    saturate_cvt_f32(
+            zmm, zmm_lbound, zmm_ubound, brg.dt_d, false, use_sat_cvt_);
 }
 
 void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
@@ -1061,13 +1070,66 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         }
     }
 
-    if (brg.with_scales) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+    if (brg.with_src_scales) {
+        mov(reg_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
+        for (int ldb = 0; ldb < ldi->block2(); ldb++) {
+            // Hard-coded assumption for a single src scale value being
+            // supported, thus, offset is 0.
+            auto scales_ptr = EVEX_compress_addr(reg_scales, /* offset = */ 0);
+            auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
+            vbroadcastss(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
+        }
+    }
+
+    if (brg.with_wei_scales) {
+        mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
                     reg_scales, scales_offset(ldi->pos(ldb)));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
-            vmovups(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
+            const bool is_single_scale = !brg.is_oc_scale;
+
+            const auto zmm_scale = zmm_scales(ldb);
+            const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
+
+            if (is_single_scale) {
+                // Single value is not anticipated to be of any other type.
+                assert(brg.dt_wei_scales == data_type::f32);
+                if (brg.with_src_scales) {
+                    // Src scales are set, need to multiply by their value.
+                    auto scales_bcast_ptr = EVEX_compress_addr(reg_scales,
+                            scales_offset(ldi->pos(ldb)), /* bcast = */ true);
+                    vmulps(zmm_scale_masked, zmm_scale, scales_bcast_ptr);
+                } else {
+                    // No src scales, just load a single value.
+                    vbroadcastss(zmm_scale_masked, scales_ptr);
+                }
+                continue;
+            }
+
+            const auto zmm_wei_scale = zmm_tmp_1();
+            const auto zmm_wei_scale_masked = zmm_wei_scale | k_mask | T_z;
+            switch (brg.dt_wei_scales) {
+                case data_type::f32:
+                    uni_vmovups(zmm_wei_scale_masked, scales_ptr);
+                    break;
+                case data_type::bf16:
+                    uni_vpmovzxwd(zmm_wei_scale_masked, scales_ptr);
+                    uni_vpslld(zmm_wei_scale, zmm_wei_scale, 16);
+                    break;
+                case data_type::f16:
+                    vcvtph2ps(zmm_wei_scale_masked, scales_ptr);
+                    break;
+                default: assert(!"unsupported wei_scales data type");
+            }
+
+            if (brg.with_src_scales) {
+                // Src scales are set, need to multiply by their value.
+                vmulps(zmm_scale_masked, zmm_scale, zmm_wei_scale);
+            } else {
+                // No src scales, just load a vector of values.
+                vmovups(zmm_scale, zmm_wei_scale);
+            }
         }
     }
 }
@@ -1351,7 +1413,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         }
     }
 
-    if (brg.with_scales) {
+    if (brg.with_src_scales || brg.with_wei_scales) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
@@ -1408,7 +1470,7 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
     const Xbyak::Zmm r_zmm = vmm_mask(zmm, true, true, k_mask);
     const Xbyak::Ymm r_ymm = vmm_mask(ymm, true, true, k_mask);
     const Xbyak::Xmm r_xmm = vmm_mask(xmm, true, true, k_mask);
-    if (isa_has_sat_cvt(brg.isa_impl, brg.dt_d)) {
+    if (use_sat_cvt_) {
         assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
         auto zmm_perm = zmm_ubound;
         vpermb(zmm, zmm_perm, zmm);
@@ -2603,9 +2665,11 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
         dt_requires_saturation_ = brg.is_int8
                 && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
     }
+    use_sat_cvt_ = dt_requires_saturation_
+            && isa_has_sat_cvt(brg.isa_impl, brg.dt_d);
     if (dt_requires_saturation_) {
-        init_saturate_f32(
-                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        init_saturate_f32(zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32,
+                brg.dt_d, false, use_sat_cvt_);
     }
 
     if (bi.skip_accumulation) return;
@@ -2652,7 +2716,10 @@ void jit_brgemm_amx_uker_base_t::generate() {
     ld_block_C_size_ = brg.typesize_C * brg.ld_block;
     ld_block_D_size_ = brg.typesize_D * brg.ld_block;
     ld_block_bias_size_ = brg.typesize_bias * brg.ld_block;
-    ld_block_scales_size_ = sizeof(float) * brg.ld_block;
+    if (brg.with_wei_scales) {
+        ld_block_scales_size_
+                = types::data_type_size(brg.dt_wei_scales) * brg.ld_block;
+    }
     ld_block_zp_size_ = sizeof(int32_t) * brg.ld_block;
     ldb_tail_B_size_ = brg.typesize_B * brg.ldb_tail;
     ldb_tail_C_size_ = brg.typesize_C * brg.ldb_tail;

@@ -22,10 +22,10 @@
 #include <array>
 #include <utility>
 
-#include "config.hpp"
-#include "driver_info.hpp"
+#include "gemmstone/config.hpp"
+#include "gemmstone/driver_info.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 namespace kcatalog {
 
@@ -63,10 +63,10 @@ enum RestrictionTags : char {
     ReqSumA = 'Q',           ReqNoSumA = 'q',
     ReqSumB = 'P',           ReqNoSumB = 'p',
     ReqABOffset = 'R',       ReqNoABOffset = 'r',
-    ReqIntegrated = 'H',     ReqNoIntegrated = 'h',
-    ReqBatchN = 'N',         ReqNoBatchN = 'n',
     ReqOffsetMultiDim = 'O', ReqNoOffsetMultiDim = 'o',
     ReqSystolic = 'I',       ReqNoSystolic = 'i',
+    ReqIntegrated = 'H',     ReqNoIntegrated = 'h',
+    ReqBatchN = 'N',         ReqNoBatchN = 'n',
     ReqCustom1 = 'D',        ReqNoCustom1 = 'd',
     ReqXe2Block2D = 'G',     ReqNoXe2Block2D = 'g',
 };
@@ -90,8 +90,13 @@ struct Selector {
 
     friend bool operator<(const Selector &sel1, const Selector &sel2) {
         auto tupleize = [](const Selector &sel) {
+            bool compoundA = sel.precisions[0][0] == '[';
+            bool compoundB = sel.precisions[1][0] == '[';
             return std::make_tuple(sel.hw,
-                                   sel.precisions[0][0] & 0x1F, sel.precisions[1][0] & 0x1F,
+                                   sel.precisions[0][0] & 0x1F,
+                                   compoundA ? sel.precisions[0][1] & 0x1F : 'a',
+                                   sel.precisions[1][0] & 0x1F,
+                                   compoundB ? sel.precisions[1][1] & 0x1F : 'b',
                                    sel.layouts[0][0], sel.layouts[1][0]);
         };
         return tupleize(sel1) < tupleize(sel2);
@@ -243,6 +248,6 @@ std::array<Entry, N> toArray(Entry (&&a)[N]) {
 
 } /* namespace kcatalog */
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

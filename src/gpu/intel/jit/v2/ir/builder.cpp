@@ -152,8 +152,8 @@ type_t to_send_type(const send_1d_desc_t &desc) {
 }
 
 stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
-        const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const expr_t &reg_buf, offset_ctx_t &off_ctx, const coord_t &coord,
+        const tile_t &tile) {
     for (auto &d : plan.entry_tile) {
         gpu_assert(tile.at(d) % plan.entry_tile.at(d) == 0);
     }
@@ -165,7 +165,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
             plan.hw, op, address, type, slots, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const pvar_coord_t<dim_t> &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const coord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
@@ -175,8 +175,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
                 = off_ctx.add_header(plan.desc, mem_buf, plan.addr, e.addr_inc);
         auto mask = off_ctx.add_mask(plan.mask, e.mask_incs);
         auto call_reg_buf = reg_buf;
-        if (!reg_buf.is_empty())
-            call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
+        if (reg_buf) call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
         auto call
                 = send(mem_buf, header.to_expr(), call_reg_buf, mask.to_expr());
         ret = ret.append(header.off().inline_init);
@@ -186,8 +185,8 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
 }
 
 stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
-        const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const expr_t &reg_buf, offset_ctx_t &off_ctx, const coord_t &coord,
+        const tile_t &tile) {
     auto op = to_ir(plan.desc.op, /*is_2d=*/true);
     auto &type = plan.desc.type;
     auto &desc = plan.desc;
@@ -195,7 +194,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
             desc.c, desc.vnni, desc.transpose, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const pvar_coord_t<dim_t> &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const coord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
@@ -204,8 +203,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
                 plan.x_base, plan.y_base, e.x_inc, e.y_inc);
         auto mask = off_ctx.add_mask(plan.mask);
         auto call_reg_buf = reg_buf;
-        if (!reg_buf.is_empty())
-            call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
+        if (reg_buf) call_reg_buf += plan.reg_layout.offset_in_bytes(sub_coord);
         auto call
                 = send(mem_buf, header.to_expr(), call_reg_buf, mask.to_expr());
         ret = ret.append(header.off().inline_init);
@@ -215,8 +213,8 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
 }
 
 stmt_t create_stmt(const send_plan_t &plan, const expr_t &mem_buf,
-        const expr_t &reg_buf, offset_ctx_t &off_ctx,
-        const pvar_coord_t<dim_t> &coord, const pvar_tile_t &tile) {
+        const expr_t &reg_buf, offset_ctx_t &off_ctx, const coord_t &coord,
+        const tile_t &tile) {
     if (plan.is_1d())
         return create_stmt(plan._1d, mem_buf, reg_buf, off_ctx, coord, tile);
     if (plan.is_2d())

@@ -75,7 +75,7 @@ dim_mapper_t extend_mapper(
         const dim_mapper_t &mapper, const pvar_t &extra_dim, char letter);
 
 std::vector<pvar_t> skip_mask(
-        const view_t &view, const pvar_tile_t &tile, const prb_reqs_t &reqs);
+        const view_t &view, const tile_t &tile, const prb_reqs_t &reqs);
 
 } // namespace conv
 } // namespace v2

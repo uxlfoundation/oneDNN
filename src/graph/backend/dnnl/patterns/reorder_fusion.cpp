@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ using FCreatePattern = graph::pass::FCreatePattern;
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(reorder_fusion)
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reorder_sum_fusion)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_reorder_sum)
         .set_priority(10.1f)
         .set_kind(partition_kind_t::misc_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",
@@ -53,7 +53,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reorder_sum_fusion)
             return std::make_shared<float_reorder>();
         });
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_reorder_fusion)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_reorder)
         .set_priority(10.1f)
         .set_kind(partition_kind_t::misc_quantized_post_ops)
         .set_attr<FCreatePattern>("FCreatePattern",
@@ -76,7 +76,7 @@ Currently DNNL Backend doesn't support Post-sum/binary with zero points
 on GPU, while CPU supports.
 */
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_reorder_sum_fusion_cpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_reorder_sum_cpu)
         .set_priority(10.2f)
         .set_engine_kind(engine_kind::cpu)
         .set_kind(partition_kind_t::misc_quantized_post_ops)
@@ -115,7 +115,7 @@ Currently DNNL Backend doesn't support Post-sum/binary with zero points
 on GPU, while CPU supports.
 */
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_reorder_sum_fusion_gpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_reorder_sum_gpu)
         .set_priority(10.2f)
         .set_engine_kind(engine_kind::gpu)
         .set_kind(partition_kind_t::misc_quantized_post_ops)

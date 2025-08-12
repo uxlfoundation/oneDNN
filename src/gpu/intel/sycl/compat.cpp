@@ -17,7 +17,6 @@
 #include <type_traits>
 
 #include "gpu/intel/sycl/utils.hpp"
-#include "gpu/intel/utils.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
 #include "level_zero/ze_api.h"
@@ -93,6 +92,7 @@ status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
     return status::success;
 }
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 uint64_t init_extensions(const ::sycl::device &dev) {
     uint64_t extensions = 0;
 
@@ -137,6 +137,7 @@ uint64_t init_extensions(const ::sycl::device &dev) {
 
     return extensions;
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 } // namespace compat
 } // namespace sycl

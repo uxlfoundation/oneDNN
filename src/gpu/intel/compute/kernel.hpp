@@ -25,6 +25,7 @@
 #include <memory>
 #include <utility>
 
+#include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
@@ -130,6 +131,10 @@ public:
         gpu_assert(false) << "unimplemented function get_binary() called";
         return status::runtime_error;
     }
+    virtual status_t get_kernel_binary(xpu::binary_t &binary) const {
+        gpu_assert(false) << "unimplemented function get_binary() called";
+        return status::runtime_error;
+    }
 
     virtual const std::vector<scalar_type_t> &arg_types() const {
         static const std::vector<scalar_type_t> dummy;
@@ -151,6 +156,10 @@ public:
     status_t check_scalar_arguments(const kernel_arg_list_t &arg_list) const {
         // Some kernels may not support argument validation.
         if (arg_types().empty()) return status::success;
+
+        gpu_assert(static_cast<size_t>(arg_list.nargs()) == arg_types().size())
+                << "The number of arguments is not consistent with the types "
+                   "container";
 
         for (int i = 0; i < arg_list.nargs(); i++) {
             auto &arg = arg_list.get(i);
@@ -178,14 +187,16 @@ public:
     virtual status_t check_alignment(
             const kernel_arg_list_t &arg_list) const = 0;
 
-    status_t check_alignment(const void *ptr) const {
+    status_t check_alignment(const void *ptr, int arg_idx) const {
         const int min_alignment = 64;
         auto addr = reinterpret_cast<uint64_t>(ptr);
         if (addr % min_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;
         // Report an error otherwise.
-        VERROR(common, runtime, "found misaligned buffer: %p", ptr);
+        VERROR(common, runtime,
+                "found misaligned buffer: %p for kernel %s at index %d", ptr,
+                name().c_str(), arg_idx);
         return status::runtime_error;
     }
 };
@@ -229,6 +240,10 @@ public:
         return impl_->get_binary(engine, binary);
     }
 
+    status_t get_kernel_binary(xpu::binary_t &binary) const {
+        return impl_->get_kernel_binary(binary);
+    }
+
     const std::vector<scalar_type_t> &arg_types() const {
         return impl_->arg_types();
     }
@@ -240,10 +255,29 @@ public:
         return impl_->dump();
     }
 
+    // A `tag` may be provided by the user to differentiate the source of the
+    // kernel. In particular, it may come from the blob, or it could be
+    // properly generated.
+    void hash_dump(const char *tag = nullptr) const {
+        if (!*this) return;
+        if (get_verbose_dev_mode(verbose_t::debuginfo) >= 6) {
+            printf("kernel creation [%s] %s -> %zu\n", tag ? tag : "unlabeled",
+                    name().c_str(), get_hash());
+            fflush(stdout);
+        }
+    }
+
     std::string name() const { return impl_->name(); }
 
 private:
     std::shared_ptr<kernel_impl_t> impl_;
+
+    size_t get_hash() const {
+        xpu::binary_t binary;
+        status_t status = get_kernel_binary(binary);
+        if (status != status::success) return 0;
+        return serialization_stream_t::get_hash(binary);
+    }
 };
 
 class kernel_bundle_t {

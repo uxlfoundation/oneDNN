@@ -75,6 +75,7 @@ jobs:
         with:
           key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
           path: ${{ github.workspace }}/ComputeLibrary/build
+          lookup-only: true
 
       - name: Install Scons (MacOS)
         if: ${{ matrix.config.name == 'MacOS' && (steps.cache-acl-restore.outputs.cache-hit != 'true') }}

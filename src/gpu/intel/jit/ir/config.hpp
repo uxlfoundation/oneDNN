@@ -78,7 +78,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << compute_unnormalized_tag_;
         if (user_unnormalized_tag_ != compute_unnormalized_tag_)
@@ -124,13 +124,12 @@ public:
     bool is_default(const std::string &key) const override {
         if (key == "regs") return false;
         if (key == "simd") return false;
-        if (key == "vec") return value_.vec_size() == value_.simd();
         gpu_error_not_expected() << key;
         return false;
     }
 
     std::vector<std::string> accepted_keys() const override {
-        return {"regs", "simd", "vec"};
+        return {"regs", "simd"};
     }
 
     void set_from_str(
@@ -139,21 +138,17 @@ public:
             value_.set_regs(std::stoi(value));
         } else if (key == "simd") {
             value_.set_simd(std::stoi(value));
-        } else if (key == "vec") {
-            value_.set_vec_size(std::stoi(value));
         } else {
             gpu_error_not_expected() << key;
         }
     }
 
     std::string str(const std::string &key) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (key == "regs") {
             oss << "regs=" << value_.regs();
         } else if (key == "simd") {
             oss << "simd=" << value_.simd();
-        } else if (key == "vec") {
-            if (!is_default("vec")) oss << "vec=" << value_.vec_size();
         }
         return oss.str();
     }
@@ -184,7 +179,7 @@ public:
 
 class tile_param_t : public param_t {
 public:
-    using value_t = pvar_tile_t;
+    using value_t = tile_t;
 
     const value_t &get() const { return tile_; }
 
@@ -195,7 +190,7 @@ public:
     dim_t operator()(const pvar_t &pvar) const { return get(pvar); }
 
     void set_from_str(const std::string &s) override {
-        tile_ = pvar_tile_t();
+        tile_ = tile_t();
         for (auto &kv : ir_utils::to_string_int_pairs(s)) {
             tile_[pvar_t(kv.first)] = kv.second;
         }
@@ -212,7 +207,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << tile_.str();
         return oss.str();
     }
@@ -287,7 +282,7 @@ public:
     ~prim_config_t() override = default;
     std::string str() const override = 0;
 
-    virtual pvar_tile_t shape(bool pad) const = 0;
+    virtual tile_t shape(bool pad) const = 0;
     virtual const std::vector<pvar_t> &index_dims() const = 0;
     virtual int pad_block(const pvar_t &d) const = 0;
 
@@ -323,23 +318,6 @@ public:
 
         set_params_id(params.id());
         set_bufs_hint(params.bufs_hint());
-    }
-
-    blocking_params_t params(
-            int bufs_hint = blocking_params_t::bufs_hint_undef) const {
-        blocking_t blocking;
-        for (auto &d : index_dims()) {
-            dim_t loop = loop_dim(d);
-            dim_t tg = thread_group_dim(d);
-            dim_t iter = iter_dim(d);
-            if (loop != 1) blocking.set_loop(d, loop);
-            if (tg != 1) blocking.set_thread_group(d, tg);
-            if (iter != 1) blocking.set_iter(d, iter);
-        }
-        blocking.set_simd(exec_cfg().vec_size());
-        blocking_params_t ret(blocking, bufs_hint);
-        ret.set_id(params_id_);
-        return ret;
     }
 
     static int get_max_threadgroups_per_wave(
@@ -434,12 +412,12 @@ public:
                 loop_dim(dim) * thread_group_dim(dim) * iter_dim(dim));
     }
 
-    pvar_tile_t dims() const { return shape(/* pad = */ false); }
+    tile_t dims() const { return shape(/* pad = */ false); }
     dim_t dim(const pvar_t &d) const { return dims().get(d); }
 
     int sort_key(const param_t *param) const override;
 
-    void init_kernel_grid(const std::array<pvar_tile_t, 3> &grid) {
+    void init_kernel_grid(const std::array<tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
         for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i]) {
@@ -451,7 +429,7 @@ public:
         set_kernel_grid(grid_info_t(dims, ir_builder_t::tg_idx));
     }
 
-    void init_thread_group_grid(const std::array<pvar_tile_t, 3> &grid) {
+    void init_thread_group_grid(const std::array<tile_t, 3> &grid) {
         std::vector<dim_t> dims(grid.size(), 1);
         for (dim_idx_t i = 0; i < grid.size(); i++) {
             for (auto &d : grid[i])

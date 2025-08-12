@@ -38,8 +38,6 @@ namespace compute {
 
 enum class gpu_arch_t {
     unknown,
-    gen9,
-    gen11,
     xe_lp,
     xe_hp,
     xe_hpg,
@@ -54,11 +52,16 @@ enum class gpu_arch_t {
 #endif
 };
 
+
+// Memory for storing ngen::Product to avoid directly including nGEN because of
+// header dependencies outside of src/gpu/intel.
+struct alignas(int) gpu_product_t {
+    unsigned char data[12];
+};
+
 static inline std::string to_string(gpu_arch_t arch) {
 #define CASE(_case) \
     if (arch == gpu_arch_t::_case) return STRINGIFY(_case)
-    CASE(gen9);
-    CASE(gen11);
     CASE(xe_lp);
     CASE(xe_hp);
     CASE(xe_hpg);
@@ -78,9 +81,6 @@ static inline std::string to_string(gpu_arch_t arch) {
 static inline gpu_arch_t str2gpu_arch(const char *str) {
 #define CASE(_case) \
     if (!strcmp(STRINGIFY(_case), str)) return gpu_arch_t::_case
-
-    CASE(gen9);
-    CASE(gen11);
     CASE(xe_lp);
     CASE(xe_hp);
     CASE(xe_hpg);
@@ -110,13 +110,12 @@ enum class device_ext_t : uint64_t {
     khr_local_int32_base_atomics      = 1ull << 6,
     khr_local_int32_extended_atomics  = 1ull << 7,
     ext_float_atomics                 = 1ull << 8,
-    // Intel specific Gen9+
-    intel_subgroups              = 1ull << 16,
-    intel_required_subgroup_size = 1ull << 17,
-    intel_subgroups_char         = 1ull << 18,
-    intel_subgroups_short        = 1ull << 19,
-    intel_subgroups_long         = 1ull << 20,
     // Intel specific Xe_LP+
+    intel_subgroups               = 1ull << 16,
+    intel_required_subgroup_size  = 1ull << 17,
+    intel_subgroups_char          = 1ull << 18,
+    intel_subgroups_short         = 1ull << 19,
+    intel_subgroups_long          = 1ull << 20,
     intel_subgroup_local_block_io = 1ull << 21,
     intel_dot_accumulate          = 1ull << 22,
     // Intel specific Xe_HP+
@@ -212,11 +211,13 @@ public:
         return status::success;
     }
 
+    std::string get_cl_ext_options() const;
+
     bool has(device_ext_t ext) const { return extensions_ & (uint64_t)ext; }
     bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
-    int gpu_product_family() const { return gpu_product_family_; }
-    int stepping_id() const { return stepping_id_; }
+    const gpu_product_t &gpu_product() const {return gpu_product_;}
+    int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
     bool is_integrated() const;
     uint32_t ip_version() const { return ip_version_; }
@@ -296,9 +297,8 @@ protected:
     virtual status_t init_extensions(impl::engine_t *engine) = 0;
     virtual status_t init_attributes(impl::engine_t *engine) = 0;
 
-    compute::gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
-    int gpu_product_family_ = 0;
-    int stepping_id_ = 0;
+    gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
+    gpu_product_t gpu_product_ = {};
     uint32_t ip_version_ = 0;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
@@ -338,10 +338,9 @@ private:
     serialization_stream_t serialized_device_info_;
 };
 
-gpu_arch_t gpu_arch(impl::engine_t *engine);
-
 } // namespace compute
-}} // namespace gpu
+} // namespace intel
+} // namespace gpu
 } // namespace impl
 } // namespace dnnl
 

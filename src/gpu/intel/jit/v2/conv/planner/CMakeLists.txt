@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2023-2024 Intel Corporation
+# Copyright 2023-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,5 +14,19 @@
 # limitations under the License.
 #===============================================================================
 
-add_executable(gpu_conv_planner planner_main.cpp)
+file(GLOB SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+    )
+
+set(planner_main "${CMAKE_CURRENT_SOURCE_DIR}/planner_main.cpp")
+list(REMOVE_ITEM SOURCES ${planner_main})
+
+set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel_jit_v2_conv_planner)
+add_library(${OBJ_LIB} OBJECT ${SOURCES})
+
+set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
+    $<TARGET_OBJECTS:${OBJ_LIB}>)
+
+add_executable(gpu_conv_planner EXCLUDE_FROM_ALL ${planner_main})
 target_link_libraries(gpu_conv_planner ${LIB_PACKAGE_NAME})

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2025 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1696,6 +1697,13 @@ struct memory : public handle<dnnl_memory_t> {
         ABcde8b16a = dnnl_ABcde8b16a,
         AcdeB8b16a = dnnl_AcdeB8b16a,
         AB8b8a = dnnl_AB8b8a,
+        abDC8d8c = dnnl_abDC8d8c,
+        abDC16d8c = dnnl_abDC16d8c,
+        aCB8c8b = dnnl_aCB8c8b,
+        aCB16c8b = dnnl_aCB16c8b,
+        BA8b8a = dnnl_BA8b8a,
+        BA16b8a = dnnl_BA16b8a,
+        AB2a4b = dnnl_AB2a4b,
 
         format_tag_last = dnnl_format_tag_last,
 
@@ -2768,6 +2776,10 @@ struct memory : public handle<dnnl_memory_t> {
         bcad = dnnl_bcad,
         cabd = dnnl_cabd,
         dabc = dnnl_dabc,
+        decbA4a = dnnl_decbA4a,
+        defcbA4a = dnnl_defcbA4a,
+        hwioG4g = dnnl_hwioG4g,
+        dhwioG4g = dnnl_dhwioG4g,
     };
 
     /// A memory descriptor.

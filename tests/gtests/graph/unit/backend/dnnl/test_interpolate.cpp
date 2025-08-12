@@ -121,7 +121,7 @@ TEST(test_interpolate_execute, InterpolateAddForwardNearest) {
     g.add_op(&add_node);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -191,7 +191,7 @@ TEST(test_interpolate_execute, InterpolateSwish) {
     ASSERT_EQ(g.finalize(), graph::status::success);
     ASSERT_EQ(g.num_ops(), 3U);
 
-    graph::pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -264,7 +264,7 @@ TEST(test_interpolate_execute, Interpolate3PostOps) {
     ASSERT_EQ(g.finalize(), graph::status::success);
     ASSERT_EQ(g.num_ops(), 4U);
 
-    graph::pass::pass_base_ptr apass = get_pass("interpolate_post_ops_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -376,8 +376,7 @@ TEST(test_interpolate_execute, InterpolatePostOps) {
         g.add_op(&post_node);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass
-                = get_pass("interpolate_post_ops_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("fp_interpolate_post_ops");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

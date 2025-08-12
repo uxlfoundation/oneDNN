@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,9 @@ status_t make_kernel(std::unique_ptr<::sycl::kernel> &sycl_kernel,
         const char *kernel_name, const gpu::intel::sycl::engine_t *sycl_engine,
         const xpu::binary_t &binary);
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 uint64_t init_extensions(const ::sycl::device &dev);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 } // namespace compat
 } // namespace sycl

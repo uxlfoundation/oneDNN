@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@
 #ifndef GEMMSTONE_GUARD_INVERT_HPP
 #define GEMMSTONE_GUARD_INVERT_HPP
 
-#include "type.hpp"
+#include "gemmstone/type.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Maximum allowed SIMD width for reciprocal subroutine.
 int maxInvertSubSIMD(ngen::HW hw, Type Ts);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

@@ -189,6 +189,11 @@ status_t DNNL_API dnnl_graph_logical_tensor_init(
         return status::invalid_arguments;
     }
 
+    // currently only supports s32 host scalar.
+    if (ptype == property_type::host_scalar && dtype != data_type::s32) {
+        return status::invalid_arguments;
+    }
+
     auto val = logical_tensor_t();
     val.id = tid;
     val.ndims = ndims;
@@ -216,6 +221,11 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_dims(
         int32_t ndims, const dims_t dims, layout_type_t ltype,
         property_type_t ptype) {
     if (!logical_tensor || ndims < 0) return status::invalid_arguments;
+
+    // currently only supports s32 host scalar.
+    if (ptype == property_type::host_scalar && dtype != data_type::s32) {
+        return status::invalid_arguments;
+    }
 
     auto val = logical_tensor_t();
     val.id = tid;
@@ -258,6 +268,11 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_strides(
         int32_t ndims, const dims_t dims, const dims_t strides,
         property_type_t ptype) {
     if (!logical_tensor || ndims < 0) return status::invalid_arguments;
+
+    // currently only supports s32 host scalar.
+    if (ptype == property_type::host_scalar && dtype != data_type::s32) {
+        return status::invalid_arguments;
+    }
 
     auto val = logical_tensor_t();
     val.id = tid;

@@ -78,7 +78,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int wei_zp_mask = prb->attr.zero_points.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
     const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy);
+            prb->attr.zero_points.get(DNNL_ARG_DST).policy, prb->ndims);
 
     const bool has_src_single_zp = has_src_zp && src_zp_mask == 0;
     const bool has_wei_single_zp = has_wei_zp && wei_zp_mask == 0;
@@ -92,17 +92,17 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
     const int64_t src_scale_group = !src_scale_groups.empty()
             ? src_scale_groups[1]
-            : (src_scale_mask << (src_m.ndims() - 1)) > 0 ? 1
-                                                          : K;
+            : ((src_scale_mask >> (src_m.ndims() - 1)) % 2) > 0 ? 1
+                                                                : K;
     const int64_t wei_scale_group = !wei_scale_groups.empty()
             ? wei_scale_groups[0]
-            : ((wei_scale_mask << (wei_m.ndims() - 2)) % 2) > 0 ? 1
+            : ((wei_scale_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
                                                                 : K;
-    const int64_t src_zp_group = !src_zp_groups.empty() ? src_zp_groups[1]
-            : (src_zp_mask << (src_m.ndims() - 1)) > 0  ? 1
-                                                        : K;
+    const int64_t src_zp_group = !src_zp_groups.empty()      ? src_zp_groups[1]
+            : ((src_zp_mask >> (src_m.ndims() - 1)) % 2) > 0 ? 1
+                                                             : K;
     const int64_t wei_zp_group = !wei_zp_groups.empty()      ? wei_zp_groups[0]
-            : ((wei_zp_mask << (wei_m.ndims() - 2)) % 2) > 0 ? 1
+            : ((wei_zp_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
                                                              : K;
 
     const auto smallest_k_group = std::min(
@@ -118,7 +118,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto src_broadcast_mask = prb->src_broadcast_mask();
     const auto wei_broadcast_mask = prb->weights_broadcast_mask();
     const auto bias_broadcast_mask = prb->bias_broadcast_mask();
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(MB, M, N, [&](int64_t mb, int64_t m, int64_t n) {
         float dst = 0;

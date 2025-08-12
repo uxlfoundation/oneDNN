@@ -148,12 +148,14 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64(jit_sve_1x1_convolution_fwd_t<f32,f32,f32,sve_512>)
             CPU_INSTANCE_AARCH64(jit_sve_convolution_fwd_t<f32,f32,f32,sve_512>)
             CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_fwd_t<sve_256,data_type::f32>)
+            CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(jit_sve_1x1_convolution_fwd_t<f32,f32,f32,sve_256>)
             CPU_INSTANCE_AARCH64(jit_sve_convolution_fwd_t<f32,f32,f32,sve_256>)
+            CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_256>)
+            CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_128>)
             CPU_INSTANCE_AARCH64_ACL(acl_depthwise_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_gemm_convolution_fwd_t<f32>)
-            CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
@@ -215,6 +217,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(gemm_bf16_convolution_fwd_t<bf16>)
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
+            CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_fwd_t<sve_256, bf16, bf16>)
             CPU_INSTANCE_AARCH64_ACL(acl_indirect_gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)
             CPU_INSTANCE(ref_fused_convolution_fwd_t)
@@ -257,18 +260,22 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         }},
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f32),
+        BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, bf16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f8_e5m2),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e4m3, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e4m3, f32),
+        BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e4m3, bf16),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_FWD_CONVS(f8_e5m2, f8_e4m3, f8_e4m3),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e5m2, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e5m2, f32),
+        BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e5m2, bf16),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e5m2, f8_e5m2),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e4m3, f16),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e4m3, f32),
+        BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e4m3, bf16),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_FWD_CONVS(f8_e4m3, f8_e4m3, f8_e4m3),
         // BWD_D fp
@@ -387,6 +394,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e4m3),
+        BRGEMM_FP8_BWD_D_CONVS(bf16, f8_e4m3, f8_e5m2),
+        BRGEMM_FP8_BWD_D_CONVS(bf16, f8_e4m3, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e5m2, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f8_e4m3, f8_e4m3, f8_e5m2),
@@ -395,6 +404,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         BRGEMM_FP8_BWD_D_CONVS(f32, f8_e5m2, f8_e4m3),
         BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e5m2),
         BRGEMM_FP8_BWD_D_CONVS(f16, f8_e4m3, f8_e4m3),
+        BRGEMM_FP8_BWD_D_CONVS(bf16, f8_e4m3, f8_e5m2),
+        BRGEMM_FP8_BWD_D_CONVS(bf16, f8_e4m3, f8_e4m3),
         // BWD_W fp
         {{backward_weights, f32, f32, f32}, REG_BWD_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_weights_t)
@@ -640,6 +651,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(jit_uni_x8s8s32x_convolution_fwd_t<avx2>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
             CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
+            CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_256>)
+            CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(jit_sve_512_x8s8s32x_convolution_fwd_t<u8, f32>)
             CPU_INSTANCE(gemm_x8s8s32x_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_int8_fwd_t)

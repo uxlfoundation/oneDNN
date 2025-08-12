@@ -50,7 +50,7 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
         auto ocl_ctx = xpu::sycl::compat::get_native<cl_context>(ctx);
 
         status = gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev, ocl_ctx,
-                ip_version_, gpu_arch_, gpu_product_family_, stepping_id_,
+                ip_version_, gpu_arch_, gpu_product_,
                 native_extensions_, mayiuse_systolic_,
 #if XE3P
                 mayiuse_ngen_kernels_, is_efficient_64bit_);
@@ -62,7 +62,7 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
         auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(ctx);
 
         status = gpu::intel::sycl::init_gpu_hw_info(engine, ze_dev, ze_ctx,
-                ip_version_, gpu_arch_, gpu_product_family_, stepping_id_,
+                ip_version_, gpu_arch_, gpu_product_,
 #if XE3P
                 native_extensions_, mayiuse_systolic_, mayiuse_ngen_kernels_,
                 is_efficient_64bit_);
@@ -108,7 +108,17 @@ status_t device_info_t::init_extensions(impl::engine_t *engine) {
     auto &device
             = utils::downcast<const xpu::sycl::engine_impl_t *>(engine->impl())
                       ->device();
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
+            i_ext <<= 1) {
+        const char *s_ext = ext2cl_str((device_ext_t)i_ext);
+        if (device.ext_oneapi_supports_cl_extension(s_ext)) {
+            extensions_ |= i_ext;
+        }
+    }
+#else
     extensions_ = gpu::intel::sycl::compat::init_extensions(device);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
     // Handle future extensions, not yet supported by the DPC++ API
     extensions_

@@ -29,7 +29,6 @@ namespace x64 {
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
-            broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -47,7 +46,10 @@ static bool compare_layouts(const memory_desc_wrapper &src0_md,
     if (is_bcast) return true;
 
     bool same_layouts = true;
-    for (int d = 0; d < ndims; ++d)
+    // For batch size == 1, the first dimension is ignored for stride checks,
+    // as non-contiguous strides in this dimension do not affect correctness.
+    int start_dim = (dims0[0] == 1 && dims1[0] == 1) ? 1 : 0;
+    for (int d = start_dim; d < ndims; ++d)
         same_layouts = same_layouts && strides0[d] == strides1[d];
     return same_layouts;
 }
@@ -171,7 +173,6 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     conf_.is_bf16 = conf_.dst_type == bf16;
     conf_.is_f16 = conf_.dst_type == f16;
     conf_.op_type = get_op_type(src0_md_);
-    assert(conf_.op_type != op_t::none);
     conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
     conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
     const auto sum_idx = po.find(primitive_kind::sum);
@@ -184,6 +185,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     const auto &bcast_dims = broadcast_dims();
     conf_.bcast_type = is_tensor_op() ? bcast_t::none
                                       : get_bcast_type(src1_md_, bcast_dims);
+    // op_type only matters for broadcasted operation
+    assert(IMPLICATION(
+            conf_.bcast_type != bcast_t::none, conf_.op_type != op_t::none));
     conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
                                          && conf_.bcast_type == bcast_t::per_c)
             || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)

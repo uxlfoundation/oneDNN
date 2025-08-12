@@ -105,10 +105,10 @@ struct message_info_t {
 };
 
 message_info_t estimate_message_info(
-        const hw_t &hw, const layout_t &layout, const tensor_t &tile) {
+        const hw_t &hw, const layout_t &layout, const tile_t &tile) {
     const auto grf_size = hw.grf_size();
     bool can_use_block_messages = true;
-    std::vector<dim_t> outer = tile.dims();
+    std::vector<dim_t> outer = tile.values();
     dim_t inner_elems = 1;
     int item_size = 16;
 
@@ -131,7 +131,7 @@ message_info_t estimate_message_info(
 
     auto inner_bytes = utils::div_up(
             layout.type().with_elems(8).size() * inner_elems, 8);
-    auto iterations = tensor_t(outer).elems();
+    auto iterations = tile_t(outer).elems();
     can_use_block_messages &= (inner_bytes % 16 == 0);
     can_use_block_messages &= (iterations == 1 || inner_bytes % grf_size == 0);
 
@@ -147,8 +147,8 @@ message_info_t estimate_message_info(
     return {message_kind, inner_bytes, iterations, item_size};
 }
 
-std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
-    using tile_pair_t = std::array<tensor_t, 2>;
+std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
+    using tile_pair_t = std::array<tile_t, 2>;
 
     std::vector<dim_t> dims(a.ndims());
     for (dim_idx_t i = 0; i < a.ndims(); ++i)
@@ -171,8 +171,8 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     pad_layout(b);
     gpu_assert(ir_utils::is_equal(a.dims(), b.dims()));
 
-    auto can_be_mapped = [](const layout_t &l, const tensor_t &t) {
-        std::vector<dim_t> rem_dims = t.dims();
+    auto can_be_mapped = [](const layout_t &l, const tile_t &t) {
+        std::vector<dim_t> rem_dims = t.values();
         for (auto &b : l.blocks()) {
             auto &rem_dim = rem_dims[b.dim_idx];
             if (rem_dim >= b.block) {
@@ -190,31 +190,31 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
 
     auto add_pseudo_dimension = [](const layout_t &l) {
         auto layout_size = l.size();
-        return [=](const tensor_t &t) {
-            auto dims = t.dims();
+        return [=](const tile_t &t) {
+            auto dims = t.values();
             dims.push_back(layout_size);
-            return tensor_t(dims);
+            return tile_t(dims);
         };
     };
 
-    auto mappable_tiles = [&](const tensor_t &t) {
+    auto mappable_tiles = [&](const tile_t &t) {
         return can_be_mapped(a, t) && can_be_mapped(b, t);
     };
 
     auto merge_tiles = [](const tile_pair_t &p) {
-        auto ndims = p[0].ndims() - 1;
+        auto ndims = p[0].size() - 1;
         std::vector<dim_t> dims(ndims);
         for (dim_idx_t i = 0; i < ndims; ++i)
-            dims[i] = std::max(p[0](i), p[1](i));
-        return tensor_t(dims);
+            dims[i] = std::max(p[0][i], p[1][i]);
+        return tile_t(dims);
     };
 
-    auto take_smaller = [](const tensor_t &a, const tensor_t &b) {
+    auto take_smaller = [](const tile_t &a, const tile_t &b) {
         return a.elems() < b.elems();
     };
 
     const auto eu_count = hw.eu_count();
-    auto cmp = [&](const tensor_t &l, const tensor_t &r) {
+    auto cmp = [&](const tile_t &l, const tile_t &r) {
         auto l_threads_reqd = a.elems() / l.elems();
         auto r_threads_reqd = a.elems() / r.elems();
         auto l_eu_util = utils::div_up(l_threads_reqd, eu_count);
@@ -241,7 +241,7 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     // Incrementally increase subtiles in a and b. The goal is to find the
     // maximum tiles so that the final combined tile covers dense regions as big
     // as possible in a/b layouts.
-    std::vector<tensor_t> candidate_tiles;
+    std::vector<tile_t> candidate_tiles;
     auto a_tiles = inner_tiles(a.blocks(), a.ndims()) | filter(mappable_tiles)
             | transform(add_pseudo_dimension(a));
     auto b_tiles = inner_tiles(b.blocks(), b.ndims()) | filter(mappable_tiles)
@@ -252,7 +252,7 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     const dim_t max_layout_size = max_strided_bytes(hw, a.type(), b.type());
     const dim_t max_elems = max_packed_bytes(hw) / elem_size;
 
-    auto get_grf_layout_size = [&](const tensor_t &tile) {
+    auto get_grf_layout_size = [&](const tile_t &tile) {
         auto elems = tile.elems();
         dim_t grf_layout_size = 0;
         for (const auto &l : {a, b}) {
@@ -268,7 +268,7 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     for (auto tile : tiles) {
         if (tile.elems() > max_elems) break;
         if (get_grf_layout_size(tile) > max_layout_size) continue;
-        if (candidate_tiles.empty() || !tile.is_equal(candidate_tiles.back()))
+        if (candidate_tiles.empty() || tile != candidate_tiles.back())
             candidate_tiles.push_back(std::move(tile));
     }
     gpu_assert(!candidate_tiles.empty());
@@ -280,7 +280,7 @@ std::vector<tensor_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     auto best = candidate_tiles.back();
     candidate_tiles.erase(
             std::remove_if(candidate_tiles.begin(), candidate_tiles.end(),
-                    [&](const tensor_t &t) { return !best.is_divisible(t); }),
+                    [&](const tile_t &t) { return !best.is_divisible(t); }),
             candidate_tiles.end());
     candidate_tiles.shrink_to_fit();
     return candidate_tiles;

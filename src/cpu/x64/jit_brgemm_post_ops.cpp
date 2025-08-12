@@ -573,12 +573,6 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         }
     }
 
-    const auto &wei_scales = attr_.scales_.get(DNNL_ARG_WEIGHTS);
-    // per_oc: conv: 1 << 0, (1 << 1) + (1 << 0) (with groups)
-    // per_oc: ip: 1 << 0
-    is_oc_scale_
-            = utils::one_of(wei_scales.get_mask(), 1 << 0, (1 << 1) + (1 << 0));
-
     inp_dt_ = brg_.dt_c;
     out_dt_ = brg_.dt_d;
     bia_dt_ = brg_.dt_bias;
@@ -833,20 +827,70 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 
     if (req_comp) maybe_apply_comp(m_block, n_block, tail);
 
-    if (brg_.beta != 0) {
+    const bool has_ptr_b_support = is_superset(brg_.isa_impl, avx512_core);
+    if (brg_.beta != 0 && brg_.with_src_scales) {
+        mov(aux_reg_src_scales, ptr[rsp + reg_src_scales_offs_]);
+        auto vmm_src_scales = vmm_tmp(0);
+        if (!has_ptr_b_support)
+            vbroadcastss(vmm_src_scales, ptr[aux_reg_src_scales]);
+
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
-            const auto addr = ptr[aux_reg_scales
-                    + is_oc_scale_ * sizeof(float) * (n * brg_.ld_block)];
             auto vmm = vector(m, n);
-            if (IMPLICATION(tail > 0, isa_has_masks(brg_.isa_impl))) {
-                vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
-                vmulps(vmm, vmm, addr);
+            if (has_ptr_b_support) {
+                vmulps(vmm, vmm, ptr_b[aux_reg_src_scales]);
             } else {
-                auto vmm_scales = vmm_tmp(0);
-                load_data(data_type::f32, vmm_scales, addr, tail);
-                vmulps(vmm, vmm, vmm_scales);
+                vmulps(vmm, vmm, vmm_src_scales);
             }
+        }
+    }
+    if (brg_.beta != 0 && brg_.with_wei_scales) {
+        assert(brg_.dt_wei_scales == data_type::f32);
+
+        for_(int m = 0; m < m_block; m++)
+        for (int n = 0; n < n_block; n++) {
+            const auto addr = ptr[aux_reg_wei_scales
+                    + brg_.is_oc_scale * sizeof(float) * (n * brg_.ld_block)];
+            const bool is_tail = tail > 0;
+            const bool is_single_scale = !brg_.is_oc_scale;
+
+            const auto vmm = vector(m, n);
+            const auto vmm_m = maybe_mask(vmm, is_tail, false, k_mask);
+            const auto vmm_wei_scales = vmm_tmp(0);
+            const auto vmm_wei_scales_masked
+                    = maybe_mask(vmm_wei_scales, is_tail, false, k_mask);
+            if (is_single_scale) {
+                if (has_ptr_b_support) {
+                    // Same isa has masks support.
+                    vmulps(vmm_m, vmm, ptr_b[aux_reg_wei_scales]);
+                } else {
+                    vbroadcastss(vmm_wei_scales, addr);
+                    vmulps(vmm, vmm, vmm_wei_scales);
+                }
+            } else {
+                if (IMPLICATION(is_tail, isa_has_masks(brg_.isa_impl))) {
+                    vmovups(vmm_wei_scales_masked, addr);
+                    vmulps(vmm_m, vmm, vmm_wei_scales);
+                } else {
+                    load_data(data_type::f32, vmm_wei_scales, addr, tail);
+                    vmulps(vmm, vmm, vmm_wei_scales);
+                }
+            }
+        }
+    }
+
+    if (brg_.beta != 0 && brg_.with_weights_scale_adjust) {
+        // It's the only value that can be used for scale adjust so far.
+        mov(aux_reg_scale_adjust, float2int(1.f / 0.5f));
+        auto vmm_scale_adjust = vmm_tmp(0);
+        auto xmm_scale_adjust = Xbyak::Xmm(vmm_scale_adjust.getIdx());
+        uni_vmovq(xmm_scale_adjust, aux_reg_scale_adjust);
+        uni_vbroadcastss(vmm_scale_adjust, xmm_scale_adjust);
+
+        for_(int m = 0; m < m_block; m++)
+        for (int n = 0; n < n_block; n++) {
+            auto vmm = vector(m, n);
+            vmulps(vmm, vmm, vmm_scale_adjust);
         }
     }
 
@@ -866,18 +910,17 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 
     if (brg_.beta != 0 && brg_.with_dst_scales) {
         mov(aux_reg_dst_scales, ptr[rsp + reg_dst_scales_offs_]);
-        const auto addr = ptr[aux_reg_dst_scales];
-        auto vmm_scales = vmm_tmp(0);
-        if (!isa_has_masks(brg_.isa_impl)) vmovups(vmm_scales, addr);
+        auto vmm_dst_scales = vmm_tmp(0);
+        if (!has_ptr_b_support)
+            vbroadcastss(vmm_dst_scales, ptr[aux_reg_dst_scales]);
 
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             auto vmm = vector(m, n);
-            if (isa_has_masks(brg_.isa_impl)) {
-                vmm = maybe_mask(vector(m, n), tail > 0, false, k_mask);
-                vmulps(vmm, vmm, addr);
+            if (has_ptr_b_support) {
+                vmulps(vmm, vmm, ptr_b[aux_reg_dst_scales]);
             } else {
-                vmulps(vmm, vmm, vmm_scales);
+                vmulps(vmm, vmm, vmm_dst_scales);
             }
         }
     }
@@ -915,9 +958,11 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
     const reg64_t reg_tmp_gpr = reg_tmp;
     auto vmm_lbound = vmm_tmp(0);
     auto vmm_ubound = vmm_tmp(1);
+    const bool use_sat_cvt
+            = dt_requires_saturation && isa_has_sat_cvt(brg_.isa_impl, out_dt_);
     if (dt_requires_saturation) {
-        init_saturate_f32(
-                vmm_lbound, vmm_ubound, reg_tmp_gpr, data_type::f32, out_dt_);
+        init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp_gpr, data_type::f32,
+                out_dt_, false, use_sat_cvt);
     }
 
     if (brg_.is_bf16_emu) bf16_emu_->init_vcvtneps2bf16();
@@ -933,9 +978,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         const auto addr = ptr[aux_reg_out + offset];
 
         if (dt_requires_saturation) {
-            saturate_cvt_f32(vmm, vmm_lbound, vmm_ubound, out_dt_);
+            saturate_cvt_f32(
+                    vmm, vmm_lbound, vmm_ubound, out_dt_, false, use_sat_cvt);
         }
-        if (isa_has_sat_cvt(brg_.isa_impl, out_dt_)) {
+        if (use_sat_cvt) {
             auto xmm = Xbyak::Xmm(vmm.getIdx());
             auto r_xmm = maybe_mask(xmm, tail > 0, true, k_mask);
             assert(utils::one_of(out_dt_, data_type::s8, data_type::u8));
@@ -1011,7 +1057,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             mov(aux_reg_s8s8_comp, ptr[rsp + reg_s8s8_comp_offs_]);
             mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
         }
-        mov(aux_reg_scales, reg_scales);
+        if (brg_.with_wei_scales) mov(aux_reg_wei_scales, reg_wei_scales);
     }
     mov(aux_reg_out, reg_out);
 
@@ -1039,8 +1085,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-
-            add(aux_reg_scales, is_oc_scale_ * sizeof(float) * oc_l_offset);
+            if (brg_.with_wei_scales)
+                add(aux_reg_wei_scales,
+                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
         }
     }
     if (nb2_tail > 0) {
@@ -1066,8 +1113,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-
-            add(aux_reg_scales, is_oc_scale_ * sizeof(float) * oc_l_offset);
+            if (brg_.with_wei_scales)
+                add(aux_reg_wei_scales,
+                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
         }
     }
     if (nb_tail > 0) {
@@ -1091,7 +1139,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
                 add(aux_reg_s8s8_comp, sizeof(int32_t) * nb_tail);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
-            add(aux_reg_scales, is_oc_scale_ * bia_typesize_ * (nb_tail));
+            if (brg_.with_wei_scales)
+                add(aux_reg_wei_scales,
+                        brg_.is_oc_scale * bia_typesize_ * (nb_tail));
         }
         add(aux_reg_out, out_typesize_ * (nb_tail));
     }
@@ -1132,7 +1182,13 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     if (brg_.alpha != 0) { mov(reg_in, ptr[param1 + GET_OFF(ptr_in)]); }
     if (brg_.beta != 0) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+        if (brg_.with_src_scales) {
+            mov(reg_src_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
+            mov(ptr[rsp + reg_src_scales_offs_], reg_src_scales);
+        }
+        if (brg_.with_wei_scales) {
+            mov(reg_wei_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
+        }
         mov(reg_apply_comp, ptr[param1 + GET_OFF(apply_comp)]);
         mov(ptr[rsp + reg_apply_comp_offs_], reg_apply_comp);
 

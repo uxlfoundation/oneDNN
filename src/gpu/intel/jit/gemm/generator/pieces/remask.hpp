@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,17 +18,19 @@
 #ifndef GEMMSTONE_GUARD_REMASK_HPP
 #define GEMMSTONE_GUARD_REMASK_HPP
 
-#include "type.hpp"
-#include "register_block.hpp"
-#include "strategy.hpp"
+#include "gemmstone/type.hpp"
+#include "gemmstone/strategy.hpp"
 
-#include "internal/namespace_start.hxx"
+#include "register_layout.hpp"
+
+
+GEMMSTONE_NAMESPACE_START
 
 // Check if a register block needs to be remasked to ensure out-of-bounds
 //  entries are zero.
-bool needsRemask(Type T, bool column, const std::vector<RegisterBlock> &layout,
+bool needsRemask(Type T, bool column, const RegisterLayout &layout,
                  const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, bool ignoreMasks = false);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

@@ -275,9 +275,6 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(wei_zero_point, DNNL_ARG_WEIGHTS);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
     DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
@@ -291,8 +288,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const float *oscales = precompute_scales(
             scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
 
-    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), oscales, src_zero_point,
-            wei_zero_point, dst_zero_point, dst_scales, helper);
+    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), oscales, dst_scales, helper);
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const bool use_buffer_a
@@ -729,8 +725,8 @@ void brgemm_matmul_t<isa>::accumulate(
 template <cpu_isa_t isa>
 struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     brg_matmul_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd,
-            const float *oscales, int32_t src_zp, int32_t wei_zp,
-            int32_t dst_zp, const float *dst_scales, matmul_helper_t &helper)
+            const float *oscales, const float *dst_scales,
+            matmul_helper_t &helper)
         : bgmmc_(pd->get_brgemm_matmul_conf()) {
 
         data_A_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
@@ -738,6 +734,33 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         data_C_ptr_ = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
         bias_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+
+        // setup scales / zp pointers
+        const void *src_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+        const void *wei_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+        const void *dst_zero_points = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+
+        zero_point_a_negative_val_ = src_zero_points
+                ? -cpu::io::load_int_value(
+                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
+                        src_zero_points, 0)
+                : 0;
+        const int zero_point_b_val = wei_zero_points
+                ? cpu::io::load_int_value(
+                        pd->attr()->zero_points_.get_data_type(
+                                DNNL_ARG_WEIGHTS),
+                        wei_zero_points, 0)
+                : 0;
+        zero_point_b_negative_val_ = -zero_point_b_val;
+        zero_point_c_val_ = dst_zero_points
+                ? cpu::io::load_int_value(
+                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_DST),
+                        dst_zero_points, 0)
+                : 0;
+
         oscales_ptr_ = oscales;
         dst_scales_ptr_ = dst_scales;
         memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
@@ -789,12 +812,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         key_brgemm_primitive_zp_comp_b)
                 : nullptr;
 
-        zero_point_a_negative_val_ = -src_zp;
-        zero_point_b_negative_val_ = -wei_zp;
         zero_point_mixed_ab_compensation_component_
                 = bgmmc.K * zero_point_a_negative_val_;
-
-        zero_point_c_val_ = dst_zp;
 
         post_ops_binary_rhs_arg_vec_ = binary_injector::prepare_binary_args(
                 pd->attr()->post_ops_, ctx);

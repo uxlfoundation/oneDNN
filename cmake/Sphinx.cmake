@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,10 +38,10 @@ if (Python_FOUND AND SPHINX_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/doc/*.jpg
     )
     file(COPY ${SPHINX_IMAGES} DESTINATION ${SPHINX_SOURCE_DIR})
-    file(COPY
-        ${CMAKE_CURRENT_SOURCE_DIR}/doc/sphinx/conf.py
-        DESTINATION ${SPHINX_SOURCE_DIR}
-        )
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/doc/sphinx/conf.py.in
+        ${SPHINX_SOURCE_DIR}/conf.py
+        @ONLY)
     file(COPY
         ${CMAKE_CURRENT_SOURCE_DIR}/doc/sphinx/cleanup.py
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
@@ -55,7 +55,7 @@ if (Python_FOUND AND SPHINX_FOUND)
         COMMAND ${Python_EXECUTABLE}
             ${CMAKE_CURRENT_BINARY_DIR}/cleanup.py ${SPHINX_SOURCE_DIR}
         COMMAND ${SPHINX_EXECUTABLE} -b ${SPHINX_GENERATOR}
-            -D release=v${PROJECT_VERSION} -j auto rst ${SPHINX_OUTPUT_DIR}
+            -j auto rst ${SPHINX_OUTPUT_DIR}
         COMMAND ${CMAKE_COMMAND} -E touch ${SPHINX_STAMP_FILE}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/reference
         COMMENT "Generating API documentation with Sphinx" VERBATIM)

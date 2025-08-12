@@ -392,43 +392,51 @@ status_t memory_planner_t::assign_external_inputs_buffer(
 status_t memory_planner_t::assign_external_outputs_buffer(
         std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &outputs, fusion_info_mgr_t &mgr) {
-    for (auto &val : sg->get_output_values()) {
-        for (size_t i = 0; i < outputs.size(); i++) {
-            if (val->get_logical_tensor().id == outputs[i].id) {
-                assign_info_t orig_info = buffer_assignments_.at(val);
-                assign_info_t updated_info(external_output, i);
-                std::queue<const value_t *> q;
-                std::set<const value_t *> visited;
-                q.push(val);
-                while (!q.empty()) {
-                    auto cur_val = q.front();
-                    q.pop();
-                    if (visited.count(cur_val)) continue;
+    for (const auto &op : sg->get_ops()) {
+        for (const auto &val : op->get_output_values()) {
+            for (size_t i = 0; i < outputs.size(); i++) {
+                if (val->get_logical_tensor().id == outputs[i].id) {
+                    assign_info_t orig_info = buffer_assignments_.at(val.get());
+                    assign_info_t updated_info(external_output, i);
+                    std::queue<const value_t *> q;
+                    std::set<const value_t *> visited;
+                    q.push(val.get());
+                    while (!q.empty()) {
+                        auto cur_val = q.front();
+                        q.pop();
+                        if (visited.count(cur_val)) continue;
 
-                    // update the assigned buffer to external buffer
-                    buffer_assignments_[cur_val] = updated_info;
-                    visited.insert(cur_val);
+                        // update the assigned buffer to external buffer
+                        buffer_assignments_[cur_val] = updated_info;
+                        visited.insert(cur_val);
 
-                    // push the alias to queue for next visit
-                    auto aliases = alias_analyzer_.get_all_aliases(cur_val);
-                    for (const value_t *alias : aliases) {
-                        if (buffer_assignments_[alias].kind_ == external_input)
-                            continue;
-                        q.push(alias);
-                    }
+                        // push the alias to queue for next visit
+                        auto aliases = alias_analyzer_.get_all_aliases(cur_val);
+                        for (const value_t *alias : aliases) {
+                            if (buffer_assignments_[alias].kind_
+                                    == external_input)
+                                continue;
+                            q.push(alias);
+                        }
 
-                    // push the inplaced input to queue for next visit
-                    if (!cur_val->has_producer()) continue;
-                    auto &producer = cur_val->get_producer();
-                    auto op_inplace_pairs = get_op_inplace_pairs(producer, mgr);
-                    for (auto &pair : op_inplace_pairs) {
-                        if (pair.out_idx_ != cur_val->get_offset()) continue;
-                        auto in_val = producer.get_input_value(pair.in_idx_);
-                        if (buffer_assignments_.at(in_val.get()) != orig_info
-                                || buffer_assignments_.at(in_val.get()).kind_
-                                        == external_input)
-                            continue;
-                        q.push(in_val.get());
+                        // push the inplaced input to queue for next visit
+                        if (!cur_val->has_producer()) continue;
+                        auto &producer = cur_val->get_producer();
+                        auto op_inplace_pairs
+                                = get_op_inplace_pairs(producer, mgr);
+                        for (auto &pair : op_inplace_pairs) {
+                            if (pair.out_idx_ != cur_val->get_offset())
+                                continue;
+                            auto in_val
+                                    = producer.get_input_value(pair.in_idx_);
+                            if (buffer_assignments_.at(in_val.get())
+                                            != orig_info
+                                    || buffer_assignments_.at(in_val.get())
+                                                    .kind_
+                                            == external_input)
+                                continue;
+                            q.push(in_val.get());
+                        }
                     }
                 }
             }

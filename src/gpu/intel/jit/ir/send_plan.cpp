@@ -125,7 +125,7 @@ public:
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << vec_;
         return oss.str();
     }
@@ -186,7 +186,7 @@ public:
 
     std::string str(const std::string &indent = {}) const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << indent << vec_;
         return oss.str();
     }
@@ -310,7 +310,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "modulus(" << n() << ")";
         return oss.str();
     }
@@ -383,7 +383,7 @@ public:
 
     bool has_mask() const {
         auto &mask = dim_->mask();
-        return !mask.is_empty() && !mask.is_equal(expr_t(true));
+        return mask && !mask.is_equal(expr_t(true));
     }
 
     bool has_vidx(int vidx) const {
@@ -410,7 +410,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "tdim(idx = " << tidx_;
         oss << ", size = " << size_;
         oss << ", vidxs = [" << vidxs_[0] << ", " << vidxs_[1] << "]";
@@ -531,7 +531,7 @@ public:
     }
 
     std::string str(const std::string &indent = {}) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << indent << "mask#" << tidx() << std::endl;
         oss << indent << "  "
             << "base = " << base_ << std::endl;
@@ -653,7 +653,7 @@ struct send_2d_params_t {
         if (c != 1) return fail_2d("Can't apply VNNI factor: invalid count.");
         if (factor > max_count(hw))
             return fail_2d(
-                    "Can't apply VNNI factor: factor exceeds max_count().");
+                    "Can't apply VNNI factor: factor exceeds max_count(hw).");
         W *= factor;
         H /= factor;
         P *= factor;
@@ -672,8 +672,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    expr_t to_base(
-            const layout_t &tlayout, const std::vector<expr_t> &targs) const {
+    expr_t to_base(const layout_t &tlayout, const coord_t &targs) const {
         auto t = targs;
         if (use_xy) {
             t[w_tidx] = expr_t(0);
@@ -681,20 +680,20 @@ struct send_2d_params_t {
         }
         auto ret = tlayout.offset_in_bytes(t);
         if (h_vstride != 1) {
-            std::vector<expr_t> t(targs.size(), expr_t(0));
+            coord_t t(targs.size());
             t[h_tidx] = targs[h_tidx] % h_vstride;
             ret += tlayout.offset_in_bytes(t);
         }
         return ret;
     }
 
-    expr_t to_x(const std::vector<expr_t> &targs) const {
+    expr_t to_x(const coord_t &targs) const {
         if (!use_xy) return expr_t(0);
         auto ret = targs[w_tidx];
         return ret;
     }
 
-    expr_t to_y(const std::vector<expr_t> &targs) const {
+    expr_t to_y(const coord_t &targs) const {
         if (!use_xy) return expr_t(0);
         auto ret = targs[h_tidx];
         if (h_vstride != 1) ret /= h_vstride;
@@ -786,7 +785,7 @@ struct send_2d_params_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << c << "x" << h << "x" << w;
         if (vnni || transpose) {
             oss << ".";
@@ -822,7 +821,7 @@ struct send_2d_params_t {
 
 struct send_block_t {
     std::string str(const std::string &indent = {}) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mem[" << addr_inc << "]";
         oss << " reg[" << reg_off << "]";
         if (!mask_inc.is_empty()) oss << " mask: " << mask_inc;
@@ -871,11 +870,11 @@ class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
         gpu_assert(layout.has_zero_offset()) << layout;
-        auto tile = layout.split_exact(factor);
-        if (tile.is_empty()) return;
+        auto tile_coord = layout.split_exact(factor);
+        if (tile_coord.is_empty()) return;
 
-        layout.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            int off = into<int>(layout.offset_in_bytes(start));
+        layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {
+            int off = layout.offset_in_bytes<int>(start);
             offs_.push_back(off);
         });
     }
@@ -1051,7 +1050,7 @@ struct send_group_t {
 
     std::string str(const std::string &indent = {}) const {
         if (is_empty()) return indent + "(nil)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (is_2d()) {
             oss << indent << "send_2d." << send_2d_params;
         } else if (is_block()) {
@@ -1722,8 +1721,7 @@ public:
         params_.h_tidx = h_tidx;
         params_.h_vstride = into<int>(h_vstride);
 
-        if (!params_.apply_vnni_factor(hint.vnni_permute_factor, info_.hw()))
-            return false;
+        if (!params_.apply_vnni_factor(hint.vnni_permute_factor, info_.hw())) return false;
         if (!params_.is_supported(info_.hw())) return false;
         if (!base_alignment_ok(vlayout, mod_info, h_tdim, h_vstride))
             return false;
@@ -2004,11 +2002,11 @@ public:
     }
 
     std::string str(const std::string &tag) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ":" << std::endl;
         oss << "  base = " << addr_base_ << std::endl;
-        if (!x_base_.is_empty()) oss << "  x = " << x_base_ << std::endl;
-        if (!y_base_.is_empty()) oss << "  y = " << y_base_ << std::endl;
+        if (x_base_) oss << "  x = " << x_base_ << std::endl;
+        if (y_base_) oss << "  y = " << y_base_ << std::endl;
         oss << "  layout = " << reg_layout_ << " (size = " << reg_buf_size_
             << ")" << std::endl;
         if (split_factor_ != 1)
@@ -2256,7 +2254,7 @@ private:
             std::vector<expr_t> vec_mask;
             for (int i = start; i < stop; i++) {
                 auto i_mask = remove_bcast(send_t::arg_mask(calls[i]));
-                gpu_assert(!i_mask.is_empty());
+                gpu_assert(i_mask);
                 gpu_assert(i_mask.type().is_scalar());
                 for (int i = 0; i < size / 4; i++) {
                     vec_mask.push_back(i_mask);
@@ -2374,7 +2372,7 @@ public:
     }
 
     std::string str(const std::string &tag) const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << tag << ":" << std::endl;
         oss << access_.stmt();
         return oss.str();

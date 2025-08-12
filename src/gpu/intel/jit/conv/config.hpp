@@ -124,7 +124,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << to_string(value_);
         return oss.str();
     }
@@ -146,7 +146,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << to_string(value_);
         return oss.str();
     }
@@ -194,7 +194,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         if (do_unroll_) oss << "u";
         if (reuse_headers_) oss << "r";
@@ -267,7 +267,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << "x" << bufs_;
         if (a_ != b_) oss << "." << (a_ ? "a" : "b");
@@ -337,7 +337,7 @@ public:
     void set_gmem_bufs(int gmem_bufs) { gmem_bufs_ = gmem_bufs; }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         oss << "x" << bufs_;
         oss << ".g" << gmem_bufs_;
@@ -414,7 +414,7 @@ public:
     void set_b(int b) { b_ = b; }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=";
         if (a_ != 1) oss << "a" << a_;
         if (b_ != 1) oss << "b" << b_;
@@ -443,7 +443,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << short_name() << "=" << value_;
         return oss.str();
     }
@@ -523,7 +523,7 @@ public:
     const std::vector<pvar_t> &index_dims() const override {
         return conv_index_dims(prb().prop_kind());
     }
-    pvar_tile_t shape(bool pad) const override;
+    tile_t shape(bool pad) const override;
 
     std::string blocking_brief_str() const;
 
@@ -551,7 +551,7 @@ public:
 
     int simd() const { return exec_cfg().simd(); }
 
-    int vec_size() const { return exec_cfg().vec_size(); }
+    int vec_size() const { return vec_size_; }
 
     bool is_dp_fma() const { return jit::is_dp_fma(fma_kind()); }
 
@@ -593,17 +593,7 @@ public:
         set_exec_cfg(tmp);
     }
 
-    void set_vec_size(int vec_size) {
-        auto tmp = exec_cfg();
-        tmp.set_vec_size(vec_size);
-        set_exec_cfg(tmp);
-    }
-
-    void set_require_signal_header(bool r) {
-        auto tmp = exec_cfg();
-        tmp.set_require_signal_header(r);
-        set_exec_cfg(tmp);
-    }
+    void set_vec_size(int vec_size) { vec_size_ = vec_size; }
 
     void set_tiler(const std::shared_ptr<conv_tiler_t> &tiler);
     const conv_tiler_t &tiler() const;
@@ -615,7 +605,25 @@ public:
     bool can_skip_wei_zero_out() const;
     bool can_skip_bia_zero_out() const;
 
+    blocking_params_t params(
+            int bufs_hint = blocking_params_t::bufs_hint_undef) const {
+        blocking_t blocking;
+        for (auto &d : index_dims()) {
+            dim_t loop = loop_dim(d);
+            dim_t tg = thread_group_dim(d);
+            dim_t iter = iter_dim(d);
+            if (loop != 1) blocking.set_loop(d, loop);
+            if (tg != 1) blocking.set_thread_group(d, tg);
+            if (iter != 1) blocking.set_iter(d, iter);
+        }
+        blocking.set_simd(vec_size());
+        blocking_params_t ret(blocking, bufs_hint);
+        ret.set_id(params_id_);
+        return ret;
+    }
+
 private:
+    int vec_size_;
     std::shared_ptr<conv_plan_t> plan_;
     std::shared_ptr<conv_tiler_t> tiler_;
 
@@ -661,15 +669,15 @@ public:
     dim_t loop_dim(const pvar_t &d) const { return gemm_loop_.get(d, 1); }
 
 private:
-    pvar_tile_t gemm_iter_;
-    pvar_tile_t gemm_thread_group_;
-    pvar_tile_t gemm_loop_;
+    tile_t gemm_iter_;
+    tile_t gemm_thread_group_;
+    tile_t gemm_loop_;
 };
 
 status_t init_pd_time_cfg(const conv_problem_t &prb, conv_config_t &cfg,
         impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr);
 status_t init_cfg(conv_config_t &cfg, const primitive_t *prim);
-status_t init_regs(conv_config_t &cfg);
+void init_regs(conv_config_t &cfg);
 int slm_bufs_hint(const conv_problem_t &prb, dim_t m_tg, dim_t n_tg,
         bool do_src_zp_compensation, bool enable_a, bool enable_b,
         bool do_unroll);
@@ -683,9 +691,8 @@ void init_walk_order(conv_config_t &cfg);
 void init_thread_group_grid(conv_config_t &cfg);
 void prepare_zp_precompute_conv(const conv_problem_t &prb, dim_t *idhw,
         dim_t *odhw, dim_t *pdhw, dim_t *ddhw);
-std::array<pvar_tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
-std::array<pvar_tile_t, 3> get_thread_group_grid_conv_dims(
-        const conv_config_t &cfg);
+std::array<tile_t, 3> get_kernel_grid_conv_dims(const conv_config_t &cfg);
+std::array<tile_t, 3> get_thread_group_grid_conv_dims(const conv_config_t &cfg);
 
 } // namespace jit
 } // namespace intel

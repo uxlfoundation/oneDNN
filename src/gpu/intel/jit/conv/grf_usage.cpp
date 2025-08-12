@@ -55,7 +55,7 @@ std::ostream &operator<<(std::ostream &out, grf_usage_label_t label) {
 }
 
 std::string grf_buf_usage_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Buffers:";
     for (auto label : all_grf_usage_labels()) {
         int regs = total_regs(label);
@@ -83,7 +83,7 @@ std::string grf_usage_t::str() const {
         total += regs;
     }
     table << "Total" << total << std::endl;
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << table << std::endl;
     oss << buf_usage_;
     return oss.str();
@@ -280,7 +280,7 @@ private:
     void mark_bufs(
             const send_t &send, const expr_t &buf, const expr_t &header) {
         if (is_invalid_) return;
-        if (!buf.is_empty()) gpu_assert(is_buffer(buf));
+        if (buf) gpu_assert(is_buffer(buf));
         gpu_assert(is_buffer(header));
         gpu_assert(is_header(header));
         grf_usage_label_t label = grf_usage_label_t::unknown;
@@ -299,7 +299,7 @@ private:
             }
             label = grf_usage_label_t::gmem_load;
         }
-        if (!buf.is_empty()) set_label(buf, label);
+        if (buf) set_label(buf, label);
         set_label(header, label);
     }
 

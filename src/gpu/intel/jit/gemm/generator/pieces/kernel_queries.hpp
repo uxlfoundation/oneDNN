@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@
 #define GEMMSTONE_GUARD_KERNEL_QUERIES_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 #include "state.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 
 // Return amount of SLM needed by a GEMM kernel.
@@ -41,6 +41,6 @@ bool keepIJ0(const GEMMProblem &problem, const GEMMStrategy &strategy);
 // Check if h0 needs to be saved across the k loop.
 bool keepH0(const GEMMProblem &problem, const GEMMStrategy &strategy);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

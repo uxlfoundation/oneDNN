@@ -70,6 +70,9 @@ public:
             pad_it(remaining_pad_);
         } else if (padinfo_.truncate_) {
             long new_size = static_cast<long>(dest_.size()) + remaining_pad_;
+            if (new_size < 0) {
+                new_size = 0;
+            }
             dest_.resize(static_cast<size_t>(new_size));
         }
     }
@@ -264,7 +267,7 @@ public:
         : flag_formatter(padinfo) {}
 
     void format(const details::log_msg &, const std::tm &tm_time, memory_buf_t &dest) override {
-        const size_t field_size = 10;
+        const size_t field_size = 8;
         ScopedPadder p(field_size, padinfo_, dest);
 
         fmt_helper::pad2(tm_time.tm_mon + 1, dest);
@@ -926,9 +929,8 @@ private:
     memory_buf_t cached_datetime_;
 
 #ifndef SPDLOG_NO_TLS
-    mdc_formatter<null_scoped_padder> mdc_formatter_{padding_info{}};
+    mdc_formatter<null_scoped_padder> mdc_formatter_{padding_info {}};
 #endif
-
 };
 
 }  // namespace details

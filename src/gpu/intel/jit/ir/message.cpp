@@ -207,6 +207,10 @@ ngen::CacheSettingsLSC get_cache_settings(const send_t &send, const hw_t &hw) {
             break;
         case send_cache_hint_t::load_once:
             ret = ngen::CacheSettingsLSC::L1C_L3C;
+            break;
+        case send_cache_hint_t::hw_default:
+            ret = ngen::CacheSettingsLSC::Default;
+            break;
     }
     return ret;
 }
@@ -265,7 +269,7 @@ public:
     // granularity and `nmasks` number of masks.
     bool check_mask_size(int off, int size, int mask_size, int nmasks) const {
         auto mask = get_mask(off, size, mask_size, nmasks, /*allow_fail=*/true);
-        return !mask.is_empty();
+        return bool(mask);
     }
 
     expr_t get_offset(int off, expr_t &base, int &off_const) const {
@@ -337,12 +341,12 @@ private:
             dims[b.dim_idx] *= b.block;
             stride = b.block * b.stride;
         }
-        tensor_t tile(dims);
+        tile_t tile(dims);
         dense_block_size_ = tile.elems() * type().size() / type().packing();
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
-        view_.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
-            auto off = view_.offset_in_bytes(expr_cast<expr_t>(start));
+        view_.for_each_tile(tile, [&](const icoord_t &start) {
+            auto off = view_.offset_in_bytes(start);
             off = simplify(off, cset);
 
             const int base_alignment = 128;
@@ -517,7 +521,7 @@ void access_builder_t::build() {
 }
 
 static bool stride_dimension_ok(const view_t &view, int stride_tidx,
-        dim_idx_t stride_vidx, const std::vector<expr_t> &vstart) {
+        dim_idx_t stride_vidx, const coord_t &vstart) {
     auto &tdim = view.tdim(stride_tidx);
     auto e = tdim.expr();
     for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
@@ -578,8 +582,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     // The data may be loaded in a wider data type to get a proper GRF layout.
     if (!hint.type.is_undef()) vlayout = vlayout.reinterpret(hint.type);
 
-    bool is_prefetch = (send_op_ == send_op_t::prefetch);
     bool is_store = (send_op_ == send_op_t::store);
+    bool is_prefetch = (send_op_ == send_op_t::prefetch);
     auto send_type = type_t::u(vlayout.type().size() * 8);
     auto blocks = vlayout.blocks();
     if (blocks.size() < 2) return false;
@@ -646,8 +650,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     // Try to reduce the number of messages by increasing count per message.
     int try_count = count * 2;
-    int max_count = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store,
-            transpose, width, mem_type_.size());
+    int max_count
+            = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store, transpose, width, mem_type_.size());
     while (try_count <= max_count) {
         if (b0.block % (try_count * width) != 0) break;
         count = try_count;
@@ -668,7 +672,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     std::vector<dim_t> dims(vlayout.ndims(), 1);
     dims[b0.dim_idx] = count * width;
     dims[b1.dim_idx] = height;
-    tensor_t tile(dims);
+    tile_t tile(dims);
 
     reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type, 0,
             std::vector<dim_t>(vlayout.ndims(), 1));
@@ -722,7 +726,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     stmt_ = stmt_t();
     bool ok = true;
     auto vstart0 = mem_view_.vstart();
-    vlayout.for_each_tile(tile, [&](const std::vector<dim_t> &start) {
+    vlayout.for_each_tile(tile, [&](const icoord_t &start) {
         if (!ok) return;
 
         int access_size = send.access_size();
@@ -730,8 +734,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
         // Check mask requirements.
         expr_t mask;
-        if (!check_2d_mask(tensor_t(tile.dims(), start), use_virtual_surface,
-                    w_dim_idx, h_dim_idx, mask)) {
+        if (!check_2d_mask(tile, start, use_virtual_surface, w_dim_idx,
+                    h_dim_idx, mask)) {
             ok = false;
             return;
         }
@@ -846,9 +850,8 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
     int factor = 64 / surface_width_size;
     if (h % factor != 0) return false;
 
-    int max_count = block_2d_max_count(ir_ctx_->hw(),
-            send_op_ == send_op_t::prefetch, send_op_ == send_op_t::store,
-            transpose, w, send_type.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(), send_op_ == send_op_t::prefetch,
+            send_op_ == send_op_t::store, transpose, w, send_type.size());
     if (factor > max_count) return false;
 
     vnni_permute_factor = factor;
@@ -860,13 +863,13 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
     return whp_ok();
 }
 
-bool access_builder_t::check_2d_mask(const tensor_t &tile,
+bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
         bool use_virtual_surface, dim_idx_t w_dim_idx, dim_idx_t h_dim_idx,
         expr_t &mask) const {
-    auto sub_view = mem_view_.create_sub_view(tile);
+    auto sub_view = mem_view_.create_sub_view(tile, coord);
     auto mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset());
     mask = mask_tensor.to_expr(1);
-    if (!mask.is_empty()) return true;
+    if (mask) return true;
 
     // Virtual surface implies no out-of-bound send checks.
     if (use_virtual_surface) return false;
@@ -887,7 +890,7 @@ bool access_builder_t::check_2d_mask(const tensor_t &tile,
     }
     mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset(), tmask);
     mask = mask_tensor.to_expr(1);
-    if (!mask.is_empty()) return true;
+    if (mask) return true;
 
     return false;
 }

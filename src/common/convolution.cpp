@@ -179,10 +179,10 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                 || (is_gpu
                         && utils::one_of(dst_dt, data_type::s8, data_type::u8,
                                 data_type::s32));
-        const bool is_fp8 = is_gpu
-                && (utils::one_of(
-                            src_dt, data_type::f8_e5m2, data_type::f8_e4m3)
-                        || utils::one_of(dst_dt, data_type::f8_e5m2,
+        const bool is_fp8
+                = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3)
+                || (is_gpu
+                        && utils::one_of(dst_dt, data_type::f8_e5m2,
                                 data_type::f8_e4m3));
         const bool enable_quantization = is_int8 || is_fp8;
         if (enable_quantization)

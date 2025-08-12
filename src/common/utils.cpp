@@ -60,7 +60,7 @@ int getenv(const char *name, char *buffer, int buffer_size) {
     size_t value_length = 0;
 
 #ifdef _WIN32
-    value_length = GetEnvironmentVariable(name, buffer, buffer_size);
+    value_length = GetEnvironmentVariableA(name, buffer, buffer_size);
 #else
     const char *value = ::getenv(name);
     value_length = value == nullptr ? 0 : strlen(value);
@@ -127,7 +127,7 @@ std::string getenv_string_user(const char *name) {
 
 status_t check_for_symlinks(const char *filename, bool *res) {
 #ifdef _WIN32
-    DWORD attr = GetFileAttributes(filename);
+    DWORD attr = GetFileAttributesA(filename);
 
     // checking for ERROR_FILE_NOT_FOUND allows the application to open
     // new files without raising an exception

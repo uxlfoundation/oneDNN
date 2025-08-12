@@ -777,6 +777,55 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_conv_post_ops)
         });
 
 /*
+              \   /
+              conv
+                |
+         unary/binary
+                |    \
+             sigmoid  |
+                |    /
+             multiply
+                |
+[unary/binary]*[0,MAX_REPETITION)
+                |
+*/
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
+        dnnl, fp_conv_post_ops_swish_post_ops)
+        .set_priority(9.9f)
+        .set_kind(partition_kind_t::convolution_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *pconv
+                            = pgraph->append_op(graph::op_kind::Convolution);
+
+                    pm::pb_op_t *palt
+                            = pgraph->append_alternation(get_unary_binary_ops(),
+                                    in_edges_t {in_edge(0, pconv, 0)});
+
+                    pm::pb_op_t *psigmoid
+                            = pgraph->append_op(graph::op_kind::Sigmoid,
+                                    in_edges_t {in_edge(0, palt, 0)});
+                    pm::pb_op_t *pmultiply
+                            = pgraph->append_op(graph::op_kind::Multiply,
+                                    in_edges_t {in_edge(0, palt, 0),
+                                            in_edge(1, psigmoid, 0)});
+
+                    auto alt_graph = std::make_shared<pb_graph_t>();
+                    auto pop = alt_graph->append_alternation(
+                            get_unary_binary_ops());
+                    pop->allow_internal_inputs();
+                    alt_graph->create_input_port(0, pop, 0);
+                    alt_graph->create_output_port(0, pop, 0);
+
+                    pgraph->append_repetition(alt_graph, {0, 0}, 0,
+                            MAX_REPETITION,
+                            in_edges_t {in_edge(0, pmultiply, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<float_conv_fwd>();
+        });
+
+/*
                   wildcard
               \   /      \
       conv_bwd_weight  biasadd_bwd

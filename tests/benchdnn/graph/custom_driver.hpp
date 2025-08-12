@@ -29,7 +29,6 @@ namespace custom {
 
 enum alg_t {
     GENINDEX,
-    SELECT,
     TRANSPOSE,
     RESHAPE,
     ALG_UNKNOWN,

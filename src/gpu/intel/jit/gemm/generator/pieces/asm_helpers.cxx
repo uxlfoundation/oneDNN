@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,34 +15,29 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 
-#include "internal/namespace_start.hxx"
-
 // goto instruction with Gen12 semantics.
 template <HW hw>
-void BLASKernelGenerator<hw>::goto12(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl)
+void Generator<hw>::goto12(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl)
 {
-    InstructionModifier mmod = mod;
-    if (hw == HW::Gen9 && !branchCtrl) {
-        if (mmod.getPredCtrl() == PredCtrl::None) stub();
-        mmod.setPredInv(!mmod.isPredInv());
-    }
-    goto_(mmod, jip, uip, branchCtrl);
+    goto_(mod, jip, uip, branchCtrl);
 }
 
 // Compare to zero.
 template <HW hw>
-void BLASKernelGenerator<hw>::cmp0(const InstructionModifier &mod, RegData src0)
+void Generator<hw>::cmp0(const InstructionModifier &mod, RegData src0)
 {
     mov(mod, null.retype(src0.getType()), abs(src0));
 }
 
 // Synchronize on all pipes and OOO operations.
 template <HW hw>
-void BLASKernelGenerator<hw>::syncall()
+void Generator<hw>::syncall()
 {
     if (hw == HW::Gen12LP)
         sync.allwr(SWSB(1));
@@ -52,7 +47,7 @@ void BLASKernelGenerator<hw>::syncall()
 
 // Simple do-while loop macro for the backward conditional branch at end of loop.
 template <HW hw>
-void BLASKernelGenerator<hw>::simtDoWhileLoop(const InstructionModifier &mod, Label &dest)
+void Generator<hw>::simtDoWhileLoop(const InstructionModifier &mod, Label &dest)
 {
     Label next;
 
@@ -63,7 +58,7 @@ void BLASKernelGenerator<hw>::simtDoWhileLoop(const InstructionModifier &mod, La
 
 // Barrier for all threads in the workgroup, except padding threads.
 template <HW hw>
-void BLASKernelGenerator<hw>::activeThreadBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
+void Generator<hw>::activeThreadBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
     if (hw >= HW::XeHPG && strategy.activeThreads > 0)
         barrier(temp, strategy.activeThreads, r0_info);
@@ -72,7 +67,7 @@ void BLASKernelGenerator<hw>::activeThreadBarrier(const GRF &temp, const GRF &r0
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::activeThreadBarrierSignal(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
+void Generator<hw>::activeThreadBarrierSignal(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
     if (hw >= HW::XeHPG && strategy.activeThreads > 0)
         barriersignal(temp, strategy.activeThreads, r0_info);
@@ -82,18 +77,16 @@ void BLASKernelGenerator<hw>::activeThreadBarrierSignal(const GRF &temp, const G
 
 // Barrier with SLM fence.
 template <HW hw>
-void BLASKernelGenerator<hw>::slmBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
+void Generator<hw>::slmBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
-    if (hw >= HW::Gen11) {
-        slmfence(temp, r0_info);
-        fencewait();
-    }
+    slmfence(temp, r0_info);
+    fencewait();
     activeThreadBarrier(temp, r0_info, strategy);
 }
 
 // Global memory fence.
 template <HW hw>
-void BLASKernelGenerator<hw>::globalMemFence(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
+void Generator<hw>::globalMemFence(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
     if (hw >= HW::XeHPG && !strategy.multitile)
         memfence(FenceScopeLSC::Tile, FlushTypeLSC::None, temp, r0_info);
@@ -103,7 +96,7 @@ void BLASKernelGenerator<hw>::globalMemFence(const GRF &temp, const GRF &r0_info
 
 // Barrier with global memory fence.
 template <HW hw>
-void BLASKernelGenerator<hw>::globalMemBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
+void Generator<hw>::globalMemBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
     globalMemFence(temp, r0_info, strategy);
     fencewait();
@@ -112,11 +105,9 @@ void BLASKernelGenerator<hw>::globalMemBarrier(const GRF &temp, const GRF &r0_in
 
 // Pause for a short period of time.
 template <HW hw>
-void BLASKernelGenerator<hw>::pause(const CommonStrategy &strategy)
+void Generator<hw>::pause(const CommonStrategy &strategy)
 {
-    if (hw == HW::Gen9) for (int i = 0; i < 8; i++)
-        mov<uint32_t>(8 | Switch, null, acc0);
-    else if (hw >= HW::Gen11 && hw != HW::XeHPC)
+    if (hw != HW::XeHPC)
         mov(1 | Switch, tm0[4], strategy.pauseCycles);
     else for (int i = 0; i < (strategy.pauseCycles / 8); i++)
         mov<uint32_t>(1 | SWSB(1), null, acc0);
@@ -124,7 +115,7 @@ void BLASKernelGenerator<hw>::pause(const CommonStrategy &strategy)
 
 // Clear read suppresion data on ALU pipes.
 template <HW hw>
-void BLASKernelGenerator<hw>::doReadSuppressionWA(const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::doReadSuppressionWA(const CommonStrategy &strategy, CommonState &state)
 {
     GRF temp;
     bool freeTemp = false;
@@ -148,4 +139,4 @@ void BLASKernelGenerator<hw>::doReadSuppressionWA(const CommonStrategy &strategy
         state.ra.safeRelease(temp);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

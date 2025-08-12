@@ -20,19 +20,40 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" OR CMAKE_CXX_COMPILER_ID MATCHES "
     add_definitions("-DENABLE_LLVM_WCONVERSION")
 endif()
 
-file(GLOB SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
-    )
+file(GLOB SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]pp)
+set(DIRS "bnorm;gemm;reduction;rnn")
+foreach(dir ${DIRS})
+    file(GLOB_RECURSE SOURCES_EXTRA
+        ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/*.[ch]pp
+        )
+    list(APPEND SOURCES "${SOURCES_EXTRA}")
+endforeach()
 
+include("${PROJECT_SOURCE_DIR}/cmake/gen_gpu_kernel_list.cmake")
+
+file(GLOB_RECURSE CL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cl)
+file(GLOB_RECURSE CL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
+
+set(kernel_list_templ "${PROJECT_SOURCE_DIR}/src/gpu/intel/ocl_kernel_list.cpp.in")
+set(kernel_list_src "${PROJECT_BINARY_DIR}/src/gpu/intel/ocl_kernel_list.cpp")
+
+gen_gpu_kernel_list(
+    "${kernel_list_templ}"
+    "${kernel_list_src}"
+    "${CL_SOURCES}"
+    "${CL_HEADERS}")
+
+list(APPEND SOURCES ${kernel_list_src})
 
 add_subdirectory(compute)
 add_subdirectory(microkernels)
 add_subdirectory(jit)
-add_subdirectory(ocl)
 
-if(DNNL_WITH_SYCL)
+if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+    add_subdirectory(ocl)
+elseif(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
+    add_subdirectory(ocl)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)

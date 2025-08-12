@@ -110,7 +110,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             force_f32_dt ? dnnl_f32 : prb->sdt[1], prb->stag[1]);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args_t()));
+            create_dnnl_attr(prb->attr, attr_args_t(), prb->ndims));
 
     if (prb->dir & FLAG_FWD) {
         auto dst_d = dnn_mem_t::init_md(prb->ndims, src_dims.data(),

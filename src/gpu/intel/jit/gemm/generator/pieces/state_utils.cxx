@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,17 +16,17 @@
 
 
 #include "state_utils.hpp"
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
-
 
 template <HW hw>
-void BLASKernelGenerator<hw>::saveMNLocalIDs(const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::saveMNLocalIDs(const GEMMStrategy &strategy, GEMMState &state)
 {
     state.lidStorage = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
     state.lidM = state.lidStorage.uw(0);
@@ -36,7 +36,7 @@ void BLASKernelGenerator<hw>::saveMNLocalIDs(const GEMMStrategy &strategy, GEMMS
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::saveKLocalIDSize(const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::saveKLocalIDSize(const GEMMStrategy &strategy, GEMMState &state)
 {
     state.lidszKStorage = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
     state.lidK = state.lidszKStorage.uw(0);
@@ -46,7 +46,7 @@ void BLASKernelGenerator<hw>::saveKLocalIDSize(const GEMMStrategy &strategy, GEM
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::releaseSavedMNLocalIDs(GEMMState &state)
+void Generator<hw>::releaseSavedMNLocalIDs(GEMMState &state)
 {
     state.ra.safeRelease(state.lidStorage);
     state.lidStorage = invalid;
@@ -54,4 +54,5 @@ void BLASKernelGenerator<hw>::releaseSavedMNLocalIDs(GEMMState &state)
     state.lidN = invalid;
 }
 
-#include "internal/namespace_end.hxx"
+
+GEMMSTONE_NAMESPACE_END

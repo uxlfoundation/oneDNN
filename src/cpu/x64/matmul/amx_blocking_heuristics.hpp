@@ -61,6 +61,7 @@ public:
 
     static size_t L1_threshold();
     static size_t L2_threshold();
+    static size_t L2_ways_threshold();
 
 protected:
     virtual float calculate_blocking_scores() const = 0;
@@ -84,7 +85,7 @@ protected:
     bool extendable_k_ {false};
     size_t blocking_chunk_mem_size_ {0};
     float efficiency_score_ {0.0};
-
+    static constexpr float avx_ipc {1.2f};
     bool is_buffer_c_required() const;
 };
 

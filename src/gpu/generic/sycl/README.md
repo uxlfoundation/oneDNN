@@ -11,6 +11,8 @@ target GPUs.
 
 ## Limitations
 * Supported target devices: Intel and NVIDIA GPUs
+* Known issue with matmul, RNN, inner product and softmax primitive on Intel
+ devices, due to kernel argument size limit. 
 
 ## Pre-requisites
 * Intel GPUs
@@ -96,7 +98,7 @@ The implementation supports both forward and backward directions.
 
 ## Group Normalization
 * Supported Direction:  Both forward and backward directions are supported.
-* Supported data types: All possible data combinations listed in the oneDNN specification are supported.
+* Supported data types: `f32`, `bf16`, `f16`, `s8`, `u8`, `s32`
 * Support Data layouts: All data layouts are supported.
 
 
@@ -105,7 +107,7 @@ The implementation supports both forward and backward directions.
 The implementation supports both forward and backward directions.
 
 * Supported formats: All plain formats are supported.
-* Supported data types: All possible data combinations as listed in the specification are supported.
+* Supported data types: `f32`, `bf16`, `f16`, `s8`, `u8`, `s32`
 * Supported post-ops: All post-ops mentioned in the specification are supported.
 Note: The backward pass does not support post-ops. You should not use post-ops in the forward pass during training.
 
@@ -189,7 +191,7 @@ The implementation supports both forward and backward propagations.
 
 ## RNN
 
-The implementation supports forward propagation and vanilla RNN cell kind.
+The implementation supports only Vanilla RNN cell kind for both forward and backward propagations.
 
 * Supported formats: `ldigo`, `ldgoi`
 * Supported data types: `f32`, `bf16`, `f16`, `s8`, `u8`

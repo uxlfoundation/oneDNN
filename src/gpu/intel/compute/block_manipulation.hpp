@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ public:
             const mapped_block_t &other, bool require_all_match = true) const;
 
     std::string str() const {
-        std::ostringstream ss;
+        ostringstream_t ss;
         ss << "<";
         ss << size << "/" << dim_idx << ": ";
         for (const auto &it : blocks) {

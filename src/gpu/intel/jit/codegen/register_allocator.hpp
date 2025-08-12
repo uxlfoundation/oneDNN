@@ -59,6 +59,10 @@ public:
         return ret;
     }
 
+    ngen::FlagRegister try_alloc_flag(bool sub = true) {
+        return ra.try_alloc_flag(sub);
+    }
+
     ngen::FlagRegister alloc_flag(bool sub = true) {
         return ra.alloc_flag(sub);
     }

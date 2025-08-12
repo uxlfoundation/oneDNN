@@ -55,23 +55,40 @@ struct gen_gemm_t : public gpu_gemm_t {
             auto *compute_engine
                     = utils::downcast<compute::compute_engine_t *>(engine);
 
-            // LIMITATIONS:
-            // - runtime dims are not supported
-            auto attr_skip_mask = smask_t::scales_data_type | smask_t::post_ops
-                    | smask_t::fpmath_mode | smask_t::accumulation_mode
-                    | smask_t::rounding_mode;
+            // Basic implementation attr support:
+            auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
+                    | smask_t::accumulation_mode | smask_t::rounding_mode
+                    | smask_t::scales | smask_t::scales_data_type
+                    | smask_t::scales_groups | smask_t::zero_points
+                    | smask_t::zero_points_data_type
+                    | smask_t::zero_points_groups;
+            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
             auto &attr_zps = attr()->zero_points_;
+            auto &attr_scales = attr()->scales_;
 
             dev_info_ = compute_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
             init_attrs();
-            const auto d = desc();
 
-            VDISPATCH_GEMM(
-                    IMPLICATION(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3),
-                            arch_ >= arch_t::xe_hpc),
-                    VERBOSE_UNSUPPORTED_DT); /* temporary; pending gemmstone pulldown */
+            // If we have both grouped scales and grouped zero-points, they must
+            // have the same group size
+            if (a_scales_2d() && a_zp_2d()) {
+                auto asc_group_k = attr_scales.get_group(DNNL_ARG_A, 0);
+                auto azp_group_k = attr_zps.get_group(DNNL_ARG_A, 0);
+                VDISPATCH_GEMM(
+                        asc_group_k == azp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+            }
+            if (b_scales_2d() && b_zp_2d()) {
+                auto bsc_group_k = attr_scales.get_group(DNNL_ARG_B, 1);
+                auto bzp_group_k = attr_zps.get_group(DNNL_ARG_B, 1);
+                VDISPATCH_GEMM(
+                        bsc_group_k == bzp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+            }
+
+            const auto d = desc();
 
             CHECK(set_default_formats(false));
 
@@ -88,6 +105,11 @@ struct gen_gemm_t : public gpu_gemm_t {
                     || (d->transa() == dnnl_trans));
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
                     || d->transc() == dnnl_trans;
+
+            // We cannot swap A/B if we don't have kernels to support the
+            // swapped data type/alignment requirements
+            swap_ab_ &= !(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
+                    && d->b_type() == bf16);
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
@@ -113,20 +135,12 @@ struct gen_gemm_t : public gpu_gemm_t {
                 eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
             }
 
-            if (quant_enabled_) {
-                attr_skip_mask |= smask_t::fpmath_mode
-                        | smask_t::scales_data_type | smask_t::scales_groups
-                        | smask_t::zero_points_data_type
-                        | smask_t::zero_points_groups;
-            }
-
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
                         (utils::one_of(d->b_type(), u8, s8) || wei_decomp_),
                         VERBOSE_UNSUPPORTED_DT);
-                attr_skip_mask |= smask_t::zero_points;
 
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->c_type(), f32, s8,
                                                    u8, f16, bf16),
@@ -159,11 +173,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                                                    d->b_type()),
                                        dev_info_->has_native(f64)),
                         VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(
-                        IMPLICATION(utils::one_of(f8_e5m2, f8_e4m3, d->a_type(),
-                                            d->b_type(), d->c_type()),
-                                arch_ >= arch_t::xe_hpc),
-                        VERBOSE_ISA_DT_MISMATCH);
             }
 
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_BLOCKING_FAIL, "");
@@ -185,8 +194,6 @@ struct gen_gemm_t : public gpu_gemm_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
-            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
-                    VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
                                    !with_bias()
                                            && (attr_zps.has_default_values(
@@ -199,8 +206,7 @@ struct gen_gemm_t : public gpu_gemm_t {
                     = convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
             for (int i = 0; i < desc_.c_desc.ndims; i++) {
                 auto c_stride = desc_.c_desc.format_desc.blocking.strides[i];
-                VDISPATCH_GEMM(IMPLICATION((c_kernel_type.isInt4()
-                                                   || c_kernel_type.isFP4()),
+                VDISPATCH_GEMM(IMPLICATION(c_kernel_type.is4(),
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
@@ -220,9 +226,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             bool with_eltwise = (post_ops_.find(eltwise) != -1);
 
             // Check GPU architecture.
-            bool arch_ok = utils::one_of(arch_, arch_t::gen9, arch_t::gen11,
-                    arch_t::xe_lp, arch_t::xe_hp, arch_t::xe_hpg,
-                    arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
+            bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
+                    arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
 #if XE3P
             arch_ok |= (arch_ == arch_t::xe3p);
 #endif
@@ -249,14 +254,14 @@ struct gen_gemm_t : public gpu_gemm_t {
 
             // Wrangle data types.
             auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(DNNL_ARG_A)
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
                     : data_type::s32;
             auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(DNNL_ARG_B)
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            if (swap_ab_) std::swap(ao_type, bo_type);
-            bool int_acc = utils::one_of(eff_a_type(), s8, u8);
-            int_acc &= !wei_scales_2d_;
+            bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
+                    && !wei_decomp_;
+            int_acc &= (!a_scales_2d() && !b_scales_2d());
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
@@ -300,10 +305,7 @@ struct gen_gemm_t : public gpu_gemm_t {
             if (attr()->acc_mode_ == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp_) {
-                acc_type = data_type::f32;
-                set_mode(mode, kernel_desc_t::mode_w_decomp);
-            }
+            if (wei_decomp_) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
@@ -324,18 +326,21 @@ struct gen_gemm_t : public gpu_gemm_t {
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 #endif
 
-            CHECK(kernel_desc_.select_kernel(arch_, stepping,
-                    dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
-                    swap_ab(), ao_dims_, bo_dims_, wei_scales_2d_,
-                    src_scales_2d_, with_sround_, wei_q2d_group_k_,
-                    src_q2d_group_k_, with_c_zero_points(), with_bias(),
-                    eff_sum_ab(), alpha(), beta(), eff_a_type(), eff_b_type(),
-                    desc()->c_type(), ao_type, bo_type, wei_scales_type_,
-                    src_scales_type_, co_type, acc_type, eff_align_a(),
-                    eff_align_b(), align_c(), eff_m(), eff_n(), d->k(),
-                    eff_lda(), eff_ldb(), d->ldc(), d->batch(),
-                    std::move(gpu_post_ops)));
+            VDISPATCH_GEMM_SC(
+                    kernel_desc_.select_kernel(arch_, stepping,
+                            dev_info_->eu_count(), has_systolic, is_integrated,
+                            mode, batch_dims(), eff_transa(), eff_transb(),
+                            eff_trans_bias(), swap_ab(), ao_dims_, bo_dims_,
+                            asc_dims_, bsc_dims_, with_sround_, a_q2d_group_k_,
+                            b_q2d_group_k_, with_c_zero_points(), with_bias(),
+                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
+                            eff_b_type(), desc()->c_type(), ao_type, bo_type,
+                            a_scales_type_, b_scales_type_, co_type, acc_type,
+                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
+                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                            d->batch(), std::move(gpu_post_ops)),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "matching kernel not found in catalog");
 
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.

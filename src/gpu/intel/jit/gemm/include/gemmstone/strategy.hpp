@@ -17,17 +17,17 @@
 #ifndef GEMMSTONE_GUARD_STRATEGY_HPP
 #define GEMMSTONE_GUARD_STRATEGY_HPP
 
-#include "config.hpp"
+#include "gemmstone/config.hpp"
 
 #include "internal/ngen_includes.hpp"
 #include "internal/utils.hpp"
 
-#include "driver_info.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "ngen_emulation.hpp"
-#include "problem.hpp"
-#include "type.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/type.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 /* Zero-padding to allow various types to be bytewise compared. */
 #define ZPAD(x, bytes) uint8_t pad##x[bytes] = {};
@@ -154,24 +154,22 @@ struct CommonStrategy {
     bool ieeeDenormals = true;                  // Enable IEEE-compliant denormals.
     bool spf = true;                            // Enable Single Program Flow (SPF) mode in EUs.
     MoveR0 moveR0 = MoveR0::Acc;                // Where to store r0 information.
-    bool sipR0WA = false;                       // Avoid using r0 to avoid clobbering by SIP.
     bool readSuppressionWA = true;              // Workaround for HW issue with read suppression after fused sends.
     bool multitile = true;                      // Enable multitile (implicit scaling) support?
     bool wgInSS = false;                        // Pretend to use barriers so that each WG belongs to 1 SS/DSS.
     bool finalFence = false;                    // Issue global memory fence before EOT.
-                                    ZPAD(A, 3)
     int pauseCycles = 0x0100;                   // Number of cycles to pause when waiting in a spin-loop.
     bool simulation = false;                    // For use in simulator?
     bool systolicAvailable = false;             // True if systolic array present.
     bool avoidIncConflicts = true;              // If true, duplicate address increments across banks to avoid bundle conflicts.
-                                    ZPAD(B, 1)
+                                    ZPAD(A, 1)
     ngen::HW raHW = ngen::HW::Unknown;          // Pretend to be a different GPU for register allocation purposes.
     ngen::ThreadArbitrationMode arbitrationMode
         = ngen::ThreadArbitrationMode::Default; // Thread arbitration policy to use.
     int activeThreads = 0;                      // # of active threads (0 = dynamic).
 
     ngen::EmulationStrategy emulate;
-                                    ZPAD(C, 2)
+                                    ZPAD(B, 2)
 
     CommonStrategy() = default;
     CommonStrategy(ngen::HW hw, int stepping = 0);
@@ -193,18 +191,21 @@ struct GEMMStrategyPOD : public CommonStrategy {
     WalkOrder cWalkOrder = WalkOrder::HW2D;      // Order for traversing tiles of C
     bool persistent = false;                     // Use persistent thread model?
     bool reverse[2] = {false, false};            // Reverse m/n walk order?
+    bool scramble[2] = {false, false};           // Scramble m/n walk order?
     bool fmaBoustrophedon = false;               // Use boustrophedon ordering inside FMA/DPAS blocks?
-                                    ZPAD(A, 3)
+                                    ZPAD(A, 1)
     int fmaSIMD = 0;                             // Vector length for FMA (0 = default = 2 GRFs).
     int kChain = 1;                              // # of FMAs to chain in k dimension.
     int dotVL = 0;                               // If > 0, use dot products of the given length, instead of outer products.
     int wg[3] = {0,0,0};                         // m/n/k workgroup sizes, 0 if unconstrained. Indexed by LoopType.
     WGType forceWGUpdate = WGDynamic;            // Force work group update type.
-                                    ZPAD(B, 3)
+    bool forceFixedWGK = false;                  // Force fixed k workgroup size.
+                                    ZPAD(B, 2)
     int wgPadFactor = 1;                         // If > 1, pad workgroup with empty threads.
     MatrixAddressingStrategy A, B, C;            // Strategies for accessing A/B/C.
     MatrixAddressingStrategy AO, BO, CO;         // Strategies for accessing A/B/C offsets.
     MatrixAddressingStrategy A_scale, B_scale;   // Strategies for accessing A/B scales.
+    MatrixAddressingStrategy Ag, Bg;             // Strategies for accessing A/B groupwise reductions.
     int ka_load, kb_load;                        // How much of A/B is loaded at once, in k dimension
     int ka_load_masked = 0, kb_load_masked = 0;  // Same as above, when masking m/n (0 = default = same as ka/kb_load)
     bool loadBFirst = false;                     // If true, load B before A (default A then B).
@@ -268,8 +269,6 @@ struct GEMMStrategyPOD : public CommonStrategy {
                                                  //     If false (default), only downconvert C at the end of the calculation.
                                     ZPAD(K, 2)
     int kPadding = 32;                           //   Pad k dimension when load balancing (kParallel/kParallelVariable)
-    bool doubleWA = false;                       // Use explicit double broadcast instructions? (Gen9 only)
-                                    ZPAD(L, 3)
     int barrierFreq = 0;                         // If > 0, set a periodic barrier every barrierFreq k loops to keep threads together.
     bool splitBarrier = false;                   //   Use split barriers for these periodic barriers?
     bool altCRemainder = false;                  // Use alternative double-loop C remainder code?
@@ -288,14 +287,14 @@ struct GEMMStrategyPOD : public CommonStrategy {
         RemainderHandling::General,
     };
     bool jointSplit = true;                      // Use remainder kernel for both m and n dimensions if both are split.
-                                    ZPAD(M, 3)
+                                    ZPAD(L, 3)
     int mSplitThresh = 0, nSplitThresh = 0;      // m/n minimum thresholds for using split remainder handling. 0 means always use split.
     bool atomicFMA = false;                      // Use {Atomic} FMA chains.
     bool extendedAtomicFMA = false;              // Use longer {Atomic} FMA chains.
     bool stallAfterLoad = false;                 // Insert stalls after load operations.
     bool checkAdd32 = false;                     // Check inside kernel if inner loop additions can be done in 32-bit.
     bool delayABInc = true;                      // Delay A/B increment a few outer products in the k loop.
-                                    ZPAD(N, 3)
+                                    ZPAD(M, 3)
     CoopSplit coopA = CoopSplit::K;              // How to split SLM copies, cooperative prefetches amongst threads in a workgroup
     CoopSplit coopB = CoopSplit::K;
     bool slmEarlyKMask = false;                  // Prepare A/B reads to use k-masking (when applicable) in main loop, instead of waiting for remainder.
@@ -307,14 +306,14 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool systolic = false;                       // Use systolic array if applicable.
     bool dpasw = false;                          // Use DPASW for fused EU architectures.
     bool fixedSystolic = false;                  // Use hardcoded systolic inner loop for 32x32 or 32x48 unrolls.
-                                    ZPAD(O, 3)
+                                    ZPAD(N, 3)
     int namedBarriers[2] = {0, 0};               // # of named barriers in m, n dimensions (0 to use regular barriers).
     bool skewLocalIDs = false;                   // Remap local IDs for large workgroups so that threads on the same EU don't depend on the same data.
     bool xParallel = false;                      // TRSM: parallelize in x dimension.
     bool checkBeta1 = false;                     // If true, check for beta = 1 and handle specially.
     bool panelCheck = false;                     // If true, check for out-of-bounds panel reads.
     bool insideSK = false;                       // Inside a superkernel?
-                                    ZPAD(P, 3)
+                                    ZPAD(O, 3)
 
     GEMMStrategyPOD() = default;
     GEMMStrategyPOD(ngen::HW hw, int stepping = 0) : CommonStrategy(hw, stepping) {}
@@ -383,14 +382,13 @@ struct GEMMStrategy : public GEMMStrategyPOD
     }
 
     bool fixedWG(const GEMMProblem &problem) const { return (getWGType(problem) == WGFixed); }
+    bool fixedWGK() const { return forceFixedWGK || kInterleave || (kParallelLocal && wgPadFactor > 1); }
+
     bool linearOrder() const { return cWalkOrder != WalkOrder::HW2D; }
 
-    bool legalAAlignment(const GEMMProblem &problem, int align) {
-        return (problem.A.layout != MatrixLayout::N) || ((unroll[LoopM] * problem.Ta) % align == 0);
-    }
-    bool legalBAlignment(const GEMMProblem &problem, int align) {
-        return (problem.B.layout != MatrixLayout::T) || ((unroll[LoopN] * problem.Tb) % align == 0);
-    }
+    bool legalAAlignment(const GEMMProblem &problem, int align) { return problem.isLegalAAlignment(align, unroll[LoopM]); }
+    bool legalBAlignment(const GEMMProblem &problem, int align) { return problem.isLegalBAlignment(align, unroll[LoopN]); }
+
     int kAlign(const GEMMProblem &problem) const;
 
     int statusFlagStride() const { return 64 * (int(fuseBeta) + int(fusePostOps)); }
@@ -420,6 +418,6 @@ bool useAutoAtomic(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &
 void downgradeAPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy);
 void downgradeBPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

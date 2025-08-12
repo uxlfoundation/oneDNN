@@ -539,6 +539,9 @@ Copyright (c) 2016, Tibbo Technology Inc
 Copyright (c) 2016, Vladimir Gladkov
 Copyright (c) 2016, Doxyrest maintainers
 
+sphinx-copybutton (doc\sphinx\_static\doxyrest_code_copy_button.js)
+Copyright (c) 2018 Chris Holdgraf
+
 MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

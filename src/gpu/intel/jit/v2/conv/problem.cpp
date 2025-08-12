@@ -42,7 +42,7 @@ const type_t &problem_t::out_type() const {
 
 void problem_t::set_shape(const std::string &s) {
     gpu_assert(prop_ != prop_kind::undef);
-    pvar_tile_t s_tile(s);
+    tile_t s_tile(s);
     bool has_d = has_spatial(s_tile, 'd');
     bool has_h = has_spatial(s_tile, 'h');
     bool has_w = has_spatial(s_tile, 'w');
@@ -111,7 +111,7 @@ std::string problem_t::desc_str() const {
     dim_t dd = shape_[pvars::dd];
     dim_t dh = shape_[pvars::dh];
     dim_t dw = shape_[pvars::dw];
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "mb" << mb;
     if (g > 1) oss << "g" << g;
     oss << "ic" << g * ic;
@@ -151,7 +151,7 @@ std::string problem_t::desc_str() const {
 }
 
 std::string problem_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << "Conv problem" << std::endl;
     oss << "  HW:            " << to_string(hw_.to_ngen()) << std::endl;
     oss << "  Propagation:   " << jit::to_string(prop_) << std::endl;
@@ -174,7 +174,7 @@ std::string problem_t::csv_str() const {
     parts.push_back(wei_tag_.str());
     parts.push_back(dst_tag_.str());
     parts.push_back(desc_str());
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &p : parts) {
         if (!is_first) oss << ",";
@@ -184,9 +184,9 @@ std::string problem_t::csv_str() const {
     return oss.str();
 }
 
-pvar_tile_t problem_t::default_shape() {
-    static pvar_tile_t _default_shape = []() {
-        static pvar_tile_t ret;
+tile_t problem_t::default_shape() {
+    static tile_t _default_shape = []() {
+        static tile_t ret;
         ret[pvars::g] = 1;
         ret[pvars::mb] = 1;
         ret[pvars::id] = ret[pvars::ih] = ret[pvars::iw] = 1;
@@ -203,7 +203,7 @@ pvar_tile_t problem_t::default_shape() {
     return _default_shape;
 }
 
-double problem_t::ops(prop_kind_t prop, const pvar_tile_t &shape) {
+double problem_t::ops(prop_kind_t prop, const tile_t &shape) {
 #define GET(name) shape[pvars::name]
     double ret = 2.0;
     ret *= (double)GET(g) * GET(mb) * GET(oc) * GET(ic);

@@ -61,19 +61,23 @@ void post_op_injector_t<ngen_generator_t>::compute(const ngen::GRFRange &regs) {
     }
 }
 
-REG_GEN9_ISA(template struct post_op_injector_t<generator_t<gpu_gen9>>);
-REG_GEN11_ISA(template struct post_op_injector_t<generator_t<gpu_gen11>>);
-REG_XELP_ISA(template struct post_op_injector_t<generator_t<gpu_xe_lp>>);
-REG_XEHP_ISA(template struct post_op_injector_t<generator_t<gpu_xe_hp>>);
-REG_XEHPG_ISA(template struct post_op_injector_t<generator_t<gpu_xe_hpg>>);
-REG_XEHPC_ISA(template struct post_op_injector_t<generator_t<gpu_xe_hpc>>);
-REG_XE2_ISA(template struct post_op_injector_t<generator_t<gpu_xe2>>);
-REG_XE3_ISA(template struct post_op_injector_t<generator_t<gpu_xe3>>);
+template <ngen::HW hw>
+using code_gen = ngen::BinaryCodeGenerator<hw>;
+REG_XELP_ISA(template struct post_op_injector_t<code_gen<gpu_xe_lp>>);
+REG_XEHP_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hp>>);
+REG_XEHPG_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpg>>);
+REG_XEHPC_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpc>>);
+REG_XE2_ISA(template struct post_op_injector_t<code_gen<gpu_xe2>>);
+REG_XE3_ISA(template struct post_op_injector_t<code_gen<gpu_xe3>>);
 #if XE3P
-REG_XE3P_ISA(template struct post_op_injector_t<generator_t<gpu_xe3p>>);
+REG_XE3P_ISA(template struct post_op_injector_t<code_gen<gpu_xe3p>>);
 #endif
 #if XE4
-REG_XE4_ISA(template struct post_op_injector_t<generator_t<gpu_xe4>>);
+REG_XE4_ISA(template struct post_op_injector_t<code_gen<gpu_xe4>>);
+#endif
+
+#ifdef NGEN_ASM
+template struct post_op_injector_t<ngen::AsmCodeGenerator>;
 #endif
 
 } // namespace jit

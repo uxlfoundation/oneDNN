@@ -25,11 +25,12 @@ Both kinds of experimental features can be enabled simultaneously.
 | ONEDNN_EXPERIMENTAL_BNORM_STATS_ONE_PASS | Calculate mean and variance in batch normalization(BN) in single pass ([RFC](https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20210519-single-pass-bnorm)). |
 | ONEDNN_EXPERIMENTAL_GPU_CONV_V2          | Enable shapeless GPU convolution implementation (the feature is under development).                                                                            |
 
-| Build time option                          | Description                                                        |
-|:-------------------------------------------|:-------------------------------------------------------------------|
-| ONEDNN_EXPERIMENTAL_UKERNEL                | Enable experimental microkernel APIs and functionalities.          |
-| ONEDNN_EXPERIMENTAL_PROFILING              | Enable experimental profiling API.                                 |
-| ONEDNN_EXPERIMENTAL_LOGGING                | Enable experimental logging support for oneDNN verbose mode.       |
+| Build time option                        | Description                                                  |
+|:-----------------------------------------|:-------------------------------------------------------------|
+| ONEDNN_EXPERIMENTAL_UKERNEL              | Enable experimental microkernel APIs and functionalities.    |
+| ONEDNN_EXPERIMENTAL_PROFILING            | Enable experimental profiling API.                           |
+| ONEDNN_EXPERIMENTAL_LOGGING              | Enable experimental logging support for oneDNN verbose mode. |
+| ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER | Enable SYCL OpenCL online kernel compiler extension.         |
 
 ## Features details
 
@@ -140,3 +141,9 @@ The runtime controls for oneDNN logging are listed as follows:
 | ONEDNN_VERBOSE_LOGFILE_SIZE     | Specifies maximum size for the logfile.                            |
 | ONEDNN_VERBOSE_NUM_LOGFILES     | Number of rotating logfiles for the logger.                        |
 | ONEDNN_VERBOSE_LOG_WITH_CONSOLE | Enables printing to both stdout and the logfile.                   |
+
+### ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+
+This option enables the experimental SYCL OpenCL online kernel compiler,
+allowing OpenCL kernels to be compiled without directly invoking the OpenCL
+runtime.

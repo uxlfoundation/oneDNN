@@ -27,11 +27,14 @@ namespace intel {
 namespace jit {
 
 stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
-        const expr_t &src_buf, const expr_t &dst_buf, const tensor_t &_subtile,
-        uint32_t reduction_mask, bool drop_dims) {
-    auto subtile = _subtile;
-    if (subtile.is_empty()) subtile = tensor_t(src.dims());
-    gpu_assert(src.ndims() == subtile.ndims());
+        const expr_t &src_buf, const expr_t &dst_buf,
+        const tile_coord_t &_sub_tile_coord, uint32_t reduction_mask,
+        bool drop_dims) {
+    auto sub_tile = _sub_tile_coord.tile;
+    auto sub_coord = _sub_tile_coord.coord;
+    if (sub_tile.is_empty()) sub_tile = tile_t(src.dims());
+    if (sub_coord.is_empty()) sub_coord = coord_t(src.ndims());
+    gpu_assert(src.ndims() == sub_tile.size());
     dim_idx_t ndims = src.ndims();
 
     // Align dst layout with src layout according to the mask if needed.
@@ -58,16 +61,14 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
         dst_aligned = dst;
     }
 
-    std::vector<dim_t> dst_tile_dims = subtile.dims();
-    std::vector<expr_t> dst_tile_start = subtile.start();
     for (dim_idx_t i = 0; i < ndims; i++) {
         if ((reduction_mask & (1 << i)) == 0) {
-            dst_tile_dims[i] = 1;
-            dst_tile_start[i] = expr_t(0);
+            sub_tile[i] = 1;
+            sub_coord[i] = expr_t(0);
             continue;
         }
     }
-    dst_aligned = dst_aligned.map(tensor_t(dst_tile_dims, dst_tile_start));
+    dst_aligned = dst_aligned.map(sub_tile, sub_coord);
 
     auto func = reduce_t::make(src, dst_aligned);
     return func.call({dst_buf, src_buf});
@@ -82,7 +83,7 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
             reduction_mask |= (1 << i);
         }
     }
-    return create_reduce_stmt(src, dst, src_buf, dst_buf, tensor_t(src.dims()),
+    return create_reduce_stmt(src, dst, src_buf, dst_buf, tile_t(src.dims()),
             reduction_mask, /*drop_dims=*/false);
 }
 

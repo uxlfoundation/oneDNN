@@ -664,6 +664,8 @@ struct rnn_conf_t {
     // for merged layer computation in brgemm
     dim_t Mlayermerged;
     dim_t mlayermerged_block, Mlayermerged_blocks;
+
+    alg_kind_t cell_kind = alg_kind::undef;
 };
 
 bool is_ldigo(const memory_desc_wrapper &md);
@@ -1175,15 +1177,12 @@ void set_workspace_sizes(rnn_conf_t &rnn, const rnn_desc_t &rd) {
 
     /* set other sizes */
     /// scratchpad buffer for each cell to hold intermediate data in gru/lbr_gru
-    rnn.scratch_cell_size = rnn.is_lbr
-            ? (size_t)rnn.scratch_gates_nld * rnn.scratch_gates_ld
-                    * sizeof(typename T::gemm_acc_t)
-            : (utils::one_of(rd.cell_kind, alg_kind::vanilla_gru,
-                       alg_kind::vanilla_augru)
-                            ? (size_t)rnn.ws_states_layer_nld
-                                    * rnn.ws_states_layer_ld
-                                    * sizeof(typename T::gemm_acc_t)
-                            : 0);
+    rnn.scratch_cell_size = (utils::one_of(rd.cell_kind, alg_kind::vanilla_gru,
+                                     alg_kind::vanilla_augru, alg_kind::lbr_gru,
+                                     alg_kind::lbr_augru)
+                    ? sizeof(typename T::scratch_t) * rnn.scratch_gates_nld
+                            * rnn.scratch_gates_ld
+                    : 0);
     /// workspace needed for lbr GRU
     rnn.ws_per_cell = (size_t)rnn.is_lbr * rnn.mb * rnn.dhc
             * sizeof(typename T::gemm_acc_t);
@@ -1246,13 +1245,13 @@ private:
     }
 
     const byte *const base_ptr_;
-    const dim_t dt_size_;
+    const size_t dt_size_;
     const int dims_[Tdims];
 };
 
 template <typename... Targs>
 raw_array_offset_calculator_t<sizeof...(Targs)> make_raw_aoc(
-        const void *base, const dim_t dt_size, Targs... Fargs) {
+        const void *base, const size_t dt_size, Targs... Fargs) {
     return raw_array_offset_calculator_t<sizeof...(Targs)>(
             static_cast<const byte *>(base), dt_size,
             std::forward<Targs>(Fargs)...);

@@ -70,8 +70,10 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -186,10 +188,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d(
                     p.zp_compensation = jcp.src_zero_point
                             ? zp_compensation + g_oc
                             : nullptr;
-                    p.src_zero_point
-                            = jcp.src_zero_point ? src_zero_point : nullptr;
-                    p.dst_zero_point
-                            = jcp.dst_zero_point ? dst_zero_point : nullptr;
+                    p.src_zero_point = src_zero_points;
+                    p.dst_zero_point = dst_zero_points;
                     p.oc_blocks = ocb;
                     p.kh_padding = kh_padding;
                     p.scales = scales;
@@ -239,8 +239,10 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_1d(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -318,8 +320,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_1d(
             p.compensation = (jcp.signed_input) ? compensation + g_oc : nullptr;
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + g_oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
             p.dst = dst + dst_dt_size * dst_d.blk_off(n, g_oc, ow_s);
             p.src = src + src_d.blk_off(n, g_ic, iw_s);
             p.filt = weights + wht_blk_off(weights_d, gb, ocb, 0);
@@ -372,8 +374,10 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -457,10 +461,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
                 p.compensation = compensation_w;
                 p.zp_compensation
                         = jcp.src_zero_point ? zp_compensation + g : nullptr;
-                p.src_zero_point
-                        = jcp.src_zero_point ? src_zero_point : nullptr;
-                p.dst_zero_point
-                        = jcp.dst_zero_point ? dst_zero_point : nullptr;
+                p.src_zero_point = src_zero_points;
+                p.dst_zero_point = dst_zero_points;
                 p.oc_blocks = gb;
                 p.kh_padding = kh_padding;
                 p.scales = scales;
@@ -489,8 +491,10 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -589,10 +593,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d(
                         = (jcp.signed_input) ? compensation + g_oc : nullptr;
                 p.zp_compensation
                         = jcp.src_zero_point ? zp_compensation + g_oc : nullptr;
-                p.src_zero_point
-                        = jcp.src_zero_point ? src_zero_point : nullptr;
-                p.dst_zero_point
-                        = jcp.dst_zero_point ? dst_zero_point : nullptr;
+                p.src_zero_point = src_zero_points;
+                p.dst_zero_point = dst_zero_points;
 
                 auto dst_w = dst
                         + dst_dt_size

@@ -54,7 +54,7 @@ int verify_input(const settings_t &s, const settings_t &def) {
 
     for (const auto &i_strides : s.strides) {
         if (i_strides.size() != n_inputs) {
-            std::stringstream ss;
+            dnnl::impl::stringstream_t ss;
             ss << vdims2str(i_strides);
             BENCHDNN_PRINT(0,
                     "Error: `strides` option expects two inputs in format "
@@ -66,7 +66,7 @@ int verify_input(const settings_t &s, const settings_t &def) {
         for (int i = 0; i < n_inputs; i++) {
             if (i_strides[i].size() != static_cast<size_t>(s.desc.ndims)
                     && !i_strides[i].empty()) {
-                std::stringstream ss;
+                dnnl::impl::stringstream_t ss;
                 ss << vdims2str(i_strides);
                 BENCHDNN_PRINT(0,
                         "Error: number of dimensions in the `strides` option "

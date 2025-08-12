@@ -14,16 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "strategy_parser.hpp"
-#include "kernel_catalog.hpp"
+#include "gemmstone/strategy_parser.hpp"
+#include "gemmstone/kernel_catalog.hpp"
 #include "internal/utils.hpp"
+#include "pieces/layout_utils.hpp"
 
 #include <cctype>
 #include <sstream>
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
+
 
 static void unparseAccessType(std::ostream &s, const MatrixAddressingStrategy &astrategy);
 static void unparseAddressBase(std::ostream &s, ngen::AddressBase base);
@@ -32,7 +34,7 @@ static void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astra
 
 bool native64Bit(HW hw)
 {
-    ngen::EmulationStrategy emulate(hw);
+    EmulationStrategy emulate(hw);
     return !emulate.emulate64;
 }
 
@@ -178,6 +180,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 {
     std::stringstream s(str);
     s.imbue(std::locale::classic());
+
     bool overrideFusedLoop = false;
     bool gotSR = false;
 
@@ -291,6 +294,10 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.AB_prefetchL3.base = getAddressBase(strategy.l3PrefetchA ? asA : asB);
     if (strategy.AB_prefetchL3.cachingR == CacheSettingsLSC::Default) {
         strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L3C;
+#if XE3P
+        if (hw >= HW::Xe3p)
+            strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L2C_L3C;
+#endif
     }
 
     strategy.A.padded |= isPacked(problem.A.layout);
@@ -300,9 +307,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 
     strategy.unroll[LoopK] = 1;
     strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
-#if XE3P
-    strategy.checkAdd32 &= (hw < HW::Xe3p);
-#endif
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block) || strategy.kParallel;
 
     while (!s.eof()) {
@@ -424,6 +428,10 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             strategy.reverse[LoopM] = true;
         else if (mod == "rn")
             strategy.reverse[LoopN] = true;
+        else if (mod == "ym")
+            strategy.scramble[LoopM] = true;
+        else if (mod == "yn")
+            strategy.scramble[LoopN] = true;
         else if (mod == "wt")
             strategy.tlbWarmup = true;
         else if (mod == "kb" || mod == "kv") {
@@ -463,6 +471,8 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
             strategy.C.atomic = strategy.CO.atomic = strategy.autoatomic = false;
         else if (mod == "ff")
             strategy.forceWGUpdate = WGFixed;
+        else if (mod == "ffk")
+            strategy.forceFixedWGK = true;
         else if (mod == "wg") {
             char x;
             s >> strategy.wg[LoopM];
@@ -610,13 +620,6 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
 
     if (strategy.persistentLoop() && !strategy.linearOrder()) strategy.cWalkOrder = WalkOrder::SimpleLinear;
 
-    // Use new LSC messages on Xe2+
-    if (hw >= ngen::HW::Xe2) {
-       strategy.A.newDP = strategy.A_prefetch.newDP = true;
-       strategy.B.newDP = strategy.B_prefetch.newDP = true;
-       strategy.C.newDP = strategy.C_prefetch.newDP = true;
-    }
-
     size_t poCount = problem.postOps.len();
     strategy.binary.resize(poCount);
     for (auto &astrategy: strategy.binary) {
@@ -624,17 +627,19 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
         astrategy.newDP = strategy.C.newDP;
     }
 
-    bool surfaceAq = (problem.quantized2DA() && !strategy.A.base.isStateless());
-    bool surfaceBq = (problem.quantized2DB() && !strategy.B.base.isStateless());
+    bool surfaceAq = ((problem.quantized2DA() || problem.needsAGroupSums()) && !strategy.A.base.isStateless());
+    bool surfaceBq = ((problem.quantized2DB() || problem.needsBGroupSums()) && !strategy.B.base.isStateless());
 
-    strategy.AO.base = strategy.A_scale.base = (surfaceAq ? BTS : A64);
-    strategy.BO.base = strategy.B_scale.base = (surfaceBq ? BTS : A64);
+    bool surfaceAO = surfaceAq && (problem.aoPtrDims == 2);
+    bool surfaceBO = surfaceBq && (problem.boPtrDims == 2);
 
-    if (problem.aoPtrDims <= 2) strategy.AO.base = A64;
-    if (problem.boPtrDims <= 2) strategy.BO.base = A64;
+    strategy.AO.base = (surfaceAO ? BTS : A64);
+    strategy.BO.base = (surfaceBO ? BTS : A64);
+    strategy.Ag.base = strategy.A_scale.base = (surfaceAq ? BTS : A64);
+    strategy.Bg.base = strategy.B_scale.base = (surfaceBq ? BTS : A64);
 
-    strategy.AO.newDP = strategy.A_scale.newDP = strategy.A.newDP;
-    strategy.BO.newDP = strategy.B_scale.newDP = strategy.B.newDP;
+    strategy.AO.newDP = strategy.A_scale.newDP = strategy.Ag.newDP = (hw >= HW::XeHPG);
+    strategy.BO.newDP = strategy.B_scale.newDP = strategy.Bg.newDP = (hw >= HW::XeHPG);
 }
 
 void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags)
@@ -682,10 +687,12 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, c
     }
 
     // No need to use split remainder handling for 2D block accesses as there's no penalty for masking.
-    if (isBlock2D(strategy.A.accessType) && (!strategy.prefetchA || isBlock2D(strategy.A_prefetch.accessType)) && !problem.quantized2DA())
-        strategy.remHandling[LoopM] = RemainderHandling::General;
-    if (isBlock2D(strategy.B.accessType) && (!strategy.prefetchB || isBlock2D(strategy.B_prefetch.accessType)) && !problem.quantized2DB())
-        strategy.remHandling[LoopN] = RemainderHandling::General;
+    if (isBlock2D(strategy.A.accessType) && (!strategy.prefetchA || isBlock2D(strategy.A_prefetch.accessType)))
+        if (!problem.quantized2DA() && !problem.needsAGroupSums())
+            strategy.remHandling[LoopM] = RemainderHandling::General;
+    if (isBlock2D(strategy.B.accessType) && (!strategy.prefetchB || isBlock2D(strategy.B_prefetch.accessType)))
+        if (!problem.quantized2DB() && !problem.needsBGroupSums())
+            strategy.remHandling[LoopN] = RemainderHandling::General;
 
     // Also don't split remainder handling if padded.
     if (gemmAStrategy->padded) strategy.remHandling[LoopM] = RemainderHandling::General;
@@ -936,6 +943,8 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.panelCheck)                s << " up";
     if (strategy.reverse[LoopM])            s << " rm";
     if (strategy.reverse[LoopN])            s << " rn";
+    if (strategy.scramble[LoopM])           s << " ym";
+    if (strategy.scramble[LoopN])           s << " yn";
     if (strategy.tlbWarmup)                 s << " wt";
 
     if (strategy.checkAdd32 && !strategy.emulate.emulate64) s << " ch";
@@ -1113,4 +1122,4 @@ void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astrategy)
 }
 
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

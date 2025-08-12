@@ -17,10 +17,7 @@
 *******************************************************************************/
 
 #include <algorithm>
-#include <assert.h>
-#include <numeric>
-
-#include "oneapi/dnnl/dnnl_debug.h"
+#include <cassert>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -807,7 +804,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             // transposition on the fly
             const bool fast_return = prb_.src_scale_type != scale_type_t::MANY
                     && prb_.dst_scale_type != scale_type_t::MANY
-                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp;
+                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp
+                    && !compensation_needed_;
             if (fast_return) {
                 if (prb_.src_scale_type == scale_type_t::COMMON)
                     for (int ur = 0; ur < reg_unroll; ur += load_step)
@@ -1159,13 +1157,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         }
 
         if (compensation_needed_) {
-            const uint32_t xmm_begin = 9;
-            const uint32_t xmm_end = 11;
-            uint32_t xmm_id = xmm_begin;
+            uint32_t xmm_id = 0;
             const auto get_temp_xmm = [&] {
-                const Xbyak_aarch64::VReg temp {xmm_id++};
+                const Xbyak_aarch64::VReg temp {tmp_vec_idx[xmm_id]};
 
-                if (xmm_id > xmm_end) { xmm_id = xmm_begin; }
+                xmm_id = (xmm_id + 1) % tmp_vec_idx.size();
 
                 return temp;
             };
@@ -2104,19 +2100,10 @@ struct jit_single_blk_kernel_t : public jit_generator {
 
         Label tail_processing;
 
-        const auto load_zp = [&](const ZRegS ymm_zp, const XReg reg_zp) {
-            dup(ymm_zp, WReg(reg_zp.getIdx()));
-            scvtf(ymm_zp, P_ALL_ONE / T_m, ymm_zp);
-        };
-
         set_preg(p_tmp2.s, 4, X_TMP_0, X_TMP_1);
         rev(p_tmp1.s, p_tmp2.s);
 
         preamble();
-
-        if (prb_.req_src_zp) load_zp(ymm_src_zp, reg_src_zp);
-
-        if (prb_.req_dst_zp) load_zp(ymm_dst_zp, reg_dst_zp);
 
         cmp(reg_ptr_tail, true);
         b(EQ, tail_processing);
@@ -2315,13 +2302,11 @@ struct jit_single_blk_kernel_t : public jit_generator {
                         i_off + i * input_stride * itype_sz_, x_tmp_0);
                 gen_loadu(ZRegS(i), x_addr, lane * itype_sz_);
             }
-            if (prb_.req_src_zp) { fsub(ZRegS(i), ZRegS(i), ymm_src_zp); }
         }
 
         gen_transpose_8x8();
 
         for (int i = 0; i < in_tail; ++i) {
-            if (prb_.req_dst_zp) { fadd(ZRegS(i), ZRegS(i), ymm_dst_zp); }
             if (out_tail == lane) {
                 add_imm(x_addr, reg_ptr_out_,
                         o_off + i * output_stride * otype_sz_, x_tmp_0);
@@ -2523,8 +2508,6 @@ private:
     XReg reg_ptr_in_ = abi_param1;
     XReg reg_ptr_out_ = abi_param2;
     XReg reg_ptr_tail = abi_param3;
-    XReg reg_src_zp = abi_param4;
-    XReg reg_dst_zp = abi_param5;
 
     /* Because the callee-saved registers are not restored blk_reorder,
      the temporary registers (x9-x15) must be assigned.
@@ -2540,8 +2523,6 @@ private:
     PReg p_tmp2 = p3;
 
     ZRegS ymm_tmp = z0.s;
-    ZRegS ymm_src_zp = z14.s;
-    ZRegS ymm_dst_zp = z15.s;
 
     const std::vector<uint32_t> tmp_vec_idx = {20, 21, 22, 23, 24, 25, 26, 27};
     VReg v_tmp0 = v20;
@@ -3063,8 +3044,9 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
 }
 
 void jit_uni_reorder_t::omp_driver(const char *in, char *out,
-        const float *src_scales, const float *dst_scales, int src_zp,
-        int dst_zp, const memory_tracking::grantor_t &scratchpad) const {
+        const float *src_scales, const float *dst_scales,
+        const int32_t *src_zero_points, const int32_t *dst_zero_points,
+        const memory_tracking::grantor_t &scratchpad) const {
     in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
     out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
 
@@ -3084,6 +3066,8 @@ void jit_uni_reorder_t::omp_driver(const char *in, char *out,
     const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
     assert(ndims - ndims_ker <= ndims_driver_max);
 
+    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
     int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
             memory_tracking::names::key_reorder_space);
 
@@ -3244,10 +3228,13 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
             scratchpad, pd()->attr(), pd()->D_mask_, dst_scales_);
     assert(dst_scales);
 
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    omp_driver(in, out, src_scales, dst_scales, src_zp, dst_zp, scratchpad);
+    omp_driver(in, out, src_scales, dst_scales, src_zero_points,
+            dst_zero_points, scratchpad);
 
     return status::success;
 }
@@ -3314,8 +3301,6 @@ status_t jit_blk_reorder_t::init(engine_t *engine) {
 status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto in = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
     auto out = CTX_OUT_MEM(char *, DNNL_ARG_TO);
-    DEFINE_ZERO_POINT_VALUE(src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE(dst_zp, DNNL_ARG_TO);
 
     // kernel handle 2-dimension tiles, a tail is possible
     auto &prb = this->pd()->prb_;
@@ -3339,7 +3324,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;
         auto *o = out + (bh_b + fl_b * o1) * otype_sz_;
-        (*kernel_)(i, o, n1 - fl_b < block_sz, src_zp, dst_zp);
+        (*kernel_)(i, o, n1 - fl_b < block_sz);
     });
 
     return status::success;

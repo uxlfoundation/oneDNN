@@ -74,7 +74,7 @@ bool any(tile_flags_t a) {
 }
 
 inline std::string to_string(tile_flags_t flags) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     if (any(flags & tile_flags_t::loop)) oss << "l";
     if (any(flags & tile_flags_t::thread_group)) oss << "t";
     if (any(flags & tile_flags_t::iter)) oss << "i";
@@ -108,7 +108,7 @@ struct tile_info_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << dim << ": " << to_string(flags);
         return oss.str();
     }
@@ -176,7 +176,7 @@ struct dim_tile_t {
     int iter = 0;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (loop != 0) oss << "l" << loop;
         if (tg != 0) oss << "t" << tg;
         if (iter != 0) oss << "i" << iter;
@@ -192,8 +192,8 @@ std::ostream &operator<<(std::ostream &out, const dim_tile_t &tile) {
 }
 
 struct tiling_desc_t {
-    pvar_tile_t iter;
-    pvar_tile_t thread_group;
+    tile_t iter;
+    tile_t thread_group;
 
     void set(const pvar_t &dim, const dim_tile_t &tile) {
         if (tile.iter != 1) iter[dim] = tile.iter;
@@ -206,7 +206,7 @@ struct tiling_desc_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "iter: " << iter.str();
         oss << " thread_group: " << thread_group.str();
         return oss.str();
@@ -456,15 +456,15 @@ private:
         return ret;
     }
 
-    static std::vector<pvar_tile_t> generate_iter_outer_tiles(
+    static std::vector<tile_t> generate_iter_outer_tiles(
             const kernel_desc_t &desc) {
-        std::vector<pvar_tile_t> tiles = {pvar_tile_t()};
+        std::vector<tile_t> tiles = {tile_t()};
         for (auto &d : desc.iter_tile) {
             auto bmnk = to_gemm(d, desc.prop);
             if (!utils::one_of(std::move(bmnk), pvars::m, pvars::n)) continue;
             for (int outer : {2, 4}) {
                 if (desc.iter_tile.at(d) % outer != 0) continue;
-                pvar_tile_t tile_outer;
+                tile_t tile_outer;
                 tile_outer[d] = outer;
                 tiles.push_back(std::move(tile_outer));
             }
@@ -480,17 +480,17 @@ class search_sequence_t {
 public:
     search_sequence_t(const std::vector<kernel_desc_t> &descs, int max_entries)
         : max_entries_(max_entries) {
-        std::vector<std::vector<pvar_tile_t>> tiles;
+        std::vector<std::vector<tile_t>> tiles;
         pvar_t prefetch_dim("p");
         for (int i = 0; i < (int)descs.size(); i++) {
             auto &d = descs[i];
             entries_.emplace_back(i, d);
-            std::vector<pvar_tile_t> d_tiles;
+            std::vector<tile_t> d_tiles;
             auto iter = to_gemm(d.iter_tile, d.prop);
             auto tg = to_gemm(d.thread_group_tile, d.prop);
             d_tiles.push_back(std::move(iter));
             d_tiles.push_back(std::move(tg));
-            pvar_tile_t prefetch_tile;
+            tile_t prefetch_tile;
             prefetch_tile[prefetch_dim] = d.prefetch.dist;
             d_tiles.push_back(std::move(prefetch_tile));
             tiles.push_back(std::move(d_tiles));
@@ -582,7 +582,7 @@ std::string merge_cmd_lines(const std::string &recipe_line,
     parse_result_t recipe_parse_result;
     iface.parse(recipe_line, recipe_desc, &recipe_parse_result);
     bool is_first = true;
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (auto &kv : cmd_parse_result.args()) {
         auto &name = kv.first;
         ;

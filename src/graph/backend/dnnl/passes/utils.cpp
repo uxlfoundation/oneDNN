@@ -379,6 +379,16 @@ std::pair<bool, std::pair<size_t, int64_t>> shuffle_fusible(
 
 bool post_binary_fusible(
         const op_t *base_op, const op_t *bin_op, graph::engine_kind_t ekind) {
+
+// conv + binary post-op fusion is unsupported on NVIDIA GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if ((base_op->get_kind() == op_kind::dnnl_convolution)
+            && ekind == dnnl_gpu) {
+        return false;
+    }
+#endif
+
     auto fused_out = base_op->get_output_values()[0];
     auto consumers = fused_out->get_consumers();
     if (consumers.size() != 1) return false;
@@ -403,6 +413,17 @@ bool post_binary_fusible(
     if (base_op->get_kind() == op_kind::dnnl_eltwise) {
         auto bin_out = bin_op->get_output_values()[0]->get_logical_tensor();
         if (ltw(fused_in).data_type() != ltw(bin_out).data_type()) return false;
+    }
+
+    // Special check: subtract and divide binary post-op can only be fused
+    // when base_op is their first input's producer
+    if (static_cast<dnnl::algorithm>(
+                bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_sub
+            || static_cast<dnnl::algorithm>(
+                       bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_div) {
+        if (fused_in_off != 0) return false;
     }
 
     return post_binary_fusible_impl(
@@ -663,9 +684,10 @@ bool inverse_mul_scales(std::shared_ptr<op_t> &scale_op) {
     VCHECK_UTILS(scale_op->num_inputs() <= 1
                     && !scale_op->has_attr(op_attr::with_runtime_scales),
             false, "scale_op should be static and have only one input value.");
-    auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
-    scales = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
-    scale_op->set_attr(op_attr::scales, scales);
+    const auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
+    const auto scales_inv
+            = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
+    scale_op->set_attr(op_attr::scales, scales_inv);
     return true;
 }
 

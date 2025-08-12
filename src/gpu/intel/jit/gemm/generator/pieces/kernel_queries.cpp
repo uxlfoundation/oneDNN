@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@
 
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
-#include "driver_info.hpp"
+#include "gemmstone/driver_info.hpp"
 #include "hw_utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using namespace ngen::utils;
-
-#include "internal/namespace_start.hxx"
 
 
 size_t gemmSLMSize(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy, bool computeMax)
@@ -92,7 +92,7 @@ bool keepIJ0(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (problem.hasBinaryPostOp()) return true;
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0) return true;
-    if (problem.aScale2D || problem.bScale2D) return true;
+    if (problem.aScale2D() || problem.bScale2D()) return true;
     if (problem.earlyDequantizeA() ||  problem.earlyDequantizeB()) return true;
     return false;
 }
@@ -103,4 +103,4 @@ bool keepH0(const GEMMProblem &problem, const GEMMStrategy &strategy)
     return strategy.kParallelVariable && strategy.fuseBeta;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

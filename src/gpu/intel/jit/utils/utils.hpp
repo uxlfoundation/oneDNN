@@ -33,7 +33,6 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/logging.hpp"
-#include "gpu/intel/utils.hpp"
 #include "ngen.hpp"
 
 #ifdef DNNL_DEV_MODE
@@ -282,7 +281,7 @@ template <typename T>
 struct str_ostream_helper_t<T,
         decltype(std::declval<std::ostream>() << std::declval<T>(), void())> {
     static std::string call(const T &t) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << t;
         return oss.str();
     }
@@ -303,7 +302,7 @@ struct str_helper_t<T, decltype(std::declval<T>().str(), void())> {
 template <typename T>
 struct str_helper_t<std::vector<T>, void> {
     static std::string call(const std::vector<T> &v) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << v;
         return oss.str();
     }
@@ -319,7 +318,7 @@ public:
 
     template <typename T>
     table_t &operator<<(const T &value) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << value;
         auto str_value = oss.str();
         size_t pos = 0;
@@ -344,7 +343,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         size_t n = header_.size();
         std::vector<size_t> widths(n);
         for (size_t i = 0; i < n; i++)
@@ -421,7 +420,7 @@ inline std::string to_upper(const std::string &s) {
 inline std::string add_indent(const std::string &s, const std::string &indent,
         bool skip_first = false) {
     auto lines = gpu_utils::split(s, "\n");
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (int i = 0; i < (int)lines.size(); i++) {
         if (i > 0) oss << std::endl;
         if (i == 0 && skip_first) {
@@ -436,7 +435,7 @@ inline std::string add_indent(const std::string &s, const std::string &indent,
 
 inline std::string add_tag(
         const std::string &tag, const std::string &s, bool eol = true) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << tag << ":";
     if (s.empty()) {
         oss << " (empty)";
@@ -885,7 +884,7 @@ void stringify(std::ostream &out, const T &t) {
 
 template <typename T>
 std::string stringify(const T &t) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     stringify_impl_t<T>::call(oss, t);
     return oss.str();
 }
@@ -897,7 +896,7 @@ void parse(std::istream &in, T &t) {
 
 template <typename T>
 void parse(const std::string &s, T &t) {
-    std::istringstream iss(s);
+    istringstream_t iss(s);
     parse(iss, t);
 }
 
@@ -1008,7 +1007,7 @@ public:
         if (pre_stringify_func_) pre_stringify_func_(parent);
         bool is_first = true;
         for (auto &e : entries_) {
-            std::ostringstream e_oss;
+            ostringstream_t e_oss;
             e.stringify(e_oss, parent);
             if (!e.required && e_oss.str() == e._default(parent)) continue;
             if (!is_first) out << " ";
@@ -1044,14 +1043,14 @@ public:
 
     void parse(const std::string &s, T &parent,
             parse_result_t *result = nullptr) const {
-        std::istringstream iss(s);
+        istringstream_t iss(s);
         parse(iss, parent, result);
     }
 
     int size() const { return static_cast<int>(entries_.size()); }
 
     std::string cmd_str(const T &parent) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         stringify(oss, parent, /*cli=*/true);
         return oss.str();
     }
@@ -1088,7 +1087,7 @@ private:
                 gpu_error_not_expected();
                 exit(1);
             }
-            std::istringstream iss(value);
+            istringstream_t iss(value);
             entries_[idx].parse(iss, parent);
             seen[idx] = true;
             if (result) result->set_arg(name, value);
@@ -1202,7 +1201,7 @@ void stringify_to_cpp_file(const std::string &file_name,
         const std::vector<std::string> &lines);
 
 inline std::string data_to_hex(const std::vector<uint8_t> &data) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (auto v : data) {
         oss << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
             << into<int>(v);
@@ -1252,6 +1251,51 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
     constexpr bool any(E a) { return a != static_cast<E>(0); }
 // NOLINTEND(bugprone-macro-parentheses)
 
+#define GPU_HW_CASE_(hw) \
+    case ngen::HW::hw: { \
+        GPU_HW_CASE(ngen::HW::hw); \
+        break; \
+    }
+#if XE3P
+#define GPU_HW_SWITCH(hw) \
+    switch (hw) { \
+        REG_XELP_ISA(GPU_HW_CASE_(XeLP)); \
+        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
+        REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
+        REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
+        REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \
+        REG_XE3_ISA(GPU_HW_CASE_(Xe3)); \
+        REG_XE3P_ISA(GPU_HW_CASE_(Xe3p)); \
+        REG_XE4_ISA(GPU_HW_CASE_(Xe4)); \
+        default: gpu_assert(false) << "Unexpected GPU architecture"; \
+    }
+
+#elif XE4
+#define GPU_HW_SWITCH(hw) \
+    switch (hw) { \
+        REG_XELP_ISA(GPU_HW_CASE_(XeLP)); \
+        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
+        REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
+        REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
+        REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \
+        REG_XE3_ISA(GPU_HW_CASE_(Xe3)); \
+        REG_XE4_ISA(GPU_HW_CASE_(Xe4)); \
+        default: gpu_assert(false) << "Unexpected GPU architecture"; \
+    }
+
+#else
+#define GPU_HW_SWITCH(hw) \
+    switch (hw) { \
+        REG_XELP_ISA(GPU_HW_CASE_(XeLP)); \
+        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
+        REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
+        REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
+        REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \
+        REG_XE3_ISA(GPU_HW_CASE_(Xe3)); \
+        default: gpu_assert(false) << "Unexpected GPU architecture"; \
+    }
+
+#endif
 } // namespace jit
 } // namespace intel
 } // namespace gpu

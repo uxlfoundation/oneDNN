@@ -60,7 +60,7 @@ public:
         expr_t e = shuffle_t::make_broadcast(make_add(bcasts), elems);
         if (!non_bcasts.empty()) e = add(e, make_add(non_bcasts));
 
-        gpu_assert(!e.is_empty());
+        gpu_assert(e);
         return std::move(e);
     }
 
@@ -130,7 +130,7 @@ public:
 
         auto is_empty_or_fill = [&](std::vector<expr_t> &vec) {
             for (auto &c : vec) {
-                if (!c.is_empty() && !c.is_equal(zero)) { return false; }
+                if (c && !c.is_equal(zero)) { return false; }
                 if (c.is_empty()) c = zero;
             }
             return true;
@@ -188,7 +188,7 @@ public:
                 expr_t offset;
                 for (auto &k : const_shuffles_) {
                     offset = get_bcast_difference(const_shuffle, k);
-                    if (!offset.is_empty()) {
+                    if (offset) {
                         vec_bcast = add(vec_bcast, offset);
                         const_shuffle = k;
                         is_consts_bcast

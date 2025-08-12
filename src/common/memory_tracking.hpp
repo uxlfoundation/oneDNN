@@ -197,6 +197,7 @@ enum {
     key_conv_brgemm_out_buffer,
     key_conv_bwd_w_1st_bia_reorder,
     key_conv_bwd_w_1st_wei_reorder,
+    key_conv_dst_scales,
     key_conv_gemm_acc,
     key_conv_gemm_col,
     key_conv_gemm_row,
@@ -255,6 +256,7 @@ enum {
     key_iprod_bias_bf16_convert_wsp,
     key_iprod_dst_bf16_convert_wsp,
     key_iprod_dst_reorder,
+    key_iprod_dst_scales,
     key_iprod_int_dat_in_acc_dt,
     key_iprod_src_reorder,
     key_iprod_weights_reorder,
@@ -271,6 +273,7 @@ enum {
     key_matmul_wei_trans,
     key_matmul_dst_trans,
     key_matmul_dst_cast_acc,
+    key_matmul_dst_scales,
     key_matmul_sparse_tmp_ptr,
     key_pool_dst_bf16cvt,
     key_pool_dst_plain2blocked_cvt,
@@ -312,7 +315,6 @@ enum {
     key_rnn_diff_gates,
     key_rnn_src_layer_trans,
     key_rnn_src_iter_trans,
-    key_rnn_ht,
     key_rnn_diff_ht,
     key_rnn_ptrs_bia,
     key_rnn_ptrs_wei_layer,
@@ -493,7 +495,8 @@ struct registrar_t {
 
     void book(const key_t &key, const registry_t &registry,
             size_t perf_align = default_alignment) {
-        registry_.book(make_key(prefix_, key), registry.size(), 1, perf_align);
+        registry_.book(make_key(prefix_, key), registry.size(),
+                default_alignment, perf_align);
     }
 
     size_t size() const { return registry_.size(); }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,7 +59,8 @@ bool check_verbose_string_user(const char *name, const char *expected) {
     std::transform(value.begin(), value.end(), value.begin(), ::tolower);
     std::vector<std::string> splits;
     std::string split;
-    std::istringstream ss(value);
+    istringstream_t ss(value);
+
     while (std::getline(ss, split, ',')) {
         splits.push_back(split);
     }

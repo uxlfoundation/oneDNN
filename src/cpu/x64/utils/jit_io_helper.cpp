@@ -550,7 +550,8 @@ void jit_io_helper_t<Vmm>::init_saturate_f32() const {
         host_->init_saturate_f32(
                 Vmm(saturation_conf_->vreg_zero_saturation_idx_),
                 Vmm(saturation_conf_->vreg_saturation_ubound_idx_),
-                saturation_conf_->reg_tmp_, data_type::f32, data_type_);
+                saturation_conf_->reg_tmp_, data_type::f32, data_type_, false,
+                isa_has_sat_cvt(isa_, data_type_));
 }
 
 template <typename Vmm>
@@ -772,8 +773,10 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
                               || (!is_store_tail_supported
                                       && (is_i8 || is_xf16))))
             || (std::is_same<Vmm, Xbyak::Xmm>::value && is_xf16);
+    const bool use_sat_cvt = isa_has_sat_cvt(isa_, data_type_);
 
-    if (data_type_ == data_type::s32 || is_i8) saturate(src_raw_vmm);
+    if (data_type_ == data_type::s32 || is_i8)
+        saturate(src_raw_vmm, use_sat_cvt);
 
     if (can_store_byte_by_byte) {
         // TODO: Consider adding opmask to store xf16 data from Xmm.
@@ -792,19 +795,22 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
             case data_type::f8_e4m3:
             case data_type::f8_e5m2: store_f8(src_vmm, dst_addr); break;
             case data_type::s8:
-            case data_type::u8: store_i8(src_vmm, dst_raw_addr); break;
+            case data_type::u8:
+                store_i8(src_vmm, dst_raw_addr, use_sat_cvt);
+                break;
             default: assert(!"Unsupported data type.");
         }
     }
 }
 
 template <typename Vmm>
-void jit_io_helper_t<Vmm>::saturate(const Vmm &vmm) {
+void jit_io_helper_t<Vmm>::saturate(const Vmm &vmm, const bool use_sat_cvt) {
     assert(saturation_conf_.has_value() && "Config for saturation is not set.");
 
     host_->saturate_cvt_f32(vmm,
             Vmm(saturation_conf_->vreg_zero_saturation_idx_),
-            Vmm(saturation_conf_->vreg_saturation_ubound_idx_), data_type_);
+            Vmm(saturation_conf_->vreg_saturation_ubound_idx_), data_type_,
+            false, use_sat_cvt);
 }
 
 template <typename Vmm>
@@ -896,9 +902,9 @@ void jit_io_helper_t<Vmm>::store_f8(
 }
 
 template <typename Vmm>
-void jit_io_helper_t<Vmm>::store_i8(
-        const Vmm &src_vmm, const Xbyak::Address &dst_addr) {
-    if (isa_has_sat_cvt(isa_, data_type_)) {
+void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
+        const Xbyak::Address &dst_addr, const bool use_sat_cvt) {
+    if (use_sat_cvt && isa_has_sat_cvt(isa_, data_type_)) {
         host_->vpmovusdb(dst_addr, src_vmm);
     } else if (!is_superset(isa_, avx512_core)) {
         static constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;

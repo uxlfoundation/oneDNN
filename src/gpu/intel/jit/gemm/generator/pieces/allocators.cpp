@@ -18,9 +18,9 @@
 #include "allocators.hpp"
 #include "internal/utils.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 FlagRegister VirtualFlag::toPhysical() const
@@ -103,9 +103,11 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     return pflag.toPhysical();
 }
 
-bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked) {
+bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked)
+{
     bool wasLocked = isLocked(vflag);
-    if (wasLocked && !allowAlreadyLocked) stub("Illegally locking an already-locked flag register");
+    if (wasLocked && !allowAlreadyLocked)
+        stub("Illegally locking an already-locked flag register");
     locked |= mask(vflag);
     return wasLocked;
 }
@@ -139,4 +141,4 @@ int8_t TokenAllocator::tryAlloc()
         return -1;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

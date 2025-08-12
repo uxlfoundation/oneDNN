@@ -18,9 +18,7 @@
 #define GPU_INTEL_JIT_IR_KERNEL_DESC_HPP
 
 #include "common/serialization.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 
 namespace dnnl {

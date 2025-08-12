@@ -127,14 +127,14 @@ public:
         set_exec_cfg(ec);
     }
 
-    pvar_tile_t shape(bool pad) const override {
+    tile_t shape(bool pad) const override {
 #define SET(g_name, l_name) \
     ret[pvars::g_name] = (pad) \
             ? utils::rnd_up(prb.l_name, pad_block(pvars::g_name)) \
             : prb.l_name
 
         const auto &prb = pooling_problem();
-        pvar_tile_t ret;
+        tile_t ret;
         SET(mb, mb);
         SET(oc, c);
         if (is_fwd()) {
@@ -209,7 +209,8 @@ public:
             case 0x10: return type_t::s32(len); break;
             case 0x11:
                 return ((read_type.is_signed()) ? type_t::s : type_t::u)(
-                        8 * std::max(2, read_type.size()), len);
+                        8 * std::max(2, read_type.size()), len,
+                        type_attr_t::undef);
         }
     }
 
@@ -515,7 +516,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         // clang-format off
         oss << "  Exec config:          " << exec_cfg() << std::endl;
         oss << "  Problem:              " << desc_str() << std::endl;
@@ -645,7 +646,7 @@ private:
         const bool print_h = has_h && !is_cube;
         const bool print_w = !is_cube && !is_square;
 
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mb" << prb.mb << "ic" << prb.c;
         for (int i = 0; i < int(name.size()); i++) {
             if (print_d && IMPLICATION(i == 3 || i == 4, xd[i] != xdef[i]))

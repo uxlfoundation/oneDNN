@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -140,7 +140,7 @@ dispatch_t::dispatch_t(const compute_engine_t *engine, const memory_desc_t *md)
 }
 
 std::string dispatch_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     for (dim_idx_t i = 0; i < ndims_; ++i) {
         auto &d = dims_[i];
         oss << "    "

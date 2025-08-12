@@ -79,7 +79,7 @@ void jit_int8_matmul_utils_kernel_t::reo_A_8x8(int lp, int kt) {
     }
 }
 
-void jit_int8_matmul_utils_kernel_t::reo_B_8x24(int lp, int nt) {
+void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
     auto p = (nt > 0) ? prd_p3 : prd_ld;
     mov(reg_tmp, reg_aux_a);
     for (int i = 0; i < lp; i++) {
@@ -115,10 +115,14 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8x24(int lp, int nt) {
 
     str(ZReg(0), ptr(reg_aux_b, 0, MUL_VL));
     str(ZReg(2), ptr(reg_aux_b, 1, MUL_VL));
-    str(ZReg(1), ptr(reg_aux_b, 2, MUL_VL));
-    str(ZReg(6), ptr(reg_aux_b, 3, MUL_VL));
-    str(ZReg(8), ptr(reg_aux_b, 4, MUL_VL));
-    str(ZReg(10), ptr(reg_aux_b, 5, MUL_VL));
+    if (dyn_.n_blk > 8) {
+        str(ZReg(1), ptr(reg_aux_b, 2, MUL_VL));
+        str(ZReg(6), ptr(reg_aux_b, 3, MUL_VL));
+    }
+    if (dyn_.n_blk > 16) {
+        str(ZReg(8), ptr(reg_aux_b, 4, MUL_VL));
+        str(ZReg(10), ptr(reg_aux_b, 5, MUL_VL));
+    }
 
     add_imm(reg_aux_b, reg_aux_b, dyn_.n_blk * dyn_.k_blk, X_TMP_4);
 }
@@ -229,7 +233,7 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     cmp(reg_k_loop, 1);
     b(EQ, last_k);
     L(k_loop);
-    reo_B_8x24(dyn_.k_blk, 0);
+    reo_B_8xN(dyn_.k_blk, 0);
     add_imm(reg_aux_a, reg_aux_a, dyn_.k_blk * dyn_.N, X_TMP_4);
     sub(reg_k_loop, reg_k_loop, 1);
     cmp(reg_k_loop, 1);
@@ -239,7 +243,7 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     sub(reg_k_loop, reg_k_loop, 1);
     cmp(reg_tail, 0);
     b(EQ, k_loop);
-    reo_B_8x24(lp, 0);
+    reo_B_8xN(lp, 0);
     L(k_end);
     add_imm(reg_src, reg_src, dyn_.n_blk, X_TMP_4);
     sub(reg_n_loop, reg_n_loop, 1);
@@ -256,7 +260,7 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     cmp(reg_k_loop, 1);
     b(EQ, last_k_1);
     L(k_loop_1);
-    reo_B_8x24(dyn_.k_blk, dyn_.ntail);
+    reo_B_8xN(dyn_.k_blk, dyn_.ntail);
     add_imm(reg_aux_a, reg_aux_a, dyn_.k_blk * dyn_.N, X_TMP_4);
     sub(reg_k_loop, reg_k_loop, 1);
     cmp(reg_k_loop, 1);
@@ -266,7 +270,7 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     sub(reg_k_loop, reg_k_loop, 1);
     cmp(reg_tail, 0);
     b(EQ, k_loop_1);
-    reo_B_8x24(lp, dyn_.ntail);
+    reo_B_8xN(lp, dyn_.ntail);
     L(k_end_1);
     L(n_end);
 }

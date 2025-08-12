@@ -63,11 +63,7 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     const auto bias = [&](int gate_id, int dhc_id) {
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
-    const ws_gates_aoc_t<scratch_data_t> scratch_cell(rnn, scratch_cell_);
-    // TODO: There is some inconsistency with the strides used in brgemm vs ref
-    // implementation. Fix this to have a consistent post-gemm else document.
-    const scratch_gates_aoc_t<scratch_data_t> scratch_cell_brgemm(
-            rnn, scratch_cell_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_cell(rnn, scratch_cell_);
     const AOC<src_data_t, 2> ws_Wh_b(ws_grid_, rnn.mb, rnn.dhc);
 
     const auto get_scales = [](const float *scales, int idx) {
@@ -108,7 +104,7 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
         const int n_elem = block_step;
         PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {
-            const float Wh_b = scratch_cell_brgemm(i, 0, j) + bias(3, j);
+            const float Wh_b = scratch_cell(i, 0, j) + bias(3, j);
             auto G0 = func1(scales, // default func1 is sigmoid
                     scratch_gates(i, 0, j) + bias(0, j));
             const auto G1 = func1(scales_G1, // default func1 is sigmoid
@@ -198,14 +194,16 @@ void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
             rnn, src_iter_, src_iter_ld);
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates(rnn, scratch_gates_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
+            rnn, scratch_gates_);
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_src_iter(
             rnn, diff_src_iter_);
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(
             rnn, diff_dst_iter_);
     const ws_diff_states_layer_aoc_t<acc_data_t> diff_dst_layer(
             rnn, diff_dst_layer_);
-    const ws_gates_aoc_t<scratch_data_t> scratch_gates_r(rnn, scratch_cell_);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_gates_r(
+            rnn, scratch_cell_);
     const AOC<src_data_t, 2> ws_Wh_b(ws_grid_, rnn.mb, rnn.dhc);
 
     // 1. calculate dG1 dG2 dG3

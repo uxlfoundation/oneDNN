@@ -176,9 +176,6 @@ struct ref_sum_t : public gpu::primitive_t {
             nested_scratchpad_t ns(ctx, key_nested_multiple + i, reorders_[i]);
             r_ctx.set_scratchpad_grantor(ns.grantor());
             CHECK(reorders_[i]->execute(r_ctx));
-#ifndef DNNL_SYCL_CUDA
-            CHECK(ctx.stream()->wait());
-#endif
         }
 
         if (pd()->need_output_reorder()) {

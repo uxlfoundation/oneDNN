@@ -38,9 +38,9 @@
             64
           ],
           "stride": [
-            1179648,
+            393216,
             64,
-            3072,
+            1024,
             1
           ],
           "layout_type": "strided",
@@ -56,10 +56,10 @@
             384
           ],
           "stride": [
-            1179648,
+            393216,
             64,
             1,
-            3072
+            1024
           ],
           "layout_type": "strided",
           "property_type": "variable"
@@ -312,9 +312,9 @@
             64
           ],
           "stride": [
-            1179648,
+            393216,
             64,
-            3072,
+            1024,
             1
           ],
           "layout_type": "strided",

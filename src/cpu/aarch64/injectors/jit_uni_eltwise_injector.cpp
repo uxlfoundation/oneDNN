@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ namespace aarch64 {
 namespace eltwise_injector {
 
 bool is_isa_supported(cpu_isa_t isa) {
-    return is_superset(isa, sve_128);
+    return isa == sve_128;
 }
 
 bool is_alg_supported(alg_kind_t alg) {
@@ -479,7 +479,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_f32<
         isa>::tanh_polynomial_approx_compute_vector_fwd(const TRegS &vmm_src) {
 
-    if (!utils::one_of(isa, sve_512)) return;
+    if (vlen != 512) return;
 
     using namespace Xbyak_aarch64::util;
 
@@ -551,7 +551,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_f32<isa>::tanh_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    if (utils::one_of(isa, sve_512)) {
+    if (vlen == 512) {
         tanh_polynomial_approx_compute_vector_fwd(vmm_src);
         return;
     }
@@ -999,7 +999,7 @@ void jit_uni_eltwise_injector_f32<isa>::log_compute_vector_fwd(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_f32<
         isa>::gelu_erf_minimax_approx_compute_vector_fwd(const TRegS &vmm_src) {
-    if (isa != sve_512) { // TODO: change this condition based on cpu id.
+    if (vlen != 512) { // TODO: change this condition based on cpu id.
         return;
     }
 
@@ -1073,7 +1073,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_f32<isa>::gelu_erf_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    if (isa == sve_512) { // TODO: consider performance improvement for lower ISA
+    if (vlen == 512) { // TODO: consider performance improvement for lower ISA
         gelu_erf_minimax_approx_compute_vector_fwd(vmm_src);
         return;
     }
@@ -2398,8 +2398,7 @@ void jit_uni_eltwise_injector_f32<isa>::register_table_entries() {
     }
 }
 
-template struct jit_uni_eltwise_injector_f32<sve_512>;
-template struct jit_uni_eltwise_injector_f32<sve_256>;
+// We only need sve_128 as the injector is fully vector length agnostic
 template struct jit_uni_eltwise_injector_f32<sve_128>;
 
 } // namespace aarch64

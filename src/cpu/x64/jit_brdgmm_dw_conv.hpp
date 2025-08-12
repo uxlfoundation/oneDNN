@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "cpu/platform.hpp"
 
 #include "cpu/x64/brgemm/brgemm.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_primitive_conf.hpp"
 
 namespace dnnl {
@@ -47,6 +46,7 @@ struct brdgmm_dw_convolution_fwd_t : public primitive_t {
     private:
         status_t init_brdgmm_conf();
         void init_batch_elements();
+        void init_scratchpad();
     };
 
     brdgmm_dw_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
@@ -56,7 +56,6 @@ struct brdgmm_dw_convolution_fwd_t : public primitive_t {
 
 private:
     std::vector<std::unique_ptr<brgemm_kernel_t>> brdgmm_kernels_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 } // namespace x64

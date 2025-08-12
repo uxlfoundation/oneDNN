@@ -38,8 +38,7 @@ public:
         static graph_mem_manager_t _instance;
         return _instance;
     }
-
-    void *host_malloc_wrapper(size_t size, size_t alignment) const;
+    void *host_malloc_wrapper(size_t size, size_t alignment);
     void host_free_wrapper(void *ptr);
 
 #ifdef DNNL_WITH_SYCL
@@ -61,13 +60,12 @@ public:
     void start_graph_mem_check() { need_mem_check_ = true; }
     void stop_graph_mem_check() { need_mem_check_ = false; }
 
-#if defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     void clear_memory_pool();
-#endif
 
 private:
     graph_mem_manager_t() : need_mem_check_(false) {}
     ~graph_mem_manager_t() = default;
+    bool enable_host_mem_pool();
 
 #ifdef DNNL_WITH_SYCL
     void *default_sycl_malloc(
@@ -87,10 +85,7 @@ private:
 #endif
 
     bool need_mem_check_;
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     simple_memory_pool_t mem_pool_;
-#endif
 };
 
 dnnl::graph::allocator &get_graph_allocator(bool use_host = false);

@@ -183,7 +183,8 @@ bool parse_graph_expected_n_partitions(
     if (!parse_string(expected_n_partitions_str, str, "expected-n-partitions"))
         return false;
 
-    std::stringstream ss(expected_n_partitions_str);
+    dnnl::impl::stringstream_t ss(expected_n_partitions_str);
+
     std::string expected_n_partitions;
     while (std::getline(ss, expected_n_partitions, ',')) {
         if (!expected_n_partitions.empty()) {
@@ -211,7 +212,8 @@ bool parse_graph_fpmath_mode(
     std::string graph_attrs_str;
     if (!parse_string(graph_attrs_str, str, "attr-fpmath")) return false;
 
-    std::stringstream ss(graph_attrs_str);
+    dnnl::impl::stringstream_t ss(graph_attrs_str);
+
     std::string mode;
     while (std::getline(ss, mode, ',')) {
         if (!mode.empty()) {

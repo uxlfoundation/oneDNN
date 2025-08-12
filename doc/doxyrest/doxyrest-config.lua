@@ -246,7 +246,7 @@ CREF_DB = false
 	By default, only public items are included into documentation.
 ]]
 
-PROTECTION_FILTER = "public"
+PROTECTION_FILTER = "protected"
 
 --!
 --! In many projects empty defines are *only* used as include-guards (and as

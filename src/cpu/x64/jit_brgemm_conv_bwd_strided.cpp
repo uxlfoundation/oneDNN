@@ -21,7 +21,6 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/cpu_primitive.hpp"
-#include "cpu/scale_utils.hpp"
 
 #include "cpu/x64/jit_brgemm_conv_bwd_strided.hpp"
 #include "cpu/x64/jit_brgemm_conv_bwd_utils.hpp"
@@ -224,9 +223,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_bwd_utils::init_scratchpad(scratchpad, jcp_);
-    if (jcp_.with_scales)
-        book_precomputed_scales(scratchpad, attr()->scales_, IC(),
-                jcp_.scale_adjust_factor != 1.0f);
 
     return status::success;
 }
@@ -615,9 +611,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
             && !jcp.req_brg_comp_pad;
 
     need_postwork = jcp.with_bias || jcp.with_eltwise || jcp.with_binary
-            || (one_of(jcp.src_dt, u8, s8) && jcp.wei_dt == s8)
-            || (jcp.dst_dt != jcp.acc_dt) || jcp.with_sum || jcp.use_M_mask
-            || jcp.src_zero_point || jcp.dst_zero_point;
+            || jcp.with_src_scales || jcp.with_wei_scales || jcp.with_dst_scales
+            || need_compensation || (jcp.dst_dt != jcp.acc_dt) || jcp.with_sum
+            || jcp.use_M_mask || jcp.src_zero_point || jcp.dst_zero_point;
 
     // ---- Initialize arrays ---------------------
     brg_kernels_.resize(_pd->brgs_sz_);
@@ -657,21 +653,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
         CHECK(comp_vpad_pbuffer_->create_kernel());
     }
 
-    // JIT to precompute scales
-    const bool is_jit_supported = mayiuse(avx512_core);
-    const auto attr = _pd->attr();
-    if (is_jit_supported && pd()->IC() > 1
-            && req_copy_scales(attr, jcp.scale_adjust_factor)) {
-        const auto &attr_scales = attr->scales_;
-        int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_scale_mask > 0) {
-            CHECK(safe_ptr_assign(jit_scale_precompute_,
-                    new jit_avx512_core_scale_precompute_t(
-                            attr, jcp.scale_adjust_factor)));
-            CHECK(jit_scale_precompute_->create_kernel());
-        }
-    }
-
     const auto ow_block = jcp.owp;
     const auto oh_block = jcp.ohp;
     const auto od_block = jcp.odp;
@@ -705,20 +686,19 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
-    DEFINE_ZERO_POINT_VALUE(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINT_VALUE(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(scratchpad,
-            src_scales, wei_scales, pd()->OC(), pd()->IC(), false,
-            wei_scale_mask > 0, pd()->attr(), jit_scale_precompute_.get(),
-            jcp.scale_adjust_factor);
 
     brgemm_bwd_exec_ctx_t brgemm_ctx(ctx, _pd);
 
@@ -773,8 +753,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                        key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
-    const auto dst_zp_vals = jcp.dst_zero_point ? &dst_zero_point : nullptr;
-    const auto src_zp_vals = src_zero_point;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -817,6 +795,17 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
         char *const wsp_tile = is_amx
                 ? wsp_tile_global + ithr * 2 * brgemm_convolution_bwd_utils::P4K
                 : nullptr;
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = scratchpad.template get<float>(key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
+
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int n {0}, g {0}, icb {0}, idb {0}, ihb {0}, iwb {0};
@@ -849,10 +838,11 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
             btc.idb = idb;
             btc.ihb = ihb;
             btc.iwb = iwb;
-            btc.oscales = oscales;
-            btc.dst_scales = dst_scales;
-            btc.src_zp_vals = src_zp_vals;
-            btc.dst_zp_vals = jcp.dst_zero_point ? dst_zp_vals : nullptr;
+            btc.src_scales = src_scales;
+            btc.wei_scales = wei_scales;
+            btc.dst_scales = dst_scales_inv_ptr;
+            btc.src_zp_val = src_zero_points ? src_zero_points[0] : 0;
+            btc.dst_zp_vals = dst_zero_points;
             btc.src_zp_comp_ptr
                     = jcp.src_zero_point ? src_zp_comp_base : nullptr;
             btc.s8s8_comp_ptr
@@ -1000,10 +990,10 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
         char *dst, char *c_buffer, const char *bias_w, int id, int ih, int iw,
         int iw_raw, int g_ic, bool is_ic_tail, int ker_iw_s, int ker_iw_f,
         int kd_l, int kh_l, const void *post_ops_binary_rhs_arg_vec,
-        const float *oscales, int32_t src_zp_vals, int32_t *src_zp_ptr,
-        int32_t *dst_zp_ptr, int32_t *s8s8_compensation, size_t comp_ker_offs,
-        bool maybe_do_init, bool do_postwork, bool do_post_comp,
-        const float *dst_scales) const {
+        int32_t src_zp_val, int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
+        int32_t *s8s8_compensation, size_t comp_ker_offs, bool maybe_do_init,
+        bool do_postwork, bool do_post_comp, const void *src_scales,
+        const void *wei_scales, const void *dst_scales) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -1026,12 +1016,15 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
     brgemm_kernel_post_ops_args_t p;
     if (do_postwork) {
         p.ptr_bias = (void *)(bias_w);
-        p.ptr_scales = (void *)(&oscales[jcp.is_ic_scale * g_ic]);
         p.ptr_binary_post_ops_rhs = post_ops_binary_rhs_arg_vec;
         p.dst_orig = dst;
         p.c_zp_values = dst_zp_ptr;
-        p.a_comp_val = src_zp_vals;
-        p.ptr_dst_scales = (void *)dst_scales;
+        p.a_comp_val = src_zp_val;
+        p.ptr_src_scales = src_scales;
+        p.ptr_wei_scales = wei_scales ? static_cast<const char *>(wei_scales)
+                        + jcp.is_ic_scale * g_ic * sizeof(float)
+                                      : nullptr;
+        p.ptr_dst_scales = dst_scales;
     }
 
     auto call_outwork_ker = [&](bool is_postwork, bool has_postcomp,
@@ -1087,8 +1080,8 @@ template <cpu_isa_t isa>
 void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         brgemm_bwd_thread_ctx_t &btc, int brg_idx, int batch_size, char *ptr_C,
         char *ptr_D, const char *bias_w, int g_ic, bool do_postops,
-        const void *binary_post_ops_rhs, int32_t src_zp_vals,
-        int32_t *src_zp_ptr, int32_t *dst_zp_ptr, int32_t *s8s8_comp,
+        const void *binary_post_ops_rhs, int32_t src_zp_val,
+        int32_t *src_zp_ptr, const int32_t *dst_zp_ptr, int32_t *s8s8_comp,
         bool do_only_comp, bool is_first_call_postops) const {
 
     const auto _pd = pd();
@@ -1108,12 +1101,15 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
             true, do_postops, do_only_comp, do_only_pass_comp, do_skip_accm);
     if (maybe_do_postops) {
         const brgemm_post_ops_data_t post_ops_data {
-                static_cast<const char *>(bias_w),
-                &btc.oscales[jcp.is_ic_scale * g_ic], binary_post_ops_rhs,
+                static_cast<const char *>(bias_w), binary_post_ops_rhs,
                 static_cast<size_t>(g_ic), 0, btc.brgemm_ctx.diff_src, 0,
-                static_cast<void *>(src_zp_ptr), nullptr,
-                static_cast<void *>(dst_zp_ptr), do_skip_accm, src_zp_vals,
-                do_only_comp, do_only_pass_comp, btc.dst_scales};
+                static_cast<void *>(src_zp_ptr), nullptr, dst_zp_ptr,
+                do_skip_accm, src_zp_val, do_only_comp, do_only_pass_comp,
+                btc.src_scales,
+                btc.wei_scales ? static_cast<const char *>(btc.wei_scales)
+                                + jcp.is_ic_scale * g_ic * sizeof(float)
+                               : nullptr,
+                btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
@@ -1327,7 +1323,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
             k_sum += k;
         }
         call_brgemm_kernel(btc, brg_idx, k_sum, ptr_C, ptr_D, bias_w, g_ic,
-                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_vals,
+                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 src_zp, btc.dst_zp_vals, s8s8_comp, do_only_comp,
                 is_first_call_postops);
         if (!is_first_call_postops_state_changed) {
@@ -1397,10 +1393,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
         const auto iw_ee = iw_b + (M_without_overflow * SW);
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
                 btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw_b, iw_ee, kd_l, kh_l,
-                post_ops_binary_rhs_arg_vec.data(), btc.oscales,
-                btc.src_zp_vals, btc.src_zp_comp_ptr, btc.dst_zp_vals,
-                btc.s8s8_comp_ptr, comp_ker_offs, do_init, do_postwork, false,
-                btc.dst_scales);
+                post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr,
+                comp_ker_offs, do_init, do_postwork, false, btc.src_scales,
+                btc.wei_scales, btc.dst_scales);
     };
 
     if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s && kw_s < jcp.kw) {
@@ -1449,9 +1445,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
         const auto do_postwork = need_postwork && btc.occ == (oc_chunks - 1);
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
                 btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, kd_l_full,
-                kh_l_full, post_ops_binary_rhs_arg_vec.data(), btc.oscales,
-                btc.src_zp_vals, btc.src_zp_comp_ptr, btc.dst_zp_vals,
-                btc.s8s8_comp_ptr, 0, do_init, do_postwork, false,
+                kh_l_full, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr, 0,
+                do_init, do_postwork, false, btc.src_scales, btc.wei_scales,
                 btc.dst_scales);
     }
 };
@@ -1587,7 +1583,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
             k_sum += k;
         }
         call_brgemm_kernel(btc, brg_idx, k_sum, ptr_C, ptr_D, bias_w, g_ic,
-                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_vals,
+                do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 src_zp, btc.dst_zp_vals, s8s8_comp, false,
                 is_first_call_postops);
         if (!is_first_call_postops_state_changed) {

@@ -46,7 +46,7 @@ public:
 
 private:
     void build() override;
-    bool try_build(const pvar_tile_t &iter_tile, const pvar_tile_t &loop_tile);
+    bool try_build(const tile_t &iter_tile, const tile_t &loop_tile);
 
     const reorder_config_t &cfg_;
     const kernel_info_t &kernel_info_;

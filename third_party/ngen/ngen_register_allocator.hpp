@@ -26,7 +26,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-#ifdef NGEN_ENABLE_RA_DUMP
+#ifdef NGEN_ASM
 #include <iostream>
 #include <iomanip>
 #endif
@@ -214,7 +214,7 @@ public:
     inline bool isFree(RegisterRange range) const;
 #endif
 
-#ifdef NGEN_ENABLE_RA_DUMP
+#ifdef NGEN_ASM
     inline void dump(std::ostream &str);
 #endif
 
@@ -960,7 +960,7 @@ FlagRegister RegisterAllocator::tryAllocFlag(bool sub)
     return FlagRegister();
 }
 
-#ifdef NGEN_ENABLE_RA_DUMP
+#ifdef NGEN_ASM
 void RegisterAllocator::dump(std::ostream &str)
 {
     str << "\nFlag registers: ";
@@ -1016,7 +1016,7 @@ void RegisterAllocator::dump(std::ostream &str)
 
     str << std::endl;
 }
-#endif /* NGEN_ENABLE_RA_DUMP */
+#endif /* NGEN_ASM */
 
 } /* namespace NGEN_NAMESPACE */
 

@@ -327,7 +327,7 @@ enum bn_impl_t {
     ref,
     simple,
     reusable,
-    gen9,
+    xe,
     nhwc_opt,
     nhwc_reusable
 };
@@ -399,6 +399,7 @@ struct lnorm_conf_t {
     dim_t n_chunks;
     int vector_size_scaleshift;
     bool use_src_buffer;
+    bool skip_mean;
 
     compute::dispatch_t dispatch_scaleshift;
     compute::dispatch_t dispatch_scaleshift_finalize;
@@ -471,8 +472,6 @@ enum reorder_kernel_t {
     plain_xFxE_to_abcdef,
     transpose8x8,
     transpose16x16,
-    local8x8,
-    local16x16,
     reorder_nchw,
     unaligned_sizes,
     reorder_alt,
@@ -702,13 +701,13 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
 
 int append_post_ops_to_arg_list_base(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 int append_post_ops_to_arg_list_gemm(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 int append_post_ops_to_arg_list(const exec_ctx_t &ctx,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops);
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw);
 
 bool post_ops_preserves_zeroes(
         const exec_ctx_t &ctx, const post_ops_t &post_ops);

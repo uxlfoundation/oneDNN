@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 * Copyright 2021 Alanna Tempest
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,6 +60,36 @@ TEST(TestsbinaryStride, StrideZero) {
     };
 
     ASSERT_TRUE(correct_result());
+}
+
+TEST(TestsBinaryStride, CustomStrideTest) {
+    engine eng(engine::kind::cpu, 0);
+    auto strm = make_stream(eng);
+
+    memory::dims dims = {1, 2, 3};
+    std::vector<float> lhs = {0, 1, 2, 3, 4, 5};
+    std::vector<float> rhs = {0, 1, 2, 3, 4, 5};
+    std::vector<float> res(6, 0);
+    std::vector<float> expected_result = {0, 2, 4, 6, 8, 10};
+
+    memory::desc src0_md(dims, memory::data_type::f32, memory::dims {6, 3, 1});
+    memory::desc src1_md(dims, memory::data_type::f32, memory::dims {24, 3, 1});
+    memory::desc dst_md(dims, memory::data_type::f32, memory::dims {6, 3, 1});
+
+    memory src0_mem(src0_md, eng, lhs.data());
+    memory src1_mem(src1_md, eng, rhs.data());
+    memory dst_mem(dst_md, eng, res.data());
+
+    binary::primitive_desc pd(
+            eng, algorithm::binary_add, src0_md, src1_md, dst_md);
+
+    binary prim(pd);
+    prim.execute(strm,
+            {{DNNL_ARG_SRC_0, src0_mem}, {DNNL_ARG_SRC_1, src1_mem},
+                    {DNNL_ARG_DST, dst_mem}});
+    strm.wait();
+
+    ASSERT_EQ(res, expected_result);
 }
 
 } // namespace dnnl

@@ -89,7 +89,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
         result = cw;
     };
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(MB, IC, OD, OH, OW,
             [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
                 float result = 0.f;

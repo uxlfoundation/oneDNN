@@ -1392,8 +1392,10 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    DEFINE_ZERO_POINTS_BUFFER(zp_src, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(zp_dst, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -1408,7 +1410,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
         zp::compute_deconv_zp_pad_str_comp_ker(jcp, pd()->with_groups(),
-                weights_d, weights, zp_src, zp_src_comp_scratch,
+                weights_d, weights, src_zero_points, zp_src_comp_scratch,
                 zp_src_pad_comp_kernel_.get());
     const int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
     const int nb_groups = jcp.nb_ch;
@@ -1463,8 +1465,8 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
                     = jcp.src_zero_point ? zp_compensation + g_oc : nullptr;
             p.zp_src_pad_str_compensation
                     = jcp.src_zero_point ? zp_src_comp_scratch + g_oc : nullptr;
-            p.src_zero_point = zp_src;
-            p.dst_zero_point = zp_dst;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
             p.dst_orig = dst;
             (*kernel_)(&p);
 
@@ -1486,8 +1488,10 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    DEFINE_ZERO_POINTS_BUFFER(zp_src, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(zp_dst, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const auto &jcp = pd()->jcp_;
 
@@ -1502,7 +1506,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
         zp::compute_deconv_zp_pad_str_comp_ker(jcp, pd()->with_groups(),
-                weights_d, weights, zp_src, zp_src_comp_scratch,
+                weights_d, weights, src_zero_points, zp_src_comp_scratch,
                 zp_src_pad_comp_kernel_.get());
 
     int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
@@ -1619,8 +1623,8 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
                 p.zp_src_pad_str_compensation = jcp.src_zero_point
                         ? zp_src_comp_scratch + g_oc
                         : nullptr;
-                p.src_zero_point = zp_src;
-                p.dst_zero_point = zp_dst;
+                p.src_zero_point = src_zero_points;
+                p.dst_zero_point = dst_zero_points;
                 p.dst_orig = dst;
 
                 (*kernel_)(&p);
@@ -1644,8 +1648,10 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
     const auto weights = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    DEFINE_ZERO_POINTS_BUFFER(zp_src, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(zp_dst, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const auto &jcp = pd()->jcp_;
 
@@ -1661,7 +1667,7 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
         zp::compute_deconv_zp_pad_str_comp_ker(jcp, pd()->with_groups(),
-                weights_d, weights, zp_src, zp_src_comp_scratch,
+                weights_d, weights, src_zero_points, zp_src_comp_scratch,
                 zp_src_pad_comp_kernel_.get());
 
     int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
@@ -1833,8 +1839,8 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
                 p.zp_src_pad_str_compensation = jcp.src_zero_point
                         ? zp_src_comp_scratch + g_oc
                         : nullptr;
-                p.src_zero_point = zp_src;
-                p.dst_zero_point = zp_dst;
+                p.src_zero_point = src_zero_points;
+                p.dst_zero_point = dst_zero_points;
                 p.dst_orig = dst;
                 (*kernel_)(&p);
             }

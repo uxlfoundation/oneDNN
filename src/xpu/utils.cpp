@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,10 +23,12 @@ namespace dnnl {
 namespace impl {
 namespace xpu {
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 size_t device_uuid_hasher_t::operator()(const device_uuid_t &uuid) const {
     const size_t seed = hash_combine(0, std::get<0>(uuid));
     return hash_combine(seed, std::get<1>(uuid));
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 } // namespace xpu
 } // namespace impl

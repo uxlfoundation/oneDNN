@@ -33,12 +33,13 @@ is carried in integer arithmetic, C should be of type s32.
 
 The BRGeMM ukernel supports the following combinations of data-types.
 
-| A      | B      | C   | D                           |
-|:-------|:-------|:----|:----------------------------|
-| f32    | f32    | f32 | u8, s8, s32, f32, f16, bf16 |
-| f16    | f16    | f32 | u8, s8, s32, f32, f16, bf16 |
-| bf16   | bf16   | f32 | u8, s8, s32, f32, f16, bf16 |
-| u8, s8 | u8, s8 | s32 | u8, s8, s32, f32, f16, bf16 |
+| A                | B                | C    | D                           |
+|:-----------------|:-----------------|:-----|:----------------------------|
+| f32              | f32              | f32  | u8, s8, s32, f32, f16, bf16 |
+| f16              | f16              | f32  | u8, s8, s32, f32, f16, bf16 |
+| bf16             | bf16             | f32  | u8, s8, s32, f32, f16, bf16 |
+| f8_e4m3, f8_e5m2 | f8_e4m3, f8_e5m2 | f32  | u8, s8, s32, f32, f16, bf16 |
+| u8, s8           | u8, s8           | s32  | u8, s8, s32, f32, f16, bf16 |
 
 ## Data Representation
 

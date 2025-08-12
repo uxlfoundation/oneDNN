@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,13 +19,13 @@
 #define GEMMSTONE_GUARD_TOKEN_ALLOC_UTILS_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "strategy.hpp"
+#include "gemmstone/strategy.hpp"
 #include "state.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Allocate tokens for a layout keyed to the given source/destination registers.
-bool allocateTokens(const std::vector<RegisterBlock> &layout, const GRFMultirange &regs, CommonState &state,
+bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state,
                     const std::vector<ngen::GRFRange> &addrs = std::vector<ngen::GRFRange>());
 
 // Clear token allocations that are mapped to specific registers.
@@ -34,6 +34,6 @@ void clearMappedTokenAllocations(ngen::HW hw, CommonState &state);
 // Clear all token allocations.
 void clearTokenAllocations(ngen::HW hw, CommonState &state);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

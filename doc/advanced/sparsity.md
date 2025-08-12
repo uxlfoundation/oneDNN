@@ -1,7 +1,7 @@
 Sparse memory formats {#dev_guide_sparsity}
-===============================================
+===========================================
 
-# API
+## API
 
 oneDNN support format kind dnnl::memory::format_kind::sparse to describe sparse tensors.
 Sparse encoding (a.k.a. sparse format) is an enumeration type that specifies
@@ -26,7 +26,8 @@ The pseudocode below demonstrates how to create a memory object
 for the CSR and COO sparse encodings and use the new API to work with the
 underlying handles.
 
-# CSR Encoding:
+## CSR Encoding
+
 ~~~cpp
     using namespace dnnl;
     const memory::dim M = 4, N = 6;
@@ -72,7 +73,8 @@ underlying handles.
     assert(pointers_handle == (void *)csr_pointers.data());
 ~~~
 
-# Sorted COO Encoding:
+## Sorted COO Encoding
+
 ~~~cpp
     using namespace dnnl;
     const memory::dim M = 4, N = 6;

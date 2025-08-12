@@ -90,15 +90,12 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
     const auto &jbgp = pd()->jbgp_;
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales
-            = scale_utils::precompute_scales(scratchpad, src_scales, wei_scales,
-                    pd()->IC(), pd()->OC(), false, wei_scale_mask == (1 << 0),
-                    pd()->attr(), jit_scale_precompute_.get());
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const size_t src_dt_size = types::data_type_size(jbgp.src_dt);
     const size_t bia_dt_size
@@ -123,9 +120,9 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const int ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
 
     const bool are_post_ops_applicable = one_of(true, jbgp.with_sum,
-            jbgp.with_bias, jbgp.with_scales, jbgp.with_eltwise,
-            jbgp.with_binary, jbgp.acc_dt != jbgp.dst_dt,
-            jbgp.req_s8s8_compensation, jbgp.with_dst_scales);
+            jbgp.with_bias, jbgp.with_src_scales, jbgp.with_wei_scales,
+            jbgp.with_dst_scales, jbgp.with_eltwise, jbgp.with_binary,
+            jbgp.acc_dt != jbgp.dst_dt, jbgp.req_s8s8_compensation);
     const bool can_use_dst_as_acc_buffer
             = jbgp.acc_dt == jbgp.dst_dt && !jbgp.with_sum;
     const int acc_buffer_idx_shift = can_use_dst_as_acc_buffer;
@@ -143,7 +140,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const auto ker = [&](int ithr_oc_mb, int nthr_oc_mb, int ithr_ic, int osb,
                              int osb_s, int ocb, int ocb_s, int icc, int icc_s,
                              int kd, int kh, int kw, bool copy_buffer_a,
-                             int &prev_ker_idx) {
+                             int &prev_ker_idx, const void *dst_scales_ptr) {
         const int cur_ocb = ocb + ocb_s;
         const int cur_osb = osb + osb_s;
         const int cur_icc = icc + icc_s;
@@ -283,10 +280,13 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         = jbgp.with_bias ? bias + bia_dt_size * oc : nullptr;
                 const brgemm_post_ops_data_t post_ops_data {
                         static_cast<const void *>(ptr_bias),
-                        &oscales[jbgp.is_oc_scale * oc],
                         post_ops_binary_rhs_arg_vec.data(),
                         static_cast<size_t>(oc), 0, dst, 0, nullptr, nullptr,
-                        nullptr, false, 1, false, false, dst_scales};
+                        nullptr, false, 1, false, false, src_scales,
+                        wei_scales ? static_cast<const char *>(wei_scales)
+                                        + jbgp.is_oc_scale * oc * sizeof(float)
+                                   : nullptr,
+                        dst_scales};
 
                 brgemm_kernel_execute_postops(brg_kernel, gemm_batch,
                         addr_batch, (void *)ptr_C, (void *)ptr_D, post_ops_data,
@@ -328,10 +328,13 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         = jbgp.with_bias ? bias + bia_dt_size * oc : nullptr;
                 const brgemm_post_ops_data_t post_ops_data {
                         static_cast<const void *>(ptr_bias),
-                        &oscales[jbgp.is_oc_scale * oc],
                         post_ops_binary_rhs_arg_vec.data(),
                         static_cast<size_t>(oc), 0, dst, 0, nullptr, nullptr,
-                        nullptr, false, 1, false, false, dst_scales};
+                        nullptr, false, 1, false, false, src_scales,
+                        wei_scales ? static_cast<const char *>(wei_scales)
+                                        + jbgp.is_oc_scale * oc * sizeof(float)
+                                   : nullptr,
+                        dst_scales};
 
                 brgemm_kernel_execute_postops(brg_kernel_ic_tail, 1, addr_batch,
                         (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch);
@@ -377,6 +380,16 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
         int icc_start {0}, icc_end {ic_chunks};
         if (nthr_ic > 1)
             balance211(ic_chunks, nthr_ic, ithr_ic, icc_start, icc_end);
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (jbgp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = scratchpad.template get<float>(key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
 
         const int icc_work = icc_end - icc_start;
 
@@ -451,7 +464,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                 for (int kw = 0; kw < jbgp.kw; kw++) {
                     ker(ithr_oc_mb, nthr_oc_mb, ithr_ic, osb, osb_s, ocb, ocb_s,
                             icc, icc_start, kd, kh, kw, copy_buffer_a,
-                            prev_ker_idx);
+                            prev_ker_idx, dst_scales_inv_ptr);
                 }
 
                 ++loop_start;
@@ -603,11 +616,16 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
                             const brgemm_post_ops_data_t post_ops_data {
                                     static_cast<const void *>(ptr_bias),
-                                    &oscales[jbgp.is_oc_scale * oc],
                                     post_ops_binary_rhs_arg_vec.data(),
                                     static_cast<size_t>(oc), 0, dst, 0, nullptr,
                                     nullptr, nullptr, true /* skip_accm */, 1,
-                                    false, false, dst_scales};
+                                    false, false, src_scales,
+                                    wei_scales ? static_cast<const char *>(
+                                                         wei_scales)
+                                                    + jbgp.is_oc_scale * oc
+                                                            * sizeof(float)
+                                               : nullptr,
+                                    dst_scales};
 
                             brgemm_kernel_execute_postops(brg_kernel, 0,
                                     nullptr, (void *)ptr_C, (void *)ptr_D,

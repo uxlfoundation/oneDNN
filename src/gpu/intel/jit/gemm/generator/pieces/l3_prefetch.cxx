@@ -1,4 +1,3 @@
-
 /*******************************************************************************
 * Copyright 2024-2025 Intel Corporation
 *
@@ -16,17 +15,17 @@
 *******************************************************************************/
 
 
-#include "generator.hpp"
+#include "gemmstone/generator.hpp"
 #include "cooperative_split.hpp"
 #include "loop_sequencer.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (!strategy.prefetchABL3) return;
 
@@ -66,13 +65,6 @@ void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProble
     gemmLinearOrder(nextGroupID, state.nextGroupIDM, state.nextGroupIDN,
                     nextFlagL3PFA, nextFlagL3PFB,
                     problem, strategy, state);
-
-#if 1
-    if (getEnv("ALL_PF",0)) {
-        if (doA) mov(1, nextFlagL3PFA, 0xFFFF);
-        if (doB) mov(1, nextFlagL3PFB, 0xFFFF);
-    }
-#endif
 
     if (nextWave) {
         cmp(1 | ge | state.flagAP, nextGroupID, gcMN);
@@ -124,22 +116,22 @@ void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProble
 
     if (doA && state.Apl3_layout.empty()) {
         state.flagL3PFA = state.raVFlag.alloc();
-        if (!getRegLayout(Ta_ext, state.Apl3_layout, ma_prefetchL3, ka_prefetchL3, false, false, false, AvoidFragment, 0, 0, problem.A, strategy.AB_prefetchL3)) stub();
+        state.Apl3_layout = RegisterLayout(hw, Ta_ext, ma_prefetchL3, ka_prefetchL3, problem.A, strategy.AB_prefetchL3);
         for (auto &block: state.Apl3_layout)
             block.flag[0] = state.flagL3PFA;
-        allocAddrRegs(state.Apl3_addrs, state.Apl3_layout, problem.A, strategy.AB_prefetchL3, state);
+        allocAddrRegs(state.Apl3_addrs, state.Apl3_layout, state);
     }
 
     if (doB && state.Bpl3_layout.empty()) {
         state.flagL3PFB = state.raVFlag.alloc();
-        if (!getRegLayout(Tb_ext, state.Bpl3_layout, kb_prefetchL3, nb_prefetchL3, false, false, false, AvoidFragment, 0, 0, problem.B, strategy.AB_prefetchL3)) stub();
+        state.Bpl3_layout = RegisterLayout(hw, Tb_ext, kb_prefetchL3, nb_prefetchL3, problem.B, strategy.AB_prefetchL3);
         for (auto &block: state.Bpl3_layout)
             block.flag[0] = state.flagL3PFB;
-        allocAddrRegs(state.Bpl3_addrs, state.Bpl3_layout, problem.B, strategy.AB_prefetchL3, state);
+        allocAddrRegs(state.Bpl3_addrs, state.Bpl3_layout, state);
     }
 
-    if (doA) setupAddr(Ta_ext, state.Apl3_addrs, effApL3, state.Apl3_layout, state.inputs.lda, problem.A, strategy.AB_prefetchL3, strategy, state, Apl3_params);
-    if (doB) setupAddr(Tb_ext, state.Bpl3_addrs, effBpL3, state.Bpl3_layout, state.inputs.ldb, problem.B, strategy.AB_prefetchL3, strategy, state, Bpl3_params);
+    if (doA) setupAddr(state.Apl3_addrs, effApL3, state.Apl3_layout, state.inputs.lda, strategy, state, Apl3_params);
+    if (doB) setupAddr(state.Bpl3_addrs, effBpL3, state.Bpl3_layout, state.inputs.ldb, strategy, state, Bpl3_params);
 
     if (doA) mov(1, state.flagL3PFA, nextFlagL3PFA);
     if (doB) mov(1, state.flagL3PFB, nextFlagL3PFB);
@@ -159,7 +151,7 @@ void BLASKernelGenerator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProble
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmWarmupL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmWarmupL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     if (!strategy.prefetchABL3) return;
 
@@ -198,7 +190,7 @@ void BLASKernelGenerator<hw>::gemmWarmupL3Prefetch(const GEMMProblem &problem, c
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmScheduleL3Prefetches(void *lsPtr, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmScheduleL3Prefetches(void *lsPtr, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace loop_sequencer;
     auto &ls = *reinterpret_cast<loop_sequencer::LoopSequencer*>(lsPtr);
@@ -208,17 +200,17 @@ void BLASKernelGenerator<hw>::gemmScheduleL3Prefetches(void *lsPtr, const GEMMPr
 
     if (strategy.l3PrefetchA) ls.schedule(reqL3PFA, [&](Iteration h) {
         gemmALoad(GRFMultirange(), state.Apl3_layout, state.Apl3_addrs,
-                  problem.A, strategy.AB_prefetchL3, problem, strategy, state);
+                  problem, strategy, state);
     });
 
     if (strategy.l3PrefetchB) ls.schedule(reqL3PFB, [&](Iteration h) {
         gemmBLoad(GRFMultirange(), state.Bpl3_layout, state.Bpl3_addrs,
-                  problem.B, strategy.AB_prefetchL3, problem, strategy, state);
+                  problem, strategy, state);
     });
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmScheduleL3PrefetchIncs(void *lsPtr, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool allowDelay)
+void Generator<hw>::gemmScheduleL3PrefetchIncs(void *lsPtr, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool allowDelay)
 {
     using namespace loop_sequencer;
     auto &ls = *reinterpret_cast<loop_sequencer::LoopSequencer*>(lsPtr);
@@ -231,20 +223,18 @@ void BLASKernelGenerator<hw>::gemmScheduleL3PrefetchIncs(void *lsPtr, const GEMM
     auto delayB = allowDelay ? (strategy.kb_prefetchL3 >> 1) : 0;
 
     if (strategy.l3PrefetchA) ls.schedule(reqL3PFA.delay(delayA), [&](Iteration h) {
-        gemmAIncrement(problem.Ta_ext, state.Apl3_layout, state.Apl3_addrs,
-                       problem.A, strategy.AB_prefetchL3, strategy.ka_prefetchL3,
+        gemmAIncrement(state.Apl3_layout, state.Apl3_addrs, strategy.ka_prefetchL3,
                        problem, strategy, state);
     });
 
     if (strategy.l3PrefetchB) ls.schedule(reqL3PFB.delay(delayB), [&](Iteration h) {
-        gemmBIncrement(problem.Tb_ext, state.Bpl3_layout, state.Bpl3_addrs,
-                       problem.B, strategy.AB_prefetchL3, strategy.kb_prefetchL3,
+        gemmBIncrement(state.Bpl3_layout, state.Bpl3_addrs, strategy.kb_prefetchL3,
                        problem, strategy, state);
     });
 }
 
 template <HW hw>
-void BLASKernelGenerator<hw>::gemmTeardownL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+void Generator<hw>::gemmTeardownL3Prefetch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     // Not much teardown to do. Free flags (we will restore them next loop),
     //   but leave address registers in place.
@@ -252,4 +242,4 @@ void BLASKernelGenerator<hw>::gemmTeardownL3Prefetch(const GEMMProblem &problem,
     state.raVFlag.safeRelease(state.flagL3PFB);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

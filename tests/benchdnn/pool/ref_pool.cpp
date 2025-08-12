@@ -27,7 +27,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     float *dst_ptr = (float *)dst;
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     auto ker = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
         const int64_t ID = prb->id, IH = prb->ih, IW = prb->iw;
         const int64_t KD = prb->kd, KH = prb->kh, KW = prb->kw;

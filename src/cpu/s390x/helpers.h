@@ -16,6 +16,8 @@
 #ifndef CPU_S390X_HELPERS_H
 #define CPU_S390X_HELPERS_H
 #include <vecintrin.h>
+#include "common/utils.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -26,8 +28,6 @@ constexpr bool ISLASTINDEX_FAST = false;
 #define aPtr(i, j) A[(j)*ldA + (i)] // map aPtr( i,j ) to array A
 #define bPtr(i, j) B[(j)*ldB + (i)] // map bPtr( i,j ) to array B
 #define gPtr(i, j) C[(j)*ldC + (i)] // map gPtr( i,j ) to array C
-
-#define ALWAYS_INLINE __attribute__((always_inline))
 
 template <typename T>
 struct vec_inner_type_t {

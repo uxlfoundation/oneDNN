@@ -476,6 +476,7 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
            quant
              | (u8/s8)
     */
+    SKIP_IF_NV_GPU("not supported on NVIDIA GPU");
     using dims = graph::dnnl_impl::dims;
 
     graph::engine_t *g_eng = get_engine();
@@ -936,13 +937,13 @@ TEST_P(int8_matmul_with_diff_inputs_t, Int8MatmulPasses) {
 
 INSTANTIATE_TEST_SUITE_P(test_subgraph_pass, int8_matmul_with_diff_inputs_t,
         testing::Values(matmul_params_t {{1, 1024}, {1000, 1024}, {1000},
-                                {1, 1000}, false, true, false, 7, 8},
+                                {1, 1000}, false, true, false, 7, 7},
                 matmul_params_t {{1, 1024}, {1000, 1024}, {1000}, {1, 1000},
-                        false, true, true, 7, 8},
+                        false, true, true, 7, 7},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, false, 8, 9},
+                        true, false, 8, 8},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, true, 8, 9}));
+                        true, true, 8, 8}));
 
 class matmul_with_diff_inputs_t
     : public ::testing::TestWithParam<matmul_params_t> {};
@@ -1041,19 +1042,16 @@ TEST_P(matmul_with_diff_inputs_t, MatmulPasses) {
 
     ASSERT_EQ(dnnl_impl::layout_propagation(subgraph), graph::status::success);
     auto final_subgraph_size = params.final_subgraph_size;
-    if (params.transpose_a && p_eng.get_kind() == dnnl::engine::kind::gpu) {
-        final_subgraph_size -= 1;
-    }
     ASSERT_EQ(subgraph->get_ops().size(), final_subgraph_size);
 }
 
 INSTANTIATE_TEST_SUITE_P(test_subgraph_pass, matmul_with_diff_inputs_t,
         testing::Values(matmul_params_t {{1, 1024}, {1000, 1024}, {1000},
-                                {1, 1000}, false, true, false, 4, 5},
+                                {1, 1000}, false, true, false, 4, 4},
                 matmul_params_t {{4, 3, 64}, {3, 64}, {3}, {4, 3, 3}, false,
-                        true, false, 6, 7},
+                        true, false, 6, 6},
                 matmul_params_t {{4, 64, 3}, {3, 64}, {3}, {4, 3, 3}, true,
-                        true, false, 6, 8}));
+                        true, false, 6, 6}));
 
 TEST(test_subgraph_pass, ExecutionArgsSet) {
     ///////////////////////////
@@ -1458,7 +1456,7 @@ TEST(test_subgraph_pass, FuseSigmoidMultiplyToSwish) {
     g.add_op(&multiply);
     g.finalize();
 
-    graph::pass::pass_base_ptr apass = get_pass("eltwise_binary_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("fp_eltwise_binary");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -2333,7 +2331,17 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
     const auto &post_ops = fusion_info.get_post_ops();
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (engine.kind() == graph::engine_kind::gpu) {
+        ASSERT_EQ(post_ops.size(), 0U);
+    } else {
+        ASSERT_EQ(post_ops.size(), 1U);
+    }
+
+#else
     ASSERT_EQ(post_ops.size(), 1U);
+#endif
 }
 
 TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
@@ -2489,5 +2497,15 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
             dnnl_impl::op_attr::fusion_info_key);
     auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
     const auto &post_ops = fusion_info.get_post_ops();
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (engine.kind() == graph::engine_kind::gpu) {
+        ASSERT_EQ(post_ops.size(), 0U);
+    } else {
+        ASSERT_EQ(post_ops.size(), 1U);
+    }
+
+#else
     ASSERT_EQ(post_ops.size(), 1U);
+#endif
 }

@@ -68,33 +68,62 @@ public:
     size_t size = 0;
 };
 
-template <ngen::HW hw = ngen::HW::Unknown>
-class zero_out_kernel_t : public ir_kernel_t<hw> {
+// Reuse IR-to-nGEN generator as it contains useful prologue/epilogue helpers
+// and emulation instructions.
+template <ngen::HW hw>
+class zero_out_kernel_t : public ir_to_ngen_generator_t<generator_t<hw>> {
 public:
-    IR_KERNEL_FORWARD(hw)
+    IR_TO_NGEN_GENERATOR_FORWARD(generator_t<hw>)
+
+    using base_type = ir_to_ngen_generator_t<generator_t<hw>>;
 
     zero_out_kernel_t(const exec_config_t &exec_cfg,
             const kernel_info_t &kernel_info, bool require_dpas,
             const impl::engine_t *engine)
-        : zero_out_kernel_t<hw>(zero_out_kernel_desc_t(exec_cfg.regs(),
-                                        exec_cfg.simd(), require_dpas),
+        : zero_out_kernel_t(zero_out_kernel_desc_t(exec_cfg.regs(),
+                                    exec_cfg.simd(), require_dpas),
                 engine) {}
 
     zero_out_kernel_t(
             const kernel_desc_base_t &_desc, const impl::engine_t *engine)
-        : ir_kernel_t<hw>(_desc, engine, {GENERATOR_NAME, GENERATOR_LINE}) {
-        setup_interface();
+        : base_type(get_kernel_iface(_desc), _desc.exec_cfg(engine),
+                {GENERATOR_NAME, GENERATOR_LINE}) {
+        requireLocalID(3);
+        requireLocalSize();
+        requireGRF(exec_cfg().regs());
+        requireSIMD(exec_cfg().simd());
+        requireBarrier();
+
+        externalName(_desc.kernel_name());
+        newArgument(kernel_iface().arg_name(0),
+                to_ngen(kernel_iface().arg_type(0)));
+        newArgument(kernel_iface().arg_name(1),
+                ngen::ExternalArgumentType::GlobalPtr,
+                ngen::GlobalAccessType::Stateless);
+
+        finalizeInterface();
+
         generate_prologue();
+
+        ra().claim(getLocalSize(0));
+        ra().claim(getLocalID(0));
 
         int simd_size = getSIMD();
         bool use_lsc = (hw >= ngen::HW::XeHPG);
 
         auto size = getArgument(kernel_iface().arg_name(0));
+        ra().claim(size);
         auto ptr = getArgument(kernel_iface().arg_name(1));
-        auto global_id = ra_.template alloc_sub<uint32_t>();
-        auto off0 = ra_.template alloc_sub<uint32_t>();
+        ra().claim(ptr);
+        auto global_id = ra().template alloc_sub<uint32_t>();
+        auto off0 = ra().template alloc_sub<uint32_t>();
         const int bytes_per_thr
                 = into<int>(zero_out_kernel_desc_t::bytes_per_thr);
+
+        if (base_type::emu_strategy_.emulate64) {
+            base_type::emu_state_.temp[0] = ra().alloc();
+            base_type::emu_state_.temp[1] = ra().alloc();
+        }
 
         mul(1, global_id, r0.ud(1), getLocalSize(0).uw());
         add(1, global_id, global_id, getLocalID(0));
@@ -106,18 +135,18 @@ public:
         int ud_size = sizeof(uint32_t);
         int uq_size = sizeof(uint64_t);
 
-        auto zero = ra_.alloc_range(bytes_per_store * ud_size / grf_size);
-        auto off_vec = ra_.alloc_range(bytes_per_thr * ud_size / grf_size);
+        auto zero = ra().alloc_range(bytes_per_store * ud_size / grf_size);
+        auto off_vec = ra().alloc_range(bytes_per_thr * ud_size / grf_size);
         auto off_vec_q_strided
-                = ra_.alloc_range(bytes_per_thr * uq_size / grf_size);
-        auto ptr_vec = ra_.alloc_range(bytes_per_thr * uq_size / grf_size);
+                = ra().alloc_range(bytes_per_thr * uq_size / grf_size);
+        auto ptr_vec = ra().alloc_range(bytes_per_thr * uq_size / grf_size);
 
         for (int i = 0; i < bytes_per_store * ud_size; i += 64) {
             auto z = get_subregister(hw, ngen::DataType::ud, zero, i);
             mov(16, z, 0);
         }
 
-        auto idx_vec = ra_.alloc().uw(0);
+        auto idx_vec = ra().alloc().uw(0);
         mov(8, idx_vec(1), ngen::Immediate::uv(0, 1, 2, 3, 4, 5, 6, 7));
         mov(8, idx_vec(2), idx_vec(1));
         for (int i = 16; i < grf_size / uw_size; i += 16) {
@@ -157,6 +186,13 @@ public:
         }
 
         generate_epilogue();
+    }
+
+private:
+    static kernel_iface_t get_kernel_iface(const kernel_desc_base_t &desc) {
+        kernel_iface_t iface(desc.kernel_name());
+        desc.init_kernel_iface(iface);
+        return iface;
     }
 };
 

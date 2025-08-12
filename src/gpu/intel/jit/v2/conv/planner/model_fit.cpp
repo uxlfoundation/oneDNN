@@ -78,7 +78,7 @@ struct model_params_t {
     int size() const { return (int)vec.size(); }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         oss << "(";
         for (auto &p : vec) {

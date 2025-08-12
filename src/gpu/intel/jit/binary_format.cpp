@@ -174,14 +174,6 @@ public:
             *skip_check = binary_format_kernel.binaryIsZebin();
         } else {
             switch (engine->device_info()->gpu_arch()) {
-                case compute::gpu_arch_t::gen9:
-                    kernel = binary_format_kernel_t<HW::Gen9>::make_kernel(
-                            engine, skip_check);
-                    break;
-                case compute::gpu_arch_t::gen11:
-                    kernel = binary_format_kernel_t<HW::Gen11>::make_kernel(
-                            engine, skip_check);
-                    break;
                 case compute::gpu_arch_t::xe_lp:
                     kernel = binary_format_kernel_t<HW::XeLP>::make_kernel(
                             engine, skip_check);
@@ -235,6 +227,11 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     auto gpu_engine = utils::downcast<compute::compute_engine_t *>(engine);
 
+    if (!gpu_engine) {
+        VERROR(common, runtime, "bad engine kind, expected a gpu engine");
+        return status::invalid_arguments;
+    }
+
 #if XE4
     // Skip check for Xe4 architecture and newer.
     if (gpu_engine->device_info()->gpu_arch() >= compute::gpu_arch_t::xe4) {
@@ -254,11 +251,6 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
         return status::success;
     }
 #endif
-
-    if (!gpu_engine) {
-        VERROR(common, runtime, "bad engine kind, expected a gpu engine");
-        return status::invalid_arguments;
-    }
 
     impl::stream_t *stream_generic;
     auto status = gpu_engine->get_service_stream(stream_generic);
@@ -308,8 +300,8 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     result_buf.reset(storage);
 
     void *magic_host = nullptr;
-    magic_buf->map_data(&magic_host, nullptr, sizeof(int32_t));
-    if (!magic_host) {
+    status = magic_buf->map_data(&magic_host, nullptr, sizeof(int32_t));
+    if (!magic_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -317,11 +309,11 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     *reinterpret_cast<uint32_t *>(magic_host) = magic_ptr;
 
-    magic_buf->unmap_data(magic_host, nullptr);
+    CHECK(magic_buf->unmap_data(magic_host, nullptr));
 
     void *result_host = nullptr;
-    result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
-    if (!result_host) {
+    status = result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
+    if (!result_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -329,7 +321,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     *reinterpret_cast<uint32_t *>(result_host) = 0;
 
-    result_buf->unmap_data(result_host, nullptr);
+    CHECK(result_buf->unmap_data(result_host, nullptr));
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, magic0);
@@ -364,8 +356,8 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     }
 
     result_host = nullptr;
-    result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
-    if (!result_host) {
+    status = result_buf->map_data(&result_host, nullptr, sizeof(int32_t));
+    if (!result_host || status != status::success) {
         VERROR(common, runtime,
                 "failed to map data during binary kernel check");
         return status::runtime_error;
@@ -373,7 +365,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     auto result = *reinterpret_cast<uint32_t *>(result_host);
 
-    result_buf->unmap_data(result_host, nullptr);
+    CHECK(result_buf->unmap_data(result_host, nullptr));
 
     *ok = (result != 0);
 

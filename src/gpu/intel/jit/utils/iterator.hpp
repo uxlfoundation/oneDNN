@@ -235,10 +235,10 @@ public:
             return operator++();
         }
 
-        tensor_t operator*() const {
+        tile_t operator*() const {
             auto dims = dims_;
             dims[(*it_).dim_idx] *= factor();
-            return tensor_t(dims);
+            return tile_t(dims);
         }
 
         iterator_t(const inner_iter_t &it, const inner_iter_t &end, int ndims)

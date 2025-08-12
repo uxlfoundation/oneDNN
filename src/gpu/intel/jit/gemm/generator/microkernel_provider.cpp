@@ -14,15 +14,17 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gemmstone/config.hpp"
+
 #define BINARY_OUTPUT
 
-#include "microkernel_provider.hpp"
-#include "generator.hpp"
-#include "kernel_selector.hpp"
-#include "strategy_parser.hpp"
+#include "gemmstone/microkernel_provider.hpp"
+#include "gemmstone/generator.hpp"
+#include "gemmstone/kernel_selector.hpp"
+#include "gemmstone/strategy_parser.hpp"
 #include "npack/neo_packager.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 #define _CATALOG_ CatalogMMR
 #include "selector/db/ukernel_mmr.db"
@@ -41,6 +43,7 @@
 
 using namespace ngen;
 using namespace micro;
+
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
@@ -79,7 +82,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
             req.transpose();
     }
 
-    if (scaleA != problem.aScale2D || scaleB != problem.bScale2D)
+    if (scaleA != problem.aScale2D() || scaleB != problem.bScale2D())
         stub("Protocol scales do not match problem description");
     if (offsetA != (problem.aoPtrDims >= 0) || offsetB != (problem.boPtrDims >= 0))
         stub("Protocol offsets do not match problem description");
@@ -116,7 +119,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     if (localA && localB)
         stub("Unsupported protocol");
 
-    kcatalog::Catalog catalog = [&] () {
+    kcatalog::Catalog catalog = [&]() {
         if (localA)
             return kcatalog::Catalog(CatalogLMR);
         else if (localB)
@@ -142,7 +145,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         adjustStrategy(hw, problem, strategy);
         modifyStrategy(strategy, auxParams);
 
-        /* Xe2/Xe3-XeHPC compatibility logic */
+        /* Xe2-XeHPC compatibility logic */
         if (hw == ngen::HW::Xe2 || hw == ngen::HW::Xe3) {
             // Use XeHPC register banking on Xe2/Xe3, in order
             //   to successfully reuse XeHPC strategies.
@@ -216,15 +219,13 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     /* Generate microkernel */
 #define ARCH_DISPATCH(arch)                                                         \
     case HW::arch: {                                                                \
-        BLASKernelGenerator<HW::arch> generator;                                    \
+        Generator<HW::arch> generator;                                    \
         generator.setStepping(stepping);                                            \
         return generator.gemmMicrokernelPackage(problem, strategy, interface,       \
                                                 protocol, hwInfo.gmdid, transC);    \
     }
 
     switch (hw) {
-        REG_GEN9_ISA(ARCH_DISPATCH(Gen9))
-        REG_GEN11_ISA(ARCH_DISPATCH(Gen11))
         REG_XELP_ISA(ARCH_DISPATCH(XeLP))
         REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
@@ -245,7 +246,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 {
     if (hw < HW::XeHPG) return false;
     if (problem.C.layout == MatrixLayout::T) return false;
-    if (problem.Ta.size() != 2 || problem.Tb.size() != 2) return false;
 
     bool systolic = hwInfo.systolicAvailable;
     bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % 16) == 0;
@@ -269,6 +269,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         if (systolic)
             s.ka_load = (problem.A.layout == MatrixLayout::T) ? (64 / problem.Ta_ext) : 16;
         s.slmA = true;
+
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64 / problem.Ta_ext;
@@ -363,4 +364,5 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     return true;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
+

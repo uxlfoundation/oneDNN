@@ -30,7 +30,7 @@
 #include "gpu/intel/gemm/gpu_gemm_exec_types.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
-#include "gpu/intel/ocl/types_interop.hpp"
+#include "gpu/intel/types_interop.hpp"
 #include "xpu/context.hpp"
 #include "xpu/utils.hpp"
 
@@ -98,12 +98,14 @@ struct gpu_primitive_t : public gpu::primitive_t {
                             *kernel, jitter ? jitter->kernel_name() : nullptr),
                     VERBOSE_KERNEL_CREATION_FAIL,
                     jitter ? jitter->kernel_name() : "cached");
+            kernel->hash_dump("blob");
             CHECK(register_kernels({*kernel}));
             return status::success;
         }
         VCHECK_KERNEL(compute_engine->create_kernel(kernel, jitter),
                 VERBOSE_KERNEL_CREATION_FAIL,
                 jitter ? jitter->kernel_name() : "");
+        kernel->hash_dump("real");
         if (register_kernel) CHECK(register_kernels({*kernel}));
         return status::success;
     }
@@ -117,11 +119,15 @@ struct gpu_primitive_t : public gpu::primitive_t {
         if (cache_blob()) {
             CHECK(compute_engine->create_kernels_from_cache_blob(
                     cache_blob(), *kernels, kernel_names));
+            for (auto &k : *kernels)
+                k.hash_dump("blob");
             CHECK(register_kernels(*kernels));
             return status::success;
         }
         CHECK(compute_engine->create_kernels(
                 kernels, kernel_names, kernel_ctx));
+        for (auto &k : *kernels)
+            k.hash_dump("real");
         CHECK(register_kernels(*kernels));
         return status::success;
     }
@@ -145,6 +151,8 @@ struct gpu_primitive_t : public gpu::primitive_t {
         if (cache_blob()) {
             CHECK(compute_engine->create_kernels_from_cache_blob(
                     cache_blob(), kernels, kernel_names));
+            for (auto &k : kernels)
+                k.hash_dump("blob");
             CHECK(register_kernels(kernels));
             return status::success;
         }
@@ -161,6 +169,8 @@ struct gpu_primitive_t : public gpu::primitive_t {
             creation_cached_state_ = cache_state_t::kernel_hit;
         }
 
+        for (auto &k : kernels)
+            k.hash_dump("real");
         CHECK(register_kernels(kernels));
 
         return status::success;

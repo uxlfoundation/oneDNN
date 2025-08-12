@@ -591,6 +591,17 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
     for (auto &concat_op : fusion_ops) {
         for (size_t i = 0; i < concat_op->num_inputs(); ++i) {
+// Avoid the assertion caused by concat with 0-dim src on NV GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+            const auto src_lt
+                    = concat_op->get_input_value(i)->get_logical_tensor();
+            const auto src_dims = ltw(src_lt).vdims();
+            if (std::any_of(src_dims.begin(), src_dims.end(),
+                        [](dim_t src_dim) { return src_dim == 0; })) {
+                return status::unimplemented;
+            }
+#endif
             op_t &scale_op = concat_op->get_input_value(i)->get_producer();
             op_t &zp_op = scale_op.get_input_value(0)->get_producer();
             rewriter.fuse_op_to_successor(zp_op.shared_from_this());
@@ -2219,13 +2230,14 @@ status_t fuse_reciprocal_mul_to_div(std::shared_ptr<subgraph_t> &sg) {
             float alpha = 0.f;
             if (cur_op->has_attr(op_attr::alpha))
                 alpha = cur_op->get_attr<float>(op_attr::alpha);
-            if (!utils::compare_float(alpha, 1.f)) return false;
+            if (alpha != 1.f) return false;
 
             // check attribute beta
             float beta = 0.f;
             if (cur_op->has_attr(op_attr::beta))
                 beta = cur_op->get_attr<float>(op_attr::beta);
-            if (!utils::compare_float(beta, -1.f)) return false;
+            if (beta != -1.f) return false;
+
             return true;
         };
 
@@ -2465,12 +2477,13 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         int32_t target_ndims = std::max(src0_ndims, src1_ndims);
         std::vector<int32_t> in_ndims {src0_ndims, src1_ndims};
         for (size_t i = 0; i < cur_op->num_inputs(); ++i) {
-            // For binary select op, broadcast for the third input is
-            // unsupported.
-            if (i == 2) { continue; }
-            if (in_ndims[i] == target_ndims) { continue; }
+            // broadcast for the condition input of Select op.
+            int current_ndims = i == 2
+                    ? cur_op->get_input_value(2)->get_logical_tensor().ndims
+                    : in_ndims[i];
+            if (current_ndims == target_ndims) { continue; }
 
-            std::vector<int64_t> axes(target_ndims - in_ndims[i]);
+            std::vector<int64_t> axes(target_ndims - current_ndims);
             std::iota(axes.begin(), axes.end(), 0);
 
             // Only for NCX format BiasAdd, we need to unsqueeze the 1D bias to
@@ -4068,7 +4081,8 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
         if (!in_val1->has_producer()) continue;
         auto &in_op1 = in_val1->get_producer();
         if (in_op1.get_kind() != op_kind::dnnl_gen_index) continue;
-        if (in_op1.get_attr<int64_t>(op_attr::axis) != 3) continue;
+        auto ndim = in_op1.get_input_value(0)->get_logical_tensor().ndims;
+        if (in_op1.get_attr<int64_t>(op_attr::axis) != ndim - 1) continue;
         if (in_op1.get_input_value(0) != out_op.get_input_value(0)) continue;
         op_list.emplace_back(in_op1.shared_from_this());
 
@@ -4077,7 +4091,8 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
         if (!in_val0->has_producer()) continue;
         auto &in_op0 = in_val0->get_producer();
         if (in_op0.get_kind() == op_kind::dnnl_gen_index) {
-            if (in_op0.get_attr<int64_t>(op_attr::axis) != 2) continue;
+            auto ndim = in_op0.get_input_value(0)->get_logical_tensor().ndims;
+            if (in_op0.get_attr<int64_t>(op_attr::axis) != ndim - 2) continue;
             op_list.emplace_back(in_op0.shared_from_this());
             matched = true;
         } else if (compare_op_kind_and_algorithm(in_op0, op_kind::dnnl_binary,
@@ -4099,7 +4114,11 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
                     // Check if the GenIndex op exists
                     if (gen_index_op.get_kind() != op_kind::dnnl_gen_index)
                         continue;
-                    if (gen_index_op.get_attr<int64_t>(op_attr::axis) != 2)
+                    auto ndim = gen_index_op.get_input_value(0)
+                                        ->get_logical_tensor()
+                                        .ndims;
+                    if (gen_index_op.get_attr<int64_t>(op_attr::axis)
+                            != ndim - 2)
                         continue;
                     if (gen_index_op.get_input_value(0)
                             != out_op.get_input_value(0))

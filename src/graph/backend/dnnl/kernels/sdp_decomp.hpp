@@ -49,7 +49,6 @@ private:
     // used for sdp internal memory planning
     registry_t sdp_registry_;
 
-    std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
     subgraph_visualizer_t vis_;
 
@@ -172,6 +171,10 @@ public:
 
     DEF_KERNEL_METHOD_STR(sdp_decomp_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_decomp_kernel_t)
+    status_t reset_engine(const engine_t *g_engine) override {
+        dnnl::engine p_engine = make_dnnl_engine(*g_engine);
+        return sdp_cfg_.reset_engine(p_engine);
+    }
 };
 
 } // namespace dnnl_impl

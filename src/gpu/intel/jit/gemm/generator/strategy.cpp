@@ -14,18 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "driver_info.hpp"
-#include "problem.hpp"
-#include "strategy.hpp"
+#include "gemmstone/driver_info.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 #include "internal/utils.hpp"
 #include "pieces/compute_utils.hpp"
 #include "pieces/hw_utils.hpp"
 #include "pieces/layout_utils.hpp"
 #include "pieces/ngen_object_helpers.hpp"
 
-using namespace ngen;
+GEMMSTONE_NAMESPACE_START
 
-#include "internal/namespace_start.hxx"
+using namespace ngen;
 
 
 /* CommonStrategy member functions */
@@ -38,9 +38,6 @@ CommonStrategy::CommonStrategy(HW hw, int stepping) : raHW(hw), emulate(hw, step
 void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
 {
     subgroupSize = std::max(subgroupSize, GRF::bytes(hw) >> 2);
-    sipR0WA &= (hw == HW::Gen9);
-    if (sipR0WA && (moveR0 == MoveR0::None))
-        moveR0 = MoveR0::GRF;
     readSuppressionWA &= fused;
 
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
@@ -102,8 +99,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc, Tc_ext = problem.Tc_ext;
     auto Ta_real = Ta.real();
-    auto Tb_real = Tb.real();
-    auto Tc_real = Tc.real();
 
     // Safety checks for alignment.
     if (!legalAAlignment(problem, problem.A.alignment))
@@ -112,6 +107,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         stub("B alignment will be lost during n-parallelization");
 
     // Addressing preflight.
+
+    if (hw >= HW::Xe2) for (auto *s: {&A, &B, &C, &AO, &BO, &CO, &A_scale, &B_scale,
+                                      &A_prefetch, &B_prefetch, &C_prefetch, &AB_prefetchL3})
+        s->newDP = true;
 
     if (isBlock2D(A_prefetch.accessType) && !isPacked(problem.A.layout) && !A_prefetch.address2D)
         downgradeAPFAccess(problem, *this);
@@ -169,30 +168,35 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     slmA &= (slmBuffers > 0);
     slmB &= (slmBuffers > 0);
 
-    A.preflight(hw);
-    B.preflight(hw);
-    C.preflight(hw);
-    A_prefetch.preflight(hw);
-    B_prefetch.preflight(hw);
-    C_prefetch.preflight(hw);
+    A.preflight(hw); A_prefetch.preflight(hw); AO.preflight(hw);
+    B.preflight(hw); B_prefetch.preflight(hw); BO.preflight(hw);
+    C.preflight(hw); C_prefetch.preflight(hw); CO.preflight(hw);
+    A_scale.preflight(hw); Ag.preflight(hw);
+    B_scale.preflight(hw); Bg.preflight(hw);
+    AB_prefetchL3.preflight(hw);
 
     bool globalCM = isRegisterColMajor(problem.Tc, problem.C, C);
 
+    altCRemainder &= (Tc_ext.bits() >= 8);
+
+    block2DCRemainder &= (hw >= HW::XeHPC);
     block2DCRemainder &= !isPacked(problem.C.layout);
     block2DCRemainder &= !isBlock2D(C.accessType);
+    auto X = unroll[isTransposing(C.accessType) ? LoopN : LoopM];
+    block2DCRemainder &= (X * problem.Tc_ext) % 4 == 0;
     block2DCFull |= (Tc_ext.paddedSize() < 4);
     block2DCFull &= block2DCRemainder;
 
     extendedAtomicFMA &= !problem.needsASums() && !problem.needsBSums();
+    if (systolic)
+        extendedAtomicFMA &= ((unroll[globalCM ? LoopN : LoopM]) % 8 == 0);
 
-    if (tlbWarmup && !linearOrder())
-         cWalkOrder = WalkOrder::SimpleLinear;
+    if ((scramble[LoopM] || scramble[LoopN] || tlbWarmup) && !linearOrder())
+        cWalkOrder = WalkOrder::SimpleLinear;
 
     // Default SIMD setting.
     if (fmaSIMD == 0) {
         fmaSIMD = std::min(32, 2 * GRF::bytes(hw) / std::max<int>({Ta.paddedSize(), Tb.paddedSize(), Tc.paddedSize()}));
-        if (hw < HW::Gen12LP && problem.isIGEMM())
-            fmaSIMD = 32;
     }
 
     slmFenceWARWA |= (hw >= HW::XeHPG);
@@ -226,15 +230,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         dpasw = true;
     }
 
-    altCRemainder &= (problem.Tc_ext.bits() >= 8);
-
     dpasw &= systolic && fused;
 
     // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
     // Priority: k chaining > extra C registers > r0 header storage.
     //                         64-bit emulation > r0 header storage.
-    if (hw <= HW::Gen9)
-        kChain = 1;
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
     cAccumulators &= (kChain == 1);
@@ -243,13 +243,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (moveR0 == MoveR0::Acc)
         if (cAccumulators || emulateNeedsAcc || xParallel || (kChain > 1) || barrierFreq || fuseBeta)
             moveR0 = MoveR0::None;
-
-    // Mixed mode restrictions:
-    //  - mixed hf/f is max SIMD 8 on Gen9
-    //  - mixed hf/f is not allowed on Gen12
-    //  - mixed bf/f is max SIMD 8 on ATS+
-    if ((hw == HW::Gen9) && (Tc_real == Type::f32) && (Ta_real != Type::f32 || Tb_real != Type::f32))
-        fmaSIMD = std::min(fmaSIMD, GRF::bytes(hw) >> 2);
 
     // SIMT control flow is used by jump tables, (emulated) atomics, and double masking.
     spf &= !noJumpTables;
@@ -299,7 +292,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         ukAlign = lcm(ukAlign, params.ksys);
         auto tileX = params.osys;
         (globalCM ? C.tileR : C.tileC) = tileX;
-        if (unroll[globalCM ? LoopM : LoopN] > tileX)
+        if (unroll[globalCM ? LoopM : LoopN] > tileX && isBlocklike(C.accessType))
             forceCopyC = true;
         dotVL = 0;
     }
@@ -389,7 +382,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         if (slmB) minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
     }
 
-    ukAlign = align_up(ukAlign, minUnrollKSLM * slmVersions);
+    ukAlign = lcm(ukAlign, minUnrollKSLM * slmVersions);
 
     if (kInterleave) ukAlign = lcm(ukAlign, kInterleaveChunk);
     if (repackC) ukAlign = lcm(ukAlign, repackC);
@@ -590,7 +583,7 @@ bool GEMMStrategy::nondeterministic(const GEMMProblem &problem) const {
 
 void MatrixAddressingStrategy::preflight(HW hw)
 {
-    newDP |= isBlock2D(accessType);
+    newDP |= isBlock2D(accessType) || (hw >= HW::Xe2);
     padded |= (base.getModel() == ModelSLM);
 
     if (prefetch && newDP && cachingR == CacheSettingsLSC::Default)
@@ -637,4 +630,4 @@ void GEMMStrategy::trimKChain(HW hw, int k, const GEMMProblem &problem)
 }
 
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

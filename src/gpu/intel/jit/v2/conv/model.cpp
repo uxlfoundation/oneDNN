@@ -73,8 +73,8 @@ std::vector<std::string> feature_names(model_kind_t kind) {
     return std::vector<std::string>();
 }
 
-void to_bmnk(prop_kind_t prop, const pvar_tile_t &tile, dim_t &b, dim_t &m,
-        dim_t &n, dim_t &k) {
+void to_bmnk(prop_kind_t prop, const tile_t &tile, dim_t &b, dim_t &m, dim_t &n,
+        dim_t &k) {
     const auto t = to_gemm(tile, prop);
     b = t[pvars::b];
     m = t[pvars::m];
@@ -122,7 +122,7 @@ struct bmnk_helper_t {
 dim_t layout_size(const layout_tag_t &tag, const problem_t &prb) {
     gpu_assert(!tag.is_any() && !tag.is_empty())
             << "Unexpected tag: " << tag.str();
-    pvar_tile_t tile;
+    tile_t tile;
     for (auto &d : tag.desc().letter_map())
         tile[d] = prb.shape().at(d);
     dim_t elems = 1;
@@ -374,7 +374,7 @@ size_t model_t::coef_count(model_kind_t kind) {
 
 std::string model_t::str() const {
     using namespace ir_utils;
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << to_string(kind_) << ": " << coef_;
     return oss.str();
 }
@@ -394,7 +394,7 @@ bool with_data_copy(const problem_t &prb, const kernel_desc_t &desc) {
 }
 
 std::string to_str(const vec1d &x) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (float f : x) {
         if (!is_first) oss << ",";
@@ -451,7 +451,7 @@ void model_set_t::parse(std::istream &in) {
 }
 
 std::string model_set_t::str() const {
-    std::ostringstream oss;
+    ostringstream_t oss;
     bool is_first = true;
     for (auto &m : models_) {
         if (!is_first) oss << std::endl;

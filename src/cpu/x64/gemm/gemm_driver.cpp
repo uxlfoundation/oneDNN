@@ -15,11 +15,6 @@
 *******************************************************************************/
 
 #include <cstdint>
-#if defined(_MSC_VER)
-#include <malloc.h>
-#endif
-
-#include <vector>
 
 #include "oneapi/dnnl/dnnl_types.h"
 
@@ -48,6 +43,15 @@
 #include "cpu/x64/gemm/f32/jit_avx_gemm_f32.hpp"
 
 #include "cpu/x64/gemm/s8x8s32/jit_avx512_core_gemv_s8x8s32.hpp"
+
+#if !defined(alloca)
+#if defined(__GNUC__)
+#define alloca __builtin_alloca
+#elif defined(_MSC_VER)
+#include <malloc.h>
+#define alloca _alloca
+#endif
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -406,21 +410,13 @@ void gemm_kernel(dim_t m, dim_t n, const dim_t k, const float alpha,
 
     dim_t m_stk = col_offset_ws ? 1 : m;
     dim_t n_stk = row_offset_ws ? 1 : n;
-#if !defined(_MSC_VER)
-    std::vector<c_type> col_offset_stk_vec(m_stk);
-    std::vector<c_type> row_offset_stk_vec(n_stk);
-    c_type *col_offset_stk = col_offset_stk_vec.data();
-    c_type *row_offset_stk = row_offset_stk_vec.data();
-
-#else
     c_type *col_offset_stk = nullptr;
     if (!col_offset_ws)
-        col_offset_stk = (c_type *)_alloca(sizeof *col_offset_stk * m_stk);
+        col_offset_stk = (c_type *)alloca(sizeof *col_offset_stk * m_stk);
 
     c_type *row_offset_stk = nullptr;
     if (!row_offset_ws)
-        row_offset_stk = (c_type *)_alloca(sizeof *row_offset_stk * n_stk);
-#endif
+        row_offset_stk = (c_type *)alloca(sizeof *row_offset_stk * n_stk);
 
     // Use the heap if already allocated and stack otherwise.
     c_type *col_offset = col_offset_ws ? col_offset_ws : col_offset_stk;

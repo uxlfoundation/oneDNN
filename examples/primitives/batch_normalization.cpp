@@ -26,7 +26,7 @@
 /// Key optimizations included in this example:
 /// - In-place primitive execution;
 /// - Source memory format for an optimized primitive implementation;
-/// - Fused post-ops via operation descriptor flags;
+/// - Fused post-ops via primitive descriptor flags;
 ///
 /// @page batch_normalization_example_cpp Batch Normalization Primitive Example
 /// @copydetails batch_normalization_example_cpp_short

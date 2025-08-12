@@ -71,10 +71,63 @@ ZE_DLLEXPORT ze_result_t ZE_APICALL
 zelSetDriverTeardown();
 
 ///////////////////////////////////////////////////////////////////////////////
+/// @brief Exported function for informing the loader to delay teardown of its context until the call to zelLoaderContextTeardown().Only applies during static loader usage.
+/// NOTE: This function is a work around for legacy stacks that use L0 apis after the application is already in teardown. Unless you need to use the L0 apis during teardown, do not use this function. 
+ZE_DLLEXPORT void ZE_APICALL
+zelSetDelayLoaderContextTeardown();
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Exported function for explicitly tearing down the loader's context. Only applies during static loader usage.
+/// NOTE: This function is a work around for legacy stacks that use L0 apis after the application is already in teardown. Unless you need to use the L0 apis during teardown, do not use this function. 
+ZE_DLLEXPORT void ZE_APICALL
+zelLoaderContextTeardown();
+
+///////////////////////////////////////////////////////////////////////////////
 /// @brief Exported function for Enabling the Tracing Layer During Runtime.
 ///
 ZE_DLLEXPORT ze_result_t ZE_APICALL
 zelEnableTracingLayer();
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Exported function for Checking if the Loader is torndown.
+///
+ZE_DLLEXPORT bool ZE_APICALL
+zelCheckIsLoaderInTearDown();
+
+typedef void (*zel_loader_teardown_callback_t)();
+typedef void (*zel_application_teardown_callback_t)(uint32_t index);
+
+/**
+ * @brief Registers a teardown callback to be invoked during loader teardown.
+ *
+ * This function allows the application to register a callback function that will be called
+ * when the loader is being torn down. The loader will also provide its own callback function
+ * and assign an index to the registered callback.
+ *
+ * The application_callback is required to be a function that takes no arguments and returns void.
+ * In addition, the application_callback should be thread-safe and not block to prevent deadlocking the
+ * loader teardown process.
+ *
+ * For example, the application_callback used by the static loader is:
+ *  void staticLoaderTeardownCallback() {
+ *    loaderTeardownCallbackReceived = true;
+ *  }
+ * The application_callback should provide a simple notification to the application that the loader is being torn down.
+ *
+ * @param[in] application_callback  Application's callback function to be called during loader teardown.
+ * @param[out] loader_callback      Pointer to the loader's callback function.
+ * @param[out] index                Index assigned to the registered callback.
+ *
+ * @return
+ *     - ZE_RESULT_SUCCESS if the callback was successfully registered.
+ *     - Appropriate error code otherwise.
+ */
+ZE_DLLEXPORT ze_result_t ZE_APICALL
+zelRegisterTeardownCallback(
+   zel_loader_teardown_callback_t application_callback, // [in] Application's callback function to be called during loader teardown
+   zel_application_teardown_callback_t *loader_callback, // [out] Pointer to the loader's callback function
+   uint32_t *index // [out] Index assigned to the registered callback
+);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @brief Exported function for Disabling the Tracing Layer During Runtime.

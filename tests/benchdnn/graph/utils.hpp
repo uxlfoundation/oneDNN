@@ -76,12 +76,20 @@ enum class dnnl_driver_t {
     others
 };
 
+enum class graph_recognized_pattern_t {
+    sdpa,
+    ordinary,
+};
+
 extern bdnn_state_t convert_state(const dnnl_status_t &s);
 
 // Flags that controls the behavior for handling exceptions. The logic
 // relies on the fact that the values not intersect with each other.
 enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
 
+// For now, there are some feature gaps between Nvidia GPU and Intel GPU, as
+// fitting those gaps is a long-term task, many cases will be unsupported on
+// Nvidia GPU, here we directly skip those cases on Nvidia GPU.
 #define DNN_GRAPH_SAFE(f, s, ss) \
     do { \
         try { \
@@ -92,6 +100,15 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                 (ss)->state = bs.state; \
                 if ((ss)->state == res_state_t::SKIPPED) { \
                     (ss)->reason = bs.reason; \
+                } else if ((((ss)->state == res_state_t::UNIMPLEMENTED) \
+                                   || ((ss)->state \
+                                           == res_state_t::INVALID_ARGUMENTS)) \
+                        && is_nvidia_gpu()) { \
+                    (ss)->state = SKIPPED; \
+                    (ss)->reason = skip_reason::case_not_supported; \
+                    BENCHDNN_PRINT(2, \
+                            "SKIP: Function '%s' at (%s:%d) returned '%s'\n", \
+                            __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } else { \
                     BENCHDNN_PRINT(0, \
                             "Error: Function '%s' at (%s:%d) returned '%s'\n", \
@@ -130,8 +147,9 @@ std::string get_default_tag(size_t length);
 std::string strides2memory_tag(const size_t ndims,
         const dnnl::graph::logical_tensor::dims &strides,
         bool use_x_tag = true);
-
 dnnl::graph::logical_tensor::dims memory_tag2strides(
+        const dnnl::graph::logical_tensor::dims &shape, const std::string &tag);
+bool is_contiguous_memory(const dnnl::graph::logical_tensor::dims &strides,
         const dnnl::graph::logical_tensor::dims &shape, const std::string &tag);
 
 inline bool is_plain(dnnl_format_tag_t fmt_tag) {
@@ -140,8 +158,6 @@ inline bool is_plain(dnnl_format_tag_t fmt_tag) {
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
-
-dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind);
 
 // permute md based on permutation
 void permute_md(dnn_mem_t &mem, std::vector<int64_t> permutation);

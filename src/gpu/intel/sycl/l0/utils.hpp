@@ -42,13 +42,18 @@ status_t sycl_create_kernels_with_level_zero(
 
 bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
 
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+status_t func_zeGetKernelBinary(
+        ze_kernel_handle_t hKernel, size_t *pSize, uint8_t *pKernelBinary);
+#else
 status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
         uint8_t *pModuleNativeBinary);
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
-        int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+        compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
+        uint64_t &native_extensions, bool &mayiuse_systolic,
 #if XE3P
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit);
 #else

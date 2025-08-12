@@ -31,7 +31,7 @@ status_t primitive_init_plan_t::create_exec_plan(
     // Zero-out required buffers.
     for (auto &b : buf_entries_) {
         if (!b.zero_out) continue;
-        add_zero_out_kernel(exec_plan, b, primitive, engine);
+        CHECK(add_zero_out_kernel(exec_plan, b, primitive, engine));
     }
     // Pre-reorder.
     for (auto &a : buf_entries_) {
@@ -39,7 +39,8 @@ status_t primitive_init_plan_t::create_exec_plan(
         for (auto &b : buf_entries_) {
             if (a.user_name == b.name) {
                 if (b.is_user_input)
-                    add_reorder_kernel(exec_plan, b, a, primitive, engine);
+                    CHECK(add_reorder_kernel(
+                            exec_plan, b, a, primitive, engine));
                 break;
             }
         }
@@ -53,7 +54,8 @@ status_t primitive_init_plan_t::create_exec_plan(
         for (auto &b : buf_entries_) {
             if (a.user_name == b.name) {
                 if (b.is_user_output)
-                    add_reorder_kernel(exec_plan, a, b, primitive, engine);
+                    CHECK(add_reorder_kernel(
+                            exec_plan, a, b, primitive, engine));
                 break;
             }
         }
@@ -72,7 +74,7 @@ primitive_init_plan_t::buffer_entry_t primitive_init_plan_t::find_buf(
 kernel_info_t primitive_init_plan_t::create_kernel_info(
         const kernel_desc_base_t &desc,
         const std::unordered_map<std::string, std::string> &buf_map) const {
-    kernel_iface_t iface;
+    kernel_iface_t iface(desc.kernel_name());
     desc.init_kernel_iface(iface);
     kernel_info_t info;
     for (int i = 0; i < iface.nargs(); i++) {

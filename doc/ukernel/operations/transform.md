@@ -36,13 +36,15 @@ The transform ukernel does not allow data type conversion.
 
 ## Data Representation
 
-| src  | dst  |
-|:-----|:-----|
-| f32  | f32  |
-| f16  | f16  |
-| bf16 | bf16 |
-| s8   | s8   |
-| u8   | u8   |
+| src     | dst     |
+|:------- |:------- |
+| f32     | f32     |
+| f16     | f16     |
+| bf16    | bf16    |
+| f8_e4m3 | f8_e4m3 |
+| f8_e5m2 | f8_e5m2 |
+| s8      | s8      |
+| u8      | u8      |
 
 ## Attributes
 

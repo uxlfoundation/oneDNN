@@ -84,7 +84,10 @@ void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
     brg->with_weights_scale_adjust = false;
     brg->sum_scale = 0;
     brg->sum_zp = 0;
-    brg->with_scales = false;
+    brg->with_src_scales = false;
+    brg->with_wei_scales = false;
+    brg->with_dst_scales = false;
+    brg->dt_wei_scales = data_type::undef;
 
     if (strides != nullptr) {
         brg->stride_a = strides->stride_a;
@@ -738,8 +741,8 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
                 / (((adj_ld_block2) + bd_block) * max_bcast_block);
         const auto bd_block_eff = bd_block_disb * brgemm_microkernel_eff;
 
-        float block_foot_print = static_cast<float>(brg->typesize_A)
-                * (bd_block * brg->reduce_dim);
+        float block_foot_print = static_cast<float>(brg->typesize_A) * bd_block
+                * brg->reduce_dim;
         if (block_foot_print <= static_cast<float>(L1)
                 && (bd_block_eff > best_bd_block_eff)) {
             brg->bd_block = bd_block;

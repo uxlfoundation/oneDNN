@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -944,7 +945,7 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
     jcp.with_eltwise = eltwise_ind != -1;
     if (jcp.with_eltwise) {
         jcp.eltwise = p.entry_[eltwise_ind].eltwise;
-        if (!eltwise_injector::is_supported(isa, jcp.eltwise.alg))
+        if (!eltwise_injector::is_supported(to_vla_sve(isa), jcp.eltwise.alg))
             return status::unimplemented;
         if (dst_d.data_type() == data_type::s32) return status::unimplemented;
     }

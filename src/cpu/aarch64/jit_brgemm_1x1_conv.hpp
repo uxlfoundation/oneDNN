@@ -119,7 +119,7 @@ private:
             char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
             int od, int oh, int ow, int icc, int *last_brg_idx,
             const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-            int32_t *dst_zp_vals, int32_t *s8s8_compensation,
+            const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const float *dst_scales) const;
     status_t execute_forward_all(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

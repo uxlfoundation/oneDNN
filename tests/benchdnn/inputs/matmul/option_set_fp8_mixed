@@ -104,3 +104,16 @@
 --attr-fpmath=bf16:true
 7x6x32:7x32x64
 7x6x32:1x32x64
+
+# fp16:fp8:fp16
+# 2D block wei scale (fp16/32/fp8)
+# common/per_oc src, dst scale (f32)
+
+--reset
+--dt=bf16:f8_e5m2:bf16,bf16:f8_e4m3:bf16
+--stag=abc --wtag=abc,cab
+--attr-scales=wei:per_ocic:f8_e5m2:32x1+src:per_oc:f32:1x32,wei:per_ocic:f8_e4m3:32x1+src:common:2:f32,wei:per_ocic:f32:32x1+src:common:2:f32
+--attr-zero-points=wei:per_ocic:s4:32x1
+--attr-fpmath=bf16:true
+7x6x32:7x32x64
+7x6x32:1x32x64

@@ -223,7 +223,7 @@ struct key_hw_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << jit::to_string(hw);
         if (with_family()) oss << ":" << jit::to_string(family);
         return oss.str();
@@ -294,7 +294,7 @@ struct key_type_info_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (src == wei && src == dst) {
             oss << src.str();
         } else {
@@ -356,7 +356,7 @@ struct key_mb_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mb" << value;
         if (is_blocked) oss << "(blocked)";
         return oss.str();
@@ -474,7 +474,7 @@ public:
     }
 
     std::string str(bool csv = false) const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << hw_;
         oss << "," << fma_;
         oss << "," << prop_;

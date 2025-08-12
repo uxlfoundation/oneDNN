@@ -38,8 +38,32 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-const char *get_kernel_source(const char *name);
-const char *get_kernel_header(const std::string &name);
+status_t preprocess_headers(stringstream_t &pp_code, const char *code,
+        const compute::kernel_ctx_t &kernel_ctx) {
+    stringstream_t code_stream(code);
+
+    for (std::string line; std::getline(code_stream, line);) {
+        const size_t include_pos = line.find("#include");
+        if (include_pos != std::string::npos) {
+            static constexpr size_t include_len = 8;
+            const size_t first_quote_pos
+                    = line.find("\"", include_pos + include_len);
+            const size_t second_quote_pos
+                    = line.find("\"", first_quote_pos + 1);
+            const size_t kernel_name_len
+                    = second_quote_pos - first_quote_pos - 1;
+            const auto header_name
+                    = line.substr(first_quote_pos + 1, kernel_name_len);
+            const char *header_source
+                    = kernel_ctx.get_custom_header(header_name);
+            if (!header_source) header_source = get_kernel_header(header_name);
+            CHECK(preprocess_headers(pp_code, header_source, kernel_ctx));
+        } else {
+            pp_code << line << std::endl;
+        }
+    }
+    return status::success;
+}
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         cl_device_id dev, cl_context ctx, size_t index,
@@ -63,7 +87,7 @@ void maybe_print_build_info(const std::vector<const char *> &kernel_names,
 
     // Print out kernel options if the correct verbosity is set
     if (get_verbose(verbose_t::debuginfo) >= 5) {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (const char *name : kernel_names)
             oss << name << " ";
 
@@ -174,33 +198,6 @@ cl_int maybe_print_debug_info(
     return err_;
 };
 
-inline status_t preprocess_headers(std::stringstream &pp_code, const char *code,
-        const compute::kernel_ctx_t &kernel_ctx) {
-    std::stringstream code_stream(code);
-
-    for (std::string line; std::getline(code_stream, line);) {
-        const size_t include_pos = line.find("#include");
-        if (include_pos != std::string::npos) {
-            static constexpr size_t include_len = 8;
-            const size_t first_quote_pos
-                    = line.find("\"", include_pos + include_len);
-            const size_t second_quote_pos
-                    = line.find("\"", first_quote_pos + 1);
-            const size_t kernel_name_len
-                    = second_quote_pos - first_quote_pos - 1;
-            const auto header_name
-                    = line.substr(first_quote_pos + 1, kernel_name_len);
-            const char *header_source
-                    = kernel_ctx.get_custom_header(header_name);
-            if (!header_source) header_source = get_kernel_header(header_name);
-            CHECK(preprocess_headers(pp_code, header_source, kernel_ctx));
-        } else {
-            pp_code << line << std::endl;
-        }
-    }
-    return status::success;
-}
-
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         xpu::ocl::wrapper_t<cl_program> &program, const char *code) {
     if (micro::hasMicrokernels(code)) {
@@ -245,7 +242,7 @@ status_t engine_t::build_program_from_source(
     options += " " + dev_info->get_cl_ext_options();
 
     cl_int err;
-    std::stringstream pp_code;
+    stringstream_t pp_code;
     // The `cl_cache` requires using `clBuildProgram`. Unfortunately, unlike
     // `clCompileProgram` `clBuildProgram` doesn't take headers. Because of
     // that, a manual preprocessing of `include` header directives in the
@@ -311,11 +308,11 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
 
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
-        source = ocl::get_kernel_source(kernel_names[i]);
+        source = get_kernel_source(kernel_names[i]);
     gpu_assert(source)
             << "No kernel source file was found for the kernels: " <<
             [&]() {
-                std::ostringstream oss;
+                ostringstream_t oss;
                 bool is_first = true;
                 for (auto &n : kernel_names) {
                     if (!is_first) oss << ", ";
@@ -330,7 +327,7 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
 
     gpu_assert([&]() {
         for (auto &name : kernel_names) {
-            if (!utils::one_of(ocl::get_kernel_source(name), source, nullptr))
+            if (!utils::one_of(get_kernel_source(name), source, nullptr))
                 return false;
         }
         return true;

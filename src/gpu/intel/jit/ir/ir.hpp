@@ -22,7 +22,6 @@
 #include <map>
 #include <vector>
 
-#include "common/optional.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 
@@ -85,7 +84,7 @@ public:
         }
 
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << "buf: " << buf << " size: " << size;
             return oss.str();
         }
@@ -289,8 +288,11 @@ private:
 // - If put_innermost is false, then `stmt` is nested to all allocations
 // - If put_innermost is true, then every allocation is injected as innermost
 //   as possible
+// - If update_existing is true, then all existing alloc statements are removed
+//   and reinserted in the innermost position. This flag requires put_innermost
+//   to be set to true.
 stmt_t inject_alloc_stmts(const stmt_t &stmt, const std::vector<stmt_t> &allocs,
-        bool put_innermost = false);
+        bool put_innermost = false, bool update_existing = false);
 
 // Similar to the previous function but allocations are taken from the buffer
 // manager, allocations are injected at innermost possible scope.
@@ -504,12 +506,6 @@ expr_t min(const expr_t &a, const expr_t &b);
 
 expr_t cast(const expr_t &e, const type_t &type, bool saturate = false);
 
-bool is_zero(const expr_t &e);
-
-bool is_one(const expr_t &e);
-
-bool is_minus_one(const expr_t &e);
-
 bool is_const_broadcast(const expr_t &e);
 
 bool is_const_broadcast(const expr_t &e, const expr_t &value);
@@ -600,8 +596,7 @@ std::vector<stmt_t> find_stmt_groups(
 
 // Returns a statement group matching the label. `root` must have exactly one
 // occurrence.
-utils::optional_t<stmt_t> find_stmt_group(
-        const object_t &root, const stmt_label_t &label);
+stmt_t find_stmt_group(const object_t &root, const stmt_label_t &label);
 
 // Removes all statement groups matching the label.
 object_t remove_stmt_group(const object_t &root, stmt_label_t label);
@@ -683,8 +678,6 @@ stmt_t replace_stmt_body(const stmt_t &stmt, const stmt_t &new_body);
 int get_peak_regs(const stmt_t &stmt, int grf_size, int external_regs = 0,
         bool skip_let = false);
 
-bool has_send_atomics(const stmt_t &s);
-
 struct mem_usage_guard_t {
     mem_usage_guard_t(int *usage, int *peak_usage, int size)
         : usage(usage), peak_usage(peak_usage), size(size) {
@@ -760,7 +753,7 @@ public:
             const linear_transform_t &t, const expr_t &new_var) const;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << expr_;
         return oss.str();
     }
@@ -810,7 +803,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << expr_;
         return oss.str();
     }
@@ -903,7 +896,7 @@ public:
     int max_proven_gcd(const expr_t &var) const;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "relations:" << (relations_.empty() ? " (empty)\n" : "\n");
         for (auto &r : sort_var_map_by_key(relations_)) {
             oss << "\t" << r.first << ":";

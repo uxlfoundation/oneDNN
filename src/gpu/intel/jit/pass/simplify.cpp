@@ -41,7 +41,7 @@ using namespace ir_utils;
 // match any expression.
 class pexpr_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(pexpr_t)
+    IR_DECL_TYPE(pexpr_t)
 
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
@@ -55,7 +55,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(id); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "pexpr_t(" << id << ")";
         return oss.str();
     }
@@ -73,7 +73,10 @@ public:
         return z;
     }
 
-    IR_DECLARE_TRAVERSERS()
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override {
+        gpu_error_not_expected();
+    }
 
     int id;
 
@@ -85,7 +88,7 @@ private:
 // matching. Can match any int_imm_t with the given value.
 class pint_imm_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(pint_imm_t)
+    IR_DECL_TYPE(pint_imm_t)
 
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
@@ -119,7 +122,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(id, value); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "pint_imm_t(" << value << ")";
         return oss.str();
     }
@@ -161,9 +164,20 @@ private:
     object_eq_map_t<expr_t, expr_t> expr_matched_;
 };
 
-class pexpr_substitute_t : public ir_mutator_t {
+class pexpr_mutator_t : public ir_mutator_t {
 public:
     using ir_mutator_t::_mutate;
+
+    virtual object_t _mutate(const pexpr_t &obj) { return obj; }
+};
+
+inline object_t pexpr_t::_mutate(ir_mutator_t &mutator) const {
+    return utils::downcast<pexpr_mutator_t *>(&mutator)->_mutate(*this);
+}
+
+class pexpr_substitute_t : public pexpr_mutator_t {
+public:
+    using pexpr_mutator_t::_mutate;
 
     pexpr_substitute_t(const match_context_t *ctx) : ctx_(ctx) {}
 
@@ -665,7 +679,96 @@ public:
         return obj;
     }
 
+    object_t _mutate(const binary_op_t &obj) override {
+        auto a = ir_mutator_t::mutate(obj.a);
+        auto b = ir_mutator_t::mutate(obj.b);
+
+        if (obj.op_kind == op_kind_t::_or) {
+            if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
+        } else if (obj.op_kind == op_kind_t::_and) {
+            auto not_a = try_not(a);
+            if (not_a && cset.can_prove(not_a)) return expr_t(false);
+            auto not_b = try_not(b);
+            if (not_b && cset.can_prove(not_b)) return expr_t(false);
+        }
+
+        if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
+        return const_fold_non_recursive(binary_op_t::make(obj.op_kind, a, b));
+    }
+
+    expr_t try_not(const expr_t &e) {
+        if (e.is<bool_imm_t>()) {
+            return bool_imm_t::make(!to_cpp<bool>(e));
+        } else if (e.is<binary_op_t>()) {
+            auto op_kind = e.as<binary_op_t>().op_kind;
+            auto a = e.as<binary_op_t>().a;
+            auto b = e.as<binary_op_t>().b;
+            switch (op_kind) {
+                case op_kind_t::_lt:
+                    return binary_op_t::make(op_kind_t::_ge, a, b);
+                case op_kind_t::_le:
+                    return binary_op_t::make(op_kind_t::_gt, a, b);
+                case op_kind_t::_gt:
+                    return binary_op_t::make(op_kind_t::_le, a, b);
+                case op_kind_t::_ge:
+                    return binary_op_t::make(op_kind_t::_lt, a, b);
+                case op_kind_t::_ne:
+                    return binary_op_t::make(op_kind_t::_eq, a, b);
+                case op_kind_t::_eq:
+                    return binary_op_t::make(op_kind_t::_ne, a, b);
+                default: return expr_t();
+            }
+        }
+        return expr_t();
+    }
+
     const constraint_set_t &cset;
+};
+
+// N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
+// where <op> is either addition or multiplication.
+class nary_op_t : public expr_impl_t {
+public:
+    IR_DECL_TYPE(nary_op_t)
+
+    static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
+        return expr_t(new nary_op_t(op_kind, args));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+
+        return (op_kind == other.op_kind)
+                && ir_utils::is_equal(args, other.args);
+    }
+
+    size_t get_hash() const override {
+        return ir_utils::get_hash(op_kind, args);
+    }
+
+    std::string str() const override {
+        ostringstream_t oss;
+        oss << "(";
+        for (size_t i = 0; i < args.size(); i++) {
+            oss << (i != 0 ? " " + to_string(op_kind) + " " : "") << args[i];
+        }
+
+        oss << ")";
+        return oss.str();
+    }
+
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override;
+
+    op_kind_t op_kind;
+    std::vector<expr_t> args;
+
+private:
+    nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
+        : expr_impl_t(_type_info(), nary_op_type(op_kind, args))
+        , op_kind(op_kind)
+        , args(args) {}
 };
 
 // Finds all constant operands on an N-ary operation, returns the folded
@@ -725,19 +828,27 @@ class nary_op_visitor_t : public ir_visitor_t {
 public:
     using ir_visitor_t::_visit;
 
-    void _visit(const nary_op_t &obj) override { visit(obj.args); }
+    virtual void _visit(const nary_op_t &obj) { visit(obj.args); }
 };
+
+inline void nary_op_t::_visit(ir_visitor_t &visitor) const {
+    utils::downcast<nary_op_visitor_t *>(&visitor)->_visit(*this);
+}
 
 class nary_op_mutator_t : public ir_mutator_t {
 public:
     using ir_mutator_t::_mutate;
 
-    object_t _mutate(const nary_op_t &obj) override {
+    virtual object_t _mutate(const nary_op_t &obj) {
         auto args = mutate(obj.args);
         if (ir_utils::is_equal(args, obj.args)) return obj;
         return make_nary_op(obj.op_kind, args);
     }
 };
+
+inline object_t nary_op_t::_mutate(ir_mutator_t &mutator) const {
+    return utils::downcast<nary_op_mutator_t *>(&mutator)->_mutate(*this);
+}
 
 class nary_op_transformer_t : public nary_op_mutator_t {
 public:
@@ -926,7 +1037,7 @@ public:
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
 class factored_expr_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(factored_expr_t);
+    IR_DECL_TYPE(factored_expr_t);
 
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));
@@ -963,7 +1074,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(factors); }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "f(";
         for (size_t i = 0; i < factors.size(); i++) {
             oss << (i != 0 ? " x " : "") << factors[i];
@@ -1261,9 +1372,9 @@ public:
 
     expr_t mutate_with_add(const binary_op_t &obj) {
         expr_t ret = reduce_v1(obj);
-        if (!ret.is_empty()) return ret;
+        if (ret) return ret;
         ret = reduce_v2(obj);
-        return (!ret.is_empty()) ? std::move(ret) : obj;
+        return ret ? std::move(ret) : obj;
     }
 
     // Applies the following rules:
@@ -1593,13 +1704,13 @@ public:
     }
 
     object_t _mutate(const if_t &obj) override {
-        auto cond = simplify(obj.cond);
+        auto cond = simplify(obj.cond, cset_);
 
         if (all_of(cond, expr_t(true))) return mutate(obj.body);
         if (all_of(cond, expr_t(false))) return mutate(obj.else_body);
 
         auto body = obj.body;
-        if (!body.is_empty()) {
+        if (body) {
             auto cset_old = cset_;
             cset_.add_constraint(cond);
             body = ir_mutator_t::mutate(body);
@@ -1607,7 +1718,7 @@ public:
         }
 
         auto else_body = obj.else_body;
-        if (!else_body.is_empty()) {
+        if (else_body) {
             auto cset_old = cset_;
             cset_.add_constraint(flip_condition(cond));
             else_body = ir_mutator_t::mutate(else_body);
@@ -1618,6 +1729,7 @@ public:
     }
 
     object_t _mutate(const let_t &obj) override {
+
         // Attempt to inline
         expr_t value;
         if (cset_.is_single_value(obj.var, value)) {
@@ -1626,11 +1738,13 @@ public:
             return mutate(body);
         }
 
+        if (obj.var.type().is_mutable()) return ir_mutator_t::_mutate(obj);
+
         // External variable.
         if (obj.value.is_empty()) return ir_mutator_t::_mutate(obj);
 
         // Substitute constants.
-        value = simplify(obj.value);
+        value = simplify(obj.value, cset_);
         if (is_const(value)) {
             // Constants are not necessarily the same type as the assigned
             // variable
@@ -1686,8 +1800,17 @@ public:
         return stmt_t();
     }
 
+    object_t _mutate(const while_t &obj) override {
+        auto cond = simplify(obj.cond, cset_);
+        if (is_const(cond) && !to_cpp<bool>(cond)) return stmt_t();
+        auto body = mutate(obj.body);
+        if (body.is_empty()) return stmt_t();
+        if (obj.cond.is_same(cond) && obj.body.is_same(body)) return obj;
+        return while_t::make(cond, body);
+    }
+
 private:
-    static op_kind_t flip_cmp_op(op_kind_t op_kind) {
+    static op_kind_t flip_op(op_kind_t op_kind) {
         switch (op_kind) {
             case op_kind_t::_eq: return op_kind_t::_ne;
             case op_kind_t::_ge: return op_kind_t::_lt;
@@ -1695,6 +1818,8 @@ private:
             case op_kind_t::_le: return op_kind_t::_gt;
             case op_kind_t::_lt: return op_kind_t::_ge;
             case op_kind_t::_ne: return op_kind_t::_eq;
+            case op_kind_t::_and: return op_kind_t::_or;
+            case op_kind_t::_or: return op_kind_t::_and;
             default: gpu_error_not_expected();
         }
         return op_kind_t::undef;
@@ -1708,7 +1833,13 @@ private:
             auto &a = binary_op->a;
             auto &b = binary_op->b;
             auto op_kind = binary_op->op_kind;
-            return binary_op_t::make(flip_cmp_op(op_kind), a, b);
+            if (is_cmp_op(op_kind))
+                return binary_op_t::make(flip_op(op_kind), a, b);
+            if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+                auto a_neg = flip_condition(a);
+                auto b_neg = flip_condition(b);
+                return binary_op_t::make(flip_op(op_kind), a_neg, b_neg);
+            }
         }
 
         auto *shuffle = cond.as_ptr<shuffle_t>();
@@ -2141,12 +2272,12 @@ bool const_to_const_binary(const expr_t &e, op_kind_t op_kind,
     expr_t b1 = to_expr(1, b_type);
     expr_t a_eq = to_expr(0, a_type);
     expr_t b_eq = to_expr(0, b_type);
-    if (!a.is_empty()) {
+    if (a) {
         a0 = a1 = a;
         b0 = a - 1;
         b1 = a + 1;
         a_eq = b_eq = a;
-    } else if (!b.is_empty()) {
+    } else if (b) {
         b0 = b1 = b;
         a0 = b - 1;
         a1 = b + 1;

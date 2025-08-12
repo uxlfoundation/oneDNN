@@ -19,10 +19,11 @@
 #define GEMMSTONE_GUARD_HW_UTILS_HPP
 
 #include "internal/ngen_includes.hpp"
-#include "register_block.hpp"
-#include "strategy.hpp"
+#include "gemmstone/strategy.hpp"
 
-#include "internal/namespace_start.hxx"
+#include "register_layout.hpp"
+
+GEMMSTONE_NAMESPACE_START
 
 template <typename T>
 static inline constexpr int elementsPerGRF(ngen::HW hw)
@@ -81,9 +82,9 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
-#if XE3P 
-    else if (T == Type::f16 || T == Type::bf16) 
-        return (hw >= HW::Xe3p); 
+#if XE3P
+    else if (T == Type::f16 || T == Type::bf16)
+        return (hw >= HW::Xe3p);
 #endif
     else if (T == Type::f64)
         return floatAtomics && (hw >= HW::XeHPC);
@@ -95,15 +96,13 @@ static inline size_t slmCapacity(ngen::HW hw)
 {
     using namespace ngen;
     switch (hw) {
-        case HW::Gen9:
-        case HW::Gen11:     return 65536;
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG:
         case HW::XeHPC:     return 131072;
         case HW::Xe2:
         case HW::Xe3:       return 131072;
-#if XE3P 
+#if XE3P
         case HW::Xe3p:      return 393216;
 #endif
         default:
@@ -196,6 +195,6 @@ static inline int block2DWidthAlignment(Type T, const RegisterBlock &block, cons
     return ((astrategy.noExtraPad || block.writable || atype.alignment % 8) ? 4 : 8);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

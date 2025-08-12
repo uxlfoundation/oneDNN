@@ -27,7 +27,7 @@
 namespace NGEN_NAMESPACE {
 
 template <HW hw> class OpenCLCodeGenerator;
-template <HW hw> class L0CodeGenerator;
+template <HW hw> class LevelZeroCodeGenerator;
 
 // Exceptions.
 #ifdef NGEN_SAFE
@@ -82,14 +82,14 @@ enum class ThreadArbitrationMode { Default, OldestFirst, RoundRobin, RoundRobinO
 class InterfaceHandler
 {
     template <HW hw> friend class OpenCLCodeGenerator;
-    template <HW hw> friend class L0CodeGenerator;
+    template <HW hw> friend class LevelZeroCodeGenerator;
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_)
-#if XE3P
+#if XE4
                              // This is a workaround for a segfault in the driver
                              // with OpenCL when scratchspace is not used.
-                             , scratchSize(hw_ >= HW::Xe3p ? 1 : 0)
+                             , scratchSize(hw_ >= HW::Xe4 ? 1 : 0)
 #endif
                              , simd(GRF::bytes(hw_) >> 2)
 #if XE3P
@@ -181,7 +181,6 @@ public:
 
     static constexpr int noSurface = 0x80;        // Returned by getArgumentSurfaceIfExists in case of no surface assignment
 
-protected:
     struct Assignment {
         std::string name;
         DataType type;
@@ -194,7 +193,10 @@ protected:
         bool globalSurfaceAccess()   const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Surface)); }
         bool globalStatelessAccess() const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Stateless)); }
     };
+    const Assignment &getAssignment(int idx) const   { return assignments[idx]; }
+    size_t numAssignments() const   { return assignments.size(); }
 
+protected:
     HW hw;
 
     std::vector<Assignment> assignments;
@@ -601,11 +603,18 @@ void InterfaceHandler::finalize()
             newArgument(localSizeArgs[dim], DataType::ud, ExternalArgumentType::Hidden);
 
     assignArgsOfType(ExternalArgumentType::Hidden);
-
-    crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * regSize
-                     + ((offset + regSize - 1) & -regSize);
-    crossthreadRegs = (crossthreadBytes + regSize - 1) / regSize;
-
+#if XE4
+    if (hw >= HW::Xe4) {
+        crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * regSize
+                         + ((offset + regSize - 1) & -regSize);
+        crossthreadRegs = (crossthreadBytes + regSize - 1) / regSize;
+    } else
+#endif
+    {
+        crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * GRF::bytes(hw)
+                         + ((offset + 31) & -32);
+        crossthreadRegs = GRF::bytesToGRFs(hw, crossthreadBytes);
+    }
     // Manually add regular local size arguments.
     if (needLocalSize && !needNonuniformWGs) {
         for (int dim = 0; dim < 3; dim++) {

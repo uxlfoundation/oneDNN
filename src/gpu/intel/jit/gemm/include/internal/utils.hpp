@@ -16,6 +16,7 @@
 
 #ifndef GEMMSTONE_GUARD_UTILS_HPP
 #define GEMMSTONE_GUARD_UTILS_HPP
+
 #include <stdexcept>
 #include <string>
 
@@ -23,7 +24,7 @@
 #include <source_location>
 #endif
 
-#include "namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 template <typename T, typename T1>
 static inline constexpr bool one_of(T value, T1 option1)
@@ -112,6 +113,23 @@ static inline int largest_pow2_divisor(int x)
     return x & ~(x - 1);
 }
 
+template <typename T> static inline T lshift(T x, int shift)
+{
+    constexpr auto bits = int(sizeof(T) * 8);
+    if (shift >= bits)
+        return T(0);
+    else if (shift >= 0)
+        return x << shift;
+    else if (shift > -bits)
+        return x >> -shift;
+    else
+        return (x >> (bits/2)) >> (bits/2);
+}
+
+template <typename T> static inline T rshift(T x, int shift)
+{
+    return lshift(x, -shift);
+}
 
 class stub_exception : public std::runtime_error
 {
@@ -158,6 +176,6 @@ public:
 
 static inline void noop() {}
 
-#include "namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* GEMMSTONE_GUARD_UTILS_HPP */

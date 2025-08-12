@@ -283,7 +283,7 @@ void transpose_strides(const dnnl::engine &eng, memory &out, memory &in) {
             auto &val = mapped_ptr[offset];
             auto &val_t = mapped_ptr_t[offset_t];
 
-            char bits;
+            uint8_t bits;
             if (is_odd) {
                 bits = val & 0xf0;
                 bits >>= 4;

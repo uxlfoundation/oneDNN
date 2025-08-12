@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ public:
     std::string str() const {
         if (ndims_ == 0) return "(nil)";
 
-        std::stringstream oss;
+        stringstream_t oss;
         oss << "[";
         for (size_t i = 0; i < ndims(); i++) {
             if (i > 0) oss << ", ";
@@ -139,7 +139,7 @@ public:
     bool is_zero() const { return (global_range_.nelems() == 0); }
 
     std::string str() const {
-        std::stringstream oss;
+        stringstream_t oss;
         oss << "gws = " << global_range_.str();
         oss << " lws = ";
         if (local_range_) {

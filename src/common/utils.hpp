@@ -25,6 +25,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <locale>
+#include <sstream>
 #include <string>
 
 #include <memory>
@@ -91,6 +93,15 @@ static_assert(sizeof(void *) == 8, "oneDNN supports 64-bit architectures only");
     } while (0)
 
 #define IMPLICATION(cause, effect) (!(cause) || !!(effect))
+
+#if defined(_MSC_VER) || defined(__INTEL_COMPILER) \
+        || defined(__INTEL_LLVM_COMPILER)
+#define ALWAYS_INLINE __forceinline
+#elif defined(__clang__) || defined(__GNUC__)
+#define ALWAYS_INLINE inline __attribute__((always_inline))
+#else
+#define ALWAYS_INLINE inline
+#endif
 
 namespace utils {
 
@@ -686,6 +697,43 @@ int getenv_int_user(const char *name, int default_value = 0);
 // prefix and checks both supported variants - with "ONEDNN_" (primary) and
 // "DNNL_" (secondary) prefixes.
 std::string getenv_string_user(const char *name);
+
+// These are locale-invariant wrappers to define streaming objects for
+// string manipulation. Use these instead of the std library variants, namely,
+// std::stringstream, std::istringstream and std::ostringstream to ensure
+// locale-independent string behavior.
+struct stringstream_t : public std::stringstream {
+    template <typename... Args>
+    stringstream_t(Args &&...args)
+        : std::stringstream(std::forward<Args>(args)...) {
+        this->imbue(std::locale::classic());
+    }
+
+private:
+    using std::stringstream::imbue;
+};
+
+struct istringstream_t : public std::istringstream {
+    template <typename... Args>
+    istringstream_t(Args &&...args)
+        : std::istringstream(std::forward<Args>(args)...) {
+        this->imbue(std::locale::classic());
+    }
+
+private:
+    using std::istringstream::imbue;
+};
+
+struct ostringstream_t : public std::ostringstream {
+    template <typename... Args>
+    ostringstream_t(Args &&...args)
+        : std::ostringstream(std::forward<Args>(args)...) {
+        this->imbue(std::locale::classic());
+    }
+
+private:
+    using std::ostringstream::imbue;
+};
 
 // Various getter for profiling info
 bool get_jit_dump();

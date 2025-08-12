@@ -105,8 +105,6 @@ and the _a_ and _b_ dimensions represent the number of columns and rows, then
 _ab_ would denote the row-major (C) format and _ba_ would denote the
 column-major (Fortran) format.
 
-@todo Picture here
-
 Upper-case letters are used to indicate that the data is laid out in blocks for
 a particular dimension. In such cases, the format name contains both upper- and
 lower-case letters for that dimension with a lower-case letter preceded by the
@@ -114,8 +112,6 @@ block size. For example, the _Ab16a_ tag denotes a format similar to row-major
 but with columns split into contiguous blocks of 16 elements each. Moreover, the
 implicit assumption is that if the number of columns is not divisible by 16, the
 last block in the in-memory representation will contain padding.
-
-@todo Picture here
 
 Since there are many widely used names for specific deep learning domains like
 convolutional neural networks (CNNs), oneDNN also supports memory

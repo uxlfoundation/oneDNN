@@ -420,7 +420,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args.prepare_post_ops_mds(
             prb->attr, prb->ndims, prb->dims.data(), dnnl_layer_normalization);
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
-            create_dnnl_attr(prb->attr, attr_args));
+            create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 
     auto flags = (dnnl_normalization_flags_t)prb->flags;
     if (prb->dir & FLAG_FWD) {
@@ -464,8 +464,10 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         res->reason = skip_reason::case_not_supported;
         return;
     }
-    if (is_gpu() && prb->skip_mean()) {
-        // GPU does not support rms normalization
+
+    if ((is_nvidia_gpu() || is_amd_gpu() || is_generic_gpu())
+            && prb->skip_mean()) {
+        // non-intel GPU does not support rms normalization
         // todo: remove the check once supported
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;

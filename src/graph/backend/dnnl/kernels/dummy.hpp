@@ -34,9 +34,6 @@ namespace graph {
 namespace dnnl_impl {
 
 struct dummy_kernel_t : public kernel_base_t {
-private:
-    std::shared_ptr<subgraph_t> subgraph_;
-
 public:
     dummy_kernel_t() = default;
 

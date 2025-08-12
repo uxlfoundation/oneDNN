@@ -164,6 +164,11 @@ dnnl::engine make_dnnl_engine(const engine_t &g_engine) {
     return engine;
 }
 
+// The function will throw expection if cpu runtime is none.
+dnnl::engine make_host_engine() {
+    return dnnl::engine(dnnl::engine::kind::cpu, 0);
+}
+
 dnnl::stream make_dnnl_stream(
         const dnnl::engine &p_engine, const stream_t &g_stream) {
     UNUSED(p_engine);
@@ -620,7 +625,7 @@ std::string get_format_tag_str(const dnnl::memory::desc &md) {
     const auto &strs = md.get_strides();
     std::copy(strs.begin(), strs.end(), strides);
 
-    utils::simultaneous_sort(strides, ou_blocks, dim_chars, ndims,
+    impl::utils::simultaneous_sort(strides, ou_blocks, dim_chars, ndims,
             [](dim_t a, dim_t b) { return b - a; });
 
     std::string blk_tag = std::string(dim_chars);

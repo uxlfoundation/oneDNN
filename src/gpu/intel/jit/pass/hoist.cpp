@@ -218,7 +218,7 @@ private:
             // Introduce new variable for the invariant sub-expression.
             auto inv_expr = sum_expr_t::make_add(invariant_args, type);
             expr_t inv_var;
-            if (!expr_var.is_empty() && other_args.empty()) {
+            if (expr_var && other_args.empty()) {
                 // If nothing to hoist further, reuse the old variable and
                 // return.
                 inv_var = expr_var;
@@ -356,7 +356,7 @@ public:
         }
 
         if (in_stmt_group) {
-            gpu_assert(!obj.value.is_empty());
+            gpu_assert(obj.value);
             let_values_.emplace(obj.var, expand(obj.value, value_vars));
         }
 

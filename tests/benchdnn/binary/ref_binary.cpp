@@ -38,7 +38,7 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     const auto nelems = dst.nelems();
     const auto broadcast_mask_A = prb->get_broadcast_mask(0);
     const auto broadcast_mask_B = prb->get_broadcast_mask(1);
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         const auto idx_A = dst.get_idx(i, broadcast_mask_A);

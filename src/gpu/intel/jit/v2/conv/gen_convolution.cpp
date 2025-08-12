@@ -141,7 +141,7 @@ public:
         if (!compute_engine->mayiuse_ngen_kernels())
             return status::unimplemented;
 #if XE4
-        if (compute::gpu_arch(engine) >= compute::gpu_arch_t::xe4)
+        if (compute_engine->device_info()->gpu_arch() >= compute::gpu_arch_t::xe4)
             return status::unimplemented;
 
 #endif

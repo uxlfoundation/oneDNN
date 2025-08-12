@@ -22,6 +22,63 @@
 
 namespace graph {
 
+namespace {
+
+void handle_special_dt_set(
+        ::graph::deserialized_op_t &op, const ::std::string &dt) {
+    auto driver = op.opkind2driver();
+    bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
+
+    if (op.in_lts_.size() > 1) {
+        // Matmul/Conv/Deconv have limited support for quantized configurations.
+        if (op.kind_ == "MatMul" || op.kind_ == "Convolution"
+                || op.kind_ == "ConvTranspose") {
+            if (dt == "u8") {
+                // None of them supports u8u8, replace with u8s8.
+                op.in_lts_[1].data_type_ = "s8";
+            } else if (dt == "s4" || dt == "u4") {
+                // None of them supports x4x4, replace with f32x4f32 or
+                // xf16x4xf16.
+                op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
+            }
+        }
+    }
+    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
+            || is_f8_quantization) {
+        // pool does not support x8f32 on cpu, and binary does not support
+        // x8x8bf16 on gpu, hence replace output with x8.
+        // f8 data types needs setting output data type to f8
+        op.out_lts_[0].data_type_ = dt;
+    } else if (op.out_lts_[0].data_type_ != "bf16") {
+        if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "s8") {
+            // Use u8 as output data type for two-input operations to avoid
+            // data overflow due to the specific driver logic.
+            op.out_lts_[0].data_type_ = "u8";
+        } else {
+            // Use f32 as output data type since not all primitives support
+            // different data types for input and output.
+            op.out_lts_[0].data_type_ = "f32";
+        }
+    }
+}
+
+::std::shared_ptr<ref_primitive_t> init_ref_prim_and_fill_data(
+        const ::graph::deserialized_op_t &op, res_t *res) {
+    auto ref_prim = ::std::make_shared<ref_primitive_t>(op);
+    ref_prim->init_prb(res);
+    if (res->state == INVALID_ARGUMENTS) return nullptr;
+
+    ref_prim->init_prim(::get_test_engine(), res, /* force_override = */ true);
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return nullptr;
+
+    ref_prim->init_memory_args(::get_test_engine());
+    ref_prim->init_ref_memory_args(::get_test_engine(), res);
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return nullptr;
+    return ref_prim;
+}
+
+} // namespace
+
 partition_data_displacer_t::partition_data_displacer_t(
         const deserialized_graph_t &dg, const dnnl::graph::partition &par)
     : dg_(&dg) {
@@ -30,7 +87,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
     static const std::unordered_set<std::string> main_op_kind {"Convolution",
             "ConvTranspose", "AvgPool", "MaxPool", "MatMul", "Add", "Divide",
-            "Maximum", "Minimum", "Multiply", "Substract", "Select"};
+            "Maximum", "Minimum", "Multiply", "Subtract", "Select"};
 
     static const std::unordered_set<std::string> go_through_op_kind {
             "StaticTranspose", "StaticReshape", "TypeCast", "Quantize",
@@ -95,8 +152,25 @@ partition_data_displacer_t::partition_data_displacer_t(
                     break;
                 }
 
-                if (parent_op->kind_ == "Dequantize"
-                        || parent_op->kind_ == "DynamicDequantize") {
+                if (parent_op->kind_ == "DynamicDequantize"
+                        && dg.get_recognized_pattern()
+                                == graph_recognized_pattern_t::sdpa) {
+                    // Add filling type for quantized input of SDPA cases
+                    const auto &parent_op_in_lt = parent_op->in_lts_[0];
+                    const auto &prev_parent_op
+                            = dg_->get_op_by_out_lt(parent_op_in_lt.id_);
+                    if (prev_parent_op.empty()
+                            || op_ids_set_.find(prev_parent_op.id_)
+                                    == op_ids_set_.end()) {
+
+                        displace_args_.emplace(parent_op_in_lt.id_,
+                                displace_args_t {aop, i, parent_op_in_lt,
+                                        filling_type_t::compressed_sdpa});
+                        break;
+                    }
+                }
+
+                if (parent_op->kind_ == "Dequantize") {
                     // Dequantize is accepted when it doesn't have any
                     // predecessors in the partition (though it may have it in
                     // the graph).
@@ -270,7 +344,7 @@ partition_data_displacer_t::partition_data_displacer_t(
                         displace_args_t {aop, offset, *causal_mask_lt,
                                 filling_type, {{user_set_value}, cfg_name}});
             } else if (filling_type == filling_type_t::causal_mask) {
-                // Casual mask filling
+                // Causal mask filling
                 displace_args_.emplace(causal_mask_lt->id_,
                         displace_args_t {
                                 aop, offset, *causal_mask_lt, filling_type});
@@ -339,11 +413,34 @@ partition_data_displacer_t::partition_data_displacer_t(
             set_seq_len_displace_args(child_sub_op, seq_len_q);
             break;
         }
+
+        // Fill proper data for softmax stats in sdpa backward graph.
+        // TODO: check if it's a known sdpa pattern before doing the data filling
+        while (aop.kind_ == "Subtract") {
+            // for softmax stats, it's used as P = exp(S-stats)
+            // stats should be an input of the whole backward graph, so it should
+            // have no producer.
+            auto *aop_in_lt = &aop.in_lts_[1];
+            auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+            if (!parent_op->empty()) break;
+
+            // subtract should be followed by exp to resume a softmax functionality.
+            auto *aop_out_lt = &aop.out_lts_[0];
+            auto *child_exp_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_exp_op->kind_ != "Exp") break;
+
+            displace_args_.emplace(aop_in_lt->id_,
+                    displace_args_t {
+                            aop, 1, *aop_in_lt, filling_type_t::softmax_stats});
+            break;
+        }
     }
 }
 
-int partition_data_displacer_t::displace_input_data(
-        size_t lt_id, dnn_mem_t &mem, res_t *res) {
+int partition_data_displacer_t::displace_input_data(size_t lt_id,
+        dnn_mem_t &mem,
+        const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
+        res_t *res) {
     if (!dg_) {
         res->state = FAILED;
         return FAIL;
@@ -364,18 +461,42 @@ int partition_data_displacer_t::displace_input_data(
     int main_op_arg = get_prim_arg_name_from_graph_op_input_offset(
             opkind, main_op_offset);
 
-    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s;\n", main_op.kind_.c_str(),
-            data_kind2str(exec_arg2data_kind(main_op_arg)));
+    const auto &get_name = [&filling_type, &fill_cfg]() {
+        std::string s;
+        if (filling_type == filling_type_t::fixed_setting) {
+            s = fill_cfg.name_;
+        } else if (filling_type == filling_type_t::causal_mask) {
+            s = "Explicit causal mask";
+        } else if (filling_type == filling_type_t::quantization) {
+            s = "Quantization";
+        } else if (filling_type == filling_type_t::compressed_sdpa) {
+            s = "Compressed SDPA";
+        }
+        return s;
+    };
+    BENCHDNN_PRINT(3, "[DISPLACE]: Op:%s; Arg:%s; Name:%s;\n",
+            main_op.kind_.c_str(),
+            data_kind2str(exec_arg2data_kind(main_op_arg)), get_name().c_str());
 
     dnn_mem_t mem_replace;
     if (filling_type == filling_type_t::quantization) {
         SAFE(gen_quantize_filling(
                      main_op, main_op_arg, mem_replace, tensor.data_type_, res),
                 WARN);
+    } else if (filling_type == filling_type_t::compressed_sdpa) {
+        SAFE(gen_compressed_sdpa_filling(
+                     main_op, main_op_arg, mem_replace, tensor.data_type_, res),
+                WARN);
     } else if (filling_type == filling_type_t::causal_mask) {
         SAFE(gen_causal_mask_filling(mem_replace, mem.md_, res), WARN);
     } else if (filling_type == filling_type_t::fixed_setting) {
         SAFE(gen_fixed_set_filling(mem_replace, mem.md_, fill_cfg, res), WARN);
+    } else if (filling_type == filling_type_t::softmax_stats) {
+        const auto *softmax_src_lt = &main_op.in_lts_[0];
+        const dnn_mem_t &softmax_src_mem = lt_id_2_mems.at(softmax_src_lt->id_);
+        SAFE(gen_softmax_stats_filling(main_op, main_op_arg, softmax_src_mem,
+                     mem_replace, mem.md_, res),
+                WARN);
     } else {
         assert(!"unexpected filling type");
     }
@@ -429,12 +550,11 @@ int partition_data_displacer_t::displace_input_data(
         }
 
         // execute the reverse op
-
-        std::unordered_set<size_t> empty_set;
         res_t res {};
 
         ref_primitive_t ref_prim(op);
         ref_prim.init_prb(&res);
+        if (res.state == INVALID_ARGUMENTS) return FAIL;
         SAFE_V(ref_prim.init_prim(
                 get_cpu_engine(), &res, /* force_override = */ true));
 
@@ -494,38 +614,27 @@ int partition_data_displacer_t::displace_input_data(
     return OK;
 }
 
-int partition_data_displacer_t::gen_quantize_filling(
+int partition_data_displacer_t::gen_compressed_sdpa_filling(
         const ::graph::deserialized_op_t &main_op, int arg, dnn_mem_t &mem,
         const ::std::string &dt, res_t *res) {
+    if (!(arg & DNNL_ARG_WEIGHTS)) return FAIL;
     // clone a deserialized op object and modify to specified data type
     ::graph::deserialized_op_t op = main_op;
-    auto driver = opkind2driver(opstr2kind(op.kind_));
-    bool is_f8_quantization = (dt == "f8_e5m2" || dt == "f8_e4m3");
-
+    bool s8_mem_for_u8_wei = dt == "u8";
     op.in_lts_[0].data_type_ = dt;
-    if (op.in_lts_.size() > 1) {
-        op.in_lts_[1].data_type_ = dt;
-        // Matmul/Conv/Deconv have limited support for quantized configurations.
-        if (op.kind_ == "MatMul" || op.kind_ == "Convolution"
-                || op.kind_ == "ConvTranspose") {
-            if (dt == "u8") {
-                // None of them supports u8u8, replace with u8s8.
-                op.in_lts_[1].data_type_ = "s8";
-            } else if (dt == "s4" || dt == "u4") {
-                // None of them supports x4x4, replace with f32x4f32 or
-                // xf16x4xf16.
-                op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
-            }
-        }
+    op.in_lts_[1].data_type_ = dt;
+
+    if (dt == "u8") {
+        // None of them supports u8u8, replace with u8s8.
+        op.in_lts_[1].data_type_ = "s8";
+    } else if (dt == "s4" || dt == "u4") {
+        // None of them supports x4x4, replace with f32x4f32 or
+        // xf16x4xf16.
+        op.in_lts_[0].data_type_ = op.out_lts_[0].data_type_;
     }
-    if (driver == dnnl_driver_t::pool || driver == dnnl_driver_t::binary
-            || is_f8_quantization) {
-        // pool does not support x8f32 on cpu, and binary does not support
-        // x8x8bf16 on gpu, hence replace output with x8.
-        // f8 data types needs setting output data type to f8
-        op.out_lts_[0].data_type_ = dt;
-    } else if (op.out_lts_[0].data_type_ != "bf16") {
-        if (op.in_lts_.size() > 1 && op.in_lts_[1].data_type_ == "s8") {
+
+    if (op.out_lts_[0].data_type_ != "bf16") {
+        if (op.in_lts_[1].data_type_ == "s8") {
             // Use u8 as output data type for two-input operations to avoid
             // data overflow due to the specific driver logic.
             op.out_lts_[0].data_type_ = "u8";
@@ -536,19 +645,56 @@ int partition_data_displacer_t::gen_quantize_filling(
         }
     }
 
-    ::std::unordered_set<size_t> empty_set;
-    const auto &eng = get_test_engine();
-    ref_primitive_t ref_prim(op);
-    ref_prim.init_prb(res);
-    if (res->state == INVALID_ARGUMENTS) return FAIL;
-    SAFE_V(ref_prim.init_prim(eng, res, /* force_override = */ true));
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
-    ref_prim.init_memory_args(eng);
-    SAFE_V(ref_prim.init_ref_memory_args(eng, res));
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+    auto ref_prim_ptr = init_ref_prim_and_fill_data(op, res);
+    if (!ref_prim_ptr) {
+        if (res->state == INVALID_ARGUMENTS) return FAIL;
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+    }
 
-    mem = ::std::move(const_cast<dnn_mem_t &>(ref_prim.get_arg(arg)));
+    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim_ptr->get_arg(arg));
+    if (s8_mem_for_u8_wei) {
+        // If s8 data is directly read using the u8 data type, it may lead to
+        // overflow issues. For complex patterns like SDPA, this could result
+        // in precision degradation. Using a reorder to convert negative values
+        // into zeros.
+        dnn_mem_t gen_u8_mem(gen_mem, dnnl_u8, tag::abx, gen_mem.engine());
+        mem = ::std::move(gen_u8_mem);
+    } else
+        mem = ::std::move(gen_mem);
 
+    // Reduce data range to avoid false positive results
+    // Note: traversing over the mem data twice, which is bad  for
+    // performance but doesn't require dealing with external
+    // data filling configuration.
+    static constexpr int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(mem.nelems(), chunk_size);
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, mem.nelems());
+
+        // TODO(Zhitao): Adjust data filling strategy based on problem
+        // configuration.
+        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            int value = static_cast<int32_t>(mem.get_elem(idx));
+            mem.set_elem(idx, value / 2);
+        }
+    });
+    return OK;
+}
+
+int partition_data_displacer_t::gen_quantize_filling(
+        const ::graph::deserialized_op_t &main_op, int arg, dnn_mem_t &mem,
+        const ::std::string &dt, res_t *res) {
+    // clone a deserialized op object and modify to specified data type
+    ::graph::deserialized_op_t op = main_op;
+    op.in_lts_[0].data_type_ = dt;
+    if (op.in_lts_.size() > 1) op.in_lts_[1].data_type_ = dt;
+
+    handle_special_dt_set(op, dt);
+    auto ref_prim = init_ref_prim_and_fill_data(op, res);
+
+    auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
+    mem = ::std::move(gen_mem);
     return OK;
 }
 
@@ -612,6 +758,57 @@ int partition_data_displacer_t::gen_causal_mask_filling(
     });
 
     mem = std::move(tmp_mem);
+    return OK;
+}
+
+int partition_data_displacer_t::gen_softmax_stats_filling(
+        const ::graph::deserialized_op_t &main_op, int arg,
+        const dnn_mem_t &src_mem, dnn_mem_t &mem, const_dnnl_memory_desc_t md,
+        res_t *res) const {
+
+    dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
+
+    logical_tensor::dims softmax_src_shape = main_op.in_lts_[0].shape_;
+    logical_tensor::dims softmax_stats_shape = main_op.in_lts_[1].shape_;
+    size_t axis = 0;
+    for (; axis < softmax_src_shape.size() && axis < softmax_src_shape.size();
+            ++axis) {
+        if (softmax_src_shape[axis] != softmax_stats_shape[axis]) break;
+    }
+
+    int64_t outer_size {1}, inner_size {1}, axis_size {1};
+    for (size_t i = 0; i < axis; i++) {
+        outer_size *= softmax_src_shape[i];
+    }
+    for (size_t i = axis + 1; i < softmax_src_shape.size(); i++)
+        inner_size *= softmax_src_shape[i];
+    axis_size = softmax_src_shape[axis];
+
+    benchdnn_parallel_nd(outer_size, inner_size, [&](int64_t ou, int64_t in) {
+        float space_denom = 0.f;
+        float space_max = -FLT_MAX;
+        int64_t ou_in_offset = ou * axis_size * inner_size + in;
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            space_max = MAX2(space_max, src_mem.get_f32_elem(idx));
+        }
+
+        for (int64_t as = 0; as < axis_size; ++as) {
+            int64_t idx = ou_in_offset + as * inner_size;
+            float s = src_mem.get_f32_elem(idx);
+            space_denom += expf(s - space_max);
+        }
+
+        // computes stats w.r.t. the softmax input
+        // stats = max(input) + log(sum(exp(input - max(input))))
+        // consider inf as a zero value
+        int64_t stats_idx = ou * inner_size + in;
+        float stats_value = space_denom ? space_max + logf(space_denom) : 0.f;
+        m.set_f32_elem(stats_idx, stats_value);
+    });
+
+    mem = std::move(m);
     return OK;
 }
 

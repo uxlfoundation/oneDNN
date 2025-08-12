@@ -27,7 +27,8 @@ namespace graph {
 namespace dnnl_impl {
 
 bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
-        const std::vector<logical_tensor_t> &inputs) {
+        const std::vector<logical_tensor_t> &inputs,
+        const std::vector<logical_tensor_t> &outputs) {
     // The order of input logical tensors in inputs is not certain, we need
     // to record the input offset in a certain order of ops.
     CHECK_BOOL(record_input_offset(sg, inputs));
@@ -35,6 +36,8 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
     ndims = src1_user_dims.size();
     VCHECK_SDP_DECOMP(ndims == 4 || ndims == 5, false,
             "Input dims should be 4 or 5, but got %zu", src1_user_dims.size());
+    VCHECK_SDP_DECOMP(
+            outputs.size() == 1, false, "does not support multiple outputs");
 
     // Initialize SDP input dimension according to the src of mm1
     int index = 0;
@@ -165,7 +168,8 @@ impl::status_t sdp_decomp_config_t::construct_params(
     src1_strides = ltw(inputs[graph_inport[mm1_src]]).vstrides();
     sub_src1_md = memory::desc(sub_src1_dims, dt_src_user,
             {src1_strides[second_last_dim], src1_strides[last_dim]});
-    auto sub_src1_d_md = memory::desc(sub_src1_dims, dt_src_user, tag::ab);
+    auto sub_src1_d_md
+            = memory::desc(sub_src1_dims, dt_src_user, format_tag::ab);
     auto sub_reorder0_pd = reorder::primitive_desc(
             p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
     sub_reorder0.init(sub_reorder0_pd);
@@ -183,7 +187,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_wei1_user_md = memory::desc(sub_wei1_dims, dt_wei_user,
             {wei1_strides[second_last_dim], wei1_strides[last_dim]});
     // Flip the format to have `ba` weights MBI item in per thread loop.
-    sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, tag::ba);
+    sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, format_tag::ba);
     auto sub_reorder1_pd = reorder::primitive_desc(p_engine, sub_wei1_user_md,
             p_engine, sub_wei1_md, sub_reorder1_attr);
     sub_reorder1.init(sub_reorder1_pd);
@@ -195,9 +199,10 @@ impl::status_t sdp_decomp_config_t::construct_params(
     dims sub_mm1_wei_dims = {head_size_qk, seq_len_kv};
     dims sub_mm1_dst_dims = {seq_len_q, seq_len_kv};
 
-    sub_mm1_src_md = memory::desc(sub_mm1_src_dims, dt_src_user, tag::ab);
-    sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, tag::ba);
-    sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, tag::ab);
+    sub_mm1_src_md
+            = memory::desc(sub_mm1_src_dims, dt_src_user, format_tag::ab);
+    sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, format_tag::ba);
+    sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, format_tag::ab);
     dnnl::post_ops dnnl_pops;
     auto mm1_ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
     for (int i = 0; i < mm1_ori_dnnl_pops.get()->len(); i++) {
@@ -279,7 +284,8 @@ impl::status_t sdp_decomp_config_t::construct_params(
     }
     sub_softmax_attr.set_post_ops(dnnl_pops);
 
-    sub_softmax_dst_md = memory::desc(sub_mm1_dst_dims, dt_src_user, tag::ab);
+    sub_softmax_dst_md
+            = memory::desc(sub_mm1_dst_dims, dt_src_user, format_tag::ab);
     const auto mode = sdp_op[2]->get_attr<std::string>(op_attr::mode);
     const dnnl::algorithm algo = mode == "inf_as_zero"
             ? static_cast<dnnl::algorithm>(
@@ -300,7 +306,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
             {wei2_strides[second_last_dim], wei2_strides[last_dim]});
     // The format is `ab` due to performance of reorder to `ba` is low.
-    auto sub_wei2_md = memory::desc(sub_wei2_dims, dt_wei, tag::ab);
+    auto sub_wei2_md = memory::desc(sub_wei2_dims, dt_wei, format_tag::ab);
     auto sub_reorder2_pd = reorder::primitive_desc(p_engine, sub_wei2_user_md,
             p_engine, sub_wei2_md, sub_reorder2_attr);
     sub_reorder2.init(sub_reorder2_pd);
@@ -311,9 +317,11 @@ impl::status_t sdp_decomp_config_t::construct_params(
     dims sub_mm2_src_dims = {seq_len_q, seq_len_kv};
     dims sub_mm2_wei_dims = {seq_len_kv, head_size_v};
     dims sub_mm2_dst_dims = {seq_len_q, head_size_v};
-    auto sub_mm2_src_md = memory::desc(sub_mm2_src_dims, dt_src_user, tag::ab);
-    sub_mm2_wei_md = memory::desc(sub_mm2_wei_dims, dt_wei, tag::ab);
-    sub_mm2_dst_md = memory::desc(sub_mm2_dst_dims, dt_src_user, tag::ab);
+    auto sub_mm2_src_md
+            = memory::desc(sub_mm2_src_dims, dt_src_user, format_tag::ab);
+    sub_mm2_wei_md = memory::desc(sub_mm2_wei_dims, dt_wei, format_tag::ab);
+    sub_mm2_dst_md
+            = memory::desc(sub_mm2_dst_dims, dt_src_user, format_tag::ab);
     auto sub_mm2_pd = matmul::primitive_desc(p_engine, sub_mm2_src_md,
             sub_mm2_wei_md, sub_mm2_dst_md, sub_matmul2_attr);
     sub_mm2_prim = matmul(sub_mm2_pd);
@@ -324,7 +332,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     dims sub_dst_dims = {seq_len_q, head_size_v};
     auto out_lt = sdp_op[4]->get_output_value(0)->get_logical_tensor();
     dst_strides = ltw(out_lt).vstrides();
-    sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, tag::ab);
+    sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, format_tag::ab);
     sub_dst_user_md = memory::desc(sub_dst_dims, dt_src_user,
             {dst_strides[second_last_dim], dst_strides[last_dim]});
     auto sub_reorder3_pd = reorder::primitive_desc(
@@ -608,8 +616,27 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
     }
 
     if (has_select) {
+        // Note: Currently, decompose kernel only supports the pattern1 where
+        // input1 is an external graph input and input2 comes from the output of
+        // preceding op, and doesn't suppoort pattern which swaps input1 and
+        // input2. May need to extend support if requested by user.
+        ///                             |                     |
+        ///                         Preceding_op         Preceding_op
+        ///                             |                     |
+        ///    input0     input1     input2       input0    input1     input2
+        ///  (condition) (graph in)  (inter)    (condition) (inter)  (graph in)
+        ///          \      |        /                \      |        /
+        ///            \    |      /                    \    |       /
+        ///               Select                           Select
+        ///                 |                                |
+        ///               output                           output
+        ///                 |                                 |
+        ///             Succeeding_op                    Succeeding_op
+        ///              (pattern1)                      (pattern2)
         int cond_id = find_graph_inport(select->get_input_value(0));
         int src0_id = find_graph_inport(select->get_input_value(1));
+        VCHECK_SDP_DECOMP(src0_id != -1 && cond_id != -1, status::invalid_graph,
+                "failed to find graph inport, unsupported select input order");
         graph_inport.emplace_back(cond_id);
         graph_inport.emplace_back(src0_id);
     } else {
@@ -716,7 +743,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
         int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
         const fusion_info_t &fusion_info = mgr.get_info(key);
         if (fusion_info.with_runtime_scales(true, 0)) {
-            memory::desc sub_src_scale_md = memory::desc({1}, dt_scale, tag::x);
+            memory::desc sub_src_scale_md
+                    = memory::desc({1}, dt_scale, format_tag::x);
             memory sub_src_scale = memory(sub_src_scale_md, p_engine);
             float *src_scale_val_ptr = reinterpret_cast<float *>(
                     sub_src_scale.get_data_handle());
@@ -726,7 +754,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
             args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, sub_src_scale});
         }
         if (fusion_info.with_runtime_scales(true, 1)) {
-            memory::desc sub_wei_scale_md = memory::desc({1}, dt_scale, tag::x);
+            memory::desc sub_wei_scale_md
+                    = memory::desc({1}, dt_scale, format_tag::x);
             memory sub_wei_scale = memory(sub_wei_scale_md, p_engine);
             float *wei_scale_val_ptr = reinterpret_cast<float *>(
                     sub_wei_scale.get_data_handle());
@@ -738,7 +767,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 
         // src_zp and wei_zp
         if (fusion_info.with_runtime_zero_points(true, 0)) {
-            memory::desc sub_src_zp_md = memory::desc({1}, dt_zp, tag::x);
+            memory::desc sub_src_zp_md
+                    = memory::desc({1}, dt_zp, format_tag::x);
             memory sub_src_zp = memory(sub_src_zp_md, p_engine);
             int *src_zp_val_ptr
                     = reinterpret_cast<int *>(sub_src_zp.get_data_handle());
@@ -747,7 +777,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
             args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, sub_src_zp});
         }
         if (fusion_info.with_runtime_zero_points(true, 1)) {
-            memory::desc sub_wei_zp_md = memory::desc({1}, dt_zp, tag::x);
+            memory::desc sub_wei_zp_md
+                    = memory::desc({1}, dt_zp, format_tag::x);
             memory sub_wei_zp = memory(sub_wei_zp_md, p_engine);
             int *wei_zp_val_ptr
                     = reinterpret_cast<int *>(sub_wei_zp.get_data_handle());
@@ -759,7 +790,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
 
         // dst scale, dst zp
         if (fusion_info.with_runtime_scales(false, 0)) {
-            memory::desc sub_dst_scale_md = memory::desc({1}, dt_scale, tag::x);
+            memory::desc sub_dst_scale_md
+                    = memory::desc({1}, dt_scale, format_tag::x);
             memory sub_dst_scale = memory(sub_dst_scale_md, p_engine);
             float *dst_scale_val_ptr = reinterpret_cast<float *>(
                     sub_dst_scale.get_data_handle());
@@ -768,7 +800,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
             args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, sub_dst_scale});
         }
         if (fusion_info.with_runtime_zero_points(false, 0)) {
-            memory::desc sub_dst_zp_md = memory::desc({1}, dt_zp, tag::x);
+            memory::desc sub_dst_zp_md
+                    = memory::desc({1}, dt_zp, format_tag::x);
             memory sub_dst_zp = memory(sub_dst_zp_md, p_engine);
             int *dst_zp_val_ptr
                     = reinterpret_cast<int *>(sub_dst_zp.get_data_handle());
@@ -780,7 +813,8 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
     if (op && op->get_kind() == op_kind::dnnl_reorder) {
         if (op->has_attr(op_attr::with_runtime_dst_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_dst_zps)) {
-            memory::desc sub_dst_zp_md = memory::desc({1}, dt_zp, tag::x);
+            memory::desc sub_dst_zp_md
+                    = memory::desc({1}, dt_zp, format_tag::x);
             memory sub_dst_zp = memory(sub_dst_zp_md, p_engine);
             int *dst_zp_val_ptr
                     = reinterpret_cast<int *>(sub_dst_zp.get_data_handle());
@@ -820,6 +854,32 @@ dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
     }
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     return attr;
+}
+
+#define DECLARE_RESET_ENGINE(primitive_name, primitive_type) \
+    { \
+        const auto desc_t = (primitive_name).get_primitive_desc()->impl(); \
+        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
+        primitive_type::primitive_desc new_pd(&new_pd_t); \
+        (primitive_name) = primitive_type(new_pd); \
+    }
+
+impl::status_t sdp_decomp_config_t::reset_engine(const dnnl::engine &p_engine) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(1);
+#endif
+    DECLARE_RESET_ENGINE(sub_mm1_prim, matmul);
+    DECLARE_RESET_ENGINE(sub_softmax_prim, softmax_forward);
+    DECLARE_RESET_ENGINE(sub_mm2_prim, matmul);
+    if (has_select) DECLARE_RESET_ENGINE(sub_select_prim, binary);
+    sub_reorder0.reset_engine(p_engine);
+    sub_reorder1.reset_engine(p_engine);
+    sub_reorder2.reset_engine(p_engine);
+    sub_reorder3.reset_engine(p_engine);
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(nthr);
+#endif
+    return dnnl_success;
 }
 
 template status_t

@@ -29,7 +29,6 @@
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/utils/ngen_proxy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
@@ -51,7 +50,8 @@
     HANDLE_IR_OBJECT(shuffle_t) \
     HANDLE_IR_OBJECT(ternary_op_t) \
     HANDLE_IR_OBJECT(unary_op_t) \
-    HANDLE_IR_OBJECT(var_t)
+    HANDLE_IR_OBJECT(var_t) \
+    HANDLE_IR_OBJECT(ref_t)
 
 // All IR statement objects.
 #define HANDLE_STMT_IR_OBJECTS() \
@@ -65,85 +65,22 @@
     HANDLE_IR_OBJECT(store_t) \
     HANDLE_IR_OBJECT(while_t)
 
-#define HANDLE_TRAVERSE_TARGETS() \
+#define HANDLE_CORE_IR_OBJECTS() \
     HANDLE_EXPR_IR_OBJECTS() \
-    HANDLE_STMT_IR_OBJECTS() \
-    HANDLE_IR_OBJECT(func_impl_t) \
-    HANDLE_IR_OBJECT(nary_op_t) \
-    HANDLE_IR_OBJECT(pexpr_t)
-
-#define HANDLE_ALL_IR_OBJECTS() \
-    HANDLE_EXPR_IR_OBJECTS() \
-    HANDLE_STMT_IR_OBJECTS() \
-    HANDLE_IR_OBJECT(func_impl_t)
-
-enum ir_type_id_t : uint8_t {
-#define HANDLE_IR_OBJECT(type) type,
-
-    // Create typeid for objects which can be visited/mutated. These need to be
-    // first as the typeid is used as an index into an array to dispatch to the
-    // correct mutate function.
-    HANDLE_ALL_IR_OBJECTS()
-
-    //Used to calculate number of IR objects that can be visited/mutated
-    end_visitable_ir_objects,
-
-    // Other IR object
-    expr_impl_t = end_visitable_ir_objects,
-    nary_op_t,
-    stmt_impl_t,
-    grf_permute_attr_t,
-    bank_conflict_attr_t,
-    instruction_modifier_attr_t,
-    builtin_t,
-    pexpr_t,
-    pint_imm_t,
-    factored_expr_t,
-    send_t,
-    dpas_t,
-    mad_t,
-    reduce_t,
-    reorder_t,
-    eltwise_t,
-
-#undef HANDLE_IR_OBJECT
-};
-
-struct type_info_t {
-    type_info_t(ir_type_id_t type_id, bool is_expr, bool is_stmt)
-        : type_id(type_id), is_expr(is_expr), is_stmt(is_stmt) {};
-    ir_type_id_t type_id;
-    bool is_expr;
-    bool is_stmt;
-};
+    HANDLE_STMT_IR_OBJECTS()
 
 // Auxiliary macros to reduce boilerplate.
-#define IR_DECL_TYPE_ID(class_name) \
+#define IR_DECL_TYPE_IMPL(type_id, class_name) \
     using self_type = class_name; \
-    static ir_type_id_t _type_id() { return ir_type_id_t::class_name; } \
-    static ir_type_id_t _dispatch_type_id() { return _type_id(); } \
-    static type_info_t _type_info() { \
-        return type_info_t(_type_id(), _is_expr(), _is_stmt()); \
+    static constexpr type_info_t _type_info() { \
+        return type_info_t(type_id, typeid(class_name), \
+                is_expr_t<class_name>::value, is_stmt_t<class_name>::value); \
     }
 
-#define IR_DECL_DERIVED_TYPE_ID(class_name, base_name) \
-    using self_type = class_name; \
-    static ir_type_id_t _type_id() { return ir_type_id_t::class_name; } \
-    static ir_type_id_t _dispatch_type_id() { return base_name::_type_id(); } \
-    ir_type_id_t dispatch_type_id() const override { \
-        return _dispatch_type_id(); \
-    } \
-    static type_info_t _type_info() { \
-        return type_info_t(_type_id(), _is_expr(), _is_stmt()); \
-    }
-
-#define IR_DECL_EXPR_TYPE_ID(class_name) \
-    IR_DECL_TYPE_ID(class_name) \
-    static bool _is_expr() { return true; };
-
-#define IR_DECL_STMT_TYPE_ID(class_name) \
-    IR_DECL_TYPE_ID(class_name) \
-    static bool _is_stmt() { return true; };
+#define IR_DECL_CORE_TYPE(class_name) \
+    IR_DECL_TYPE_IMPL(ir_type_id_t::class_name, class_name)
+#define IR_DECL_TYPE(class_name) \
+    IR_DECL_TYPE_IMPL(ir_type_id_t::undef, class_name)
 
 #define IR_DECLARE_TRAVERSERS() \
     object_t _mutate(ir_mutator_t &mutator) const override { \
@@ -258,85 +195,162 @@ static auto type_kind_names = nstl::to_array({
 });
 GPU_DEFINE_PARSE_ENUM(type_kind_t, type_kind_names)
 
+enum class type_attr_t : uint32_t {
+    undef = 0,
+    ptr = 1,
+    mut = 2,
+    simd = 4,
+    slm = 8
+};
+
+GPU_DEFINE_BIT_MASK_ENUM_OPS(type_attr_t)
+inline type_attr_t &operator|=(type_attr_t &a, type_attr_t b) {
+    return a = a | b;
+}
+inline type_attr_t &operator&=(type_attr_t &a, type_attr_t b) {
+    return a = a & b;
+}
+
+inline type_kind_t get_kind(ngen::DataType t) {
+    switch (t) {
+        case ngen::DataType::uq: return type_kind_t::u64;
+        case ngen::DataType::q: return type_kind_t::s64;
+        case ngen::DataType::ud: return type_kind_t::u32;
+        case ngen::DataType::d: return type_kind_t::s32;
+        case ngen::DataType::uw: return type_kind_t::u16;
+        case ngen::DataType::w: return type_kind_t::s16;
+        case ngen::DataType::ub: return type_kind_t::u8;
+        case ngen::DataType::b: return type_kind_t::s8;
+        case ngen::DataType::u4: return type_kind_t::u4;
+        case ngen::DataType::s4: return type_kind_t::s4;
+
+        case ngen::DataType::df: return type_kind_t::f64;
+        case ngen::DataType::f: return type_kind_t::f32;
+        case ngen::DataType::tf32: return type_kind_t::tf32;
+        case ngen::DataType::hf: return type_kind_t::f16;
+        case ngen::DataType::bf: return type_kind_t::bf16;
+        case ngen::DataType::bf8: return type_kind_t::bf8;
+        case ngen::DataType::hf8: return type_kind_t::hf8;
+        default: return type_kind_t::undef;
+    }
+}
+
 class type_t {
 public:
     static type_t undef() { return type_t(type_kind_t::undef); }
-    static type_t _bool(int elems = 1) {
-        return type_t(type_kind_t::_bool, elems);
+
+    static type_t _bool(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::_bool, elems, attr);
     }
 
-    static type_t u4(int elems = 1) { return type_t(type_kind_t::u4, elems); }
-    static type_t s4(int elems = 1) { return type_t(type_kind_t::s4, elems); }
-    static type_t u8(int elems = 1) { return type_t(type_kind_t::u8, elems); }
-    static type_t s8(int elems = 1) { return type_t(type_kind_t::s8, elems); }
-    static type_t u16(int elems = 1) { return type_t(type_kind_t::u16, elems); }
-    static type_t s16(int elems = 1) { return type_t(type_kind_t::s16, elems); }
-    static type_t u32(int elems = 1) { return type_t(type_kind_t::u32, elems); }
-    static type_t s32(int elems = 1) { return type_t(type_kind_t::s32, elems); }
-    static type_t u64(int elems = 1) { return type_t(type_kind_t::u64, elems); }
-    static type_t s64(int elems = 1) { return type_t(type_kind_t::s64, elems); }
+    static type_t u4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u4, elems, attr);
+    }
+    static type_t s4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s4, elems, attr);
+    }
+    static type_t u8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u8, elems, attr);
+    }
+    static type_t s8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s8, elems, attr);
+    }
+    static type_t u16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u16, elems, attr);
+    }
+    static type_t s16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s16, elems, attr);
+    }
+    static type_t u32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u32, elems, attr);
+    }
+    static type_t s32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s32, elems, attr);
+    }
+    static type_t u64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::u64, elems, attr);
+    }
+    static type_t s64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::s64, elems, attr);
+    }
 
     // Returns unsigned integer type.
-    static type_t u(int bits, int elems = 1) {
+    static type_t u(
+            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
         switch (bits) {
-            case 4: return u4(elems);
-            case 8: return u8(elems);
-            case 16: return u16(elems);
-            case 32: return u32(elems);
-            case 64: return u64(elems);
+            case 4: return u4(elems, attr);
+            case 8: return u8(elems, attr);
+            case 16: return u16(elems, attr);
+            case 32: return u32(elems, attr);
+            case 64: return u64(elems, attr);
             default: gpu_error_not_expected();
         }
         return type_t::undef();
     }
 
     // Returns signed integer type.
-    static type_t s(int bits, int elems = 1) {
+    static type_t s(
+            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
         switch (bits) {
-            case 4: return s4(elems);
-            case 8: return s8(elems);
-            case 16: return s16(elems);
-            case 32: return s32(elems);
-            case 64: return s64(elems);
+            case 4: return s4(elems, attr);
+            case 8: return s8(elems, attr);
+            case 16: return s16(elems, attr);
+            case 32: return s32(elems, attr);
+            case 64: return s64(elems, attr);
             default: gpu_error_not_expected();
         }
         return type_t::undef();
     }
 
-    static type_t f4_e3m0(int elems = 1) {
-        return type_t(type_kind_t::f4_e3m0, elems);
+    static type_t f4_e3m0(
+            int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f4_e3m0, elems, attr);
     }
-    static type_t f4_e2m1(int elems = 1) {
-        return type_t(type_kind_t::f4_e2m1, elems);
+    static type_t f4_e2m1(
+            int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f4_e2m1, elems, attr);
     }
-    static type_t bf8(int elems = 1) { return type_t(type_kind_t::bf8, elems); }
-    static type_t hf8(int elems = 1) { return type_t(type_kind_t::hf8, elems); }
-    static type_t bf16(int elems = 1) {
-        return type_t(type_kind_t::bf16, elems);
+    static type_t bf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::bf8, elems, attr);
     }
-    static type_t f16(int elems = 1) { return type_t(type_kind_t::f16, elems); }
-    static type_t tf32(int elems = 1) {
-        return type_t(type_kind_t::tf32, elems);
+    static type_t hf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::hf8, elems, attr);
     }
-    static type_t f32(int elems = 1) { return type_t(type_kind_t::f32, elems); }
-    static type_t f64(int elems = 1) { return type_t(type_kind_t::f64, elems); }
-
-    static type_t byte(int elems = 1) {
-        return type_t(type_kind_t::byte, elems);
+    static type_t bf16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::bf16, elems, attr);
     }
-    static type_t byte_ptr(int elems = 1) {
-        return type_t(type_kind_t::byte, elems).with_ptr();
+    static type_t f16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f16, elems, attr);
     }
-    static type_t dword(int elems = 1) {
-        return type_t(type_kind_t::dword, elems);
+    static type_t tf32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::tf32, elems, attr);
     }
-    static type_t qword(int elems = 1) {
-        return type_t(type_kind_t::qword, elems);
+    static type_t f32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f32, elems, attr);
     }
-    static type_t oword(int elems = 1) {
-        return type_t(type_kind_t::oword, elems);
+    static type_t f64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::f64, elems, attr);
     }
-    static type_t hword(int elems = 1) {
-        return type_t(type_kind_t::hword, elems);
+    static type_t byte(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::byte, elems, attr);
+    }
+    static type_t byte_ptr(int elems = 1, bool is_slm = false,
+            type_attr_t attr = type_attr_t::undef) {
+        auto type = type_t(type_kind_t::byte, elems, attr).with_ptr();
+        if (is_slm) type = type.slm();
+        return type;
+    }
+    static type_t dword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::dword, elems, attr);
+    }
+    static type_t qword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::qword, elems, attr);
+    }
+    static type_t oword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::oword, elems, attr);
+    }
+    static type_t hword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
+        return type_t(type_kind_t::hword, elems, attr);
     }
 
     template <typename T>
@@ -409,7 +423,13 @@ public:
 
     type_t() : type_t(type_t::undef()) {}
 
-    type_t(type_kind_t kind, uint32_t elems = 1) : kind_(kind), elems_(elems) {}
+    type_t(type_kind_t kind, uint32_t elems = 1,
+            type_attr_t attr = type_attr_t::undef)
+        : kind_(kind), elems_(elems), attr_(attr) {}
+
+    type_t(ngen::DataType type, uint32_t elems = 1,
+            type_attr_t attr = type_attr_t::undef)
+        : type_t(get_kind(type), elems, attr) {}
 
     type_t(const std::string &s) : elems_(1) {
 #define CASE(x) \
@@ -472,7 +492,11 @@ public:
 
     int elems() const { return elems_; }
 
-    bool is_ptr() const { return is_ptr_; }
+    type_attr_t attr() const { return attr_; }
+
+    bool is_ptr() const { return any(attr() & type_attr_t::ptr); }
+
+    bool is_slm() const { return any(attr() & type_attr_t::slm); }
 
     bool operator==(const type_t &other) const {
         return (kind() == other.kind()) && (elems() == other.elems())
@@ -564,6 +588,10 @@ public:
 
     bool is_scalar() const { return elems() == 1; }
 
+    bool is_mutable() const { return any(attr() & type_attr_t::mut); }
+
+    bool is_simd() const { return any(attr() & type_attr_t::simd); }
+
     template <typename T>
     bool is_cpp() const {
         return *this == type_t::from_cpp<T>();
@@ -583,7 +611,7 @@ public:
 
     type_t remove_ptr() const {
         type_t copy = *this;
-        copy.is_ptr_ = false;
+        copy.attr_ &= ~type_attr_t::ptr;
         return copy;
     }
 
@@ -595,7 +623,25 @@ public:
 
     type_t with_ptr() const {
         type_t copy = *this;
-        copy.is_ptr_ = true;
+        copy.attr_ |= type_attr_t::ptr;
+        return copy;
+    }
+
+    type_t with_attr(type_attr_t attr) const {
+        type_t copy = *this;
+        copy.attr_ = attr;
+        return copy;
+    }
+
+    type_t simd() const {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::simd;
+        return copy;
+    }
+
+    type_t slm() const {
+        type_t copy = *this;
+        copy.attr_ |= type_attr_t::slm;
         return copy;
     }
 
@@ -621,10 +667,12 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(kind());
         if (elems() > 1) oss << "x" << elems();
         if (is_ptr()) oss << "*";
+        if (is_mutable()) oss << ".mut";
+        if (is_slm()) oss << ".slm";
         return oss.str();
     }
 
@@ -633,7 +681,7 @@ public:
 private:
     type_kind_t kind_ = type_kind_t::undef;
     int elems_ = 0;
-    bool is_ptr_ = false;
+    type_attr_t attr_ = type_attr_t::undef;
 };
 
 // type_t to dnnl_data_type_t convertor.
@@ -656,15 +704,71 @@ private:
 
 // Forward Declare IR objects
 class object_t;
+class expr_impl_t;
+class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
+
+enum class ir_type_id_t : uint8_t {
+    undef = 0,
+
+#define HANDLE_IR_OBJECT(type) type,
+
+    HANDLE_CORE_IR_OBJECTS()
+
+#undef HANDLE_IR_OBJECT
+};
 
 // clang-tidy doesn't like the semicolon next to the class name.
 #define CLASS_DECLARATION(name) class name
 #define HANDLE_IR_OBJECT(type) CLASS_DECLARATION(type);
-HANDLE_TRAVERSE_TARGETS()
+HANDLE_CORE_IR_OBJECTS()
 #undef HANDLE_IR_OBJECT
 #undef CLASS_DECLARATION
+
+template <typename T, typename = void>
+struct is_expr_t {
+    static const bool value = false;
+};
+
+template <typename T>
+struct is_expr_t<T,
+        typename std::enable_if<std::is_base_of<expr_impl_t, T>::value>::type> {
+    static const bool value = true;
+};
+
+template <typename T, typename = void>
+struct is_stmt_t {
+    static const bool value = false;
+};
+
+template <typename T>
+struct is_stmt_t<T,
+        typename std::enable_if<std::is_base_of<stmt_impl_t, T>::value>::type> {
+    static const bool value = true;
+};
+
+struct type_info_t {
+    constexpr type_info_t(ir_type_id_t type_id, const std::type_info &info,
+            bool is_expr, bool is_stmt)
+        : type_id(type_id), info(&info), is_expr(is_expr), is_stmt(is_stmt) {}
+
+    ir_type_id_t type_id = ir_type_id_t::undef;
+    const std::type_info *info = nullptr;
+    bool is_expr = false;
+    bool is_stmt = false;
+
+    bool operator==(const type_info_t &other) const {
+        if (type_id != ir_type_id_t::undef
+                || other.type_id != ir_type_id_t::undef)
+            return type_id == other.type_id;
+        return (info == other.info) || (*info == *other.info);
+    }
+
+    bool operator!=(const type_info_t &other) const {
+        return !operator==(other);
+    }
+};
 
 // Base class for all IR objects. Implemented as an intrusive pointer, with
 // the reference counter stored inside the object.
@@ -679,19 +783,15 @@ public:
 
     ref_count_t &ref_count() { return ref_count_; }
 
-    // Type ID used for dispatching in ir_visitor_t and ir_mutator_t.
-    // For some IR objects
-    virtual ir_type_id_t dispatch_type_id() const { return type_id(); }
-
     // Provides equality semantics.
     virtual bool is_equal(const object_impl_t &obj) const = 0;
 
     virtual size_t get_hash() const = 0;
 
-    static bool _is_expr() { return false; };
-    static bool _is_stmt() { return false; };
-    bool is_expr() const { return type_info_.is_expr; }
-    bool is_stmt() const { return type_info_.is_stmt; }
+    // Type information.
+    const type_info_t &type_info() const { return type_info_; };
+    bool is_expr() const { return type_info().is_expr; }
+    bool is_stmt() const { return type_info().is_stmt; }
 
     // Downcasts the object to the IR type, returns a reference. The IR type
     // must match the real IR type.
@@ -721,7 +821,7 @@ public:
     // Returns true if T matches the real IR type.
     template <typename T>
     bool is() const {
-        return type_id() == T::_type_id();
+        return type_info() == T::_type_info();
     }
 
     virtual std::string str() const;
@@ -731,9 +831,6 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    // Unique type ID.
-    ir_type_id_t type_id() const { return type_info_.type_id; };
-
     ref_count_t ref_count_;
     type_info_t type_info_;
 };
@@ -789,7 +886,9 @@ public:
 
     bool is_empty() const { return !impl_; }
 
-    ir_type_id_t dispatch_type_id() const { return impl_->dispatch_type_id(); }
+    explicit operator bool() const { return !is_empty(); }
+
+    const type_info_t &type_info() const { return impl_->type_info(); }
 
     template <typename T>
     const T &as() const {
@@ -926,7 +1025,7 @@ public:
     }
 
 #define HANDLE_IR_OBJECT(type) virtual object_t _mutate(const type &obj);
-    HANDLE_TRAVERSE_TARGETS()
+    HANDLE_CORE_IR_OBJECTS()
 #undef HANDLE_IR_OBJECT
 };
 
@@ -959,15 +1058,13 @@ public:
     }
 
 #define HANDLE_IR_OBJECT(type) virtual void _visit(const type &obj);
-    HANDLE_TRAVERSE_TARGETS()
+    HANDLE_CORE_IR_OBJECTS()
 #undef HANDLE_IR_OBJECT
 };
 
 // Base class for IR expression objects.
 class expr_impl_t : public object_impl_t {
 public:
-    IR_DECL_TYPE_ID(expr_impl_t)
-
     expr_impl_t(type_info_t type_info, const type_t &type)
         : object_impl_t(type_info), type(type) {}
 
@@ -1033,8 +1130,19 @@ private:
 
 // Helper functions.
 inline bool is_const(const expr_t &e);
+inline bool is_const(const expr_t &e, int value);
 inline bool is_var(const expr_t &e);
+inline bool is_ref(const expr_t &e);
 inline bool all_of(const expr_t &e, const expr_t &value);
+inline bool is_zero(const expr_t &e) {
+    return is_const(e, 0);
+}
+inline bool is_one(const expr_t &e) {
+    return is_const(e, 1);
+}
+inline bool is_minus_one(const expr_t &e) {
+    return is_const(e, -1);
+}
 
 // Unary and binary operators.
 enum class op_kind_t {
@@ -1118,7 +1226,7 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
 // Binary operation: (a op b).
 class binary_op_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(binary_op_t)
+    IR_DECL_CORE_TYPE(binary_op_t)
 
     static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b) {
         return expr_t(new binary_op_t(op_kind, a, b));
@@ -1128,11 +1236,18 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return (op_kind == other.op_kind) && a.is_equal(other.a)
-                && b.is_equal(other.b);
+        return (op_kind == other.op_kind)
+                && ((a.is_equal(other.a) && b.is_equal(other.b))
+                        || (is_commutative_op(op_kind) && b.is_equal(other.a)
+                                && a.is_equal(other.b)));
     }
 
     size_t get_hash() const override {
+        if (is_commutative_op(op_kind)) {
+            size_t a_hash = ir_utils::get_hash(a);
+            size_t b_hash = ir_utils::get_hash(b);
+            return ir_utils::get_hash(op_kind, a_hash ^ b_hash);
+        }
         return ir_utils::get_hash(op_kind, a, b);
     }
 
@@ -1154,7 +1269,7 @@ private:
 class bool_imm_t : public expr_impl_t {
 public:
     friend class expr_t;
-    IR_DECL_EXPR_TYPE_ID(bool_imm_t)
+    IR_DECL_CORE_TYPE(bool_imm_t)
 
     static expr_t make(bool value) { return expr_t(new bool_imm_t(value)); }
 
@@ -1189,7 +1304,7 @@ private:
 //   on the boolean elements. The upper (16 - N) bits are uninitialized.
 class cast_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(cast_t)
+    IR_DECL_CORE_TYPE(cast_t)
 
     static expr_t make(
             const type_t &type, const expr_t &expr, bool saturate = false) {
@@ -1247,7 +1362,7 @@ private:
 // Constant variable, used as a coefficient in a linear expression.
 class const_var_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(const_var_t)
+    IR_DECL_CORE_TYPE(const_var_t)
 
     static expr_t make(const type_t &type, const std::string &name) {
         return expr_t(new const_var_t(type, name));
@@ -1273,7 +1388,7 @@ private:
 class float_imm_t : public expr_impl_t {
 public:
     friend class expr_t;
-    IR_DECL_EXPR_TYPE_ID(float_imm_t)
+    IR_DECL_CORE_TYPE(float_imm_t)
 
     static expr_t make(double value, const type_t &type = type_t::undef()) {
         return expr_t(new float_imm_t(value, type));
@@ -1302,7 +1417,7 @@ private:
 class int_imm_t : public expr_impl_t {
 public:
     friend class expr_t;
-    IR_DECL_EXPR_TYPE_ID(int_imm_t);
+    IR_DECL_CORE_TYPE(int_imm_t);
 
     template <typename T>
     static expr_t make(T value, const type_t &type = type_t::undef()) {
@@ -1327,8 +1442,10 @@ public:
 
     template <typename T>
     static bool try_shrink_type(int64_t v) {
-        if (v >= std::numeric_limits<T>::min()
-                && v <= std::numeric_limits<T>::max())
+        if ((v >= 0 && (uint64_t)v <= (uint64_t)std::numeric_limits<T>::max())
+                || (v < 0
+                        && (int64_t)v
+                                >= (int64_t)std::numeric_limits<T>::min()))
             return true;
         return false;
     }
@@ -1352,7 +1469,7 @@ private:
 // C++ equivalent: (cond ? true_expr : false_expr).
 class iif_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(iif_t);
+    IR_DECL_CORE_TYPE(iif_t);
 
     static expr_t make(const expr_t &cond, const expr_t &true_expr,
             const expr_t &false_expr) {
@@ -1394,7 +1511,7 @@ private:
 // - v[i] is a non-constant variable (var_t)
 class linear_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(linear_t)
+    IR_DECL_CORE_TYPE(linear_t)
     static expr_t make(const expr_t &c, const std::vector<expr_t> &u_vec,
             const std::vector<expr_t> &v_vec) {
         return expr_t(new linear_t(c, u_vec, v_vec));
@@ -1454,7 +1571,7 @@ void normalize_ptr(const type_t &type, expr_t &base, expr_t &off);
 //     }
 class load_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(load_t)
+    IR_DECL_CORE_TYPE(load_t)
 
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of type.scalar() elements).
@@ -1493,61 +1610,15 @@ private:
         , off(_off)
         , stride(_stride) {
         normalize_ptr(type, buf, off);
-        gpu_assert(is_var(buf)) << buf;
-        gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == type.scalar().size()) stride = default_stride;
     }
-};
-
-// N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
-// where <op> is either addition or multiplication.
-class nary_op_t : public expr_impl_t {
-public:
-    IR_DECL_EXPR_TYPE_ID(nary_op_t)
-
-    static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
-        return expr_t(new nary_op_t(op_kind, args));
-    }
-
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
-        return (op_kind == other.op_kind)
-                && ir_utils::is_equal(args, other.args);
-    }
-
-    size_t get_hash() const override {
-        return ir_utils::get_hash(op_kind, args);
-    }
-
-    std::string str() const override {
-        std::ostringstream oss;
-        oss << "(";
-        for (size_t i = 0; i < args.size(); i++) {
-            oss << (i != 0 ? " " + to_string(op_kind) + " " : "") << args[i];
-        }
-
-        oss << ")";
-        return oss.str();
-    }
-
-    IR_DECLARE_TRAVERSERS()
-
-    op_kind_t op_kind;
-    std::vector<expr_t> args;
-
-private:
-    nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
-        : expr_impl_t(_type_info(), nary_op_type(op_kind, args))
-        , op_kind(op_kind)
-        , args(args) {}
 };
 
 // Pointer expression: (base_ptr + off).
 class ptr_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(ptr_t)
+    IR_DECL_CORE_TYPE(ptr_t)
 
     // off - offset in bytes.
     static expr_t make(const expr_t &base, const expr_t &off) {
@@ -1593,7 +1664,7 @@ inline const expr_t &get_base(const expr_t &e) {
 
 class shuffle_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(shuffle_t)
+    IR_DECL_CORE_TYPE(shuffle_t)
 
     static expr_t make(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
@@ -1707,7 +1778,7 @@ private:
 // Ternary operation: op(a, b, c).
 class ternary_op_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(ternary_op_t)
+    IR_DECL_CORE_TYPE(ternary_op_t)
 
     static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b,
             const expr_t &c) {
@@ -1759,7 +1830,7 @@ inline expr_t ternary_idiv(
 // Unary operation: (op a).
 class unary_op_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(unary_op_t)
+    IR_DECL_CORE_TYPE(unary_op_t)
 
     static expr_t make(op_kind_t op_kind, const expr_t &a) {
         return expr_t(new unary_op_t(op_kind, a));
@@ -1788,10 +1859,11 @@ private:
 
 class var_t : public expr_impl_t {
 public:
-    IR_DECL_EXPR_TYPE_ID(var_t)
+    IR_DECL_CORE_TYPE(var_t)
 
-    static expr_t make(const type_t &type, const std::string &name) {
-        return expr_t(new var_t(type, name));
+    static expr_t make(const type_t &type, const std::string &name,
+            bool is_mutable = false) {
+        return expr_t(new var_t(type, name, is_mutable));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -1804,10 +1876,57 @@ public:
     IR_DECLARE_TRAVERSERS()
 
     std::string name;
+    bool is_mutable = false;
 
 private:
-    var_t(const type_t &type, const std::string &name)
-        : expr_impl_t(_type_info(), type), name(name) {}
+    var_t(const type_t &type, const std::string &name, bool is_mutable)
+        : expr_impl_t(_type_info(), type), name(name), is_mutable(is_mutable) {}
+};
+
+// Index into a buffer
+// off is offset in number of elements
+// elems is number of consecutive elements to access starting from off
+// off and elems must be GRF aligned
+class ref_t : public expr_impl_t {
+public:
+    IR_DECL_CORE_TYPE(ref_t)
+
+    static expr_t make(const expr_t &var, int off, int elems) {
+        return expr_t(new ref_t(var, off, elems));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+
+        return other.var.is_equal(var) && other.off == off
+                && other.elems == elems;
+    }
+
+    std::string str() const override {
+        std::ostringstream oss;
+        oss << var.str() << "[" << off;
+        if (elems > 1) oss << ":" << off + elems;
+        oss << "]";
+        return oss.str();
+    }
+
+    size_t get_hash() const override {
+        return ir_utils::get_hash(var, off, elems);
+    }
+
+    IR_DECLARE_TRAVERSERS()
+
+    expr_t var;
+    int off;
+    int elems;
+
+private:
+    ref_t(const expr_t &var, int off, int elems)
+        : expr_impl_t(_type_info(), var.type().with_elems(elems))
+        , var(var)
+        , off(off)
+        , elems(elems) {}
 };
 
 // Convertor from C++ type to IR expression.
@@ -1858,6 +1977,11 @@ inline bool is_const(const expr_t &e) {
     return e.is<bool_imm_t>() || e.is<int_imm_t>() || e.is<float_imm_t>();
 }
 
+inline bool is_const(const expr_t &e, int value) {
+    if (!is_const(e)) return false;
+    return e.is_equal(to_expr(value, e.type()));
+}
+
 inline bool all_of(const expr_t &e, const expr_t &value) {
     auto *shuffle = e.as_ptr<shuffle_t>();
     if (!shuffle) return e.is_equal(value);
@@ -1877,6 +2001,10 @@ inline bool is_shuffle_const(const expr_t &e) {
 
 inline bool is_var(const expr_t &e) {
     return e.is<var_t>();
+}
+
+inline bool is_ref(const expr_t &e) {
+    return e.is<ref_t>();
 }
 
 // Convertor from IR expression to C++ constant.
@@ -1930,7 +2058,6 @@ expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);
 // Base class for IR statement objects.
 class stmt_impl_t : public object_impl_t {
 public:
-    IR_DECL_TYPE_ID(stmt_impl_t)
     stmt_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
 };
 
@@ -2004,7 +2131,7 @@ class grf_permutation_t;
 // Allocation attribute specifying permutation for a GRF buffer.
 class grf_permute_attr_t : public alloc_attr_impl_t {
 public:
-    IR_DECL_TYPE_ID(grf_permute_attr_t)
+    IR_DECL_TYPE(grf_permute_attr_t)
 
     static alloc_attr_t make(
             const std::shared_ptr<grf_permutation_t> &grf_perm) {
@@ -2027,7 +2154,7 @@ private:
 // Allocation attribute to store extra information to avoid bank conflicts.
 class bank_conflict_attr_t : public alloc_attr_impl_t {
 public:
-    IR_DECL_TYPE_ID(bank_conflict_attr_t)
+    IR_DECL_TYPE(bank_conflict_attr_t)
 
     static alloc_attr_t make(const std::vector<expr_t> &bufs,
             const std::vector<int> &buf_sizes,
@@ -2075,7 +2202,7 @@ private:
 //      }
 class alloc_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(alloc_t)
+    IR_DECL_CORE_TYPE(alloc_t)
 
     static stmt_t make(const expr_t &buf, uint32_t size, alloc_kind_t kind,
             const std::vector<alloc_attr_t> &attrs, const stmt_t &body = {}) {
@@ -2091,6 +2218,10 @@ public:
     static stmt_t make(const expr_t &buf, uint32_t size, alloc_kind_t kind,
             const stmt_t &body = {}) {
         return make(buf, size, kind, std::vector<alloc_attr_t>(), body);
+    }
+
+    static stmt_t make(const expr_t &buf, const stmt_t &body = {}) {
+        return stmt_t(new alloc_t(buf, body));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2129,7 +2260,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "alloc " << buf.as<var_t>().name << "[" << size << "]";
         return out.str();
     }
@@ -2151,7 +2282,18 @@ private:
         , kind(kind)
         , attrs(attrs)
         , body(body) {
-        gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(buf.type().is_ptr()
+                || into<uint32_t>(buf.type().size()) == size)
+                << buf;
+    }
+
+    alloc_t(const expr_t &buf, const stmt_t &body)
+        : stmt_impl_t(_type_info())
+        , buf(buf)
+        , size(buf.type().size())
+        , kind(alloc_kind_t::grf)
+        , body(body) {
+        gpu_assert(!buf.type().is_ptr()) << buf;
     }
 };
 
@@ -2165,7 +2307,7 @@ private:
 //     }
 class store_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(store_t)
+    IR_DECL_CORE_TYPE(store_t)
 
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of value.type().scalar()
@@ -2175,7 +2317,7 @@ public:
             const expr_t &_mask = expr_t(), bool fill_mask0 = false) {
         auto mask = _mask;
         auto value = _value;
-        if (!mask.is_empty()) {
+        if (mask) {
             if (all_of(mask, expr_t(true))) {
                 mask = expr_t();
             } else if (all_of(mask, expr_t(false))) {
@@ -2188,8 +2330,8 @@ public:
                 mask = expr_t();
             }
         }
-        return stmt_t(new store_t(
-                buf, off, value, stride, mask, fill_mask0 && !mask.is_empty()));
+        return stmt_t(
+                new store_t(buf, off, value, stride, mask, fill_mask0 && mask));
     }
 
     bool is_equal(const object_impl_t &obj) const override {
@@ -2208,10 +2350,10 @@ public:
     bool has_default_stride() const { return stride == default_stride; }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << load_t::make(value.type(), buf, off, stride);
         out << " = " << value;
-        if (!mask.is_empty()) {
+        if (mask) {
             out << ", mask = " << mask.str();
             if (fill_mask0) out << " [FILL]";
         }
@@ -2240,10 +2382,9 @@ private:
         , mask(_mask)
         , fill_mask0(_fill_mask0) {
         normalize_ptr(value.type(), buf, off);
-        gpu_assert(is_var(buf)) << buf;
-        gpu_assert(buf.type().is_ptr()) << buf;
+        gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == value.type().scalar().size()) stride = default_stride;
-        if (!mask.is_empty())
+        if (mask)
             gpu_assert(mask.type() == type_t::_bool(value.type().elems()));
     }
 };
@@ -2256,7 +2397,7 @@ private:
 // unroll specifies the unroll factor, unroll = 1 means no unrolling.
 class for_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(for_t)
+    IR_DECL_CORE_TYPE(for_t)
 
     static stmt_t make(const expr_t &var, const expr_t &init,
             const expr_t &bound, const stmt_t &body = {},
@@ -2278,7 +2419,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "for (" << var << " = " << init << "; " << var << " < " << bound
             << "; " << var << " += " << step << ") ";
         if (unroll != 1) out << "[unroll: " << unroll << "] ";
@@ -2315,7 +2456,7 @@ private:
 //     }
 class if_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(if_t)
+    IR_DECL_CORE_TYPE(if_t)
 
     static stmt_t make(const expr_t &cond, const stmt_t &body,
             const stmt_t &else_body = stmt_t()) {
@@ -2335,7 +2476,7 @@ public:
     }
 
     std::string line_str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "if (" << cond << ")";
         return oss.str();
     }
@@ -2362,7 +2503,7 @@ private:
 //     }
 class let_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(let_t)
+    IR_DECL_CORE_TYPE(let_t)
 
     static stmt_t make(
             const expr_t &var, const expr_t &value, const stmt_t &body = {}) {
@@ -2389,7 +2530,7 @@ public:
     };
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << var << "." << var.type() << " = " << value;
         return out.str();
     }
@@ -2403,7 +2544,7 @@ public:
 private:
     let_t(const expr_t &var, const expr_t &value, const stmt_t &body)
         : stmt_impl_t(_type_info()), var(var), value(value), body(body) {
-        if (!value.is_empty() && !is_const(value))
+        if (value && !is_const(value))
             gpu_assert(var.type() == value.type())
                     << "Variable " << var << " and  value " << value
                     << "have different types. " << var.type()
@@ -2506,7 +2647,7 @@ private:
 // Statement group, used to assign a label to a group of statements.
 class stmt_group_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(stmt_group_t)
+    IR_DECL_CORE_TYPE(stmt_group_t)
 
     static stmt_t make(const stmt_label_t &label, const stmt_t &body) {
         return stmt_t(new stmt_group_t(label, body));
@@ -2540,7 +2681,7 @@ private:
 //     }
 class stmt_seq_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(stmt_seq_t)
+    IR_DECL_CORE_TYPE(stmt_seq_t)
 
     static stmt_t make(const std::vector<stmt_t> &vec);
 
@@ -2573,7 +2714,7 @@ private:
 //    }
 class while_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(while_t)
+    IR_DECL_CORE_TYPE(while_t)
 
     static stmt_t make(const expr_t &cond, const stmt_t &body = {}) {
         return stmt_t(new while_t(cond, body));
@@ -2589,7 +2730,7 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(cond, body); }
 
     std::string line_str() const {
-        std::ostringstream out;
+        ostringstream_t out;
         out << "while (" << cond << ")";
         return out.str();
     }
@@ -2643,9 +2784,9 @@ private:
 // Instruction modifier, relies on nGEN API.
 class instruction_modifier_attr_t : public func_call_attr_impl_t {
 public:
-    IR_DECL_TYPE_ID(instruction_modifier_attr_t)
+    IR_DECL_TYPE(instruction_modifier_attr_t)
 
-    static func_call_attr_t make(const ngen_proxy::InstructionModifier &mod) {
+    static func_call_attr_t make(const ngen::InstructionModifier &mod) {
         return func_call_attr_t(new instruction_modifier_attr_t(mod));
     }
 
@@ -2653,10 +2794,12 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return mod == other.mod;
+        return mod.getAll() == other.mod.getAll();
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(mod); }
+    size_t get_hash() const override {
+        return ir_utils::get_hash(mod.getAll());
+    }
 
     std::string str() const override {
         std::ostringstream oss;
@@ -2667,29 +2810,28 @@ public:
             oss << s;
             is_first = false;
         };
-        if (mod.is_atomic) append("Atomic");
+        if (mod.isAtomic()) append("Atomic");
 #if XE3P
-        if (mod.is_fwd) append("Fwd");
+        if (mod.isFwd()) append("Fwd");
 #endif
-        if (!mod.sbid.is_empty()) {
-            append(std::string("$") + std::to_string(mod.sbid.token));
+        if (mod.getSWSB().empty()) {
+            append(std::string("$") + std::to_string(mod.getSWSB()[0].getToken()));
+            append(std::string("$") + std::to_string(mod.getSWSB()[1].getToken()));
         }
         oss << "}";
         return oss.str();
     }
 
-    ngen_proxy::InstructionModifier mod;
+    ngen::InstructionModifier mod;
 
 private:
-    instruction_modifier_attr_t(const ngen_proxy::InstructionModifier &mod)
+    instruction_modifier_attr_t(const ngen::InstructionModifier &mod)
         : func_call_attr_impl_t(_type_info()), mod(mod) {}
 };
 
 // Base class for function IR objects.
 class func_impl_t : public object_impl_t {
 public:
-    IR_DECL_TYPE_ID(func_impl_t)
-
     func_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
 
     size_t get_hash() const override {
@@ -2742,7 +2884,7 @@ private:
 // Function call.
 class func_call_t : public stmt_impl_t {
 public:
-    IR_DECL_STMT_TYPE_ID(func_call_t)
+    IR_DECL_CORE_TYPE(func_call_t)
 
     static stmt_t make(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr = {}) {
@@ -2760,9 +2902,10 @@ public:
     size_t get_hash() const override { return ir_utils::get_hash(args, attr); }
 
     std::string line_str() const {
-        std::ostringstream out;
-        out << func << "(" << ir_utils::make_seq_print_helper(args) << ")";
-        if (!attr.is_empty()) out << " " << attr;
+        ostringstream_t out;
+        out << func.str() << "(" << ir_utils::make_seq_print_helper(args)
+            << ")";
+        if (attr) out << " " << attr;
         return out.str();
     }
 
@@ -2776,7 +2919,7 @@ private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
         : stmt_impl_t(_type_info()), func(func), args(args), attr(attr) {
-        gpu_assert(!func.is_empty());
+        gpu_assert(func);
     }
 };
 
@@ -2802,7 +2945,7 @@ inline bool is_func_call(const stmt_t &s) {
 // Generic function with a name.
 class builtin_t : public func_impl_t {
 public:
-    IR_DECL_DERIVED_TYPE_ID(builtin_t, func_impl_t)
+    IR_DECL_TYPE(builtin_t)
 
     static func_t make(const std::string &name) {
         return func_t(new builtin_t(name));
@@ -2828,7 +2971,8 @@ private:
 // The following types are intrusive pointers and, as such, should have the same
 // size as a pointer.
 static_assert(sizeof(object_t) <= sizeof(void *),
-        "intrusive pointer type object_t size is greater than void * size.");
+        "intrusive pointer type object_t size is greater than void * "
+        "size.");
 static_assert(sizeof(expr_t) <= sizeof(void *),
         "intrusive pointer type expr_t size is greater than void * size.");
 static_assert(sizeof(stmt_t) <= sizeof(void *),

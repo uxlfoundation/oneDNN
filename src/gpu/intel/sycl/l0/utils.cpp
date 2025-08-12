@@ -208,6 +208,17 @@ status_t func_zeKernelCreate(ze_module_handle_t hModule,
     return status::success;
 }
 
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+status_t func_zeGetKernelBinary(
+        ze_kernel_handle_t hKernel, size_t *pSize, uint8_t *pKernelBinary) {
+    static auto f = find_ze_symbol<decltype(&zeKernelGetBinaryExp)>(
+            "zeKernelGetBinaryExp");
+
+    if (!f) return status::runtime_error;
+    ZE_CHECK(f(hKernel, pSize, pKernelBinary));
+    return status::success;
+}
+#else
 status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
         uint8_t *pModuleNativeBinary) {
     static auto f = find_ze_symbol<decltype(&zeModuleGetNativeBinary)>(
@@ -217,6 +228,7 @@ status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
     ZE_CHECK(f(hModule, pSize, pModuleNativeBinary));
     return status::success;
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 // FIXME: Currently SYCL doesn't provide any API to get device UUID so
 // we query it directly from Level0 with the zeDeviceGetProperties function.
@@ -382,20 +394,19 @@ status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, int &gpu_product_family,
-        int &stepping_id, uint64_t &native_extensions, bool &mayiuse_systolic,
+        compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product_,
+        uint64_t &native_extensions, bool &mayiuse_systolic,
 #if XE3P
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit) {
 #else
         bool &mayiuse_ngen_kernels) {
 #endif
     using namespace ngen;
-    Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
+    ngen::Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
             context, device);
 
     gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
-    gpu_product_family = static_cast<int>(product.family);
-    stepping_id = product.stepping;
+    std::memcpy(&product_, &product, sizeof(ngen::Product));
 
     mayiuse_systolic = false;
     if (get_l0_device_enabled_systolic_intel(device, mayiuse_systolic)

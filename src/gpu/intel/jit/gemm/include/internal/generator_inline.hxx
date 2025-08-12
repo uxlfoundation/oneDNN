@@ -28,7 +28,7 @@ static inline int r0DWords(ngen::HW hw)
 // Call a functor needing the r0 header in a GRF.
 template <ngen::HW hw>
 template <typename F>
-void BLASKernelGenerator<hw>::useR0(CommonState &state, F f)
+void Generator<hw>::useR0(CommonState &state, F f)
 {
     if (state.r0_info.isARF()) {
         auto r0_info = state.ra.alloc();
@@ -42,7 +42,7 @@ void BLASKernelGenerator<hw>::useR0(CommonState &state, F f)
 // Call a functor needing a GRF temporary and the r0 header in a GRF.
 template <ngen::HW hw>
 template <typename F>
-void BLASKernelGenerator<hw>::useTempAndR0(CommonState &state, F f)
+void Generator<hw>::useTempAndR0(CommonState &state, F f)
 {
     auto temp = state.ra.alloc();
     if (state.r0_info.isARF()) {

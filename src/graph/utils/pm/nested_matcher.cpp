@@ -236,6 +236,33 @@ bool node_inputs_matcher_t::match_non_commutative_inputs() {
         if (!match_input_by_offset(node_iport, i)) return false;
     }
 
+    // check node_inputs that doesn't have a producer:
+    // if the node is a consumer of graph's input_ports, then we
+    // need to check if the input port's consumers are aligned with
+    // each other
+    if (ctx_->in_port_map.empty()) return true;
+    auto inner_cons = ctx_->get_graph()->get_inner_consumers();
+    if (inner_cons.empty()) return true;
+
+    for (const auto &pair : inner_cons) {
+        const auto &graph_in_port = pair.first;
+        auto it = ctx_->in_port_map.find(graph_in_port);
+        if (it == ctx_->in_port_map.end()) continue;
+
+        const auto &graph_in_port_consumers = pair.second;
+        for (const auto &con : graph_in_port_consumers) {
+            if (con->first == node_) {
+                // check if the input port has been filled, if filled, the existing
+                // input should be the same as the current op
+                if (op_->num_inputs() <= con->second) return false;
+                if (it->second.first->get_input_value(it->second.second)
+                        != op_->get_input_value(con->second)) {
+                    return false;
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -380,12 +407,19 @@ bool node_outputs_matcher_t::match_op_consumers() {
                 if (out_node->get_node_kind()
                         == pb_node_kind::PB_NODE_KIND_ALTERNATION)
                     continue;
-                // For repetition case, check if multi consumers exist
-                repetition_t *rep_node = dynamic_cast<repetition_t *>(out_node);
-                if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
-                    continue;
-                if (rep_node->get_body()->get_inner_consumer(0)->size() == 1)
-                    continue;
+                // For repetition case, check if multi consumers have been matched
+                if (updated_op_map_.find(out_op) == updated_op_map_.end()) {
+                    repetition_t *rep_node
+                            = dynamic_cast<repetition_t *>(out_node);
+                    if (rep_node->get_body()->get_inner_consumer(0) == nullptr)
+                        continue;
+                    if (rep_node->get_body()->get_inner_consumer(0)->size()
+                            == 1)
+                        continue;
+                } else {
+                    consumer_matched = true;
+                    break;
+                }
             }
 
             binding_t out_bind(BIND_IN, out_op, op_consumer.get_offset(),
@@ -890,17 +924,23 @@ bool match_graph_helper(const binding_t &local_bind, match_context_t *ctx,
         if (matched_op_map.count(local_bind.bind_op)) {
             return matched_op_map[local_bind.bind_op] == bind_pb_op;
         }
-        // if current op hasn't been visited
+        // if current op hasn't been visited, match it.
         matched_op_map[local_bind.bind_op] = bind_pb_op;
-        if (!match_node(local_bind, ctx, matched_op_map)) {
-            matched_op_map.erase(local_bind.bind_op);
-            return false;
-        }
-        // match node success, fill local_context's io ports
+        // temporarily save in/out port maps
+        // to restore in case of match failure
+        graph_in_port_map saved_in_map = ctx->in_port_map;
+        graph_out_port_map saved_out_map = ctx->out_port_map;
         fill_local_in_map(ctx, local_bind.bind_node, local_bind.bind_op,
                 local_bind.bind_op_port);
         fill_local_out_map(ctx, local_bind.bind_node, local_bind.bind_op,
                 local_bind.bind_op_port);
+
+        if (!match_node(local_bind, ctx, matched_op_map)) {
+            matched_op_map.erase(local_bind.bind_op);
+            ctx->in_port_map = saved_in_map;
+            ctx->out_port_map = saved_out_map;
+            return false;
+        }
     }
     return true;
 }

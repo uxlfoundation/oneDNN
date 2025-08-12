@@ -17,10 +17,10 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/ocl/reduction/atomic_reduction.hpp"
-#include "gpu/intel/ocl/reduction/combined_reduction.hpp"
-#include "gpu/intel/ocl/reduction/ref_reduction.hpp"
-#include "gpu/intel/ocl/reduction/reusable_ref_reduction.hpp"
+#include "gpu/intel/reduction/atomic_reduction.hpp"
+#include "gpu/intel/reduction/combined_reduction.hpp"
+#include "gpu/intel/reduction/ref_reduction.hpp"
+#include "gpu/intel/reduction/reusable_ref_reduction.hpp"
 
 #ifdef DNNL_DEV_MODE
 #include "gpu/intel/jit/reduction.hpp"
@@ -50,10 +50,10 @@ namespace {
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
         GPU_INSTANCE_INTEL_DEVMODE(intel::jit::reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::atomic_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::combined_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::ref_reduction_t)
-        GPU_INSTANCE_INTEL(intel::ocl::reusable_ref_reduction_t)
+        GPU_INSTANCE_INTEL(intel::atomic_reduction_t)
+        GPU_INSTANCE_INTEL(intel::combined_reduction_t)
+        GPU_INSTANCE_INTEL(intel::ref_reduction_t)
+        GPU_INSTANCE_INTEL(intel::reusable_ref_reduction_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_reduction_t)
         GPU_INSTANCE_AMD(amd::miopen_reduction_t)
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_reduction_t)

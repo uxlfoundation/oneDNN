@@ -1036,6 +1036,41 @@ status_t infer_identity_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_softmax_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+    auto in0 = logical_tensor_wrapper_t(inputs[0]);
+
+    // check if partial set shape aligns with inferred shape
+    if (out0.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(in0.vdims(), out0.vdims()),
+                "%s, input and output shapes are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
+    // We should compute output dense strides instead of directly copying input
+    // strides to it
+    set_shape_and_strides(*outputs[0], in0.vdims());
+    if (outputs.size() == 1) return status::success;
+
+    auto out1 = logical_tensor_wrapper_t(outputs[1]);
+    dims out1_dims = in0.vdims();
+    int64_t axis = n->get_attr<int64_t>(op_attr::axis);
+    if (axis < 0) { axis += in0.ndims(); }
+    out1_dims[axis] = 1;
+
+    if (out1.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(out1_dims, out1.vdims()),
+                "%s, given stats shape is not compatible with inferred",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
+    set_shape_and_strides(*outputs[1], out1_dims);
+
+    return status::success;
+}
+
 status_t identity_output_shape_on_pos(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs,

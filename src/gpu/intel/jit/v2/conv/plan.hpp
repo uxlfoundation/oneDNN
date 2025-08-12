@@ -97,12 +97,12 @@ public:
         return entries_.at(dim).loop_idx;
     }
 
-    pvar_coord_t<expr_t> iter_coord() const;
-    pvar_coord_t<expr_t> tg_iter_coord() const;
-    pvar_tile_t tg_iter_tile() const;
+    coord_t iter_coord() const;
+    coord_t tg_iter_coord() const;
+    tile_t tg_iter_tile() const;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         for (auto &d : entries_) {
             if (!is_first) oss << std::endl;
@@ -131,7 +131,7 @@ private:
         bool is_loop() const { return !is_one(loop_size); }
 
         std::string str() const {
-            std::ostringstream oss;
+            ostringstream_t oss;
             oss << "tg_idx:   " << tg_idx << std::endl;
             oss << "thr_idx:  " << thr_idx << std::endl;
             oss << "loop_idx: " << loop_idx;
@@ -180,7 +180,7 @@ struct prefetch_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this || (!a_prefetch && !b_prefetch)) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::add_tag("a_prefetch", a_prefetch.str()) << std::endl;
         oss << ir_utils::add_tag("b_prefetch", b_prefetch.str());
         return oss.str();
@@ -214,7 +214,7 @@ struct x2r_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         auto prefix = to_string(tensor_kind);
         oss << prefix << "_layout: " << layout.str() << std::endl;
         oss << ir_utils::add_tag(prefix + "_load", load.str()) << std::endl;
@@ -231,7 +231,7 @@ struct fma_plan_t : public base_plan_t {
     layout_t a_layout;
     layout_t b_layout;
     layout_t c_layout;
-    pvar_tile_t inst_tile;
+    tile_t inst_tile;
     fma_kind_t fma = fma_kind_t::undef;
     int simd = 0;
 
@@ -244,7 +244,7 @@ struct fma_plan_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "a_layout: " << a_layout.str_with_size(hw) << std::endl;
         oss << "b_layout: " << b_layout.str_with_size(hw) << std::endl;
         oss << "c_layout: " << c_layout.str_with_size(hw) << std::endl;
@@ -279,7 +279,7 @@ struct x2r_fma_plan_t : public base_plan_t {
         }
     };
 
-    pvar_tile_t outer;
+    tile_t outer;
     layout_t c_layout;
     layout_t bias_layout;
     std::vector<stage_t> stages;
@@ -315,7 +315,7 @@ struct x2r_fma_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (!outer.is_empty()) oss << "outer: " << outer << std::endl;
         for (int i = 0; i < nstages(); i++) {
             auto &s = stages[i];
@@ -334,7 +334,7 @@ struct slm_reduce_plan_t : public base_plan_t {
     // C layout and tile coordinate after reduction and redistribution in
     // threadgroup.
     layout_t c_layout;
-    pvar_coord_t<expr_t> c_coord;
+    coord_t c_coord;
 
     using base_plan_t::base_plan_t;
 
@@ -353,7 +353,7 @@ struct slm_reduce_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::add_tag("store", store.str()) << std::endl;
         oss << ir_utils::add_tag("load", load.str()) << std::endl;
         oss << ir_utils::add_tag("reduce", reduce.str()) << std::endl;
@@ -364,7 +364,7 @@ struct slm_reduce_plan_t : public base_plan_t {
 };
 
 struct epilogue_store_plan_t : public base_plan_t {
-    pvar_tile_t tile;
+    tile_t tile;
     reorder_plan_t reorder;
     reorder_plan_t bias_reorder;
     send_plan_t c_store;
@@ -372,7 +372,7 @@ struct epilogue_store_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "tile: " << tile << std::endl;
         if (reorder)
             oss << ir_utils::add_tag("reorder", bias_reorder.str())
@@ -390,7 +390,7 @@ struct epilogue_store_plan_t : public base_plan_t {
 struct epilogue_plan_t : public base_plan_t {
     slm_reduce_plan_t slm_reduce;
     layout_t c_reg_layout;
-    pvar_coord_t<expr_t> c_coord;
+    coord_t c_coord;
     layout_t bias_layout;
     expr_t bias_reduce_cond;
 
@@ -403,7 +403,7 @@ struct epilogue_plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         if (slm_reduce)
             oss << ir_utils::add_tag("slm_reduce", slm_reduce.str())
                 << std::endl;
@@ -443,7 +443,7 @@ struct plan_t : public base_plan_t {
 
     std::string str() const {
         if (!*this) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::add_tag("prefetch", prefetch.str()) << std::endl;
         oss << ir_utils::add_tag("x2r_fma", x2r_fma.str()) << std::endl;
         oss << ir_utils::add_tag("epilogue", epilogue.str());

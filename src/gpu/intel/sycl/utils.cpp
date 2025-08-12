@@ -15,13 +15,12 @@
 *******************************************************************************/
 
 #include "gpu/intel/sycl/utils.hpp"
+
+#include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
-
 #include "gpu/intel/sycl/l0/utils.hpp"
-
 #include "xpu/ocl/engine_factory.hpp"
 #include "xpu/ocl/utils.hpp"
-
 #include "xpu/sycl/compat.hpp"
 
 #include <sycl/ext/oneapi/backend/level_zero.hpp>
@@ -54,6 +53,7 @@ namespace sycl {
     return ::sycl::nd_range<3>(sycl_global_range, sycl_local_range);
 }
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 struct uuid2ocl_dev_t {
     uuid2ocl_dev_t() = default;
 
@@ -203,6 +203,7 @@ status_t create_ocl_engine(
     const auto &sycl_ctx = engine->context();
     return create_ocl_engine(ocl_engine, engine->device(), &sycl_ctx);
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 status_t get_kernel_binary(
         const ::sycl::kernel &kernel, xpu::binary_t &binary) {
@@ -210,6 +211,17 @@ status_t get_kernel_binary(
     assert(!devs.empty());
     switch (xpu::sycl::get_backend(devs[0])) {
         case xpu::sycl::backend_t::level0: {
+
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+            auto l0_kernel = ::sycl::get_native<
+                    ::sycl::backend::ext_oneapi_level_zero>(kernel);
+            size_t binary_size = 0;
+            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
+                    l0_kernel, &binary_size, nullptr));
+            binary.resize(binary_size);
+            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
+                    l0_kernel, &binary_size, binary.data()));
+#else
             auto bundle = kernel.get_kernel_bundle();
             auto module_vec = ::sycl::get_native<
                     ::sycl::backend::ext_oneapi_level_zero>(bundle);
@@ -239,6 +251,7 @@ status_t get_kernel_binary(
                 CHECK(gpu::intel::ocl::get_ocl_kernel_binary(
                         ocl_kernel, binary));
             }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
             return status::success;
         }
         case xpu::sycl::backend_t::opencl: {
@@ -280,6 +293,53 @@ gpu_utils::device_id_t device_id(const ::sycl::device &dev) {
             != static_cast<int>(xpu::sycl::backend_t::unknown));
     return device_id;
 }
+
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+bool mayiuse_microkernels(const gpu::intel::sycl::engine_t *engine) {
+    namespace syclex = ::sycl::ext::oneapi::experimental;
+    auto kb_src = syclex::create_kernel_bundle_from_source(engine->context(),
+            syclex::source_language::opencl,
+            compute::cl_microkernels_check_kernel_code);
+    try {
+        syclex::build(kb_src);
+    } catch (const ::sycl::exception &e) { return false; }
+    return true;
+}
+#else
+status_t get_sycl_ocl_device_and_context(
+        xpu::ocl::wrapper_t<cl_context> &ocl_context,
+        xpu::ocl::wrapper_t<cl_device_id> &ocl_device,
+        const sycl::engine_t *sycl_engine) {
+    auto &device = sycl_engine->device();
+    auto be = xpu::sycl::get_backend(device);
+    if (be == xpu::sycl::backend_t::opencl) {
+        cl_int err = CL_SUCCESS;
+        auto ocl_dev = xpu::sycl::compat::get_native<cl_device_id>(device);
+        ocl_device = xpu::ocl::make_wrapper(ocl_dev, true);
+
+        ocl_context = xpu::ocl::make_wrapper(
+                clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err),
+                true);
+        OCL_CHECK(err);
+    } else if (be == xpu::sycl::backend_t::level0) {
+        std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t> ocl_engine;
+        CHECK(create_ocl_engine(&ocl_engine, sycl_engine));
+        ocl_device = xpu::ocl::make_wrapper(ocl_engine->device(), true);
+        ocl_context = xpu::ocl::make_wrapper(ocl_engine->context(), true);
+    }
+    return status::success;
+}
+
+bool mayiuse_microkernels(const gpu::intel::sycl::engine_t *engine) {
+    xpu::ocl::wrapper_t<cl_context> ocl_context;
+    xpu::ocl::wrapper_t<cl_device_id> ocl_device;
+    auto status
+            = get_sycl_ocl_device_and_context(ocl_context, ocl_device, engine);
+    if (status != status::success) return false;
+    return ocl::try_building(ocl_context, ocl_device,
+            compute::cl_microkernels_check_kernel_code);
+}
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 } // namespace sycl
 } // namespace intel

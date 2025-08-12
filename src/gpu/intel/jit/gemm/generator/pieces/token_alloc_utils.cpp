@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,19 +17,19 @@
 
 #include "token_alloc_utils.hpp"
 
+GEMMSTONE_NAMESPACE_START
+
 using namespace ngen;
 using std::vector;
 
-#include "internal/namespace_start.hxx"
 
-
-bool allocateTokens(const vector<RegisterBlock> &layout, const GRFMultirange &regs, CommonState &state, const vector<GRFRange> &addrs)
+bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state, const vector<GRFRange> &addrs)
 {
     bool success = true;
     size_t origSize = state.tokenMap.size();
     auto saveTA = state.tokenAllocator;
 
-    for (size_t l = 0; l < layout.size(); l++) {
+    for (int l = 0; l < layout.blocks(); l++) {
         if (!layout[l].isLoadBlock()) continue;
 
         auto token = state.tokenAllocator.tryAlloc();
@@ -64,4 +64,4 @@ void clearTokenAllocations(HW hw, CommonState &state)
     state.tokenAllocator = TokenAllocator(hw);
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

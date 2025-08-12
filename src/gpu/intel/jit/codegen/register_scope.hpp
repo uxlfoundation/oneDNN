@@ -127,6 +127,12 @@ public:
         return ret;
     }
 
+    ngen::FlagRegister try_alloc_flag(int elems) {
+        auto ret = ra_.try_alloc_flag(/*sub=*/elems <= 16);
+        if (!ret.isInvalid()) flags_.push_back(ret);
+        return ret;
+    }
+
     ngen::FlagRegister alloc_flag(int elems) {
         auto ret = ra_.alloc_flag(/*sub=*/elems <= 16);
         flags_.push_back(ret);

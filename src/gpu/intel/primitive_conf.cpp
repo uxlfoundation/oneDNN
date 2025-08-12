@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/intel/gpu_post_ops.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 
 #include "gpu/intel/primitive_conf.hpp"
@@ -388,16 +389,33 @@ void def_block_offsets(const block_layout_t &layout,
     }
 }
 
+const char *get_type_name(data_type_t dt, bool with_punning) {
+    switch (dt) {
+        case data_type::undef: return "undef_data";
+        case data_type::bf16: return with_punning ? "ushort" : "bf16";
+        case data_type::f16: return "half";
+        case data_type::f32: return "float";
+        case data_type::f64: return "double";
+        case data_type::s8: return "char";
+        case data_type::u8: return "uchar";
+        case data_type::f8_e4m3: return with_punning ? "uchar" : "f8_e4m3";
+        case data_type::f8_e5m2: return with_punning ? "uchar" : "f8_e5m2";
+        case data_type::f4_e2m1: return with_punning ? "uchar" : "f4_e2m1";
+        case data_type::f4_e3m0: return with_punning ? "uchar" : "f4_e3m0";
+        case data_type::e8m0: return with_punning ? "uchar" : "e8m0";
+        case data_type::s4: return with_punning ? "uchar" : "s4";
+        case data_type::u4: return with_punning ? "uchar" : "u4";
+        case data_type::s32: return "int";
+        default:
+            gpu_error_not_expected()
+                    << "Unexpected data type " << dnnl_dt2str(dt);
+            return "invalid";
+    }
+}
+
 void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         const char *str, bool with_punning) {
-    const char *bf16_name = with_punning ? "ushort" : "bf16";
-    const char *bf8_name = with_punning ? "uchar" : "f8_e5m2";
-    const char *hf8_name = with_punning ? "uchar" : "f8_e4m3";
-    const char *f4_e2m1_name = with_punning ? "uchar" : "f4_e2m1";
-    const char *f4_e3m0_name = with_punning ? "uchar" : "f4_e3m0";
-    const char *e8m0_name = with_punning ? "uchar" : "e8m0";
-    const char *u4_name = with_punning ? "uchar" : "u4";
-    const char *s4_name = with_punning ? "uchar" : "s4";
+    const char *name = get_type_name(dt, with_punning);
 
     switch (dt) {
         case data_type::undef:
@@ -406,7 +424,7 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             break;
         case data_type::bf16:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_BF16", str, bf16_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_BF16", str, name, str));
             break;
         case data_type::f16:
             kernel_ctx.add_option(
@@ -430,31 +448,31 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
             break;
         case data_type::f8_e4m3:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_HF8", str, hf8_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_HF8", str, name, str));
             break;
         case data_type::f8_e5m2:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_BF8", str, bf8_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_BF8", str, name, str));
             break;
         case data_type::f4_e2m1:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, f4_e2m1_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, name, str));
             break;
         case data_type::f4_e3m0:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, f4_e3m0_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, name, str));
             break;
         case data_type::e8m0:
             kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_E8M0", str, e8m0_name, str));
+                    "-D%s_DATA_T=%s -D%s_DT_E8M0", str, name, str));
             break;
         case data_type::s4:
-            kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_S4", str, s4_name, str));
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=%s -D%s_DT_S4", str, name, str));
             break;
         case data_type::u4:
-            kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_U4", str, u4_name, str));
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=%s -D%s_DT_U4", str, name, str));
             break;
         case data_type::s32:
             kernel_ctx.add_option(
@@ -634,75 +652,83 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     bool post_op_uses_bf8 = false;
     bool post_op_uses_hf8 = false;
 
+    auto set_post_op_uses = [&](data_type_t type) {
+        post_op_uses_bf16 |= (type == data_type::bf16);
+        post_op_uses_bf8 |= (type == data_type::f8_e5m2);
+        post_op_uses_hf8 |= (type == data_type::f8_e4m3);
+    };
+
+    auto define_float = [&](const std::string &name, float value,
+                                std::initializer_list<float> inlines = {}) {
+        for (float v : inlines) {
+            if (v == value) {
+                kernel_ctx.define_float(name.c_str(), value);
+                return;
+            }
+        }
+        po_kernel_args += std::string(", float " + name);
+    };
+    auto define_int = [&](const std::string &name, int value,
+                              std::initializer_list<int> inlines = {}) {
+        for (float v : inlines) {
+            if (v == value) {
+                kernel_ctx.define_float(name.c_str(), value);
+                return;
+            }
+        }
+        po_kernel_args += std::string(", int " + name);
+    };
+
     auto add_po_defines = [&](const std::string &bin_arg_name,
-                                  const post_ops_t::entry_t &e, int idx) {
-        auto define_binary_po_type = [&](data_type_t type) {
-            def_data_type(kernel_ctx, type,
-                    utils::format("%s_ACTUAL", bin_arg_name).c_str(), false);
-            post_op_uses_bf16 |= (type == data_type::bf16);
-            post_op_uses_bf8 |= (type == data_type::f8_e5m2);
-            post_op_uses_hf8 |= (type == data_type::f8_e4m3);
-        };
-        if (e.is_binary()) {
-            kernel_ctx.add_option(
-                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_BINARY");
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_ALG", e.binary.alg);
+                                  const post_ops_t::entry_t &e, int idx_) {
+        std::string idx = std::to_string(idx_);
+        if (e.is_binary() || e.is_prelu()) {
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_BINARY");
 
-            const memory_desc_wrapper src1_mdw(e.binary.src1_desc);
-            const auto mdi = memory_desc_info_t::create(src1_mdw);
-            def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
-            define_binary_po_type(mdi.data_type);
+            post_op::relative_md_t src_rmd;
+            if (e.is_binary()) {
+                kernel_ctx.define_int("PO_" + idx + "_ALG", e.binary.alg);
+                CHECK(post_op::relative_md_t::make(
+                        src_rmd, e.binary.src1_desc, {}));
+            } else {
+                kernel_ctx.define_int(
+                        "PO_" + idx + "_ALG", alg_kind_t::dnnl_eltwise_relu);
+                memory_desc_t weight_mem_desc;
+                CHECK(get_prelu_md(e.prelu.mask, dst_md.dims, weight_mem_desc,
+                        dst_md.ndims));
+                CHECK(post_op::relative_md_t::make(
+                        src_rmd, weight_mem_desc, {}));
+            }
 
-            po_kernel_args += ", const __global PO_" + std::to_string(idx)
-                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
+            std::array<std::string, MAX_NDIMS> stride_vars;
+            for (int i = 0; i < dst_md.ndims; i++) {
+                stride_vars[i] = "po" + idx + "_stride" + std::to_string(i);
+            }
+            kernel_ctx.add_option(src_rmd.ocl_defines(
+                    "PO_" + idx, stride_vars, dst_md.ndims));
+            set_post_op_uses(src_rmd.dt);
+
+            po_kernel_args += std::string(", const __global ")
+                    + get_type_name(src_rmd.dt, false) + " *po" + idx
                     + "_binary_arg";
-        } else if (e.is_prelu()) {
-            // binary && eltwise relu = prelu post op
-            kernel_ctx.add_option(
-                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_BINARY");
-            kernel_ctx.define_int("PO_" + std::to_string(idx) + "_ALG",
-                    alg_kind_t::dnnl_eltwise_relu);
-
-            memory_desc_t weight_mem_desc;
-            int weight_ndims = dst_md.ndims;
-            CHECK(get_prelu_md(
-                    e.prelu.mask, dst_md.dims, weight_mem_desc, weight_ndims));
-            const memory_desc_wrapper weight_mdw(weight_mem_desc);
-            const auto mdi = memory_desc_info_t::create(weight_mdw);
-            def_memory_desc_info(kernel_ctx, mdi, bin_arg_name.c_str());
-
-            // prelu weights are assumed to be f32
-            define_binary_po_type(data_type::f32);
-
-            po_kernel_args += ", const __global PO_" + std::to_string(idx)
-                    + "_BIN_ARG_DATA_T *po_" + std::to_string(idx)
-                    + "_binary_arg";
+            for (int i = 0; i < dst_md.ndims; i++) {
+                if (!src_rmd.is_broadcast(i, dst_md.ndims)
+                        && !src_rmd.is_inner_dim(i, dst_md.ndims))
+                    po_kernel_args += std::string(", dim_t " + stride_vars[i]);
+            }
         } else if (e.is_eltwise()) {
-            kernel_ctx.add_option(
-                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_ELTWISE");
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_ALG", e.eltwise.alg);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_ALPHA").c_str(),
-                    e.eltwise.alpha);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_BETA").c_str(),
-                    e.eltwise.beta);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_ELTWISE_SCALE").c_str(),
-                    e.eltwise.scale);
+            define_float("po" + idx + "_alpha", e.eltwise.alpha);
+            define_float("po" + idx + "_beta", e.eltwise.beta);
+            define_float("po" + idx + "_scale", e.eltwise.scale, {0, 1});
+
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_ELTWISE");
+            kernel_ctx.define_int("PO_" + idx + "_ALG", e.eltwise.alg);
         } else if (e.is_sum(false, false)) {
-            kernel_ctx.add_option(
-                    "-DAPPLY_PO_" + std::to_string(idx) + "=APPLY_PO_SUM");
-            kernel_ctx.define_int(
-                    "PO_" + std::to_string(idx) + "_ALG", alg_kind::undef);
-            kernel_ctx.define_float(
-                    ("PO_" + std::to_string(idx) + "_SUM_SCALE").c_str(),
-                    e.sum.scale);
-            kernel_ctx.define_int(
-                    ("PO_" + std::to_string(idx) + "_SUM_ZP").c_str(),
-                    e.sum.zero_point);
+            define_int("po" + idx + "_zp", e.sum.zero_point, {0});
+            define_float("po" + idx + "_scale", e.sum.scale, {0, 1});
+
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_SUM");
+            kernel_ctx.define_int("PO_" + idx + "_ALG", alg_kind::undef);
 
         } else {
             return status::runtime_error;
@@ -728,25 +754,51 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
 
 int append_post_ops_to_arg_list_base(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops) {
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
     auto set_arg_entry = [&](const post_ops_t::entry_t &e, int po_idx) {
-        if (e.is_binary()) {
-            auto arg = args.at(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx) | DNNL_ARG_SRC_1);
+        if (e.is_binary() || e.is_prelu()) {
+            auto arg = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
+                    | (e.is_binary() ? DNNL_ARG_SRC_1 : DNNL_ARG_WEIGHTS));
             gpu_assert(arg.is_const);
 
             auto &binary_arg = arg.mem
                     ? *(arg.mem->memory_storage())
                     : dnnl::impl::memory_storage_t::empty_storage();
             arg_list.set(post_op_idx++, binary_arg);
-        } else if (e.is_prelu()) {
-            auto arg = args.at(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx) | DNNL_ARG_WEIGHTS);
-            gpu_assert(arg.is_const);
-            auto &prelu_wei_arg = arg.mem
-                    ? *(arg.mem->memory_storage())
-                    : dnnl::impl::memory_storage_t::empty_storage();
-            arg_list.set(post_op_idx++, prelu_wei_arg);
+
+            post_op::relative_md_t src_rmd;
+            memory_desc_t src;
+            if (e.is_binary()) {
+                src = e.binary.src1_desc;
+                status_t status = post_op::relative_md_t::make(
+                        src_rmd, e.binary.src1_desc, {});
+                gpu_assert(status == status::success);
+            } else {
+                status_t status = get_prelu_md(
+                        e.prelu.mask, dst_mdw.dims(), src, dst_mdw.ndims());
+                gpu_assert(status == status::success);
+                status = post_op::relative_md_t::make(src_rmd, src, {});
+                gpu_assert(status == status::success);
+            }
+
+            memory_desc_wrapper src_mdw = src;
+            for (int i = 0; i < src_mdw.ndims(); i++) {
+                if (!src_rmd.is_broadcast(i, src_mdw.ndims())
+                        && !src_rmd.is_inner_dim(i, src_mdw.ndims()))
+                    arg_list.set(post_op_idx++, src_mdw.strides()[i]);
+            }
+        } else if (e.is_eltwise()) {
+            arg_list.set(post_op_idx++, e.eltwise.alpha);
+            arg_list.set(post_op_idx++, e.eltwise.beta);
+            if (!utils::one_of(e.eltwise.scale, 0, 1))
+                arg_list.set(post_op_idx++, e.eltwise.scale);
+        } else if (e.is_sum(false, false)) {
+            if (e.sum.zero_point != 0) {
+                arg_list.set(post_op_idx++, e.sum.zero_point);
+            }
+            if (!utils::one_of(e.sum.scale, 0, 1)) {
+                arg_list.set(post_op_idx++, e.sum.scale);
+            }
         }
     };
 
@@ -757,16 +809,16 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
 }
 int append_post_ops_to_arg_list_gemm(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops) {
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
     return append_post_ops_to_arg_list_base(
-            args, arg_list, post_op_idx, post_ops);
+            args, arg_list, post_op_idx, post_ops, dst_mdw);
 }
 int append_post_ops_to_arg_list(const exec_ctx_t &ctx,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops) {
+        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
     exec_args_t args;
     return append_post_ops_to_arg_list_base(
-            ctx.args(), arg_list, post_op_idx, post_ops);
+            ctx.args(), arg_list, post_op_idx, post_ops, dst_mdw);
 }
 
 bool post_ops_preserves_zeroes(

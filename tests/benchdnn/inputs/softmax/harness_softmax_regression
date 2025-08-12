@@ -1,0 +1,7 @@
+# "vectorized" and "small" reusable kernels (stride 1, aligned) with scale
+--reset
+--dir=FWD_I
+--sdt=u8
+--ddt=s8
+--attr-scales=dst:common:0.125,src:common:2
+--axis=3 1x4x192x256 1x4x16x32

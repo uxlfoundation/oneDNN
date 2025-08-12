@@ -139,7 +139,7 @@ public:
         return false;
     }
 
-    void finalize(const pvar_tile_t &grid_tile) {
+    void finalize(const tile_t &grid_tile) {
         for (auto &d : grid_tile) {
             int inner_block = 1;
             for (auto &b : blocks_) {
@@ -165,7 +165,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         for (int id = 0; id < 3; id++) {
             if (id != 0) oss << ",";
             for (auto &b : blocks_) {

@@ -52,6 +52,9 @@ dim_t brgemm_calc_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_f32,
 dim_t adjust_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_int8_amx,
         bool is_xf16_amx);
 
+dim_t brgemm_calc_n_block(
+        const cpu::rnn_utils::rnn_conf_t &rnn, alg_kind_t cell_kind);
+
 bool has_amx_support(data_type_t dt) {
     switch (dt) {
         case data_type::u8:
@@ -292,6 +295,25 @@ x64::cpu_isa_t adjust_isa_by_m_block(
     return current_isa;
 }
 
+dim_t brgemm_calc_n_block(
+        const cpu::rnn_utils::rnn_conf_t &rnn, alg_kind_t cell_kind) {
+    const bool is_amx_isa_selected
+            = rnn.is_cell_int8_amx() || rnn.is_cell_xf16_amx();
+    const bool can_use_block64
+            = is_amx_isa_selected && rnn.N % 64 == 0 && !rnn.is_lstm_projection;
+    if (can_use_block64) return 64;
+
+    const int simd_w = isa_max_vlen(rnn.brgemm_isa) / sizeof(float);
+
+    // TODO: check if 4*simd_w can be used for other cases
+    if (rnn.brgemm_isa == avx2 && rnn.M == 1
+            && utils::one_of(
+                    cell_kind, alg_kind::vanilla_lstm, alg_kind::lbr_gru))
+        return 4 * simd_w;
+    else
+        return 2 * simd_w;
+}
+
 } // namespace
 
 void rnn_brgemm_base_t::init_scratchpad(const cpu::rnn_utils::rnn_conf_t &rnn,
@@ -376,12 +398,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
         return status::unimplemented;
 
     rnn.nthr = dnnl_get_max_threads();
-    const bool is_amx_isa_selected
-            = rnn.is_cell_int8_amx() || rnn.is_cell_xf16_amx();
-    const bool can_use_block64
-            = is_amx_isa_selected && rnn.N % 64 == 0 && !rnn.is_lstm_projection;
-    const int simd_w = isa_max_vlen(rnn.brgemm_isa) / sizeof(float);
-    rnn.n_block = can_use_block64 ? 64 : 2 * simd_w;
+    rnn.n_block = brgemm_calc_n_block(rnn, cell_kind);
     rnn.N_blocks = utils::div_up(rnn.N, rnn.n_block);
     rnn.n_tail = rnn.N % rnn.n_block;
 
@@ -438,7 +455,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     };
 
     dim_t n_block = nstl::min(rnn.N, rnn.n_block);
-    dim_t n_tail = nstl::min(rnn.N, rnn.nproj_tail);
+    dim_t n_tail = nstl::min(rnn.N, rnn.n_tail);
     if (rnn.LDA1[0] < rnn.k1_block && rnn.LDA1[1] < rnn.k1_block
             && rnn.LDA1[2] < rnn.k1_block)
         return status::unimplemented;
@@ -508,8 +525,10 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
 
     // enable merged across n_iter dimension layer part of the cell computation
     // TODO: extend coverage for other problem types
-    const bool mlc_cell_type_ok = cell_kind == alg_kind::vanilla_lstm
-            && !rnn.is_lstm_projection && !rnn.is_lstm_peephole;
+    const bool mlc_cell_type_ok
+            = (cell_kind == alg_kind::vanilla_lstm && !rnn.is_lstm_projection
+                      && !rnn.is_lstm_peephole)
+            || (cell_kind == alg_kind::lbr_gru && rnn.brgemm_isa == x64::avx2);
     const int mlc_mb_max_threshold = 1;
     const int mlc_n_iter_min_threshold = 2;
     const int mlc_n_layer_max_threshold = 1;

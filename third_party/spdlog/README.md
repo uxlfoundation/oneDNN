@@ -1,3 +1,3 @@
 This code is from [spdlog](https://github.com/gabime/spdlog).
 
-tag: 1.15.1
+tag: 1.15.3

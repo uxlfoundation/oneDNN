@@ -47,9 +47,9 @@ struct primitive_cache_t {
         return result.value != nullptr ? result.value->pd() : nullptr;
     }
 
-    result_t get_or_create(
-            const key_t &key, create_func_t create, void *create_context) {
-        return cache_.get_or_create(key, create, create_context);
+    result_t get_or_create(const key_t &key, create_func_t create,
+            void *create_context, bool force_create) {
+        return cache_.get_or_create(key, create, create_context, force_create);
     }
 
 private:
@@ -128,8 +128,11 @@ std::shared_ptr<primitive_desc_t> primitive_cache_iface_t::get_pd(
 }
 
 primitive_cache_iface_t::result_t primitive_cache_iface_t::get_or_create(
-        const key_t &key, create_func_t create, void *create_context) {
-    auto r = cache_.get_or_create(key, create, create_context);
+        const key_t &key, create_func_t create, void *create_context,
+        bool force_create) {
+    // Specific scenarios, e.g., creation of nested primitives coming from a
+    // cache blob, require forcing the creation through `force_create`.
+    auto r = cache_.get_or_create(key, create, create_context, force_create);
     return {std::move(r.value), r.status};
 }
 

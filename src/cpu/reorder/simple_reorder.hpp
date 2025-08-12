@@ -93,13 +93,17 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
     const float *dst_scales = pd->precompute_scales( \
             scratchpad, pd->attr(), D_mask, dst_scales_); \
     MAYBE_UNUSED(dst_scales); \
-    DEFINE_ZERO_POINTS_BUFFER_ATTR(pd->attr(), src_zero_points, DNNL_ARG_FROM) \
+    const int32_t *src_zero_points = CTX_IN_MEM( \
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM); \
     const auto src_zps_d \
             = ctx.memory_mdw(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM); \
     MAYBE_UNUSED(src_zps_d); \
     int src_zp = src_zero_points ? src_zero_points[0] : 0; \
     MAYBE_UNUSED(src_zp); \
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd->attr(), dst_zp, DNNL_ARG_TO); \
+    const int32_t *dst_zero_points = CTX_IN_MEM( \
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_TO); \
+    int dst_zp = dst_zero_points ? dst_zero_points[0] : 0; \
+    MAYBE_UNUSED(dst_zp); \
     const float alpha = src_scales[0] * dst_scales[0]; \
     MAYBE_UNUSED(alpha); \
     const float beta = pd->beta(); \

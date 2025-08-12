@@ -58,8 +58,7 @@ public:
         : host_(host)
         , expr_binding_(expr_binding)
         , simd_size_(host->getSIMD())
-        , eu_count_(host->exec_cfg().hw().eu_count())
-        , with_atomic_fp64_(host->exec_cfg().hw().has_fp64_atomic_support()) {}
+        , with_atomic_fp64_(host->hw_info().has_fp64_atomic_support()) {}
 
     ~ir_to_ngen_t() override
 #ifdef DNNL_DEV_MODE
@@ -212,7 +211,7 @@ public:
         gpu_assert(obj.cond.type().elems() == simd_size_);
         host_->comment(obj.line_str());
 
-        bool has_else = !obj.else_body.is_empty();
+        bool has_else = bool(obj.else_body);
         auto scope = register_scope();
         auto cond_op = eval(obj.cond, scope);
 
@@ -386,7 +385,7 @@ private:
     }
 
     ngen_register_scope_t register_scope() {
-        return ngen_register_scope_t(host_->ra_);
+        return ngen_register_scope_t(host_->ra());
     }
 
 #ifdef DNNL_DEV_MODE
@@ -440,7 +439,7 @@ private:
             it->second.retain();
             return it->second.get_reg_buf(alloc.buf);
         }
-        auto bca = bank_conflict_allocation_t::create(host_->ra_, bc_attr);
+        auto bca = bank_conflict_allocation_t::create(host_->ra(), bc_attr);
         if (bca.is_empty()) return {};
 
         auto ret = bc_allocations_.emplace(bc_attr, std::move(bca));
@@ -457,9 +456,8 @@ private:
 
     void signal(const func_call_attr_t &attr) {
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
-        host_->barriermsg(mod, host_->signal_header_);
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
+        host_->barriermsg(mod, host_->signal_header());
     }
 
     void barrier_wait() { host_->barrierwait(); }
@@ -468,8 +466,7 @@ private:
         auto scope = register_scope();
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
@@ -479,12 +476,11 @@ private:
         auto scope = register_scope();
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
-        if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         host_->slmfence(mod, tmp, host_->r0);
         host_->fencewait();
-        host_->barriermsg(mod, host_->signal_header_);
+        host_->barriermsg(mod, host_->signal_header());
         host_->barrierwait();
     }
 
@@ -519,8 +515,7 @@ private:
                 0, src2_width, src2_stride, to_ngen(dpas_func.src2_type));
 
         ngen::InstructionModifier mod = esize;
-        if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/true);
         if (dpas_func.is_dpasw) {
             host_->dpasw(mod, dpas_func.sdepth, dpas_func.rcount, dst, src0,
@@ -568,8 +563,7 @@ private:
                 to_ngen(mad_func.src2_type));
 
         ngen::InstructionModifier mod = mad_func.exec_size;
-        if (!attr.is_empty())
-            mod = mod | to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
 
         check_bank_conflicts(mod, src0, src1, src2, /*is_dpas=*/false);
         if (src0.isNull()) {
@@ -578,19 +572,7 @@ private:
             gpu_assert(dst.byte_offset() == src0.getByteOffset())
                     << "dst/src0 must be aligned to the same GRF offset.";
             align_src_dst_offset(host_, scope, mod, dst, src1, src2);
-            if (hw() < ngen::HW::XeLP
-                    && (ngen_is_dw(to_ngen(mad_func.dst_type))
-                            || mad_func.dst_type == type_t::f64()
-                            || (src1_width == 1 && src2_width == 1))) {
-                // On Gen9 int is not supported; f64 supports broadcast only with exec size 2.
-                // Use mul/add sequence instead.
-                auto tmp = scope.alloc_range(
-                        (mad_func.exec_size * mad_func.dst_type.size())
-                        / ngen::GRF::bytes(hw()));
-                auto reg = tmp[0].setType(to_ngen(mad_func.dst_type));
-                host_->mul(mod, reg, src1, src2);
-                host_->add(mod, dst, reg, src0);
-            } else if (mad_func.dst_type == type_t::f64()
+            if (mad_func.dst_type == type_t::f64()
                     && src1.reg_data().getHS() == 0
                     && src1.reg_data().getVS() == 0) {
                 // Workaround for sporadic f64 mad errors with broadcast src1 on XeHPC.
@@ -736,8 +718,7 @@ private:
 
         ngen::InstructionModifier mod = send_func.nmasks();
         gpu_assert(math::is_pow2(mod.getExecSize()));
-        if (!attr.is_empty())
-            mod |= to_ngen(attr.as<instruction_modifier_attr_t>().mod);
+        if (attr) mod |= attr.as<instruction_modifier_attr_t>().mod;
         if (!mask_op.is_invalid()) mod |= mask_op.flag_register_mod();
 
         // Zero-out inactive channels unless told not to.
@@ -798,8 +779,8 @@ private:
         auto &data_op = eltwise_t::arg_data(args);
         const auto &data_rd = data_op.reg_buf_data();
 
-        eltwise_injector_f32_t<ngen_generator_t> inj(host_, func.alg_kind,
-                func.alpha, func.beta, func.scale, eu_count_);
+        eltwise_injector_f32_t<typename ngen_generator_t::RootCodeGenerator>
+                inj(host_, func.alg_kind, func.alpha, func.beta, func.scale);
         auto scratch = scope.alloc_range(inj.preferred_scratch_regs());
         inj.set_scratch(scratch);
         inj.prepare();
@@ -832,11 +813,9 @@ private:
                 int full_elems
                         = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
                 auto tmp = i_scope.alloc_reg_data(type_t::f32(full_elems));
-                emit_reorder_1d_tile(
-                        hw(), host_, i_scope, cur_elems, rd, 1, tmp, 1);
+                emit_reorder_1d_tile(host_, i_scope, cur_elems, rd, 1, tmp, 1);
                 do_eltwise(tmp, full_elems * f_size / grf_size);
-                emit_reorder_1d_tile(
-                        hw(), host_, i_scope, cur_elems, tmp, 1, rd, 1);
+                emit_reorder_1d_tile(host_, i_scope, cur_elems, tmp, 1, rd, 1);
             } else {
                 do_eltwise(rd, cur_elems * f_size / grf_size);
             }
@@ -863,7 +842,6 @@ private:
     ngen_generator_t *host_;
     expr_binding_t expr_binding_;
     int simd_size_;
-    int eu_count_;
     bool with_atomic_fp64_;
 
 #ifdef DNNL_DEV_MODE
@@ -1061,7 +1039,7 @@ public:
             default: {
                 // Some cases require pre-allocated register regions with
                 // special strides for a/b.
-                auto scope = ngen_register_scope_t(host_->ra_);
+                auto scope = ngen_register_scope_t(host_->ra());
                 auto a_out_op = maybe_alloc_strided_op(obj.type, obj.a, scope);
                 auto b_out_op = maybe_alloc_strided_op(obj.type, obj.b, scope);
                 bool is_mul = obj.op_kind == op_kind_t::_mul;
@@ -1069,23 +1047,12 @@ public:
                 auto src0_op = eval(obj.a, a_out_op);
                 auto src1_op = eval(obj.b, b_out_op);
 
-                // XXX: (q x d) case is not supported. Try to downgrade it to
-                // (d x d) based on the previous assignments.
-                if (obj.op_kind == op_kind_t::_mul && obj.a.type().is_x64()) {
-                    type_t orig_type;
-                    if (is_int_up_convert(obj.a, orig_type)) {
-                        src0_op = src0_op.reinterpret(orig_type);
-                        // XXX: sync workaround is to fix an issue with
-                        // mul(q, d, d) instruction on XeHP. For some reason
-                        // the result is incorrect when dst and src0 are
-                        // accessed from the same register.
-                        if (hw() > ngen::HW::XeLP)
-                            host_->sync(ngen::SyncFunction::nop,
-                                    ngen::SWSB<uint64_t>(1));
-                    } else {
-                        gpu_error_not_expected();
-                    }
-                }
+                if ((src0_op.is_reg_buf_data()
+                            && src0_op.reg_buf_data().hs() != 0)
+                        || (src1_op.is_reg_buf_data()
+                                && src1_op.reg_buf_data().hs() != 0))
+                    mod.setExecSize(obj.type.elems());
+
                 ebinary(obj, mod, dst_op, src0_op, src1_op);
                 break;
             }
@@ -1184,6 +1151,15 @@ public:
         int off = to_cpp<int>(off_op.immediate());
         auto load_rbd = buf_op.reg_buf_data().format(off / scalar_type.size(),
                 type.elems(), stride, to_ngen(scalar_type));
+        bind(obj, load_rbd);
+    }
+    void _visit(const ref_t &obj) override {
+        auto &type = obj.type;
+        auto scalar_type = type.scalar();
+        auto buf_op = eval(obj.var);
+        int off = obj.off;
+        auto load_rbd = buf_op.reg_buf_data().format(
+                off, type.elems(), /*stride=*/1, to_ngen(scalar_type));
         bind(obj, load_rbd);
     }
 
@@ -1703,32 +1679,62 @@ private:
     object_eq_map_t<expr_t, type_t> int_up_converts_;
 };
 
-template <typename ngen_generator_t>
-void convert_ir_to_ngen_impl(const stmt_t &body, ngen_generator_t *host,
+class setup_visitor_t : public ir_visitor_t {
+public:
+    void _visit(const func_call_t &obj) override {
+        auto &func = obj.func;
+        auto *dpas = func.as_ptr<dpas_t>();
+        auto *send = func.as_ptr<send_t>();
+        if (dpas)
+            flags.has_dpas = true;
+        else if (send && send->is_atomic())
+            flags.has_send_atomics = true;
+        else if (func.is_same(funcs::signal_func()))
+            flags.has_signal_header = true;
+        else if (func.is_same(funcs::barrier_func()))
+            flags.has_signal_header = true;
+    }
+
+    setup_flags_t flags = {};
+};
+
+setup_flags_t get_setup_flags(const stmt_t &s) {
+    setup_visitor_t visitor;
+    visitor.visit(s);
+    return visitor.flags;
+}
+
+template <typename GeneratorT>
+void convert_ir_to_ngen(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
     expr_binding_t expr_binding(host->getHardware());
     host->comment("Prologue");
     host->generate_prologue();
 
-    host->bind_external_vars(body, expr_binding);
+    host->bind_external_vars(body, expr_binding, kernel_grid_walk_order);
     if (kernel_grid_walk_order)
         host->bind_kernel_grid_walk_order(
                 *kernel_grid_walk_order, expr_binding);
 
     host->comment("IR");
-    ir_to_ngen_t<ngen_generator_t> visitor(host, expr_binding);
+    ir_to_ngen_t<GeneratorT> visitor(host, expr_binding);
     visitor.visit(body);
 
     host->comment("Epilogue");
     host->generate_epilogue();
 }
 
-std::string get_ngen_str(const stmt_t &body, ir_asm_kernel_t host,
+template <typename GeneratorT>
+std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
+    ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t> host_asm(
+            host->kernel_iface(), host->exec_cfg(), {});
+    host_asm.set_interface(host->getInterface());
+
     try {
-        convert_ir_to_ngen_impl(body, &host, kernel_grid_walk_order);
-        return host.str();
+        convert_ir_to_ngen(body, &host_asm, kernel_grid_walk_order);
+        return host_asm.str();
     } catch (std::runtime_error &e) {
         return "IR to nGEN Exception: " + std::string(e.what());
     }
@@ -1737,47 +1743,84 @@ std::string get_ngen_str(const stmt_t &body, ir_asm_kernel_t host,
 #endif
 }
 
-template <typename ngen_generator_t>
-void convert_ir_to_ngen(const stmt_t &body, ngen_generator_t *host,
-        const walk_order_t *kernel_grid_walk_order) {
-    gpu_trace() << get_ngen_str(body, *host, kernel_grid_walk_order);
-    convert_ir_to_ngen_impl(body, host, kernel_grid_walk_order);
+template <typename GeneratorT>
+void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
+        const walk_order_t *kernel_grid_walk_order, int &peak_regs) {
+    gpu_trace() << get_ngen_str(kernel_body, host, kernel_grid_walk_order);
+    convert_ir_to_ngen(kernel_body, host, kernel_grid_walk_order);
+#ifdef DNNL_DEV_MODE
+    peak_regs = host->ra().get_peak_regs();
+#endif
 }
 
-REG_GEN9_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen9> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_GEN11_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Gen11> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XELP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeLP> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHP_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHP> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHPG_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHPG> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XEHPC_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::XeHPC> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XE2_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe2> *host,
-        const walk_order_t *kernel_grid_walk_order));
-REG_XE3_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe3> *host,
-        const walk_order_t *kernel_grid_walk_order));
-#if XE3P
-REG_XE3P_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe3p> *host,
-        const walk_order_t *kernel_grid_walk_order));
-#endif
-#if XE4
-REG_XE4_ISA(template void convert_ir_to_ngen(const stmt_t &body,
-        ir_kernel_t<ngen::HW::Xe4> *host,
-        const walk_order_t *kernel_grid_walk_order));
-#endif
+ngen::NEOInterfaceHandler generate_ngen_interface(
+        const kernel_iface_t &kernel_iface, const exec_config_t &exec_cfg,
+        bool require_dpas, const stmt_t &kernel_body) {
+
+    ngen::NEOInterfaceHandler interface(exec_cfg.hw());
+    interface.externalName(kernel_iface.kernel_name());
+    interface.requireLocalID(3);
+    interface.requireLocalSize();
+    interface.requireGRF(exec_cfg.regs());
+    interface.requireSIMD(exec_cfg.simd());
+    interface.requireBarrier();
+    auto setup_flags = get_setup_flags(kernel_body);
+
+    // Allow dpas override to avoid context switch overhead on XeHPG
+    if (setup_flags.has_dpas || require_dpas) interface.requireDPAS();
+    if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
+
+    for (int i = 0; i < kernel_iface.nargs(); i++) {
+        auto &name = kernel_iface.arg_name(i);
+        auto &type = kernel_iface.arg_type(i);
+        if (type.is_ptr()) {
+            interface.newArgument(name, ngen::ExternalArgumentType::GlobalPtr,
+                    ngen::GlobalAccessType::Stateless);
+        } else {
+            interface.newArgument(name, to_ngen(type));
+        }
+    }
+
+    int slm_size = alloc_manager_t(kernel_body).total_size(alloc_kind_t::slm);
+    interface.requireSLM(slm_size);
+
+    interface.finalize();
+    return interface;
+}
+
+void ir_kernel_t::generate_from_ir(
+        const stmt_t &kernel_body, const walk_order_t *kernel_grid_walk_order) {
+    gpu_assert(!generator_)
+            << "ir_kernel_t::generate_from_ir() was called already.";
+
+    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
+            kernel_iface_, exec_cfg_, require_dpas_, kernel_body);
+
+    if (local_range_) {
+        size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
+                convert_ngen_arch_to_dnnl(exec_cfg_.hw()), thread_group_size(),
+                exec_cfg_.regs() > 128);
+        if (interface.getSLMSize() > max_slm_size) {
+            gpu_trace() << "SLM size limit exceeded: " << interface.getSLMSize()
+                        << " > " << max_slm_size;
+            gpu_except_not_implemented("SLM size limit is exceeded.");
+        }
+    }
+
+#define GPU_HW_CASE(hw) \
+    using gen_type = ir_to_ngen_generator_t<generator_t<(hw)>>; \
+    generator_ = utils::make_unique<gen_type>( \
+            kernel_iface_, exec_cfg_, debug_config_); \
+    auto *gen = static_cast<gen_type *>(generator_.get()); \
+    gen->setInterface(generate_ngen_interface( \
+            kernel_iface_, exec_cfg_, require_dpas_, kernel_body)); \
+    if (force_emulate64_) gen->force_emulate64(); \
+    jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
+
+    GPU_HW_SWITCH(exec_cfg_.hw().to_ngen());
+
+#undef GPU_HW_CASE
+}
 
 } // namespace jit
 } // namespace intel

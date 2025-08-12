@@ -14,13 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "kernel_evaluator.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 template <typename T1, typename T2>
 static inline T1 divUp(T1 x, T2 y)
@@ -557,4 +557,4 @@ void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)
     strategy.kParallelVariable = aux.kParallelVariable;
 }
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END

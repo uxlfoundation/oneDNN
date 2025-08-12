@@ -24,6 +24,7 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/matmul/postops_estimator.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
 // TODO add a method to print brgemm conf info
@@ -101,7 +102,7 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
     if (bgmmc.is_thread_chunks_exec_order_horizontal) {
         bgmmc.mem_advice
                 = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_B;
-        if (nchunks_per_thread % bgmmc.N_chunks)
+        if (nchunks_per_thread % bgmmc.N_chunks && bgmmc.is_amx)
             bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
                     brgemm_hint_mem_advice_A_B;
     } else {
@@ -130,11 +131,12 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     bool is_binary_po_per_mb_bcast {};
     bool is_binary_po_per_mb_w_bcast {};
     bool is_binary_po_per_w_bcast {};
+    bool is_binary_po_per_hw_bcast {};
     bool is_binary_po_batch_bcast {};
     std::tie(is_binary_po_per_oc_sp_bcast, is_binary_po_per_oc_d_bcast,
             is_binary_po_channel_bcast, is_binary_po_per_mb_bcast,
             is_binary_po_per_mb_w_bcast, is_binary_po_per_w_bcast,
-            is_binary_po_batch_bcast)
+            is_binary_po_per_hw_bcast, is_binary_po_batch_bcast)
             = binary_injector_utils::bcast_strategies_present_tup(
                     post_ops.entry_, dst_d,
                     broadcasting_strategy_t::per_oc_spatial,
@@ -142,6 +144,7 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
                     broadcasting_strategy_t::per_mb,
                     broadcasting_strategy_t::per_mb_spatial,
                     broadcasting_strategy_t::per_mb_w,
+                    broadcasting_strategy_t::per_hw,
                     broadcasting_strategy_t::per_w,
                     broadcasting_strategy_t::batch);
     const bool supported_binary_bcast
@@ -154,15 +157,16 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
             && IMPLICATION(is_binary_po_per_w_bcast, utils::one_of(ndims, 3, 4))
             && IMPLICATION(
                     is_binary_po_per_mb_bcast, utils::one_of(ndims, 3, 4))
-            && IMPLICATION(
-                    is_binary_po_batch_bcast, utils::one_of(ndims, 3, 4));
+            && IMPLICATION(is_binary_po_batch_bcast, utils::one_of(ndims, 3, 4))
+            && IMPLICATION(is_binary_po_per_hw_bcast, ndims == 4);
+
     const bcast_set_t default_bcast_set = {broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
             broadcasting_strategy_t::per_oc_d, broadcasting_strategy_t::scalar,
             broadcasting_strategy_t::per_mb,
             broadcasting_strategy_t::per_mb_spatial,
-            broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
-            broadcasting_strategy_t::batch,
+            broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_hw,
+            broadcasting_strategy_t::per_w, broadcasting_strategy_t::batch,
             broadcasting_strategy_t::no_broadcast};
     const bcast_set_t limited_bcast_set = {broadcasting_strategy_t::scalar,
             broadcasting_strategy_t::no_broadcast};
@@ -1267,20 +1271,23 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-    const bool has_wei_scales = !wei_scales.has_default_values();
-    bgmmc.with_scales = !src_scales.has_default_values() || has_wei_scales;
-    if (has_wei_scales) {
+    bgmmc.with_src_scales = !src_scales.has_default_values();
+    bgmmc.with_wei_scales = !wei_scales.has_default_values();
+    if (bgmmc.with_wei_scales) {
         const auto wei_qmask_N = 1 << (bgmmc.ndims - 1);
         const auto wei_qmask_K = 1 << (bgmmc.ndims - 2);
-        bgmmc.is_oscale_per_k = wei_scales.get_mask() & wei_qmask_K;
-        bgmmc.is_oscale_per_n = wei_scales.get_mask() & wei_qmask_N;
-        bgmmc.apply_scales_in_buffer_b = bgmmc.is_oscale_per_k
+        bgmmc.is_wei_scale_per_k = wei_scales.get_mask() & wei_qmask_K;
+        bgmmc.is_wei_scale_per_n = wei_scales.get_mask() & wei_qmask_N;
+        bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
                 && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
+        bgmmc.wei_scales_dt = wei_scales.get_data_type();
+        bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
+        bgmmc.wei_scales_k_group_size = wei_scales.get_group(0);
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression
-        VCONDCHECK_BG(wei_scales.get_mask() == 0 || bgmmc.is_oscale_per_n
-                        || IMPLICATION(bgmmc.is_oscale_per_k,
+        VCONDCHECK_BG(wei_scales.get_mask() == 0 || bgmmc.is_wei_scale_per_n
+                        || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
@@ -1375,7 +1382,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
     bgmmc.req_transpose_scales = bgmmc.apply_scales_in_buffer_b
-            && bgmmc.is_oscale_per_k && bgmmc.is_oscale_per_n
+            && bgmmc.is_wei_scale_per_k && bgmmc.is_wei_scale_per_n
             && bgmmc.transposed_B;
 
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
@@ -1520,6 +1527,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                   || bm_conf_utils.is_any_B_layout())),
             VERBOSE_UNSUPPORTED_FPMATH_MODE);
 
+    if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, bm_conf_utils))
+        if (postops_estimator_t::estimate_insts_per_cacheline(
+                    dst_md, attr, bgmmc.postops_inst_count)
+                != status::success) {
+            // Failed to estimate postops length. Assumption is no impact on
+            // gemm execution.
+            bgmmc.postops_inst_count = 0;
+        }
+
     // Heuristic tries to optimize the following parameters:
     // - M_blk, M_Chunk
     // - N_blk, N_Chunk
@@ -1540,6 +1556,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
         bgmmc.req_wei_vnni_downconvert
                 = bm_conf_utils.wei_down_convert_to_vnni();
+    }
+
+    // This setting must be updated post blocking as it has a dependency on
+    // `bgmmc.K_blk`. See `gK_and_K_blk_are_divisible` comment.
+    if (bgmmc.is_wei_scale_per_k) {
+        const auto gK = bgmmc.wei_scales_k_group_size;
+        bgmmc.gK_and_K_blk_are_divisible = gK > 1
+                && ((bgmmc.K_blk % gK == 0) || (gK % bgmmc.K_blk == 0));
     }
 
     VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");
@@ -1576,6 +1600,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
+    if (bm_conf_utils.is_f32()) {
+        // Dispatch the shapes with small K to gemm for better performance
+        // The heuristic values are empirical
+        const bool small_K = bgmmc.N <= 14528
+                && ((bgmmc.M <= 768 && bgmmc.K <= 128)
+                        || bgmmc.K * bgmmc.M <= 49152);
+        VCONDCHECK_BG(
+                IMPLICATION(bgmmc.ndims == 2, !small_K), VERBOSE_SMALL_SHAPES);
+    }
+
     bgmmc.use_buffer_reduce
             = (bgmmc.reduce_dt != data_type::f32) || (bgmmc.nthr_k > 1);
 
@@ -1610,7 +1644,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order
-    if (is_superset(isa, avx10_2_512_amx_2)) mem_advice_init(bgmmc);
+    if (is_superset(isa, avx10_2_512)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims
@@ -1771,7 +1805,10 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                 * (bgmmc.nthr_k > 1 ? bgmmc.M : bgmmc.M_blk);
     }
 
-    if (bgmmc.nthr_k > 1) {
+    if (!bgmmc.use_buffer_c) {
+        // No need for C buffer
+        bgmmc.buffer_c_per_thread_sz = 0;
+    } else if (bgmmc.nthr_k > 1) {
         // c size == M * N (for reduction)
         bgmmc.buffer_c_per_thread_sz = bgmmc.buffer_c_chunk_sz;
 
@@ -1796,8 +1833,9 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
+    bgmmc.buffer_b_k_stride = bgmmc.tr_b_dt_sz * bgmmc.LDB;
     bgmmc.buffer_b_gb_stride
-            = bgmmc.tr_b_dt_sz * bgmmc.LDB * bgmmc.K_blk * bgmmc.wei_k_blk;
+            = bgmmc.buffer_b_k_stride * bgmmc.K_blk * bgmmc.wei_k_blk;
     bgmmc.buffer_b_k_brg_stride
             = bgmmc.buffer_b_gb_stride * bgmmc.brgemm_batch_size;
     bgmmc.buffer_b_per_thread_sz
@@ -1898,11 +1936,12 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
-            bgmmc.with_scales && !bgmmc.apply_scales_in_buffer_b,
+            (bgmmc.with_src_scales || bgmmc.with_wei_scales)
+                    && !bgmmc.apply_scales_in_buffer_b,
             bgmmc.with_eltwise, bgmmc.with_binary, bgmmc.acc_dt != bgmmc.dst_dt,
             bgmmc.s8s8_compensation_required, bgmmc.has_zero_point_a,
-            bgmmc.has_zero_point_b, bgmmc.has_zero_point_c,
-            bgmmc.with_dst_scales);
+            bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression,
+            bgmmc.has_zero_point_c, bgmmc.with_dst_scales);
 
     bgmmc.zp_a_comp_shift_n = bgmmc.wei_n_blk;
     bgmmc.zp_a_comp_elems_per_thr
@@ -1973,6 +2012,12 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_buffer_d,
                 bgmmc.M_blk * bgmmc.N_blk * bgmmc.c_dt_sz * bgmmc.nthr,
                 default_data_align);
+    if (bgmmc.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_matmul_dst_scales,
+                static_cast<size_t>(bgmmc.nthr) * sizeof(float),
+                default_data_align);
+    }
 }
 
 } // namespace matmul

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ std::string get_descriptor(dim_t M, dim_t N, dim_t K) {
         double start_ms = get_msec(); \
         status = __VA_ARGS__; \
         double duration_ms = get_msec() - start_ms; \
-        std::stringstream ss; \
+        stringstream_t ss; \
         ss << "cpu,gemm_api,,undef,"; \
         const bool is_src_ab = (transa == 'N' || transa == 'n'); \
         ss << "src_" << sdt_ << "::blocked:" << (is_src_ab ? "ab" : "ba") \

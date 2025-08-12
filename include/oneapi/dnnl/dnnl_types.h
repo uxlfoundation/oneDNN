@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2025 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -54,9 +55,8 @@ typedef enum {
     dnnl_format_kind_opaque,
     /// Format kind for sparse tensors.
     dnnl_format_kind_sparse,
-    /// Parameter to allow internal only format kinds without undefined
-    /// behavior. This parameter is chosen to be valid for so long as
-    /// sizeof(int) >= 2.
+
+    // Max value to prevent UB for internal-use-only values.
     dnnl_format_kind_max = 0x7fff,
 } dnnl_format_kind_t;
 
@@ -84,6 +84,9 @@ typedef enum {
     dnnl_profiling_data_kind_undef = 0,
     /// Data kind to query an execution time in nanoseconds.
     dnnl_profiling_data_kind_time,
+
+    // Max value to prevent UB for internal-use-only values.
+    dnnl_profiling_data_max = 0x7fff,
 } dnnl_profiling_data_kind_t;
 
 #endif
@@ -1047,6 +1050,15 @@ typedef enum {
     dnnl_BA24b8a,
     dnnl_aCB24c8b,
     dnnl_abDC24d8c,
+    dnnl_decbA4a,
+    dnnl_defcbA4a,
+    dnnl_abDC8d8c,
+    dnnl_abDC16d8c,
+    dnnl_aCB8c8b,
+    dnnl_aCB16c8b,
+    dnnl_BA8b8a,
+    dnnl_BA16b8a,
+    dnnl_AB2a4b,
 
     /// Just a sentinel, not real memory format tag. Must be changed after new
     /// format tag is added.
@@ -1911,8 +1923,10 @@ typedef enum {
     dnnl_gIdhwO16o64i4o = dnnl_aCdefB16b64c4b,
     dnnl_hwioG16g = dnnl_decbA16a,
     dnnl_hwioG8g = dnnl_decbA8a,
+    dnnl_hwioG4g = dnnl_decbA4a,
     dnnl_dhwioG16g = dnnl_defcbA16a,
     dnnl_dhwioG8g = dnnl_defcbA8a,
+    dnnl_dhwioG4g = dnnl_defcbA4a,
     dnnl_NCdhw40n16c = dnnl_ABcde40a16b,
     dnnl_NCw40n16c = dnnl_ABc40a16b,
     dnnl_NChw40n16c = dnnl_ABcd40a16b,
@@ -2038,8 +2052,7 @@ typedef enum {
     /// A group normalization primitive.
     dnnl_group_normalization,
 
-    /// Parameter to allow internal only primitives without undefined behavior.
-    /// This parameter is chosen to be valid for so long as sizeof(int) >= 2.
+    // Max value to prevent UB for internal-use-only values.
     dnnl_primitive_kind_max = 0x7fff,
 } dnnl_primitive_kind_t;
 
@@ -2713,35 +2726,35 @@ typedef struct {
 ///
 /// Query kind                      | Type of query result
 /// --------------------------------|-----------------------------
-/// dnnl_query_*_engine             | #dnnl_engine_t *
-/// #dnnl_query_primitive_kind      | #dnnl_primitive_kind_t *
-/// dnnl_query_*_s32                | int *
-/// dnnl_query_*_s64                | #dnnl_dim_t * (same as int64_t *)
-/// dnnl_query_*_f32                | float *
-/// dnnl_query_*_f64                | double *
-/// dnnl_query_*_str                | const char **
-/// dnnl_query_*_md                 | #const_dnnl_memory_desc_t *
-/// dnnl_query_*_pd                 | #const_dnnl_primitive_desc_t *
-/// dnnl_query_cache_blob_id        | const uint8_t **
-/// dnnl_query_strides              | const #dnnl_dims_t **
-/// dnnl_query_dilations            | const #dnnl_dims_t **
-/// dnnl_query_padding_l            | const #dnnl_dims_t **
-/// dnnl_query_padding_r            | const #dnnl_dims_t **
-/// dnnl_query_flags                | unsigned *
-/// dnnl_query_alg_kind             | #dnnl_alg_kind_t *
-/// dnnl_query_factors              | const float **
-/// dnnl_query_cell_kind            | #dnnl_alg_kind_t *
-/// dnnl_query_direction            | #dnnl_rnn_direction_t *
-/// dnnl_query_activation_kind      | #dnnl_alg_kind_t *
-/// dnnl_query_kernel               | const #dnnl_dims_t **
-/// dnnl_query_dims                 | const #dnnl_dims_t **
-/// dnnl_query_data_type            | #dnnl_data_type_t *
-/// dnnl_query_padded_dims          | const #dnnl_dims_t **
-/// dnnl_query_padded_offsets       | const #dnnl_dims_t **
-/// dnnl_query_format_kind          | #dnnl_format_kind_t *
-/// dnnl_query_inner_blks           | const #dnnl_dims_t **
-/// dnnl_query_inner_idxs           | const #dnnl_dims_t **
-/// dnnl_query_sparse_encoding      | #dnnl_sparse_encoding_t *
+/// dnnl_query_*_engine             | `#dnnl_engine_t *`
+/// #dnnl_query_primitive_kind      | `#dnnl_primitive_kind_t *`
+/// dnnl_query_*_s32                | `int *`
+/// dnnl_query_*_s64                | `#dnnl_dim_t *` (same as `int64_t *`)
+/// dnnl_query_*_f32                | `float *`
+/// dnnl_query_*_f64                | `double *`
+/// dnnl_query_*_str                | `const char **`
+/// dnnl_query_*_md                 | `#const_dnnl_memory_desc_t *`
+/// dnnl_query_*_pd                 | `#const_dnnl_primitive_desc_t *`
+/// dnnl_query_cache_blob_id        | `const uint8_t **`
+/// dnnl_query_strides              | `const #dnnl_dims_t **`
+/// dnnl_query_dilations            | `const #dnnl_dims_t **`
+/// dnnl_query_padding_l            | `const #dnnl_dims_t **`
+/// dnnl_query_padding_r            | `const #dnnl_dims_t **`
+/// dnnl_query_flags                | `unsigned *`
+/// dnnl_query_alg_kind             | `#dnnl_alg_kind_t *`
+/// dnnl_query_factors              | `const float **`
+/// dnnl_query_cell_kind            | `#dnnl_alg_kind_t *`
+/// dnnl_query_direction            | `#dnnl_rnn_direction_t *`
+/// dnnl_query_activation_kind      | `#dnnl_alg_kind_t *`
+/// dnnl_query_kernel               | `const #dnnl_dims_t **`
+/// dnnl_query_dims                 | `const #dnnl_dims_t **`
+/// dnnl_query_data_type            | `#dnnl_data_type_t *`
+/// dnnl_query_padded_dims          | `const #dnnl_dims_t **`
+/// dnnl_query_padded_offsets       | `const #dnnl_dims_t **`
+/// dnnl_query_format_kind          | `#dnnl_format_kind_t *`
+/// dnnl_query_inner_blks           | `const #dnnl_dims_t **`
+/// dnnl_query_inner_idxs           | `const #dnnl_dims_t **`
+/// dnnl_query_sparse_encoding      | `#dnnl_sparse_encoding_t *`
 ///
 /// @note
 ///     Rule of thumb: all opaque types and structures are returned by
@@ -2826,7 +2839,8 @@ typedef enum {
     dnnl_query_sparse_encoding, ///< Sparse encoding
     dnnl_query_nnz_s64, ///< Number of non-zero entries
     dnnl_query_num_handles_s32, ///< Number of buffers required for a memory descriptor
-    // Max value to prevent UB for internal use only dnnl_query_t
+
+    // Max value to prevent UB for internal-use-only values.
     dnnl_query_max = 0x7fff,
 } dnnl_query_t;
 

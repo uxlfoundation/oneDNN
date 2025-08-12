@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,9 +48,9 @@ struct jit_sve_conv_fwd_kernel : public jit_generator {
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
         : jcp(ajcp), attr_(attr), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
-            eltwise_injector_
-                    = utils::make_unique<jit_uni_eltwise_injector_f32<isa>>(
-                            this, jcp.eltwise);
+            eltwise_injector_ = utils::make_unique<
+                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
+                    this, jcp.eltwise);
     }
 
     ~jit_sve_conv_fwd_kernel() = default;
@@ -162,7 +163,8 @@ private:
         }
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+            eltwise_injector_;
 
     inline void prepare_output(int ur_w);
     inline void store_output(int ur_w);

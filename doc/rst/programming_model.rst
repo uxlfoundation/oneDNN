@@ -1,11 +1,9 @@
-Programming Model
-#####################
+oneDNN Concepts
+###############
 
 .. toctree::
    :maxdepth: 1
 
-   dev_guide_basic_concepts
-   page_getting_started_cpp
    page_memory_format_propagation_cpp
    dev_guide_inference_and_training_aspects
    dev_guide_attributes

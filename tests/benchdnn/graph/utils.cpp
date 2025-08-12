@@ -430,157 +430,6 @@ dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {
     return dnnl::graph::op::attr::undef;
 }
 
-class op_kind_hash_t {
-public:
-    std::size_t operator()(const dnnl::graph::op::kind &op_kind) const {
-        return std::hash<int>()(static_cast<int>(op_kind));
-    }
-};
-
-dnnl_driver_t opkind2driver(const dnnl::graph::op::kind &kind) {
-    const static std::unordered_map<dnnl::graph::op::kind, dnnl_driver_t,
-            op_kind_hash_t>
-            op_map = {
-                    {dnnl::graph::op::kind::Abs, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::AbsBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Add, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::AvgPool, dnnl_driver_t::pool},
-                    {dnnl::graph::op::kind::AvgPoolBackward,
-                            dnnl_driver_t::pool},
-                    {dnnl::graph::op::kind::BatchNormForwardTraining,
-                            dnnl_driver_t::bnorm},
-                    {dnnl::graph::op::kind::BatchNormInference,
-                            dnnl_driver_t::bnorm},
-                    {dnnl::graph::op::kind::BatchNormTrainingBackward,
-                            dnnl_driver_t::bnorm},
-                    {dnnl::graph::op::kind::BiasAdd, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::BiasAddBackward,
-                            dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::Clamp, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::ClampBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Concat, dnnl_driver_t::concat},
-                    {dnnl::graph::op::kind::Convolution, dnnl_driver_t::conv},
-                    {dnnl::graph::op::kind::ConvolutionBackwardData,
-                            dnnl_driver_t::conv},
-                    {dnnl::graph::op::kind::ConvolutionBackwardWeights,
-                            dnnl_driver_t::conv},
-                    {dnnl::graph::op::kind::ConvTranspose,
-                            dnnl_driver_t::deconv},
-                    {dnnl::graph::op::kind::ConvTransposeBackwardData,
-                            dnnl_driver_t::deconv},
-                    {dnnl::graph::op::kind::ConvTransposeBackwardWeights,
-                            dnnl_driver_t::deconv},
-                    {dnnl::graph::op::kind::Dequantize, dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::Divide, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::DynamicDequantize,
-                            dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::DynamicQuantize,
-                            dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::Elu, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::EluBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::End, dnnl_driver_t::others},
-                    //{dnnl::graph::op::kind::Erf, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Exp, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::GELU, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::GELUBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::GenIndex, dnnl_driver_t::custom},
-                    {dnnl::graph::op::kind::GreaterEqual,
-                            dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::GroupNorm, dnnl_driver_t::gnorm},
-                    {dnnl::graph::op::kind::HardSigmoid,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::HardSigmoidBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::HardSwish, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::HardSwishBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Interpolate,
-                            dnnl_driver_t::resampling},
-                    {dnnl::graph::op::kind::InterpolateBackward,
-                            dnnl_driver_t::resampling},
-                    {dnnl::graph::op::kind::LayerNorm, dnnl_driver_t::lnorm},
-                    {dnnl::graph::op::kind::LayerNormBackward,
-                            dnnl_driver_t::lnorm},
-                    {dnnl::graph::op::kind::LeakyReLU, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Log, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::LogSoftmax, dnnl_driver_t::softmax},
-                    {dnnl::graph::op::kind::LogSoftmaxBackward,
-                            dnnl_driver_t::softmax},
-                    {dnnl::graph::op::kind::MatMul, dnnl_driver_t::matmul},
-                    {dnnl::graph::op::kind::Maximum, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::MaxPool, dnnl_driver_t::pool},
-                    {dnnl::graph::op::kind::MaxPoolBackward,
-                            dnnl_driver_t::pool},
-                    {dnnl::graph::op::kind::Minimum, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::Mish, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::MishBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Multiply, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::PReLU, dnnl_driver_t::prelu},
-                    {dnnl::graph::op::kind::PReLUBackward,
-                            dnnl_driver_t::prelu},
-                    {dnnl::graph::op::kind::Pow, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Quantize, dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::Reciprocal, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::ReduceL1, dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceL2, dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceMax,
-                            dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceMean,
-                            dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceMin,
-                            dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceProd,
-                            dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReduceSum,
-                            dnnl_driver_t::reduction},
-                    {dnnl::graph::op::kind::ReLU, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::ReLUBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Reorder, dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::Round, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Select, dnnl_driver_t::custom},
-                    {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SigmoidBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SoftMax, dnnl_driver_t::softmax},
-                    {dnnl::graph::op::kind::SoftMaxBackward,
-                            dnnl_driver_t::softmax},
-                    {dnnl::graph::op::kind::SoftPlus, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SoftPlusBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Sqrt, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SqrtBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::Square, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::SquaredDifference,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::StaticReshape,
-                            dnnl_driver_t::custom},
-                    {dnnl::graph::op::kind::StaticTranspose,
-                            dnnl_driver_t::custom},
-                    {dnnl::graph::op::kind::Subtract, dnnl_driver_t::binary},
-                    {dnnl::graph::op::kind::Tanh, dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::TanhBackward,
-                            dnnl_driver_t::eltwise},
-                    {dnnl::graph::op::kind::TypeCast, dnnl_driver_t::reorder},
-                    {dnnl::graph::op::kind::Wildcard, dnnl_driver_t::others},
-            };
-    const auto it = op_map.find(kind);
-    if (it != op_map.end()) {
-        return it->second;
-    } else {
-        fprintf(stderr, "graph: ERROR: Unsupported opkind: `%d`, exiting...\n",
-                static_cast<int>(kind));
-        SAFE_V(FAIL);
-    }
-    return dnnl_driver_t::others;
-}
-
 // when length is 3, return "abc", when length is 5, return "abcde"
 std::string get_default_tag(size_t length) {
     std::string mtag;
@@ -636,6 +485,32 @@ std::string strides2memory_tag(const size_t ndims,
         return "axb";
 
     return memory_tag;
+}
+
+bool is_contiguous_memory(const dnnl::graph::logical_tensor::dims &strides,
+        const dnnl::graph::logical_tensor::dims &shape,
+        const std::string &tag) {
+
+    // for invalid strides, a tensor is always treated as a dense memory.
+    bool valid_stride = strides.size() == shape.size()
+            && std::all_of(strides.begin(), strides.end(),
+                    [](const int64_t &x) { return x > 0; });
+    if (!valid_stride) return true;
+
+    std::string template_tag = "abcdefghijk";
+    const size_t ndims = shape.size();
+    // use plain tag as default if the tensor shape rank changed
+    std::string real_tag
+            = ndims == tag.length() ? tag : template_tag.substr(0, ndims);
+
+    dnnl_dim_t s = 1;
+    for (size_t i = 0; i < ndims; ++i) {
+        int adim = real_tag[ndims - 1 - i] - static_cast<int>('a');
+        if (adim < 0 || adim >= static_cast<int>(strides.size())) return false;
+        if (strides[adim] != s) return false;
+        s *= (shape[adim] == 0 ? 1 : shape[adim]);
+    }
+    return true;
 }
 
 dnnl::graph::logical_tensor::dims memory_tag2strides(
@@ -694,7 +569,7 @@ std::string verbose_partitions_n_ops(
 std::string lt_dims2str(const dnnl::graph::logical_tensor::dims &dims) {
     if (dims.empty()) return std::string();
 
-    std::stringstream ss;
+    dnnl::impl::stringstream_t ss;
     std::copy(
             dims.begin(), dims.end(), std::ostream_iterator<int64_t>(ss, "x"));
     auto res = ss.str();
@@ -829,6 +704,18 @@ int get_prim_arg_name_from_graph_op_output_offset(
                 return -1;
             }
 
+        } break;
+        case dnnl::graph::op::kind::SoftMax: {
+            if (output_offset == 0)
+                return DNNL_ARG_DST;
+            else if (output_offset == 1)
+                return DNNL_ARG_DST_1;
+            else {
+                BENCHDNN_PRINT(0, "Error: no matching ARG for offset %d",
+                        static_cast<int>(output_offset));
+                assert(false);
+                return -1;
+            }
         } break;
         default: {
             return DNNL_ARG_DST;
@@ -1164,7 +1051,7 @@ int get_prim_arg_name_from_graph_op_input_offset(
         } break;
         case dnnl::graph::op::kind::Select: {
             if (input_offset == 0)
-                return DNNL_ARG_WEIGHTS;
+                return DNNL_ARG_SRC_2;
             else if (input_offset == 1)
                 return DNNL_ARG_SRC_0;
             else if (input_offset == 2)

@@ -137,8 +137,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        ostringstream_t oss;
         oss << short_name() << "=" << (int)value_;
         return oss.str();
     }
@@ -151,8 +150,7 @@ public:
     void set_from_str(const std::string &s) override { value_ = std::stoi(s); }
 
     std::string str() const override {
-        std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        ostringstream_t oss;
         oss << short_name() << "=" << value_;
         return oss.str();
     }
@@ -165,8 +163,7 @@ public:
     void set_from_str(const std::string &s) override { value_ = std::stoll(s); }
 
     std::string str() const override {
-        std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        ostringstream_t oss;
         oss << short_name() << "=" << value_;
         return oss.str();
     }
@@ -239,8 +236,7 @@ protected:
     }
 
     std::string get_config_line() const {
-        std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        ostringstream_t oss;
         auto params = get_all_params(/*do_sort=*/true);
         bool is_first = true;
         for (auto *p : params) {

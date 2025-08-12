@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,6 +49,8 @@ bool brgemm_desc_container_t::insert(int idx, brgemm_desc_t &brg,
     brg.brgattr.static_offsets = static_offsets_list_.back().data();
 
     const auto ret = map_.insert({brg, idx});
+    const int ref_size = refs_.size();
+    if (idx > ref_size - 1) { refs_.resize(idx + 1); }
     refs_[idx] = &(ret.first->first);
     // if there was no insertion then clean bd_mask and static_offsets
     if (!ret.second) {

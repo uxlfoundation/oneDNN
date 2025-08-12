@@ -19,10 +19,8 @@
 
 #include "ngen_config_internal.hpp"
 
-#ifndef __OPENCL_CL_H
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#endif
 
 #include <atomic>
 #include <sstream>
@@ -329,14 +327,15 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device)
 template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product product = {};
+    Product product{};
+    product.family = ProductFamily::Unknown;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
     if (dynamic::clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
         product = npack::decodeHWIPVersion(ipVersion);
-    else {
-        // If it fails, compile a test program and extract the HW information from it.
+    // If it fails, compile a test program and extract the HW information from it.
+    if (product.family == ProductFamily::Unknown) {
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
         cl_context query_context = context ? context : clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);

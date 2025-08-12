@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,16 +18,15 @@
 #ifndef GEMMSTONE_GUARD_QUANTIZATION_HPP
 #define GEMMSTONE_GUARD_QUANTIZATION_HPP
 
-#include "type.hpp"
-#include "register_block.hpp"
+#include "gemmstone/type.hpp"
+#include "register_layout.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Check if the optimized int4 dequantization sequence (dequantizeInt4) can be used.
-bool canDequantizeInt4(Type Tsrc, Type Tdst,
-                       const std::vector<RegisterBlock> &layoutSrc, const std::vector<RegisterBlock> &layoutDst,
-                       const std::vector<RegisterBlock> layoutOffset, const std::vector<RegisterBlock> layoutScale);
+bool canDequantizeInt4(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                       const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale);
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

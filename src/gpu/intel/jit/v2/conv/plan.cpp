@@ -29,8 +29,8 @@ namespace jit {
 namespace v2 {
 namespace conv {
 
-pvar_coord_t<expr_t> coord_info_t::iter_coord() const {
-    pvar_coord_t<expr_t> ret;
+coord_t coord_info_t::iter_coord() const {
+    coord_t ret;
     for (auto &d : entries_) {
         auto &e = entries_.at(d);
         ret[d] = simplify_rewrite(e.iter_size * e.iter_idx);
@@ -38,8 +38,8 @@ pvar_coord_t<expr_t> coord_info_t::iter_coord() const {
     return ret;
 }
 
-pvar_coord_t<expr_t> coord_info_t::tg_iter_coord() const {
-    pvar_coord_t<expr_t> ret;
+coord_t coord_info_t::tg_iter_coord() const {
+    coord_t ret;
     for (auto &d : entries_) {
         auto &e = entries_.at(d);
         auto idx = e.iter_size * e.iter_idx;
@@ -51,8 +51,8 @@ pvar_coord_t<expr_t> coord_info_t::tg_iter_coord() const {
     return ret;
 }
 
-pvar_tile_t coord_info_t::tg_iter_tile() const {
-    pvar_tile_t ret;
+tile_t coord_info_t::tg_iter_tile() const {
+    tile_t ret;
     for (auto &d : entries_) {
         auto &e = entries_.at(d);
         ret[d] = e.tg_size * e.iter_size;
@@ -63,7 +63,7 @@ pvar_tile_t coord_info_t::tg_iter_tile() const {
 class multiply_info_t {
 public:
     multiply_info_t() = default;
-    multiply_info_t(fma_kind_t fma, int simd, const pvar_tile_t &iter_tile,
+    multiply_info_t(fma_kind_t fma, int simd, const tile_t &iter_tile,
             const pvar_map_t<char> &bmnk_map, const type_t &a_type,
             const layout_desc_t &a_desc, const type_t &b_type,
             const layout_desc_t &b_desc, const layout_desc_t &c_desc)
@@ -122,8 +122,8 @@ public:
     bool is_k(const pvar_t &dim) const { return is(dim, 'k'); }
     char to_bmnk(const pvar_t &dim) const { return bmnk_map_.at(dim); }
 
-    pvar_tile_t inst_tile() const {
-        pvar_tile_t ret;
+    tile_t inst_tile() const {
+        tile_t ret;
         switch (fma_) {
             case fma_kind_t::mad: ret = b_inner_.int_dim_sizes(); break;
             case fma_kind_t::dpas: {
@@ -348,7 +348,7 @@ private:
     bool is_valid_ = false;
     fma_kind_t fma_ = fma_kind_t::undef;
     int simd_ = 0;
-    pvar_tile_t iter_tile_;
+    tile_t iter_tile_;
     pvar_map_t<char> bmnk_map_;
     type_t a_type_;
     type_t b_type_;
@@ -391,7 +391,7 @@ private:
     }
 
     static bool check_compatible_layout(
-            const layout_t &layout, const pvar_tile_t &tile) {
+            const layout_t &layout, const tile_t &tile) {
         for (auto &d : tile) {
             int inner = layout.inner_block(d, /*with_outer=*/false);
             gpu_check(tile[d] % inner == 0)
@@ -497,10 +497,9 @@ private:
         return true;
     }
 
-    bool init_x_prefetch_plan(tensor_kind_t abc,
-            const pvar_coord_t<expr_t> &coord, const pvar_tile_t &tile,
-            const x2r_fma_plan_t &x2r_fma, virt_grid_t &virt_grid,
-            send_plan_t &prefetch) const {
+    bool init_x_prefetch_plan(tensor_kind_t abc, const coord_t &coord,
+            const tile_t &tile, const x2r_fma_plan_t &x2r_fma,
+            virt_grid_t &virt_grid, send_plan_t &prefetch) const {
         auto &mapper = dim_mapper_manager_.mapper(abc);
         auto &layout = (abc == tensor_kind_t::a ? a_layout_ : b_layout_);
         grid_splitter_t grid_splitter;
@@ -735,9 +734,9 @@ private:
         slm_layout.add_block(k_dim, k_tg);
         auto c_tile = c_layout.desc().filter_dim_map(desc_.iter_tile);
 
-        pvar_coord_t<expr_t> store_coord;
+        coord_t store_coord;
         store_coord[k_dim] = thr_grid_.index_var(k_dim);
-        pvar_tile_t store_tile = c_tile;
+        tile_t store_tile = c_tile;
         store_tile.unset(k_dim);
 
         // Store partial reductions.
@@ -751,8 +750,8 @@ private:
         // Split the original tile evenly between k_tg threads.
         grid_splitter_t grid_splitter;
         grid_splitter.add(thr_grid_.index_var(k_dim), k_tg);
-        auto split_view = view_t::split(mapper, c_layout,
-                pvar_coord_t<expr_t>(), c_tile, grid_splitter);
+        auto split_view = view_t::split(
+                mapper, c_layout, coord_t(), c_tile, grid_splitter);
         for (auto &kv : grid_splitter.virt_grid_idxs()) {
             virt_grid.add(kv.first, kv.second);
         }

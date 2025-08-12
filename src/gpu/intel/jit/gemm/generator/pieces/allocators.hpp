@@ -21,7 +21,7 @@
 
 #include "internal/ngen_includes.hpp"
 
-#include "internal/namespace_start.hxx"
+GEMMSTONE_NAMESPACE_START
 
 // Allocator for SWSB tokens.
 class TokenAllocator {
@@ -98,6 +98,6 @@ protected:
     static uint64_t mask(int idx, int n)            { return (uint64_t(1) << (idx + n)) - (uint64_t(1) << idx); }
 };
 
-#include "internal/namespace_end.hxx"
+GEMMSTONE_NAMESPACE_END
 
 #endif

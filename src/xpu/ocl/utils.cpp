@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -317,6 +317,7 @@ status_t create_program(ocl::wrapper_t<cl_program> &ocl_program,
     return status::success;
 }
 
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev) {
     // This function is used only with SYCL that works with OpenCL 3.0
     // that supports `cl_khr_device_uuid` extension.
@@ -339,6 +340,7 @@ status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev) {
 #endif
     return status::runtime_error;
 }
+#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 status_t check_device(
         engine_kind_t eng_kind, cl_device_id dev, cl_context ctx) {

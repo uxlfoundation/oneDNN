@@ -106,7 +106,7 @@ public:
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "multi_loop_iterator_t(";
         for (size_t i = 0; i < loops_.size(); i++) {
             oss << (i != 0 ? ", " : "");
@@ -314,8 +314,8 @@ private:
         expr_t preload_var;
         expr_t mul_var;
 
-        bool is_preload() const { return !preload_var.is_empty(); }
-        bool is_mul() const { return !mul_var.is_empty(); }
+        bool is_preload() const { return bool(preload_var); }
+        bool is_mul() const { return bool(mul_var); }
 
         bool needs_update() const { return is_preload() && is_mul(); }
     };
@@ -833,7 +833,7 @@ public:
         gpu_assert(sbid_count_ <= max_sbid_count);
     }
 
-    ngen_proxy::SBID get_sbid(const expr_t &buf, int index = 0) {
+    ngen::SBID get_sbid(const expr_t &buf, int index = 0) {
         auto key = tuple_func_.call({buf, expr_t(index)});
 
         int free_idx = -1;
@@ -841,7 +841,7 @@ public:
             auto &e = entries_[i];
             if (key.is_equal(e.key)) {
                 e.time = cur_time_++;
-                return ngen_proxy::SBID(i);
+                return ngen::SBID(i);
             }
             if (free_idx == -1 && e.key.is_empty()) free_idx = i;
         }
@@ -849,7 +849,7 @@ public:
         // Not found but there is a free SBID.
         if (free_idx != -1) {
             entries_[free_idx] = {key, cur_time_++};
-            return ngen_proxy::SBID(free_idx);
+            return ngen::SBID(free_idx);
         }
 
         // Find the oldest SBID and use it.
@@ -863,7 +863,7 @@ public:
         }
 
         entries_[old_idx] = entry_t({std::move(key), cur_time_++});
-        return ngen_proxy::SBID(old_idx);
+        return ngen::SBID(old_idx);
     }
 
 private:
@@ -906,7 +906,7 @@ public:
                 auto &c = s.as<func_call_t>();
                 auto *mod_attr = c.attr.as_ptr<instruction_modifier_attr_t>();
                 if (!c.func.as<dpas_t>().is_dp4a() && // dp4a-s do not need SBID
-                        (!mod_attr || !mod_attr->mod.is_atomic)) {
+                        (!mod_attr || !mod_attr->mod.isAtomic())) {
                     // Last dpas in Atomic chain.
                     auto sbid = get_sbid(dpas_t::arg_src1(s));
                     s = update_call_with_sbid(s, sbid);
@@ -929,16 +929,16 @@ public:
     }
 
 private:
-    ngen_proxy::SBID get_sbid(const expr_t &ptr, int index = 0) {
+    ngen::SBID get_sbid(const expr_t &ptr, int index = 0) {
         auto &sbid_mgr
                 = (external_sbid_mgr_ ? *external_sbid_mgr_ : local_sbid_mgr_);
         return sbid_mgr.get_sbid(ptr, index);
     }
 
     static stmt_t update_call_with_sbid(
-            const stmt_t &s, const ngen_proxy::SBID &sbid) {
+            const stmt_t &s, const ngen::SBID &sbid) {
         return instruction_modifier_attr_t::make(
-                ngen_proxy::InstructionModifier().with_sbid(sbid))
+                ngen::InstructionModifier(sbid))
                 .apply_to(s);
     }
 
@@ -1038,10 +1038,9 @@ public:
             const stmt_t &root, const conv_config_t &cfg, ir_context_t &ir_ctx)
         : root_(root), cfg_(cfg), ir_ctx_(ir_ctx) {}
     stmt_t inject() {
-        auto compute_loop_stmt
+        auto compute_loop
                 = find_stmt_group(root_, stmt_label_t::compute_loop());
-        if (!compute_loop_stmt.has_value()) return root_;
-        const auto &compute_loop = compute_loop_stmt.value();
+        if (!compute_loop) return root_;
         auto loop_nest = compute_loop_nest_t(compute_loop, ir_ctx_);
         auto &loops = loop_nest.loops();
 
@@ -1049,10 +1048,8 @@ public:
         if (loops.empty()) return root_;
         auto &loop_body = loops[0].body();
 
-        auto A_block_stmt
-                = find_stmt_group(loop_body, stmt_label_t::prefetch());
-        if (!A_block_stmt.has_value()) return root_;
-        auto A_block = A_block_stmt.value();
+        auto A_block = find_stmt_group(loop_body, stmt_label_t::prefetch());
+        if (!A_block) return root_;
         auto B_block = remove_stmt_group(loop_body, stmt_label_t::prefetch());
         size_t prefetch_count = 0;
         size_t max_nested_prefetch = 2;

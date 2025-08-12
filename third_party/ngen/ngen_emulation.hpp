@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -281,6 +281,12 @@ struct EmulationImplementation {
             dst.setType(DataType::ud);
             src0.setType(DataType::uw);
             g.shl(mod, dst, src0, 16, loc);
+        } else if (src0.getType() == DataType::bf8
+                && dst.getType() == DataType::f) {
+            RegData hfTmp = src0;
+            hfTmp.setType(DataType::uw);
+            g.shl(mod, hfTmp, src0.setType(DataType::ub), 8, loc);
+            g.mov(mod, dst, hfTmp.setType(DataType::hf), loc);
         } else
             g.mov(mod, dst, src0, loc);
     }
@@ -542,6 +548,12 @@ struct EmulationImplementation {
         eaddInternal<DT>(g, mod, dst, src0, src1, strategy, state, loc);
     }
 
+    // Compatibility shim to work around missing if constexpr support in C++11/14
+    template <typename Generator>
+    static void emulInternal(Generator &g, const InstructionModifier &mod, RegData dst, Immediate src0, RegData src1, const EmulationStrategy &strategy, const EmulationState &state, const SourceLocation &loc) {
+        stub();
+    }
+
     // Integer multiplication, emulating 32x32 multiplication as configured.
     template <typename DT = void, typename S1, typename Generator>
     static void emulInternal(Generator &g, const InstructionModifier &mod, RegData dst, RegData src0, S1 src1, const EmulationStrategy &strategy, const EmulationState &state, const SourceLocation &loc) {
@@ -557,7 +569,7 @@ struct EmulationImplementation {
         bool s1W = isW(src1);
         bool s1D = isDW(src1);
         bool s1Q = isQW(src1);
-        bool s1Immed = std::is_base_of<Immediate, S1>::value;
+        const bool s1Immed = std::is_base_of<Immediate, S1>::value;
 
         bool s0Signed = isSigned(src0.getType());
         bool s1Signed = isSigned(src1.getType());
@@ -566,19 +578,40 @@ struct EmulationImplementation {
         bool emulate64 = strategy.emulate64_mul;
         bool emulateDWxDW = strategy.emulateDWxDW;
 
-        if (s0Q && !s1Q) {
+        if (s0Q) {
             if (!dstQ) stub();
-            auto temp = s1Signed ? state.temp[0].d() : state.temp[0].ud();
-            auto &src1Reg = [&]() -> RegData & {
-                if (s1Immed || !s1D) {
-                    g.mov(mod, temp, src1, loc);
-                    return temp;
-                } else {
-                    return *reinterpret_cast<RegData *>(&src1);
-                }
-            }();
-            return emulInternal(g, mod, dst, src1Reg, src0, strategy, state, loc);
+
+            auto dstDWType = s1Signed ? DataType::d : DataType::ud;
+            RegData dstLo, dstHi;
+            RegData s0Hi, s0Lo;
+            splitToDW(dst, dstLo, dstHi);
+            splitToDW(src0, s0Lo, s0Hi);
+            dstLo.setType(dstDWType);
+            dstHi.setType(dstDWType);
+            auto accLo
+                = g.acc0.retype(dstDWType)[dstLo.getOffset()](dstLo.getHS());
+            auto accHi
+                = g.acc0.retype(dstDWType)[dstHi.getOffset()](dstHi.getHS());
+
+            if(s1W) {
+                g.mul(mod, accLo, s0Lo, src1, loc);
+                g.mach(mod, dstLo, s0Lo, 0, loc);
+                g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            } else if(s1D) {
+                auto s1Lo = lowWord(src1);
+                g.mul(mod, accLo, s0Lo, s1Lo, loc);
+                g.mach(mod, dstLo, s0Lo, src1, loc);
+                g.mul(mod, accHi, s0Hi, s1Lo, loc);
+                g.macl(mod, dstHi, s0Hi, src1, loc);
+                g.add(mod, dstHi, dstHi, dstLo, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            } else stub();
         } else if (s1Q) {
+            if(!s1Immed) {
+                return emulInternal(g, mod, dst, src1, src0, strategy, state, loc);
+            }
+
             if (!s0D || !dstQ) stub();
             auto s0Type = src0.getType();
             RegData dstLo, dstHi;
@@ -620,7 +653,7 @@ struct EmulationImplementation {
             auto acc = g.acc0.d();
             g.mov(mod, acc, src1, loc);
             g.mul(mod, dst, acc, src0, loc);
-        } else if (dstQ && s0D && (((s1W && !s1Immed) && emulateDWxDW) || ((s1W || s1D) && emulate64))) {
+        } else if (dstQ && s0D && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
@@ -729,11 +762,10 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-            splitToDW(dst, dstLo, dstHi);
 
-            RegData acc = temp[0].ud();
-            if (acc.isInvalid())
-                acc = g.acc0.ud(dstHi.getOffset())(dstHi.getHS());
+            auto acc = temp[0].ud();
+
+            splitToDW(dst, dstLo, dstHi);
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);
@@ -774,11 +806,10 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-            splitToDW(dst, dstLo, dstHi);
 
-            RegData acc = temp[0].ud();
-            if (acc.isInvalid())
-                acc = g.acc0.ud(dstLo.getOffset())(dstLo.getHS());
+            auto acc = temp[0].ud();
+
+            splitToDW(dst, dstLo, dstHi);
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);

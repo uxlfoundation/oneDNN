@@ -103,7 +103,7 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
 
     if (reduce_size == 1) return;
 
-    auto v_po_masks = prb->attr.post_ops.get_po_masks();
+    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(idle_size, [&](int64_t f) {
         dims_t idle_pos = off2dims_idx(dst_dims, f);
         const int64_t dst_off = md_off_v(dst, idle_pos.data());

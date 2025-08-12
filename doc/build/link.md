@@ -1,5 +1,5 @@
-Linking to the Library {#dev_guide_link}
-===========================================
+Link to the Library {#dev_guide_link}
+=====================================
 
 oneDNN includes several header files providing C and C++ APIs
 for the functionality and one or several libraries depending

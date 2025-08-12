@@ -302,9 +302,6 @@ def warn_repetitive_filename(status: Status, path: str):
     #   include/oneapi/dnnl/dnnl_xxx.h"
     if dirname.startswith("include/"):
         common_parts -= {"dnnl"}
-    # OCL headers are generally named "src/gpu/intel/ocl/ocl_xxx.h"
-    if path_parts[-1] == "ocl" and ext == ".h":
-        common_parts -= {"ocl"}
     if options.pedantic and common_parts:
         new_name_parts = []
         for part in name_parts:

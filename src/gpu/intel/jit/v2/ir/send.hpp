@@ -109,7 +109,7 @@ struct addr_t {
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "base: " << base << std::endl;
         oss << "slot_incs: " << slot_incs;
         return oss.str();
@@ -134,7 +134,7 @@ struct dim_mask_t {
     std::string str() const {
         using namespace ir_utils;
         if (is_empty()) return "(empty)";
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "[" << dim << "] " << base << " < " << bound << std::endl;
         oss << "slot_incs: " << slot_incs;
         return oss.str();
@@ -182,7 +182,7 @@ struct mask_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         bool is_first = true;
         for (int i = 0; i < nmasks(); i++) {
             if (dim_masks[i].is_empty()) continue;
@@ -313,7 +313,7 @@ struct send_2d_hint_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << width << "x" << height;
         if (vnni || transpose) {
             oss << ".";
@@ -351,7 +351,7 @@ struct send_params_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "send_params:" << std::endl;
         oss << "  hw:                 " << hw << std::endl;
         oss << "  address:            " << to_string(address) << std::endl;
@@ -395,7 +395,7 @@ struct send_1d_desc_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op) << ".b" << type_size;
         if (slots != 1) oss << "x" << slots;
         return oss.str();
@@ -408,11 +408,11 @@ struct send_1d_entry_t {
     expr_t addr_inc;
     std::vector<expr_t> mask_incs; // Per dimension mask.
     int reg_off = 0;
-    pvar_coord_t<dim_t> coord;
+    coord_t coord;
 
     std::string str() const {
         using namespace ir_utils;
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "mem[" << addr_inc << "] reg[" << reg_off << "] mask"
             << mask_incs;
         return oss.str();
@@ -426,7 +426,7 @@ struct send_1d_plan_t : public base_plan_t {
     mask_t mask;
     std::vector<send_1d_entry_t> entries;
     layout_t reg_layout;
-    pvar_tile_t entry_tile;
+    tile_t entry_tile;
 
     using base_plan_t::base_plan_t;
 
@@ -463,7 +463,7 @@ struct send_1d_plan_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << ir_utils::add_tag("addr", addr.str()) << std::endl;
         oss << ir_utils::add_tag("mask", mask.str()) << std::endl;
         oss << "reg_layout = " << reg_layout.str_with_size(hw) << std::endl;
@@ -592,7 +592,7 @@ struct send_2d_desc_t {
     int header_size(int grf_size) const { return grf_size; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(op) << "_2d.";
         oss << c << "x" << h << "x" << w;
         if (vnni || transpose) {
@@ -618,10 +618,10 @@ struct send_2d_entry_t {
     expr_t x_inc;
     expr_t y_inc;
     int reg_off = 0;
-    pvar_coord_t<dim_t> coord;
+    coord_t coord;
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "reg[" << reg_off << "] ";
         oss << "x_inc = " << x_inc << " y_inc = " << y_inc;
         return oss.str();
@@ -639,15 +639,14 @@ struct send_2d_plan_t : public base_plan_t {
     mask_t mask;
     std::vector<send_2d_entry_t> entries;
     layout_t reg_layout;
-    pvar_tile_t entry_tile;
+    tile_t entry_tile;
 
     using base_plan_t::base_plan_t;
 
     int nentries() const { return static_cast<int>(entries.size()); }
     explicit operator bool() const { return (bool)desc; }
 
-    bool add_entry(const pvar_coord_t<dim_t> &coord, int reg_off,
-            const prover_t &prover) {
+    bool add_entry(const coord_t &coord, int reg_off, const prover_t &prover) {
         entries.emplace_back();
         auto &e = entries.back();
         e.x_inc = coord.at(desc.w_dim);
@@ -665,7 +664,7 @@ struct send_2d_plan_t : public base_plan_t {
     }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "base = " << base << std::endl;
         oss << "x_base = " << x_base << std::endl;
         oss << "y_base = " << y_base << std::endl;
@@ -710,7 +709,7 @@ struct send_plan_t : public base_plan_t {
         return _2d.reg_layout;
     }
 
-    const pvar_tile_t &entry_tile() const {
+    const tile_t &entry_tile() const {
         if (is_1d()) return _1d.entry_tile;
         return _2d.entry_tile;
     }
@@ -886,7 +885,7 @@ private:
         int reg_off = 0;
         for (int h = 0; h < plane.h; h += desc.h) {
             for (int w = 0; w < plane.w; w += desc.w * desc.c) {
-                pvar_coord_t<dim_t> coord;
+                coord_t coord;
                 coord[plane.w_dim] = w;
                 coord[plane.h_dim] = h;
                 if (!plan_2d.add_entry(coord, reg_off, prover))

@@ -42,16 +42,16 @@ struct base_plan_t {
 };
 
 inline std::string add_indent(const std::string &tag, const std::string &s) {
-    std::ostringstream oss;
+    ostringstream_t oss;
     oss << tag << ":" << std::endl;
     oss << ir_utils::add_indent(s, "  ");
     return oss.str();
 }
 
 inline layout_t split(const layout_t &layout, int factor) {
-    auto tile = layout.split_exact(factor);
-    if (tile.is_empty()) return layout_t();
-    return layout.map(tile);
+    auto tile_coord = layout.split_exact(factor);
+    if (tile_coord.is_empty()) return layout_t();
+    return layout.map(tile_coord.tile, tile_coord.coord);
 }
 
 } // namespace jit

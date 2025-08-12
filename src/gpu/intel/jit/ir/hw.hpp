@@ -41,9 +41,7 @@ public:
 
         auto *device_info = compute_engine->device_info();
         gpu_arch_t gpu_arch = device_info->gpu_arch();
-        product_family_ = static_cast<ngen::ProductFamily>(
-                device_info->gpu_product_family());
-        stepping_id_ = device_info->stepping_id();
+        product_ = get_ngen_product(*device_info);
         eu_count_ = device_info->eu_count();
         max_wg_size_ = static_cast<int>(
                 device_info->max_wg_size(/*large_grf_mode=*/false));
@@ -67,12 +65,15 @@ public:
         hw_ = convert_dnnl_arch_to_ngen(gpu_arch);
     }
 
+    ngen::HW ngen_hw() const { return hw_; }
+    const ngen::Product &product() const { return product_; }
+
     bool is_undef() const { return hw_ == ngen::HW::Unknown; }
     bool has_fp64_atomic_support() const { return with_atomic_fp64_; }
     ngen::HW to_ngen() const { return hw_; }
     operator ngen::HW() const { return hw_; }
-    ngen::ProductFamily product_family() const { return product_family_; }
-    int stepping_id() const { return stepping_id_; }
+    ngen::ProductFamily product_family() const { return product_.family; }
+    int stepping_id() const { return product_.stepping; }
     int eu_count() const { return eu_count_; }
     int large_grf_support() const { return large_grf_support_; }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
@@ -107,10 +108,21 @@ public:
         return gpu_attr->threads_per_eu() * 2 == threads_per_eu();
     }
 
-    int cache_line_size() const;
+    int cache_line_size() const {
+        switch (hw_) {
+            case ngen::HW::XeLP:
+            case ngen::HW::XeHP:
+            case ngen::HW::XeHPG:
+            case ngen::HW::XeHPC:
+            case ngen::HW::Xe2:
+            case ngen::HW::Xe3: return 64;
+            default: gpu_error_not_expected();
+        }
+        return 0;
+    }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << to_string(hw_);
         oss << ", stepping: " << stepping_id();
         oss << ", EUs: " << eu_count();
@@ -138,8 +150,7 @@ private:
     }
 
     ngen::HW hw_ = ngen::HW::Unknown;
-    ngen::ProductFamily product_family_ = ngen::ProductFamily::Unknown;
-    int stepping_id_ = -1;
+    ngen::Product product_ = {};
     int eu_count_ = 0;
     int max_wg_size_ = 0;
     size_t l3_cache_size_ = 0;
@@ -155,29 +166,20 @@ class exec_config_t {
 public:
     exec_config_t() = default;
     exec_config_t(const hw_t &hw) : hw_(hw) {}
-    exec_config_t(const hw_t &hw, int regs, int simd,
-            bool require_signal_header = false)
-        : hw_(hw)
-        , regs_(regs)
-        , simd_(simd)
-        , require_signal_header_(require_signal_header) {}
+    exec_config_t(const hw_t &hw, int regs, int simd)
+        : hw_(hw), regs_(regs), simd_(simd) {}
 
     const hw_t &hw() const { return hw_; }
     int regs() const { return regs_; }
     int simd() const { return simd_; }
-    int vec_size() const { return vec_size_; }
     int grf_size() const { return hw_.grf_size(); }
-    bool require_signal_header() const { return require_signal_header_; }
     void set_regs(int regs) { regs_ = regs; }
     void set_simd(int simd) { simd_ = simd; }
-    void set_vec_size(int vec_size) { vec_size_ = vec_size; }
-    void set_require_signal_header(bool r) { require_signal_header_ = r; }
 
     std::string str() const {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << hw_.str();
         oss << ", SIMD: " << simd();
-        if (vec_size() != simd()) oss << " (" << vec_size() << ")";
         oss << ", regs: " << regs();
         return oss.str();
     }
@@ -186,8 +188,6 @@ private:
     hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
-    int vec_size_ = 0;
-    bool require_signal_header_ = false;
 };
 
 } // namespace jit

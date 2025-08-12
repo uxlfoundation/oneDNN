@@ -254,7 +254,7 @@ public:
     }
 
     bool has_var(const expr_t &e) const {
-        return !find_cse_expr(e).cse_var.is_empty();
+        return bool(find_cse_expr(e).cse_var);
     }
 
     int get_refs(const expr_t &e) const {
@@ -388,6 +388,16 @@ private:
         if (count_objects<load_t>(obj) > 0) {
             ir_visitor_t::_visit(obj);
             return;
+        }
+
+        // Support for expressions with mutable variables is unimplemented due
+        // hoisting logic not accounting for mutation.
+        auto vars = find_objects<var_t>(obj);
+        for (auto &v : vars) {
+            if (v.template as<var_t>().type.is_mutable()) {
+                ir_visitor_t::_visit(obj);
+                return;
+            }
         }
 
         if (std::is_same<T, shuffle_t>::value) {

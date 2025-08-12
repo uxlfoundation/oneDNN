@@ -15,13 +15,16 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/gemm/gen_gemm_kernel.hpp"
+#include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
+#include "common/type_helpers.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/gemm/gen_gemm_kernel_db.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
+#include "kernel_selector.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,6 +33,16 @@ namespace intel {
 namespace jit {
 
 using namespace gemmstone;
+
+namespace {
+void entryObserver(
+        const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux) {
+    if (get_verbose(verbose_t::debuginfo) >= 5) {
+        dnnl::impl::verbose_printf("info,gpu,gemm,consider:%s,score:%f\n",
+                entry->str().c_str(), score);
+    }
+};
+} // anonymous namespace
 
 status_t gen_gemm_kernel_desc_t::create_generator(
         const compute::compute_engine_t &engine,
@@ -128,18 +141,31 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
         parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
+
+        // TODO: override derived values in aux_params_ in a way that's
+        // consistent with the kernel evaluator (typically requires extra
+        // benchmarking data not supplied with the kernel override string)
+        // Currently: assume the W model because it's simple
+        if (strategy_.wg[LoopK] > 0) {
+            aux_params_.k0
+                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
+                            strategy_.unroll[LoopK]);
+            aux_params_.wgK = std::max(1,
+                    std::min(strategy_.wg[LoopK],
+                            int(utils::div_up(k_, aux_params_.k0))));
+        }
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
         parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+        modifyStrategy(strategy_, aux_params_);
 #ifdef DNNL_DEV_MODE
     }
 #endif
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
-    modifyStrategy(strategy_, aux_params_);
 
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
@@ -170,17 +196,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     if (hw_ == ngen::HW::Xe3p) {
         // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
         if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
-
-        // Disable block 2D C remainders for small C to avoid simulator errors.
-        /*strategy_.block2DCRemainder &= (m_ * problem_.Tc >= 64);
-        strategy_.block2DCRemainder &= !(
-                utils::one_of(Type::bf8, problem_.Ta, problem_.Tb, problem_.Tc)
-                || utils::one_of(
-                        Type::u4, problem_.Ta, problem_.Tb, problem_.Tc)
-                || utils::one_of(
-                        Type::s4, problem_.Ta, problem_.Tb, problem_.Tc)
-                || utils::one_of(
-                        Type::hf8, problem_.Ta, problem_.Tb, problem_.Tc));*/
 
         // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
         strategy_.namedBarriers[0] = 0;
@@ -264,10 +279,10 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     } catch (...) { return status::unimplemented; }
 
     // Check for legal 2D quantization group size.
-    if (problem_.aoPtrDims == 2 || problem_.aScale2D)
+    if (problem_.aoPtrDims == 2 || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
             return status::unimplemented;
-    if (problem_.boPtrDims == 2 || problem_.bScale2D)
+    if (problem_.boPtrDims == 2 || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
 
@@ -275,21 +290,6 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
-
-#ifdef DNNL_DEV_MODE
-    if (!ovr_strategy.empty()) {
-        // TODO: override in a way that's consistent with the kernel evaluator
-        // (typically requires extra benchmarking data not supplied with
-        // the kernel override string)
-        // Currently: assume the W model because it's simple
-        aux_params_.k0
-                = utils::rnd_up(utils::div_up(k_, driver_info_.wg[LoopK]),
-                        driver_info_.unroll[LoopK]);
-        aux_params_.wgK = std::max(1,
-                std::min(driver_info_.wg[LoopK],
-                        int(utils::div_up(k_, aux_params_.k0))));
-    }
-#endif
 
     return status::success;
 }
@@ -302,8 +302,6 @@ void gen_gemm_kernel_desc_t::update_driver_info() {
         break;
 
     switch (hw_) {
-        REG_GEN9_ISA(ARCH_DISPATCH(Gen9))
-        REG_GEN11_ISA(ARCH_DISPATCH(Gen11))
         REG_XELP_ISA(ARCH_DISPATCH(XeLP))
         REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
@@ -385,13 +383,12 @@ status_t gen_gemm_kernel_desc_t::transfer_post_ops(
 status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         int stepping, int eu_count, bool has_systolic, bool is_integrated,
         compute_mode mode, int batch_dims, bool trans_a, bool trans_b,
-        bool trans_co, bool swap_ab, int ao_dims, int bo_dims,
-        bool wei_scale_2d, bool src_scale_2d, bool dst_sround,
-        int wei_q2d_group_k, int src_q2d_group_k, bool c_offset, bool bias,
-        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t ao_type,
-        data_type_t bo_type, data_type_t wei_scales_type,
-        data_type_t src_scales_type, data_type_t co_type, data_type_t acc_type,
+        bool trans_co, bool swap_ab, int ao_dims, int bo_dims, int asc_dims,
+        int bsc_dims, bool dst_sround, int a_q2d_group_k, int b_q2d_group_k,
+        bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha, float beta,
+        data_type_t a_type, data_type_t b_type, data_type_t c_type,
+        data_type_t ao_type, data_type_t bo_type, data_type_t a_scales_type,
+        data_type_t b_scales_type, data_type_t co_type, data_type_t acc_type,
         int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
         dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
@@ -464,36 +461,36 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (bo_type != data_type::undef)
         problem_.BO.setAlignment(int(types::data_type_size(bo_type)));
     if (!swap_ab) {
-        problem_.aScale2D = wei_scale_2d;
-        problem_.bScale2D = src_scale_2d;
-        problem_.aqGroupK = wei_q2d_group_k;
-        problem_.bqGroupK = src_q2d_group_k;
-        if (wei_scales_type != data_type::undef) {
-            problem_.Ta_scale = convert_dnnl_to_kernel_type(wei_scales_type);
+        problem_.asPtrDims = asc_dims;
+        problem_.bsPtrDims = bsc_dims;
+        problem_.aqGroupK = a_q2d_group_k;
+        problem_.bqGroupK = b_q2d_group_k;
+        if (a_scales_type != data_type::undef) {
+            problem_.Ta_scale = convert_dnnl_to_kernel_type(a_scales_type);
             problem_.A_scale.setAlignment(
-                    int(types::data_type_size(wei_scales_type)));
+                    int(types::data_type_size(a_scales_type)));
         }
-        if (src_scales_type != data_type::undef) {
-            problem_.Tb_scale = convert_dnnl_to_kernel_type(src_scales_type);
+        if (b_scales_type != data_type::undef) {
+            problem_.Tb_scale = convert_dnnl_to_kernel_type(b_scales_type);
             problem_.B_scale.layout = MatrixLayout::N;
             problem_.B_scale.setAlignment(
-                    int(types::data_type_size(src_scales_type)));
+                    int(types::data_type_size(b_scales_type)));
         }
     } else {
-        problem_.bScale2D = wei_scale_2d;
-        problem_.aScale2D = src_scale_2d;
-        problem_.bqGroupK = wei_q2d_group_k;
-        problem_.aqGroupK = src_q2d_group_k;
-        if (wei_scales_type != data_type::undef) {
-            problem_.Tb_scale = convert_dnnl_to_kernel_type(wei_scales_type);
+        problem_.bsPtrDims = asc_dims;
+        problem_.asPtrDims = bsc_dims;
+        problem_.bqGroupK = a_q2d_group_k;
+        problem_.aqGroupK = b_q2d_group_k;
+        if (a_scales_type != data_type::undef) {
+            problem_.Tb_scale = convert_dnnl_to_kernel_type(a_scales_type);
             problem_.B_scale.setAlignment(
-                    int(types::data_type_size(wei_scales_type)));
+                    int(types::data_type_size(a_scales_type)));
         }
-        if (src_scales_type != data_type::undef) {
-            problem_.Ta_scale = convert_dnnl_to_kernel_type(src_scales_type);
+        if (b_scales_type != data_type::undef) {
+            problem_.Ta_scale = convert_dnnl_to_kernel_type(b_scales_type);
             problem_.A_scale.layout = MatrixLayout::T;
             problem_.A_scale.setAlignment(
-                    int(types::data_type_size(src_scales_type)));
+                    int(types::data_type_size(b_scales_type)));
         }
     }
 
@@ -559,6 +556,29 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
     if (can_2d_c) *tags++ = kcatalog::ReqBlock2DC;
 
+    // Modify base params, used for mandatory conversion.
+    auto mod_match = [&](MatchParams &params, bool has_mode,
+                             const char *(*match)(Type)) {
+        if (!has_mode) return;
+        if (match(problem_.Ta)) {
+            params.selector.precisions[0] = match(problem_.Ta);
+        }
+        if (match(problem_.Tb)) {
+            params.selector.precisions[1] = match(problem_.Tb);
+        }
+    };
+
+    // Workaround limited attribute support with int8 dynamic quant,
+    // upconvert to f16.
+    mod_match(base,
+            ((asc_dims >= 2 || bsc_dims >= 2) && ao_dims > -1
+                    && problem_.Ta_ext.isInt8() && problem_.Tb_ext.isInt8()
+                    && problem_.Tc.isFP()),
+            [](Type dt) -> const char * {
+                if (dt.isInt8()) return "[OH]";
+                return nullptr;
+            });
+
     match_params.push_back(base);
 
     bool fpmath_tf32 = mode & mode_tf32;
@@ -593,14 +613,14 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SB]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OB]";
-        if (dt.isF8()) return "B";
+        if (dt.isF4()) return "F";
         return nullptr;
     });
 
     add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SH]"; }
         if (dt.isInt8() || dt.isInt4()) return "[OH]";
-        if (dt.isF8()) return "H";
+        if (dt.isF4()) return "F";
         return nullptr;
     });
 
@@ -610,9 +630,20 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     });
 
     add_mode_matches(true, [](Type dt) -> const char * {
-        if (dt.isFP4()) return "E";
+        if (dt.isF4()) return "E";
         return nullptr;
     });
+
+    // If both A/B are integers, we can use integer dpas/accumulation
+    // but only if there are no grouped scales (in these cases,
+    // we apply scales before dpas, and we must use fp dpas)
+    bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
+    bool is_int
+            = types::is_integral_dt(a_type) && types::is_integral_dt(b_type);
+    if (asc_dims < 1 && bsc_dims < 1 && is_int && allow) {
+        match_params.push_back(base);
+        match_params.back().selector.precisions[2] = "I";
+    }
 
     EvaluateParams eval_params;
 
@@ -625,8 +656,9 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
     eval_params.deterministic = (mode & mode_deterministic);
 
+    SelectionObserver observer = entryObserver;
     entry_ = select(catalog(), static_cast<int>(match_params.size()),
-            match_params.data(), eval_params, aux_params_);
+            match_params.data(), eval_params, aux_params_, &observer);
 
     if (!entry_) return status::unimplemented;
 
@@ -639,7 +671,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     auto update_type = [](Type &T, Type T_new, bool sz_change = false) {
         if ((T.bits() != T_new.bits()) && !sz_change) return;
         if (T.isF8() && T_new.isF8()) return;
-        if (T.isF4() && T_new.isF4()) return;
+        if (T.isF4() && (T_new.isF4() || T_new.isInt4())) return;
         T = T.isSigned() ? T_new.asSigned() : T_new.asUnsigned();
     };
     update_type(problem_.Ta, Ta_new, true);
@@ -770,7 +802,9 @@ status_t gen_gemm_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
 
-    entry_ = select(catalog(), match_params, eval_params, aux_params_);
+    SelectionObserver observer = entryObserver;
+    entry_ = select(
+            catalog(), match_params, eval_params, aux_params_, &observer);
 
     if (!entry_) return status::unimplemented;
 
@@ -858,15 +892,15 @@ void gen_gemm_kernel_t::init_interface() {
     if (problem.boPtrDims >= 0)
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
-    if (problem.aScale2D)
+    if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);
-    if (problem.bScale2D)
+    if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.aoPtrDims == 2 || problem.aScale2D)
+    if (problem.aoPtrDims == 2 || problem.aScale2D())
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.boPtrDims == 2 || problem.bScale2D)
+    if (problem.boPtrDims == 2 || problem.bScale2D())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
@@ -900,6 +934,14 @@ void gen_gemm_kernel_t::init_interface() {
             interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
+            if (problem.asPtrDims > 2) {
+                interface_.newArgument(
+                        "scale_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.bsPtrDims > 2) {
+                interface_.newArgument(
+                        "scale_stride_B" + std::to_string(i), DataType::d);
+            }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
             if (problem.postOps[i].is_binary()
@@ -946,9 +988,9 @@ void gen_gemm_kernel_t::init_interface() {
         interface_.newArgument("group_stride", DataType::ud);
     if (strategy.variableSLM())
         interface_.newArgument("local_mem", ExternalArgumentType::LocalPtr);
-    if (problem.aoPtrDims >= 1 || problem.aScale2D)
+    if (problem.aoPtrDims >= 1 || problem.aScale2D())
         interface_.newArgument("offset_Aq", DataType::q);
-    if (problem.boPtrDims >= 1 || problem.bScale2D)
+    if (problem.boPtrDims >= 1 || problem.bScale2D())
         interface_.newArgument("offset_Bq", DataType::q);
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
@@ -974,8 +1016,6 @@ status_t gen_gemm_kernel_t::get_kernel(
 
     try {
         switch (desc()->hw_) {
-            REG_GEN9_ISA(ARCH_DISPATCH(Gen9))
-            REG_GEN11_ISA(ARCH_DISPATCH(Gen11))
             REG_XELP_ISA(ARCH_DISPATCH(XeLP))
             REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
             REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))

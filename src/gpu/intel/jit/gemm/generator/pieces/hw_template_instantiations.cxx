@@ -19,37 +19,31 @@
 #pragma warning (disable: 4661)     /* missing definition in template instatiation */
 #endif
 
-#if defined(DNNL_GPU_ISA_GEN9)
-REG_GEN9_ISA(template class BLASKernelGenerator<HW::Gen9>);
-#elif defined(DNNL_GPU_ISA_GEN11)
-REG_GEN11_ISA(template class BLASKernelGenerator<HW::Gen11>);
-#elif defined(DNNL_GPU_ISA_XELP)
-REG_XELP_ISA(template class BLASKernelGenerator<HW::Gen12LP>);
+#if defined(DNNL_GPU_ISA_XELP)
+REG_XELP_ISA(template class Generator<HW::Gen12LP>);
 #elif defined(DNNL_GPU_ISA_XEHP)
-REG_XEHP_ISA(template class BLASKernelGenerator<HW::XeHP>);
+REG_XEHP_ISA(template class Generator<HW::XeHP>);
 #elif defined(DNNL_GPU_ISA_XEHPG)
-REG_XEHPG_ISA(template class BLASKernelGenerator<HW::XeHPG>);
+REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
 #elif defined(DNNL_GPU_ISA_XEHPC)
-REG_XEHPC_ISA(template class BLASKernelGenerator<HW::XeHPC>);
+REG_XEHPC_ISA(template class Generator<HW::XeHPC>);
 #elif defined(DNNL_GPU_ISA_XE2)
-REG_XE2_ISA(template class BLASKernelGenerator<HW::Xe2>);
+REG_XE2_ISA(template class Generator<HW::Xe2>);
 #elif defined(DNNL_GPU_ISA_XE3)
-REG_XE3_ISA(template class BLASKernelGenerator<HW::Xe3>);
+REG_XE3_ISA(template class Generator<HW::Xe3>);
 #if XE3P
 #elif defined(DNNL_GPU_ISA_XE3P)
 REG_XE3P_ISA(template class BLASKernelGenerator<HW::Xe3p>);
 #endif
 #else
 // Default to instantiating all classes
-REG_GEN9_ISA(template class BLASKernelGenerator<HW::Gen9>);
-REG_GEN11_ISA(template class BLASKernelGenerator<HW::Gen11>);
-REG_XELP_ISA(template class BLASKernelGenerator<HW::Gen12LP>);
-REG_XEHP_ISA(template class BLASKernelGenerator<HW::XeHP>);
-REG_XEHPG_ISA(template class BLASKernelGenerator<HW::XeHPG>);
-REG_XEHPC_ISA(template class BLASKernelGenerator<HW::XeHPC>);
-REG_XE2_ISA(template class BLASKernelGenerator<HW::Xe2>);
-REG_XE3_ISA(template class BLASKernelGenerator<HW::Xe3>);
+REG_XELP_ISA(template class Generator<HW::Gen12LP>);
+REG_XEHP_ISA(template class Generator<HW::XeHP>);
+REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
+REG_XEHPC_ISA(template class Generator<HW::XeHPC>);
+REG_XE2_ISA(template class Generator<HW::Xe2>);
+REG_XE3_ISA(template class Generator<HW::Xe3>);
 #if XE3P
-REG_XE3P_ISA(template class BLASKernelGenerator<HW::Xe3p>);
+REG_XE3P_ISA(template class Generator<HW::Xe3p>);
 #endif
 #endif

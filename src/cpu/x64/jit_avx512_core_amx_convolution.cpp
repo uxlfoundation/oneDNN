@@ -76,8 +76,10 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -192,7 +194,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     p.oc_blocks = occ * jcp.nb_oc_blocking;
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 });
@@ -250,8 +252,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     : nullptr;
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
 
             int oh_s = ohc * jcp.oh_blk_size;
             int oh_e = nstl::min(jcp.oh, oh_s + jcp.oh_blk_size);
@@ -303,7 +305,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     p.oc_blocks = occ * jcp.nb_oc_blocking;
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 }
@@ -434,8 +436,10 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const size_t bia_dt_size = pd()->with_bias()
             ? types::data_type_size(pd()->desc()->bias_desc.data_type)
@@ -564,7 +568,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ)
                                     * wei_oc_shift;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 });
@@ -621,8 +625,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     : nullptr;
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
 
             const size_t inp_src_d_stride = mem_blk_off(src_d, 0, 0, 1, 0, 0);
             int oh_s = ohc * jcp.oh_blk_size;
@@ -677,7 +681,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ)
                                     * wei_oc_shift;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 }

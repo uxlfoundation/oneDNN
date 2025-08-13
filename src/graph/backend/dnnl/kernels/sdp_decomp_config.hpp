@@ -129,7 +129,7 @@ public:
     // sub_mm1_post_mem contains [post_scale, attn_mask(optional)]
     std::vector<memory> sub_mm1_post_mem, sub_softmax_post_mem;
     //select binary
-    memory sub_select_cond, sub_select_src0, sub_select_dst;
+    memory sub_select_cond, sub_select_src, sub_select_dst;
     //softmax
     memory sub_softmax_dst;
     //reorder2
@@ -145,9 +145,9 @@ public:
 
     bool has_scale = false, has_attention_mask = false, has_select = false,
          has_soft_capping = false;
-    // Used to record the ops from select
-    std::vector<op_ptr> select_op;
-    std::vector<int> select_outop_index;
+    // Record if select can be fused into previous matmul. It can be true when
+    // select's 1st input connected to previous matmul.
+    bool select_fusiable = false;
 
 private:
     // Used to record the ops contained in SDP

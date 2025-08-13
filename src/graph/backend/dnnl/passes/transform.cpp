@@ -1043,8 +1043,11 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             // the post op to be fused
             if (consumers.size() != 1) return status::success;
             auto &post_op = consumers[0].get_op();
+            size_t fused_in_off = consumers[0].get_offset();
 
             // check if fusible
+            // For select, it can only be fused to preceding op when it's first
+            // input is connected to preceding op, namely fused_in_off = 0.
             auto post_op_kind = post_op.get_kind();
             bool not_fusible
                     = (!pops_fusible_map.at(base_op_kind).count(post_op_kind)
@@ -1052,7 +1055,9 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                                     && static_cast<dnnl::algorithm>(
                                                post_op.get_attr<int64_t>(
                                                        op_attr::alg_kind))
-                                            == dnnl::algorithm::binary_select));
+                                            == dnnl::algorithm::binary_select
+                                    && fused_in_off >= 1));
+
             if (not_fusible) { return status::success; }
 
             // push fusible pair to fuse group for later fusion
@@ -1088,6 +1093,13 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                 float scale = 1.f;
                 fusion_info.append_post_eltwise(
                         post_op->shared_from_this(), scale);
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            == dnnl::algorithm::binary_select) {
+                fusion_info.append_post_binary(post_op->shared_from_this(),
+                        std::vector<size_t> {base_op->num_inputs(),
+                                base_op->num_inputs() + 1});
             } else if (post_op->get_kind() == op_kind::dnnl_binary
                     && static_cast<dnnl::algorithm>(
                                post_op->get_attr<int64_t>(op_attr::alg_kind))

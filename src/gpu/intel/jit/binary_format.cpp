@@ -53,7 +53,7 @@ class binary_format_kernel_t : public generator_t<hw> {
 
 public:
     binary_format_kernel_t()
-        : generator_t<hw>({GENERATOR_NAME, GENERATOR_LINE}) {
+        : generator_t<hw>(debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };

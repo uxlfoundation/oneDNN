@@ -88,8 +88,19 @@ struct global_tensor_t {
     }
 };
 
+struct kernel_t {
+    kernel_t() : iface("invalid_dsl_kernel") {}
+    kernel_t(kernel_iface_t iface, stmt_t body, const exec_config_t &exec_cfg)
+        : iface(std::move(iface)), body(std::move(body)), exec_cfg(exec_cfg) {}
+
+    kernel_iface_t iface;
+    stmt_t body;
+    exec_config_t exec_cfg;
+    ngen::DebugConfig debug_cfg;
+};
+
 void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx);
-stmt_t end_kernel();
+kernel_t end_kernel();
 
 void begin_scope();
 void end_scope();

@@ -61,11 +61,13 @@ struct ctx_t {
         }
     }
 
-    stmt_t end_kernel() {
+    kernel_t end_kernel() {
         gpu_assert(stmts_stack_.size() == 1)
                 << "Invalid end of kernel, imbalanced scopes detected";
+        kernel_t ret {std::move(interface_), pop_scope(), ctx_->exec_cfg()};
         ctx_ = nullptr;
-        return pop_scope();
+        interface_ = {"undefined_dsl_kernel"};
+        return ret;
     }
 
     int simd() const { return ctx_->exec_cfg().simd(); }
@@ -225,7 +227,7 @@ void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx) {
     default_ctx().declare_kernel(interface, ctx);
 }
 
-stmt_t end_kernel() {
+kernel_t end_kernel() {
     return default_ctx().end_kernel();
 }
 

@@ -45,7 +45,9 @@ namespace gemmstone {
 #define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
 #define FORWARD(hw) NGEN_FORWARD_ELF(hw)
 #define GENERATOR_DEBUGINFO \
-    { GENERATOR_NAME, GENERATOR_LINE }
+    dnnl::impl::gpu::intel::jit::debug_config_t { \
+        GENERATOR_NAME, GENERATOR_LINE \
+    }
 
 inline int getEnv(const char *s, int def) {
     return dnnl::impl::gpu::intel::gpu_utils::dev_getenv(s, def);

@@ -175,7 +175,8 @@ public:
     NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
     ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
-            const exec_config_t &exec_cfg, const debug_config_t &debug_config)
+            const exec_config_t &exec_cfg,
+            const ngen::DebugConfig &debug_config)
         : BaseGeneratorT(exec_cfg.hw().product(), debug_config)
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)

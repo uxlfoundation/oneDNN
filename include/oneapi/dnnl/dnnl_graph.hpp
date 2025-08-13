@@ -53,6 +53,7 @@ using fpmath_mode = dnnl::fpmath_mode;
 
 /// @addtogroup dnnl_graph_api_utils Utilities
 /// Utility types and definitions
+/// \ingroup dnnl_graph_api
 /// @{
 
 /// @cond DO_NOT_DOCUMENT_THIS
@@ -125,6 +126,7 @@ using req = typename std::enable_if<B, bool>::type;
 
 /// @addtogroup dnnl_graph_api_status Status
 /// Definitions of status values returned by the library functions.
+/// \ingroup dnnl_graph_api
 /// @{
 
 /// Status values returned by the library functions.

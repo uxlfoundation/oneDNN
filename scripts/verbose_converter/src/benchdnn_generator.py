@@ -215,6 +215,11 @@ class Converter(metaclass=ConverterMeta):
         return f"--attr-zero-points={params}"
 
     @property
+    def group_sums(self):
+        params = self._get_quantization(self.entry.exts.group_sums, 1, "s32")
+        return f"--attr-group-sums={params}"
+
+    @property
     def rounding_mode(self):
         rounding_modes = self.entry.exts.rounding_mode
         if rounding_modes is None:
@@ -248,6 +253,7 @@ class Converter(metaclass=ConverterMeta):
             self.post_ops,
             self.scales,
             self.zero_points,
+            self.group_sums,
             self.scratchpad_mode,
             self.fpmath_mode,
             self.acc_mode,

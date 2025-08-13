@@ -821,6 +821,26 @@ std::ostream &operator<<(
     return s;
 }
 
+std::ostream &operator<<(
+        std::ostream &s, const attr_t::placeholder_t &placeholder) {
+    using ::operator<<;
+
+    const char *delim = "";
+    for (const auto &entries : placeholder.entries) {
+        s << delim;
+        s << arg2str(entries.first) << ":" << entries.second.policy;
+        if (entries.second.policy == policy_t::COMMON)
+            s << ":" << entries.second.value;
+        if (entries.second.dt != dnnl_s32 || !entries.second.groups.empty())
+            s << ':' << entries.second.dt;
+        if (!entries.second.groups.empty())
+            s << ":" << dims2str(entries.second.groups);
+        delim = "+";
+    }
+
+    return s;
+}
+
 std::ostream &operator<<(std::ostream &s, const attr_t::arg_scales_t &scales) {
     const char *delim = "";
     for (const auto &v : scales.scales) {
@@ -954,6 +974,8 @@ std::ostream &operator<<(std::ostream &s, const attr_t::dropout_t &drop) {
 std::ostream &operator<<(std::ostream &s, const attr_t &attr) {
     if (!attr.is_def()) {
         if (!attr.scales.is_def()) s << "--attr-scales=" << attr.scales << " ";
+        if (!attr.placeholder.is_def())
+            s << "--attr-placeholder=" << attr.placeholder << " ";
         if (!attr.zero_points.is_def())
             s << "--attr-zero-points=" << attr.zero_points << " ";
         if (!attr.post_ops.is_def())

@@ -283,14 +283,17 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
         if (!pl.has_default_values(DNNL_ARG_SRC)) {
             if (zp.get(DNNL_ARG_WEIGHTS).has_default_values()) {
-                VCHECK_MATMUL_UNIMPL(
-                        false, "Zero-points for weights are not specified");
+                VCHECK_MATMUL_UNIMPL(false, "WEI ZPs are not specified");
             }
-
+            if (!zp.get(DNNL_ARG_SRC).has_default_values()) {
+                VCHECK_MATMUL_UNIMPL(
+                        false, "SRC ZPs are incompatible with SRC group sums");
+            }
             const int placeholder_mask_src = pl.get_mask(DNNL_ARG_SRC);
             const int zero_points_mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
-            VCHECK_MATMUL_UNIMPL(placeholder_mask_src == zero_points_mask_wei,
-                    "masks must be identical for placeholder and zero-points");
+            VCHECK_MATMUL_UNIMPL(utils::one_of(zero_points_mask_wei,
+                                         placeholder_mask_src, 1 << n_idx, 0),
+                    "masks for placeholder and zero points are incompatible");
         }
 
         // TODO: Check dependency between placeholder and zero-points that groups are

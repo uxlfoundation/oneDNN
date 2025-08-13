@@ -288,6 +288,8 @@ class ParserImpl:
                 exts.scratchpad = self.parse_scratchpad_mode(args)
             elif name == "attr-zero-points":
                 exts.zero_points = self.parse_zero_points(args)
+            elif name == "attr-placeholder":
+                exts.group_sums = self.parse_group_sums(args)
         return exts
 
     def parse_post_ops(self, post_ops: str):
@@ -436,6 +438,12 @@ class ParserImpl:
 
     def parse_zero_point(self, spec) -> ir.ZeroPoint:
         return self.parse_quantization_param(spec, spec.read_int, ir.ZeroPoint)
+
+    def parse_group_sums(self, gs: str):
+        return self.parse_per_argument(gs, "group sum", self.parse_group_sum)
+
+    def parse_group_sum(self, spec) -> ir.GroupSum:
+        return self.parse_quantization_param(spec, spec.read_int, ir.GroupSum)
 
     @staticmethod
     def parse_fpmath_mode(mathmode: str) -> ir.FPMathMode:

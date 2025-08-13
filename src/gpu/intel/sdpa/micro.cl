@@ -320,17 +320,31 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const int remainder_k, const int remainder_q) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
-    uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);
-    uint b0_kv = b0 / KV_GROUP_SIZE;
 
+    uint b0, b0_kv;
     uint wg_j0 = get_group_id(0) * ugemm_kq_wg_tile_n;
+
+    uint q_group_size;
+    if (q == 1 && KV_GROUP_SIZE > 1) {
+        // For second token Grouped Query Attention(GQA) cases, we batch the
+        // kernel across the KV heads instead of the q heads. This allows us to
+        // batch multiple queries into a single work group.
+        b0_kv = get_group_id(1);
+        b0 = b0_kv * KV_GROUP_SIZE;
+        q_group_size = KV_GROUP_SIZE;
+    } else {
+        b0 = get_group_id(1);
+        b0_kv = b0 / KV_GROUP_SIZE;
+        q_group_size = q;
+    }
 
     /* Calculate the number of keys to process */
     int k0end = k;
 #if WITH_CAUSAL_MASK
     if (attn_mask_type == ATTN_MASK_TOP_LEFT) {
         k0end = min(k, (int)(wg_j0 + ugemm_kq_wg_tile_n));
+        if (q == 1) k0end = 1;
     } else {
         k0end = min(k, (int)(wg_j0 + ugemm_kq_wg_tile_n) - (q - k));
     }
@@ -419,7 +433,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
 
-        tile_load_src1(&Q_tile, Q, d, q, ldq, 0, wg_j0 + q0_copy, remainder_q);
+        tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy,
+                remainder_q);
 
         /* Store Q tile to SLM */
         tile_store_t_slm_src1(
@@ -524,14 +539,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
     }
 
+    uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
+    uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
+
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
         bool first = (k0 == 0);
         int knext = k0 + ugemm_kq_wg_tile_m;
         bool last = (knext >= k0end);
-
-        uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
-        uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
 
 #if WITH_ATTN_MASK
         /* Load mask. No remainder handling needed assuming k block size is a power of 2. */
@@ -609,6 +624,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define less_than(offset_k, offset_q) (offset_q < offset_k)
 
         int col_offset = wg_j0 + sg_j0_kq;
+        if (q == 1) col_offset = 1;
         if (attn_mask_type == ATTN_MASK_BOTTOM_RIGHT) col_offset += k - q;
 
         /* Apply causal mask */
@@ -918,11 +934,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n + wg_j0;
 
 #if BLOCK_2D_A
-    tile_store_block2d(A_tile_dst, A, d, q, lda, sg_i0_vs, sg_j0_vs);
+    tile_store_block2d(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #elif BLOCK_A
     tile_store_block_rem_q(
-            A_tile_dst, A, q, lda, sg_i0_vs, sg_j0_vs, remainder_q);
+            A_tile_dst, A, q_group_size, lda, sg_i0_vs, sg_j0_vs, remainder_q);
 #else
-    tile_store(A_tile_dst, A, d, q, lda, sg_i0_vs, sg_j0_vs);
+    tile_store(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #endif
 }

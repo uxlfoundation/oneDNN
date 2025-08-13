@@ -112,7 +112,10 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     /* Retrieve pre-tuned kernel configuration */
     config_t *config = nullptr;
     const dim_t thin_q_threshold = 16;
-    bool thin_q = (d->queries() <= thin_q_threshold);
+    auto queries = d->queries();
+    if (queries == 1) { queries = (d->q_desc.dims[1] / d->kv_head_number); }
+
+    bool thin_q = (queries <= thin_q_threshold);
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
     bool is_integrated = intel_engine->device_info()->is_integrated();
@@ -272,9 +275,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
                     thin_q, quantized, is_integrated, use_fma_config, is_f32);
     // query size is only tuned to thin_q/non-thin_q cases
-    heuristic_sizes.n = (d->queries() <= thin_q_threshold)
+    heuristic_sizes.n = (queries <= thin_q_threshold)
             ? thin_q_threshold
-            : utils::rnd_up_pow2(d->queries());
+            : utils::rnd_up_pow2(queries);
     heuristic_sizes.k
             = d->head_size(); // baked into kernel regardless, no quantization
     heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
@@ -680,9 +683,11 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     const auto &value_zp
             = CTX_IN_STORAGE(DNNL_ARG_VALUES | DNNL_ARG_ATTR_ZERO_POINTS);
 
+    const int kv_group_size = pd()->conf.kv_group_size;
     const dim_t Q = pd()->desc()->queries();
     const dim_t K = pd()->desc()->keys();
     const dim_t D = pd()->desc()->head_size();
+    const dim_t Q_per_kv_group = (Q == 1 ? Q * kv_group_size : Q);
 
     const config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
@@ -749,7 +754,9 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     auto *d = pd()->desc();
     const bool d_full = (d->head_size() == pd()->d_max());
-    const int remainder_q = d_full && ((Q % kq_wg_tile_n) != 0);
+    const bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
+
+    const int remainder_q = d_full && q_full;
 
     arg_list.append(remainder_k);
     arg_list.append(remainder_q);
@@ -757,8 +764,16 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;
 
-    gws[0] *= utils::div_up(Q, wg_tile_q);
-    gws[1] *= pd()->dst_md()->dims[1];
+    if (Q == 1) {
+        // For second token Grouped Query Attention(GQA) cases, we batch the
+        // kernel across the KV heads instead of the q heads. This allows us to
+        // batch multiple queries into a single work group.
+        gws[0] *= utils::div_up(Q_per_kv_group, wg_tile_q);
+        gws[1] *= utils::div_up(pd()->dst_md()->dims[1], kv_group_size);
+    } else {
+        gws[0] *= utils::div_up(Q, wg_tile_q);
+        gws[1] *= pd()->dst_md()->dims[1];
+    }
     gws[2] *= pd()->dst_md()->dims[0];
 
     auto nd_range = compute::nd_range_t(gws, lws);

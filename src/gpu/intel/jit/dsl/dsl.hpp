@@ -34,6 +34,8 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
+using layout_t = v2::layout_t;
+
 struct send_hint_t {
     send_cache_hint_t cache;
 };
@@ -55,7 +57,7 @@ struct tensor_t {
 
     IR_DEFINE_DUMP()
     expr_t buf;
-    v2::layout_t layout;
+    layout_t layout;
 };
 
 struct global_tensor_t {
@@ -160,7 +162,7 @@ lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
 
-tensor_t def(const v2::layout_t &layout, const std::string &name,
+tensor_t def(const layout_t &layout, const std::string &name,
         const expr_t &value = {});
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);

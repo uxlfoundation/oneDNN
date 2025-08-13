@@ -109,7 +109,7 @@ struct ctx_t {
         return def(value.type(), name, value);
     }
 
-    tensor_t def(const v2::layout_t &layout, const std::string &name,
+    tensor_t def(const layout_t &layout, const std::string &name,
             const expr_t &value = {}) {
         // Tensors need to be grf-aligned for loading/storing
         // TODO: IR should be modified to enable loading small tensors (such as
@@ -288,8 +288,8 @@ lval_t def(const std::string &name, const expr_t &value) {
     return def(value.type(), name, value);
 }
 
-tensor_t def(const v2::layout_t &layout, const std::string &name,
-        const expr_t &value) {
+tensor_t def(
+        const layout_t &layout, const std::string &name, const expr_t &value) {
     return default_ctx().def(layout, name, value);
 }
 

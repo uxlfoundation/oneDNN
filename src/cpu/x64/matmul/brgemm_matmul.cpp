@@ -83,7 +83,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         // ICE in GCC 7.4.
         const bool is_bia_dt_correct
                 = IMPLICATION(is_int8 == true,
-                          one_of(bia_dt, f32, s32, s8, u8, bf16))
+                          one_of(bia_dt, f32, s32, s8, u8, f16, bf16))
                 && IMPLICATION(
                         is_f8 == true, one_of(bia_dt, f32, f16, bf16, src_dt))
                 && IMPLICATION(

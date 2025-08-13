@@ -281,8 +281,11 @@ template <cpu_isa_t isa, data_type_t kernel_dt>
 void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
-    if (jcp.with_bias && jcp.oc_without_padding != jcp.oc)
+    if (jcp.with_bias && jcp.bia_dt == data_type::bf16) {
+        scratchpad.book<float>(key_conv_bias_bf16_convert_wsp, jcp.oc);
+    } else if (jcp.with_bias && jcp.oc_without_padding != jcp.oc) {
         scratchpad.book<float>(key_conv_padded_bias, jcp.oc);
+    }
 }
 
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;

@@ -479,6 +479,8 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     void *mem_handle;
     DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
 
+    printf("Init memory for address: %p\n", mem_handle);
+
     if (is_opencl) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         stream_t stream(engine_);

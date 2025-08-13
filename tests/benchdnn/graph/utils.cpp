@@ -204,13 +204,16 @@ inline int measure_perf_individual(timer::timer_t &t,
     cpp_stream_t stream {get_graph_engine(), flags};
 
     t.reset();
+    size_t idx = 0;
     while (true) {
-        auto sz = perf_func_v.size();
-        for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
-                    WARN, res);
-        }
+        // auto sz = perf_func_v.size(); // sz = num of partitions
+        DNN_GRAPH_SAFE(perf_func_v[0](stream, inputs_v[idx], outputs_v[idx]),
+                WARN, res);
         t.stamp();
+
+        ++idx;
+        std::cout << "Run " << idx << " time(s), "
+                  << "total time: " << t.total_ms() << " ms, " << std::endl;
         if (should_stop(t)) break;
     }
     return OK;

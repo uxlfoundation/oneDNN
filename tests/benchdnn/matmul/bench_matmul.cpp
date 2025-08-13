@@ -142,10 +142,13 @@ static const std::string help_runtime_dims_masks
 bool parse_legacy_dt(std::vector<dnnl_data_type_t> &dt,
         const std::vector<dnnl_data_type_t> &def_dt, const char *str,
         const std::string &option_name /* = "dt"*/) {
-    BENCHDNN_PRINT(0, "%s\n",
-            "Warning: \'--bia_dt\' option is deprecated. Please use the "
-            "\'--bia-dt\' one.");
-    return parser::parse_dt(dt, def_dt, str, option_name);
+    if (parser::parse_dt(dt, def_dt, str, option_name)) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Warning: \'--bia_dt\' option is deprecated. Please use the "
+                "\'--bia-dt\' one.");
+        return true;
+    }
+    return false;
 }
 
 int bench(int argc, char **argv) {

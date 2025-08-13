@@ -580,9 +580,19 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 }
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    return attr.zero_points_.has_default_values(arg)
-            ? brgemm_broadcast_t::none
-            : brgemm_broadcast_t::per_tensor;
+    if (attr.zero_points_.has_default_values(arg)) {
+        return brgemm_broadcast_t::none;
+    }
+
+    const int mask = attr.zero_points_.get_mask(arg);
+    if (mask == 0) {
+        return brgemm_broadcast_t::per_tensor;
+    } else if (mask == 2
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
+        return brgemm_broadcast_t::per_n;
+    } else {
+        return brgemm_broadcast_t::none;
+    }
 }
 
 struct matmul_avx512_blocking_params_t {
@@ -1962,6 +1972,10 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
+    bgmmc.has_zero_point_b_per_oc
+            = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
+    bgmmc.has_zero_point_c_per_oc
+            = bgmmc.dst_zp_type == brgemm_broadcast_t::per_n;
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             (bgmmc.with_src_scales || bgmmc.with_wei_scales)
                     && !bgmmc.apply_scales_in_buffer_b,

@@ -16,3 +16,5 @@
 --batch=set_conv_dw
 --batch=shapes_dw_minibatch_2d-spatial
 --batch=shapes_dw_minibatch_channel_2d-spatial
+
+--reset --dt=bf16 --bia-dt=bf16 --dir=FWD_I g4mb2_ic4oc4_ih6oh4kh3sh1dh0ph0_iw6ow4kw3sw1dw0pw0

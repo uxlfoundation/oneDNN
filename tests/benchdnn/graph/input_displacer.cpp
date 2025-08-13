@@ -457,7 +457,6 @@ partition_data_displacer_t::partition_data_displacer_t(
 }
 
 int partition_data_displacer_t::displace_input_data(size_t lt_id,
-        dnn_mem_t &mem,
         const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
         res_t *res) {
     if (!dg_) {
@@ -470,6 +469,7 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
         return OK;
     }
     const displace_args_t &d_args = displace_args_.at(lt_id);
+    dnn_mem_t &mem = const_cast<dnn_mem_t &>(lt_id_2_mems.at(lt_id));
     const auto &main_op = d_args.main_op_;
     const auto &main_op_offset = d_args.main_op_offset_;
     const auto &tensor = d_args.tensor_;

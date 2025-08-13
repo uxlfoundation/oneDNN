@@ -207,7 +207,7 @@ inline int measure_perf_individual(timer::timer_t &t,
     size_t idx = 0;
     while (true) {
         // auto sz = perf_func_v.size(); // sz = num of partitions
-        DNN_GRAPH_SAFE(perf_func_v[0](stream, inputs_v[idx], outputs_v[idx]),
+        DNN_GRAPH_SAFE(perf_func_v[0](stream, inputs_v[0], outputs_v[0]),
                 WARN, res);
         t.stamp();
 

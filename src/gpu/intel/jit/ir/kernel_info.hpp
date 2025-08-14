@@ -111,6 +111,13 @@ public:
         return expr_t();
     }
 
+    int index(const std::string &name) const {
+        for (int i = 0; i < nargs(); i++) {
+            if (args_[i].name() == name) return i;
+        }
+        return -1;
+    }
+
     void register_arg(const expr_t &var) { args_.emplace_back(var); }
 
     void register_arg(const std::string &name, const type_t &type) {

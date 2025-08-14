@@ -498,6 +498,8 @@ public:
 
     bool is_slm() const { return any(attr() & type_attr_t::slm); }
 
+    type_t operator[](int elems) const { return with_elems(elems); }
+
     bool operator==(const type_t &other) const {
         return (kind() == other.kind()) && (elems() == other.elems())
                 && (is_ptr() == other.is_ptr());
@@ -630,6 +632,12 @@ public:
     type_t with_attr(type_attr_t attr) const {
         type_t copy = *this;
         copy.attr_ = attr;
+        return copy;
+    }
+
+    type_t with_kind(type_kind_t kind) const {
+        type_t copy = *this;
+        copy.kind_ = kind;
         return copy;
     }
 

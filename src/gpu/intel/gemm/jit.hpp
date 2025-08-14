@@ -125,6 +125,10 @@ struct gen_t : public primitive_t {
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
                 std::swap(eff_transa_, eff_transb_);
+                std::swap(a_quant_.zp_type, b_quant_.zp_type);
+                std::swap(a_quant_.gs_type, b_quant_.gs_type);
+                std::swap(a_quant_.zp_ndims, b_quant_.zp_ndims);
+                std::swap(a_quant_.gs_ndims, b_quant_.gs_ndims);
                 eff_transa_ = !eff_transa_;
                 eff_transb_ = !eff_transb_;
 
@@ -222,11 +226,9 @@ struct gen_t : public primitive_t {
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-                if (swap_ab_) std::swap(ao_dims_, bo_dims_);
             }
             if (!attr()->precomputed_reductions_.has_default_values()) {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-                if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -245,9 +247,9 @@ struct gen_t : public primitive_t {
 
             // Grouped scales break pre-XeHPG kernels due to increased register pressure
             bool A_grouped
-                    = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
+                    = 1 < a_quant_.group_k && a_quant_.group_k < desc()->k();
             bool B_grouped
-                    = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
+                    = 1 < b_quant_.group_k && b_quant_.group_k < desc()->k();
             VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
                                    !(A_grouped || B_grouped)),
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
@@ -270,7 +272,7 @@ struct gen_t : public primitive_t {
 
             // Wrangle data types.
             data_type_t acc_type = d->acc_type;
-            if (a_scales_grouped() || b_scales_grouped()) {
+            if (a_grouped() || b_grouped()) {
                 // grouped scales require floating point accumulation
                 acc_type = (utils::one_of(f64, eff_a_type(), eff_b_type())
                                 ? f64
@@ -294,12 +296,6 @@ struct gen_t : public primitive_t {
                     IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
             bool int_acc = acc_type == data_type::s32;
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
@@ -338,27 +334,11 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            auto has_gs = [&](int idx) {
-                return !attr()->precomputed_reductions_.has_default_values(idx);
-            };
-            auto ag_type = with_a_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bg_type = with_b_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
-                    asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
-                    a_q2d_group_m(), has_gs(DNNL_ARG_A)};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
-                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(),
-                    b_q2d_group_n(), has_gs(DNNL_ARG_B)};
-
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,
                             dev_info_->eu_count(), has_systolic, is_integrated,
                             mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
+                            eff_trans_bias(), swap_ab(), a_quant_, b_quant_,
                             with_sround_, with_c_zero_points(), with_bias(),
                             eff_sum_ab(), alpha(), beta(), eff_a_type(),
                             eff_b_type(), desc()->c_type(), co_type, acc_type,

@@ -16,7 +16,7 @@
 
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "common/c_types_map.hpp"
-#include "common/tag_traits.hpp"
+#include "common/utils.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -149,14 +149,14 @@ status_t pd_t::init_post_ops() {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 a_scale_md_, DNNL_ARG_A, a_scales.get_data_type(), converted));
-        if (converted) asc_dims_ = -1;
+        if (converted) a_quant_.scale_ndims = -1;
     }
 
     if (!b_scales.has_default_values()) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 b_scale_md_, DNNL_ARG_B, b_scales.get_data_type(), converted));
-        if (converted) bsc_dims_ = -1;
+        if (converted) b_quant_.scale_ndims = -1;
     }
 
     if (!c_scales.has_default_values()) {
@@ -234,40 +234,38 @@ status_t pd_t::init_attrs() {
     CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
 
     auto ndims = d->c_desc.ndims;
-    ao_dims_ = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
-    bo_dims_ = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
-    ag_dims_ = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
-    bg_dims_ = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
-    asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
-    bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
+    a_quant_.scales_type = a_scales.get_data_type();
+    a_quant_.zp_type = a_zps.get_data_type();
+    a_quant_.gs_type = a_gs.get_data_type();
+    a_quant_.scale_ndims = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
+    a_quant_.zp_ndims = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
+    a_quant_.gs_ndims = quant_entry_ndims(a_gs, a_gs_md_, ndims - 1);
+    a_quant_.force_gs = !a_gs.has_default_values();
 
-    a_scales_type_ = a_scales.get_data_type();
-    if (!a_zps.has_default_groups()) {
-        a_zp_group_k_ = a_zps.get_group(0);
-        a_zp_group_m_ = a_zps.get_group(1);
-    }
-    if (!a_gs.has_default_groups()) {
-        a_gs_group_k_ = a_gs.get_group(0);
-        a_gs_group_m_ = a_gs.get_group(1);
-    }
-    if (!a_scales.has_default_groups()) {
-        a_scales_group_k_ = a_scales.get_group(0);
-        a_scales_group_m_ = a_scales.get_group(1);
+    b_quant_.scales_type = b_scales.get_data_type();
+    b_quant_.zp_type = b_zps.get_data_type();
+    b_quant_.gs_type = b_gs.get_data_type();
+    b_quant_.scale_ndims = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
+    b_quant_.zp_ndims = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
+    b_quant_.gs_ndims = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
+    b_quant_.force_gs = !b_gs.has_default_values();
+
+    if (a_zp_2d()) {
+        a_quant_.group_k = a_zps.get_group(0);
+        a_quant_.group_mn = a_zps.get_group(1);
+    } else if (a_scales_2d()) {
+        a_quant_.group_k = a_scales.get_group(0);
+        a_quant_.group_mn = a_scales.get_group(1);
     }
 
-    b_scales_type_ = b_scales.get_data_type();
-    if (!b_zps.has_default_groups()) {
-        b_zp_group_n_ = b_zps.get_group(0);
-        b_zp_group_k_ = b_zps.get_group(1);
+    if (b_zp_2d()) {
+        b_quant_.group_mn = b_zps.get_group(0);
+        b_quant_.group_k = b_zps.get_group(1);
+    } else if (b_scales_2d()) {
+        b_quant_.group_mn = b_scales.get_group(0);
+        b_quant_.group_k = b_scales.get_group(1);
     }
-    if (!b_gs.has_default_groups()) {
-        b_gs_group_n_ = b_gs.get_group(0);
-        b_gs_group_k_ = b_gs.get_group(1);
-    }
-    if (!b_scales.has_default_groups()) {
-        b_scales_group_n_ = b_scales.get_group(0);
-        b_scales_group_k_ = b_scales.get_group(1);
-    }
+
     return status::success;
 }
 

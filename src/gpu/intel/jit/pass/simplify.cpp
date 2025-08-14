@@ -1906,7 +1906,7 @@ struct op_traits_t {};
                 typename = typename std::enable_if<dummy_op == op_kind_t::_and \
                         || dummy_op == op_kind_t::_or>::type> \
         static bool compute(bool a, bool b) { \
-            return a op b; \
+            return static_cast<bool>(a op b); \
         } \
     };
 
@@ -1923,6 +1923,9 @@ DECL_OP_TRAITS(op_kind_t::_le, <=)
 
 DECL_OP_TRAITS(op_kind_t::_and, &)
 DECL_OP_TRAITS(op_kind_t::_or, |)
+DECL_OP_TRAITS(op_kind_t::_xor, ^)
+DECL_OP_TRAITS(op_kind_t::_shl, <<)
+DECL_OP_TRAITS(op_kind_t::_shr, >>)
 
 template <>
 struct op_traits_t<op_kind_t::_min> {
@@ -2032,6 +2035,9 @@ public:
 
             CASE(op_kind_t::_and)
             CASE(op_kind_t::_or)
+            CASE(op_kind_t::_xor)
+            CASE(op_kind_t::_shl)
+            CASE(op_kind_t::_shr)
             CASE(op_kind_t::_min)
             CASE(op_kind_t::_max)
 

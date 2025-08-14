@@ -108,6 +108,7 @@ std::string to_string(op_kind_t kind) {
 
         case op_kind_t::_and: return "&&";
         case op_kind_t::_or: return "||";
+        case op_kind_t::_xor: return "^";
 
         case op_kind_t::_add3: return "add3";
         case op_kind_t::_mad: return "mad";
@@ -143,6 +144,7 @@ bool is_commutative_op(op_kind_t op_kind) {
         case op_kind_t::_ne:
         case op_kind_t::_and:
         case op_kind_t::_or:
+        case op_kind_t::_xor:
         case op_kind_t::_add3: return true;
         default: return false;
     }
@@ -241,7 +243,8 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
         return type_t::u32(a.elems(), attr);
     }
 
-    if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+    if (utils::one_of(
+                op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
         if (a == b) return a;
         if (is_const(a_expr)) return b;
         if (is_const(b_expr)) return a;
@@ -405,6 +408,7 @@ DEFINE_BINARY_OPERATOR(<=, op_kind_t::_le)
 
 DEFINE_BINARY_OPERATOR(&, op_kind_t::_and)
 DEFINE_BINARY_OPERATOR(|, op_kind_t::_or)
+DEFINE_BINARY_OPERATOR(^, op_kind_t::_xor)
 
 #undef DEFINE_BINARY_OPERATOR
 

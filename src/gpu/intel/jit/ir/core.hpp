@@ -1120,6 +1120,7 @@ public:
     DECLARE_BINARY_ASSIGN_OPERATOR(/)
     DECLARE_BINARY_ASSIGN_OPERATOR(%)
     DECLARE_BINARY_ASSIGN_OPERATOR(&)
+    DECLARE_BINARY_ASSIGN_OPERATOR(^)
 
 #undef DECLARE_BINARY_ASSIGN_OPERATOR
 
@@ -1176,6 +1177,7 @@ enum class op_kind_t {
 
     _and,
     _or,
+    _xor,
 
     // Ternary operations.
     // Parametric ReLU.
@@ -2055,6 +2057,7 @@ DECLARE_BINARY_OPERATOR(<=, op_kind_t::_le)
 
 DECLARE_BINARY_OPERATOR(&, op_kind_t::_and)
 DECLARE_BINARY_OPERATOR(|, op_kind_t::_or)
+DECLARE_BINARY_OPERATOR(^, op_kind_t::_xor)
 
 #undef DECLARE_BINARY_OPERATOR
 

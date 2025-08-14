@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_JIT_DSL_DSL_HPP
 #define GPU_INTEL_JIT_DSL_DSL_HPP
 
+#include "gpu/intel/jit/dsl/decl.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
@@ -39,6 +40,17 @@ struct send_hint_t {
 };
 
 struct tensor_t {
+    tensor_t() = default;
+    tensor_t(const expr_t &buf, const layout_t &layout)
+        : buf(buf), layout(layout) {}
+    const type_t &type() const { return layout.type(); }
+
+    tensor_t map(const tile_t &tile, const coord_t &coord) const {
+        auto ret = *this;
+        ret.layout = layout.map(tile, coord);
+        return ret;
+    }
+
     std::string str() const {
         std::ostringstream oss;
         oss << "buffer:    " << buf.str();
@@ -55,24 +67,39 @@ struct global_tensor_t {
     expr_t buf;
     type_t type;
     expr_t base_offset;
-    pvar_map_t<expr_t> idxs;
+    coord_t coord;
     pvar_map_t<expr_t> strides;
     pvar_map_t<expr_t> sizes;
     tile_t tile;
 
-    expr_t offset(const icoord_t &coord) const {
+    global_tensor_t() = default;
+    global_tensor_t(const expr_t &buf, const pvar_map_t<expr_t> &sizes,
+            const pvar_map_t<expr_t> &strides)
+        : buf(buf)
+        , type(buf.type().remove_ptr())
+        , strides(strides)
+        , sizes(sizes) {}
+
+    expr_t offset(const icoord_t &sub_coord) const {
         expr_t ret = base_offset;
-        for (auto &c : coord) {
-            ret += (idxs[c] + coord[c]) * strides[c];
+        for (auto &c : sub_coord) {
+            ret += (coord[c] + sub_coord[c]) * strides[c];
         }
         return simplify(ret * type.size());
+    }
+
+    global_tensor_t map(const tile_t &tile, const coord_t &coord) const {
+        global_tensor_t ret = *this;
+        ret.coord = coord;
+        ret.tile = tile;
+        return ret;
     }
 
     std::string str() const {
         std::ostringstream oss;
         oss << "(" << buf << "+" << base_offset << ")." << type << " : ";
-        for (auto &k : idxs) {
-            oss << " " << k << " - (idx: " << idxs[k]
+        for (auto &k : coord) {
+            oss << " " << k << " - (coord: " << coord[k]
                 << ", stride: " << strides[k] << ", size: " << sizes[k];
             if (!tile.is_empty()) oss << ", tile: " << tile[k];
             oss << ")";
@@ -81,7 +108,8 @@ struct global_tensor_t {
     }
 };
 
-void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx);
+void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx,
+        bool new_ir_api = false);
 stmt_t end_kernel();
 
 void begin_scope();
@@ -99,10 +127,11 @@ const std::array<expr_t, 3> &local_sizes();
 const expr_t &local_size(int idx);
 
 class lval_t {
-
 public:
+    lval_t() = default;
+    lval_t(const type_t &type, const std::string &name)
+        : var(var_t::make(type, name)) {}
     lval_t(const expr_t &v) : var(v) {}
-
     lval_t &operator=(const expr_t &obj);
 
     lval_t sub(int off, int elems) const {
@@ -123,7 +152,9 @@ public:
     DEFINE_BINARY_ASSIGN_OPERATOR(*)
     DEFINE_BINARY_ASSIGN_OPERATOR(/)
     DEFINE_BINARY_ASSIGN_OPERATOR(%)
+    DEFINE_BINARY_ASSIGN_OPERATOR(|)
     DEFINE_BINARY_ASSIGN_OPERATOR(&)
+    DEFINE_BINARY_ASSIGN_OPERATOR(^)
 
 #undef DEFINE_BINARY_ASSIGN_OPERATOR
 
@@ -137,15 +168,29 @@ public:
     expr_t var;
 };
 
+expr_t subgroup_id(int idx = 0);
 expr_t arg(const std::string &name, bool allow_empty = false);
+// TODO: Unify def() API, keep three versions:
+// 1. def(name, type, value)
+// 2. def(name, type)
+// 3. def(name, value)
+// name goes first in all three for consistency.
 lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
+lval_t def(
+        const std::string &name, const type_t &type, const expr_t &value = {});
 lval_t def(const std::string &name, const expr_t &value);
-
 tensor_t def(const layout_t &layout, const std::string &name,
         const expr_t &value = {});
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
+tensor_t def_slm(layout_t layout, const std::string &name);
+
+expr_t iif(
+        const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr);
+expr_t extract(const expr_t &expr, int lane);
+
+void assign(const expr_t &var, const expr_t &value);
 
 void prefetch(const global_tensor_t &g, const icoord_t &base = {},
         const send_hint_t &hint = {});
@@ -156,8 +201,6 @@ void store(const global_tensor_t &g, const tensor_t &t,
 
 void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const tile_t &tile, const icoord_t &base, bool is_systolic);
-
-void assign(const expr_t &var, const expr_t &value);
 
 template <typename F>
 void if_(const expr_t &cond, F if_body) {
@@ -196,6 +239,19 @@ void if_(const expr_t &cond, const F &if_body, const G &else_body) {
 }
 
 template <typename F>
+void _for(const expr_t &var, const expr_t &bound, const expr_t &step,
+        const F &body) {
+    begin_scope();
+    body();
+    append(for_t::make(var, 0, bound, pop_scope(), step));
+}
+
+template <typename F>
+void _for(const expr_t &var, const expr_t &bound, const F &body) {
+    _for(var, bound, 1, body);
+}
+
+template <typename F>
 void while_(const expr_t &cond, F body) {
     if (is_const(cond) && !to_cpp<bool>(cond)) return;
     begin_scope();
@@ -205,6 +261,10 @@ void while_(const expr_t &cond, F body) {
 
 void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         const tensor_t &src1);
+
+void barrier() {
+    append(builtin_t::make("barrier")());
+}
 
 } // namespace dsl
 } // namespace jit

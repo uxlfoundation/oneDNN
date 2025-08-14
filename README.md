@@ -24,17 +24,13 @@ Deep learning practitioners should use one of the applications enabled with oneD
 * [Apache SINGA](https://singa.apache.org)
 * [DeepLearning4J\*](https://deeplearning4j.konduit.ai)
 * [Flashlight\*](https://github.com/flashlight/flashlight)
-* [MATLAB\* Deep Learning Toolbox](https://www.mathworks.com/help/deeplearning)
+* [llama.cpp](https://github.com/ggml-org/llama.cpp)
 * [ONNX Runtime](https://onnxruntime.ai)
+* [OpenNMT CTranslate2](https://github.com/OpenNMT/CTranslate2)
 * [OpenVINO(TM) toolkit](https://github.com/openvinotoolkit/openvino)
 * [PaddlePaddle\*](http://www.paddlepaddle.org)
-* [PyTorch\*](https://pytorch.org). Intel GPU support and additional
-optimizations are available with [Intel® Extension for PyTorch*].
-* [Tensorflow\*](https://www.tensorflow.org). Intel GPU support and additional
-optimizations are available with [Intel® Extension for TensorFlow*].
-
-[Intel® Extension for PyTorch*]: https://github.com/intel/intel-extension-for-pytorch
-[Intel® Extension for TensorFlow*]: https://github.com/intel/intel-extension-for-tensorflow
+* [PyTorch\*](https://pytorch.org)
+* [Tensorflow\*](https://www.tensorflow.org)
 
 [UXL Foundation]: http://www.uxlfoundation.org
 [oneAPI specification]: https://oneapi-spec.uxlfoundation.org/specifications/oneapi/latest/elements/onednn/source/

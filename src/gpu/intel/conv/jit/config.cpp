@@ -1100,37 +1100,6 @@ void init_regs(config_t &cfg) {
     cfg.set_regs(default_regs(cfg));
 }
 
-bool post_op_layouts_ok(const problem_t &prb) {
-    auto *pd = prb.conv_pd;
-    auto *attr = pd->attr();
-
-    auto &output_md = prb.c_md();
-    for (int i = 0; i < attr->post_ops_.len(); i++) {
-        auto &po = attr->post_ops_.entry_[i];
-        if (po.is_binary() || po.is_prelu()) {
-            int mask = po.is_prelu()
-                    ? po.prelu.mask
-                    : utils::get_dims_mask(output_md.dims,
-                            po.binary.src1_desc.dims, prb.ndims, true);
-            // These cases don't have message-related limitations.
-            if ((mask & (1 << 1)) == 0 || mask == (1 << 1)) continue;
-            const auto &rhs_layout = po.is_prelu()
-                    ? layout_t(type_t::f32(), 0,
-                            get_prelu_weights_dims(po.prelu.mask, output_md))
-                    : layout_t(po.binary.src1_desc);
-            // No blocks means it's a scalar, can be always loaded.
-            if (rhs_layout.blocks().empty()) return true;
-
-            auto rhs0 = rhs_layout.blocks()[0];
-            // Innermost block must:
-            // - be across output channels
-            // - be dense
-            if (rhs0.dim.index() != 1 || dim_t(rhs0.stride) != 1) return false;
-        }
-    }
-    return true;
-}
-
 bwd_d_optimize_kind_t bwd_d_optimize_kind_hint(const problem_t &prb) {
     bool with_dilation = prb.dh || prb.dw || prb.dd;
     if (!prb.is_bwd_d || with_dilation) return bwd_d_optimize_kind_t::none;
@@ -1185,9 +1154,6 @@ status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
     CHECK(init_tensor_layouts(cfg, pd, engine));
 
     CHECK(attr->set_default_formats(&prb.c_md()));
-
-    VDISPATCH_CHECK(
-            pd, engine, post_op_layouts_ok(prb), VERBOSE_UNSUPPORTED_POSTOP);
 
     init_global_reduction(cfg);
     init_bwd_d_optimize(cfg);

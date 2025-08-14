@@ -1676,8 +1676,15 @@ class shuffle_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(shuffle_t)
 
+    static expr_t make(const expr_t &vec_expr, const std::vector<int> &idx) {
+        check_indices(idx, vec_expr.type().elems());
+        std::vector<expr_t> vec {vec_expr};
+        return expr_t(new shuffle_t(vec, idx));
+    }
+
     static expr_t make(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
+        check_indices(idx, (int)vec.size());
         if (idx.size() == 1) return vec[idx[0]];
         return expr_t(new shuffle_t(vec, idx));
     }
@@ -1762,8 +1769,12 @@ private:
     shuffle_t(const std::vector<expr_t> &vec, const std::vector<int> &idx)
         : expr_impl_t(_type_info(), shuffle_type(vec, idx))
         , vec(vec)
-        , idx(idx) {
-        gpu_assert(idx.size() > 1) << "Unexpected empty or scalar shuffle.";
+        , idx(idx) {}
+
+    static void check_indices(const std::vector<int> &idx, int elems) {
+        for (int i : idx) {
+            gpu_assert(i >= 0 && i < elems);
+        }
     }
 
     static type_t shuffle_type(
@@ -1771,6 +1782,12 @@ private:
         gpu_assert(!vec.empty() && !idx.empty());
 
         auto elem_type = vec[0].type();
+        if (vec.size() == 1) {
+            gpu_assert(idx.size() == 1);
+            gpu_assert(elem_type.is_simd());
+            return type_t(elem_type.kind());
+        }
+
         for (auto &v : vec)
             elem_type = common_type(elem_type, v.type());
 

@@ -1,19 +1,3 @@
-/*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*******************************************************************************/
-
 /*
  * When compiling nGEN in C++11 or C++14 mode, this header file should be
  *  #include'd exactly once in your source code.
@@ -24,7 +8,7 @@
 #include "ngen.hpp"
 
 #define NGEN_REGISTER_DECL_MAIN(CG, PREFIX) \
-PREFIX constexpr NGEN_NAMESPACE::IndirectRegisterFrame CG::indirect; \
+PREFIX constexpr NGEN_NAMESPACE::IndirectRegisterFrame<NGEN_NAMESPACE::RegFileGRF> CG::indirect; \
 \
 PREFIX constexpr NGEN_NAMESPACE::GRF CG::r0; \
 PREFIX constexpr NGEN_NAMESPACE::GRF CG::r1; \
@@ -424,7 +408,7 @@ PREFIX constexpr NGEN_NAMESPACE::SBID CG::sb28; \
 PREFIX constexpr NGEN_NAMESPACE::SBID CG::sb29; \
 PREFIX constexpr NGEN_NAMESPACE::SBID CG::sb30; \
 PREFIX constexpr NGEN_NAMESPACE::SBID CG::sb31; \
-PREFIX constexpr NGEN_NAMESPACE::SWSBInfo CG::NoAccSBSet; \
+PREFIX constexpr NGEN_NAMESPACE::SWSBItem CG::NoAccSBSet; \
 \
 PREFIX constexpr NGEN_NAMESPACE::AddressBase CG::A32; \
 PREFIX constexpr NGEN_NAMESPACE::AddressBase CG::A32NC; \
@@ -479,7 +463,7 @@ PREFIX constexpr NGEN_NAMESPACE::CacheSettingsLSC CG::L1WB_L3WB;
 #define NGEN_REGISTER_DECL_EXTRA1(CG,PREFIX)
 #else
 #define NGEN_REGISTER_DECL_EXTRA1(CG,PREFIX) \
-PREFIX constexpr const NGEN_NAMESPACE::IndirectRegisterFrame &CG::r; \
+PREFIX constexpr const NGEN_NAMESPACE::IndirectRegisterFrame<NGEN_NAMESPACE::RegFileGRF> &CG::r; \
 PREFIX constexpr const NGEN_NAMESPACE::InstructionModifier &CG::W;
 #endif
 
@@ -520,5 +504,6 @@ template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPG>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPC>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe2>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3>;
+
 
 #endif /* (defined(NGEN_CPP11) || defined(NGEN_CPP14)) && !defined(NGEN_GLOBAL_REGS) */

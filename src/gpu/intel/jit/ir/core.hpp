@@ -2811,8 +2811,9 @@ public:
             is_first = false;
         };
         if (mod.isAtomic()) append("Atomic");
-        if (mod.getSWSB().empty()) {
-            append(std::string("$") + std::to_string(mod.getSWSB().getToken()));
+        if (!mod.getSWSB().empty()) {
+            append(std::string("$")
+                    + std::to_string(mod.getSWSB()[0].getToken()));
         }
         oss << "}";
         return oss.str();

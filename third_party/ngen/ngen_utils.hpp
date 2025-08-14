@@ -1,27 +1,18 @@
-/*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*******************************************************************************/
-
 #ifndef NGEN_UTILS_HPP
 #define NGEN_UTILS_HPP
+
+#include "ngen_config_internal.hpp"
 
 #include <cstdint>
 #include <string>
 
 #ifdef _MSC_VER
 #include <intrin.h>
+#endif
+
+#ifdef NGEN_ENABLE_SOURCE_LOCATION
+#include <source_location>
+#include <sstream>
 #endif
 
 #ifdef NGEN_CPP11
@@ -31,6 +22,31 @@
 #endif
 
 namespace NGEN_NAMESPACE {
+
+struct SourceLocation {
+#ifdef NGEN_ENABLE_SOURCE_LOCATION
+    SourceLocation(std::source_location where = std::source_location::current())
+        : value(where) {}
+    SourceLocation(const SourceLocation &) = default;
+    SourceLocation(SourceLocation &&) = default;
+    const char *filePath() { return value.file_name(); }
+    uint32_t line() { return value.line(); }
+    std::source_location value;
+    std::string str() {
+        std::ostringstream oss;
+        oss << value.file_name() << ":" << value.line();
+        return oss.str();
+    }
+    std::string str(const char * prefix) {
+        return prefix + str();
+    }
+#else
+    std::string str(const char * prefix) {
+        return "";
+    }
+#endif
+};
+
 namespace utils {
 
 template <typename T, typename U>

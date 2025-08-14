@@ -11,5 +11,5 @@ rm -rf third_party/ngen
 git clone $@ third_party/ngen
 ./third_party/ngen/scripts/public.sh
 git checkout third_party/ngen/COPYRIGHT
-rm -rf third_party/ngen/{.git,scripts}
+rm -rf third_party/ngen/{.git*,scripts}
 echo "Update completed."

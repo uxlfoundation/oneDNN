@@ -563,14 +563,14 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
         int nthreads, bool reduce_src) {
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
-    if (!everyone_is(data_type::f32, src_d.data_type(), weights_d.data_type(),
-                dst_d.data_type()))
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(everyone_is(data_type::f32, src_d.data_type(),
+                              weights_d.data_type(), dst_d.data_type()),
+            VERBOSE_UNSUPPORTED_DT_CFG);
 
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     jcp.nthr = nthreads;
 
@@ -622,9 +622,9 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     const int eltwise_ind
             = post_ops.find(primitive_kind::eltwise, 0, dw_conv_ind);
     jcp.with_eltwise = eltwise_ind != -1;
-    if (jcp.with_eltwise) {
-        if (dst_d.data_type() == data_type::s32) return status::unimplemented;
-    }
+    if (jcp.with_eltwise)
+        VDISPATCH_CONV_IC(
+                dst_d.data_type() != data_type::s32, VERBOSE_UNSUPPORTED_DT);
 
     const int sum_ind = post_ops.find(primitive_kind::sum, 0, dw_conv_ind);
     jcp.with_sum = sum_ind != -1;
@@ -672,17 +672,25 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
                     !binary_injector::
                             any_binary_postop_rhs_with_ternary_scalar_bcast(
                                     post_ops, dst_d));
-    if (!post_ops_ok_) return status::unimplemented;
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
-    bool args_ok = true && jcp.ngroups == 1 && jcp.src_tag == required_dat_tag
-            && jcp.dst_tag == required_dat_tag
-            && IMPLICATION(!is_data_layout_nxc,
-                    jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0)
-            && jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0
-            && jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1
-            && jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1 && jcp.ow == jcp.iw
-            && jcp.oh == jcp.ih && jcp.od == jcp.id; // enforce rpad=0
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.ngroups == 1, VERBOSE_BAD_PARAM, "number of groups");
+    VDISPATCH_CONV_IC(
+            jcp.src_tag == required_dat_tag && jcp.dst_tag == required_dat_tag,
+            VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_CONV_IC(IMPLICATION(!is_data_layout_nxc,
+                              jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0),
+            VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
+    VDISPATCH_CONV_IC(jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0,
+            VERBOSE_UNSUPPORTED_PAD_FEATURE, "f,t,l padding not supported");
+    VDISPATCH_CONV_IC(
+            jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1,
+            VERBOSE_UNSUPPORTED_FEATURE, "non-unit strides");
+    VDISPATCH_CONV_IC(jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1,
+            VERBOSE_BAD_PARAM, "non-unit kernel dimensions");
+    VDISPATCH_CONV_IC(jcp.ow == jcp.iw && jcp.oh == jcp.ih && jcp.od == jcp.id,
+            VERBOSE_UNSUPPORTED_PAD_FEATURE,
+            "inconsistent i/o dimensions"); // enforce rpad=0
 
     jcp.ic_block = jcp.oc_block = simd_w;
 
@@ -694,18 +702,19 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
                     IOhw16o16i, OIdhw16i16o, IOdhw16o16i);
 
     jcp.wei_tag = weights_d.matches_one_of_tag(wei_tag);
-    if (jcp.wei_tag != wei_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.wei_tag == wei_tag, VERBOSE_UNSUPPORTED_TAG_S, "wei");
 
     jcp.typesize_in = sizeof(prec_traits_t<data_type::f32>::type);
     jcp.typesize_out = sizeof(prec_traits_t<data_type::f32>::type);
 
     /* once all the formats are set, check the padding consistency */
     if (!is_data_layout_nxc) {
-        args_ok = true && jcp.ic <= src_d.padded_dims()[1]
+        const bool args_ok = true && jcp.ic <= src_d.padded_dims()[1]
                 && jcp.oc <= dst_d.padded_dims()[1]
                 && jcp.ic <= weights_d.padded_dims()[with_groups + 1]
                 && jcp.oc <= weights_d.padded_dims()[with_groups + 0];
-        if (!args_ok) return status::unimplemented;
+        VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
+                "inconsistent padded dimensions");
     }
 
     const int SMALL_SPATIAL = 10;
@@ -1113,7 +1122,7 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
 
         reduce_blocking_max = rnd_dn(reduce_blocking * 3 / 2, jcp.reduce_block);
     } else
-        return status::unimplemented;
+        VDISPATCH_CONV_IC(false, VERBOSE_BAD_PROPKIND);
 
     assert(load_blocking);
     assert(load_blocking_max);

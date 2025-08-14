@@ -590,8 +590,8 @@ struct generator_dsl_t {
             assume(arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
         }
 
-        if_(kloop_it.is_inbounds(0), [&]() {
-            if_(
+        _if(kloop_it.is_inbounds(0), [&]() {
+            _if(
                     k >= k_loop_main.k_warmup(),
                     [&]() { build_k_loop(k_loop_main); },
                     [&]() { build_k_loop(k_loop_short); });
@@ -725,7 +725,7 @@ struct generator_dsl_t {
                     do_mma);
         }
 
-        while_(kloop_it.is_inbounds(warmup), [&]() {
+        _while(kloop_it.is_inbounds(warmup), [&]() {
             for (int k_unroll_idx = 0; k_unroll_idx < k_blk;
                     k_unroll_idx += k_unroll_blk) {
                 k_body(k_unroll_idx, cfg.A_prefetch_warmup,

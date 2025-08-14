@@ -546,6 +546,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem_.sumB = (reduce_ab == sum_ab::sum_a_row);
+    problem_.forceGroupSumsA = a_quant.force_gs;
+    problem_.forceGroupSumsB = b_quant.force_gs;
 
     problem_.postOps.cStochasticRound = dst_sround;
 
@@ -556,12 +558,14 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);
         problem_.Ag.layout = MatrixLayout::N;
         problem_.Ag.setAlignment(problem_.Tag.paddedSize());
+        if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
     }
     if (problem_.needsBGroupSums()) {
         problem_.Tbg = convert_dnnl_to_kernel_type(b_quant.gs_type);
         problem_.Bg.layout = MatrixLayout::N;
         problem_.Bg.setAlignment(problem_.Tbg.paddedSize());
+        if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
     }
 
@@ -617,7 +621,7 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
             ((a_quant.scale_ndims >= 2 || b_quant.scale_ndims >= 2)
                     && a_quant.zp_ndims > -1 && problem_.Ta_ext.isInt8()
                     && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
-                    && !a_quant.force_gs && !b_quant.force_gs),
+                    && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB),
             [](Type dt) -> const char * {
                 if (dt.isInt8()) return "[OH]";
                 return nullptr;

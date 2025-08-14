@@ -2269,7 +2269,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool is_bf16_convolution
             = everyone_is(true, src_d.data_type() == data_type::bf16,
@@ -2564,7 +2564,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     };
 
     VDISPATCH_CONV_IC(
-            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG_S, "weights");
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     jcp.typesize_in = types::data_type_size(src_d.data_type());
     jcp.typesize_out = types::data_type_size(dst_d.data_type());
@@ -2726,7 +2726,8 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         jcp.zp_pbuff_outer_compute = jcp.mb > 1 || is_3d;
 
         const bool params_ok = ((jcp.ow_pad - (int)jcp.ow_mid) <= max_pad * 2);
-        VDISPATCH_CONV_IC(params_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE, "");
+        VDISPATCH_CONV_IC(params_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
+                "padding restrictions for output width");
     }
 
     // Set default parameters for driver code, but mostly required for
@@ -3742,7 +3743,7 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, diff_src_d, weights_d, diff_dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == diff_src_d.ndims() + 1;
     int ndims = diff_src_d.ndims();
@@ -3930,7 +3931,7 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     };
 
     VDISPATCH_CONV_IC(
-            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG_S, "weights");
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     jcp.typesize_in = types::data_type_size(diff_dst_d.data_type());
     jcp.typesize_out = types::data_type_size(diff_src_d.data_type());
@@ -5184,7 +5185,7 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, diff_weights_d, diff_dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
     VDISPATCH_CONV_IC(mayiuse(avx512_core_amx), VERBOSE_UNSUPPORTED_ISA);
     jcp.isa = avx512_core_amx;
 

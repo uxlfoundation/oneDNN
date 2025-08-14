@@ -256,11 +256,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                 expr_t src_g_offset = simplify(arg("offset_binary" + i_s)
                         + e.src1_desc.get_offset(idxs, strides));
 
-                ir::pvar_map_t<expr_t> g_idxs;
                 ir::pvar_map_t<expr_t> g_strides;
                 ir::pvar_map_t<expr_t> g_sizes;
                 for (int i = 0; i < ndims; i++) {
-                    g_idxs[dims[i]] = expr_t(0);
                     g_strides[dims[i]] = strides[i];
                     g_sizes[dims[i]] = e.src1_desc.is_broadcast(i, ndims)
                             ? expr_t(1)
@@ -268,7 +266,7 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                 }
 
                 return {arg("binary" + i_s), e.src1_desc.dt, src_g_offset,
-                        g_idxs, g_strides, g_sizes, {}};
+                        coord_t(), g_sizes, g_strides, {}};
             }();
 
             layout_t src_layout = {src_g.type};
@@ -305,20 +303,22 @@ struct basic_iterator_t : kloop_iterator_t {
     basic_iterator_t(const global_tensor_t &A, int A_prefetch_k_blk,
             int A_load_k_blk, const global_tensor_t &B, int B_prefetch_k_blk,
             int B_load_k_blk, const global_tensor_t &C)
-        : m_idx_ {C.idxs[m_var]}
+        : m_idx_ {C.coord[m_var]}
         , m_(C.sizes[m_var])
-        , n_idx_ {C.idxs[n_var]}
+        , n_idx_ {C.coord[n_var]}
         , n_(C.sizes[n_var])
-        , k_idx_ {A.idxs[k_var]}
+        , k_idx_ {A.coord[k_var]}
         , k_ {A.sizes[k_var]}
-        , A_prefetch_ {A.buf, A.type, A.base_offset, A.idxs, A.strides, A.sizes,
-                  {{m_var, C.tile[m_var]}, {k_var, A_prefetch_k_blk}}}
-        , A_load_ {A.buf, A.type, A.base_offset, A.idxs, A.strides, A.sizes,
-                  {{m_var, C.tile[m_var]}, {k_var, A_load_k_blk}}}
-        , B_prefetch_ {B.buf, B.type, B.base_offset, B.idxs, B.strides, B.sizes,
-                  {{k_var, B_prefetch_k_blk}, {n_var, C.tile[n_var]}}}
-        , B_load_ {B.buf, B.type, B.base_offset, B.idxs, B.strides, B.sizes,
-                  {{k_var, B_load_k_blk}, {n_var, C.tile[n_var]}}}
+        , A_prefetch_ {A.buf, A.type, A.base_offset, A.coord, A.sizes,
+                  A.strides,
+                  tile_t {{m_var, C.tile[m_var]}, {k_var, A_prefetch_k_blk}}}
+        , A_load_ {A.buf, A.type, A.base_offset, A.coord, A.sizes, A.strides,
+                  tile_t {{m_var, C.tile[m_var]}, {k_var, A_load_k_blk}}}
+        , B_prefetch_ {B.buf, B.type, B.base_offset, B.coord, B.sizes,
+                  B.strides,
+                  tile_t {{k_var, B_prefetch_k_blk}, {n_var, C.tile[n_var]}}}
+        , B_load_ {B.buf, B.type, B.base_offset, B.coord, B.sizes, B.strides,
+                  tile_t {{k_var, B_load_k_blk}, {n_var, C.tile[n_var]}}}
         , C_store_ {C}
 
     {
@@ -338,22 +338,22 @@ struct basic_iterator_t : kloop_iterator_t {
 
     void A_prefetch_inc(int k_block) override {
         A_prefetch_off += k_block;
-        A_prefetch_.idxs[k_var] = k_idx_ + A_prefetch_off;
+        A_prefetch_.coord[k_var] = k_idx_ + A_prefetch_off;
     }
 
     void A_load_inc(int k_block) override {
         A_load_off += k_block;
-        A_load_.idxs[k_var] = k_idx_ + A_load_off;
+        A_load_.coord[k_var] = k_idx_ + A_load_off;
     }
 
     void B_prefetch_inc(int k_block) override {
         B_prefetch_off += k_block;
-        B_prefetch_.idxs[k_var] = k_idx_ + B_prefetch_off;
+        B_prefetch_.coord[k_var] = k_idx_ + B_prefetch_off;
     }
 
     void B_load_inc(int k_block) override {
         B_load_off += k_block;
-        B_load_.idxs[k_var] = k_idx_ + B_load_off;
+        B_load_.coord[k_var] = k_idx_ + B_load_off;
     }
 
     void kloop_inc(int k_block) override {
@@ -524,17 +524,15 @@ struct generator_dsl_t {
         }
 
         global_tensor_t A_base {arg("A"), into_ir(problem.Ta_ext), offset_A,
-                {{m_var, m_idx}, {k_var, k_idx}},
-                get_strides(problem.A.layout, A_vars, arg("lda")),
-                {{m_var, m}, {k_var, k}}, {}};
+                {{m_var, m_idx}, {k_var, k_idx}}, {{m_var, m}, {k_var, k}},
+                get_strides(problem.A.layout, A_vars, arg("lda")), {}};
         global_tensor_t B_base {arg("B"), into_ir(problem.Tb_ext), offset_B,
-                {{k_var, k_idx}, {n_var, n_idx}},
-                get_strides(problem.B.layout, B_vars, arg("ldb")),
-                {{k_var, k}, {n_var, n}}, {}};
+                {{k_var, k_idx}, {n_var, n_idx}}, {{k_var, k}, {n_var, n}},
+                get_strides(problem.B.layout, B_vars, arg("ldb")), {}};
         global_tensor_t C_base {arg("C"), into_ir(problem.Tc_ext), offset_B,
-                {{m_var, m_idx}, {n_var, n_idx}},
+                {{m_var, m_idx}, {n_var, n_idx}}, {{m_var, m}, {n_var, n}},
                 get_strides(problem.C.layout, C_vars, arg("ldc")),
-                {{m_var, m}, {n_var, n}}, {{m_var, m_blk}, {n_var, n_blk}}};
+                {{m_var, m_blk}, {n_var, n_blk}}};
 
         basic_iterator_t kloop_it(A_base, strategy.ka_prefetch,
                 strategy.ka_load, B_base, strategy.kb_prefetch,

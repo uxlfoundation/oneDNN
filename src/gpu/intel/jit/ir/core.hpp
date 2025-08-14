@@ -2932,6 +2932,12 @@ public:
         return ((const func_impl_t *)impl())->call(args, attr);
     }
 
+    stmt_t operator()(const std::vector<expr_t> &args = {}) const {
+        return call(args);
+    }
+
+    stmt_t operator()(const expr_t &arg) const { return call({arg}); }
+
 private:
 #ifdef SANITY_CHECK
     void sanity_check() const override {

@@ -31,8 +31,12 @@ namespace jit {
 namespace dsl {
 
 struct ctx_t {
+    bool new_ir_api() const { return new_ir_api_; }
 
-    void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx) {
+    void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx,
+            bool new_ir_api = false) {
+        slm_byte_offset_ = 0;
+        new_ir_api_ = new_ir_api;
         gpu_assert(stmts_stack_.empty())
                 << "Invalid generation of a kernel within a kernel";
         interface_ = interface;
@@ -40,25 +44,39 @@ struct ctx_t {
 
         begin_scope();
 
-        for (int i = 0; i < interface.nargs(); i++) {
-            const auto &var = interface.arg_var(i);
-            if (var.type().is_ptr()) {
-                if (var.type().is_slm()) {
-                    append(alloc_t::make(var, 0, alloc_kind_t::slm, stmt_t {}));
-                } else {
-                    append(alloc_t::make(
-                            var, 0, alloc_kind_t::global, stmt_t {}));
-                }
-            } else {
-                append(let_t::make(var, {}, {}));
+        if (new_ir_api_) {
+            for (int i = 0; i < 3; i++) {
+                local_sizes_[i] = var_t::make(local_size_type(),
+                        std::string("local_size_") + "012"[i]);
+                local_ids_[i] = var_t::make(
+                        local_id_type(), std::string("local_id_") + "012"[i]);
+                group_ids_[i] = var_t::make(
+                        group_id_type(), std::string("group_id_") + "012"[i]);
             }
-        }
+        } else {
+            for (int i = 0; i < interface.nargs(); i++) {
+                const auto &var = interface.arg_var(i);
+                if (var.type().is_ptr()) {
+                    if (var.type().is_slm()) {
+                        append(alloc_t::make(
+                                var, 0, alloc_kind_t::slm, stmt_t {}));
+                    } else {
+                        append(alloc_t::make(
+                                var, 0, alloc_kind_t::global, stmt_t {}));
+                    }
+                } else {
+                    if (!new_ir_api_) append(let_t::make(var, {}, {}));
+                }
+            }
 
-        for (int i = 0; i < 3; i++) {
-            group_ids_[i] = let(type_t::u32(), ir_builder_t::tg_idx(i), {});
-            local_ids_[i] = let(type_t::u16(), ir_builder_t::local_id(i), {});
-            local_sizes_[i]
-                    = let(type_t::u16(), ir_builder_t::local_size(i), {});
+            for (int i = 0; i < 3; i++) {
+                group_ids_[i]
+                        = let(group_id_type(), ir_builder_t::tg_idx(i), {});
+                local_ids_[i]
+                        = let(local_id_type(), ir_builder_t::local_id(i), {});
+                local_sizes_[i] = let(
+                        local_size_type(), ir_builder_t::local_size(i), {});
+            }
         }
     }
 
@@ -101,7 +119,11 @@ struct ctx_t {
                 append(funcs::zero_out(alloc_var, type.size()));
             }
         } else {
-            append(let_t::make(alloc_var, value, {}));
+            if (new_ir_api_) {
+                if (!value.is_empty()) append(assign_t::make(alloc_var, value));
+            } else {
+                append(let_t::make(alloc_var, value, {}));
+            }
         }
         return lval_t(alloc_var.as<var_t>());
     }
@@ -130,6 +152,10 @@ struct ctx_t {
         return let(value.type(), name, value);
     }
 
+    int slm_byte_offset() const { return slm_byte_offset_; }
+
+    void reserve_slm(int bytes) { slm_byte_offset_ += bytes; }
+
     void assume(const expr_t &e) { ctx_->add_constraint(e); }
 
     void begin_scope() { stmts_stack_.emplace(); }
@@ -155,8 +181,12 @@ struct ctx_t {
     const ir_context_t *ir_ctx() const { return ctx_; }
 
 private:
+    type_t local_id_type() const { return u16; }
+    type_t group_id_type() const { return u32; }
+    type_t local_size_type() const { return u16; }
+
     expr_t var(type_t type, const std::string &name) {
-        return var_t::make(type, name);
+        return var_t::make(type, ctx_->create_tmp_name(name));
     }
 
     stmt_t to_stmt() {
@@ -207,6 +237,8 @@ private:
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;
     std::array<expr_t, 3> local_sizes_;
+    bool new_ir_api_ = false;
+    int slm_byte_offset_ = 0;
 };
 
 ctx_t &default_ctx() {
@@ -224,8 +256,9 @@ int min_pitch_2d() {
     return block_2d_pitch_alignment(default_ctx().ir_ctx()->hw().to_ngen());
 }
 
-void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx) {
-    default_ctx().declare_kernel(interface, ctx);
+void declare_kernel(
+        const kernel_iface_t &interface, ir_context_t &ctx, bool new_ir_api) {
+    default_ctx().declare_kernel(interface, ctx, new_ir_api);
 }
 
 kernel_t end_kernel() {
@@ -276,6 +309,11 @@ const expr_t &local_size(int idx) {
     return default_ctx().local_size(idx);
 }
 
+expr_t subgroup_id(int idx) {
+    int simd = default_ctx().ir_ctx()->exec_cfg().simd();
+    return extract((local_id(idx) / simd), 0);
+}
+
 expr_t arg(const std::string &name, bool allow_empty) {
     return default_ctx().arg(name, allow_empty);
 }
@@ -285,6 +323,10 @@ lval_t def(type_t type, const std::string &name, const expr_t &value,
     return default_ctx().def(type, name, value, force_alloc);
 }
 
+lval_t def(const std::string &name, const type_t &type, const expr_t &value) {
+    return def(type, name, value);
+}
+
 lval_t def(const std::string &name, const expr_t &value) {
     return def(value.type(), name, value);
 }
@@ -292,6 +334,27 @@ lval_t def(const std::string &name, const expr_t &value) {
 tensor_t def(
         const layout_t &layout, const std::string &name, const expr_t &value) {
     return default_ctx().def(layout, name, value);
+}
+
+tensor_t def_slm(layout_t layout, const std::string &name) {
+    auto alloc_elems = into<int>(layout.size() / layout.type().size());
+    auto buf = def(name, layout.type().slm()[alloc_elems]);
+    int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
+            * layout.type().size();
+    auto off = utils::div_up(
+            default_ctx().slm_byte_offset(), layout.type().size());
+    layout.set_offset(off);
+    default_ctx().reserve_slm(bytes);
+    return tensor_t(buf, layout);
+}
+
+expr_t iif(
+        const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr) {
+    return iif_t::make(cond, true_expr, false_expr);
+}
+
+expr_t extract(const expr_t &expr, int lane) {
+    return shuffle_t::make(expr, {lane});
 }
 
 lval_t &lval_t::operator=(const expr_t &obj) {
@@ -308,7 +371,11 @@ expr_t let(const std::string &name, const expr_t &value) {
 }
 
 void assign(const expr_t &var, const expr_t &value) {
-    append(store_t::make(var, 0, value));
+    if (default_ctx().new_ir_api()) {
+        append(assign_t::make(var, value));
+    } else {
+        append(store_t::make(var, 0, value));
+    }
 }
 
 enum class send_kind_t { load, prefetch, store };
@@ -427,9 +494,9 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
                 std::min(tile[h_dim], operation_tile[h_dim] - coord[h_dim]));
         int count = std::max(1, into<int>(tile[w_dim] / width));
         auto width_idx
-                = g.idxs[w_dim] + static_cast<uint32_t>((base + coord)[w_dim]);
+                = g.coord[w_dim] + static_cast<uint32_t>((base + coord)[w_dim]);
         auto height_idx
-                = g.idxs[h_dim] + static_cast<uint32_t>((base + coord)[h_dim]);
+                = g.coord[h_dim] + static_cast<uint32_t>((base + coord)[h_dim]);
         auto send_kind = [&]() {
             switch (op_kind) {
                 case send_kind_t::prefetch: return send_op_t::prefetch_2d;
@@ -641,6 +708,10 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
                     binary_op_t::make(op, s0, s1));
         }
     });
+}
+
+void barrier() {
+    append(builtin_t::make("barrier")());
 }
 
 } // namespace dsl

@@ -183,11 +183,14 @@ type_attr_t common_attr(const type_t &a, const type_t &b) {
     return (a.attr() | b.attr()) & ~type_attr_t::mut;
 }
 
-type_t common_int_type(const type_t &_a, const type_t &_b) {
-    gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
+type_t common_type(const type_t &base, const type_t &a, const type_t &b) {
+    auto attr = common_attr(a, b);
+    int elems = std::max(a.elems(), b.elems());
+    return type_t(base.kind(), elems, attr);
+}
 
-    type_attr_t attr = common_attr(_a, _b);
-    int elems = _a.elems();
+type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
+    gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
 
     // Promote to s32 first.
     type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
@@ -198,31 +201,33 @@ type_t common_int_type(const type_t &_a, const type_t &_b) {
     // Integer promotion, follow C++ rules.
     int common_bits = 8 * std::max(a.size(), b.size());
     if (a.is_signed() == b.is_signed()) {
-        if (a.is_signed()) return type_t::s(common_bits, elems, attr);
-        return type_t::u(common_bits, elems, attr);
+        if (a.is_signed()) return type_t::s(common_bits);
+        return type_t::u(common_bits);
     }
 
-    if (a.size() >= b.size() && a.is_unsigned())
-        return type_t::u(common_bits, elems, attr);
-    if (b.size() >= a.size() && b.is_unsigned())
-        return type_t::u(common_bits, elems, attr);
-    if (a.size() > b.size() && a.is_signed())
-        return type_t::s(common_bits, elems, attr);
-    if (b.size() > a.size() && b.is_signed())
-        return type_t::s(common_bits, elems, attr);
+    if (a.size() >= b.size() && a.is_unsigned()) return type_t::u(common_bits);
+    if (b.size() >= a.size() && b.is_unsigned()) return type_t::u(common_bits);
+    if (a.size() > b.size() && a.is_signed()) return type_t::s(common_bits);
+    if (b.size() > a.size() && b.is_signed()) return type_t::s(common_bits);
 
-    return type_t::u(common_bits, elems, attr);
+    return type_t::u(common_bits);
 }
 
-type_t common_type(const type_t &a, const type_t &b) {
-    gpu_assert(a.elems() == b.elems())
-            << "Types must have the same number of components.";
+type_t common_int_type(const type_t &a, const type_t &b) {
+    return common_type(common_int_type_impl(a, b), a, b);
+}
+
+type_t common_type_impl(const type_t &a, const type_t &b) {
     if (a.is_undef() || b.is_undef()) return type_t::undef();
     if (a.is_fp() && !b.is_fp()) return a;
     if (!a.is_fp() && b.is_fp()) return b;
     if (a.is_fp() && b.is_fp()) return (a.size() > b.size() ? a : b);
     if (a.is_bool() && b.is_bool()) return a;
     return common_int_type(a, b);
+}
+
+type_t common_type(const type_t &a, const type_t &b) {
+    return common_type(common_type_impl(a, b), a, b);
 }
 
 type_t common_type(const expr_t &a, const expr_t &b) {
@@ -232,15 +237,12 @@ type_t common_type(const expr_t &a, const expr_t &b) {
 type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
         const expr_t &a_expr = expr_t(), const expr_t &b_expr = expr_t()) {
     if (a.is_undef() || b.is_undef()) return type_t::undef();
-    gpu_assert(a.elems() == b.elems())
-            << "Types must have the same number of components.";
+    int elems = std::max(a.elems(), b.elems());
 
     type_attr_t attr = common_attr(a, b);
-    if (is_cmp_op(op_kind)) return type_t::_bool(a.elems(), attr);
+    if (is_cmp_op(op_kind)) return type_t::_bool(elems, attr);
     if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
-        gpu_assert(a.is_unsigned())
-                << "a must be unsigned for shift left/right.";
-        return type_t::u32(a.elems(), attr);
+        return a[elems].with_attr(attr);
     }
 
     if (utils::one_of(

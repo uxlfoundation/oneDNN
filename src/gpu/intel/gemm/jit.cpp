@@ -82,7 +82,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->aoPtrDims == 2 || problem->aScale2D()) {
+    if (problem->aOffset2D() || problem->aScale2D()) {
         auto layout = problem->aScale2D() ? problem->A_scale.layout
                                           : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
@@ -90,7 +90,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
-    if (problem->boPtrDims == 2 || problem->bScale2D()) {
+    if (problem->bOffset2D() || problem->bScale2D()) {
         auto layout = problem->bScale2D() ? problem->B_scale.layout
                                           : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
@@ -163,11 +163,17 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            if (problem->asPtrDims > 2) {
+            if (problem->aScaleGroupDims()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
             }
-            if (problem->bsPtrDims > 2) {
+            if (problem->bScaleGroupDims()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+            }
+            if (problem->aOffsetGroupDims()) {
+                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
+            }
+            if (problem->bOffsetGroupDims()) {
+                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
             }
         }
         for (int i = 0; i < po_count; i++) {

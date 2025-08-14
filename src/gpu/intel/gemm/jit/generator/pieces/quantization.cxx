@@ -35,7 +35,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 {
     auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
-    bool xo2D = (xoPtrDims == 2);
+    bool xo2D = isA ? problem.aOffset2D()       : problem.bOffset2D();
     bool xs2D = isA ? problem.aScale2D()        : problem.bScale2D();
     bool xg2D = isA ? problem.needsAGroupSums() : problem.needsBGroupSums();
     bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && (problem.earlyDequantizeA() || lateOffset)

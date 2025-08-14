@@ -257,7 +257,8 @@ struct gen_t : public primitive_t {
                     : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
                     && !wei_decomp_;
-            int_acc &= (!a_scales_2d() && !b_scales_2d());
+            int_acc &= (!a_scales_2d() && !b_scales_2d()
+                    && !(ao_dims_ > 2 || bo_dims_ > 2));
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32

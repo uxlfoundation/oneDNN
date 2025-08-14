@@ -265,11 +265,17 @@ bool pd_t::zp_ok() {
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
+    bool weights_upconversion
+            = ((utils::one_of(swap_ab() ? d->b_type() : d->a_type(), s4, u4)
+                       && dy_quant_enabled_)
+                    || wei_decomp_);
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
-            if (!valid_2d_mask(cmask_a_, ndims, false)) return false;
+            if (!valid_2d_mask(
+                        cmask_a_, ndims, !swap_ab() && weights_upconversion))
+                return false;
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
@@ -292,8 +298,9 @@ bool pd_t::zp_ok() {
     if (!b_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!b_zps.has_default_groups()) {
-            if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
-
+            if (!valid_2d_mask(
+                        cmask_b_, ndims, swap_ab() && weights_upconversion))
+                return false;
             const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
@@ -400,6 +407,14 @@ dim_t pd_t::eff_scale_stride(int idx, int arg) const {
             = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_scale_md_ : b_scale_md_;
     gpu_assert(memory_desc_wrapper(scale_md).is_plain())
             << "Expected plain scale_md_";
+    return scale_md.format_desc.blocking.strides[idx];
+}
+
+dim_t pd_t::eff_zp_stride(int idx, int arg) const {
+    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    auto scale_md = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_zp_md_ : b_zp_md_;
+    gpu_assert(memory_desc_wrapper(scale_md).is_plain())
+            << "Expected plain zp_md_";
     return scale_md.format_desc.blocking.strides[idx];
 }
 

@@ -286,10 +286,10 @@ status_t gen_desc_t::finalize(const char *tags) {
     } catch (...) { return status::unimplemented; }
 
     // Check for legal 2D quantization group size.
-    if (problem_.aoPtrDims == 2 || problem_.aScale2D())
+    if (problem_.aOffset2D() || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
             return status::unimplemented;
-    if (problem_.boPtrDims == 2 || problem_.bScale2D())
+    if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
 
@@ -916,9 +916,9 @@ void gen_kernel_t::init_interface() {
     if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.aoPtrDims == 2 || problem.aScale2D())
+    if (problem.aOffset2D() || problem.aScale2D())
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.boPtrDims == 2 || problem.bScale2D())
+    if (problem.bOffset2D() || problem.bScale2D())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
@@ -959,6 +959,14 @@ void gen_kernel_t::init_interface() {
             if (problem.bsPtrDims > 2) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
+            }
+            if (problem.aoPtrDims > 2) {
+                interface_.newArgument(
+                        "offset_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.boPtrDims > 2) {
+                interface_.newArgument(
+                        "offset_stride_B" + std::to_string(i), DataType::d);
             }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {

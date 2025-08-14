@@ -128,8 +128,8 @@ struct pd_t : public gemm::pd_t {
         return sum_ab();
     }
 
-    bool a_zp_2d() const { return ao_dims_ == 2; }
-    bool b_zp_2d() const { return bo_dims_ == 2; }
+    bool a_zp_2d() const { return ao_dims_ >= 2; }
+    bool b_zp_2d() const { return bo_dims_ >= 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
@@ -187,6 +187,7 @@ struct pd_t : public gemm::pd_t {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
     dim_t eff_scale_stride(int idx, int arg) const;
+    dim_t eff_zp_stride(int idx, int arg) const;
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

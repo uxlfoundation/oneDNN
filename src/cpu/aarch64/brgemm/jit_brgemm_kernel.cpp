@@ -313,7 +313,7 @@ private:
             int bd_block, int ld_block2, bool is_ld_tail, int vpad);
 
     void dot_product(ZReg z1, ZReg z2, ZReg z3);
-    void gemm_microkernel_sve512(int bd_block2, bool is_bdb_tail, int ld_block,
+    void gemm_microkernel(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
 
     void ldb_loop(int bd_block2, bool is_bdb_tail, int ld_block,
@@ -503,24 +503,34 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
     const auto mask = mask_flag ? ktail_mask : P_ALL_ONE;
     switch (type_in) {
         case data_type::f32:
-        case data_type::s32:
+        case data_type::s32: {
             LD_MUL_VL(ld1w, z_tmp_1().s, mask, addr, offset - base_offset, 4);
             if (store) //Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
-        case data_type::bf16: assert(!"unsupported data type\n"); break;
-        case data_type::s8:
+        }
+        case data_type::bf16: {
+            add_imm(X_TMP_1, addr, offset - base_offset, X_TMP_0);
+            ld1h(z_tmp_1().s, mask, ptr(X_TMP_1));
+            lsl(z_tmp_1().s, z_tmp_1().s, 16);
+            if (store) //Merging
+                mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
+            break;
+        }
+        case data_type::s8: {
             LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
             sxtb(z_tmp_1().d, mask / T_m, z_tmp_1().d);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
-        case data_type::u8:
+        }
+        case data_type::u8: {
             LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
             uxtb(z_tmp_1().s, mask / T_m, z_tmp_1().s);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
+        }
         default: assert(!"unsupported data type");
     }
 }
@@ -889,7 +899,8 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
                 const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
                 add_imm(X_DEFAULT_ADDR, reg_aux_D, D_offset(bd, ld), X_TMP_0);
-                ld1w(vmm_prev_dst.s, k_mask / T_z, ptr(X_DEFAULT_ADDR));
+                cvt2ps(brg.sum_dt, vmm_prev_dst, X_DEFAULT_ADDR, is_tail, false,
+                        k_mask, 0, 0);
                 if (p_sum_zp_reg_set)
                     fsub(vmm_prev_dst.s, vmm_prev_dst.s, vmm_sum_zp.s);
                 if (p_sum_scale_reg_set) {
@@ -964,8 +975,8 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
-            cvt2ps(brg.dt_bias, zmm_bias, x_addr, true, false, k_mask, offset,
-                    base_offset);
+            cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
+                    offset, base_offset);
         }
         for (int bd = 0; bd < bd_block; bd++) {
             auto zmm = accm(ld_block2, bd, ld);
@@ -1040,7 +1051,13 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                     ST_MUL_VL(st1w, zmm.s, k_mask, x_addr, offset - base_offset,
                             4);
                     break;
-                case data_type::bf16: assert(!"unsupported\n"); break;
+                case data_type::bf16: {
+                    bfcvt(zmm.h, k_mask / T_m, zmm.s);
+                    st1h(zmm.s, k_mask,
+                            ptr(addr_off(x_addr, offset - base_offset,
+                                    X_DEFAULT_ADDR, X_TMP_0)));
+                    break;
+                }
                 case data_type::s8: assert(!"unsupported\n"); break;
                 case data_type::u8: assert(!"unsupported\n"); break;
                 default: assert(!"unknown dst_dt");
@@ -1275,7 +1292,7 @@ void jit_brgemm_kernel_t::dot_product(ZReg v_acc, ZReg v_b, ZReg v_a) {
     if (brg.is_f32) {
         fmla(v_acc.s, P_ALL_ONE / T_m, v_a.s, v_b.s);
     } else if (brg.is_bf16)
-        assert(!"unsupported\n");
+        bfdot(v_acc.s, v_b.h, v_a.h);
     else if (brg.is_int8 && isa_has_s8s8(brg.isa_impl)) {
         // SDOT/USDOT/UDOT implicitly produce int32 output.
         // we reorder RHS to align for SDOT lane-wise ops.
@@ -1362,9 +1379,9 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
     }
 }
 
-void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
-        bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail,
-        int vpad, int rows_for_rd_tail) {
+void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
+        int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
+        int rows_for_rd_tail) {
     MAYBE_UNUSED(bd_block2);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(0, vpad);
@@ -1392,10 +1409,16 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
         if (is_tail) {
             eor(z1.d, z1.d, z1.d);
             auto xmm_tmp = z_tmp_1();
-            add_imm(X_DEFAULT_ADDR, reg_aux_A, offset * brg.typesize_A,
-                    X_TMP_0);
-            set_preg(P_TMP.b, rd_tail_size, X_TMP_0, X_TMP_1);
-            ld1b(xmm_tmp.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
+            if (brg.is_int8) {
+                set_preg(P_TMP.b, rd_tail_size, X_TMP_0, X_TMP_1);
+                ld1b(xmm_tmp.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            } else if (brg.is_bf16) {
+                set_preg(P_TMP.h, rd_tail_size, X_DEFAULT_ADDR, X_TMP_1);
+                ld1h(xmm_tmp.h, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            } else if (brg.is_f16) {
+                assert(!"unsupported\n");
+            }
             dup(z1.s, xmm_tmp.s[0]);
         } else {
             if (dt == data_type::f32) {
@@ -1406,9 +1429,8 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
                     add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
                     ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
                 }
-            } else if (dt == data_type::bf16) {
-                assert(!"unsupported\n");
-            } else if (one_of(dt, data_type::s8, data_type::u8)) {
+            } else if (one_of(dt, data_type::s8, data_type::u8,
+                               data_type::bf16)) {
                 add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
                 ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
             } else if (dt == data_type::f16) {
@@ -1446,9 +1468,6 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
                 add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
                 if (brg.dt_b == data_type::f16) {
                     assert(!"unsupported\n");
-                } else if (brg.dt_b == data_type::bf16
-                        && brg.isa_impl == sve_256) {
-                    assert(!"unsupported\n");
                 } else if (is_ld_tail) {
                     ld1w(load().s, ld_tail_mask / T_z, ptr(X_DEFAULT_ADDR));
                 } else {
@@ -1480,9 +1499,6 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                } else if (brg.dt_b == data_type::bf16
-                        && brg.isa_impl == sve_256) {
                     assert(!"unsupported\n");
                 } else {
                     const int offset = B_offset(ld, rd);
@@ -1557,8 +1573,8 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             L_aligned(rdb_loop_label, 64);
             {
                 const bool is_rd_tail = false;
-                gemm_microkernel_sve512(bd_block2, is_bdb_tail, ld_block2,
-                        is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+                gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
+                        is_ld_tail, vpad, rows_for_rd_tail);
 
                 add_imm(reg_aux_A, reg_aux_A, rdb_A_offset(), X_TMP_0);
                 add_imm(reg_aux_B, reg_aux_B, rdb_B_offset(), X_TMP_0);
@@ -1571,8 +1587,8 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         if (brg.rdb_tail != 0) {
             const bool is_rd_tail = true;
 
-            gemm_microkernel_sve512(bd_block2, is_bdb_tail, ld_block2,
-                    is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+            gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
+                    is_ld_tail, vpad, rows_for_rd_tail);
         }
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }

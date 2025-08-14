@@ -56,6 +56,7 @@
 // All IR statement objects.
 #define HANDLE_STMT_IR_OBJECTS() \
     HANDLE_IR_OBJECT(alloc_t) \
+    HANDLE_IR_OBJECT(assign_t) \
     HANDLE_IR_OBJECT(for_t) \
     HANDLE_IR_OBJECT(func_call_t) \
     HANDLE_IR_OBJECT(if_t) \
@@ -2322,6 +2323,42 @@ private:
         , body(body) {
         gpu_assert(!buf.type().is_ptr()) << buf;
     }
+};
+
+// Assignment of a value to a variable.
+// C++ equivalent:
+//    var = value;
+class assign_t : public stmt_impl_t {
+public:
+    IR_DECL_CORE_TYPE(assign_t)
+
+    static stmt_t make(const expr_t &var, const expr_t &value) {
+        return stmt_t(new assign_t(var, value));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+        return var.is_equal(other.var) && value.is_equal(other.value);
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(var, value); }
+
+    std::string str() const override {
+        std::ostringstream oss;
+        oss << var.str() << "." << var.type().str();
+        oss << " = " << value.str();
+        return oss.str();
+    }
+
+    IR_DECLARE_TRAVERSERS()
+
+    expr_t var;
+    expr_t value;
+
+private:
+    assign_t(const expr_t &var, const expr_t &value)
+        : stmt_impl_t(_type_info()), var(var), value(value) {}
 };
 
 // Store to a GRF buffer.

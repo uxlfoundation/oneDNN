@@ -107,12 +107,12 @@ struct ctx_t {
         return def(value.type(), name, value);
     }
 
-    tensor_t def(const v2::layout_t &layout, const std::string &name,
+    tensor_t def(const layout_t &layout, const std::string &name,
             const expr_t &value = {}) {
         // Tensors need to be grf-aligned for loading/storing
         // TODO: IR should be modified to enable loading small tensors (such as
         // scalar values) without GRF alignment.
-        auto elems = std::max(layout.type().elems() * layout.elems(),
+        auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
                 grf_size() / layout.type().scalar().size());
         auto t = type_t(layout.type().kind(), elems);
         return {def(t, name, value, true), layout};
@@ -318,14 +318,14 @@ void scatter_send(const tensor_t &t, const global_tensor_t &g,
 void block_send(const tensor_t &t, const global_tensor_t &g,
         send_kind_t &op_kind, const icoord_t &base, const send_hint_t &hint) {
     bool is_prefetch = t.buf.is_empty();
-    auto &operation_tile = is_prefetch ? g.tile : t.layout.int_dim_sizes();
+    auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
 
     pvar_t w_dim;
     tile_t tile;
     for (auto &var : operation_tile) {
         if (is_const(g.strides[var]) && to_cpp<dim_t>(g.strides[var]) == 1
-                && !t.layout.is_scalar()) {
-            tile[var] = t.layout.blocks()[0].int_size();
+                && t.layout.elems() != 1) {
+            tile[var] = t.layout.blocks()[0].block;
             gpu_assert(t.layout.blocks()[0].dim == var);
             w_dim = var;
         } else {
@@ -397,7 +397,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
         const send_hint_t &hint) {
 
     bool is_prefetch = t.buf.is_empty();
-    auto &operation_tile = is_prefetch ? g.tile : t.layout.int_dim_sizes();
+    auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
 
     pvar_t w_dim = conf.w_dim;
     pvar_t h_dim;
@@ -449,7 +449,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
 void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
         const icoord_t &base, const send_hint_t &hint) {
     bool is_prefetch = t.buf.is_empty();
-    auto &operation_tile = is_prefetch ? g.tile : t.layout.int_dim_sizes();
+    auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
     pvar_t w_dim;
     for (auto &var : operation_tile) {
         if (is_const(g.strides[var]) && to_cpp<dim_t>(g.strides[var]) == 1) {
@@ -466,8 +466,8 @@ void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
         auto conf = [&]() -> conf_2d_t {
             if (is_prefetch) { return {g.type, w_dim, 0, false, false, false}; }
             auto &l = t.layout;
-            int pack_dim = l.blocks()[0].int_size() * l.type().size() == 4;
-            int pack_size = l.blocks()[pack_dim].int_size();
+            int pack_dim = l.blocks()[0].block * l.type().size() == 4;
+            int pack_size = into<int>(l.blocks()[pack_dim].block);
             bool is_transpose_vnni = l.blocks()[pack_dim].dim != w_dim;
             bool is_vnni = pack_dim == 1 && !is_transpose_vnni;
             bool is_store = op_kind == send_kind_t::store;
@@ -481,7 +481,7 @@ void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
         }
     }
 
-    if (is_prefetch || t.layout.is_scalar()
+    if (is_prefetch || t.layout.elems() == 1
             || t.layout.blocks()[0].dim == w_dim) {
         block_send(t, g, op_kind, base, hint);
     } else {
@@ -523,7 +523,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
 
         gpu_assert(tile[dim_simd] % simd == 0);
         gpu_assert(tile[dim_sdepth] % (sdepth_pack * sdepth) == 0);
-        gpu_assert(C.layout.blocks()[0].size == simd);
+        gpu_assert(C.layout.blocks()[0].block == simd);
         std::vector<stmt_t> dpas_stmts;
 
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
@@ -564,8 +564,8 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         int K = (int)inst_tile.get(k_dim, 1);
         bool is_a_bcast = (M * K == 1);
         bool is_b_bcast = (K * N == 1);
-        int a_stride = is_a_bcast ? 0 : to_cpp<int>(A.layout.stride(m_dim));
-        int b_stride = is_b_bcast ? 0 : to_cpp<int>(B.layout.stride(n_dim));
+        int a_stride = is_a_bcast ? 0 : into<int>(A.layout.stride(m_dim));
+        int b_stride = is_b_bcast ? 0 : into<int>(B.layout.stride(n_dim));
 
         gpu_assert(tile[dim_simd] * C.layout.type().size() % grf_size() == 0);
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
@@ -590,7 +590,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
 
 void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         const tensor_t &src1) {
-    tile_t tile = dst.layout.int_dim_sizes();
+    tile_t tile = dst.layout.tile();
     tile_t matching_subtile = [&] {
         tile_t ret;
         for (auto &var : tile) {
@@ -603,9 +603,8 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         for (size_t i = 0; i < bd.size(); i++) {
             if (b0.size() <= i) break;
             if (b1.size() <= i) break;
-            if (bd[i] == b0[i] && bd[i] == b1[i] && bd[i].has_const_size()
-                    && bd[i].has_const_stride())
-                ret[bd[i].dim] *= bd[i].int_size();
+            if (bd[i] == b0[i] && bd[i] == b1[i])
+                ret[bd[i].dim] *= bd[i].block;
             else
                 break;
         }

@@ -461,6 +461,20 @@ void ir_visitor_t::_visit(const alloc_t &obj) {
     visit(obj.body);
 }
 
+object_t ir_mutator_t::_mutate(const assign_t &obj) {
+    auto var = mutate(obj.var);
+    auto value = mutate(obj.value);
+
+    if (var.is_same(obj.var) && value.is_same(obj.value)) return obj;
+
+    return assign_t::make(var, value);
+}
+
+void ir_visitor_t::_visit(const assign_t &obj) {
+    visit(obj.var);
+    visit(obj.value);
+}
+
 object_t ir_mutator_t::_mutate(const ref_t &obj) {
     auto var = mutate(obj.var);
     if (var.impl() == obj.var.impl()) return obj;

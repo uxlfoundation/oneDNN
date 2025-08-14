@@ -163,8 +163,6 @@ struct gen_t : public primitive_t {
                 VDISPATCH_GEMM(utils::one_of(d->c_type(), d->a_type(), f32,
                                        f8_e5m2, f8_e4m3),
                         VERBOSE_INCONSISTENT_DT, "a", "c");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, d->a_type(), f32),
-                        VERBOSE_INCONSISTENT_DT, "a", "acc");
             } else if (!wei_decomp_) {
                 VDISPATCH_GEMM(utils::one_of(d->a_type(), f64, f32, f16, bf16,
                                        f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
@@ -178,8 +176,6 @@ struct gen_t : public primitive_t {
                                         && utils::one_of(d->b_type(), f4_e2m1,
                                                 f4_e3m0))),
                         VERBOSE_INCONSISTENT_DT, "a", "b");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, d->a_type(), f32),
-                        VERBOSE_UNSUPPORTED_DT);
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(f64, d->a_type(),
                                                    d->b_type()),
                                        dev_info_->has_native(f64)),
@@ -273,35 +269,13 @@ struct gen_t : public primitive_t {
             }
 
             // Wrangle data types.
-            auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
-            auto ag_type = with_a_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bg_type = with_b_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
-            bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
-                    && !wei_decomp_;
-            int_acc &= (!(a_scales_grouped() || b_scales_grouped())
-                    && !(a_zp_grouped() || b_zp_grouped()));
-            auto co_type = with_bias() ? d->bias_type()
-                    : with_sum_ab()    ? d->sum_ab_type
-                    : int_acc          ? s32
-                                       : d->c_type();
-
-            // Choose accumulation data type.
-            auto acc_type = int_acc
-                    ? s32
-                    : (utils::one_of(f64, eff_a_type(), eff_b_type()) ? f64
-                                                                      : f32);
-            VDISPATCH_GEMM(
-                    IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
-                    VERBOSE_UNSUPPORTED_POSTOP);
+            data_type_t acc_type = d->acc_type;
+            if (a_scales_grouped() || b_scales_grouped()) {
+                // grouped scales require floating point accumulation
+                acc_type = (utils::one_of(f64, eff_a_type(), eff_b_type())
+                                ? f64
+                                : f32);
+            }
 
             bool need_x32_acc
                     = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
@@ -315,6 +289,22 @@ struct gen_t : public primitive_t {
                 case accumulation_mode::s32: acc_type = data_type::s32; break;
                 default: break;
             }
+
+            VDISPATCH_GEMM(
+                    IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
+                    VERBOSE_UNSUPPORTED_POSTOP);
+
+            auto ao_type = with_a_zero_points()
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                    : data_type::s32;
+            auto bo_type = with_b_zero_points()
+                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                    : data_type::s32;
+            bool int_acc = acc_type == data_type::s32;
+            auto co_type = with_bias() ? d->bias_type()
+                    : with_sum_ab()    ? d->sum_ab_type
+                    : int_acc          ? s32
+                                       : d->c_type();
 
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
@@ -351,6 +341,12 @@ struct gen_t : public primitive_t {
             auto has_gs = [&](int idx) {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
+            auto ag_type = with_a_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                    : data_type::s32;
+            auto bg_type = with_b_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                    : data_type::s32;
             jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
                     asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
                     a_q2d_group_m(), has_gs(DNNL_ARG_A)};

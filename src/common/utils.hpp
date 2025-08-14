@@ -709,6 +709,12 @@ struct stringstream_t : public std::stringstream {
         this->imbue(std::locale::classic());
     }
 
+    stringstream_t(const stringstream_t &) = delete;
+    stringstream_t &operator=(const stringstream_t &) = delete;
+
+    stringstream_t(stringstream_t &&) = delete;
+    stringstream_t &operator=(stringstream_t &&) = delete;
+
 private:
     using std::stringstream::imbue;
 };
@@ -720,6 +726,12 @@ struct istringstream_t : public std::istringstream {
         this->imbue(std::locale::classic());
     }
 
+    istringstream_t(const istringstream_t &) = delete;
+    istringstream_t &operator=(const istringstream_t &) = delete;
+
+    istringstream_t(istringstream_t &&) = delete;
+    istringstream_t &operator=(istringstream_t &&) = delete;
+
 private:
     using std::istringstream::imbue;
 };
@@ -730,6 +742,12 @@ struct ostringstream_t : public std::ostringstream {
         : std::ostringstream(std::forward<Args>(args)...) {
         this->imbue(std::locale::classic());
     }
+
+    ostringstream_t(const ostringstream_t &) = delete;
+    ostringstream_t &operator=(const ostringstream_t &) = delete;
+
+    ostringstream_t(ostringstream_t &&) = delete;
+    ostringstream_t &operator=(ostringstream_t &&) = delete;
 
 private:
     using std::ostringstream::imbue;

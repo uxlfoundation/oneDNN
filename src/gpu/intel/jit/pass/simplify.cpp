@@ -1923,6 +1923,9 @@ DECL_OP_TRAITS(op_kind_t::_le, <=)
 
 DECL_OP_TRAITS(op_kind_t::_and, &)
 DECL_OP_TRAITS(op_kind_t::_or, |)
+DECL_OP_TRAITS(op_kind_t::_xor, ^)
+DECL_OP_TRAITS(op_kind_t::_shl, <<)
+DECL_OP_TRAITS(op_kind_t::_shr, >>)
 
 template <>
 struct op_traits_t<op_kind_t::_min> {
@@ -2032,6 +2035,8 @@ public:
 
             CASE(op_kind_t::_and)
             CASE(op_kind_t::_or)
+            CASE(op_kind_t::_shl)
+            CASE(op_kind_t::_shr)
             CASE(op_kind_t::_min)
             CASE(op_kind_t::_max)
 

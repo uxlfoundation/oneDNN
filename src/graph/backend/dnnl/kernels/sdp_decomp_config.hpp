@@ -75,7 +75,7 @@ public:
     sdp_decomp_config_t() = default;
 
     // SDP input dimension
-    dim_t batch_size, num_head_q, num_head_kv, seq_len_q, seq_len_kv;
+    dim_t ndims, batch_size, num_head_q, num_head_kv, seq_len_q, seq_len_kv;
     dim_t head_size_qk, head_size_v;
 
     // SDP input and output strides
@@ -86,8 +86,18 @@ public:
     int nthr;
 
     // Used to record the exact input offset in subgraph
-    // [mm1_src,mm1_wei,mm1_scale,mm1_add,mm2_wei,select_condition,select_other_input]
+    // [mm1_src,mm1_wei,mm2_wei,mm1_scale,mm1_soft_capping,mm1_add,select_condition,select_other_input]
     std::vector<int> graph_inport;
+    enum input_index_t {
+        mm1_src = 0,
+        mm1_wei,
+        mm2_wei,
+        mm1_scale,
+        mm1_soft_capping,
+        mm1_add,
+        select_condition,
+        select_other_input
+    };
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim, sub_select_prim;
@@ -126,7 +136,8 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_wei2;
 
-    bool has_scale = false, has_attention_mask = false, has_select = false;
+    bool has_scale = false, has_attention_mask = false, has_select = false,
+         has_soft_capping = false;
     // Used to record the ops from select
     std::vector<op_ptr> select_op;
     std::vector<int> select_outop_index;

@@ -134,6 +134,28 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_cpu)
             return std::make_shared<sdp_base_t<>>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_gemma_fusion_cpu)
+        .set_priority(21.0f)
+        .set_kind(partition_kind_t::sdp)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    auto opt_scale = optional_scale(pgraph, matmul_qk);
+                    auto opt_soft_capping
+                            = optional_soft_capping(pgraph, opt_scale);
+                    auto opt_select
+                            = optional_select(pgraph, opt_soft_capping, 2);
+                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
+                            {in_edge(0, opt_select, 0)});
+                    auto matmul_v = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
+                    // Optional transpose + reshape/reorder
+                    optional_transpose_reshape(pgraph, matmul_v, 0);
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<sdp_base_t<>>();
+        });
+
 // for implicit causal mask, gpu only supports f16/bf16 dtype
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_gpu)
         .set_priority(21.0f)

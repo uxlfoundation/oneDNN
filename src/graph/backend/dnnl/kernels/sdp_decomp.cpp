@@ -74,7 +74,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         BACKEND_DNNL_ADD_PASS(pipeline, insert_runtime_u8_to_s8_for_matmul);
     }
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
-    BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+    BACKEND_DNNL_ADD_PASS(pipeline, sdp_fuse_post_ops);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
     if (quantized) {
         BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
@@ -186,6 +186,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     int thread_num = 1;
     dnnl_threadpool_interop_get_max_concurrency(&thread_num);
     sdp_cfg_.nthr = thread_num;
+    tp_stream->after_exec_hook();
 #endif
 
     thread_local_cache_t<sdp_args_set_t> res_cache;
@@ -195,20 +196,16 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     int MBO = sdp_cfg_.batch_size, MBI = sdp_cfg_.num_head_q;
 
     char *src1_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[0]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_src]]
+                    .get_data_handle());
     char *wei1_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[1]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_wei]]
+                    .get_data_handle());
     char *wei2_user_pointer = static_cast<char *>(
-            inputs[sdp_cfg_.graph_inport[4]].get_data_handle());
+            inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm2_wei]]
+                    .get_data_handle());
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
-    // allocate the select internal memory
-    temporary_scratchpad_t select_scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
-    assertm(select_scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
     size_t block_size = sdp_registry_.size();
     auto scratchpad = std::make_shared<temporary_scratchpad_t>(
             block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
@@ -231,6 +228,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         // prepare execution args and allocate real memory
         prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
 
+        const size_t group_head = sdp_cfg_.num_head_q / sdp_cfg_.num_head_kv;
+        const size_t wei_head_offset = bi / group_head;
+        const size_t group_id = bi % group_head;
+
         // reorder0
         auto &sub_src1_tid = res->mem_map[sdp_cfg_.sub_src1.get()][tid];
         // reorder1:
@@ -245,13 +246,25 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
             sub_mm1_post_scale_tid.set_data_handle(
-                    inputs[sdp_cfg_.graph_inport[2]].get_data_handle());
+                    inputs[sdp_cfg_.graph_inport
+                                    [sdp_decomp_config_t::mm1_scale]]
+                            .get_data_handle());
+        }
+        if (sdp_cfg_.has_soft_capping) {
+            auto &sub_mm1_post_soft_cap_tid
+                    = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
+                                           .get()][tid];
+            sub_mm1_post_soft_cap_tid.set_data_handle(static_cast<char *>(
+                    inputs[sdp_cfg_.graph_inport
+                                    [sdp_decomp_config_t::mm1_soft_capping]]
+                            .get_data_handle()));
         }
         if (sdp_cfg_.has_attention_mask) {
             auto &sub_mm1_post_add_tid
                     = res->mem_map[sdp_cfg_.sub_mm1_post_mem[start_index++]
                                            .get()][tid];
-            const auto &mask_input = inputs[sdp_cfg_.graph_inport[3]];
+            const auto &mask_input = inputs
+                    [sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_add]];
             const auto mask_strides
                     = ltw(mask_input.get_logical_tensor()).vstrides();
             const auto mask_dims = ltw(mask_input.get_logical_tensor()).vdims();
@@ -259,6 +272,12 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
             if (mask_dims.size() == 4) {
                 if (mask_dims[0] != 1) mask_offset += bo * mask_strides[0];
                 if (mask_dims[1] != 1) mask_offset += bi * mask_strides[1];
+            } else if (mask_dims.size() == 5) {
+                if (mask_dims[0] != 1) mask_offset += bo * mask_strides[0];
+                if (mask_dims[1] != 1)
+                    mask_offset += wei_head_offset * mask_strides[1];
+                if (mask_dims[2] != 1)
+                    mask_offset += group_id * mask_strides[2];
             }
             sub_mm1_post_add_tid.set_data_handle(
                     static_cast<char *>(mask_input.get_data_handle())
@@ -267,7 +286,9 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         if (sdp_cfg_.has_select) {
             auto &sub_select_cond_tid
                     = res->mem_map[sdp_cfg_.sub_select_cond.get()][tid];
-            const auto &select_cond_input = inputs[sdp_cfg_.graph_inport[5]];
+            const auto &select_cond_input
+                    = inputs[sdp_cfg_.graph_inport
+                                     [sdp_decomp_config_t::select_condition]];
             const auto select_cond_strides
                     = ltw(select_cond_input.get_logical_tensor()).vstrides();
             const auto select_cond_dims
@@ -278,6 +299,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     select_cond_offset += bo * select_cond_strides[0];
                 if (select_cond_dims[1] != 1)
                     select_cond_offset += bi * select_cond_strides[1];
+            } else if (select_cond_dims.size() == 5) {
+                if (select_cond_dims[0] != 1)
+                    select_cond_offset += bo * select_cond_strides[0];
+                if (select_cond_dims[1] != 1)
+                    select_cond_offset
+                            += wei_head_offset * select_cond_strides[1];
+                if (select_cond_dims[2] != 1)
+                    select_cond_offset += group_id * select_cond_strides[2];
             }
             sub_select_cond_tid.set_data_handle(
                     static_cast<char *>(select_cond_input.get_data_handle())
@@ -286,7 +315,9 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
 
             auto &sub_select_src0_tid
                     = res->mem_map[sdp_cfg_.sub_select_src0.get()][tid];
-            const auto &select_src0_input = inputs[sdp_cfg_.graph_inport[6]];
+            const auto &select_src0_input
+                    = inputs[sdp_cfg_.graph_inport
+                                     [sdp_decomp_config_t::select_other_input]];
             const auto select_src0_strides
                     = ltw(select_src0_input.get_logical_tensor()).vstrides();
             const auto select_src0_dims
@@ -297,6 +328,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                     select_src0_offset += bo * select_src0_strides[0];
                 if (select_src0_dims[1] != 1)
                     select_src0_offset += bi * select_src0_strides[1];
+            } else if (select_src0_dims.size() == 5) {
+                if (select_src0_dims[0] != 1)
+                    select_src0_offset += bo * select_src0_strides[0];
+                if (select_src0_dims[1] != 1)
+                    select_src0_offset
+                            += wei_head_offset * select_src0_strides[1];
+                if (select_src0_dims[2] != 1)
+                    select_src0_offset += group_id * select_src0_strides[2];
             }
             sub_select_src0_tid.set_data_handle(
                     static_cast<char *>(select_src0_input.get_data_handle())
@@ -313,11 +352,14 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         // matmul2
         auto &sub_mm2_dst_tid = res->mem_map[sdp_cfg_.sub_mm2_dst.get()][tid];
 
-        const size_t sub_src1_offset = (bo * sdp_cfg_.src1_strides[0]
-                                               + bi * sdp_cfg_.src1_strides[1])
+        const size_t sub_src1_head_offset = sdp_cfg_.ndims == 4
+                ? bi * sdp_cfg_.src1_strides[1]
+                : wei_head_offset * sdp_cfg_.src1_strides[1]
+                        + group_id * sdp_cfg_.src1_strides[2];
+        const size_t sub_src1_offset
+                = (bo * sdp_cfg_.src1_strides[0] + sub_src1_head_offset)
                 * get_mem_dt_size(sub_src1_tid);
-        const size_t group_head = sdp_cfg_.num_head_q / sdp_cfg_.num_head_kv;
-        size_t wei_head_offset = bi / group_head;
+
         const size_t sub_wei1_offset
                 = (bo * sdp_cfg_.wei1_strides[0]
                           + wei_head_offset * sdp_cfg_.wei1_strides[1])
@@ -326,8 +368,12 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
                 = (bo * sdp_cfg_.wei2_strides[0]
                           + wei_head_offset * sdp_cfg_.wei2_strides[1])
                 * get_mem_dt_size(sub_wei2_user_tid);
+        const size_t sub_dst_user_head_offset = sdp_cfg_.ndims == 4
+                ? bi * sdp_cfg_.dst_strides[1]
+                : wei_head_offset * sdp_cfg_.dst_strides[1]
+                        + group_id * sdp_cfg_.dst_strides[2];
         const size_t sub_dst_user_offset
-                = (bo * sdp_cfg_.dst_strides[0] + bi * sdp_cfg_.dst_strides[1])
+                = (bo * sdp_cfg_.dst_strides[0] + sub_dst_user_head_offset)
                 * get_mem_dt_size(sub_dst_user_tid);
 
         sub_wei1_user_tid.set_data_handle(wei1_user_pointer + sub_wei1_offset);
@@ -364,6 +410,11 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         threadpool_utils::activate_threadpool(tp);
 #endif
     };
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    tp_stream->before_exec_hook();
+#endif
+
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

@@ -117,7 +117,7 @@ inline int read_num_threads_from_env() {
 #if EIGEN_MINOR_VERSION >= 90
 using EigenThreadPool = Eigen::ThreadPool;
 #else
-using EigenThreadPool = Eigen::NonBlockingThreadPool;
+using EigenThreadPool = Eigen::ThreadPool;
 #endif
 
 namespace dnnl {

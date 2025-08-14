@@ -16,6 +16,8 @@
 --reset --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --case=complex_fusion/mha/codegemma-bf16-f32.json
+--reset --case=complex_fusion/mha/gemma2-bf16-f32.json
 
 
 # int8 graphs

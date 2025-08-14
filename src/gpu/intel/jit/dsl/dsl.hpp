@@ -203,7 +203,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const tile_t &tile, const icoord_t &base, bool is_systolic);
 
 template <typename F>
-void if_(const expr_t &cond, F if_body) {
+void _if(const expr_t &cond, F if_body) {
     if (is_const(cond)) {
         if (to_cpp<bool>(cond)) {
             begin_scope();
@@ -218,7 +218,7 @@ void if_(const expr_t &cond, F if_body) {
 }
 
 template <typename F, typename G>
-void if_(const expr_t &cond, const F &if_body, const G &else_body) {
+void _if(const expr_t &cond, const F &if_body, const G &else_body) {
     if (is_const(cond)) {
         begin_scope();
         if (to_cpp<bool>(cond)) {
@@ -252,7 +252,7 @@ void _for(const expr_t &var, const expr_t &bound, const F &body) {
 }
 
 template <typename F>
-void while_(const expr_t &cond, F body) {
+void _while(const expr_t &cond, F body) {
     if (is_const(cond) && !to_cpp<bool>(cond)) return;
     begin_scope();
     body();

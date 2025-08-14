@@ -104,7 +104,7 @@ private:
     // Per-primitive-instance storage.
     mutable std::once_flag gelu_bf16_once_;
     // mutable std::vector<data_t> gelu_bf16_lut_;
-   mutable  uint16_t gelu_bf16_lut_[1u << 16];
+   mutable  bfloat16_t gelu_bf16_lut_[1u << 16];
 };
 
 } // namespace cpu

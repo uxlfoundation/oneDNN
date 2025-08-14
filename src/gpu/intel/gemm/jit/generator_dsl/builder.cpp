@@ -73,8 +73,7 @@ struct transform_t {
         , cache_hint(to_ir(cache_hint))
         , dims(std::move(dims)) {}
 
-    layout_t get_layout(const ir::tile_t &sizes, ir::type_t type,
-            const ir::v2::layout_desc_t &desc) const {
+    layout_t get_layout(const ir::tile_t &sizes, ir::type_t type) const {
 
         auto col_var = dims[0];
         auto col = sizes[dims[0]];
@@ -97,12 +96,12 @@ struct transform_t {
 
         switch (normalized) {
             case kind_t::none:
-                return layout_t(desc, type, 0,
-                        {{col_var, col, 1}, {row_var, row, col}});
+                return layout_t(
+                        type, 0, {{col_var, col, 1}, {row_var, row, col}});
 
             case kind_t::block: {
                 int col_outer = (int)(col / col_inner);
-                return layout_t(desc, type, 0,
+                return layout_t(type, 0,
                         {{col_var, col_inner, 1}, {row_var, row, col_inner},
                                 {col_var, col_outer, row * col_inner}});
             }
@@ -111,7 +110,7 @@ struct transform_t {
                 int row_inner = 4 / t;
                 int row_outer = (int)(row / row_inner);
                 int col_outer = (int)(col / col_inner);
-                return layout_t(desc, type, 0,
+                return layout_t(type, 0,
                         {{row_var, row_inner, 1},
                                 {col_var, col_inner, row_inner},
                                 {row_var, row_outer, col_inner * row_inner},
@@ -207,18 +206,12 @@ ir::pvar_map_t<expr_t> get_strides(
     };
 }
 
-const ir::v2::layout_desc_t &gemm_var_desc() {
-    static const ir::v2::layout_desc_t desc {
-            {{m_var, 'm'}, {n_var, 'n'}, {k_var, 'k'}}};
-    return desc;
-};
-
 struct tensor_config_t {
     tensor_config_t(const global_tensor_t &g, transform_t t, int copies)
         : transform(t) {
         tile = g.tile;
-        layout = t.get_layout(g.tile, g.type, gemm_var_desc());
-        layout.add_block(k_var, copies, layout.elems());
+        layout = t.get_layout(g.tile, g.type);
+        layout = layout.add_outer_block(k_var, copies, layout.elems());
     }
 
     ir::tile_t tile;
@@ -278,12 +271,14 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                         g_idxs, g_strides, g_sizes, {}};
             }();
 
-            layout_t src_layout = {C.layout.desc(), src_g.type};
+            layout_t src_layout = {src_g.type};
             for (auto &b : C.layout.blocks()) {
                 if (!e.src1_desc.is_broadcast(dim_to_md[b.dim], ndims)) {
-                    src_layout.add_block(b.dim, b.size, src_layout.elems());
+                    src_layout = src_layout.add_outer_block(
+                            b.dim, b.block, src_layout.elems());
                 } else {
-                    src_layout.add_block(b.dim, 1, src_layout.elems());
+                    src_layout = src_layout.add_outer_block(
+                            b.dim, 1, src_layout.elems());
                 }
             }
 
@@ -462,9 +457,9 @@ struct generator_dsl_t {
         ir::tile_t C_dims {{{m_var, m_blk}, {n_var, n_blk}}};
         auto C_store_transform = get_transform(strategy.C, C_vars);
 
-        tensor_t C = def(C_store_transform.get_layout(
-                                 C_dims, into_ir(problem.Tc), gemm_var_desc()),
-                "C_blk", 0);
+        tensor_t C
+                = def(C_store_transform.get_layout(C_dims, into_ir(problem.Tc)),
+                        "C_blk", 0);
 
         ir::pvar_t subgroup_dim = C.layout.blocks()[0].dim;
         int m_group_idx = strategy.loopOrder[0] == LoopM ? 0 : 1;
@@ -620,10 +615,10 @@ struct generator_dsl_t {
         tensor_t C;
 
         int A_load_warmup() const {
-            return A_load.layout.int_dim_size(k_var) - A_load.tile[k_var];
+            return A_load.layout.dim(k_var) - A_load.tile[k_var];
         }
         int B_load_warmup() const {
-            return B_load.layout.int_dim_size(k_var) - B_load.tile[k_var];
+            return B_load.layout.dim(k_var) - B_load.tile[k_var];
         }
         int k_warmup() const {
             return std::max({A_load_warmup(), B_load_warmup(),
@@ -661,7 +656,7 @@ struct generator_dsl_t {
         int A_load_blk = cfg.A_load.tile[k_var];
         auto A_load = [&](int k_unroll_idx) {
             int idx = pipeline_idx(k_unroll_idx, cfg.A_load_warmup(),
-                    cfg.A_load.layout.int_dim_size(k_var));
+                    cfg.A_load.layout.dim(k_var));
             if (idx % A_load_blk != 0) return;
             load(A.sub({{k_var, idx}}, cfg.A_load.tile), kloop_it.A_load(),
                     {{k_var, 0}}, {cfg.A_load.transform.cache_hint});
@@ -683,7 +678,7 @@ struct generator_dsl_t {
         int B_load_blk = cfg.B_load.tile[k_var];
         auto B_load = [&](int k_unroll_idx) {
             int idx = pipeline_idx(k_unroll_idx, cfg.B_load_warmup(),
-                    cfg.B_load.layout.int_dim_size(k_var));
+                    cfg.B_load.layout.dim(k_var));
             if (idx % B_load_blk != 0) return;
             load(B.sub({{k_var, idx}}, cfg.B_load.tile), kloop_it.B_load(),
                     {{k_var, 0}}, {cfg.B_load.transform.cache_hint});
@@ -711,7 +706,7 @@ struct generator_dsl_t {
 
             if (do_mma) {
                 if (k_offset % mma_k_blk == 0) {
-                    ir::tile_t tile = C.layout.int_dim_sizes();
+                    ir::tile_t tile = C.layout.tile();
                     tile[k_var] = mma_k_blk;
                     mma(C, A, B, tile, {{k_var, k_offset}}, strategy.systolic);
                 }

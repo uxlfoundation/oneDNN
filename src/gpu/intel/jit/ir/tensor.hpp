@@ -307,6 +307,10 @@ public:
         sanity_check();
     }
 
+    layout_t(const type_t &type, const expr_t &offset,
+            const std::vector<layout_block_t> &blocks, bool do_normalize = true)
+        : layout_t(type, dim_idx::invalid, offset, blocks, do_normalize) {}
+
     layout_t(const type_t &type, const expr_t &offset, const layout_t &other,
             bool do_normalize)
         : layout_t(type, other.ndims(), offset, other.blocks(), do_normalize) {}
@@ -396,15 +400,7 @@ public:
         return tile;
     }
 
-    dim_t dim(const pvar_t &dim) const {
-        dim_t ret = 1;
-        for (auto &b : blocks_) {
-            if (b.dim == dim) ret *= b.block;
-        }
-        return ret;
-    }
-
-    dim_t dim(dim_idx_t dim_idx) const { return dim(pvar_t(dim_idx)); }
+    dim_t dim(const pvar_t &dim) const { return elems(dim); }
 
     stride_t stride(const pvar_t &dim, int dim_block_idx = 0) const {
         int idx = 0;

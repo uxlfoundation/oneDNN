@@ -21,7 +21,6 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/message_patterns.hpp"
-#include "gpu/intel/jit/ir/v2/tensor.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,7 +33,9 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
-using layout_t = v2::layout_t;
+using tile_t = dnnl::impl::gpu::intel::jit::tile_t;
+using coord_t = dnnl::impl::gpu::intel::jit::coord_t;
+using layout_t = dnnl::impl::gpu::intel::jit::layout_t;
 using expr_t = dnnl::impl::gpu::intel::jit::expr_t;
 
 struct send_hint_t {
@@ -57,6 +58,7 @@ struct tensor_t {
     }
 
     IR_DEFINE_DUMP()
+
     expr_t buf;
     layout_t layout;
 };

@@ -147,6 +147,18 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, DefaultConstructor) {
     mem.unmap_data(mapped_ptr);
 }
 
+HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, HostScalarConstructor) {
+    SKIP_IF(engine::get_count(engine::kind::gpu) == 0, "Engine not found.");
+
+    engine eng(engine::kind::gpu, 0);
+
+    auto scalar_md = memory::desc::host_scalar(memory::data_type::f32);
+
+    EXPECT_THROW(memory mem = ocl_interop::make_memory(
+                         scalar_md, eng, ocl_interop::memory_kind::usm),
+            dnnl::error);
+}
+
 template <typename AllocFuncT, typename FreeFuncT>
 void test_usm_map_unmap(
         const AllocFuncT &alloc_func, const FreeFuncT &free_func) {

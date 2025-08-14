@@ -396,15 +396,7 @@ public:
         return tile;
     }
 
-    dim_t dim(const pvar_t &dim) const {
-        dim_t ret = 1;
-        for (auto &b : blocks_) {
-            if (b.dim == dim) ret *= b.block;
-        }
-        return ret;
-    }
-
-    dim_t dim(dim_idx_t dim_idx) const { return dim(pvar_t(dim_idx)); }
+    dim_t dim(const pvar_t &dim) const { return elems(dim); }
 
     stride_t stride(const pvar_t &dim, int dim_block_idx = 0) const {
         int idx = 0;

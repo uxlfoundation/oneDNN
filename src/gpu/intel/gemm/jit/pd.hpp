@@ -156,6 +156,19 @@ struct pd_t : public gemm::pd_t {
     bool a_scales_2d() const { return asc_dims_ > 1; }
     bool b_scales_2d() const { return bsc_dims_ > 1; }
 
+    bool a_scales_grouped() const {
+        bool k_grouped = 1 < a_q2d_group_k_ && a_q2d_group_k_ < desc()->k();
+        bool m_grouped
+                = 1 < a_q2d_group_m_ && a_q2d_group_m_ < desc()->m();
+        return k_grouped || m_grouped;
+    }
+    bool b_scales_grouped() const {
+        bool k_grouped = 1 < b_q2d_group_k_ && b_q2d_group_k_ < desc()->k();
+        bool n_grouped
+                = 1 < b_q2d_group_n_ && b_q2d_group_n_ < desc()->n();
+        return k_grouped || n_grouped;
+    }
+
     bool dy_quant_enabled();
     bool wei_decomp();
     bool quant_enabled();

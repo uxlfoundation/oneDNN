@@ -43,42 +43,15 @@ status_t ref_eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
     auto *dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
     static_assert(sizeof(data_t) == 2, "bf16 element must be 2 bytes");
-    int grain_size = (int)std::max<dim_t>(1, n / std::max(1, dnnl_get_max_threads()));
-    const dim_t tasks = (n + grain_size - 1) / grain_size;
-    const int max_thr = dnnl_get_max_threads();
-    int nthr_req = (int)std::min<dim_t>(tasks, max_thr);
-    int nthr = dnnl::impl::adjust_num_threads(nthr_req, n);
-
-    // for dense layout
-    // if (src_mdw.is_dense(true) && dst_mdw.is_dense(true)) {
-    //     // Read bf16 payloads as 16-bit indices; assign data_t directly.
-    //     const uint16_t *src_u16 = reinterpret_cast<const uint16_t *>(src);
-    //     parallel_nd(n, [&](dim_t i) {
-    //         // Index LUT by raw bf16 payload; write a data_t (bf16) value.
-    //         dst[i] = gelu_bf16_lut_[src_u16[i]];
-    //     });
-    //     return status::success;
-    // }
-    if (src_mdw.is_dense(true) && dst_mdw.is_dense(true)) {
-        const uint16_t *src_u16 = reinterpret_cast<const uint16_t *>(src);
-        dnnl::impl::parallel(nthr, [&](int ithr, int nthr) {
-            dim_t begin = 0, end = 0;
-            dnnl::impl::balance211(n, nthr, ithr, begin, end);
-            for (dim_t i = begin; i < end; ++i) {
-                dst[i] = gelu_bf16_lut_[src_u16[i]];
-            }
-        });
-        return status::success;
-    }
-
-    // works for arbitrary layouts
-    parallel_nd(n, [&](dim_t i) {
-        const dim_t s_off = src_mdw.off_l(i);
-        const dim_t d_off = dst_mdw.off_l(i);
+    dnnl::impl::parallel(0, [&](int ithr, int nthr) {
+        dim_t begin = 0, end = 0;
+        dnnl::impl::balance211(n, nthr, ithr, begin, end);
+        if (begin == end) return;
         uint16_t raw = 0;
-        std::memcpy(&raw, &src[s_off], sizeof(uint16_t));
-
-        dst[d_off] = gelu_bf16_lut_[raw];
+        for (dim_t i = begin; i < end; ++i) {
+            std::memcpy(&raw, &src[i], sizeof(uint16_t));
+            dst[i] = gelu_bf16_lut_[raw];
+        }
     });
 
     return status::success;

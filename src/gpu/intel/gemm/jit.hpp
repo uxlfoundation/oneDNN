@@ -113,6 +113,7 @@ struct gen_t : public primitive_t {
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
                 std::swap(eff_transa_, eff_transb_);
+                std::swap(a_quant_.zp_type, b_quant_.zp_type);
                 eff_transa_ = !eff_transa_;
                 eff_transb_ = !eff_transb_;
 
@@ -209,9 +210,8 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!attr()->zero_points_.has_default_values()) {
-
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-                if (swap_ab_) std::swap(ao_dims_, bo_dims_);
+                if (swap_ab_) std::swap(a_quant_.zp_ndims, b_quant_.zp_ndims);
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -270,12 +270,6 @@ struct gen_t : public primitive_t {
                     IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
             bool int_acc = acc_type == data_type::s32;
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
@@ -314,16 +308,11 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k_, a_q2d_group_m_};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
-
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,
                             dev_info_->eu_count(), has_systolic, is_integrated,
                             mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
+                            eff_trans_bias(), swap_ab(), a_quant_, b_quant_,
                             with_sround_, with_c_zero_points(), with_bias(),
                             eff_sum_ab(), alpha(), beta(), eff_a_type(),
                             eff_b_type(), desc()->c_type(), co_type, acc_type,

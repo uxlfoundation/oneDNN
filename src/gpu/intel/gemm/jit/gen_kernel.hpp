@@ -109,12 +109,12 @@ protected:
 };
 
 struct quant_params {
-    data_type_t scales_type;
-    data_type_t zp_type;
-    int zp_ndims;
-    int scale_ndims;
-    int group_k;
-    int group_mn;
+    data_type_t scales_type = data_type::undef;
+    data_type_t zp_type = data_type::undef;
+    int scale_ndims = -1;
+    int zp_ndims = -1;
+    int group_k = 0;
+    int group_mn = 0;
 };
 
 struct gen_nocopy_desc_t : public gen_desc_t {

@@ -57,18 +57,19 @@ struct quant_entry_t : public c_compatible {
         return set(mask, data_type, 0, {});
     }
     status_t set(int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims) {
+            const dims_t group_dims, bool is_host_scalar = false) {
         mask_ = mask;
         data_type_ = data_type;
         group_ndims_ = group_ndims;
         if (group_ndims_ > 0) {
             utils::array_copy(group_dims_, group_dims, group_ndims_);
         }
+        is_host_scalar_ = is_host_scalar;
         return status::success;
     }
     status_t set(const quant_entry_t &other) {
         return set(other.mask_, other.data_type_, other.group_ndims_,
-                other.group_dims_);
+                other.group_dims_, other.is_host_scalar());
     }
 
     quant_entry_t &operator=(const quant_entry_t &rhs) {
@@ -93,10 +94,16 @@ struct quant_entry_t : public c_compatible {
         if (d >= group_ndims_) return 0;
         return group_dims_[d];
     }
+    bool is_host_scalar() const { return is_host_scalar_; }
 
     status_t get_md(memory_desc_t &out_md, const memory_desc_t &base_md) const {
         if (has_default_values()) {
             out_md = memory_desc_t {}; // cannot use glob_zero_md due to circular dependency
+            return status::success;
+        }
+
+        if (is_host_scalar_) {
+            CHECK(memory_desc_init_host_scalar(out_md, data_type_));
             return status::success;
         }
 
@@ -129,7 +136,8 @@ struct quant_entry_t : public c_compatible {
                 && group_ndims_ == rhs.group_ndims_
                 && IMPLICATION(group_ndims_ > 0,
                         utils::array_cmp(
-                                group_dims_, rhs.group_dims_, group_ndims_));
+                                group_dims_, rhs.group_dims_, group_ndims_))
+                && is_host_scalar_ == rhs.is_host_scalar_;
     }
 
     size_t get_hash() const;
@@ -148,6 +156,7 @@ private:
     data_type_t data_type_ = data_type::undef;
     int group_ndims_ = 0;
     dims_t group_dims_ {};
+    bool is_host_scalar_ = false;
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -168,9 +177,10 @@ struct quant_entries_t : public c_compatible {
         return set(arg, mask, default_data_type_, 0, {});
     }
     status_t set(int arg, int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims) {
+            const dims_t group_dims, bool is_host_scalar = false) {
         if (!check_arg(arg)) return status::invalid_arguments;
-        CHECK(entries_[arg].set(mask, data_type, group_ndims, group_dims));
+        CHECK(entries_[arg].set(
+                mask, data_type, group_ndims, group_dims, is_host_scalar));
         return status::success;
     }
     // Use this interface with `default_quant_entry` when need to remove a
@@ -223,6 +233,13 @@ struct quant_entries_t : public c_compatible {
         return get(arg).get_data_type();
     }
     dim_t get_group(int arg, int d) const { return get(arg).get_group(d); }
+
+    bool has_host_scalars() const {
+        for (const auto &e : entries_) {
+            if (e.second.is_host_scalar()) return true;
+        }
+        return false;
+    }
 
     bool operator==(const quant_entries_t &rhs) const {
         return entries_ == rhs.entries_;

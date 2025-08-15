@@ -4176,7 +4176,12 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// argument. The scaling factors must be passed at execution time
     /// as an argument with index #DNNL_ARG_ATTR_SCALES | arg.
     ///
-    /// @sa dnnl_primitive_attr_set_scales
+    /// @note If `is_on_host` is true, sets a single host-side scalar scaling
+    /// factor for the specified memory argument. The scaling factor should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_scales_v2
     ///
     /// @param arg Parameter argument index as passed to the
     ///     primitive::execute() call.
@@ -4190,11 +4195,33 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     The set i-th dimension indicates a number of groups of scaling
     ///     factors used for that logical dimension in a memory indicated by @p arg.
     /// @param data_type Scaling factors data_type.
+    /// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
     void set_scales(int arg, int mask, const memory::dims &groups,
-            memory::data_type data_type = memory::data_type::f32) {
-        error::wrap_c_api(dnnl_primitive_attr_set_scales(get(), arg, mask,
+            memory::data_type data_type = memory::data_type::f32,
+            bool is_on_host = false) {
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, mask,
                                   (int)groups.size(), groups.data(),
-                                  memory::convert_to_c(data_type)),
+                                  memory::convert_to_c(data_type), is_on_host),
+                "could not set scales primitive attribute");
+    }
+
+    /// Sets a single host-side scalar scaling
+    /// factor for the specified memory argument. The scaling factor should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @note Using this API to set the scaling factor implies that the scales
+    /// attribute has `mask == 0` and an empty groups vector.
+    ///
+    /// @sa dnnl_primitive_attr_set_scales_v2
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Scaling factors data_type.
+    void set_host_scale(
+            int arg, memory::data_type data_type = memory::data_type::f32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, 0, 0,
+                                  nullptr, memory::convert_to_c(data_type), 1),
                 "could not set scales primitive attribute");
     }
 
@@ -4221,6 +4248,11 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// The zero points must be passed at execution time as an argument with
     /// index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
     ///
+    /// @note If `is_on_host` is true, sets a single host-side zero point
+    /// for the specified memory argument. The zero point should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
     /// @sa dnnl_primitive_attr_set_zero_points
     ///
     /// @param arg Parameter argument index as passed to the
@@ -4235,11 +4267,33 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     The set i-th dimension indicates a number of groups of zero point
     ///     factors used for that logical dimension in a memory indicated by @p arg.
     /// @param data_type Zero point factors data_type.
+    /// @param is_on_host Indicates whether the zero point is a host-side scalar.
     void set_zero_points(int arg, int mask, const memory::dims &groups,
-            memory::data_type data_type = memory::data_type::s32) {
-        error::wrap_c_api(dnnl_primitive_attr_set_zero_points(get(), arg, mask,
-                                  (int)groups.size(), groups.data(),
-                                  memory::convert_to_c(data_type)),
+            memory::data_type data_type = memory::data_type::s32,
+            bool is_on_host = false) {
+        error::wrap_c_api(dnnl_primitive_attr_set_zero_points_v2(get(), arg,
+                                  mask, (int)groups.size(), groups.data(),
+                                  memory::convert_to_c(data_type), is_on_host),
+                "could not set zero points primitive attribute");
+    }
+
+    /// Sets a single host-side zero point for the specified memory argument.
+    /// The zero point should be passed as a host scalar memory object at
+    /// execution time with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
+    /// @note Using this API to set the zero point implies that the zero
+    /// point attribute has `mask == 0` and an empty groups vector.
+    ///
+    /// @sa dnnl_primitive_attr_set_zero_points_v2
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Zero point data type.
+    void set_host_zero_point(
+            int arg, memory::data_type data_type = memory::data_type::s32) {
+        error::wrap_c_api(
+                dnnl_primitive_attr_set_zero_points_v2(get(), arg, 0, 0,
+                        nullptr, memory::convert_to_c(data_type), 1),
                 "could not set zero points primitive attribute");
     }
 

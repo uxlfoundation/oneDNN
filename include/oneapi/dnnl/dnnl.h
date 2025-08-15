@@ -448,12 +448,42 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
 
+/// Sets primitive attributes scaling factors for primitive operations for a
+/// given memory argument. The scaling factors must be passed at execution time
+/// as an argument with index #DNNL_ARG_ATTR_SCALES | arg.
+/// If `is_on_host` is true, sets a single host-side scalar scaling factor
+/// for the specified memory argument. In this case, the scaling factor must
+/// be provided as a host scalar memory object at execution time with index
+/// #DNNL_ARG_ATTR_SCALES | arg.
+///
+/// @sa dnnl_primitive_attr_set_scales
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Scaling factors correspondence mask that defines the
+///     correspondence between the tensor dimensions and the @p scales array.
+///     The set i-th bit indicates that a dedicated scaling factor is used for
+///     each index along that dimension. Set the mask to 0 to use a common
+///     scaling factor for the whole output tensor.
+/// @param ndims Number of group dimensions.
+/// @param group_dims Scaling factors correspondence groups that define the
+///     correspondence between the tensor dimensions and the scales array.
+///     The group dimensions should only be provided for each logical dimension
+///     that has correspondence mask @p mask set.
+/// @param data_type Scaling factors data_type.
+/// @param is_on_host Indicates whether the zero point is a host-side scalar.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v2(
+        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type,
+        int is_on_host);
+
 /// Sets primitive attributes zero points for primitive operations for a given
 /// memory argument. The zero points must be passed at execution time
 /// as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
-///
-/// @sa dnnl_primitive_attr_set_zero_points_mask
-///
 ///
 /// @param attr Primitive attributes.
 /// @param arg Parameter argument index as passed to the
@@ -494,6 +524,38 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets primitive attributes zero points for primitive operations for a given
+/// memory argument. The zero points must be passed at execution time
+/// as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+/// If `is_on_host` is true, sets a single host-side scalar zero point
+/// for the specified memory argument. In this case, the zero point must
+/// be provided as a host scalar memory object at execution time with index
+/// #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+///
+/// @sa dnnl_primitive_attr_set_zero_points
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Zero point correspondence mask that defines the
+///     correspondence between the tensor dimensions and the @p
+///     zero_points array. The set i-th bit indicates that a dedicated
+///     zero point is used for each index along that dimension. Set the
+///     mask to 0 to use a common zero point for the whole output tensor.
+/// @param ndims Number of group dimensions.
+/// @param group_dims Zero point factors correspondence groups that define the
+///     correspondence between the tensor dimensions and the zero_points array.
+///     The group dimensions should be only provided for each logical dimension
+///     that has the bit set correspondence mask @p mask set.
+/// @param data_type Zero points factors data_type.
+/// @param is_on_host Indicates whether the zero point is a host-side scalar.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_v2(
+        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type,
+        int is_on_host);
 
 /// Sets the rounding mode attribute value for a given argument
 ///

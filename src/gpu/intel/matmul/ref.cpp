@@ -173,6 +173,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
                 = last_zp_stride == 0 ? 1 : last_zp_dim * last_zp_stride;
         last_zp_stride = wei_zp_strides[d];
         last_zp_dim = wei_zp_dims[d];
+        if (wei_zp_dims[d] == 1) wei_zp_strides[d] = 0;
     }
     const dim_t wei_zp_stride_n = wei_zp_strides[b_d.ndims() - 1];
     const dim_t wei_zp_stride_k = wei_zp_strides[b_d.ndims() - 2];
@@ -199,6 +200,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
                 = last_zp_stride == 0 ? 1 : last_zp_dim * last_zp_stride;
         last_zp_stride = src_zp_strides[d];
         last_zp_dim = src_zp_dims[d];
+        if (src_zp_dims[d] == 1) src_zp_strides[d] = 0;
     }
     const dim_t src_zp_stride_k = src_zp_strides[a_d.ndims() - 1];
     const dim_t src_zp_stride_m = src_zp_strides[a_d.ndims() - 2];

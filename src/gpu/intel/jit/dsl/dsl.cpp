@@ -87,22 +87,28 @@ struct ctx_t {
     }
 
     // TODO: Remove IR restriction which requires force_alloc
-    lval_t def(type_t _type, const std::string &name, const expr_t &value = {},
+    lval_t def(const declaration_t &d, const expr_t &value = {},
             bool force_alloc = false) {
-        auto type = type_t(
-                _type.kind(), _type.elems(), _type.attr() | type_attr_t::mut);
-        auto alloc_var = var(type, name);
-        if (force_alloc || type.is_ptr()) {
+        gpu_assert(d.expr().type().is_mutable());
+        auto &alloc_var = d.expr();
+        if (force_alloc || alloc_var.type().is_ptr()) {
             append(alloc_t::make(alloc_var, {}));
 
             if (!value.is_empty()) {
                 gpu_assert(to_cpp<int>(value) == 0);
-                append(funcs::zero_out(alloc_var, type.size()));
+                append(funcs::zero_out(alloc_var, alloc_var.type().size()));
             }
         } else {
             append(let_t::make(alloc_var, value, {}));
         }
         return lval_t(alloc_var.as<var_t>());
+    }
+
+    lval_t def(type_t _type, const std::string &name, const expr_t &value = {},
+            bool force_alloc = false) {
+        auto type = type_t(
+                _type.kind(), _type.elems(), _type.attr() | type_attr_t::mut);
+        def(declare(name, type), value, force_alloc);
     }
 
     lval_t def(const std::string &name, const expr_t &value) {
@@ -111,19 +117,16 @@ struct ctx_t {
 
     tensor_t def(const layout_t &layout, const std::string &name,
             const expr_t &value = {}) {
-        // Tensors need to be grf-aligned for loading/storing
-        // TODO: IR should be modified to enable loading small tensors (such as
-        // scalar values) without GRF alignment.
-        auto elems = std::max(layout.type().elems() * layout.elems(),
-                grf_size() / layout.type().scalar().size());
-        auto t = type_t(layout.type().kind(), elems);
-        return {def(t, name, value, true), layout};
+        return {def(declare(name, layout), value, true), layout};
     }
 
+    expr_t let(const declaration_t &d, const expr_t &value) {
+        gpu_assert(!d.expr().type().is_mutable());
+        append(let_t::make(d.expr(), value, {}));
+        return d.expr();
+    }
     expr_t let(type_t type, const std::string &name, const expr_t &value) {
-        auto alloc_var = var(type, name);
-        append(let_t::make(alloc_var, value, {}));
-        return alloc_var;
+        return let(declare(name, type), value);
     }
     expr_t let(const std::string &name, const expr_t &value) {
         return let(value.type(), name, value);
@@ -275,8 +278,27 @@ const expr_t &local_size(int idx) {
     return default_ctx().local_size(idx);
 }
 
+declaration_t declare(const std::string &name, type_t type) {
+    return declaration_t(name, type);
+}
+declaration_t declare(
+        const std::string &name, const layout_t &layout, bool is_mutable) {
+    // Tensors need to be grf-aligned for loading/storing
+    // TODO: IR should be modified to enable loading small tensors (such as
+    // scalar values) without GRF alignment.
+    auto elems = std::max(layout.type().elems() * layout.elems(),
+            grf_size() / layout.type().scalar().size());
+    return declaration_t(name,
+            type_t(layout.type().kind(), elems,
+                    is_mutable ? type_attr_t::mut : type_attr_t::undef));
+}
+
 expr_t arg(const std::string &name, bool allow_empty) {
     return default_ctx().arg(name, allow_empty);
+}
+
+lval_t def(const declaration_t &d, const expr_t &value, bool force_alloc) {
+    return default_ctx().def(d, value, force_alloc);
 }
 
 lval_t def(type_t type, const std::string &name, const expr_t &value,
@@ -296,6 +318,10 @@ tensor_t def(
 lval_t &lval_t::operator=(const expr_t &obj) {
     assign(this->var, obj);
     return *this;
+}
+
+expr_t let(const declaration_t &d, const expr_t &value) {
+    return default_ctx().let(d, value);
 }
 
 expr_t let(type_t type, const std::string &name, const expr_t &value) {

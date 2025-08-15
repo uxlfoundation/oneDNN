@@ -158,13 +158,32 @@ public:
     expr_t var;
 };
 
+class declaration_t {
+public:
+    declaration_t(const std::string &name, type_t type)
+        : var_(var_t::make(type, name)) {};
+    const expr_t &expr() const { return var_; }
+
+private:
+    expr_t var_;
+};
+
+declaration_t declare(const std::string &name, type_t type);
+declaration_t declare(const std::string &name, const layout_t &layout,
+        bool is_mutable = false);
+
 expr_t arg(const std::string &name, bool allow_empty = false);
+
+lval_t def(const declaration_t &d, const expr_t &value = {},
+        bool force_alloc = false);
 lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
 
 tensor_t def(const layout_t &layout, const std::string &name,
         const expr_t &value = {});
+
+expr_t let(const declaration_t &d, const expr_t &value);
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
 

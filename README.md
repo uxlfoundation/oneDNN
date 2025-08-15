@@ -55,7 +55,7 @@ Deep learning practitioners should use one of the applications enabled with oneD
   annotated examples.
 * [API Reference] provides a comprehensive reference of the library
   API.
-* [Release Notes] explains the new features, performance
+* [Release Notes] explain the new features, performance
   optimizations, and improvements implemented in each version of
   oneDNN.
 
@@ -452,8 +452,8 @@ Interface](https://github.com/intel/metrics-discovery)
 * [sphinx-copybutton](https://github.com/executablebooks/sphinx-copybutton)
 
 This third-party software, even if included with the distribution of
-the Intel software, may be governed by separate license terms,
-including without limitation,third party license terms, other Intel
+other software, may be governed by separate license terms,
+including without limitation, third party license terms, other
 software license terms, and open source software license terms. These
 separate license terms govern your use of the third party programs as
 set forth in the "[THIRD-PARTY-PROGRAMS](THIRD-PARTY-PROGRAMS)" file.

@@ -93,7 +93,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->aoPtrDims == 2 || problem->aScale2D()) {
+    if (problem->aOffset2D() || problem->aScale2D()) {
         auto layout = problem->aScale2D() ? problem->A_scale.layout
                                           : problem->AO.layout;
         int32_t ldaq = isColMajor(layout)
@@ -102,7 +102,7 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
         if (pd()->src_po_sc_ && swapab) ldaq = 0;
         arg_list.set(argn++, ldaq);
     }
-    if (problem->boPtrDims == 2 || problem->bScale2D()) {
+    if (problem->bOffset2D() || problem->bScale2D()) {
         auto layout = problem->bScale2D() ? problem->B_scale.layout
                                           : problem->BO.layout;
         int32_t ldbq = !isColMajor(layout)
@@ -165,6 +165,20 @@ status_t gen_gemm_t::launch_nocopy(const gemm_exec_ctx_t &ctx,
                         / quant_entry_group_prod(
                                 pd()->attr()->scales_.get(DNNL_ARG_B)));
                 arg_list.set(argn++, scale_stride_b);
+            }
+            if (problem->aOffsetGroupDims()) {
+                dim_t offset_stride = pd()->stride_scale(i, DNNL_ARG_A);
+                auto offset_stride_a = int32_t(offset_stride
+                        / quant_entry_group_prod(
+                                pd()->attr()->zero_points_.get(DNNL_ARG_A)));
+                arg_list.set(argn++, offset_stride_a);
+            }
+            if (problem->bOffsetGroupDims()) {
+                dim_t offset_stride = pd()->stride_scale(i, DNNL_ARG_B);
+                auto offset_stride_b = int32_t(offset_stride
+                        / quant_entry_group_prod(
+                                pd()->attr()->zero_points_.get(DNNL_ARG_B)));
+                arg_list.set(argn++, offset_stride_b);
             }
         }
         for (int i = 0; i < po_count; i++) {

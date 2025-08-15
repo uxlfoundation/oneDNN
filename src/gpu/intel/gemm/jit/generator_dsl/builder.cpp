@@ -214,17 +214,20 @@ const ir::v2::layout_desc_t &gemm_var_desc() {
 };
 
 struct tensor_config_t {
-    tensor_config_t(const global_tensor_t &g, transform_t t, int copies)
-        : transform(t) {
+    tensor_config_t(const global_tensor_t &g,
+            const MatrixAddressingStrategy &matrix_strategy,
+            std::array<ir::pvar_t, 2> dims, int copies,
+            bool is_prefetch = false) {
+        auto t = get_transform(matrix_strategy, dims, is_prefetch);
         tile = g.tile;
         layout = t.get_layout(g.tile, g.type, gemm_var_desc());
         layout.add_block(k_var, copies, layout.elems());
+        hint = {t.cache_hint};
     }
 
     ir::tile_t tile;
     layout_t layout;
-
-    transform_t transform;
+    send_hint_t hint;
 };
 
 void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
@@ -462,11 +465,9 @@ struct generator_dsl_t {
 
         auto A_prefetch_transform
                 = get_transform(strategy.A_prefetch, A_vars, true);
-        auto A_load_transform = get_transform(strategy.A, A_vars);
 
         auto B_prefetch_transform
                 = get_transform(strategy.B_prefetch, B_vars, true);
-        auto B_load_transform = get_transform(strategy.B, B_vars);
 
         ir::tile_t C_dims {{{m_var, m_blk}, {n_var, n_blk}}};
         auto C_store_transform = get_transform(strategy.C, C_vars);
@@ -560,9 +561,9 @@ struct generator_dsl_t {
         };
 
         tensor_config_t A_load(
-                kloop_it.A_load(), A_load_transform, strategy.A_copies);
+                kloop_it.A_load(), strategy.A, A_vars, strategy.A_copies);
         tensor_config_t B_load(
-                kloop_it.B_load(), B_load_transform, strategy.B_copies);
+                kloop_it.B_load(), strategy.B, B_vars, strategy.B_copies);
 
         auto prefetchA = strategy.prefetchA ? dnnl::impl::utils::rnd_dn(
                                  strategy.prefetchA, strategy.ka_prefetch)
@@ -587,8 +588,8 @@ struct generator_dsl_t {
         gpu_assert(k_loop_main.B_load_warmup() % kloop_it.B_load().tile[k_var]
                 == 0);
 
-        tensor_config_t A_load_short(kloop_it.A_load(), A_load_transform, 1);
-        tensor_config_t B_load_short(kloop_it.B_load(), B_load_transform, 1);
+        tensor_config_t A_load_short(kloop_it.A_load(), strategy.A, A_vars, 1);
+        tensor_config_t B_load_short(kloop_it.B_load(), strategy.B, B_vars, 1);
 
         k_loop_config_t k_loop_short {
                 (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]), 0,
@@ -673,7 +674,7 @@ struct generator_dsl_t {
                     cfg.A_load.layout.int_dim_size(k_var));
             if (idx % A_load_blk != 0) return;
             load(A.sub({{k_var, idx}}, cfg.A_load.tile), kloop_it.A_load(),
-                    {{k_var, 0}}, {cfg.A_load.transform.cache_hint});
+                    {{k_var, 0}}, {cfg.A_load.hint});
             kloop_it.A_load_inc(A_load_blk);
         };
 
@@ -695,7 +696,7 @@ struct generator_dsl_t {
                     cfg.B_load.layout.int_dim_size(k_var));
             if (idx % B_load_blk != 0) return;
             load(B.sub({{k_var, idx}}, cfg.B_load.tile), kloop_it.B_load(),
-                    {{k_var, 0}}, {cfg.B_load.transform.cache_hint});
+                    {{k_var, 0}}, {cfg.B_load.hint});
             kloop_it.B_load_inc(B_load_blk);
         };
 

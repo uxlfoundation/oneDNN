@@ -70,6 +70,13 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_MATMUL(md_dims_in_range(weights_md()),
                     VERBOSE_OUT_OF_RANGE_DIMS, "weights");
 
+            // By default, host scalar zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VDISPATCH_MATMUL(
+                    IMPLICATION(!attr()->zero_points_.has_default_values(),
+                            !attr()->zero_points_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
             init_conf();
             return status::success;
         }
@@ -122,7 +129,8 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
             for (auto arg : supported_args) {
                 if (!scales.get(arg).has_default_values()) {
                     dt_ok = dt_ok
-                            && is_supported_type(scales.get_data_type(arg));
+                            && is_supported_type(scales.get_data_type(arg))
+                            && !scales.get(arg).is_host_scalar();
                 }
             }
             return dt_ok && attr_scales_ok(supported_args);

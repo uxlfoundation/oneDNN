@@ -37,17 +37,45 @@ uint get_dropout_threshold(float p) {
 
 __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         __global DST_DATA_T *C, __global BIA_DATA_T *bia,
-        __global SRC_ZP_DATA_T *a0, long src_zp_stride_k, long src_zp_stride_m,
-        long src_zp_group_k, __global WEI_ZP_DATA_T *b0, long wei_zp_stride_n,
-        long wei_zp_stride_k, long wei_zp_stride_d0, long wei_zp_stride_d1,
-        long wei_zp_group_n, long wei_zp_group_k, __global int *c0,
-        __global SRC_SCALES_DATA_T *src_scales, long src_scale_stride_k,
-        long src_scale_stride_m, long src_scale_stride_d0,
-        long src_scale_stride_d1, long src_scale_group_k,
-        __global WEI_SCALES_DATA_T *wei_scales, long wei_scale_stride_n,
-        long wei_scale_stride_k, long wei_scale_stride_d0,
-        long wei_scale_stride_d1, long wei_scale_group_n,
-        long wei_scale_group_k, __global DST_SCALES_DATA_T *dst_scales,
+#if HOST_SRC_ZP
+        SRC_ZP_DATA_T a0_value,
+#else
+        __global SRC_ZP_DATA_T *a0,
+#endif
+        long src_zp_stride_k, long src_zp_stride_m, long src_zp_group_k,
+#if HOST_WEI_ZP
+        WEI_ZP_DATA_T b0_value,
+#else
+        __global WEI_ZP_DATA_T *b0,
+#endif
+        long wei_zp_stride_n, long wei_zp_stride_k, long wei_zp_stride_d0,
+        long wei_zp_stride_d1, long wei_zp_group_n, long wei_zp_group_k,
+#if HOST_DST_ZP
+        int c0_value,
+#else
+        __global int *c0,
+#endif
+#if HOST_SRC_SCALE
+        SRC_SCALES_DATA_T src_scale_value,
+#else
+        __global SRC_SCALES_DATA_T *src_scales,
+#endif
+        long src_scale_stride_k, long src_scale_stride_m,
+        long src_scale_stride_d0, long src_scale_stride_d1,
+        long src_scale_group_k,
+#if HOST_WEI_SCALE
+        WEI_SCALES_DATA_T wei_scale_value,
+#else
+        __global WEI_SCALES_DATA_T *wei_scales,
+#endif
+        long wei_scale_stride_n, long wei_scale_stride_k,
+        long wei_scale_stride_d0, long wei_scale_stride_d1,
+        long wei_scale_group_n, long wei_scale_group_k,
+#if HOST_DST_SCALE
+        DST_SCALES_DATA_T dst_scale_value,
+#else
+        __global DST_SCALES_DATA_T *dst_scales,
+#endif
         long group_K, long K, long N, long M, long D0, long D1, long D2,
         long bia_stride_d3, long bia_stride_d2, long bia_stride_d1,
         long bia_stride_d0, long bia_stride_m, long bia_stride_n,
@@ -66,6 +94,25 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         __global uint *sround_seed_buf
 #endif
                 POST_OP_ARGS) {
+
+#if HOST_SRC_ZP
+    SRC_ZP_DATA_T *a0 = &a0_value;
+#endif
+#if HOST_WEI_ZP
+    WEI_ZP_DATA_T *b0 = &b0_value;
+#endif
+#if HOST_DST_ZP
+    int *c0 = &c0_value;
+#endif
+#if HOST_SRC_SCALE
+    SRC_SCALES_DATA_T *src_scales = &src_scale_value;
+#endif
+#if HOST_WEI_SCALE
+    WEI_SCALES_DATA_T *wei_scales = &wei_scale_value;
+#endif
+#if HOST_DST_SCALE
+    DST_SCALES_DATA_T *dst_scales = &dst_scale_value;
+#endif
 
 #if WITH_DROPOUT
     uint dropout_seed = dropout_seed_buf[0];

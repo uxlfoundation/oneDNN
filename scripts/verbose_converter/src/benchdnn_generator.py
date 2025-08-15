@@ -192,8 +192,11 @@ class Converter(metaclass=ConverterMeta):
         results = []
         for arg, param in params.items():
             policy = self.policy(param.mask)
+            # Set policy to "host_scalar" if is_host_scalar is True
+            if param.is_host_scalar:
+                policy = "host_scalar"
             result = f"{arg}:{policy}"
-            if policy == "common":
+            if policy == "common" or policy == "host_scalar":
                 result += f":{def_value}"
             dt = param.data_type
             groups = param.groups

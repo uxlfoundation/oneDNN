@@ -420,7 +420,11 @@ class ParserImpl:
             elif not spec.eof:  # new style
                 param.data_type = spec.read_str()
                 if spec.read_literal(":"):
-                    param.groups = spec.read_str()
+                    groups_or_host_flag = spec.read_str()
+                    if groups_or_host_flag == "host_scalar":
+                        param.is_host_scalar = True
+                    else:
+                        param.groups = groups_or_host_flag
         return param
 
     # v2.7 and below

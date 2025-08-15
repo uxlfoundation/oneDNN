@@ -18,13 +18,14 @@ at the oneDNN Github (https://github.com/uxlfoundation/oneDNN/releases).
 Documentation
 -------------
 
-* Developer guide
-(https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
-explains the programming model, supported functionality, and implementation
-details, and includes annotated examples.
-* API reference
-(https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@/modules.html)
-provides a comprehensive reference of the library API.
+* Developer guide (https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
+  explains the programming model, supported functionality, and implementation
+  details, and includes annotated examples.
+* API reference (https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@/modules.html)
+  provides a comprehensive reference of the library API.
+* Release Notes (https://github.com/uxlfoundation/oneDNN/releases/tag/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
+  explain the new features, performance optimizations, and improvements
+  implemented in each version of oneDNN.
 
 System Requirements
 -------------------
@@ -86,7 +87,7 @@ terms.
 3-clause BSD license:
 * Xbyak (https://github.com/herumi/xbyak)
 * Instrumentation and Tracing Technology API (ITT API)
-(https://github.com/intel/ittapi)
+  (https://github.com/intel/ittapi)
 * CMake (https://github.com/Kitware/CMake)
 
 Boost Software License, Version 1.0:
@@ -94,15 +95,16 @@ Boost Software License, Version 1.0:
 
 MIT License:
 * Intel Graphics Compute Runtime for oneAPI Level Zero and OpenCL Driver
-(https://github.com/intel/compute-runtime)
+  (https://github.com/intel/compute-runtime)
 * Intel Graphics Compiler (https://github.com/intel/intel-graphics-compiler)
 * oneAPI Level Zero (https://github.com/oneapi-src/level-zero)
 * Intel Metrics Discovery Application Programming Interface
-(https://github.com/intel/metrics-discovery)
+  (https://github.com/intel/metrics-discovery)
+* spdlog (https://github.com/gabime/spdlog)
 
 This third party software, even if included with the distribution of
-the Intel software, may be governed by separate license terms, including
-without limitation, third party license terms, other Intel software license
+other software, may be governed by separate license terms, including
+without limitation, third party license terms, other software license
 terms, and open source software license terms. These separate license terms
 govern your use of the third party programs as set forth in the
 "THIRD-PARTY-PROGRAMS" file.
@@ -118,6 +120,8 @@ of Security and trust for our users who consume oneDNN.
 Intel, the Intel logo, Arc, Intel Atom, Intel Core, Iris,
 OpenVINO, the OpenVINO logo, Pentium, VTune, and Xeon are trademarks
 of Intel Corporation or its subsidiaries.
+
+Arm and Neoverse are trademarks, or registered trademarks of Arm Ltd.
 
 \* Other names and brands may be claimed as the property of others.
 

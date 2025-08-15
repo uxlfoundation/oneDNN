@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -2588,7 +2587,8 @@ send_group_t init_scattered(const view_info_t &info,
     int slot_stride = std::max(4, slot_size);
     int inner_slots = ir_utils::safe_divide(it.inner_bytes(), slot_size);
 
-    gpu_assert((slot_size % type_size == 0) || (slot_stride == slot_size));
+    gpu_assert((slot_size * type_packing % type_size == 0)
+            || (slot_stride == slot_size));
 
     send_group_t ret;
     ret.hw = info.hw();
@@ -2611,7 +2611,7 @@ send_group_t init_scattered(const view_info_t &info,
                     blocks.begin(), blocks.begin() + info.outer_idx()));
     reg_layout = reg_layout.make_dense();
     if (slot_stride != slot_size) {
-        if (slot_size == type_size) {
+        if (slot_size * type_packing == type_size) {
             reg_layout = reg_layout.make_strided(slot_stride / slot_size);
         } else {
             gpu_assert(reg_layout.nblocks() > 0);

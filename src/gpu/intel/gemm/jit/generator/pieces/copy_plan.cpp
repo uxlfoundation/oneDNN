@@ -3089,6 +3089,8 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     while (order != end) {
         for (; order != end; ++order) {
             auto &temp = temps[order->second];
+            // Don't allocate unused temporaries.
+            if (temp.cnumMin > temp.cnumMax) continue;
             if (!manager.allocate(temp)) {
                 cnum1 = temp.cnumMin; break;
             }

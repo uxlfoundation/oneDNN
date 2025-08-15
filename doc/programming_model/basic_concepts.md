@@ -59,6 +59,12 @@ on a specific engine, tensor dimensions, data type, and memory format – the
 way tensor indices map to offsets in linear memory space. Memory objects are
 passed to primitives during execution.
 
+@note
+An exception is a memory object for host-side scalars that corresponds to
+@ref dnnl::memory::format_kind::host_scalar. In this case, the memory descriptor
+requires only a data type, and creating the memory object does not require
+an engine. For details, see @ref dev_guide_host_side_scalars.
+
 ## Levels of Abstraction
 
 Conceptually, oneDNN has multiple levels of abstractions for primitives and

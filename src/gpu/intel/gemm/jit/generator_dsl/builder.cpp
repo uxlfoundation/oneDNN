@@ -217,16 +217,51 @@ struct tensor_config_t {
     tensor_config_t(const global_tensor_t &g,
             const MatrixAddressingStrategy &matrix_strategy,
             std::array<ir::pvar_t, 2> dims, int copies,
-            bool is_prefetch = false) {
+            bool is_prefetch = false)
+        : tensor_config_t(g.tile(), g.type(), matrix_strategy, dims, copies,
+                is_prefetch) {}
+    tensor_config_t(const tile_t &tile, type_t type,
+            const MatrixAddressingStrategy &matrix_strategy,
+            std::array<ir::pvar_t, 2> dims, int copies,
+            bool is_prefetch = false)
+        : tile(tile) {
         auto t = get_transform(matrix_strategy, dims, is_prefetch);
-        tile = g.tile;
-        layout = t.get_layout(g.tile, g.type, gemm_var_desc());
+        layout = t.get_layout(tile, type, gemm_var_desc());
         layout.add_block(k_var, copies, layout.elems());
         hint = {t.cache_hint};
     }
 
     ir::tile_t tile;
     layout_t layout;
+    send_hint_t hint;
+};
+
+struct tensor_pair_t {
+    struct dim_info_t {
+        pvar_t var;
+        expr_t idx;
+        expr_t stride;
+        expr_t size;
+        int tile;
+    };
+    tensor_pair_t(expr_t buf, type_t type, expr_t base_offset, dim_info_t &col,
+            dim_info_t &row, const MatrixAddressingStrategy &matrix_strategy,
+            int copies)
+        : global_tensor {buf, type, base_offset,
+                {{col.var, col.idx}, {row.var, row.idx}},
+                {{col.var, col.stride}, {row.var, row.stride}},
+                {{col.var, col.size}, {row.var, row.size}},
+                {{col.var, col.subtile}, {row.var, row.subtile}}} {
+
+        auto t = get_transform(matrix_strategy, dims, is_prefetch);
+        layout = t.get_layout(
+                global_tensor.tile, global_tensor.type, gemm_var_desc());
+        layout.add_block(k_var, copies, layout.elems());
+        tensor = {{ir::var_t::make(buf.as<var_t>().name + "_tile"},{layout}}
+        hint = {t.cache_hint};
+    }
+    global_tensor_t global_tensor;
+    tensor_t tensor;
     send_hint_t hint;
 };
 
@@ -538,6 +573,9 @@ struct generator_dsl_t {
             }
         }
 
+        tensor_config_t A_load({{m_var, m_blk}, {k_var, strategy.ka_load}},
+                into_ir(problem.Ta_ext), strategy.A, A_vars, strategy.A_copies);
+
         global_tensor_t A_base {arg("A"), into_ir(problem.Ta_ext), offset_A,
                 {{m_var, m_idx}, {k_var, k_idx}},
                 get_strides(problem.A.layout, A_vars, arg("lda")),
@@ -560,8 +598,6 @@ struct generator_dsl_t {
             store(kloop_it.C_store(), C, {}, {C_store_transform.cache_hint});
         };
 
-        tensor_config_t A_load(
-                kloop_it.A_load(), strategy.A, A_vars, strategy.A_copies);
         tensor_config_t B_load(
                 kloop_it.B_load(), strategy.B, B_vars, strategy.B_copies);
 

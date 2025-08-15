@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -115,14 +115,26 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
 
     conf_.isa = get_supported_isa();
 
-    bool ok = data_type_supported(conf_.dst_type)
+    // This primitive currently (as of oneDNN v3.9) supports all binary
+    // algorithms except binary_select. However we check the supported
+    // algorithms explicitly (instead of just skipping binary_select) to avoid
+    // silently accepting new, unsupported algorithms in the future.
+    bool alg_ok = utils::one_of(desc()->alg_kind, alg_kind::binary_add,
+            alg_kind::binary_sub, alg_kind::binary_mul, alg_kind::binary_div,
+            alg_kind::binary_ge, alg_kind::binary_gt, alg_kind::binary_le,
+            alg_kind::binary_lt, alg_kind::binary_eq, alg_kind::binary_ne,
+            alg_kind::binary_max, alg_kind::binary_min);
+
+    bool ok = alg_ok && data_type_supported(conf_.dst_type)
             && data_type_supported(conf_.src0_type)
             && data_type_supported(conf_.src1_type)
             && data_format_supported(src0_md_, conf_.isa)
-            && set_default_params() == status::success && !has_zero_dim_memory()
+            && (set_default_params() == status::success)
+            && !has_zero_dim_memory()
             && IMPLICATION(!conf_.is_i8, src0_md_ == dst_md_) && is_applicable()
             && attr()->has_default_values(sm::post_ops | sm::scales)
             && attr_.set_default_formats(dst_md(0)) == status::success;
+
     if (!ok) return status::unimplemented;
 
     // All operations over blocking descriptors should have md initialized.

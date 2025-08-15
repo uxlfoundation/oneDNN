@@ -64,6 +64,9 @@ status_t lnorm_desc_init(layer_normalization_desc_t *lnorm_desc,
     VCHECK_LNORM(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_LNORM(!any_memory_desc_host_scalar(src_desc, dst_desc, stat_desc,
+                         diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     auto ld = layer_normalization_desc_t();
     ld.primitive_kind = primitive_kind::layer_normalization;
@@ -177,6 +180,12 @@ status_t layer_normalization_attr_check(const layer_normalization_desc_t &desc,
                 const int mask = attr->scales_.get_mask(arg);
                 VCHECK_LNORM_UNIMPL(mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_LNORM_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                        !attr->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

@@ -55,6 +55,12 @@ status_t binary_attr_check(const binary_desc_t &desc, const engine_t *engine,
 
     // Check scales
     if (!attr->scales_.has_default_values()) {
+        // By default, host scalar scales are not supported for GPU
+        // as the value should be accessed differently in the kernel
+        VCHECK_BINARY_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !attr->scales_.has_host_scalars()),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
         static const std::vector<int> supported_args {
                 DNNL_ARG_SRC_0, DNNL_ARG_SRC_1};
         VCHECK_BINARY_UNIMPL(attr->scales_.has_default_values(supported_args),
@@ -91,6 +97,10 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
     VCHECK_BINARY(!any_null(src0_md, src1_md, dst_md), VERBOSE_NULL_ARG);
     VCHECK_BINARY(IMPLICATION(alg_kind == binary_select, src2_md != nullptr),
             VERBOSE_NULL_ARG);
+
+    VCHECK_BINARY(
+            !any_memory_desc_host_scalar(src0_md, src1_md, src2_md, dst_md),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     // TODO - Add support for mutual or bi-directional broadcasts
     VCHECK_BINARY(!memory_desc_wrapper(src0_md).format_any(),

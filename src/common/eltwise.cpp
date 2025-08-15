@@ -62,6 +62,9 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
     VCHECK_ELTWISE(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_ELTWISE(!any_memory_desc_host_scalar(
+                           src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(src_desc).has_runtime_dims_or_strides()

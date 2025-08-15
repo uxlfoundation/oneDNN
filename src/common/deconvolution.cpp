@@ -51,6 +51,10 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
             one_of(alg_kind, deconvolution_direct, deconvolution_winograd),
             VERBOSE_BAD_ALGORITHM);
 
+    VCHECK_DECONV(!any_memory_desc_host_scalar(
+                          src_desc, weights_desc, bias_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     if (padding_r == nullptr) padding_r = padding_l;
 
     auto dd = deconvolution_desc_t();
@@ -185,6 +189,12 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
                     IMPLICATION(!sc.has_default_values(DNNL_ARG_DST),
                             sc.get_mask(DNNL_ARG_DST) == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_DECONV_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                         !sc.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check zero points
@@ -202,6 +212,12 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
                     IMPLICATION(!zp.has_default_values(DNNL_ARG_DST),
                             utils::one_of(
                                     zp.get_mask(DNNL_ARG_DST), 0, 1 << 1)),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            // By default, host scalar zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_DECONV_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                         !zp.has_host_scalars()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 

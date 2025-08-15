@@ -53,6 +53,9 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
     VCHECK_GNORM(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_GNORM(!any_memory_desc_host_scalar(
+                         src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     unsigned gnorm_flags = normalization_flags::use_global_stats
             | normalization_flags::use_scale | normalization_flags::use_shift;
@@ -166,6 +169,12 @@ status_t group_normalization_attr_check(const group_normalization_desc_t &desc,
                 const int mask = attr->scales_.get_mask(arg);
                 VCHECK_GNORM_UNIMPL(mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_GNORM_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                        !attr->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

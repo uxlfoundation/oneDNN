@@ -85,8 +85,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     dequantizeA &= !slmDequantizeA;
     dequantizeB &= !slmDequantizeB;
 
-    bool ao2D = (problem.aoPtrDims == 2), as2D = problem.aScale2D();
-    bool bo2D = (problem.boPtrDims == 2), bs2D = problem.bScale2D();
+    bool ao2D = problem.aOffset2D(), as2D = problem.aScale2D();
+    bool bo2D = problem.bOffset2D(), bs2D = problem.bScale2D();
     bool ao2DLate = ao2D && problem.needsBGroupSums();
     bool bo2DLate = bo2D && problem.needsAGroupSums();
     bool as2DLate = as2D && state.lateScale2DA;

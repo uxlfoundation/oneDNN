@@ -275,11 +275,17 @@ bool jit_gemm_pd_t::zp_ok() {
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
+    bool weights_upconversion
+            = ((utils::one_of(swap_ab() ? d->b_type() : d->a_type(), s4, u4)
+                       && dy_quant_enabled_)
+                    || wei_decomp_);
 
     if (!attr_zps.has_default_values(DNNL_ARG_A)) {
         // Groups determine supported masks.
         if (!attr_zps.has_default_groups(DNNL_ARG_A)) {
-            if (!valid_2d_mask(cmask_a_, ndims, false)) return false;
+            if (!valid_2d_mask(
+                        cmask_a_, ndims, !swap_ab() && weights_upconversion))
+                return false;
             const auto wei_q2d_group_n = attr_zps.get_group(DNNL_ARG_A, 1);
             // Non-trivial N group unsupported.
             if (wei_q2d_group_n != 1) return false;
@@ -302,7 +308,9 @@ bool jit_gemm_pd_t::zp_ok() {
     if (!attr_zps.has_default_values(DNNL_ARG_B)) {
         // Groups determine supported masks.
         if (!attr_zps.has_default_groups(DNNL_ARG_B)) {
-            if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
+            if (!valid_2d_mask(
+                        cmask_b_, ndims, swap_ab() && weights_upconversion))
+                return false;
 
             const auto src_q2d_group_n = attr_zps.get_group(DNNL_ARG_B, 0);
             zp_group_k_b_ = attr_zps.get_group(DNNL_ARG_B, 1);

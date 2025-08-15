@@ -24,6 +24,7 @@
 
 #include "common/bfloat16.hpp"
 #include "common/float16.hpp"
+#include "common/host_scalar_memory_storage.hpp"
 #include "common/memory_storage.hpp"
 #include "common/nstl.hpp"
 
@@ -241,11 +242,42 @@ public:
         args_.back().set_value(size, nullptr);
     }
 
-    void set(int index, const memory_storage_t &storage) {
-        assert(index < storage_size);
-        if ((index + 1) > nargs()) { args_.resize(index + 1); };
-        args_[index].set_value(storage);
+#define SET_STORED_SCALAR_VALUE(stype, vtype) \
+    case data_type::stype: { \
+        vtype value = 0; \
+        status_t status \
+                = host_storage->get_scalar_value(&value, sizeof(value)); \
+        assert(status == status::success); \
+        if (status != status::success) return; \
+        set(index, value); \
+        break; \
     }
+
+    void set(int index, const memory_storage_t &storage) {
+        if (!storage.is_host_scalar()) {
+            assert(index < storage_size);
+            if ((index + 1) > nargs()) { args_.resize(index + 1); };
+            args_[index].set_value(storage);
+            return;
+        }
+
+        auto *host_storage
+                = utils::downcast<const host_scalar_memory_storage_t *>(
+                        &storage);
+        switch ((int)host_storage->data_type()) {
+            SET_STORED_SCALAR_VALUE(f16, float16_t)
+            SET_STORED_SCALAR_VALUE(bf16, bfloat16_t)
+            SET_STORED_SCALAR_VALUE(f32, float)
+            SET_STORED_SCALAR_VALUE(s32, int32_t)
+            SET_STORED_SCALAR_VALUE(s8, int8_t)
+            SET_STORED_SCALAR_VALUE(u8, uint8_t)
+            default:
+                assert(!"Support for requested data type is missing for "
+                        "host-side scalars");
+        }
+    }
+
+#undef SET_STORED_SCALAR_VALUE
 
     template <class T>
     void set(int index, const T &value) {

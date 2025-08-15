@@ -1031,3 +1031,4 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     tile_store(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #endif
 }
+

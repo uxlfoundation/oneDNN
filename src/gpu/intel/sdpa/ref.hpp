@@ -29,8 +29,12 @@ namespace sdpa {
 
 struct ref_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public sdpa::pd_t {
-        using sdpa::pd_t::pd_t;
+    //struct pd_t : public sdpa::pd_t {
+        //using sdpa::pd_t::pd_t;
+//struct ref_sdpa_t : public gpu_primitive_t {
+    //using gpu_primitive_t::gpu_primitive_t;
+    struct pd_t : public sdpa_fwd_pd_t {
+        using sdpa_fwd_pd_t::sdpa_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 

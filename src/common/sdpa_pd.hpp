@@ -36,9 +36,19 @@ namespace impl {
     VCHECK(primitive, create, dispatch, sdpa, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+// TODOOOOOO : fwd && bwd primitives like softmax w/common base
+
 // NOLINTBEGIN(google-default-arguments)
+
+struct sdpa_fwd_pd_t;
+
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
+
+    static constexpr int mask_mb_index = 0;
+    static constexpr int mask_q_index = 2;
+    static constexpr int mask_k_index = 3;
+    static constexpr int ndims = 4;
 
     using base_class = sdpa_pd_t;
     using hint_class = sdpa_pd_t;
@@ -48,59 +58,10 @@ struct sdpa_pd_t : public primitive_desc_t {
         return reinterpret_cast<const op_desc_t *>(this->desc());
     }
 
-    arg_usage_t arg_usage(int arg) const override {
-        // TODO: this is broken for cases when the user passes quantization
-        // memories unconditionally but the primitive desc is not set up for
-        // quantization.
-        if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
-                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
-            return arg_usage_t::input;
-
-        if (arg == DNNL_ARG_DST) return arg_usage_t::output;
-
-        return primitive_desc_t::arg_usage(arg);
+    bool is_fwd() const {
+        return utils::one_of(desc_.prop_kind, prop_kind::forward_training,
+                prop_kind::forward_inference);
     }
-
-    const memory_desc_t *arg_md(
-            int arg, bool user_input = false) const override {
-        switch (arg) {
-            case DNNL_ARG_QUERIES: return src_md(0);
-            case DNNL_ARG_KEYS: return src_md(1);
-            case DNNL_ARG_VALUES: return src_md(2);
-            case DNNL_ARG_ATTN_MASK: return src_md(3);
-            case DNNL_ARG_DST: return dst_md(0, user_input);
-            default: return primitive_desc_t::arg_md(arg);
-        }
-    }
-
-    const memory_desc_t *src_md(
-            int index = 0, bool user_input = false) const override {
-        switch (index) {
-            case 0: return &desc_.q_desc;
-            case 1: return &desc_.k_desc;
-            case 2: return &desc_.v_desc;
-            case 3: return &desc_.attn_mask_desc;
-            default: return &glob_zero_md;
-        }
-    }
-    const memory_desc_t *dst_md(
-            int index = 0, bool user_input = false) const override {
-        return index == 0 ? &desc_.dst_desc : &glob_zero_md;
-    }
-
-    const memory_desc_t *qry_md() const { return &desc_.q_desc; }
-    const memory_desc_t *key_md() const { return &desc_.k_desc; }
-    const memory_desc_t *val_md() const { return &desc_.v_desc; }
-    const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
-
-    int n_inputs() const override {
-        return 3 + int(with_attn_mask()) + int(with_attn_scale());
-    }
-    int n_outputs() const override { return 1; }
 
     bool with_attn_scale() const {
         return (desc_.scale_dt != data_type::undef);
@@ -184,34 +145,19 @@ struct sdpa_pd_t : public primitive_desc_t {
         return out;
     }
 
+    const memory_desc_t *qry_md() const { return &desc_.q_desc; }
+    const memory_desc_t *key_md() const { return &desc_.k_desc; }
+    const memory_desc_t *val_md() const { return &desc_.v_desc; }
+    const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
+
 protected:
     sdpa_desc_t desc_;
+    const sdpa_fwd_pd_t *hint_fwd_pd_;
 
     sdpa_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
             const hint_class *hint_fwd_pd)
         : primitive_desc_t(attr, base_pkind)
         , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc)) {}
-
-    bool set_default_format(memory_desc_t *md) {
-        memory_desc_wrapper mdw(md);
-        if (mdw.format_any()) return false;
-
-        return true;
-    }
-
-    bool set_default_formats() {
-        bool ok = true;
-
-        for (auto md : {&desc_.q_desc, &desc_.k_desc, &desc_.v_desc,
-                     &desc_.dst_desc}) {
-            ok = ok && set_default_format(md);
-        }
-
-        auto status = attr_.post_ops_.set_default_formats(&desc_.dst_desc);
-        ok = ok && (status == status::success);
-
-        return ok;
-    }
 
 private:
     static int group_size(
@@ -234,6 +180,193 @@ private:
         return static_cast<int>(out);
     }
 };
+
+struct sdpa_fwd_pd_t : public sdpa_pd_t {
+    using base_class = sdpa_fwd_pd_t;
+    using hint_class = sdpa_fwd_pd_t;
+
+    arg_usage_t arg_usage(int arg) const override {
+        // TODO: this is broken for cases when the user passes quantization
+        // memories unconditionally but the primitive desc is not set up for
+        // quantization.
+        if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
+                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
+                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+            return arg_usage_t::input;
+
+        if (arg == DNNL_ARG_DST) return arg_usage_t::output;
+
+        return primitive_desc_t::arg_usage(arg);
+    }
+
+    const memory_desc_t *arg_md(
+            int arg, bool user_input = false) const override {
+        switch (arg) {
+            case DNNL_ARG_QUERIES: return src_md(0);
+            case DNNL_ARG_KEYS: return src_md(1);
+            case DNNL_ARG_VALUES: return src_md(2);
+            case DNNL_ARG_ATTN_MASK: return src_md(3);
+            case DNNL_ARG_DST: return dst_md(0, user_input);
+            default: return primitive_desc_t::arg_md(arg);
+        }
+    }
+
+    const memory_desc_t *src_md(
+            int index = 0, bool user_input = false) const override {
+        switch (index) {
+            case 0: return &desc_.q_desc;
+            case 1: return &desc_.k_desc;
+            case 2: return &desc_.v_desc;
+            case 3: return &desc_.attn_mask_desc;
+            default: return &glob_zero_md;
+        }
+    }
+    const memory_desc_t *dst_md(
+            int index = 0, bool user_input = false) const override {
+        return index == 0 ? &desc_.dst_desc : &glob_zero_md;
+    }
+
+    int n_inputs() const override {
+        return 3 + int(with_attn_mask()) + int(with_attn_scale());
+    }
+    int n_outputs() const override { return 1; }
+
+protected:
+    sdpa_fwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+            const hint_class *hint_fwd_pd)
+        : sdpa_pd_t(adesc, attr, hint_fwd_pd) {}
+
+    bool set_default_format(memory_desc_t *md) {
+        memory_desc_wrapper mdw(md);
+        if (mdw.format_any()) return false;
+
+        return true;
+    }
+
+    bool set_default_formats() {
+        bool ok = true;
+
+        for (auto md : {&desc_.q_desc, &desc_.k_desc, &desc_.v_desc,
+                     &desc_.dst_desc}) {
+            ok = ok && set_default_format(md);
+        }
+
+        auto status = attr_.post_ops_.set_default_formats(&desc_.dst_desc);
+        ok = ok && (status == status::success);
+
+        return ok;
+    }
+
+};
+
+struct sdpa_bwd_pd_t : public sdpa_pd_t {
+    using base_class = sdpa_bwd_pd_t;
+    using hint_class = sdpa_fwd_pd_t;
+
+    arg_usage_t arg_usage(int arg) const override {
+        // TODO: this is broken for cases when the user passes quantization
+        // memories unconditionally but the primitive desc is not set up for
+        // quantization.
+        if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
+                    DNNL_ARG_DST,
+                    DNNL_ARG_DIFF_DST,
+                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
+                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+            return arg_usage_t::input;
+
+        if (utils::one_of(arg, DNNL_ARG_DIFF_QUERIES,
+                               DNNL_ARG_DIFF_KEYS,
+                               DNNL_ARG_DIFF_VALUES))
+            return arg_usage_t::output;
+
+        return primitive_desc_t::arg_usage(arg);
+    }
+
+    const memory_desc_t *arg_md(
+            int arg, bool user_input = false) const override {
+        switch (arg) {
+            case DNNL_ARG_QUERIES: return src_md(0);
+            case DNNL_ARG_KEYS: return src_md(1);
+            case DNNL_ARG_VALUES: return src_md(2);
+            case DNNL_ARG_ATTN_MASK: return src_md(3);
+            case DNNL_ARG_DST: return src_md(4);
+            case DNNL_ARG_DIFF_DST: return src_md(5);
+            case DNNL_ARG_DIFF_QUERIES: return dst_md(0, user_input);
+            case DNNL_ARG_DIFF_KEYS: return dst_md(1, user_input);
+            case DNNL_ARG_DIFF_VALUES: return dst_md(2, user_input);
+            default: return primitive_desc_t::arg_md(arg);
+        }
+    }
+
+    const memory_desc_t *src_md(
+            int index = 0, bool user_input = false) const override {
+        switch (index) {
+            case 0: return &desc_.q_desc;
+            case 1: return &desc_.k_desc;
+            case 2: return &desc_.v_desc;
+            case 3: return &desc_.attn_mask_desc;
+            case 4: return &desc_.dst_desc;
+            case 5: return &desc_.diff_dst_desc;
+            default: return &glob_zero_md;
+        }
+    }
+
+    const memory_desc_t *dst_md(
+            int index = 0, bool user_input = false) const override {
+        switch (index) {
+            case 0: return &desc_.diff_q_desc;
+            case 1: return &desc_.diff_k_desc;
+            case 2: return &desc_.diff_v_desc;
+            default: return &glob_zero_md;
+        }
+    }
+
+    int n_inputs() const override {
+        // Q, K, V, O, dO
+        return 5 + int(with_attn_mask()) + int(with_attn_scale());
+    }
+    int n_outputs() const override { return 3; } // dQ, dK, dV
+
+    const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
+    const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }
+    const memory_desc_t *diff_val_md() const { return &desc_.diff_v_desc; }
+
+
+protected:
+    sdpa_bwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+            const hint_class *hint_fwd_pd)
+        : sdpa_pd_t(adesc, attr, hint_fwd_pd) {printf("wat?\n");}
+
+    bool set_default_format(memory_desc_t *md) {
+        memory_desc_wrapper mdw(md);
+        if (mdw.format_any()) return false;
+
+        return true;
+    }
+
+    bool set_default_formats() {
+        bool ok = true;
+
+        for (auto md : {&desc_.q_desc, &desc_.k_desc, &desc_.v_desc,
+                     &desc_.dst_desc, &desc_.diff_dst_desc,
+                     &desc_.diff_q_desc, &desc_.diff_k_desc, &desc_.diff_v_desc}) {
+            ok = ok && set_default_format(md);
+        }
+
+        auto status = attr_.post_ops_.set_default_formats(&desc_.dst_desc);
+        ok = ok && (status == status::success);
+
+        return ok;
+    }
+
+};
+
 // NOLINTEND(google-default-arguments)
 
 } // namespace impl

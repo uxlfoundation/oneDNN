@@ -364,17 +364,300 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     return status::success;
 }
 
+status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+    printf("Bwdukernelconf\n");
+    using namespace jit;
+    using gemm::jit::convert_dnnl_to_kernel_type;
+
+    assert(engine->kind() == engine_kind::gpu);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *dev_info = intel_engine->device_info();
+    arch_ = dev_info->gpu_arch();
+    auto *d = desc();
+
+    VCHECK_SDPA_COND(compute::mayiuse_microkernels(intel_engine),
+            "Microkernels not supported by the OpenCL driver.");
+
+    /* Retrieve pre-tuned kernel configuration */
+    config_t *config = nullptr;
+    const dim_t thin_q_threshold = 16;
+    auto queries = d->queries();
+    if (queries == 1) { queries = (d->q_desc.dims[1] / d->kv_head_number); }
+
+    bool thin_q = (queries <= thin_q_threshold);
+    bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
+            || with_value_zp();
+    bool is_integrated = intel_engine->device_info()->is_integrated();
+    bool is_f32 = (qry_md()->data_type == data_type::f32);
+    use_systolic_ukernel_
+            = intel_engine->mayiuse(compute::device_ext_t::
+                              intel_subgroup_matrix_multiply_accumulate)
+            && !is_f32; // f32 -> non-systolic kernel only
+
+    bool use_fma_config = !use_systolic_ukernel_;
+    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
+            is_integrated, use_fma_config, is_f32);
+
+    if (!config) return status::unimplemented;
+
+    auto status = update_config_from_devenv_values(config, quantized);
+    if (status != status::success) return status;
+
+    VDEBUGINFO(4, primitive, sdpa,
+            "D=%d,K=%d,%s%s%s"
+            "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
+            "vs_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
+            static_cast<int>(d->head_size()), static_cast<int>(d->keys()),
+            thin_q ? "thin_q," : "", quantized ? "quant," : "",
+            is_integrated ? "integrated" : "",
+            config->unroll_m_kq * config->wg_m_kq,
+            config->unroll_n_kq * config->wg_n_kq, config->unroll_m_kq,
+            config->unroll_n_kq, config->wg_m_kq, config->wg_n_kq,
+            config->unroll_m_vs * config->wg_m_vs,
+            config->unroll_n_vs * config->wg_n_vs, config->unroll_m_vs,
+            config->unroll_n_vs, config->wg_m_vs, config->wg_n_vs);
+
+    VCHECK_SDPA_COND(config->unroll_n_kq * config->wg_n_kq
+                            == config->unroll_n_vs * config->wg_n_vs
+                    && config->unroll_n_kq % config->unroll_n_vs == 0,
+            "[CONFIG] The config KQ work_group tile N(%d) axis must equal "
+            "VS work_group tile N(%d) axis and KQ subgroup tile N(%d) axis "
+            "must be divisible by VS subgroup tile N(%d) axis",
+            config->unroll_n_kq * config->wg_n_kq,
+            config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
+            config->unroll_n_vs);
+
+    VCHECK_SDPA_COND(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
+            "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
+            "greater than or equal to head size(%ld)",
+            config->unroll_m_vs, config->wg_m_vs,
+            config->unroll_m_vs * config->wg_m_vs,
+            static_cast<long int>(d->head_size()));
+
+    // serializable minimal set of configuration params for ukernels
+    // will be used to generate shim ukernels in reusable kernel_ctx
+    micro_ukernel_params_t ukernel_params;
+    ukernel_params.unroll_m_kq = config->unroll_m_kq;
+    ukernel_params.unroll_n_kq = config->unroll_n_kq;
+    ukernel_params.unroll_m_vs = config->unroll_m_vs;
+    ukernel_params.unroll_n_vs = config->unroll_n_vs;
+    ukernel_params.wg_m_kq = config->wg_m_kq;
+    ukernel_params.wg_n_kq = config->wg_n_kq;
+    ukernel_params.wg_m_vs = config->wg_m_vs;
+    ukernel_params.wg_n_vs = config->wg_n_vs;
+
+    /* Get device information */
+    HWInformation hw_info;
+    hw_info.euCount = dev_info->eu_count();
+    hw_info.gmdid = dev_info->ip_version();
+    hw_info.systolicAvailable = use_systolic_ukernel_;
+
+    if (hw_info.gmdid == 0) return status::unimplemented;
+
+    ukernel_params.hwinfo = {hw_info};
+
+    sg_size_ = dev_info->min_subgroup_size();
+
+    auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
+        return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
+                                                           : MatrixLayout::N;
+    };
+
+    bool kq_common_scales = with_quantize_common(d->kq_scales);
+    bool kq_common_zp = with_quantize_common(d->kq_zero_points);
+
+    /* Set up GEMMProblem structure for first GEMM: K^T * Q */
+    GEMMProblem problem;
+    problem.Ta_ext = convert_dnnl_to_kernel_type(key_md()->data_type);
+    problem.Tb_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
+    if (qry_md()->data_type == data_type::f16) {
+        problem.Ta = problem.Tb = Type::f16;
+    } else if (qry_md()->data_type == data_type::bf16) {
+        problem.Ta = problem.Tb = Type::bf16;
+    } else if (qry_md()->data_type == data_type::f32) {
+        problem.Ta = problem.Tb = Type::f32;
+    } else {
+        VCHECK_SDPA_COND(utils::one_of(qry_md()->data_type, data_type::f16,
+                                 data_type::bf16),
+                "Q tensor's data type must be bf16 or f16");
+    }
+    problem.Tc = problem.Tc_ext = Type::f32;
+    problem.Ts = problem.Tc;
+
+    auto problem_kq = problem;
+    problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
+
+    if (with_key_scales() && !kq_common_scales) {
+        auto scale_dt = key_scales_dt();
+        problem_kq.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
+        problem_kq.A_scale.setAlignment(
+                int8_t(d->keys() * types::data_type_size(scale_dt)));
+        problem_kq.A_scale.layout = MatrixLayout::N;
+        const int matrix_scale = 2;
+        problem_kq.asPtrDims = matrix_scale;
+    }
+    if (with_key_zp()) {
+        auto zp_dt = key_zp_dt();
+        problem_kq.Tao = convert_dnnl_to_kernel_type(zp_dt);
+        problem_kq.AO.setAlignment(
+                int8_t(d->keys() * types::data_type_size(zp_dt)));
+        problem_kq.AO.layout = MatrixLayout::N;
+        problem_kq.aoPtrDims = kq_common_zp ? 0 : 2;
+        problem_kq.aOffset = ABOffset::Calc;
+    }
+
+    if (with_key_scales() || with_key_zp()) {
+        problem_kq.aqGroupM = 1;
+        problem_kq.aqGroupK
+                = (kq_common_scales || kq_common_zp) ? 1 : key_group_size();
+    }
+
+    problem_kq.B.layout = MatrixLayout::Pr;
+    problem_kq.C.layout = MatrixLayout::T;
+    const memory_desc_wrapper key_mdw(key_md());
+    auto ldk = static_cast<int>(
+            gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
+    problem_kq.A.setAlignment(alignmentForLD(ldk));
+    problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
+    if (use_systolic_ukernel()) {
+        problem_kq.B.crosspack = 2;
+        problem_kq.B.tileR = into<uint16_t>(d_max());
+        problem_kq.B.tileC = into<uint16_t>(sg_size_);
+    }
+
+    ukernel_params.problem_kq = {problem_kq};
+
+    /* Set up microkernel options */
+    micro::GEMMProtocol::Options opts_kq;
+    opts_kq.localB = true;
+    opts_kq.slmPtr = true;
+    opts_kq.scaleA = with_key_scales() && !kq_common_scales;
+    opts_kq.offsetA = with_key_zp();
+
+    ukernel_params.opts_kq = {opts_kq};
+
+    /* Set up problem size information */
+    SizeParams heuristic_sizes;
+    // quanatizing sizes to large intervals allows kernel
+    // selection search while avoiding recompilation for every new size
+    heuristic_sizes.m
+            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
+                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
+    // query size is only tuned to thin_q/non-thin_q cases
+    heuristic_sizes.n = (queries <= thin_q_threshold)
+            ? thin_q_threshold
+            : utils::rnd_up_pow2(queries);
+    heuristic_sizes.k
+            = d->head_size(); // baked into kernel regardless, no quantization
+    heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
+
+    ukernel_params.sizes_kq = {heuristic_sizes};
+
+    /* Set up GEMMProblem structure for second GEMM: V * S  */
+    auto problem_vs = std::move(problem);
+
+    bool vs_common_scales = with_quantize_common(d->vs_scales);
+    bool vs_common_zp = with_quantize_common(d->vs_zero_points);
+
+    problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md());
+    if (with_value_scales() && !vs_common_scales) {
+        auto scale_dt = value_scales_dt();
+        problem_vs.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
+        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
+                / value_group_size() * types::data_type_size(scale_dt)));
+        problem_vs.A_scale.layout = MatrixLayout::N;
+        const int matrix_scale = 2;
+        problem_vs.asPtrDims = matrix_scale;
+    }
+    if (with_value_zp()) {
+        auto zp_dt = value_zp_dt();
+        problem_vs.Tao = convert_dnnl_to_kernel_type(zp_dt);
+        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
+                * types::data_type_size(zp_dt)));
+        problem_vs.AO.layout = MatrixLayout::N;
+        problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;
+        problem_vs.aOffset = ABOffset::Calc;
+    }
+    if (with_value_scales() || with_value_zp()) {
+        problem_vs.aqGroupM = (vs_common_scales || vs_common_zp)
+                ? 1
+                : utils::rnd_up_pow2(value_group_size());
+        problem_vs.aqGroupK = 1;
+    }
+
+    problem_vs.B.layout = MatrixLayout::Pr;
+    problem_vs.C.layout = MatrixLayout::N;
+    const memory_desc_wrapper val_mdw(val_md());
+    auto ldv = static_cast<int>(
+            gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
+    problem_vs.A.setAlignment(alignmentForLD(ldv));
+    problem_vs.B.setAlignment(64); // S is packed in SLM
+    if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
+
+    ukernel_params.problem_vs = {problem_vs};
+
+    // directly tied to config, will recompile w/head size and config updates
+    // no need for interval quantization
+    heuristic_sizes.m = d->values();
+    const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
+    const int wg_tile_m = config->wg_m_kq * config->unroll_m_kq;
+    heuristic_sizes.n = wg_tile_n;
+    heuristic_sizes.k = wg_tile_m;
+
+    ukernel_params.sizes_vs = {heuristic_sizes};
+
+    /* Set up microkernel options */
+    micro::GEMMProtocol::Options opts_vs;
+    opts_vs.localB = true;
+    opts_vs.slmPtr = true;
+    opts_vs.scaleA = with_value_scales() && !vs_common_scales;
+    opts_vs.offsetA = with_value_zp();
+
+    ukernel_params.opts_vs = {opts_vs};
+
+    conf.ukernel_config = ukernel_params;
+
+    return status::success;
+}
+
 status_t micro_t::init(impl::engine_t *engine) {
+    printf("is_fwd?%d fk name?? %s \n", pd()->conf.is_fwd, pd()->conf.get_kernel_names()[0]);
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
+    //std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
+
+    //std::vector<compute::kernel_t> kernels;
+    //CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
+
+    //kernel_ = kernels[0];
     if (!kernel_) return status::runtime_error;
     return status::success;
 }
 
-status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
-    using namespace micro;
+status_t micro_bwd_t::init(impl::engine_t *engine) {
+    printf("iBWDDDDD\n");
+    //std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-    auto *pd = this;
+    //std::vector<compute::kernel_t> kernels;
+    //CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
+
+    //kernel_ = kernels[1];
+
+    printf("is_fwd?%d k name?? %s \n", pd()->conf.is_fwd, pd()->conf.get_kernel_names()[0]);
+    CHECK(create_kernel(
+             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
+    printf("iBWDDDDD\n");
+    if (!kernel_) return status::runtime_error;
+    printf("iBWDDDDD\n");
+    return status::success;
+}
+
+static status_t init_conf_common(micro_params_t &conf,
+        const sdpa_pd_t *pd, impl::engine_t *engine) {
+    using namespace micro;
+    using pd_t = sdpa_pd_t;
+
     auto *d = pd->desc();
 
     data_type_t data_t = pd->dst_md()->data_type;
@@ -408,9 +691,6 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     auto ldk = gemm_desc_t::get_ld(*pd->key_md()) * key_mdw.data_type_size();
     auto ldv = gemm_desc_t::get_ld(*pd->val_md()) * val_mdw.data_type_size();
     auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
-    auto ldmsk = pd->with_attn_mask()
-            ? msk_mdw.dims()[3] * msk_mdw.data_type_size()
-            : 0;
 
     conf.q_align = alignmentForLD(int(ldq));
     conf.k_align = alignmentForLD(int(ldk));
@@ -468,6 +748,27 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.with_attn_mask = (pd->with_attn_mask() && !pd->with_causal_mask());
     conf.broadcast_mask_q = (msk_mdw.dims()[pd_t::mask_q_index] == 1);
     conf.with_causal_mask = pd->with_causal_mask();
+
+    return status::success;
+
+}
+
+status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
+    CHECK(init_conf_common(conf, this, engine));
+
+    auto *pd = this;
+    auto *d = pd->desc();
+
+    const memory_desc_wrapper qry_mdw(pd->qry_md());
+    const memory_desc_wrapper val_mdw(pd->val_md());
+    const memory_desc_wrapper dst_mdw(pd->dst_md());
+    const memory_desc_wrapper msk_mdw(pd->attn_mask_md());
+
+    auto ldq = gemm_desc_t::get_ld(*pd->qry_md()) * qry_mdw.data_type_size();
+    auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
+    auto ldmsk = pd->with_attn_mask()
+            ? msk_mdw.dims()[3] * msk_mdw.data_type_size()
+            : 0;
 
     conf.subgroup_size = pd->sg_size();
     conf.d_max = pd->d_max();
@@ -527,6 +828,83 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
     conf.kq_f16_accumulate = (kq_acc_dt() == data_type::f16);
     conf.vs_f16_accumulate = (vs_acc_dt() == data_type::f16);
+    conf.is_fwd = pd->is_fwd();
+
+    return status::success;
+}
+
+status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+    printf("Bwdconf\n");
+    CHECK(init_conf_common(conf, this, engine));
+
+    auto *pd = this;
+    auto *d = pd->desc();
+
+    const memory_desc_wrapper qry_mdw(pd->qry_md());
+    const memory_desc_wrapper val_mdw(pd->val_md());
+    const memory_desc_wrapper dst_mdw(pd->dst_md());
+    const memory_desc_wrapper msk_mdw(pd->attn_mask_md());
+
+    auto ldq = gemm_desc_t::get_ld(*pd->qry_md()) * qry_mdw.data_type_size();
+    auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
+    auto ldmsk = pd->with_attn_mask()
+            ? msk_mdw.dims()[3] * msk_mdw.data_type_size()
+            : 0;
+
+    conf.subgroup_size = pd->sg_size();
+    conf.d_max = pd->d_max();
+
+    /* Set up microkernel strategy */
+    const config_t config = {conf.ukernel_config.unroll_m_kq,
+            conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
+            conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
+            conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
+            conf.ukernel_config.wg_n_vs};
+
+    const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
+    const int vs_wg_tile_m = config.wg_m_vs * config.unroll_m_vs;
+    int tile_k = kq_wg_tile_m;
+    int tile_v = vs_wg_tile_m;
+
+    bool d_full = (d->head_size() == pd->d_max());
+    bool v_full = (d->head_size() == tile_v);
+
+    conf.d_full = d_full;
+    conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
+
+    conf.block_q = conf.block_a = conf.block_msk = conf.block_2d_a = false;
+    if (d_full) {
+        conf.block_q = (ldq % 4 == 0);
+        conf.block_a = (lda % 4 == 0 && v_full);
+        conf.block_msk = (ldmsk % 4 == 0);
+    } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
+            && config.unroll_m_vs < 64) {
+        auto vbytes = d->values() * val_mdw.data_type_size();
+        if (lda % 16 == 0 && vbytes % 4 == 0) conf.block_2d_a = true;
+    }
+
+    if (pd->arch() >= compute::gpu_arch_t::xe_hpc) {
+        conf.prefetch_mask = true;
+        conf.prefetch_k0 = true;
+        conf.prefetch_k = true;
+        conf.prefetch_v = true;
+        bool no_rem = d_full && v_full && (d->keys() % tile_k == 0);
+        conf.prefetch_remainder = !no_rem;
+        conf.prefetch_d_max = nstl::min(pd->d_max(), 64);
+    } else {
+        conf.prefetch_mask = conf.prefetch_k0 = conf.prefetch_k
+                = conf.prefetch_v = conf.prefetch_remainder = false;
+        conf.prefetch_d_max = 0;
+    }
+
+    conf.q_arrive_await_barrier = (d->queries() > 1);
+    conf.softmax_inf_as_zero
+            = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
+    conf.use_systolic_ukernel = pd->use_systolic_ukernel();
+    conf.kq_f16_accumulate = false;
+    conf.vs_f16_accumulate = false;
+    conf.is_fwd = pd->is_fwd();
+
     return status::success;
 }
 
@@ -605,6 +983,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
+    kernel_ctx.define_int("IS_FWD", is_fwd);
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -683,11 +1062,12 @@ status_t micro_params_t::get_kernel_ctx(
 
     if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128)
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+    printf("heredone1027\n");
 
     return status::success;
 }
 
-status_t micro_t::execute(const exec_ctx_t &ctx) const {
+status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
@@ -792,9 +1172,130 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     }
     gws[2] *= pd()->dst_md()->dims[0];
 
+    printf("execFWD\n");
     auto nd_range = compute::nd_range_t(gws, lws);
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
+
+status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+    printf("BWD EXECUTE\n");
+    const auto &qry      = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
+    const auto &key      = CTX_IN_STORAGE(DNNL_ARG_KEYS);
+    const auto &val      = CTX_IN_STORAGE(DNNL_ARG_VALUES);
+    const auto &dst      = CTX_IN_STORAGE(DNNL_ARG_DST);
+    const auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
+    auto &diff_q = CTX_OUT_STORAGE(DNNL_ARG_DIFF_QUERIES);
+    auto &diff_k = CTX_OUT_STORAGE(DNNL_ARG_DIFF_KEYS);
+    auto &diff_v = CTX_OUT_STORAGE(DNNL_ARG_DIFF_VALUES);
+    const auto &scale     = CTX_IN_STORAGE(DNNL_ARG_SCALE);
+    const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
+
+    const dim_t Q = pd()->desc()->queries();
+    const dim_t K = pd()->desc()->keys();
+    const dim_t D = pd()->desc()->head_size();
+
+    const auto &conf = pd()->conf;
+
+    const config_t config = {conf.ukernel_config.unroll_m_kq,
+            conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
+            conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
+            conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
+            conf.ukernel_config.wg_n_vs};
+
+    const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
+    const int kq_wg_tile_n = config.wg_n_kq * config.unroll_n_kq;
+
+    auto wg_tile_q = kq_wg_tile_n;
+    auto sg_per_wg = config.wg_m_kq * config.wg_n_kq;
+
+    const memory_desc_wrapper qry_mdw(pd()->qry_md());
+    const memory_desc_wrapper key_mdw(pd()->key_md());
+    const memory_desc_wrapper val_mdw(pd()->val_md());
+    const memory_desc_wrapper dst_mdw(pd()->dst_md());
+    const memory_desc_wrapper msk_mdw(pd()->attn_mask_md());
+    const memory_desc_wrapper diff_dst_mdw(pd()->diff_dst_md());
+    const memory_desc_wrapper diff_qry_mdw(pd()->diff_qry_md());
+    const memory_desc_wrapper diff_key_mdw(pd()->diff_key_md());
+    const memory_desc_wrapper diff_val_mdw(pd()->diff_val_md());
+    using offset_t = decltype(offsets_t().src_off);
+
+    offset_t qry_off, key_off, val_off, dst_off, msk_off;
+    // offset_t diff_dst_off, diff_qry_off, diff_key_off, diff_val_off;
+
+    set_offsets(qry_mdw, qry_off);
+    set_offsets(key_mdw, key_off);
+    set_offsets(val_mdw, val_off);
+    set_offsets(dst_mdw, dst_off);
+
+    // gradient versions should match batches exactly?
+    //set_offsets(diff_dst_mdw, diff_dst_off);
+    //set_offsets(diff_qry_mdw, diff_qry_off);
+    //set_offsets(diff_key_mdw, diff_key_off);
+    //set_offsets(diff_val_mdw, diff_val_off);
+    //set_offsets(msk_mdw, msk_off);
+
+    auto append_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+                  compute::int64x4_t dims4
+                          = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
+                  compute::int64x4_t strides4
+                          = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
+                  arg_list.append(dims4);
+                  arg_list.append(strides4);
+              };
+
+    int mask_type = static_cast<int>(pd()->desc()->mask_type);
+    compute::kernel_arg_list_t arg_list;
+    arg_list.append(key);
+    arg_list.append(qry);
+    arg_list.append(val);
+    arg_list.append(dst);
+    arg_list.append(diff_dst);
+    arg_list.append(diff_k);
+    arg_list.append(diff_q);
+    arg_list.append(diff_v);
+    arg_list.append(scale);
+    arg_list.append((int)D);
+    arg_list.append((int)K);
+    arg_list.append((int)Q);
+    arg_list.append(mask_type);
+    if (pd()->with_attn_mask()) arg_list.append(attn_mask);
+
+    append_offs(arg_list, key_off);
+    append_offs(arg_list, qry_off);
+    append_offs(arg_list, val_off);
+    append_offs(arg_list, dst_off);
+
+    // append_offs(arg_list, diff_dst_off);
+    // append_offs(arg_list, diff_key_off);
+    // append_offs(arg_list, diff_qry_off);
+    // append_offs(arg_list, diff_val_off);
+
+    if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
+    const int remainder_k = (K % kq_wg_tile_m) != 0;
+
+    auto *d = pd()->desc();
+    const bool d_full = (d->head_size() == pd()->d_max());
+    const int remainder_q = d_full && ((Q % kq_wg_tile_n) != 0);
+
+    arg_list.append(remainder_k);
+    arg_list.append(remainder_q);
+
+    compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
+    compute::range_t gws = lws;
+
+    gws[0] *= utils::div_up(Q, wg_tile_q);
+    gws[1] *= pd()->dst_md()->dims[1];
+    gws[2] *= pd()->dst_md()->dims[0];
+
+    auto nd_range = compute::nd_range_t(gws, lws);
+    return parallel_for(ctx, nd_range, kernel_, arg_list);
+
+    return status::success;
+}
+
+//TODO init conf  mmonf commonddd
+//th fwd and bwd
 
 } // namespace sdpa
 } // namespace intel

@@ -33,6 +33,11 @@ namespace impl {
 #define DNNL_ARG_VALUES DNNL_ARG_SRC_2
 #define DNNL_ARG_ATTN_MASK DNNL_ARG_SHIFT
 
+#define DNNL_ARG_DIFF_QUERIES DNNL_ARG_DIFF_SRC_0
+#define DNNL_ARG_DIFF_KEYS DNNL_ARG_DIFF_SRC_1
+#define DNNL_ARG_DIFF_VALUES DNNL_ARG_DIFF_SRC_2
+//TODO: ARG_DIFF_ATTN_MASK?
+
 // NOLINTBEGIN(modernize-use-using)
 /// Types of attention mask
 typedef enum {
@@ -66,6 +71,8 @@ struct sdpa_desc_t : public op_desc_t {
         return utils::make_unique<sdpa_desc_t>(*this);
     }
 
+    prop_kind_t prop_kind {};
+
     memory_desc_t q_desc; /* queries */
     memory_desc_t k_desc; /* keys */
     memory_desc_t v_desc; /* values */
@@ -78,6 +85,10 @@ struct sdpa_desc_t : public op_desc_t {
     quant_entry_t vs_zero_points;
 
     memory_desc_t dst_desc;
+    memory_desc_t diff_dst_desc;
+    memory_desc_t diff_q_desc;
+    memory_desc_t diff_k_desc;
+    memory_desc_t diff_v_desc;
     memory_desc_t attn_mask_desc;
     data_type_t scale_dt {};
     data_type_t kq_acc_dt {};

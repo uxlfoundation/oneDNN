@@ -144,6 +144,21 @@ const expr_t &local_id(int idx);
 const std::array<expr_t, 3> &local_sizes();
 const expr_t &local_size(int idx);
 
+class declaration_t {
+public:
+    declaration_t(const std::string &name, type_t type)
+        : var_(var_t::make(type, name)) {};
+    explicit declaration_t(expr_t var) : var_(std::move(var)) {}
+    const expr_t &expr() const { return var_; }
+
+private:
+    expr_t var_;
+};
+
+declaration_t declare(const std::string &name, type_t type);
+declaration_t declare(const std::string &name, const layout_t &layout,
+        bool is_mutable = false);
+
 class lval_t {
 public:
     lval_t() = default;
@@ -193,6 +208,8 @@ expr_t arg(const std::string &name, bool allow_empty = false);
 // 2. def(name, type)
 // 3. def(name, value)
 // name goes first in all three for consistency.
+lval_t def(const declaration_t &d, const expr_t &value = {},
+        bool force_alloc = false);
 lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(
@@ -200,6 +217,7 @@ lval_t def(
 lval_t def(const std::string &name, const expr_t &value);
 tensor_t def(const layout_t &layout, const std::string &name,
         const expr_t &value = {});
+expr_t let(const declaration_t &d, const expr_t &value);
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
 tensor_t def_slm(layout_t layout, const std::string &name);

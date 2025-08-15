@@ -137,6 +137,7 @@ policy_t attr_t::str2policy(const std::string &str) {
 #define CASE(_plc) \
     if (s.compare(STRINGIFY(_plc)) == 0) return _plc
     CASE(COMMON);
+    CASE(HOST_SCALAR);
     CASE(PER_OC);
     CASE(PER_OCIC);
     CASE(PER_DIM_0);
@@ -152,6 +153,7 @@ policy_t attr_t::str2policy(const std::string &str) {
 
 const char *attr_t::policy2str(policy_t policy) {
     if (policy == COMMON) return "common";
+    if (policy == HOST_SCALAR) return "host_scalar";
     if (policy == PER_OC) return "per_oc";
     if (policy == PER_OCIC) return "per_ocic";
     if (policy == PER_DIM_0) return "per_dim_0";
@@ -190,12 +192,17 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
         case COMMON: return 0;
+        case HOST_SCALAR: return INT_MIN >> 1; // shouldn't rely on mask
         default: SAFE(FAIL, CRIT); return 0;
     }
 }
 
 int attr_t::policy2mask(int arg, policy_t policy, int ndims,
         dnnl_primitive_kind_t prim_kind, bool has_groups) {
+
+    if (policy == policy_t::HOST_SCALAR) { // shortcut
+        return attr_t::get_default_mask(policy, ndims);
+    }
 
     // Handle of weights mask for various primitives.
     if (prim_kind == dnnl_convolution || prim_kind == dnnl_deconvolution
@@ -286,7 +293,7 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process scale value for COMMON policy
-    if (this->policy == COMMON) {
+    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
         SAFE(parse_value_and_runtime(
                      this->scale, parser::get_substr(s, start_pos, ':')),
                 WARN);
@@ -353,7 +360,7 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
-    if (this->policy == COMMON) {
+    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
         float value = 0.0f;
         SAFE(parse_value_and_runtime(
                      value, parser::get_substr(s, start_pos, ':')),
@@ -685,7 +692,9 @@ std::ostream &operator<<(
     using ::operator<<;
 
     s << scale.policy;
-    if (scale.policy == policy_t::COMMON) s << ":" << scale.scale;
+    if (scale.policy == policy_t::COMMON
+            || scale.policy == policy_t::HOST_SCALAR)
+        s << ":" << scale.scale;
     if (scale.dt != dnnl_f32 || !scale.groups.empty()) s << ':' << scale.dt;
     if (!scale.groups.empty()) s << ":" << dims2str(scale.groups);
     return s;
@@ -699,7 +708,8 @@ std::ostream &operator<<(
     for (const auto &point : zero_points.points) {
         s << delim;
         s << arg2str(point.first) << ":" << point.second.policy;
-        if (point.second.policy == policy_t::COMMON)
+        if (point.second.policy == policy_t::COMMON
+                || point.second.policy == policy_t::HOST_SCALAR)
             s << ":" << point.second.value;
         if (point.second.dt != dnnl_s32 || !point.second.groups.empty())
             s << ':' << point.second.dt;
@@ -1140,6 +1150,13 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (as.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
+            if (e.policy == policy_t::HOST_SCALAR) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_scales_v2(dnnl_attr,
+                        arg_name, 0 /* mask */, 0 /* ndims */, nullptr, e.dt,
+                        true /* is_on_host = true */));
+                continue;
+            }
+
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask = attr_args.get_mask(DNNL_ARG_ATTR_SCALES | arg_name);
             // If it's non-default, use it, otherwise, deduce it.
@@ -1159,6 +1176,15 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (zp.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
+
+            if (e.policy == policy_t::HOST_SCALAR) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_zero_points_v2(dnnl_attr,
+                        arg_name, 0 /* mask */, 0 /* ndims */, nullptr, e.dt,
+                        true /* is_on_host = true*/));
+
+                continue;
+            }
+
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask
                     = attr_args.get_mask(DNNL_ARG_ATTR_ZERO_POINTS | arg_name);

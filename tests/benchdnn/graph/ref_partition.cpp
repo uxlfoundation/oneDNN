@@ -88,19 +88,6 @@ int ref_partition_t::init_ref(
 
         SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
 
-        // Softmax with stats is a special case, where primitive creation
-        // is failed and returns SKIPPED state, but it still can be executed
-        // with a reference primitive later. So in this case we ignore the
-        // SKIPPED state and continue the rest part.
-        // TODO: try to make a general logic when to reset the state.
-        bool reuse_driver_for_ref_compute = (par_op_ref.get().kind_ == "SoftMax"
-                && par_op_ref.get().out_lts_.size() == 2);
-        if (reuse_driver_for_ref_compute && res->state == SKIPPED) {
-            // reset res to avoid a skipped state from init_prim() to affect the rest part.
-            res->state = UNTESTED;
-            res->reason.clear();
-        }
-
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory
         // for correctness check.
@@ -142,9 +129,10 @@ int ref_partition_t::init_ref(
         // reference would diverge from the values passed to the Graph API.
         SAFE(ref_prim->displace_scales(), WARN);
 
-        // Initialze the rest ops if current status is UNTESTED or EXECUTED
+        // Initialze the rest ops if current status is UNTESTED or EXECUTED or DEFERRED.
         // otherwise there is no need to init memory for the rest ops.
-        if (res->state != UNTESTED && res->state != EXECUTED) {
+        if (res->state != UNTESTED && res->state != EXECUTED
+                && res->state != DEFERRED) {
             // But for perf mode, when the tensors in the current op is not
             // the graph in/out, continue, otherwise return.
             if (has_bench_mode_bit(mode_bit_t::perf)) {
@@ -159,22 +147,6 @@ int ref_partition_t::init_ref(
             } else {
                 return FAIL;
             }
-        }
-    }
-
-    // displace data if needed, with topo order
-    for (const auto &par_op_ref : partition_ops_ref_) {
-        for (size_t i = 0; i < par_op_ref.get().in_lts_.size(); i++) {
-            size_t lt_id = par_op_ref.get().in_lts_[i].id_;
-            if (lt_id_2_mems_.find(lt_id) == lt_id_2_mems_.end()) continue;
-            if (data_displacer.get_filling_type(lt_id)
-                    == filling_type_t::softmax_stats) {
-                res_t temp_res;
-                exec_ops(&temp_res);
-            }
-            const dnn_mem_t &mem = lt_id_2_mems_.at(lt_id);
-            SAFE_V(data_displacer.displace_input_data(
-                    lt_id, const_cast<dnn_mem_t &>(mem), lt_id_2_mems_, res));
         }
     }
 
@@ -236,6 +208,13 @@ void ref_partition_t::exec_ops(res_t *res) {
 
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
+        // displace data if needed, before executing the ref_prim
+        for (size_t i = 0; i < op.in_lts_.size(); i++) {
+            size_t lt_id = op.in_lts_[i].id_;
+            SAFE_V(data_displacer.displace_input_data(
+                    lt_id, lt_id_2_mems_, res));
+        }
+
         auto ref_prim = ref_prims_.at(op.id_);
         // check if the condition input of Select op is from the parent op.
         bool select_op_cond_has_parent

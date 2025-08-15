@@ -324,7 +324,7 @@ int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
 
             // Check driver specific cases of unimplemented functionality.
             skip_unimplemented_prb(prb, res);
-            if (res->state == SKIPPED) return OK;
+            if (res->state == SKIPPED || res->state == DEFERRED) return OK;
 
             // If the case is not known to be skipped, it is unimplemented.
             res->state = UNIMPLEMENTED;
@@ -412,6 +412,7 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
 
     SAFE(check_dnnl_status(status, prb, res), WARN);
     if (res->state == SKIPPED) return OK;
+    if (is_graph_ref && res->state == DEFERRED) return OK;
 
     // Fetch also checks if user requested to skip certain implementations.
     SAFE(fetch_impl(pdw, init_pd_args, prb->impl_filter, res, is_service_prim),

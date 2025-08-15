@@ -636,9 +636,6 @@ int doit(const prb_t *prb, res_t *res) {
         SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
         if (res->state == SKIPPED) return OK;
 
-        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
-        if (res->state == SKIPPED) return OK;
-
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // correctness mode, run ref partition
             if (res->state == UNTESTED || res->state == EXECUTED) {
@@ -651,6 +648,9 @@ int doit(const prb_t *prb, res_t *res) {
                 return FAIL;
             }
         }
+
+        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
+        if (res->state == SKIPPED) return OK;
 
         // unmap memory from host to device
         SAFE(map_unmap_partition_mem(

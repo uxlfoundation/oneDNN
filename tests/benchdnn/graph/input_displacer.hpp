@@ -61,9 +61,7 @@ public:
     partition_data_displacer_t() = default;
     partition_data_displacer_t(
             const deserialized_graph_t &dg, const dnnl::graph::partition &par);
-    // TODO: some arguments of displace_input_data() are redundant
-    // and can be removed in the future.
-    int displace_input_data(size_t lt_id, dnn_mem_t &mem,
+    int displace_input_data(size_t lt_id,
             const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
             res_t *res);
     filling_type_t get_filling_type(size_t lt_id) const {

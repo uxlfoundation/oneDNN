@@ -1420,6 +1420,7 @@ public:
     GRFDisp(const GRF &base_, int32_t disp_) : base(base_), disp(disp_) {}
 
     /* implicit */ GRFDisp(const RegData &rd) : disp(0) {
+        if (rd.isNull()) return;
         switch (rd.getRegFile()) {
             case RegFileGRF: base = reinterpret_cast<const GRF &>(rd); return;
             default: break;

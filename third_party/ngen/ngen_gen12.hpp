@@ -1123,9 +1123,7 @@ bool Instruction12::getSendDesc(MessageDescriptor &desc) const
 
 int Instruction12::getFencedepJIP() const
 {
-    uint32_t imm = 0;
-    (void) getImm32(imm);
-    return int32_t(imm) / sizeof(Instruction12);
+    return int32_t(imm32.value) / sizeof(Instruction12);
 }
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const

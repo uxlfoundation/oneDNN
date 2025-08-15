@@ -18,41 +18,46 @@ in comparison to fp32.
 | s4/u4     | signed/unsigned 4-bit integer                                                                                                                                                           |
 | s32       | signed/unsigned 32-bit integer                                                                                                                                                          |
 | f64       | [IEEE double precision floating-point](https://en.wikipedia.org/wiki/Double-precision_floating-point_format#IEEE_754_double-precision_binary_floating-point_format:_binary64)           |
-| boolean   | bool (size is C++ implementation defined)                                                                                                                                               |
 | f8\_e5m2  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 5 exponent and 2 mantissa bits |
 | f8\_e4m3  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 4 exponent and 3 mantissa bits |
 | e8m0      | [MX standard 8-bit scaling type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)                                                                 |
 | f4\_e2m1  | [MX standard 4-bit floating-point](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2 exponent and 1 mantissa bits                           |
 | f4\_e3m0  | 4-bit floating-point with 3 exponent bits and no mantissa bit                                                                                                                           |
 
-
 ## Inference and Training
 
 oneDNN supports training and inference with the following data types:
 
-| Usage mode | CPU                                                                          | GPU                                                                              |
-|:-----------|:-----------------------------------------------------------------------------|:---------------------------------------------------------------------------------|
-| Inference  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, boolean  | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f4\_e2m1/f4\_e3m0, s8/u8, s4/u4, f64, boolean |
-| Training   | f32, bf16, f16, f8\_e5m2/f8\_e4m3                                            | f32, bf16, f16, f8\_e5m2/f8\_e4m3, f64                                           |
+| Data type | Inference | Training |
+| :-------- | :-------: | :------: |
+| f64       | `+`(1)    | `+`(1)   |
+| f32       | `+`       | `+`      |
+| bf16      | `+`       | `+`      |
+| f16       | `+`       | `+`      |
+| f8\_e5m2  | `+`       | `+`      |
+| f8\_e4m3  | `+`       | `+`      |
+| s8        | `+`       |          |
+| u8        | `+`       |          |
+| f4\_e2m1  | `+`       |          |
+| f4\_e3m0  |           |          |
+| s4        | `+`(2)    |          |
+| u4        | `+`(2)    |          |
+
+Footnotes:
+1. f64 support is limited to matmul, convolution, reorder, layer normalization, and
+   pooling primitives on Intel GPUs.
+2. s4/u4 data types are only supported as a storage data type for weights argument
+   in case of weights decompression. For more details, refer to
+   [Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
+
+@note
+    Data type support may also be limited by hardware capabilities. Refer to
+    [Hardware Limitations](@ref data_types_hardware_limitations) section below
+    for details.
 
 @note
     Using lower precision arithmetic may require changes in the deep learning
     model implementation.
-
-@note
-    f64 is supported only for matmul, convolution, reorder, layer normalization, and
-    pooling primitives on the GPU engine.
-
-@note
-    s4/u4 data types are only supported as a storage data type for weights argument
-    in case of weights decompression. For more details, refer to
-    [Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
-
-@note
-    f8\_e5m2/f8\_e4m3 and f4\_e2m1/f4\_e3m0 data types are only supported by
-    convolution, matmul, and reorder primitives on Intel(R) Data Center GPU
-    Max Series or newer. Compute primitives provide support through internal
-    converison into f16 as current GPU architectures lack native support.
 
 See topics for the corresponding data types details:
  * @ref dev_guide_inference_int8
@@ -146,6 +151,7 @@ oneDNN also exposes non-standard stochastic rounding through the
 `rounding_mode` primitive attribute. More details on this attribute
 can be found in @ref dev_guide_attributes_rounding_mode.
 
+@anchor data_types_hardware_limitations
 ## Hardware Limitations
 
 While all the platforms oneDNN supports have hardware acceleration for
@@ -158,93 +164,82 @@ Processor Graphics and Xe Architecture graphics.
 ### Intel(R) Architecture Processors
 
 oneDNN performance optimizations for Intel Architecture Processors are
-specialized based on Instruction Set Architecture (ISA).
-The following ISA have specialized optimizations in the library:
-* Intel Streaming SIMD Extensions 4.1 (Intel SSE4.1)
-* Intel Advanced Vector Extensions (Intel AVX)
-* Intel Advanced Vector Extensions 2 (Intel AVX2)
-* Intel Advanced Vector Extensions 512 (Intel AVX-512)
-* Intel Deep Learning Boost (Intel DL Boost)
-* Intel Advanced Matrix Extensions (Intel AMX)
+specialized based on Instruction Set Architecture (ISA). The following
+table indicates data types support for every supported ISA:
 
-The following table indicates the minimal supported ISA for each of the data
-types that oneDNN recognizes.
-| Data type          | Minimal supported ISA                |
-|:-------------------|:-------------------------------------|
-| f32                | Intel SSE4.1                         |
-| s8, u8             | Intel AVX2                           |
-| bf16               | Intel DL Boost with bfloat16 support |
-| f16                | Intel AVX512-FP16                    |
-| boolean            | Intel AVX2                           |
-| f8\_e5m2, f8\_e4m3 | Intel AVX512-FP16                    |
-| f4\_e2m1, f4\_e3m0 | TBA                                  |
+| ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | f8      | f4_e2m1 | s4/u4   |
+| ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
+| Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |
+| Intel AVX                                            |         | `+`     |         |         |         |         |         |         |
+| Intel AVX2                                           |         | `+`     |         |         | `+`(1)  |         |         |         |
+| Intel AVX2 with Intel DL Boost (int8)                |         | `+`     |         |         | `+`     |         |         |         |
+| Intel AVX-512                                        |         | `+`     | `.`(2)  |         | `+`(1)  |         |         |         |
+| Intel AVX-512 with Intel DL Boost (int8)             |         | `+`     | `.`(2)  |         | `+`     |         |         |         |
+| Intel AVX-512 with Intel DL Boost (int8, bf16)       |         | `+`     | `+`     |         | `+`     |         |         |         |
+| Intel AVX2 with Intel DL Boost (int8) and NE_CONVERT |         | `+`     | `.`     | `.`     | `+`     |         |         |         |
+| Intel AVX10.1/512 with Intel AMX (int8, bf16)        |         | `+`     | `+`     | `.`(3)  | `+`     |         |         | `.`     |
+| Intel AVX10.1/512 with Intel AMX (int8, bf16, f16)   |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
+| Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
+| Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
 
-@note
-  See @ref dev_guide_int8_computations in the Developer Guide for additional
-  limitations related to int8 arithmetic.
+Legend:
+* `+` indicates oneDNN uses hardware-native compute support for this data type.
+* `.` indicates oneDNN supports this data type via conversion to a higher precision data type.
 
-@note
-  The library has functional bfloat16 support on processors with
-  Intel AVX-512 Byte and Word Instructions (AVX512BW) support for validation
-  purposes. The performance of bfloat16 primitives on platforms without
-  hardware acceleration for bfloat16 is 3-4x lower in comparison to
-  the same operations on the fp32 data type.
-
-@note
-  The Intel AMX instructions ignore the floating-point environment
-  flag and always round to nearest tie-even and flush denormals to
-  zero.
-
-@note
-  f64 configuration is not available for the CPU engine.
-
-@note
-  The current f16 CPU instructions accumulate to f16. To avoid overflow, the f16
-  primitives might up-convert the data to f32 before performing math operations.
-  This can lead to scenarios where a f16 primitive may perform slower than
-  similar f32 primitive.
+Footnotes:
+1. See @ref dev_guide_int8_computations in the Developer Guide for additional
+   limitations related to int8 arithmetic.
+2. The library has functional bfloat16 support on processors with
+   Intel AVX-512 Byte and Word Instructions (AVX512BW) support for validation
+   purposes. The performance of bfloat16 primitives on platforms without
+   hardware acceleration for bfloat16 is 3-4x lower in comparison to
+   the same operations on the fp32 data type.
+3. Intel AVX-512 f16 instructions accumulate to f16. To avoid overflow, the f16
+   primitives might up-convert the data to f32 before performing math operations.
+   This can lead to scenarios where a f16 primitive may perform slower than
+   similar f32 primitive.
 
 ### Intel(R) Processor Graphics and Xe Architecture graphics
 oneDNN performance optimizations for Intel Processor graphics and
 Xe Architecture graphics are specialized based on device microarchitecture (uArch).
-The following uArchs and associated devices have specialized optimizations in the 
+The following uArchs and associated devices have specialized optimizations in the
 library:
- * Xe-LP (accelerated u8, s8 support via DP4A)
-   * Intel(R) UHD Graphics for 11th-14th Gen Intel(R) Processors
-   * Intel(R) Iris(R) Xe Graphics
-   * Intel(R) Iris(R) Xe MAX Graphics (formerly DG1)
- * Xe-HPG (accelerated f16, bf16, u8, and s8 support via Intel(R) Xe Matrix Extensions (Intel(R) XMX), aka DPAS)
-   * Intel(R) Arc(TM) Graphics (formerly Achemist)
-   * Intel(R) Data Center GPU Flex Series (formerly Arctic Sound)
- * Xe-HPC (accelerated f16, bf16, u8, and s8 support via DPAS and f64 support via MAD)
-   * Intel(R) Data Center GPU Max Series (formerly Ponte Vecchio)
+ * Xe-LP
+   * Intel UHD Graphics for 11th-14th Gen Intel(R) Processors
+   * Intel Iris Xe Graphics
+   * Intel Iris Xe MAX Graphics (formerly DG1)
+ * Xe-LPG
+   * Intel Graphics for Intel Core Ultra processors (formerly Meteor Lake)
+ * Xe-HPG
+   * Intel Arc Graphics (formerly Achemist)
+   * Intel Data Center GPU Flex Series (formerly Arctic Sound)
+ * Xe-HPC
+   * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
  * Xe2-LPG
-   * Intel(R) Graphics for Intel(R) Core(TM) Ultra processors (Series 2) (formerly Lunar Lake)
+   * Intel Graphics for Intel Core Ultra processors (Series 2) (formerly Lunar Lake)
  * Xe2-HPG
-   * Intel(R) Arc(TM) B-Series Graphics (formerly Battlemage)
+   * Intel Arc B-Series Graphics (formerly Battlemage)
+ * Xe3-LPG
+   * Intel Arc graphics for future Intel Core Ultra processors (code name Panther Lake)
 
-The following table indicates the data types with performant compute primitives
-for each uArch supported by oneDNN. Unless otherwise noted, all data types have 
-reference support on all architectures.
+The following table indicates the data types support for each uArch supported by oneDNN.
 
-| uArch   | Supported Data types                                                |
-|:--------|:--------------------------------------------------------------------|
-| Xe-LP   | f32, f16, s8, u8                                                    |
-| Xe-HPG  | f32, f16, bf16, s8, u8                                              |
-| Xe-HPC  | f64, f32, bf16, f16, s8, u8                                         |
-| Xe2-LPG | f64, f32, bf16, f16, s8, u8                                         |
-| Xe2-HPG | f64, f32, bf16, f16, s8, u8                                         |
-| TBA     | f64, f32, bf16, f16, s8, u8, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0 |
+| ISA      | f64     | f32     | bf16    | f16     | s8/u8   | f8      | f4_e2m1 | s4/u4   |
+| -------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
+| Xe-LP    |         | `+`     | `.`     | `+`(1)  | `+`     |         |         |         |
+| Xe-LPG   |         | `+`     | `.`     | `+`(1)  | `+`     |         |         |         |
+| Xe-HPG   |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
+| Xe-HPC   | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
+| Xe2-LPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
+| Xe2-HPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
+| Xe3-LPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
 
+Legend:
+* `+` indicates oneDNN uses hardware-native compute support for this data type.
+* `.` indicates oneDNN supports this data type via conversion to a higher precision data type.
 
-@note
-  f64 configurations are only supported on GPU engines with HW capability for
-  double-precision floating-point.
-
-@note
-  f8\_e5m2 and f8\_e4m3 compute operations have limited performance through upconversion on
-  Xe-HPC and Xe2 GPUs.
-
-@note
-  f16 operations may be faster with f16 accumulation on GPU architectures older
-  than Xe-HPC. Newer architectures accumulate to f32.
+Footnotes:
+1. Xe-LP architecture does not natively support f16 operations with f32
+   accumulation. Consider using
+   [relaxed accumulation mode](@ref dev_guide_attributes_accumulation_mode)
+   for the best performance results.

@@ -431,6 +431,15 @@ elseif(UNIX OR MINGW)
             # For native compilation tune for the host processor
             if (CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
                 append(DEF_ARCH_OPT_FLAGS "-mcpu=native")
+            else()
+                # The new GEMM/reorder implementation does not fully guard for
+                # instructions added in newer ISAs (Power9/10). This prevents
+                # oneDNN conda-forge packages from being built, since the conda-forge
+                # cross-compiler is set to Power8.
+                # This option has been added so that the linux_ppc64le conda-forge
+                # oneDNN release package builds successfully, and it needs to be
+                # removed once the GEMM/reorder implementation is fixed.
+                append(DEF_ARCH_OPT_FLAGS "-mcpu=power10 -mmma")
             endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "S390X")
             if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")

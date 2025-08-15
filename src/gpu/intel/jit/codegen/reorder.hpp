@@ -198,7 +198,10 @@ struct reorder_operand_t {
     layout_t layout;
     copy_operand_t buffer;
 
-    const type_t &type() const { return layout.type(); }
+    type_t type() const {
+        return buffer.range == ngen::DataType::invalid ? layout.type()
+                                                       : to_ir(buffer.range);
+    }
     bool operator==(const reorder_operand_t &other) const {
         return layout == other.layout && buffer == other.buffer;
     }
@@ -331,9 +334,9 @@ public:
 
     template <typename GeneratorT>
     void emit(GeneratorT *host, ngen_register_scope_t &scope,
-            const reg_buf_data_t &src, const reg_buf_data_t &dst) {
+            const reg_buf_data_t &dst, const reg_buf_data_t &src) {
         copy_plan_t plan(scope, host->hw_info().systolic_support());
-        emit(plan, src, dst);
+        emit(plan, dst, src);
         plan.transform();
         plan.execute(*host);
     }
@@ -344,11 +347,12 @@ public:
 private:
     using op_init_t = std::function<copy_operand_t(int, ngen::DataType)>;
 
-    void emit(copy_plan_t &plan, const reorder_operand_t &dst,
+    void emit(copy_plan_t &plan, reorder_operand_t &dst,
             const reorder_operand_t &src) {
         if (src == dst) return;
-        if (try_emit_2d(plan, dst, src)) return;
-        emit_1d(plan, dst, src);
+        if (!try_emit_2d(plan, dst, src)) emit_1d(plan, dst, src);
+        if (is_subset(src.type(), dst.type()))
+            dst.buffer.range = src.buffer.type;
     }
 
     bool layouts_compatible(const layout_t &a, const layout_t &b) const;

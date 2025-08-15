@@ -135,8 +135,8 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
         return sum_ab();
     }
 
-    bool wei_zp_2d() const { return ao_dims_ == 2; }
-    bool src_zp_2d() const { return bo_dims_ == 2; }
+    bool wei_zp_2d() const { return ao_dims_ >= 2; }
+    bool src_zp_2d() const { return bo_dims_ >= 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 

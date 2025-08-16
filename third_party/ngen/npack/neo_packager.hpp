@@ -1,19 +1,3 @@
-/*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*******************************************************************************/
-
 #ifndef NGEN_NPACK_NEO_PACKAGER_HPP
 #define NGEN_NPACK_NEO_PACKAGER_HPP
 
@@ -227,7 +211,7 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::BMG;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::LNL;
-    if (family >= ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
@@ -307,14 +291,14 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             break;
         case 20:
             if (version.release <= 2)
-                outProduct.family = ngen::ProductFamily::BMG;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::BMG;
             else if (version.release == 4)
-                outProduct.family = ngen::ProductFamily::LNL;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::LNL;
             else
-                outProduct.family = ngen::ProductFamily::GenericXe2;
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe2;
             break;
-        case 30: outProduct.family = ngen::ProductFamily::GenericXe3; break;
-        default: outProduct.family = ngen::ProductFamily::Unknown; break;
+        case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
+        default: outProduct.family = NGEN_NAMESPACE::ProductFamily::Unknown; break;
     }
 
     if (outProduct.family != NGEN_NAMESPACE::ProductFamily::Unknown)

@@ -1,19 +1,3 @@
-/*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*******************************************************************************/
-
 #ifndef NGEN_EMULATION_HPP
 #define NGEN_EMULATION_HPP
 
@@ -572,6 +556,7 @@ struct EmulationImplementation {
         auto mulHiType = (s0Signed || s1Signed) ? DataType::d : DataType::ud;
 
         bool emulate64 = strategy.emulate64_mul;
+        bool emulateDWxDW = strategy.emulateDWxDW;
 
         if (s0Q) {
             if (!dstQ) stub();
@@ -648,7 +633,7 @@ struct EmulationImplementation {
             auto acc = g.acc0.d();
             g.mov(mod, acc, src1, loc);
             g.mul(mod, dst, acc, src0, loc);
-        } else if (dstQ && s0D && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
+        } else if (dstQ && s0D && (((s1W && !s1Immed) && emulateDWxDW) || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
@@ -661,6 +646,7 @@ struct EmulationImplementation {
                 g.mach(mod, dstLo, src0, int32_t(0), loc);
             g.mov(mod, dstHi, dstLo, loc);
             g.mov(mod, dstLo, acc, loc);
+
         } else if (dstD && s0D && s1D && strategy.emulateDWxDW) {
             int ne1 = GRF::bytes(g.getHardware()) >> 2;
 
@@ -743,10 +729,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstHi.getOffset())(dstHi.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);
@@ -787,10 +774,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstLo.getOffset())(dstLo.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);

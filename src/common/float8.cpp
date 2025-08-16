@@ -104,7 +104,7 @@ float8_e4m3_t &float8_e4m3_t::operator=(float16_t f) {
     // Note: values in [448;464] round to 448, which is representable
     // So we overflow above 464
     if (fraw > 0x5f40) {
-        raw_bits_ = s8 | 0x7f;
+        raw_bits_ = s8 | 0x7e;
         return *this;
     }
     // we filter out underflow when f <= 2^-10

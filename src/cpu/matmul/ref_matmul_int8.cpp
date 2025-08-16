@@ -54,6 +54,9 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    const int32_t *src_placeholder = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_PLACEHOLDER | DNNL_ARG_SRC);
+
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
@@ -84,7 +87,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
     const auto &src_zp_dt = attr_zps.get_data_type(DNNL_ARG_SRC);
     const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
-    const auto src_zp_ngroups_k = K / src_zp_group_k;
+    const auto src_zp_ngroups_k = src_zp_group_k > 1 ? K / src_zp_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_zp_md {};
     CHECK(attr_zps.get(DNNL_ARG_SRC).get_md(src_zp_md, *src_d.md_));
@@ -95,7 +98,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
-    const auto wei_zp_ngroups_k = K / wei_zp_group_k;
+    const auto wei_zp_ngroups_k = wei_zp_group_k > 1 ? K / wei_zp_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
     CHECK(attr_zps.get(DNNL_ARG_WEIGHTS).get_md(wei_zp_md, *weights_d.md_));
@@ -120,7 +123,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
-    const auto wei_scale_ngroups_k = K / wei_scale_group_k;
+    const auto wei_scale_ngroups_k
+            = wei_scale_group_k > 1 ? K / wei_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
@@ -130,16 +134,33 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
     const auto &src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
     const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, 1);
-    const auto src_scale_ngroups_k = K / src_scale_group_k;
+    const auto src_scale_ngroups_k
+            = src_scale_group_k > 1 ? K / src_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_SRC).get_md(src_scale_md, *src_d.md_));
+
+    // placeholder section
+    const auto &attr_placeholder = pd()->attr()->placeholder_;
+    const bool with_src_placeholder
+            = !attr_placeholder.has_default_values(DNNL_ARG_SRC);
+    const int src_placeholder_mask = attr_placeholder.get_mask(DNNL_ARG_SRC);
+    const auto &src_placeholder_dt
+            = attr_placeholder.get_data_type(DNNL_ARG_SRC);
+    const auto src_placeholder_group_k
+            = attr_placeholder.get_group(DNNL_ARG_SRC, 1);
+    const auto src_placeholder_ngroups_k
+            = src_placeholder_group_k > 1 ? K / src_placeholder_group_k : 1;
+    // Initialize a memory desc for quant entries for easier offset calculation.
+    memory_desc_t src_pl_md {};
+    CHECK(attr_placeholder.get(DNNL_ARG_SRC).get_md(src_pl_md, *src_d.md_));
 
     // For compute kernel, the minimal group is picked.
     const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);
     const auto scale_ngroups_k
             = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
-    const auto ngroups_k = std::max(zp_ngroups_k, scale_ngroups_k);
+    const auto ngroups_k = std::max(
+            std::max(zp_ngroups_k, scale_ngroups_k), src_placeholder_ngroups_k);
     const auto group_k = K / ngroups_k;
 
     // mm kernel
@@ -163,12 +184,14 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
         auto &wei_k_dim = weights_dims_idx[ndims - 2];
         for (dim_t i_group = 0; i_group < ngroups_k; i_group++) {
             int acc = 0;
+            int debug_s = 0;
             for (dim_t k = 0; k < group_k; ++k) {
                 src_k_dim = k + i_group * group_k;
                 wei_k_dim = k + i_group * group_k;
                 const auto src_off = src_d.off_v(src_dims_idx);
                 const auto weights_off = weights_d.off_v(weights_dims_idx);
                 int s = io::load_int_value(src_d.data_type(), src, src_off);
+                debug_s += s;
                 int w = io::load_int_value(
                         weights_d.data_type(), weights, weights_off);
                 if (with_src_zero_points) {
@@ -179,7 +202,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                             src_zp_dt, src_zero_points, src_zp_offset);
                     s -= src_zp;
                 }
-                if (with_wei_zero_points) {
+                if (with_wei_zero_points && !with_src_placeholder) {
                     const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
                             weights_dims_idx, ndims, wei_zp_mask,
                             wei_zp_group_k, wei_zp_group_n, wei_zp_md);
@@ -188,6 +211,25 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                     w -= wei_zp;
                 }
                 acc += s * w;
+            }
+
+            // Apply placeholder after the accumulation is done.
+            if (with_src_placeholder) {
+                const dim_t src_pl_offset = matmul_helper_t::get_quant_off(
+                        src_dims_idx, ndims, src_placeholder_mask, 1,
+                        src_placeholder_group_k, src_pl_md);
+                const auto src_pl = io::load_int_value(
+                        src_placeholder_dt, src_placeholder, src_pl_offset);
+
+                const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
+                        weights_dims_idx, ndims, wei_zp_mask, wei_zp_group_k,
+                        wei_zp_group_n, wei_zp_md);
+                const auto wei_zp = io::load_int_value(
+                        wei_zp_dt, wei_zero_points, wei_zp_offset);
+                if (debug_s != src_pl) {
+                    printf("debug_s=%d src_pl=%d\n", debug_s, src_pl);
+                }
+                acc -= src_pl * wei_zp;
             }
 
             // Apply scaling after computing a group.

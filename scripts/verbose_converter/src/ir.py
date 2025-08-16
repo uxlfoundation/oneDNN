@@ -325,6 +325,12 @@ class ZeroPoint(QuantizationParam):
     data_type: str = "s32"
 
 
+@dataclass(eq=False)
+class GroupSum(QuantizationParam):
+    value: int = 0
+    data_type: str = "s32"
+
+
 class CompositeAttribute:
     def __str__(self):
         raise NotImplementedError
@@ -372,6 +378,7 @@ class Attributes(FormattedMapping):
     scales: Optional[Dict[str, Scale]] = None
     scratchpad: Optional[str] = None
     zero_points: Optional[Dict[str, ZeroPoint]] = None
+    group_sums: Optional[Dict[str, GroupSum]] = None
 
     acc = alias("acc_mode")
 

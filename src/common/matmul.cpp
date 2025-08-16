@@ -58,7 +58,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             = utils::one_of(src_dt, data_type::s8, data_type::u8);
     const bool src_is_fp8
             = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points;
+    if (src_is_int8 || src_is_fp8)
+        attr_mask |= smask_t::zero_points | smask_t::placeholder;
 
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
@@ -274,6 +275,29 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1,
                                      src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+
+    if (!attr->placeholder_.has_default_values()) {
+        const auto &pl = attr->placeholder_;
+        const auto &zp = attr->zero_points_;
+
+        if (!pl.has_default_values(DNNL_ARG_SRC)) {
+            if (zp.get(DNNL_ARG_WEIGHTS).has_default_values()) {
+                VCHECK_MATMUL_UNIMPL(false, "WEI ZPs are not specified");
+            }
+            if (!zp.get(DNNL_ARG_SRC).has_default_values()) {
+                VCHECK_MATMUL_UNIMPL(
+                        false, "SRC ZPs are incompatible with SRC group sums");
+            }
+            const int placeholder_mask_src = pl.get_mask(DNNL_ARG_SRC);
+            const int zero_points_mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
+            VCHECK_MATMUL_UNIMPL(utils::one_of(zero_points_mask_wei,
+                                         placeholder_mask_src, 1 << n_idx, 0),
+                    "masks for placeholder and zero points are incompatible");
+        }
+
+        // TODO: Check dependency between placeholder and zero-points that groups are
+        // divisible.
     }
 
     // Check post-ops

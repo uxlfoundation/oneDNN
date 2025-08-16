@@ -100,9 +100,10 @@ static const std::map<int, std::vector<const char *>> supported_args {
 };
 
 int str2arg(const std::string &str) {
-    for (const auto &arg : supported_args)
-        for (const auto &s : arg.second)
-            if (str.compare(s) == 0) return arg.first;
+    for_(const auto &arg : supported_args)
+    for (const auto &s : arg.second)
+        if (str.compare(s) == 0) return arg.first;
+
     // multiple srcs
     std::string msrc = "msrc";
     if (str.compare(0, msrc.size(), msrc) == 0) {
@@ -405,6 +406,74 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     return OK;
 }
 
+int attr_t::placeholder_t::entry_t::from_str(const std::string &s) {
+    *this = placeholder_t::entry_t();
+    if (s.empty()) return OK;
+
+    size_t start_pos = 0;
+
+    // process policy
+    const auto policy_str = parser::get_substr(s, start_pos, ':');
+    this->policy = str2policy(policy_str);
+    if (this->policy == POLICY_TOTAL) {
+        BENCHDNN_PRINT(0, "Error: policy \'%s\' was not recognized.\n",
+                policy_str.c_str());
+        SAFE_V(FAIL);
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    if (this->policy == COMMON) {
+        float value = 0.0f;
+        SAFE(parse_value_and_runtime(
+                     value, parser::get_substr(s, start_pos, ':')),
+                WARN);
+        int zp_val = static_cast<int>(value);
+        if (static_cast<float>(zp_val) != value) {
+            BENCHDNN_PRINT(0, "%s \'%d\'\n",
+                    "Error: the zero point is not exact:", zp_val);
+            SAFE_V(FAIL);
+        }
+        this->value = zp_val;
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    // process data type
+    const auto dt_str = parser::get_substr(s, start_pos, ':');
+    this->dt = str2dt(dt_str.c_str());
+    if (this->dt == dnnl_data_type_undef) {
+        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
+                dt_str.c_str());
+        SAFE_V(FAIL);
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    // process groups
+    const auto g_str = parser::get_substr(s, start_pos, ':');
+    parser::parse_vector_str(this->groups, dims_t(),
+            parser::parser_utils::stoll_safe, g_str, 'x');
+    if (!groups.empty()) {
+        switch (this->policy) {
+            case PER_TENSOR:
+            case PER_OC:
+            case PER_OCIC:
+                if (this->groups.size() != 2) {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "Error: number of groups should be equal to number "
+                            "of dimension bits set in the mask.");
+                    SAFE_V(FAIL);
+                }
+                break;
+            default:
+                BENCHDNN_PRINT(0, "%s\n",
+                        "Error: groups are supported only for policy PER_OCIC");
+                SAFE_V(FAIL);
+        }
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    return OK;
+}
+
 #undef HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING
 
 int attr_t::zero_points_t::from_str(const std::string &s) {
@@ -417,6 +486,7 @@ int attr_t::zero_points_t::from_str(const std::string &s) {
         size_t subs_pos = 0;
 
         auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        // TODO: split errors into different messages.
         if (arg == DNNL_ARG_UNDEF || subs_pos == std::string::npos
                 || subs_pos >= subs.size()) {
             BENCHDNN_PRINT(0,
@@ -429,6 +499,45 @@ int attr_t::zero_points_t::from_str(const std::string &s) {
         SAFE(zero_point.from_str(parser::get_substr(subs, subs_pos, '\0')),
                 WARN);
         set(arg, zero_point);
+    }
+    return OK;
+}
+
+int attr_t::placeholder_t::from_str(const std::string &s) {
+    *this = placeholder_t();
+    if (s.empty()) return OK;
+
+    size_t start_pos = 0;
+    while (start_pos != std::string::npos) {
+        auto subs = parser::get_substr(s, start_pos, '+');
+        size_t subs_pos = 0;
+
+        auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        if (arg == DNNL_ARG_UNDEF) {
+            BENCHDNN_PRINT(0,
+                    "Error: argument name \'%s\' was not recognized.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+        if (subs_pos == std::string::npos) {
+            BENCHDNN_PRINT(0,
+                    "Error: not enough arguments were provided for the input "
+                    "\'%s\'.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+        if (subs_pos >= subs.size()) {
+            BENCHDNN_PRINT(0,
+                    "Error: dangling character in the input \'%s\' was "
+                    "identified.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+
+        placeholder_t::entry_t placeholder;
+        SAFE(placeholder.from_str(parser::get_substr(subs, subs_pos, '\0')),
+                WARN);
+        set(arg, placeholder);
     }
     return OK;
 }
@@ -448,6 +557,7 @@ int attr_t::arg_scales_t::from_str(const std::string &s) {
         size_t subs_pos = 0;
 
         auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        // TODO: split errors into different messages.
         if (arg == DNNL_ARG_UNDEF || subs_pos == std::string::npos
                 || subs_pos >= s.size()) {
             BENCHDNN_PRINT(0,
@@ -711,6 +821,26 @@ std::ostream &operator<<(
     return s;
 }
 
+std::ostream &operator<<(
+        std::ostream &s, const attr_t::placeholder_t &placeholder) {
+    using ::operator<<;
+
+    const char *delim = "";
+    for (const auto &entries : placeholder.entries) {
+        s << delim;
+        s << arg2str(entries.first) << ":" << entries.second.policy;
+        if (entries.second.policy == policy_t::COMMON)
+            s << ":" << entries.second.value;
+        if (entries.second.dt != dnnl_s32 || !entries.second.groups.empty())
+            s << ':' << entries.second.dt;
+        if (!entries.second.groups.empty())
+            s << ":" << dims2str(entries.second.groups);
+        delim = "+";
+    }
+
+    return s;
+}
+
 std::ostream &operator<<(std::ostream &s, const attr_t::arg_scales_t &scales) {
     const char *delim = "";
     for (const auto &v : scales.scales) {
@@ -844,6 +974,8 @@ std::ostream &operator<<(std::ostream &s, const attr_t::dropout_t &drop) {
 std::ostream &operator<<(std::ostream &s, const attr_t &attr) {
     if (!attr.is_def()) {
         if (!attr.scales.is_def()) s << "--attr-scales=" << attr.scales << " ";
+        if (!attr.placeholder.is_def())
+            s << "--attr-placeholder=" << attr.placeholder << " ";
         if (!attr.zero_points.is_def())
             s << "--attr-zero-points=" << attr.zero_points << " ";
         if (!attr.post_ops.is_def())
@@ -1167,12 +1299,36 @@ dnnl_primitive_attr_t create_dnnl_attr(
                     ? args_mask
                     : attr_t::policy2mask(arg_name, e.policy, ndims);
 
-            int ndims = static_cast<int>(e.groups.size());
+            int group_ndims = static_cast<int>(e.groups.size());
             const auto &groups = e.groups.data();
             const auto dt = e.dt;
 
             DNN_SAFE_V(dnnl_primitive_attr_set_zero_points(
-                    dnnl_attr, arg_name, mask, ndims, groups, dt));
+                    dnnl_attr, arg_name, mask, group_ndims, groups, dt));
+        }
+    }
+
+    if (!attr.placeholder.is_def()) {
+        const auto &pl = attr.placeholder;
+        for (const auto &arg : pl.entries) {
+            const auto arg_name = arg.first;
+            if (pl.is_def(arg_name)) continue;
+
+            const auto &e = arg.second;
+            // Check if there's an arg with pre-defined mask in `attr_args`...
+            int args_mask
+                    = attr_args.get_mask(DNNL_ARG_ATTR_PLACEHOLDER | arg_name);
+            // If it's non-default, use it, otherwise, deduce it.
+            int mask = args_mask != attr_args_t::undefined_mask
+                    ? args_mask
+                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+
+            int group_ndims = static_cast<int>(e.groups.size());
+            const auto &groups = e.groups.data();
+            const auto dt = e.dt;
+
+            DNN_SAFE_V(dnnl_primitive_attr_set_placeholder(
+                    dnnl_attr, arg_name, mask, group_ndims, groups, dt));
         }
     }
 

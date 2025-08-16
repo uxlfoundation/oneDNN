@@ -52,6 +52,7 @@ struct gemm_t : public primitive_t {
             gemm_attr.rounding_mode_ = attr()->rounding_mode_;
             gemm_attr.scales_ = attr()->scales_;
             gemm_attr.zero_points_ = attr()->zero_points_;
+            gemm_attr.placeholder_ = attr()->placeholder_;
             gemm_attr.post_ops_ = attr()->post_ops_;
             if (!attr()->dropout_.has_default_values()) {
                 return status::unimplemented;
@@ -298,6 +299,7 @@ struct gemm_t : public primitive_t {
 
                 scales_t reshaped_scales = gemm_attr.scales_;
                 zero_points_t reshaped_zp = gemm_attr.zero_points_;
+                placeholder_t reshaped_pl = gemm_attr.placeholder_;
                 CHECK(adjust_quant(reshaped_scales, DNNL_ARG_SRC, *a_md,
                         a_md_reshaped, diff_dims));
                 CHECK(adjust_quant(reshaped_scales, DNNL_ARG_WEIGHTS, *b_md,
@@ -310,6 +312,10 @@ struct gemm_t : public primitive_t {
                         b_md_reshaped, diff_dims));
                 CHECK(adjust_quant(reshaped_zp, DNNL_ARG_DST, *c_md,
                         c_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_pl, DNNL_ARG_SRC, *a_md,
+                        a_md_reshaped, diff_dims));
+                CHECK(adjust_quant(reshaped_pl, DNNL_ARG_WEIGHTS, *b_md,
+                        b_md_reshaped, diff_dims));
 
                 // Reshaping successful - lock in changes
                 a_md = &a_md_reshaped;
@@ -319,6 +325,7 @@ struct gemm_t : public primitive_t {
 
                 gemm_attr.scales_ = reshaped_scales;
                 gemm_attr.zero_points_ = reshaped_zp;
+                gemm_attr.placeholder_ = reshaped_pl;
                 gemm_attr.post_ops_ = reshaped_post_ops;
                 return status::success;
             };

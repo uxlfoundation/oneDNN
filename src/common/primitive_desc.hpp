@@ -162,6 +162,12 @@ struct primitive_desc_t : public c_compatible {
                     ? arg_usage_t::input
                     : arg_usage_t::unused;
         }
+        if (arg & DNNL_ARG_ATTR_PLACEHOLDER) {
+            int pl_arg = arg & ~DNNL_ARG_ATTR_PLACEHOLDER;
+            return !attr()->placeholder_.has_default_values(pl_arg)
+                    ? arg_usage_t::input
+                    : arg_usage_t::unused;
+        }
         if (arg & DNNL_ARG_ATTR_SCALES) {
             int scale_arg = arg & ~DNNL_ARG_ATTR_SCALES;
             return !attr()->scales_.has_default_values(scale_arg)

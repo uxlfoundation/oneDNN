@@ -56,6 +56,7 @@
 // All IR statement objects.
 #define HANDLE_STMT_IR_OBJECTS() \
     HANDLE_IR_OBJECT(alloc_t) \
+    HANDLE_IR_OBJECT(assign_t) \
     HANDLE_IR_OBJECT(for_t) \
     HANDLE_IR_OBJECT(func_call_t) \
     HANDLE_IR_OBJECT(if_t) \
@@ -498,6 +499,8 @@ public:
 
     bool is_slm() const { return any(attr() & type_attr_t::slm); }
 
+    type_t operator[](int elems) const { return with_elems(elems); }
+
     bool operator==(const type_t &other) const {
         return (kind() == other.kind()) && (elems() == other.elems())
                 && (is_ptr() == other.is_ptr());
@@ -630,6 +633,12 @@ public:
     type_t with_attr(type_attr_t attr) const {
         type_t copy = *this;
         copy.attr_ = attr;
+        return copy;
+    }
+
+    type_t with_kind(type_kind_t kind) const {
+        type_t copy = *this;
+        copy.kind_ = kind;
         return copy;
     }
 
@@ -1112,6 +1121,7 @@ public:
     DECLARE_BINARY_ASSIGN_OPERATOR(/)
     DECLARE_BINARY_ASSIGN_OPERATOR(%)
     DECLARE_BINARY_ASSIGN_OPERATOR(&)
+    DECLARE_BINARY_ASSIGN_OPERATOR(^)
 
 #undef DECLARE_BINARY_ASSIGN_OPERATOR
 
@@ -1168,6 +1178,7 @@ enum class op_kind_t {
 
     _and,
     _or,
+    _xor,
 
     // Ternary operations.
     // Parametric ReLU.
@@ -1666,8 +1677,15 @@ class shuffle_t : public expr_impl_t {
 public:
     IR_DECL_CORE_TYPE(shuffle_t)
 
+    static expr_t make(const expr_t &vec_expr, const std::vector<int> &idx) {
+        check_indices(idx, vec_expr.type().elems());
+        std::vector<expr_t> vec {vec_expr};
+        return expr_t(new shuffle_t(vec, idx));
+    }
+
     static expr_t make(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
+        check_indices(idx, (int)vec.size());
         if (idx.size() == 1) return vec[idx[0]];
         return expr_t(new shuffle_t(vec, idx));
     }
@@ -1752,8 +1770,12 @@ private:
     shuffle_t(const std::vector<expr_t> &vec, const std::vector<int> &idx)
         : expr_impl_t(_type_info(), shuffle_type(vec, idx))
         , vec(vec)
-        , idx(idx) {
-        gpu_assert(idx.size() > 1) << "Unexpected empty or scalar shuffle.";
+        , idx(idx) {}
+
+    static void check_indices(const std::vector<int> &idx, int elems) {
+        for (int i : idx) {
+            gpu_assert(i >= 0 && i < elems);
+        }
     }
 
     static type_t shuffle_type(
@@ -1761,6 +1783,11 @@ private:
         gpu_assert(!vec.empty() && !idx.empty());
 
         auto elem_type = vec[0].type();
+        if (vec.size() == 1 && elem_type.is_simd()) {
+            gpu_assert(idx.size() == 1);
+            return type_t(elem_type.kind());
+        }
+
         for (auto &v : vec)
             elem_type = common_type(elem_type, v.type());
 
@@ -2047,6 +2074,7 @@ DECLARE_BINARY_OPERATOR(<=, op_kind_t::_le)
 
 DECLARE_BINARY_OPERATOR(&, op_kind_t::_and)
 DECLARE_BINARY_OPERATOR(|, op_kind_t::_or)
+DECLARE_BINARY_OPERATOR(^, op_kind_t::_xor)
 
 #undef DECLARE_BINARY_OPERATOR
 
@@ -2295,6 +2323,42 @@ private:
         , body(body) {
         gpu_assert(!buf.type().is_ptr()) << buf;
     }
+};
+
+// Assignment of a value to a variable.
+// C++ equivalent:
+//    var = value;
+class assign_t : public stmt_impl_t {
+public:
+    IR_DECL_CORE_TYPE(assign_t)
+
+    static stmt_t make(const expr_t &var, const expr_t &value) {
+        return stmt_t(new assign_t(var, value));
+    }
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<self_type>()) return false;
+        auto &other = obj.as<self_type>();
+        return var.is_equal(other.var) && value.is_equal(other.value);
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(var, value); }
+
+    std::string str() const override {
+        std::ostringstream oss;
+        oss << var.str() << "." << var.type().str();
+        oss << " = " << value.str();
+        return oss.str();
+    }
+
+    IR_DECLARE_TRAVERSERS()
+
+    expr_t var;
+    expr_t value;
+
+private:
+    assign_t(const expr_t &var, const expr_t &value)
+        : stmt_impl_t(_type_info()), var(var), value(value) {}
 };
 
 // Store to a GRF buffer.
@@ -2867,6 +2931,12 @@ public:
             const func_call_attr_t &attr = {}) const {
         return ((const func_impl_t *)impl())->call(args, attr);
     }
+
+    stmt_t operator()(const std::vector<expr_t> &args = {}) const {
+        return call(args);
+    }
+
+    stmt_t operator()(const expr_t &arg) const { return call({arg}); }
 
 private:
 #ifdef SANITY_CHECK

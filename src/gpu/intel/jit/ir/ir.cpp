@@ -39,6 +39,11 @@ class ir_printer_t : public ir_visitor_t {
 public:
     ir_printer_t(std::ostream &out) : out_(out) {}
 
+    void _visit(const assign_t &obj) override {
+        print_indent();
+        out_ << obj.str() << "\n";
+    }
+
     void _visit(const alloc_t &obj) override {
         auto grf_size = 1; // Assume all objects are grf aligned
         auto guard = mem_usage_guard(obj.register_alloc_size(grf_size));

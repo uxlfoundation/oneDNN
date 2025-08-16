@@ -55,7 +55,7 @@ public:
 
     std::string create_tmp_name(const std::string &prefix = "tmp") {
         int &id = prefix_ids_[prefix];
-        auto name = prefix + "_" + std::to_string(id);
+        auto name = (id == 0 ? prefix : prefix + "_" + std::to_string(id));
         id++;
         return name;
     }

@@ -61,11 +61,13 @@ struct ctx_t {
         }
     }
 
-    stmt_t end_kernel() {
+    kernel_t end_kernel() {
         gpu_assert(stmts_stack_.size() == 1)
                 << "Invalid end of kernel, imbalanced scopes detected";
+        kernel_t ret {std::move(interface_), pop_scope(), ctx_->exec_cfg()};
         ctx_ = nullptr;
-        return pop_scope();
+        interface_ = {"undefined_dsl_kernel"};
+        return ret;
     }
 
     int simd() const { return ctx_->exec_cfg().simd(); }
@@ -107,7 +109,7 @@ struct ctx_t {
         return def(value.type(), name, value);
     }
 
-    tensor_t def(const v2::layout_t &layout, const std::string &name,
+    tensor_t def(const layout_t &layout, const std::string &name,
             const expr_t &value = {}) {
         // Tensors need to be grf-aligned for loading/storing
         // TODO: IR should be modified to enable loading small tensors (such as
@@ -225,7 +227,7 @@ void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx) {
     default_ctx().declare_kernel(interface, ctx);
 }
 
-stmt_t end_kernel() {
+kernel_t end_kernel() {
     return default_ctx().end_kernel();
 }
 
@@ -286,8 +288,8 @@ lval_t def(const std::string &name, const expr_t &value) {
     return def(value.type(), name, value);
 }
 
-tensor_t def(const v2::layout_t &layout, const std::string &name,
-        const expr_t &value) {
+tensor_t def(
+        const layout_t &layout, const std::string &name, const expr_t &value) {
     return default_ctx().def(layout, name, value);
 }
 

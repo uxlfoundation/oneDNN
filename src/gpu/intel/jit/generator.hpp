@@ -97,11 +97,11 @@ void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
 template <gpu_gen_t hw>
 class generator_t : public ngen_code_generator_t<hw>, public generator_base_t {
 public:
-    generator_t(const debug_config_t &debug_config)
+    generator_t(const ngen::DebugConfig &debug_config)
         : ngen_code_generator_t<hw>(0, debug_config) {}
 
     generator_t(
-            const ngen::Product &product, const debug_config_t &debug_config)
+            const ngen::Product &product, const ngen::DebugConfig &debug_config)
         : ngen_code_generator_t<hw>(product, debug_config) {}
 
     const char *kernel_name() const override {

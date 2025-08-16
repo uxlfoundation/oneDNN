@@ -34,20 +34,31 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
+using layout_t = v2::layout_t;
+using expr_t = dnnl::impl::gpu::intel::jit::expr_t;
+
 struct send_hint_t {
-    send_cache_hint_t cache = send_cache_hint_t::undef;
+    send_cache_hint_t cache;
 };
 
 struct tensor_t {
+    tensor_t sub(const icoord_t &coord, const tile_t &tile) const {
+        // coord is not measured relative to tile size
+        for (auto &var : coord)
+            gpu_assert(coord[var] % tile[var] == 0);
+        return {buf[layout.offset_in_bytes(coord)], layout.sub(tile)};
+    }
+
     std::string str() const {
         std::ostringstream oss;
         oss << "buffer:    " << buf.str();
         oss << "layout: " << layout.str();
         return oss.str();
     }
+
     IR_DEFINE_DUMP()
     expr_t buf;
-    v2::layout_t layout;
+    layout_t layout;
 };
 
 struct global_tensor_t {
@@ -80,8 +91,19 @@ struct global_tensor_t {
     }
 };
 
+struct kernel_t {
+    kernel_t() : iface("invalid_dsl_kernel") {}
+    kernel_t(kernel_iface_t iface, stmt_t body, const exec_config_t &exec_cfg)
+        : iface(std::move(iface)), body(std::move(body)), exec_cfg(exec_cfg) {}
+
+    kernel_iface_t iface;
+    stmt_t body;
+    exec_config_t exec_cfg;
+    ngen::DebugConfig debug_cfg;
+};
+
 void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx);
-stmt_t end_kernel();
+kernel_t end_kernel();
 
 void begin_scope();
 void end_scope();
@@ -141,7 +163,7 @@ lval_t def(type_t type, const std::string &name, const expr_t &value = {},
         bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
 
-tensor_t def(const v2::layout_t &layout, const std::string &name,
+tensor_t def(const layout_t &layout, const std::string &name,
         const expr_t &value = {});
 expr_t let(type_t type, const std::string &name, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);

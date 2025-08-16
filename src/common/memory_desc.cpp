@@ -31,6 +31,20 @@ using namespace dnnl::impl::utils;
 namespace dnnl {
 namespace impl {
 
+status_t memory_desc_init_host_scalar(
+        memory_desc_t &memory_desc, data_type_t data_type) {
+    memory_desc.ndims = 1;
+    memory_desc.dims[0] = 1;
+    memory_desc.data_type = data_type;
+    memory_desc.format_kind = format_kind::host_scalar;
+
+    bool args_ok = memory_desc_sanity_check(memory_desc.ndims, memory_desc.dims,
+            memory_desc.data_type, memory_desc.format_kind);
+    VCHECK_MEMORY(args_ok, invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
+
+    return success;
+}
+
 status_t memory_desc_init_by_tag(memory_desc_t &memory_desc, int ndims,
         const dims_t dims, data_type_t data_type, format_tag_t tag) {
     if (ndims == 0 || tag == format_tag::undef) {
@@ -649,6 +663,17 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_packed_encoding(
             *md, ndims, dims, data_type, nnz));
+    (*memory_desc) = md.release();
+    return success;
+}
+
+status_t dnnl_memory_desc_create_host_scalar(
+        memory_desc_t **memory_desc, data_type_t data_type) {
+    if (any_null(memory_desc)) return invalid_arguments;
+
+    auto md = utils::make_unique<memory_desc_t>();
+    if (!md) return out_of_memory;
+    CHECK(memory_desc_init_host_scalar(*md, data_type));
     (*memory_desc) = md.release();
     return success;
 }

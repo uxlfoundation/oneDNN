@@ -575,17 +575,30 @@ status_t dnnl_primitive_attr_set_scales_mask(
 
 status_t dnnl_primitive_attr_set_scales(primitive_attr_t *attr, int arg,
         int mask, int ndims, const dims_t group_dims, data_type_t data_type) {
+    return dnnl_primitive_attr_set_scales_v2(
+            attr, arg, mask, ndims, group_dims, data_type, 0);
+}
+
+status_t dnnl_primitive_attr_set_scales_v2(primitive_attr_t *attr, int arg,
+        int mask, int ndims, const dims_t group_dims, data_type_t data_type,
+        int is_on_host) {
     using namespace data_type;
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
-    VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
     VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
-    VCHECK_ATTR(ndims >= 0, VERBOSE_BAD_PARAM, "ndims");
     VCHECK_ATTR(
             utils::one_of(data_type, f32, bf16, f16, e8m0, f8_e5m2, f8_e4m3),
             VERBOSE_INVALID_DATATYPE, "scales");
     VCHECK_ATTR(IMPLICATION(ndims, validate_dims(ndims, group_dims)),
             VERBOSE_BAD_PARAM, "group_dims");
-    return attr->scales_.set(arg, mask, data_type, ndims, group_dims);
+    if (is_on_host) { // only single value host-side scale is supported
+        VCHECK_ATTR(mask == 0, VERBOSE_BAD_PARAM, "mask");
+        VCHECK_ATTR(ndims == 0, VERBOSE_BAD_PARAM, "ndims");
+        return attr->scales_.set(arg, 0, data_type, 0, {}, true);
+    } else {
+        VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
+        VCHECK_ATTR(ndims >= 0, VERBOSE_BAD_PARAM, "ndims");
+        return attr->scales_.set(arg, mask, data_type, ndims, group_dims);
+    }
 }
 
 status_t dnnl_primitive_attr_set_zero_points_mask(
@@ -598,11 +611,17 @@ status_t dnnl_primitive_attr_set_zero_points_mask(
 status_t dnnl_primitive_attr_set_zero_points(dnnl_primitive_attr_t attr,
         int arg, int mask, int ndims, const dnnl_dims_t group_dims,
         dnnl_data_type_t data_type) {
+    return dnnl_primitive_attr_set_zero_points_v2(
+            attr, arg, mask, ndims, group_dims, data_type, 0);
+}
+
+status_t dnnl_primitive_attr_set_zero_points_v2(dnnl_primitive_attr_t attr,
+        int arg, int mask, int ndims, const dnnl_dims_t group_dims,
+        dnnl_data_type_t data_type, int is_on_host) {
     using namespace data_type;
+
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
-    VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
     VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
-    VCHECK_ATTR(ndims >= 0, VERBOSE_BAD_PARAM, "ndims");
     VCHECK_ATTR(utils::one_of(data_type, s32, s8, u8, s4, u4),
             VERBOSE_INVALID_DATATYPE, "zero points");
     VCHECK_ATTR(IMPLICATION(utils::one_of(data_type, s4, u4), mask > 0),
@@ -613,7 +632,15 @@ status_t dnnl_primitive_attr_set_zero_points(dnnl_primitive_attr_t attr,
     VCHECK_ATTR(IMPLICATION(ndims, validate_dims(ndims, group_dims)),
             VERBOSE_BAD_PARAM, "group_dims");
 
-    return attr->zero_points_.set(arg, mask, data_type, ndims, group_dims);
+    if (is_on_host) { // host-side zero point is only supported as single scalar value
+        VCHECK_ATTR(mask == 0, VERBOSE_BAD_PARAM, "mask");
+        VCHECK_ATTR(ndims == 0, VERBOSE_BAD_PARAM, "ndims");
+        return attr->zero_points_.set(arg, 0, data_type, 0, {}, true);
+    } else {
+        VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
+        VCHECK_ATTR(ndims >= 0, VERBOSE_BAD_PARAM, "ndims");
+        return attr->zero_points_.set(arg, mask, data_type, ndims, group_dims);
+    }
 }
 
 status_t dnnl_primitive_attr_get_rounding(

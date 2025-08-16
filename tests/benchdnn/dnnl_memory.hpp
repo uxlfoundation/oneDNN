@@ -61,6 +61,8 @@ struct dnn_mem_t {
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
 
+    dnn_mem_t(const_dnnl_memory_desc_t md, void *value);
+
     dnn_mem_t(const dnn_mem_t &rhs) = delete;
     dnn_mem_t &operator=(const dnn_mem_t &rhs) = delete;
 
@@ -200,6 +202,9 @@ struct dnn_mem_t {
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_sparse_packed_md(
             int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
             dnnl_dim_t nnz);
+    // Initializes memory descriptor for host scalar memory.
+    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_host_scalar_md(
+            dnnl_data_type_t data_type);
 
     /* fields */
     dnnl_memory_desc_t md_ {};

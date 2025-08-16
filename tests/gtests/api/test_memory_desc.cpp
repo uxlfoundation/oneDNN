@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -86,6 +86,67 @@ HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestComparison) {
     EXPECT_NE(zero_md, plain_md);
     EXPECT_NE(zero_md, blocked_md);
     EXPECT_NE(plain_md, blocked_md);
+}
+
+TEST(c_api_host_scalar_md, TestHostScalarF32) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));
+
+    int ndims = -1;
+    dnnl_data_type_t dtype = dnnl_data_type_undef;
+    dnnl_format_kind_t fmt_kind = dnnl_format_kind_undef;
+
+    DNNL_CHECK(dnnl_memory_desc_query(scalar_md, dnnl_query_ndims_s32, &ndims));
+    EXPECT_EQ(ndims, 1);
+
+    DNNL_CHECK(dnnl_memory_desc_query(scalar_md, dnnl_query_data_type, &dtype));
+    EXPECT_EQ(dtype, dnnl_f32);
+
+    DNNL_CHECK(dnnl_memory_desc_query(
+            scalar_md, dnnl_query_format_kind, &fmt_kind));
+    EXPECT_EQ(fmt_kind, dnnl_format_kind_host_scalar);
+
+    size_t sz = dnnl_memory_desc_get_size(scalar_md);
+    EXPECT_EQ(sz, sizeof(float));
+
+    DNNL_CHECK(dnnl_memory_desc_destroy(scalar_md));
+}
+
+TEST(c_api_host_scalar_md, TestHostScalarInvalidType) {
+    dnnl_memory_desc_t scalar_md = nullptr;
+
+    ASSERT_EQ(dnnl_memory_desc_create_host_scalar(
+                      &scalar_md, (dnnl_data_type_t)999),
+            dnnl_invalid_arguments);
+
+    ASSERT_EQ(dnnl_memory_desc_create_host_scalar(
+                      &scalar_md, dnnl_data_type_undef),
+            dnnl_invalid_arguments);
+}
+
+TEST(c_api_host_scalar_md, TestHostScalarNullPtr) {
+    dnnl_status_t status
+            = dnnl_memory_desc_create_host_scalar(nullptr, dnnl_f32);
+    ASSERT_EQ(status, dnnl_invalid_arguments);
+}
+
+TEST(cpp_api_host_scalar_md, TestHostScalarF32) {
+    using namespace dnnl;
+    auto md = memory::desc::host_scalar(memory::data_type::f32);
+
+    EXPECT_EQ(md.get_ndims(), 1);
+    EXPECT_EQ(md.get_data_type(), memory::data_type::f32);
+    EXPECT_EQ(md.get_format_kind(), memory::format_kind::host_scalar);
+    EXPECT_EQ(md.get_size(), sizeof(float));
+}
+
+TEST(cpp_api_host_scalar_md, TestHostScalarInvalidType) {
+    using namespace dnnl;
+
+    EXPECT_THROW(
+            memory::desc::host_scalar((memory::data_type)999), dnnl::error);
+    EXPECT_THROW(
+            memory::desc::host_scalar(memory::data_type::undef), dnnl::error);
 }
 
 } // namespace dnnl

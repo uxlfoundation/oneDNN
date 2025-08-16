@@ -69,7 +69,8 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
     switch ((int)md.format_kind) {
         case format_kind::sparse:
         case format_kind::undef:
-        case format_kind::any: break;
+        case format_kind::any:
+        case format_kind::host_scalar: break; // no additional data to serialize
         case format_kind::blocked:
             sstream.append_array(md.ndims, md.format_desc.blocking.strides);
             sstream.append(md.format_desc.blocking.inner_nblks);

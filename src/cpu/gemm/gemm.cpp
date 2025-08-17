@@ -47,6 +47,11 @@ using namespace dnnl::impl::cpu::x64;
 using namespace dnnl::impl::cpu::ppc64;
 #elif DNNL_S390X
 #include "cpu/s390x/gemm.h"
+#elif DNNL_RV64
+#if DNNL_RISCV_USE_RVV_INTRINSICS
+#include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
+using namespace dnnl::impl::cpu::rv64;
+#endif
 #endif
 
 namespace dnnl {
@@ -143,6 +148,11 @@ dnnl_status_t extended_sgemm(const char *transa, const char *transb,
                 force_jit_nocopy_gemm);
         if (status != status::unimplemented) return status;
     }
+#endif
+
+#if DNNL_RV64 && DNNL_RISCV_USE_RVV_INTRINSICS
+    return rvv_gemm_f32(
+            transa, transb, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, bias);
 #endif
 
     return ref_gemm<float>(

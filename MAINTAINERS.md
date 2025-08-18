@@ -247,6 +247,7 @@ Team: @uxlfoundation/onednn-devops
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Hamza Butt         | @theComputeKid        | Arm Ltd           | Code Owner |
 | Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 
 ### Release management
 

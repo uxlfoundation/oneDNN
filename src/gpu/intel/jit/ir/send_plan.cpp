@@ -2584,6 +2584,13 @@ send_group_t init_scattered(const view_info_t &info,
     int type_packing = vlayout.type().packing();
     int slot_size = info.init_scattered_params(send_params, it.inner_bytes(),
             into<int>(vlayout.elems() * type_size / type_packing));
+    // If not dword aligned, ensure that packing elements from the inner block
+    // results in a valid layout. Otherwise, pack fewer elements per slot.
+    if ((slot_size & 0x3) && !blocks.empty()) {
+        auto inner_block = blocks.front().block * type_size / type_packing;
+        auto masked = inner_block & (slot_size - 1);
+        if (masked) slot_size = into<int>(masked & ~(masked - 1));
+    }
     int slot_stride = std::max(4, slot_size);
     int inner_slots = ir_utils::safe_divide(it.inner_bytes(), slot_size);
 

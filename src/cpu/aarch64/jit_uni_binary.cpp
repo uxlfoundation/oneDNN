@@ -154,7 +154,6 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     po, src0_md_, get_supported_postops_bcast_strategies());
     conf_.op_type = get_op_type(src0_md_);
-    assert(conf_.op_type != op_t::none);
     conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
     conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
     const auto sum_idx = po.find(primitive_kind::sum);
@@ -167,6 +166,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     const auto &bcast_dims = broadcast_dims();
     conf_.bcast_type = is_tensor_op() ? bcast_t::none
                                       : get_bcast_type(src1_md_, bcast_dims);
+    // op_type only matters for broadcasted operation
+    assert(IMPLICATION(
+            conf_.bcast_type != bcast_t::none, conf_.op_type != op_t::none));
     conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
                                          && conf_.bcast_type == bcast_t::per_c)
             || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)

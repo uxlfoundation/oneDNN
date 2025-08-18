@@ -1833,11 +1833,29 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
+    // Layout of a single GB in packed format:
+    //     [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+
+    // For n = 0 and K aligned to vnni granularity, the starting position is:
+    //     [K / vnni][n = 0][k_vnni = 0]
+    // Each copy kernel processes wei_scales_gK * n elements.
+    // The kernel accounts for LDB2 and writes data in a strided manner.
+
+    // The following value is multiplied by K to compute the starting offset:
     bgmmc.buffer_b_k_stride = bgmmc.tr_b_dt_sz * bgmmc.LDB;
-    bgmmc.buffer_b_gb_stride
-            = bgmmc.buffer_b_k_stride * bgmmc.K_blk * bgmmc.wei_k_blk;
+
+    // The total usable data in one GB is:
+    //     n_blk * k_blk, though both values require rounding.
+    bgmmc.buffer_b_gb_stride = bgmmc.tr_b_dt_sz * rnd_up(bgmmc.N_blk, bgmmc.LDB)
+            * rnd_up(bgmmc.K_blk, bgmmc.wei_k_blk);
+
+    // Each BRGEMM operation consumes k_blk * n_blk * brgemm_batch_size elements from B.
     bgmmc.buffer_b_k_brg_stride
             = bgmmc.buffer_b_gb_stride * bgmmc.brgemm_batch_size;
+
+    // A full K chunk of B is stored in a temporary buffer for reuse.
+    // Often, the size k_blk * n_blk * brgemm_batch_size * K_chunk_size ≈ L2 cache size,
+    // enabling reuse across the M dimension.
     bgmmc.buffer_b_per_thread_sz
             = bgmmc.buffer_b_k_brg_stride * bgmmc.K_chunk_size;
 

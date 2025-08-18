@@ -347,11 +347,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         int kchunk0 = lcm(ka_inc(), kb_inc());
         if (prefetchA) kchunk0 = lcm(kchunk0, ka_pfStride);
         if (prefetchB) kchunk0 = lcm(kchunk0, kb_pfStride);
-        if (problem.quantized2DA()) {
+        if (problem.quantized2DA() && problem.effAKNGroups > 1) {
             if (problem.aqGroupK % wg[LoopK]) stub();
             kchunk0 = lcm(kchunk0, std::max(1, problem.aqGroupK / wg[LoopK]));
         }
-        if (problem.quantized2DB()) {
+        if (problem.quantized2DB() && problem.effBKNGroups > 1) {
             if (problem.bqGroupK % wg[LoopK]) stub();
             kchunk0 = lcm(kchunk0, std::max(1, problem.bqGroupK / wg[LoopK]));
         }

@@ -442,6 +442,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.bsPtrDims = bsc_dims;
         problem_.aqGroupK = wei_q2d_group_k;
         problem_.bqGroupK = src_q2d_group_k;
+        problem_.effAKNGroups = (wei_q2d_group_k ? k / wei_q2d_group_k : 0);
+        problem_.effBKNGroups = (src_q2d_group_k ? k / src_q2d_group_k : 0);
         if (wei_scales_type != data_type::undef) {
             problem_.Ta_scale = convert_dnnl_to_kernel_type(wei_scales_type);
             problem_.A_scale.setAlignment(
@@ -458,6 +460,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.asPtrDims = bsc_dims;
         problem_.bqGroupK = wei_q2d_group_k;
         problem_.aqGroupK = src_q2d_group_k;
+        problem_.effBKNGroups = (wei_q2d_group_k ? k / wei_q2d_group_k : 0);
+        problem_.effAKNGroups = (src_q2d_group_k ? k / src_q2d_group_k : 0);
         if (wei_scales_type != data_type::undef) {
             problem_.Tb_scale = convert_dnnl_to_kernel_type(wei_scales_type);
             problem_.B_scale.setAlignment(

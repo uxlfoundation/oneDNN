@@ -28,16 +28,6 @@ SKIPPED_TEST_FAILURES="test_benchdnn_modeC_matmul_multidims_cpu"
 
 #  We currently have some OS and config specific test failures.
 if [[ "$OS" == "Linux" ]]; then
-    if [[ "$CMAKE_BUILD_TYPE" == "Debug" ]]; then
-        # as test_matmul is time consuming , we only run it in release mode to save time.
-        SKIPPED_TEST_FAILURES+="|test_matmul"
-        # The following graph tests are too time-consuming for Debug mode.
-        SKIPPED_TEST_FAILURES+="|cpu-graph-gated-mlp-int4-cpp"
-        SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_sdp_decomp_cpu"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-stacked-qkv-cpp"
-        SKIPPED_TEST_FAILURES+="|cpu-graph-sdpa-cpp"
-    fi
-
     SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
     SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
 fi

@@ -73,11 +73,11 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: Release, testset: SMOKE },
-          { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: gcc, build: Release, testset: SMOKE },
-          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI },
-          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: Debug, testset: SMOKE },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI }
+          { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: RelWithAssert, testset: SMOKE },
+          { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: gcc, build: RelWithAssert, testset: SMOKE },
+          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI }, # Performance testing requires Release
+          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: RelWithAssert, testset: SMOKE },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI } # Performance testing requires Release
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
@@ -175,8 +175,6 @@ jobs:
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh
         working-directory: ${{ github.workspace }}/oneDNN/build
         env:
-          BUILD_TOOLSET: ${{ matrix.config.toolset }}
-          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
           CTEST_PARALLEL_LEVEL: 6
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
           ONEDNN_THREADING: ${{ matrix.config.threading }}

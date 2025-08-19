@@ -454,6 +454,18 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         }
     }
 
+    //   if(p.kq_accum == dnnl_accumulation_mode::f16) {
+    //       t.sdpa_kq_attr_quantized.set_accumulation_mode(dnnl::accumulation_mode::f16);
+    //   }
+    //   if(p.vs_accum == dnnl_accumulation_mode::f16) {
+    //       t.sdpa_vs_attr_quantized.set_accumulation_mode(dnnl::accumulation_mode::f16);
+    //   }
+    out.sdpa_kq_attr_quantized.set_accumulation_mode(
+            dnnl::accumulation_mode::f16);
+    out.sdpa_vs_attr_quantized.set_accumulation_mode(
+            dnnl::accumulation_mode::f16);
+    /////////////////////
+
     fill_random(query_data, query_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.kdt == mdt::u4 || p.kdt == mdt::u8));
@@ -1035,6 +1047,15 @@ INSTANTIATE_TEST_SUITE_P(qwen2_7b,
                     sdpa_dims_t{   1,    28,        4,   2048,   2048,    128,   128,     128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    28,        4,   2049,      1,    128,   128,     128, mdt::f16,  mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
+
+INSTANTIATE_TEST_SUITE_P(f16_accumulation_mode,
+    sdpa_test_t,
+                               // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,      qdt,       kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
+    testing::Values(
+                    sdpa_dims_t{   1,    32,        8,    384,    384,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
+                    sdpa_dims_t{   1,    32,        8,    386,    386,    128,   128,     128, mdt::f16, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD }
+    ), &print_to_string);
+
 
 
 //INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,

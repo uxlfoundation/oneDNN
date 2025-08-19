@@ -29,7 +29,6 @@ SKIPPED_TEST_FAILURES="test_benchdnn_modeC_matmul_multidims_cpu"
 #  We currently have some OS and config specific test failures.
 if [[ "$OS" == "Linux" ]]; then
     SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
-    SKIPPED_TEST_FAILURES+="|test_graph_unit_dnnl_large_partition_cpu"
 fi
 
 # Nightly failures

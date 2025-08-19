@@ -18,3 +18,11 @@
 --sdt=bf16 --ddt=bf16
 --stag=aBcde4b --dtag=aBcde4b
 2x24x19x19x19
+
+# Test compensation with tr8x8 problem shape
+--reset
+--skip-impl=ref,simple #skip non-jit version
+--sdt=s8 --ddt=s8
+--stag=ab --dtag=ba
+--oflag=zp_comp:1
+8x8

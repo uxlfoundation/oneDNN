@@ -128,8 +128,8 @@ void Generator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
         // Each workgroup gets a roughly k0-sized range in k space, which may span
         //  multiple C tiles.
 
-        // Traverse tiles backward:
-        eadd3(1, temp, nonKSyncedWGs, -slicedTileIdx, -1);
+        // Traverse tiles:
+        add(1, temp , slicedTileIdx, 1);
 
         // Locate ending tile and k value:
         //    h1 <- (k0 * slicedTileIdx) % kUnsynced
@@ -137,10 +137,16 @@ void Generator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
         mul(1, temp, state.inputs.k0, temp.uw());
         divDown(slicedTileIdx, temp, kUnsynced, state.inputs.kRecip, f1[0], strategy, state);
         emad(1, h1, temp, -kUnsynced, slicedTileIdx.uw(), strategy, state);
-
-        // Restore tile order:
-        eadd3(1 | lt | f0[0], slicedTileIdx.d(), kSlicedTiles, -slicedTileIdx, -1);
-        add(1, h1, kUnsynced, -h1);
+        
+	// Handle (k0 * slicedTileIdx) % kUnsynced == 0 case, 
+	// h1 <- kUnsynced
+	// slicedTileIdx -= 1
+	Label lSkip;
+	cmp (1 | eq | f1[0], h1, 0); 
+	jmpi(1 | ~f1[0], lSkip);
+        mov(1, h1, kUnsynced);
+	add(1 | lt | f0[0], slicedTileIdx, slicedTileIdx, -1);
+        mark(lSkip);
 
         // Keep track of total k work allotted to this WG.
         mov(1, k0Rem, state.inputs.k0);
@@ -243,8 +249,10 @@ void Generator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
     // Beta/post-op fusing: check if we need to do it.
     if (strategy.fuseBeta || strategy.fusePostOps) {
         Label lNoCheck;
+        cmp(1 | ge |f1[1], slicedTileIdx,state.inputs.kSlicedTiles);
         jmpi(1 | f0[1], lNoCheck);
-        or_(1, state.inputs.flags, state.inputs.flags, FlagKPartitioned);
+	jmpi( 1 | f1[1], lNoCheck);
+	or_(1, state.inputs.flags, state.inputs.flags, FlagKPartitioned);
         gemmFusedBetaPOInit(slicedTileIdx, problem, strategy, state);
         mark(lNoCheck);
     }

@@ -1,4 +1,4 @@
-#include "rvv_matmul.hpp"
+#include "cpu/rv64/rvv_matmul.hpp"
 #include "common/dnnl_thread.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
@@ -231,11 +231,9 @@ void rvv_matmul_rowmajor(const float *src, const float *weights, float *dst,
     });
 }
 
-template <data_type_t d_type>
-rvv_matmul_t<d_type>::rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}
+rvv_matmul_t::rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}
 
-template <>
-status_t rvv_matmul_t<data_type::f32>::execute(const exec_ctx_t &ctx) const {
+status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
@@ -248,9 +246,7 @@ status_t rvv_matmul_t<data_type::f32>::execute(const exec_ctx_t &ctx) const {
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
     rvv_postops_t postops_handler(post_ops);
 
-    const float *bias = nullptr;
-    if (!bias_d.is_zero()) bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
-
+    const float *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
     if (pd()->is_col_major(weights_d)) {
         rvv_matmul_colmajor(src, weights, dst, src_d, weights_d, dst_d, bias,
                 bias_d, postops_handler);
@@ -261,8 +257,6 @@ status_t rvv_matmul_t<data_type::f32>::execute(const exec_ctx_t &ctx) const {
 
     return status::success;
 }
-
-template struct rvv_matmul_t<data_type::f32>;
 
 } // namespace matmul
 } // namespace rv64

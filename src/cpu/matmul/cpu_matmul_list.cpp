@@ -42,7 +42,7 @@ using namespace dnnl::impl::cpu::x64;
 using namespace dnnl::impl::cpu::aarch64::matmul;
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
-#if DNNL_RISCV_USE_RVV_INTRINSICS
+#ifdef DNNL_RISCV_USE_RVV_INTRINSICS
 #include "cpu/rv64/rvv_matmul.hpp"
 using namespace dnnl::impl::cpu::rv64::matmul;
 using namespace dnnl::impl::cpu::rv64;
@@ -77,7 +77,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AVX512(brgemm_matmul_t<avx512_core>)
         CPU_INSTANCE_AVX2(brgemm_matmul_t<avx2_vnni_2>)
         CPU_INSTANCE_AVX2(brgemm_matmul_t<avx2_vnni>)
-        CPU_INSTANCE_RV64GCV(rvv_matmul_t<f32>)
+        CPU_INSTANCE_RV64GCV(rvv_matmul_t)
         CPU_INSTANCE(gemm_f32_matmul_t)
         CPU_INSTANCE(gemm_bf16_matmul_t<f32>)
         CPU_INSTANCE(gemm_bf16_matmul_t<bf16>)

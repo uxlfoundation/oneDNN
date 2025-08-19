@@ -13,12 +13,13 @@ namespace cpu {
 namespace rv64 {
 namespace matmul {
 
-template <data_type_t d_type>
 struct rvv_matmul_t : public primitive_t {
     struct pd_t : public ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
         using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("RISCV64GCV", rvv_matmul_t)
+
+        static constexpr data_type_t d_type = data_type::f32;
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -28,41 +29,48 @@ struct rvv_matmul_t : public primitive_t {
             const memory_desc_wrapper dst_mdw(dst_md(0));
             const memory_desc_wrapper bias_mdw = bias_md_;
 
-            if (has_zero_dim_memory() || src_mdw.has_runtime_dims_or_strides()
-                    || weights_mdw.has_runtime_dims_or_strides()
-                    || dst_mdw.has_runtime_dims_or_strides()
-                    || bias_mdw.has_runtime_dims_or_strides())
-                return status::unimplemented;
+            VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
+            VDISPATCH_MATMUL(!src_mdw.has_runtime_dims_or_strides()
+                            && !weights_mdw.has_runtime_dims_or_strides()
+                            && !dst_mdw.has_runtime_dims_or_strides()
+                            && !bias_mdw.has_runtime_dims_or_strides(),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             const bool types_ok = src_mdw.data_type() == d_type
                     && weights_mdw.data_type() == d_type
                     && dst_mdw.data_type() == d_type
                     && desc()->accum_data_type == d_type;
-            if (!types_ok) return status::unimplemented;
+            VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
 
-            if (!attr()->scales_.has_default_values())
-                return status::unimplemented;
+            VDISPATCH_MATMUL(attr()->scales_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-            if (attr()->post_ops_.len() != 0) {
-                rvv_postops_t po_handler(attr()->post_ops_);
-                if (!po_handler.has_postops()) return status::unimplemented;
+            VDISPATCH_MATMUL(rvv_postops_t::post_ops_ok(attr()->post_ops_),
+                    VERBOSE_UNSUPPORTED_POSTOP);
+
+            VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+
+            VDISPATCH_MATMUL(check_layouts(src_mdw, weights_mdw, dst_mdw),
+                    VERBOSE_UNSUPPORTED_TAG);
+
+            {
+                const auto wei_ndims = weights_mdw.ndims();
+                bool bc_ok = true;
+                for (int i = 0; i < wei_ndims - 2; ++i) {
+                    if (src_mdw.dims()[i] != weights_mdw.dims()[i]
+                            && weights_mdw.dims()[i] != 1) {
+                        bc_ok = false;
+                        break;
+                    }
+                }
+                VDISPATCH_MATMUL(bc_ok, VERBOSE_UNSUPPORTED_TAG);
             }
 
-            if (!set_default_formats()) return status::unimplemented;
+            VDISPATCH_MATMUL(check_bias(dst_mdw, bias_mdw),
+                    VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-            if (!check_layouts(src_mdw, weights_mdw, dst_mdw))
-                return status::unimplemented;
-
-            const auto wei_ndims = weights_mdw.ndims();
-            for (int i = 0; i < wei_ndims - 2; ++i) {
-                if (src_mdw.dims()[i] != weights_mdw.dims()[i]
-                        && weights_mdw.dims()[i] != 1)
-                    return status::unimplemented;
-            }
-
-            if (!check_bias(dst_mdw, bias_mdw)) return status::unimplemented;
-
-            if (!set_default_formats()) return status::unimplemented;
+            VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
@@ -104,9 +112,7 @@ struct rvv_matmul_t : public primitive_t {
                 const memory_desc_wrapper &wei_mdw,
                 const memory_desc_wrapper &dst_mdw) const {
             if (!is_row_major(src_mdw) || !is_row_major(dst_mdw)) return false;
-
             if (!is_row_major(wei_mdw) && !is_col_major(wei_mdw)) return false;
-
             return true;
         }
 

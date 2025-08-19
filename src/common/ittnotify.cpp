@@ -43,63 +43,77 @@ bool get_itt(__itt_task_level level) {
 namespace {
 
 thread_local primitive_kind_t thread_primitive_kind;
+thread_local __itt_string_handle *thread_primitive_name;
 
-__itt_domain *itt_domain() {
-    static __itt_domain *d = __itt_domain_create("dnnl::primitive::execute");
-    return d;
+__itt_domain *itt_domain(primitive_kind_t kind) {
+#define CASE(x) __itt_domain_create("dnnl.execute." STRINGIFY(x))
+    static __itt_domain *prim_kind_itt_domain[] = {
+            CASE(batch_normalization),
+            CASE(binary),
+            CASE(concat),
+            CASE(convolution),
+            CASE(deconvolution),
+            CASE(eltwise),
+            CASE(gemm),
+            CASE(group_normalization),
+            CASE(inner_product),
+            CASE(layer_normalization),
+            CASE(lrn),
+            CASE(matmul),
+            CASE(pooling),
+            CASE(prelu),
+            CASE(reduction),
+            CASE(reorder),
+            CASE(resampling),
+            CASE(rnn),
+            CASE(sdpa),
+            CASE(shuffle),
+            CASE(softmax),
+            CASE(sum),
+            CASE(undefined),
+    };
+#undef CASE
+
+    int kind_idx = (int)kind;
+    assert(kind_idx >= 0);
+    assert((size_t)kind_idx
+            < sizeof(prim_kind_itt_domain) / sizeof(prim_kind_itt_domain[0]));
+
+    return prim_kind_itt_domain[kind_idx];
 }
 
 } // namespace
 
-void primitive_task_start(primitive_kind_t kind) {
+void primitive_task_start(primitive_kind_t kind, const char *task_name) {
     if (kind == primitive_kind::undefined) return;
 
-#define CASE(x) \
-    __itt_string_handle_create(dnnl_prim_kind2str(primitive_kind::x))
-    static __itt_string_handle *prim_kind_itt_strings[] = {
-            CASE(undefined),
-            CASE(reorder),
-            CASE(shuffle),
-            CASE(concat),
-            CASE(sum),
-            CASE(convolution),
-            CASE(deconvolution),
-            CASE(eltwise),
-            CASE(lrn),
-            CASE(batch_normalization),
-            CASE(inner_product),
-            CASE(rnn),
-            CASE(gemm),
-            CASE(binary),
-            CASE(matmul),
-            CASE(resampling),
-            CASE(pooling),
-            CASE(reduction),
-            CASE(prelu),
-            CASE(softmax),
-            CASE(layer_normalization),
-            CASE(group_normalization),
-            CASE(sdpa),
-    };
-#undef CASE
-    int kind_idx = (int)kind;
-    assert(kind_idx >= 0);
-    if (kind_idx < primitive_kind::internal_only_start) {
-        assert((size_t)kind_idx < sizeof(prim_kind_itt_strings)
-                        / sizeof(prim_kind_itt_strings[0]));
-        __itt_task_begin(itt_domain(), __itt_null, __itt_null,
-                prim_kind_itt_strings[kind_idx]);
-    }
+    __itt_string_handle *str_handle = __itt_string_handle_create(task_name);
+    __itt_task_begin(itt_domain(kind), __itt_null, __itt_null, str_handle);
     thread_primitive_kind = kind;
+    thread_primitive_name = str_handle;
+}
+
+void primitive_task_start(
+        primitive_kind_t kind, __itt_string_handle *str_handle) {
+    if (kind == primitive_kind::undefined) return;
+
+    __itt_task_begin(itt_domain(kind), __itt_null, __itt_null, str_handle);
+    thread_primitive_kind = kind;
+    thread_primitive_name = str_handle;
 }
 
 primitive_kind_t primitive_task_get_current_kind() {
     return thread_primitive_kind;
 }
 
+__itt_string_handle *primitive_task_get_current_name() {
+    return thread_primitive_name;
+}
+
 void primitive_task_end() {
     if (thread_primitive_kind != primitive_kind::undefined) {
-        __itt_task_end(itt_domain());
+        __itt_task_end(itt_domain(thread_primitive_kind));
+        thread_primitive_name = nullptr;
         thread_primitive_kind = primitive_kind::undefined;
     }
 }

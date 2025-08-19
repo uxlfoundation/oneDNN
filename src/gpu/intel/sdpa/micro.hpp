@@ -190,6 +190,11 @@ struct micro_t : public primitive_t {
                     static_cast<long int>(key_md()->dims[1]),
                     static_cast<long int>(val_md()->dims[1]));
 
+            VCHECK_SDPA_COND(utils::one_of(kq_acc_dt(), f16, f32),
+                    "KQ accumulation data type should be f16 or f32");
+            VCHECK_SDPA_COND(utils::one_of(vs_acc_dt(), f16, f32),
+                    "VS accumulation data type should be f16 or f32");
+
             int kq_scales_mask = desc()->kq_scales.get_mask();
             int kq_zp_mask = desc()->kq_zero_points.get_mask();
             if (!desc()->kq_scales.has_default_values()

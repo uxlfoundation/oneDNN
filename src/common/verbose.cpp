@@ -1628,6 +1628,8 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             ss << "mul:";
         ss << dnnl_dt2str(desc->scale_dt);
     }
+    ss << "acc:" << dnnl_dt2str(desc->kq_acc_dt) << ","
+       << dnnl_dt2str(desc->vs_acc_dt);
 
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
        << ":" << md2dim_str(pd->val_md());

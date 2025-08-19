@@ -127,7 +127,9 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
             case dnnl_s8: printf("%4d", i); break;
             case dnnl_f32:
             case dnnl_bf16:
-            case dnnl_f16: printf("%9d", i); break;
+            case dnnl_f16:
+            case dnnl_f8_e4m3:
+            case dnnl_f8_e5m2: printf("%9d", i); break;
         }
     }
     printf("\n-----\n");
@@ -184,6 +186,36 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                     offset += idxs[i] * strides[i];
                 }
                 printf("%4d", mapped_ptr[offset]);
+                if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
+            });
+        } break;
+        case dnnl_f8_e4m3: {
+            using dnnl::impl::float8_e4m3_t;
+            float8_e4m3_t *mapped_ptr = (float8_e4m3_t *)mapped_ptr_;
+
+            dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
+                if (idxs[lastdim] == 0) { print_idxs(idxs); }
+
+                size_t offset = 0;
+                for (size_t i = 0; i < ndims; ++i) {
+                    offset += idxs[i] * strides[i];
+                }
+                printf("%+9.3f", (float)(mapped_ptr[offset]));
+                if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
+            });
+        } break;
+        case dnnl_f8_e5m2: {
+            using dnnl::impl::float8_e5m2_t;
+            float8_e5m2_t *mapped_ptr = (float8_e5m2_t *)mapped_ptr_;
+
+            dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
+                if (idxs[lastdim] == 0) { print_idxs(idxs); }
+
+                size_t offset = 0;
+                for (size_t i = 0; i < ndims; ++i) {
+                    offset += idxs[i] * strides[i];
+                }
+                printf("%+9.3f", (float)(mapped_ptr[offset]));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;
@@ -324,6 +356,8 @@ std::ostream &operator<<(std::ostream &ss, const memory::data_type &dt) {
         case mdt::s32: ss << "s32"; break;
         case mdt::f16: ss << "f16"; break;
         case mdt::bf16: ss << "bf16"; break;
+        case mdt::f8_e4m3: ss << "hf8"; break;
+        case mdt::f8_e5m2: ss << "bf8"; break;
         case mdt::s8: ss << "s8"; break;
         case mdt::u8: ss << "u8"; break;
         case mdt::s4: ss << "s4"; break;

@@ -573,18 +573,6 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     bool fpmath_strict = !(fpmath_tf32 || fpmath_bf16 || fpmath_f16)
 	    && (mode & mode_strict) && (mode & mode_w_decomp);
 
-    // Modify base params, used for mandatory converison.
-    auto mod_match = [&](MatchParams &params, bool has_mode,
-                             const char *(*match)(Type)) {
-        if (!has_mode) return;
-        if (match(problem_.Ta)) {
-            params.selector.precisions[0] = match(problem_.Ta);
-        }
-        if (match(problem_.Tb)) {
-            params.selector.precisions[1] = match(problem_.Tb);
-        }
-    };
-
     // Add optional match parameters.
     auto add_mode_matches = [&](bool has_mode, const char *(*match)(Type)) {
         if (!has_mode) return;
@@ -608,7 +596,7 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     // Align both fp4 types?
     mod_match(match_params[0], true, [](Type dt) -> const char * {
-        if (dt.isFP4()) return "E";
+        if (dt.isF4()) return "E";
         return nullptr;
     });
 

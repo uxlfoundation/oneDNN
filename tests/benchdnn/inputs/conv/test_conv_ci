@@ -51,7 +51,8 @@
 
 # Inference
 --dir=FWD_I
---attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc
+--attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc, \
+              src:host_scalar:0.25,wei:per_oc,dst:host_scalar:2
 
 ## Direct
 --alg=direct
@@ -72,7 +73,8 @@
 --attr-zero-points=
 --batch=shapes_basic
 --attr-post-ops=
---attr-zero-points=,src:common:2+dst:common:1,src:per_dim_1+dst:per_dim_1,src:per_dim_1+dst:common:1
+--attr-zero-points=,src:common:2+dst:common:1,src:per_dim_1+dst:per_dim_1,src:per_dim_1+dst:common:1, \
+                    src:host_scalar:2+dst:host_scalar:1
 --batch=shapes_basic
 ### Signed input
 --dt=s8:s8:s8

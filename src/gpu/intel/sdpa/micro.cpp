@@ -120,6 +120,8 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             || with_value_zp();
     bool is_integrated = intel_engine->device_info()->is_integrated();
     bool is_f32 = (qry_md()->data_type == data_type::f32);
+    bool is_f8 = (qry_md()->data_type == data_type::f8_e4m3
+            || qry_md()->data_type == data_type::f8_e5m2);
     use_systolic_ukernel_
             = intel_engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)
@@ -127,7 +129,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     bool use_fma_config = !use_systolic_ukernel_;
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config, is_f32);
+            is_integrated, use_fma_config, is_f32, is_f8);
 
     VCHECK_SDPA_COND(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -202,9 +204,11 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     GEMMProblem problem;
     problem.Ta_ext = convert_dnnl_to_kernel_type(key_md()->data_type);
     problem.Tb_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
-    if (qry_md()->data_type == data_type::f16) {
+    if (qry_md()->data_type == data_type::f16
+            || qry_md()->data_type == data_type::f8_e4m3) {
         problem.Ta = problem.Tb = Type::f16;
-    } else if (qry_md()->data_type == data_type::bf16) {
+    } else if (qry_md()->data_type == data_type::bf16
+            || qry_md()->data_type == data_type::f8_e5m2) {
         problem.Ta = problem.Tb = Type::bf16;
     } else if (qry_md()->data_type == data_type::f32) {
         problem.Ta = problem.Tb = Type::f32;
@@ -252,7 +256,8 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_kq.A.setAlignment(alignmentForLD(ldk));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
-        problem_kq.B.crosspack = 2;
+        problem_kq.B.crosspack
+                = sizeof(uint32_t) / types::data_type_size(qry_md()->data_type);
         problem_kq.B.tileR = into<uint16_t>(d_max());
         problem_kq.B.tileC = into<uint16_t>(sg_size_);
     }
@@ -272,9 +277,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m
-            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
-                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
+    heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
+            d->keys(), thin_q, quantized, is_integrated, use_fma_config, is_f32,
+            is_f8);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (queries <= thin_q_threshold)
             ? thin_q_threshold

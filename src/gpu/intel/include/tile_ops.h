@@ -140,6 +140,13 @@ __attribute__((overloadable)) float local_atomic_max(local float *p, float v) {
                         v[31])); \
     }
 
+DEF_BLOCK_LOAD_STORE1(uchar, uchar, _uc)
+DEF_BLOCK_LOAD_STORE(uchar, uchar, _uc, 2)
+DEF_BLOCK_LOAD_STORE(uchar, uchar, _uc, 4)
+DEF_BLOCK_LOAD_STORE(uchar, uchar, _uc, 8)
+DEF_BLOCK_LOAD_STORE16(uchar, uchar, _uc)
+DEF_BLOCK_LOAD_STORE32(uchar, uchar, _uc)
+
 DEF_BLOCK_LOAD_STORE1(half, ushort, _us)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 4)
@@ -265,6 +272,24 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                                    s++) { \
                 type v = {CONVERT_DATA_T(t.x[i][2 * s]), \
                         CONVERT_DATA_T(t.x[i][2 * s + 1])}; \
+                t_new.x[i][s] = as_uint(v); \
+            } \
+        } \
+    } while (0)
+
+#define tile_copy_to_vec4(t, t_new, type) \
+    do { \
+        _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
+                               i++) { \
+            _Pragma("unroll") for (int s = 0; \
+                                   s < sizeof(t.x[0]) / sizeof(t.x[0][0]) / 4; \
+                                   s++) { \
+                type v = { \
+                        CONVERT_DATA_T(t.x[i][4 * s]), \
+                        CONVERT_DATA_T(t.x[i][4 * s + 1]), \
+                        CONVERT_DATA_T(t.x[i][4 * s + 2]), \
+                        CONVERT_DATA_T(t.x[i][4 * s + 3]), \
+                }; \
                 t_new.x[i][s] = as_uint(v); \
             } \
         } \

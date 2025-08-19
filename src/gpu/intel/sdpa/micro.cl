@@ -50,14 +50,21 @@ typedef ugemm_vs_c_type a_tile_type;
 
 #ifdef QRY_DT_F32
 #define FMA_TYPE float
+#define tile_copy_to_vec tile_copy
 #elif QRY_DT_F16
-#define VEC_TYPE2 half2
+#define Q_PACKED_TYPE half2
 #define FMA_TYPE half
+#define tile_copy_to_vec tile_copy_to_vec2
 #elif defined(QRY_DT_BF16)
-#define VEC_TYPE2 ushort2
+#define Q_PACKED_TYPE ushort2
 #define FMA_TYPE ushort
+#define tile_copy_to_vec tile_copy_to_vec2
+#elif defined(QRY_DT_HF8) || defined(QRY_DT_BF8)
+#define Q_PACKED_TYPE uchar4
+#define FMA_TYPE uchar
+#define tile_copy_to_vec tile_copy_to_vec4
 #else
-#error "Data type not supported for VEC_TYPE2"
+#error "Data type not supported for Q_PACKED_TYPE"
 #endif
 
 #ifdef SCALE_DT_BF16
@@ -97,7 +104,7 @@ DECLARE_2D_TILE_BLOCK_OPS(
 #elif Q_ALIGN < 4
 
 #if USE_SYSTOLIC_UKERNEL
-DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
+DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, Q_PACKED_TYPE,
         SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
 #endif
 
@@ -726,7 +733,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if USE_SYSTOLIC_UKERNEL
         /* Convert to half or bf16, VNNI format */
         s_tile_type_packed S_tile_packed;
-        tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
+        tile_copy_to_vec(S_tile, S_tile_packed, Q_PACKED_TYPE);
 
         /* Store to SLM, in packed format */
         tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,

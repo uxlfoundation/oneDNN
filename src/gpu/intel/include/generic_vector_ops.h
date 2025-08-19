@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_INCLUDE_GENERIC_VECTOR_OPS_H
 #define GPU_INTEL_INCLUDE_GENERIC_VECTOR_OPS_H
 
+typedef uchar uchar1 __attribute__((ext_vector_type(1)));
+typedef uchar uchar32 __attribute__((ext_vector_type(32)));
 typedef ushort ushort1 __attribute__((ext_vector_type(1)));
 typedef ushort ushort32 __attribute__((ext_vector_type(32)));
 typedef half __attribute__((ext_vector_type(1))) half1;

@@ -430,6 +430,75 @@ dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {
     return dnnl::graph::op::attr::undef;
 }
 
+const std::string &attrstr2type(const std::string &attr_name) {
+    const static std::unordered_map<std::string, std::string> attr_map = {
+            {"undef", "undef"},
+            // float32 attributes. The value of these attributes can be any single
+            // float32 number.
+            {"alpha", "f32"},
+            {"beta", "f32"},
+            {"epsilon", "f32"},
+            {"max", "f32"},
+            {"min", "f32"},
+            {"momentum", "f32"},
+            // float32 vector attributes. The value of these attributes can be a
+            // vector of float32 numbers.
+            {"scales", "f32[]"},
+            // int64_t attributes. The value of these attributes can be any single
+            // int64 number.
+            {"axis", "s64"},
+            {"begin_norm_axis", "s64"},
+            {"groups", "s64"},
+            {"group_shape", "s64"},
+            // int64_t vector attributes. The value of these attributes can be a
+            // vector of int64 numbers.
+            {"axes", "s64[]"},
+            {"dilations", "s64[]"},
+            {"weights_shape", "s64[]"},
+            {"src_shape", "s64[]"},
+            {"kernel", "s64[]"},
+            {"order", "s64[]"},
+            {"output_padding", "s64[]"},
+            {"dst_shape", "s64[]"},
+            {"pads_begin", "s64[]"},
+            {"pads_end", "s64[]"},
+            {"shape", "s64[]"},
+            {"sizes", "s64[]"},
+            {"strides", "s64[]"},
+            {"zps", "s64[]"},
+            // bool attributes. The value of these attributes can be any single bool
+            // value.
+            {"exclude_pad", "bool"},
+            {"keep_dims", "bool"},
+            {"keep_stats", "bool"},
+            {"per_channel_broadcast", "bool"},
+            {"special_zero", "bool"},
+            {"transpose_a", "bool"},
+            {"transpose_b", "bool"},
+            {"use_affine", "bool"},
+            {"use_dst", "bool"},
+            // string attributes. The value of these attributes can be a string.
+            {"auto_broadcast", "string"},
+            {"auto_pad", "string"},
+            {"coordinate_transformation_mode", "string"},
+            {"data_format", "string"},
+            {"weights_format", "string"},
+            {"mode", "string"},
+            {"qtype", "string"},
+            {"rounding_type", "string"},
+    };
+    const auto it = attr_map.find(attr_name);
+    if (it != attr_map.end()) {
+        return it->second;
+    } else {
+        fprintf(stderr,
+                "graph: ERROR: Unsupported attribute: `%s`, exiting...\n",
+                attr_name.c_str());
+        SAFE_V(FAIL);
+        return attr_map.at("undef");
+    }
+}
+
 // when length is 3, return "abc", when length is 5, return "abcde"
 std::string get_default_tag(size_t length) {
     std::string mtag;

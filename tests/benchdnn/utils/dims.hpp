@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2023 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,7 +56,9 @@ struct prb_vdims_t {
 // strides for SRC, WEI, and DST
 enum {
     STRIDES_SRC = 0,
+    STRIDES_SRC_0 = STRIDES_SRC,
     STRIDES_WEI = 1,
+    STRIDES_SRC_1 = STRIDES_WEI,
     STRIDES_DST = 2,
     STRIDES_SIZE = 3,
 };

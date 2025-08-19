@@ -212,12 +212,6 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
                     IMPLICATION(!sc.has_default_values(DNNL_ARG_DST),
                             utils::one_of(sc.get_mask(DNNL_ARG_DST), 0, 2)),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-
-            // By default, host scalar scales are not supported for GPU
-            // as the value should be accessed differently in the kernel
-            VCHECK_CONV_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
-                                       !sc.has_host_scalars()),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check zero points
@@ -235,12 +229,6 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
             VCHECK_CONV_UNIMPL(IMPLICATION(!zp.has_default_values(DNNL_ARG_DST),
                                        utils::one_of(zp.get_mask(DNNL_ARG_DST),
                                                0, 1 << 1)),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-
-            // By default, host scalar zero points are not supported for GPU
-            // as the value should be accessed differently in the kernel
-            VCHECK_CONV_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
-                                       !zp.has_host_scalars()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 

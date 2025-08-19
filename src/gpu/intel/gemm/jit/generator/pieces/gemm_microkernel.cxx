@@ -299,6 +299,8 @@ static inline micro::StructuredType::Type microType(Type T)
         CASE(f32)
         CASE(f16)
         CASE(bf16)
+        CASE(hf8) // f8_e4m3
+        CASE(bf8) // f8_e5m2
         CASE(s32)
         CASE(s16)
         CASE(s8)

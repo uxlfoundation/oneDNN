@@ -107,12 +107,14 @@ struct StructuredType {
         u8,
         s8,
         u4,
-        s4, //    integral
+        s4, // integral
         f64,
         f32,
         f16,
-        bf16, //    floating-point
-        any, //    unspecified
+        bf16, // floating-point
+        hf8, // f8_e4m3
+        bf8, // f8_e5m2
+        any, // unspecified
     } type
             = Type::any;
     enum Format { Scalar, GlobalPointer, LocalPointer, Tensor } format = Scalar;

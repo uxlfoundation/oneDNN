@@ -83,6 +83,8 @@ int typeSize(StructuredType::Type type) {
         case StructuredType::u16:
         case StructuredType::f16:
         case StructuredType::bf16: return 2;
+        case StructuredType::hf8:
+        case StructuredType::bf8:
         case StructuredType::s8:
         case StructuredType::u8: return 1;
         default: throw std::runtime_error("Unknown type");
@@ -113,6 +115,8 @@ const char *typeName(
             case StructuredType::f32: return "f";
             case StructuredType::f16: return "hf";
             case StructuredType::bf16: return "bf";
+            case StructuredType::hf8: return "hf8";
+            case StructuredType::bf8: return "bf8";
             default: throw std::runtime_error("Unknown type");
         }
     else
@@ -127,6 +131,8 @@ const char *typeName(
             case StructuredType::u8: return "uchar";
             case StructuredType::s4: return "uchar";
             case StructuredType::u4: return "uchar";
+            case StructuredType::hf8: return "uchar";
+            case StructuredType::bf8: return "uchar";
             case StructuredType::f64: return "double";
             case StructuredType::f32: return "float";
             case StructuredType::f16: return "half";

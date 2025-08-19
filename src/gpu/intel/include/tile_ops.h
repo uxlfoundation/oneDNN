@@ -163,11 +163,8 @@ DEF_BLOCK_LOAD_STORE(half, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 4)
 DEF_BLOCK_LOAD_STORE(half, ushort, _us, 8)
 DEF_BLOCK_LOAD_STORE16(half, ushort, _us)
-typedef ushort ushort32 __attribute__((ext_vector_type(32)));
-typedef half half32 __attribute__((ext_vector_type(32)));
 DEF_BLOCK_LOAD_STORE32(half, ushort, _us)
 
-typedef ushort ushort1 __attribute__((ext_vector_type(1)));
 DEF_BLOCK_LOAD_STORE1(ushort, ushort, _us)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 2)
 DEF_BLOCK_LOAD_STORE(ushort, ushort, _us, 4)
@@ -180,7 +177,6 @@ DEF_BLOCK_LOAD_STORE(uint, uint, , 2)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 4)
 DEF_BLOCK_LOAD_STORE(uint, uint, , 8)
 DEF_BLOCK_LOAD_STORE16(uint, uint, )
-typedef uint uint32 __attribute__((ext_vector_type(32)));
 DEF_BLOCK_LOAD_STORE32(uint, uint, )
 
 DEF_BLOCK_LOAD_STORE1(float, uint, )
@@ -188,7 +184,6 @@ DEF_BLOCK_LOAD_STORE(float, uint, , 2)
 DEF_BLOCK_LOAD_STORE(float, uint, , 4)
 DEF_BLOCK_LOAD_STORE(float, uint, , 8)
 DEF_BLOCK_LOAD_STORE16(float, uint, )
-typedef float float32 __attribute__((ext_vector_type(32)));
 DEF_BLOCK_LOAD_STORE32(float, uint, )
 
 #define DEF_BLOCK2D_LOAD_STORE(type, itype, vl, SG, suffix, BR, BC) \

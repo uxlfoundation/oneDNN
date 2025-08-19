@@ -17,9 +17,14 @@
 #ifndef GPU_INTEL_INCLUDE_GENERIC_VECTOR_OPS_H
 #define GPU_INTEL_INCLUDE_GENERIC_VECTOR_OPS_H
 
+typedef ushort ushort1 __attribute__((ext_vector_type(1)));
+typedef ushort ushort32 __attribute__((ext_vector_type(32)));
 typedef half __attribute__((ext_vector_type(1))) half1;
+typedef half half32 __attribute__((ext_vector_type(32)));
 typedef uint __attribute__((ext_vector_type(1))) uint1;
+typedef uint uint32 __attribute__((ext_vector_type(32)));
 typedef float __attribute__((ext_vector_type(1))) float1;
+typedef float float32 __attribute__((ext_vector_type(32)));
 typedef int __attribute__((ext_vector_type(1))) int1;
 
 float1 __attribute__((overloadable)) vmad(float1 a, float1 b, float1 c) {

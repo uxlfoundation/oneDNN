@@ -347,6 +347,12 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
+    if (op->has_attr(op_attr::accumulation_mode)) {
+        const auto acc_mode
+                = op->get_attr<std::string>(op_attr::accumulation_mode);
+        prm_attr.set_accumulation_mode(str2accumulation_mode(acc_mode));
+    }
+
     auto src = make_dnnl_memory_desc(
             op->get_input_value(0)->get_logical_tensor());
     // For non-constant activation and weight, create primitive desc with

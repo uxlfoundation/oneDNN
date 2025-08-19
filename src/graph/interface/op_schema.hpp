@@ -357,7 +357,10 @@ op_schema_t get_op_schema();
 
 #define SET_MATMUL_COMMON_ATTRS \
     set_attr(op_attr::transpose_a, false, attribute_kind::b, false) \
-            .set_attr(op_attr::transpose_b, false, attribute_kind::b, false)
+            .set_attr(op_attr::transpose_b, false, attribute_kind::b, false) \
+            .set_attr(op_attr::accumulation_mode, false, attribute_kind::s, \
+                    "strict", \
+                    {"strict", "relaxed", "any", "f32", "s32", "f16"})
 
 #define SET_CONV_COMMON_ATTRS \
     set_attr(op_attr::strides, true, attribute_kind::is) \

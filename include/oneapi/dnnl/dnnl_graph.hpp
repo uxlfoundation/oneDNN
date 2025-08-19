@@ -997,6 +997,9 @@ public:
         /// Specifies a weights_format of an op. The value can be "OIX", "XIO",
         /// "IOX", or "XOI". Different operations may support different values.
         weights_format = dnnl_graph_op_attr_weights_format,
+        /// Specifies an accumulation_mode attribute to an op. The value can be
+        /// "strict", "relaxed", "any", "f32", "s32", or "f16".
+        accumulation_mode = dnnl_graph_op_attr_accumulation_mode,
 
         /// Specifies the end of all above exteral attributes for check.
         end = dnnl_graph_op_attr_end,

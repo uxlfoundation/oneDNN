@@ -675,6 +675,26 @@ size_t generate_constant_md_hash(
     return key;
 }
 
+dnnl::accumulation_mode str2accumulation_mode(
+        const std::string &accumulation_mode_str) {
+    if (accumulation_mode_str == "strict") {
+        return dnnl::accumulation_mode::strict;
+    } else if (accumulation_mode_str == "relaxed") {
+        return dnnl::accumulation_mode::relaxed;
+    } else if (accumulation_mode_str == "any") {
+        return dnnl::accumulation_mode::any;
+    } else if (accumulation_mode_str == "s32") {
+        return dnnl::accumulation_mode::s32;
+    } else if (accumulation_mode_str == "f32") {
+        return dnnl::accumulation_mode::f32;
+    } else if (accumulation_mode_str == "f16") {
+        return dnnl::accumulation_mode::f16;
+    } else {
+        assert(!"unknown accumulation mode");
+        return dnnl::accumulation_mode::strict;
+    }
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

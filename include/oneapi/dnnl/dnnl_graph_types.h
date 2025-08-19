@@ -385,6 +385,9 @@ typedef enum {
     /// Specifies a weights_format of an op. The value can be "OIX", "XIO",
     /// "IOX", or "XOI". Different operations may support different values.
     dnnl_graph_op_attr_weights_format,
+    /// Specifies an accumulation_mode attribute to an op. The value can be
+    /// "strict", "relaxed", "any", "f32", "s32", or "f16".
+    dnnl_graph_op_attr_accumulation_mode,
 
     /// Specifies the end of all above exteral attributes for check.
     dnnl_graph_op_attr_end = 0xFF,

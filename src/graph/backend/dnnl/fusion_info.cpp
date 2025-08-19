@@ -298,6 +298,19 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     sum_dt = dnnl::memory::data_type::s8;
                 }
                 dnnl_pops.append_sum(scale, zp, sum_dt);
+            } else if (alg == dnnl::algorithm::binary_select) {
+                // post-binary
+                VCHECK_FUSION_INFO(
+                        extra_inputs.size() == 2 && scale == 1.f && zp == 0,
+                        attr,
+                        "%s post-binary_select only has 2 extra inputs and "
+                        "doesn't support input scale and zp",
+                        op->get_name().c_str());
+                auto md1 = make_dnnl_memory_desc(psrc);
+                auto psrc_cond = op->get_input_value(extra_inputs[1])
+                                         ->get_logical_tensor();
+                auto md2 = make_dnnl_memory_desc(psrc_cond);
+                dnnl_pops.append_binary(alg, md1, md2);
             } else {
                 // post-binary
                 VCHECK_FUSION_INFO(

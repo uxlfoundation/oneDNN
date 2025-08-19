@@ -140,6 +140,9 @@ std::string get_format_tag_str(const dnnl::memory::desc &md);
 
 dnnl::memory::format_tag get_format_tag(const dnnl::memory::desc &md);
 
+dnnl::accumulation_mode str2accumulation_mode(
+        const std::string &accumulation_mode_str);
+
 size_t generate_constant_md_hash(
         size_t part_id, const std::vector<dnnl::memory::desc> &const_mds);
 

@@ -108,6 +108,10 @@ struct micro_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
+
+            bool only_ref = gpu_utils::dev_getenv("only_ref_sdpa", false);
+            VDISPATCH_SDPA(!only_ref, VERBOSE_SKIP_PRIMITIVE_IMPL);
+
             VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),

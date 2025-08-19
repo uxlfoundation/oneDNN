@@ -38,6 +38,10 @@ struct ref_t : public primitive_t {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
+
+            VDEBUGINFO(4, primitive, sdpa, "MYPRINT:ref init");
+
+
             /* Reference SDPA is only enabled on-demand, for testing. */
             bool enable_ref = gpu_utils::dev_getenv("enable_ref_sdpa", false);
             VDISPATCH_SDPA(enable_ref, VERBOSE_SKIP_PRIMITIVE_IMPL);
@@ -60,6 +64,9 @@ struct ref_t : public primitive_t {
 
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
+
+        VDEBUGINFO(4, primitive, sdpa, "MYPRINT:ref init override");
+
 
         kernel_ctx.set_data_type(pd()->dst_md()->data_type);
 
@@ -96,11 +103,16 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK");
         def_data_type(kernel_ctx, pd()->desc()->scale_dt, "SCALE");
         CHECK(create_kernel(engine, &kernel_, "ref_sdpa", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
+        if (!kernel_) {
+            VDEBUGINFO(4, primitive, sdpa, "MYPRINT:!!! ref create_kernel error !!!!");
+            return status::runtime_error;
+        }
+        VDEBUGINFO(4, primitive, sdpa, "MYPRINT: ref init override - success");
         return status::success;
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
+        VDEBUGINFO(4, primitive, sdpa, "MYPRINT:ref execute");
         return execute_ref(ctx);
     }
 

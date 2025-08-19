@@ -110,6 +110,12 @@ struct sdpa_pd_t : public primitive_desc_t {
         return (attn_mask_md()->data_type != data_type::undef);
     }
 
+    /// Returns the accumulation data type of the KQ matmul
+    data_type_t kq_acc_dt() const { return desc()->kq_acc_dt; }
+
+    /// Returns the accumulation data type of the VS matmul
+    data_type_t vs_acc_dt() const { return desc()->vs_acc_dt; }
+
     /// If true, the attention mask is a causal mask
     bool with_causal_mask() const {
         return desc_.mask_type == attn_mask_type::top_left

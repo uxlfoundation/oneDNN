@@ -214,7 +214,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
                 "Q tensor's data type must be bf16 or f16");
     }
     problem.Tc = problem.Tc_ext = Type::f32;
-    problem.Ts = problem.Tc;
+    problem.Ts = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
     auto problem_kq = problem;
     problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
@@ -287,6 +287,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up GEMMProblem structure for second GEMM: V * S  */
     auto problem_vs = std::move(problem);
+    problem.Ts = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);

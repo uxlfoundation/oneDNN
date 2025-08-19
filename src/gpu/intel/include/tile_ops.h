@@ -26,24 +26,6 @@ __attribute__((overloadable)) float local_atomic_max(local float *p, float v) {
     return __builtin_IB_atomic_max_local_f32(p, v);
 }
 
-__attribute__((overloadable)) half local_atomic_max(
-        local half *p, half v) { /* not implemented */
-    return v;
-}
-
-__attribute__((overloadable)) ushort local_atomic_max(
-        local ushort *p, ushort v) { /* not implemented */
-    return v;
-}
-
-__attribute__((overloadable)) uint local_atomic_max(local uint *p, uint v) {
-    return atomic_max(p, v);
-}
-
-__attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
-    return atomic_max(p, v);
-}
-
 #define DEF_BLOCK_LOAD_STORE(type, itype, suffix, n) \
     __attribute__((overloadable)) type##n block_load( \
             const global type *p, int vlen) \
@@ -481,7 +463,10 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                 if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
             } \
         } \
-    } \
+    }
+
+#define DECLARE_2D_TILE_OP_ATOMIC_MAX_FULL( \
+        tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_atomic_max_full(tile_type t, \
             local element_type *ptr, int ld, int offset_r, int offset_c) { \
         ptr += ld * offset_c + offset_r; \

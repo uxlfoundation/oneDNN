@@ -3975,9 +3975,9 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> reshape_ops;
     dnnl_dim_t head_num;
     for (auto &cur_op : sg->get_ops()) {
-        auto in = cur_op->get_input_value(0)->get_logical_tensor();
-        auto out = cur_op->get_output_value(0)->get_logical_tensor();
         if (cur_op->get_kind() == op_kind::dnnl_reshape) {
+            auto in = cur_op->get_input_value(0)->get_logical_tensor();
+            auto out = cur_op->get_output_value(0)->get_logical_tensor();
             if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
                 reshape_ops.emplace_back(cur_op);
                 if (ltw(in).ndims() == 5) head_num = ltw(out).vdims()[1];
@@ -4018,9 +4018,9 @@ impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg) {
         return impl::status::success;
     std::vector<op_ptr> reshape_ops;
     for (auto &cur_op : sg->get_ops()) {
-        auto in = cur_op->get_input_value(0)->get_logical_tensor();
-        auto out = cur_op->get_output_value(0)->get_logical_tensor();
         if (cur_op->get_kind() == op_kind::dnnl_reshape) {
+            auto in = cur_op->get_input_value(0)->get_logical_tensor();
+            auto out = cur_op->get_output_value(0)->get_logical_tensor();
             if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
                 reshape_ops.emplace_back(cur_op);
             }

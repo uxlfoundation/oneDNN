@@ -33,8 +33,6 @@ if [[ "$OS" == "Linux" ]]; then
 fi
 
 # Nightly failures
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_all_blocked_cpu"
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_bnorm_regressions_cpu"
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
 
 # c7g failures. TODO: scope these to c7g only. Better yet, fix them.

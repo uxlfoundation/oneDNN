@@ -248,4 +248,4 @@ jobs:
     name: "Nightly Performance AArch64"
     steps:
       - name: Print success
-        run: echo Success       
+        run: echo Success

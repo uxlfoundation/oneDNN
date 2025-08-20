@@ -239,8 +239,8 @@ int dnn_mem_t::reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
     return status;
 }
 
-size_t dnn_mem_t::size() const {
-    return dnnl_memory_desc_get_size(md_);
+size_t dnn_mem_t::size(int index) const {
+    return dnnl_memory_desc_get_size_v2(md_, index);
 }
 
 bool dnn_mem_t::is_sparse_md() const {

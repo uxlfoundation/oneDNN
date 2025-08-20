@@ -600,6 +600,7 @@ status_t micro_params_t::get_kernel_ctx(
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!
     GET_KERNEL_PRINT
+
     // !!!!!!!!!!!!!!!!!!!!!!!!!
 
 
@@ -680,6 +681,10 @@ status_t micro_params_t::get_kernel_ctx(
 
     if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128)
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!
+    kernel_ctx.print_options();
+    // !!!!!!!!!!!!!!!!!!!!!!!!
 
     return status::success;
 }

@@ -83,6 +83,14 @@ public:
         return oss.str();
     }
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    void print_options() const {
+        if (gpu_utils::dev_getenv("KERNEL_OPTS_PRINT", 0)) {
+            std::cout << "OPT:\n" << options() << std::endl;
+        }
+    }
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     void register_buffer_size(size_t size) {
         if (size > INT_MAX) use_int32_offset(false);
     }

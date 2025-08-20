@@ -105,7 +105,9 @@ struct ref_t : public primitive_t {
 
         // !!!!!!!!!!!!!!!!!!!!!!!!!
         GET_KERNEL_PRINT
-        // !!!!!!!!!!!!!!!!!!!!!!!!!
+        // !!!!!!!!!!!!!!!!!!!!!!!!
+        kernel_ctx.print_options();
+        // !!!!!!!!!!!!!!!!!!!!!!!!
 
         CHECK(create_kernel(engine, &kernel_, "ref_sdpa", kernel_ctx));
         if (!kernel_) {

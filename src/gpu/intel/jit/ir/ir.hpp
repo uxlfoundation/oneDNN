@@ -54,15 +54,22 @@ public:
     }
 
     std::string create_tmp_name(const std::string &prefix = "tmp") {
-        int &id = prefix_ids_[prefix];
-        auto name = prefix + "_" + std::to_string(id);
-        id++;
+        auto name = prefix;
+        if (all_names_.count(prefix) != 0) {
+            int &id = prefix_ids_[prefix];
+            do {
+                id++;
+                name = prefix + "_" + std::to_string(id);
+            } while (all_names_.count(name) != 0);
+        }
+        all_names_.insert(name);
         return name;
     }
 
 private:
     exec_config_t exec_cfg_;
     constraint_set_t &cset_;
+    std::unordered_set<std::string> all_names_;
     std::unordered_map<std::string, int> prefix_ids_;
 };
 

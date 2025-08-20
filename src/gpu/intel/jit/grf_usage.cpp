@@ -223,7 +223,7 @@ private:
     bool is_header(const expr_t &buf) const {
         if (!is_buffer(buf)) return false;
         auto &name = buf.as<var_t>().name;
-        return name.find("h_") == 0;
+        return name == "h" || name.find("h_") == 0;
     }
 
     bool should_skip_if_set(const expr_t &buf, grf_usage_label_t label) const {

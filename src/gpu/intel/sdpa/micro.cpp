@@ -598,6 +598,11 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!
+    GET_KERNEL_PRINT
+    // !!!!!!!!!!!!!!!!!!!!!!!!!
+
+
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
     micro::GEMMProtocol::Options opts_kq, opts_vs;

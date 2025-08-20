@@ -23,6 +23,10 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
         __global DST_DATA_T *dst, const __global SCALE_DATA_T *scale_ptr,
         const __global MSK_DATA_T *mask, long nv, long nd) {
 
+    // !!!!!!!!!!!!!!!!
+    KERNEL_PRINT_HEAD
+    // !!!!!!!!!!!!!!!!
+
     long q = get_global_id(0);
     long b0 = get_global_id(1);
     long b1 = get_global_id(2);

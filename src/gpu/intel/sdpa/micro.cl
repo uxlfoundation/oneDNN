@@ -319,6 +319,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         ,
         const int remainder_k, const int remainder_q) {
 
+
+    // !!!!!!!!!!!!!!!!
+    KERNEL_PRINT_HEAD
+    // !!!!!!!!!!!!!!!!
+
+
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
 

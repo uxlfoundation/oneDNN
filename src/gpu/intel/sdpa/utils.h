@@ -17,6 +17,55 @@
 #ifndef GPU_INTEL_SDPA_UTILS_H
 #define GPU_INTEL_SDPA_UTILS_H
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#if KERNEL_PRINT
+#define DPRINT gws0 == G0 &&gws1 == G1 &&gws2 == G2
+#else
+#define DPRINT 0
+#endif
+#define GET_GWS \
+    int gws0 = get_global_id(0); \
+    int gws1 = get_global_id(1); \
+    int gws2 = get_global_id(2);
+
+#define KERNEL_PRINT_HEAD \
+    GET_GWS; \
+    if (DPRINT) { \
+        printf("\nKernel %s (%d %d %d) : <%ld %ld %ld> <%ld %ld %ld>\n\n", \
+                __FUNCTION__, gws0, gws1, gws2, get_global_size(0), \
+                get_global_size(1), get_global_size(2), get_local_size(0), \
+                get_local_size(1), get_local_size(2)); \
+    }
+
+#define FALSE_COND (get_global_id(0) > (1 << 30))
+
+#define DUMP_DATA(name, ptr, len) \
+    do { \
+        GET_GWS; \
+        if (DPRINT) { \
+            printf("\n%s (%d):", name, len); \
+            for (int i = 0; i < (len); i++) { \
+                if (i % 16 == 0) printf("\n"); \
+                printf("%.2f ", (float)((ptr)[i])); \
+            } \
+            printf("\n"); \
+        } \
+    } while (0)
+
+#define TEMP_DUMP_DATA(name, ptr, len) \
+    do { \
+        GET_GWS; \
+        if (gws0 == G0) { \
+            printf("\n%s (%d):", name, len); \
+            for (int i = 0; i < (len); i++) { \
+                if (i % 16 == 0) printf("\n"); \
+                printf("%.2f ", (float)((ptr)[i])); \
+            } \
+            printf("\n"); \
+        } \
+    } while (0)
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 #define _4D_OFF(tag, x0, x1, x2, x3) \
     (((x0) % tag##_B0) * tag##_SB0 + ((x0) / tag##_B0) * tag##_S0 \
             + ((x1) % tag##_B1) * tag##_SB1 + ((x1) / tag##_B1) * tag##_S1 \

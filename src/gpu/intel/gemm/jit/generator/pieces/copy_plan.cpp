@@ -1867,7 +1867,7 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         return;
     }
 
-    auto ie = splitMultiple<11>(i);
+    auto ie = splitMultiple<13>(i);
 
     auto t0 = newTemp(DataType::hf, i.simd, 1);
     auto t1 = newTemp(DataType::hf, i.simd, 1);
@@ -1906,40 +1906,59 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
     ie[4]->src0 = ie[4]->dst = t0UW;
     ie[4]->src1 = Immediate::w(e2m1 ? -0x0100 : -0x200);
 
-    ie[5]->op = Opcode::and_;
-    ie[5]->flag = flag;
-    ie[5]->cmod = ConditionModifier::nz;
-    ie[5]->dst = CopyOperand();
-    ie[5]->dst.type = DataType::uw;
-    ie[5]->src0 = t0UW;
-    ie[5]->src1 = Immediate::uw(e2m1 ? 0x03FF : 0x07FF);
+    if (e2m1) {
+        ie[5]->invalidate();
+        ie[6]->invalidate();
+    } else {
+        ie[5]->op = Opcode::cmp;
+        ie[5]->cmod = ConditionModifier::gt;
+        ie[5]->flag = flag;
+        ie[5]->dst = CopyOperand();
+        ie[5]->dst.type = DataType::hf;
+        ie[5]->src0 = t0;
+        ie[5]->src1 = Immediate::hf(0);
 
-    ie[6]->op = Opcode::add;
-    ie[6]->flag = flag;
-    ie[6]->src0 = ie[6]->dst = t0UW;
-    ie[6]->src1 = Immediate::uw(e2m1 ? 0x0200 : 0x0400);
+        ie[6]->op = Opcode::or_;
+        ie[6]->flag = flag;
+        ie[6]->dst = t0UW;
+        ie[6]->src0 = t0UW;
+        ie[6]->src1 = 0x1;
+    }
 
-    ie[7]->op = Opcode::shl;
-    ie[7]->src0 = ie[7]->dst = t0UW;
-    ie[7]->src1 = Immediate::uw(e2m1 ? 3 : 2);
+    ie[7]->op = Opcode::and_;
+    ie[7]->flag = flag;
+    ie[7]->cmod = ConditionModifier::nz;
+    ie[7]->dst = CopyOperand();
+    ie[7]->dst.type = DataType::uw;
+    ie[7]->src0 = t0UW;
+    ie[7]->src1 = Immediate::uw(e2m1 ? 0x03FF : 0x07FF);
+
+    ie[8]->op = Opcode::add;
+    ie[8]->flag = flag;
+    ie[8]->src0 = ie[8]->dst = t0UW;
+    ie[8]->src1 = Immediate::uw(e2m1 ? 0x0200 : 0x0400);
+
+    ie[9]->op = Opcode::shl;
+    ie[9]->src0 = ie[9]->dst = t0UW;
+    ie[9]->src1 = Immediate::uw(e2m1 ? 3 : 2);
 
     // Restore sign.
-    ie[8]->op = Opcode::bfn;
-    ie[8]->src0 = ie[8]->dst = t0UW;
-    ie[8]->src1 = x;
-    ie[8]->src1.type = DataType::uw;
-    ie[8]->src2 = 0x8000;
-    ie[8]->ctrl = 0xCA;
+    ie[10]->op = Opcode::bfn;
+    ie[10]->src0 = ie[10]->dst = t0UW;
+    ie[10]->src1 = x;
+    ie[10]->src1.type = DataType::uw;
+    ie[10]->src2 = 0x8000;
+    ie[10]->ctrl = 0xCA;
 
     // Pack into bytes.
-    ie[9]->op = Opcode::shr;
-    ie[9]->src0 = ie[9]->dst = t0UW;
-    ie[9]->src1 = Immediate::uw(12);
+    ie[11]->op = Opcode::shr;
+    ie[11]->src0 = ie[11]->dst = t0UW;
+    ie[11]->src1 = Immediate::uw(12);
 
-    ie[10]->op = Opcode::mov;
-    ie[10]->dst = y;
-    ie[10]->dst.type = DataType::u4;
-    ie[10]->src0 = t0UW;
+    ie[12]->op = Opcode::mov;
+    ie[12]->dst = y;
+    ie[12]->dst.type = DataType::u4;
+    ie[12]->src0 = t0UW;
 }
 
 // Check that no types smaller than a byte are present.

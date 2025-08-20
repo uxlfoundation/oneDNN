@@ -14,12 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <array>
-
-#include "common/bit_cast.hpp"
-#include "common/dnnl_thread.hpp"
-#include "common/float16.hpp"
 #include "common/float4.hpp"
+#include "common/float16.hpp"
 #include "common/utils.hpp"
 
 namespace dnnl {
@@ -113,8 +109,10 @@ uint8_t float2e3m0(float f) {
             min_diff = diff;
             raw_bits = idx;
         }
-        // Special case for midpoint, we round to even (so even index)
-        if ((diff == min_diff) && !(idx & 1)) raw_bits = idx;
+        // Special case for midpoint:
+        //  - towards 0 for 0.125
+        //  - up for other ties
+        if ((diff == min_diff) && idx != 1) raw_bits = idx;
     }
     assert(raw_bits < 8);
     // reapply sign

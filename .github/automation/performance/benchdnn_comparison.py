@@ -17,7 +17,13 @@
 # limitations under the License.
 # *******************************************************************************
 
-import sys
+"""
+Compare two benchdnn runs.
+
+Usage:
+    python benchdnn_comparison.py baseline.csv new.csv --check
+"""
+
 import os
 from collections import defaultdict
 from scipy.stats import ttest_ind
@@ -32,7 +38,7 @@ def print_to_github_out(message):
             print(message.replace("\n", "%0A"), file=f)
 
 
-def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
+def compare_two_benchdnn(file1, file2, check=False):
     """
     Compare two benchdnn output files
     """
@@ -110,24 +116,24 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
             or (min(ctime2) - min(ctime1)) / min(ctime1) >= 0.1
         )
         
-        if check:
-            if exec_regressed:
-                exec_failures.append(
-                    f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
-                    f"(p={exec_ttest.pvalue:.3g})"
-                )
+        if exec_regressed:
+            exec_failures.append(
+                f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
+                f"(p={exec_ttest.pvalue:.3g})"
+            )
 
-            if ctime_regressed:
-                ctime_failures.append(
-                    f"ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
-                    f"(p={ctime_ttest.pvalue:.3g})"
-                )
-        else:
+        if ctime_regressed:
+            ctime_failures.append(
+                f"{prb} ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
+                f"(p={ctime_ttest.pvalue:.3g})"
+            )
+            
+        if not check:
             print(
-                f"{prb},{r1_med_exec:.5f},{r2_med_exec:.5f},"
-                f"{r1_med_ctime:.5f},{r2_med_ctime:.5f},"
-                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.3%},"
-                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.3%}"
+                f"{prb},{r1_med_exec:.3g},{r2_med_exec:.3g},"
+                f"{r1_med_ctime:.3g},{r2_med_ctime:.3g},"
+                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.1%},"
+                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.1%}"
             )
 
     if check:
@@ -157,7 +163,7 @@ def compare_two_benchdnn(file1, file2, check=False, tolerance=0.05):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Compare two benchdnn result files."
+        description="Compare two benchdnn result files"
     )
     parser.add_argument("file1", help="Path to baseline result file")
     parser.add_argument("file2", help="Path to new result file")
@@ -167,4 +173,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     compare_two_benchdnn(args.file1, args.file2, check=args.check)
-         

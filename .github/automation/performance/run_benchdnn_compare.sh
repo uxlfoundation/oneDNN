@@ -17,30 +17,35 @@
 # limitations under the License.
 # *******************************************************************************
 #
-# Runs a user-supplied benchdnn command on two oneDNN binaries
-# Usage example inside GitHub Actions:
+# Runs a user-supplied benchdnn command on two oneDNN binaries.
+# Usage
 #   .github/automation/performance/run_benchdnn_compare.sh \
-#       "${BASE_BIN}" "${NEW_BIN}" "${CMD_ORIG}" "${THREADS:-16}"
+#       ${BASE_BIN} ${NEW_BIN} ${BASE_OUT} ${NEW_OUT} ${CMD}
 
 set -euo pipefail
 
 BASE_BINARY=$1
 NEW_BINARY=$2
-CMD_STR=("${@:3}")
+BASE_OUT=$3
+NEW_OUT=$4
+CMD_STR=("${@:5}")
+
 REPS=5
 PERF='--perf-template=%prb%,%-time%,%-ctime%'
 MODE='--mode=P'
 
-FINAL_ARGS=()
 FINAL_ARGS=("${CMD_STR[0]}" "${PERF}" "${MODE}" "${CMD_STR[@]:1}")
 
-printf '%s ' "${FINAL_ARGS[@]}"
-echo
+echo ${FINAL_ARGS[@]}
+
+SECONDS=0
 
 for i in $(seq 1 "$REPS"); do
-  echo "Running base iteration $i..."
-  "$BASE_BINARY" "${FINAL_ARGS[@]}" >> base.txt
-  
-  echo "Running new iteration $i..."
-  "$NEW_BINARY" "${FINAL_ARGS[@]}" >> new.txt
+  echo "Testing loop ${i} / ${REPS}..."
+
+  $BASE_BINARY ${FINAL_ARGS[@]} >> $BASE_OUT
+  $NEW_BINARY ${FINAL_ARGS[@]} >> $NEW_OUT
 done
+
+duration=$SECONDS
+echo "Completed in $((duration / 60)):$((duration % 60))"

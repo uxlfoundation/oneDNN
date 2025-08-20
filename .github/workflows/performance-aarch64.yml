@@ -46,6 +46,7 @@ on:
         description: 'benchdnn command to run'
         
   workflow_call:
+
 #* Stop stale workflows
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-performance
@@ -141,10 +142,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Rename to ComputeLibrary_base
-        run: cp -r ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
-
-      - name: Clean up ComputeLibrary before cloning new ACL
-        run: rm -rf ${{ github.workspace }}/ComputeLibrary
+        run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
       - name: Clone new ACL
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
@@ -182,25 +180,6 @@ jobs:
           ref: ${{ inputs.onednn_new_hash != '' && inputs.onednn_new_hash || github.sha }}
           path: oneDNN_new
 
-      - name: Configure oneDNN new
-        run: .github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN_new
-        env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary_new
-          BUILD_TOOLSET: ${{ matrix.config.toolset }}
-          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
-          CMAKE_GENERATOR: Ninja
-          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
-          ONEDNN_ACTION: configure
-          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
-          ONEDNN_THREADING: ${{ matrix.config.threading }}
-
-      - name: Build oneDNN new
-        run: .github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN_new
-        env:
-          ONEDNN_ACTION: build
-
       - name: Configure oneDNN base
         run: .github/automation/aarch64/build.sh
         working-directory: ${{ github.workspace }}/oneDNN_base
@@ -220,31 +199,41 @@ jobs:
         env:
           ONEDNN_ACTION: build
 
-      - name: Run performance tests
+      - name: Configure oneDNN new
+        run: .github/automation/aarch64/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN_new
+        env:
+          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary_new
+          BUILD_TOOLSET: ${{ matrix.config.toolset }}
+          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
+          CMAKE_GENERATOR: Ninja
+          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+          ONEDNN_ACTION: configure
+          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
+          ONEDNN_THREADING: ${{ matrix.config.threading }}
+
+      - name: Build oneDNN new
+        run: .github/automation/aarch64/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN_new
+        env:
+          ONEDNN_ACTION: build
+
+      - name: Run nightly performance tests
         if: ${{ inputs.benchdnn_command == '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
+          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
 
-      - name: Compare 16 threads performance test results
-        if: ${{ inputs.benchdnn_command == '' }}
-        run: |
-          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
-
-      - name: Check for regressions
-        if: ${{ inputs.benchdnn_command == '' }}
-        run: |
-          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
-
-      - name: Run user-provided benchdnn command on both builds
+      - name: Run custom performance tests
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=${{ inputs.num_threads }} \
+          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} \
           bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
             "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn" \
-             ${{ inputs.benchdnn_command }}
+            base.txt new.txt ${{ inputs.benchdnn_command }}
 
       - name: Print speed comparisons
         if: ${{ inputs.benchdnn_command != '' }}
@@ -259,5 +248,4 @@ jobs:
     name: "Nightly Performance AArch64"
     steps:
       - name: Print success
-        run: echo Success
-        
+        run: echo Success       

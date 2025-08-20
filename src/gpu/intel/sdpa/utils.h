@@ -98,14 +98,32 @@
 #define MSK_OFFSETS RT_OFFSETS(MSK)
 
 // helper shorthands for accessing individual dimensions
+#ifndef KEY_D3
 #define KEY_D3 KEY_D.array[3]
+#endif
+#ifndef KEY_S3
 #define KEY_S3 KEY_S.array[3]
+#endif
+#ifndef KEY_S2
 #define KEY_S2 KEY_S.array[2]
+#endif
+#ifndef QRY_S2
 #define QRY_S2 QRY_S.array[2]
+#endif
+#ifndef VAL_S2
 #define VAL_S2 VAL_S.array[2]
+#endif
+#ifndef DST_S2
 #define DST_S2 DST_S.array[2]
+#endif
+#ifndef MSK_D0
 #define MSK_D0 MSK_D.array[0]
+#endif
+#ifndef MSK_D1
 #define MSK_D1 MSK_D.array[1]
+#endif
+#ifndef MSK_S2
 #define MSK_S2 MSK_S.array[2]
+#endif
 
 #endif

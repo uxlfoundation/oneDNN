@@ -70,6 +70,7 @@ __itt_domain *itt_domain(primitive_kind_t kind) {
             CASE(shuffle),
             CASE(softmax),
             CASE(sum),
+            CASE(zero_pad),
             CASE(undefined),
     };
 #undef CASE
@@ -79,6 +80,7 @@ __itt_domain *itt_domain(primitive_kind_t kind) {
     assert((size_t)kind_idx
             < sizeof(prim_kind_itt_domain) / sizeof(prim_kind_itt_domain[0]));
 
+    printf("%d\n", kind_idx);
     return prim_kind_itt_domain[kind_idx];
 }
 

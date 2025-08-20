@@ -408,6 +408,13 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                                     binary_injector::is_data_supported(
                                             isa, src2_d.data_type),
                                     VERBOSE_ISA_DT_MISMATCH);
+                            auto bcast_strategy
+                                    = get_rhs_arg_broadcasting_strategy(
+                                            src2_d, *dst_d);
+                            VCHECK_PO_INJ_BOOL(bcast_strategy
+                                            == broadcasting_strategy_t::
+                                                    no_broadcast,
+                                    "Unsupported broadcast type");
                         }
                         return ok;
                     }

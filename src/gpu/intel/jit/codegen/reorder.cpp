@@ -480,14 +480,8 @@ int reorder_2d_impl_t::vertex_t::cost(
     return min_cost;
 }
 
-void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
-        const reg_buf_data_t &dst) {
-    auto from_rd = [](const reg_buf_data_t &rd) -> op_init_t {
-        return [&](int elems, ngen::DataType dt) {
-            return rd.format(0, elems, 1, dt);
-        };
-    };
-
+void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
+        reorder_operand_t &dst) {
     auto from_op = [](const reorder_operand_t &op) -> op_init_t {
         return [&](int elems, ngen::DataType dt) {
             auto buffer = op.buffer;
@@ -502,12 +496,17 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         return plan.newTemp(dt, elems, 1);
     };
 
-    auto src_op = init_operand(src_layout_, from_rd(src));
-    auto dst_op = init_operand(dst_layout_, from_rd(dst));
-    const bool direct_copy = layouts_compatible(src_op.layout, dst_op.layout);
+    auto emit = [&](reorder_operand_t &dst, const reorder_operand_t &src) {
+        if (src == dst) return;
+        if (!try_emit_2d(plan, dst, src)) emit_1d(plan, dst, src);
+        if (is_subset(src.type(), dst.type()))
+            dst.buffer.range = src.buffer.type;
+    };
 
-    const auto &src_dt = src_op.layout.type();
-    const auto &dst_dt = dst_op.layout.type();
+    const bool direct_copy = layouts_compatible(src.layout, dst.layout);
+
+    const auto &src_dt = src.layout.type();
+    const auto &dst_dt = dst.layout.type();
     type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
 
     const bool do_pre_conv = src_dt != tmp_dt;
@@ -517,38 +516,83 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
     const int size_mask = hw_ < ngen::HW::XeHPC ? 7 : 6;
     const bool in_place = dst_dt.size() >= tmp_dt.size()
             && (dst_dt == tmp_dt || dst_dt.size() & size_mask);
-    layout_t up_layout = make_compact_layout(src_op.layout, tmp_dt, true);
-    layout_t down_layout = in_place
-            ? make_retyped_layout(dst_op.layout, tmp_dt)
-            : make_compact_layout(dst_op.layout, tmp_dt);
+    layout_t up_layout = make_compact_layout(src.layout, tmp_dt, true);
+    layout_t down_layout = in_place ? make_retyped_layout(dst.layout, tmp_dt)
+                                    : make_compact_layout(dst.layout, tmp_dt);
 
     if (direct_copy || !(do_pre_conv || do_post_conv)) {
         // Pure conversion or pure swizzle
-        emit(plan, dst_op, src_op);
+        emit(dst, src);
     } else if (do_pre_conv && do_post_conv) {
         const bool has_swizzle = up_layout != down_layout;
-        auto tmp_op = init_operand(std::move(up_layout), from_temp);
-        emit(plan, tmp_op, src_op);
+        auto tmp = init_operand(std::move(up_layout), from_temp);
+        emit(tmp, src);
         if (has_swizzle) {
             // Integer swizzle
-            auto tmp2_op = in_place
-                    ? init_operand(std::move(down_layout), from_op(dst_op))
+            auto tmp2 = in_place
+                    ? init_operand(std::move(down_layout), from_op(dst))
                     : init_operand(std::move(down_layout), from_temp);
-            emit(plan, tmp2_op, tmp_op);
-            std::swap(tmp_op, tmp2_op);
+            emit(tmp2, tmp);
+            std::swap(tmp, tmp2);
         }
-        emit(plan, dst_op, tmp_op);
+        emit(dst, tmp);
     } else if (do_pre_conv) {
-        auto tmp_op = init_operand(std::move(up_layout), from_temp);
-        emit(plan, tmp_op, src_op);
-        emit(plan, dst_op, tmp_op);
+        auto tmp = init_operand(std::move(up_layout), from_temp);
+        emit(tmp, src);
+        emit(dst, tmp);
     } else if (do_post_conv) {
-        auto tmp_op = in_place
-                ? init_operand(std::move(down_layout), from_op(dst_op))
-                : init_operand(std::move(down_layout), from_temp);
-        emit(plan, tmp_op, src_op);
-        emit(plan, dst_op, tmp_op);
+        auto tmp = in_place ? init_operand(std::move(down_layout), from_op(dst))
+                            : init_operand(std::move(down_layout), from_temp);
+        emit(tmp, src);
+        emit(dst, tmp);
     }
+}
+
+std::vector<tile_t> reorder_impl_t::tiles() const {
+    auto make_tiles = [](const layout_t &l) {
+        const auto &blocks = l.blocks();
+        tile_t base = l.dims();
+        std::vector<tile_t> tiles = {base};
+        auto it = blocks.rbegin();
+        const auto end = blocks.rend();
+        for (; it != end; ++it) {
+            auto block = it->block;
+            for (dim_t factor = 2; factor <= block; ++factor) {
+                if (tiles.size() >= 8) return tiles;
+                if (block % factor) continue;
+                tile_t tile = base;
+                tile[it->dim] /= factor;
+                tiles.push_back(std::move(tile));
+            }
+            base[it->dim] /= block;
+        }
+        return tiles;
+    };
+
+    auto src_tiles = make_tiles(src_layout_);
+    auto dst_tiles = make_tiles(dst_layout_);
+    std::vector<tile_t> tiles;
+    if (src_tiles.empty() && dst_tiles.empty()) return tiles;
+    tiles.reserve(src_tiles.size() + dst_tiles.size() - 1);
+
+    auto src_it = src_tiles.begin();
+    auto dst_it = dst_tiles.begin();
+    const auto src_end = src_tiles.end();
+    const auto dst_end = dst_tiles.end();
+
+    while (src_it != src_end || dst_it != dst_end) {
+        if (dst_it == dst_end)
+            tiles.push_back(*src_it++);
+        else if (src_it == src_end)
+            tiles.push_back(*dst_it++);
+        else if (*src_it == *dst_it)
+            tiles.push_back((dst_it++, *src_it++));
+        else if (src_it->elems() >= dst_it->elems())
+            tiles.push_back(*src_it++);
+        else
+            tiles.push_back(*dst_it++);
+    }
+    return tiles;
 }
 
 bool reorder_impl_t::layouts_compatible(

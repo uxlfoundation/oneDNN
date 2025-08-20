@@ -21,14 +21,20 @@
 #include <unordered_map>
 
 struct memory_registry_t {
+    // Increases the registered physically allocated memory.
     void add(void *ptr, size_t size);
 
+    // Decreases the registered physically allocated memory.
     void remove(void *ptr);
 
+    // Uses `size` as an upper limit to check if allocations fit the
+    // expectation. The check takes into account `expected_trh_` which increases
+    // the `size`.
     void set_expected_max(size_t size);
 
 private:
-    // To smooth out small allocations.
+    // `expected_trh_` smoothes out small allocations for attributes memory
+    // objects.
     static constexpr float expected_trh_ = 1.1f;
     static constexpr size_t unset_ = 0;
     size_t expected_max_ = unset_;

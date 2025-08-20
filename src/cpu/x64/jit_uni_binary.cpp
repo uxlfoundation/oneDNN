@@ -111,6 +111,31 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
+// TODO: Temporary workaround for unsupported per_w binary post-op broadcasting patterns.
+// Remove this code and add proper kernel support for these cases.
+static bool is_per_w_skipped(const memory_desc_wrapper &src0_md,
+        const memory_desc_wrapper &src1_md) {
+    const dims_t &src0_dims = src0_md.dims();
+    const dims_t &src1_dims = src1_md.dims();
+    const int ndims = src0_md.ndims();
+
+    if (ndims != 4) return false;
+
+    // src0: 1 x a x b x c, src1: 1 x a x 1 x 1
+    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src0_dims[1] == src1_dims[1]
+            && src1_dims[2] == 1 && src1_dims[3] == 1) {
+        return true;
+    }
+
+    // src0: 1 x a x b x c, src1: 1 x 1 x b x c
+    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src1_dims[1] == 1
+            && src0_dims[2] == src1_dims[2] && src0_dims[3] == src1_dims[3]) {
+        return true;
+    }
+
+    return false;
+}
+
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
@@ -148,6 +173,12 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     VDISPATCH_BINARY(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    conf_.postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
+    VDISPATCH_BINARY(!(conf_.postops_per_w_broadcast_exists
+                             && is_per_w_skipped(src0_md_, src1_md_)),
+            "unsupported dimensions for per_w broadcasting pattern");
     // All operations over blocking descriptors should have md initialized.
     conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
     VDISPATCH_BINARY(post_ops_ok(attr(), src_md(0), dst_md(),
@@ -170,9 +201,6 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
 
     conf_.postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
-                    po, src0_md_, get_supported_postops_bcast_strategies());
-    conf_.postops_per_w_broadcast_exists
-            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
                     po, src0_md_, get_supported_postops_bcast_strategies());
     conf_.is_bf16 = conf_.dst_type == bf16;
     conf_.is_f16 = conf_.dst_type == f16;

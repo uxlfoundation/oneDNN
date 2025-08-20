@@ -156,8 +156,8 @@ void reorder_2d_impl_t::emit(
         auto *next_layout = &step.layout;
 
         // x -> y reorder.
-        auto x = prev_layout->map(tile).reinterpret(type);
-        auto y = next_layout->map(tile).reinterpret(type);
+        auto x = prev_layout->sub(tile).reinterpret(type);
+        auto y = next_layout->sub(tile).reinterpret(type);
 
         bool use_dst = ((path_len - i) % 2 == 1);
         copy_operand_t next_op = use_dst ? dst : tmp;
@@ -420,7 +420,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
 // - GRF region can't span more than 2 registers
 bool reorder_2d_impl_t::vertex_t::can_reorder(
         const tile_t &tile, const type_t &type) const {
-    auto ab_layout = layout.map(tile).reinterpret(type);
+    auto ab_layout = layout.sub(tile).reinterpret(type);
     int nblocks = int(ab_layout.blocks().size());
     if (nblocks == 0) return true;
     if (nblocks > 1) return false;
@@ -661,8 +661,8 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
     for (const auto &tile : tiles) {
         if (tile.size() < 2) continue;
         if (tile.elems() < 4) break;
-        auto src_tile_layout = src.layout.map(tile);
-        auto dst_tile_layout = dst.layout.map(tile);
+        auto src_tile_layout = src.layout.sub(tile);
+        auto dst_tile_layout = dst.layout.sub(tile);
         if (!dst_tile_layout.is_dense()) continue;
 
         // Set layout offset to 0 since the offset is handled by fixing up

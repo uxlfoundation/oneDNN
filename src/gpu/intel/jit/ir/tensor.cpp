@@ -148,7 +148,7 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
     return md;
 }
 
-layout_t layout_t::map(const tile_t &tile, const coord_t &start) const {
+layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
     auto remaining_tile = tile;
     std::vector<layout_block_t> mapped_blocks;
 
@@ -174,7 +174,7 @@ layout_t layout_t::map(const tile_t &tile, const coord_t &start) const {
             // scratch.
             if (block % rem_dim == 0)
                 return split_block(eb, rem_dim, block / rem_dim)
-                        .map(tile, start);
+                        .sub(tile, start);
 
             // TODO: Remove exception usage.
             gpu_except_not_implemented("Can't map tensor layout.");

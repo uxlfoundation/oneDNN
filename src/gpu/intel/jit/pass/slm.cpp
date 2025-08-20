@@ -124,8 +124,8 @@ private:
             auto src_tile = src_it.tile();
             auto dst_tile = dst_it.tile();
             if (src_tile == dst_tile) {
-                auto s = src.map(src_it.tile());
-                auto d = dst.map(dst_it.tile());
+                auto s = src.sub(src_it.tile());
+                auto d = dst.sub(dst_it.tile());
                 if (s.is_dense() && d.is_dense()
                         && src_it.outer_layout() == dst_it.outer_layout()) {
                     if (is_slm_reorder_ok(s, d)) {
@@ -153,7 +153,7 @@ private:
 
     stmt_t create_slm_reorder(const tile_t &tile, const layout_t &src,
             const layout_t &dst, const expr_t &src_buf, const expr_t &dst_buf) {
-        auto src_tile = src.map(tile);
+        auto src_tile = src.sub(tile);
         auto &src_tile_blocks = src_tile.blocks();
         int simd = into<int>(src_tile_blocks[0].block);
         int vect_size = into<int>(src_tile_blocks[1].block);

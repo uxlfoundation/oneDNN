@@ -53,8 +53,8 @@ public:
 
         tile_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();
-        auto src_tile_layout = src_layout_.map(tile);
-        auto dst_tile_layout = dst_layout_.map(tile);
+        auto src_tile_layout = src_layout_.sub(tile);
+        auto dst_tile_layout = dst_layout_.sub(tile);
         const auto &src_tile_blocks = src_tile_layout.blocks();
         const auto &dst_tile_blocks = dst_tile_layout.blocks();
         gpu_assert(src_tile_blocks.size() <= 1);

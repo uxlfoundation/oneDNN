@@ -2076,7 +2076,7 @@ private:
         if (slm_layout == layout_t()) return plan_status_t::invalid_slm_layout;
         auto thr_tile_coord = slm_layout.split(tg, &grid);
         auto abs_thr_tile_coord = tg_view.vtile_coord().sub(thr_tile_coord);
-        auto slm_thr_layout = slm_layout.map(thr_tile_coord);
+        auto slm_thr_layout = slm_layout.sub(thr_tile_coord);
         auto slm_thr_view = view_t(slm_thr_layout);
         auto thr_view = tg_view.create_sub_view(thr_tile_coord);
         auto load_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
@@ -2254,7 +2254,7 @@ private:
 
         if (plan_.hw < ngen::HW::XeHPG) {
             // Verifies that SLM loads after k-slicing are at GRF granularity.
-            auto l_sub = l.map(tile_t(rem_dims));
+            auto l_sub = l.sub(tile_t(rem_dims));
             int bytes = l_sub.type().size();
             stride_t stride = 1;
             for (auto &b : l_sub.blocks()) {

@@ -607,10 +607,10 @@ public:
     // Assumption: the original layout can be tiled by the passed sub-tensor.
     // For example: XaYb4a2b can be tiled into 2x2 sub-tensors but it's not
     // possible to tile it into 3x2 sub-tensors.
-    layout_t map(const tile_t &tile, const coord_t &start = {}) const;
+    layout_t sub(const tile_t &tile, const coord_t &start = {}) const;
 
-    layout_t map(const tile_coord_t &tile_coord) const {
-        return map(tile_coord.tile, tile_coord.coord);
+    layout_t sub(const tile_coord_t &tile_coord) const {
+        return sub(tile_coord.tile, tile_coord.coord);
     }
 
     layout_t reinterpret(
@@ -1184,9 +1184,9 @@ public:
         }
     }
 
-    mask_tensor_t map(const tile_t &tile, const coord_t &start) const {
+    mask_tensor_t sub(const tile_t &tile, const coord_t &start) const {
         icoord_t tile_start(start);
-        auto sub_layout = layout_.map(tile);
+        auto sub_layout = layout_.sub(tile);
         mask_tensor_t sub_mask(sub_layout);
         for_each(tile, [&](const icoord_t &sub_start) {
             dim_t sub_off = sub_layout.offset<dim_t>(sub_start);
@@ -1632,8 +1632,8 @@ public:
 
     layout_t create_vlayout(bool force_zero_offset = false) const {
         gpu_assert(can_convert_to_vlayout()) << "Can't convert view to layout.";
-        if (force_zero_offset) return tlayout_.map(vdims_);
-        return tlayout_.map(vdims_, vstart_);
+        if (force_zero_offset) return tlayout_.sub(vdims_);
+        return tlayout_.sub(vdims_, vstart_);
     }
 
     dim_t vlayout_size() const { return create_vlayout().size(); }

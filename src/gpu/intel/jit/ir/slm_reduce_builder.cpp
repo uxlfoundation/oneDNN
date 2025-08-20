@@ -71,7 +71,7 @@ void slm_reduce_builder_t::build() {
         write_start[ndims + i] = tg_grid_.idx(i);
     }
     auto write = make_access_builder(*ir_ctx_,
-            view_t(slm_layout.map(write_tile, write_start)), slm_buf_, reg_buf_,
+            view_t(slm_layout.sub(write_tile, write_start)), slm_buf_, reg_buf_,
             send_op_t::store, send_address_t::slm);
     store_stmt_ = write.stmt();
 
@@ -83,7 +83,7 @@ void slm_reduce_builder_t::build() {
     grid_info_t full_grid = tg_grid_.sub_grid({dim_});
     grid_info_t split_grid;
     auto local_thr_tile_coord = reg_layout_.split(full_grid, &split_grid);
-    reg_layout_ = reg_layout_.map(local_thr_tile_coord.tile);
+    reg_layout_ = reg_layout_.sub(local_thr_tile_coord.tile);
 
     if (split_grid.elems() != full_grid.elems()) {
         for (dim_idx_t i = 0; i < full_grid.ndims(); i++) {
@@ -112,7 +112,7 @@ void slm_reduce_builder_t::build() {
         read_start[ndims + i] = (i == dim_) ? 0 : tg_grid_.idx(i);
     }
     auto read = make_access_builder(*ir_ctx_,
-            view_t(slm_layout.map(read_tile, read_start)), slm_buf_,
+            view_t(slm_layout.sub(read_tile, read_start)), slm_buf_,
             tmp_reg_buf_, send_op_t::load, send_address_t::slm);
 
     load_stmt_

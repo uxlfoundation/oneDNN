@@ -68,7 +68,7 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
             continue;
         }
     }
-    dst_aligned = dst_aligned.map(sub_tile, sub_coord);
+    dst_aligned = dst_aligned.sub(sub_tile, sub_coord);
 
     auto func = reduce_t::make(src, dst_aligned);
     return func.call({dst_buf, src_buf});

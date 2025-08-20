@@ -43,7 +43,7 @@ public:
     expr_t create_mask(const layout_t &reg_layout, const tile_t &tile,
             const coord_t &coord) const {
         gpu_assert(!is_empty());
-        auto layout = reg_layout.map(tile, coord);
+        auto layout = reg_layout.sub(tile, coord);
         auto view = mem_view_.create_sub_view(tile, coord);
         mask_tensor_t mask_tensor(layout);
         icoord_t args(layout.ndims());
@@ -159,9 +159,9 @@ public:
         if (!reg_layout_.is_empty()) {
             if (needs_reduction()) {
                 tile_coord_t reduce_tile(_tile_coord.tile, tile_coord.coord);
-                ret.reg_layout_ = ret.reg_layout_.map(reduce_tile);
+                ret.reg_layout_ = ret.reg_layout_.sub(reduce_tile);
             } else {
-                ret.reg_layout_ = ret.reg_layout_.map(tile_coord);
+                ret.reg_layout_ = ret.reg_layout_.sub(tile_coord);
             }
         }
         ret.allocs_.clear();
@@ -537,7 +537,7 @@ public:
         pvar_t inner_dim;
         auto base_inner_tile
                 = find_1d_tile(lhs_tensor.reg_layout().type(), args, inner_dim);
-        auto inner_layout = lhs_tensor.reg_layout().map(base_inner_tile);
+        auto inner_layout = lhs_tensor.reg_layout().sub(base_inner_tile);
         gpu_assert(!inner_dim.is_undef());
 
         // All post-ops arguments are f32 type except f64 bias and u64
@@ -839,7 +839,7 @@ private:
             base_tile = c_mem_view_.split_into_max_tile(
                     tmp_buf_elems, /*is_dense=*/false);
             try {
-                c_reg_layout.map(base_tile);
+                c_reg_layout.sub(base_tile);
                 break;
             } catch (std::runtime_error &) {
                 tmp_buf_elems /= 2;
@@ -890,7 +890,7 @@ private:
         // Iterate by tiles and apply post-ops.
         c_mem_view_.for_each_tile(base_tile, [&](const icoord_t &start) {
             tile_coord_t tile_coord(base_tile, start);
-            auto c_tile_layout = c_reg_layout.map(tile_coord);
+            auto c_tile_layout = c_reg_layout.sub(tile_coord);
             build_tile(tile_coord, c_tile_layout, c_reg_buf);
         });
 

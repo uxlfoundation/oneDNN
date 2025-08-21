@@ -451,7 +451,7 @@ void bench(api_kind api, engine::kind ekind, dnnl_data_type_t dt,
 
 void sdpa_perf(engine::kind ekind, int argc, char **argv) {
     // default testing parameters
-    sdpa_dims_t params = {32, 384, 16, 64, 384};
+    sdpa_dims_t params = {2, 128, 16, 64, 128};
 
     if (argc > 2) {
         if (argc == 6) {

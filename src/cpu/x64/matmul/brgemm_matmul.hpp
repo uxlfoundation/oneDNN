@@ -98,7 +98,7 @@ private:
 
     void copy_a_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, int ithr, int m_blk_idx,
-            int k_blk_idx) const;
+            int k_blk_idx, int n) const;
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *B_data_batch_ptr, int ithr, int b_idx, int n_blk_idx,
             int k_blk_idx) const;

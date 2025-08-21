@@ -1299,6 +1299,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.dst_dt = dst_d.data_type();
     bgmmc.wei_dt = weights_d.data_type();
     bgmmc.orig_wei_dt = weights_d.data_type();
+    bgmmc.wei_zp_dt = attr.zero_points_.get(DNNL_ARG_WEIGHTS).get_data_type();
 
     bgmmc.with_reduce = mmd.reduce_desc.format_kind != format_kind::undef;
     bgmmc.reduce_dt
@@ -1417,6 +1418,29 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // only common scales are supported
     VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    const auto &wei_zp = attr.zero_points_.get(DNNL_ARG_WEIGHTS);
+    const auto has_wei_zp = !wei_zp.has_default_values();
+
+    if (has_wei_zp) {
+        const auto wei_zp_mask = wei_zp.get_mask();
+        bgmmc.is_wei_zp_per_k = wei_zp_mask & (1 << (bgmmc.ndims - 2));
+        bgmmc.is_wei_zp_per_n = wei_zp_mask & (1 << (bgmmc.ndims - 1));
+        bgmmc.is_wei_zp_common = wei_zp_mask == 0;
+        VCONDCHECK_BG(wei_zp_mask == 0 || bgmmc.is_wei_zp_per_k
+                        || bgmmc.is_wei_zp_per_n,
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+
+        // Fill groups data
+        bgmmc.has_wei_zp_groups
+                = !(wei_zp.has_default_groups() || bgmmc.is_wei_zp_common);
+        if (bgmmc.has_wei_zp_groups) {
+            if (bgmmc.is_wei_zp_per_n)
+                bgmmc.wei_zp_N_group = wei_zp.get_group(bgmmc.ndims - 1);
+            if (bgmmc.is_wei_zp_per_k)
+                bgmmc.wei_zp_K_group = wei_zp.get_group(bgmmc.ndims - 2);
+        }
+    }
 
     const auto &p = attr.post_ops_;
     bgmmc.with_sum = p.find(primitive_kind::sum) != -1;

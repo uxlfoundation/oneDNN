@@ -206,12 +206,20 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     auto check_attr_zero_points = [&]() -> bool {
         const auto &zp = attr()->zero_points_;
         static const std::vector<int> supported_args {
-                DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
+                DNNL_ARG_SRC, DNNL_ARG_DST};
         for (int arg : supported_args) {
             if (!zp.has_default_values(arg)) {
                 const int mask = zp.get_mask(arg);
                 if (mask > 0) return false;
             }
+        }
+        if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+            const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
+            const auto dims = ndims();
+            const auto kn_mask = (1 << (dims - 1)) + (1 << (dims - 2));
+            const bool zp_over_batch = (mask ^ kn_mask);
+            const bool mask_ok = (mask & ~kn_mask) == 0;
+            return !(zp_over_batch && batch() > 1) && mask_ok;
         }
         return true;
     };
@@ -625,8 +633,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                                         ithr, b, nb, kb);
 
                             if (use_buffer_a && nb == n_start && !skip_copy_a)
-                                copy_a_chunk_in_buffer(
-                                        brgmm_ctx, a_batch_ptr, ithr, mb, kb);
+                                copy_a_chunk_in_buffer(brgmm_ctx, a_batch_ptr,
+                                        ithr, mb, kb, nb);
 
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
@@ -1123,7 +1131,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *A_data_batch_ptr,
-        int ithr, int m_blk_idx, int k_blk_idx) const {
+        int ithr, int m_blk_idx, int k_blk_idx, int n) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
 
     auto ctx = jit_brgemm_matmul_copy_a_t::ctx_t();
@@ -1143,12 +1151,12 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
     ctx.zp_a_compensation_result_ptr
             = (void *)brgmm_ctx.get_zp_b_compensation_result_ptr(
                     ithr, m_blk_idx);
-    ctx.zp_b_neg_value_ptr = (void *)brgmm_ctx.get_zp_b_neg_val_ptr();
     ctx.zp_ab_comp_ptr = (void *)brgmm_ctx.get_zp_ab_mixed_comp_ptr();
     ctx.dynamic_src_ld = brgmm_ctx.get_src_stride();
 
     for (int gb = 0; gb < gemm_batch_iters; gb++) {
         const int k = k_start + gb * bgmmc.K_blk;
+        ctx.zp_b_value_ptr = brgmm_ctx.get_zp_b_val_ptr(n, k);
         ctx.src = (void *)brgmm_ctx.get_data_A_mk_ptr(A_data_batch_ptr, m, k);
         ctx.tr_src = (void *)brgmm_ctx.get_buf_A_ptr(
                 ithr, m_blk_idx, k_blk_idx, gb);
@@ -1205,46 +1213,23 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     ctx.zp_a_compensation_ptr = (void *)brgmm_ctx.get_zp_a_compensation_ptr(
             ithr, b_idx, n_blk_idx);
     ctx.zp_a_neg_value_ptr = (void *)brgmm_ctx.get_zp_a_neg_val_ptr();
-    ctx.zp_b_value_ptr = (void *)brgmm_ctx.get_zp_b_val_ptr();
+    ctx.compensation_ptr
+            = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
+
     ctx.dynamic_src_stride = brgmm_ctx.copy_B_wei_stride();
 
-    // For best performance, scales should be taken in copy kernels as is.
-    // The biggest challenge is grouped scales (`wei_scales_gK > 1` == true,
-    // (`bgmmc.is_wei_scale_per_k` == true) as `gK` starts interfering with
-    // `K_blk`. In case when `bgmmc.gK_and_K_blk_are_divisible` == true, it's
-    // easy to process a full `K_blk` piece or a portion of it by applying a
-    // single scale group. When doing a portion of B, it requires an additional
-    // loop over a single block, which `wei_scales_n_g` is responsible for.
-    //
-    // In other case, weights scales would copy data in a full-size of B
-    // scratchpad tensor and apply scales per point.
-    const auto wei_scales_gK = bgmmc.wei_scales_k_group_size;
-    const auto apply_single_scales_group = bgmmc.is_wei_scale_per_k
-            && bgmmc.gK_and_K_blk_are_divisible && wei_scales_gK > 1;
-
-    // `div_up` covers the case when K_blk is less than gK.
-    const auto wei_scales_n_g = apply_single_scales_group
-            ? div_up(bgmmc.K_blk, wei_scales_gK)
-            : 1;
-
-    for_(int gb = 0; gb < gemm_batch; gb++)
-    for (int k_i = 0; k_i < wei_scales_n_g; k_i++) {
-        const int k = k_start + gb * bgmmc.K_blk + k_i * wei_scales_gK;
+    // For the grouped Zero points/scales need to vary k-block size
+    // For this case need to call copy kernel with unaligned (k, k_iters)
+    auto call_copy_kernel = [&](int k, int k_iters, int gb) {
         ctx.src = (void *)brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
         ctx.tr_src = (void *)brgmm_ctx.get_buf_B_ptr(
-                ithr, k_blk_idx, n_blk_idx, gb, k_i * wei_scales_gK);
-        ctx.compensation_ptr
-                = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
+                ithr, k_blk_idx, n_blk_idx, gb, k);
         ctx.current_K_start = k;
-        ctx.current_K_iters = nstl::min(bgmmc.K_blk, bgmmc.K);
-        if (apply_single_scales_group) {
-            // Update the copy_B K_block to process when apply a single scale.
-            ctx.current_K_iters = nstl::min(wei_scales_gK, ctx.current_K_iters);
-        }
-        ctx.current_K_pad = brgmm_ctx.get_current_K_pad(ctx.current_K_iters);
-
+        ctx.current_K_iters = k_iters;
+        ctx.current_K_pad = brgmm_ctx.get_current_K_pad(k_iters);
         ctx.src_scales_ptr = brgmm_ctx.get_src_scales_ptr();
         ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k);
+        ctx.zp_b_value_ptr = brgmm_ctx.get_zp_b_val_ptr(n, k);
         if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
                 && isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
@@ -1252,37 +1237,42 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         } else {
             (*copy_B_kernel_)(&ctx);
         }
-    }
+    };
 
-    if (!is_K_tail) return;
-
-    // `div_up` covers the case when K_blk is less than gK.
-    const auto wei_scales_n_g_tail = apply_single_scales_group
-            ? div_up(bgmmc.K % bgmmc.K_blk, wei_scales_gK)
-            : 1;
-
-    for (int k_i = 0; k_i < wei_scales_n_g_tail; k_i++) {
-        const int k = k_start + gemm_batch * bgmmc.K_blk + k_i * wei_scales_gK;
-        ctx.src = (void *)brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
-        ctx.tr_src = (void *)brgmm_ctx.get_buf_B_ptr(
-                ithr, k_blk_idx, n_blk_idx, gemm_batch, k_i * wei_scales_gK);
-        ctx.compensation_ptr
-                = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
-        ctx.current_K_start = k;
-        ctx.current_K_iters = bgmmc.K % bgmmc.K_blk;
-        if (apply_single_scales_group) {
-            // Update the copy_B K_block to process when apply a single scale.
-            ctx.current_K_iters = nstl::min(wei_scales_gK, ctx.current_K_iters);
+    // grouped zero points &-or scales
+    if (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k) { 
+        const auto adj_k_blk = bgmmc.K
+                / bgmmc.wei_zp_K_group; // Number of elems in the group
+        assert(adj_k_blk > 0);
+        auto k = k_start;
+        const auto k_end = k_start + gemm_batch * bgmmc.K_blk
+                + is_K_tail * (bgmmc.K % bgmmc.K_blk);
+        // Handle first block
+        if (k_start % adj_k_blk > 0) {
+            call_copy_kernel(k_start, k_start % adj_k_blk, 0);
+            k += k_start % adj_k_blk;
         }
-        ctx.current_K_pad = brgmm_ctx.get_current_K_pad(ctx.current_K_iters);
-        ctx.src_scales_ptr = brgmm_ctx.get_src_scales_ptr();
-        ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k);
-        if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
-                && isa == avx512_core_fp16) {
-            cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
-                    bgmmc.wei_n_blk * ctx.current_K_iters);
-        } else {
-            (*copy_B_kernel_)(&ctx);
+        // Handle full blocks
+        for (; k < k_end; k += adj_k_blk) {
+            const auto gb = (k - k_start) / bgmmc.K_blk;
+            call_copy_kernel(k, adj_k_blk, gb);
+        }
+        // Handle last block
+        if (k_end % adj_k_blk > 0) {
+            k -= adj_k_blk;
+            const auto gb = (k - k_start) / bgmmc.K_blk;
+            call_copy_kernel(k, k_end % adj_k_blk, gb);
+        }
+    } else { // Default case with k_blk blocking
+        for (int gb = 0; gb < gemm_batch; ++gb) {
+            const auto k = k_start + gb * bgmmc.K_blk;
+            const auto k_iters = nstl::min(bgmmc.K_blk, bgmmc.K);
+            call_copy_kernel(k, k_iters, gb);
+        }
+        if (is_K_tail) {
+            const auto k = k_start + gemm_batch * bgmmc.K_blk;
+            const auto k_iters = bgmmc.K % bgmmc.K_blk;
+            call_copy_kernel(k, k_iters, gemm_batch);
         }
     }
 }
@@ -1327,7 +1317,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         // setup scales / zp pointers
         const void *src_zero_points = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
-        const void *wei_zero_points = CTX_IN_MEM(
+        wei_zp_ptr_ = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
         const void *dst_zero_points = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
@@ -1337,12 +1327,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         pd->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
                         src_zero_points, 0)
                 : 0;
-        zero_point_b_val_ = wei_zero_points ? cpu::io::load_int_value(
-                                    pd->attr()->zero_points_.get_data_type(
-                                            DNNL_ARG_WEIGHTS),
-                                    wei_zero_points, 0)
-                                            : 0;
-        zero_point_b_negative_val_ = -zero_point_b_val_;
         zero_point_c_val_ = dst_zero_points
                 ? cpu::io::load_int_value(
                         pd->attr()->zero_points_.get_data_type(DNNL_ARG_DST),
@@ -2122,11 +2106,31 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return &zero_point_a_negative_val_;
     }
 
-    const int32_t *get_zp_b_neg_val_ptr() const {
-        return &zero_point_b_negative_val_;
-    }
+    const void *get_zp_b_val_ptr(int n = 0, int k = 0) const {
+        if (!bgmmc_.has_zero_point_b) return nullptr;
+        if (bgmmc_.is_wei_zp_common)
+            return wei_zp_ptr_; // single zero point value
+        // Locate the group based on (n,k)
+        const auto &n_group_sz = bgmmc_.wei_zp_N_group;
+        const auto n_idx = n / n_group_sz;
+        auto offset = n_idx;
 
-    const int32_t *get_zp_b_val_ptr() const { return &zero_point_b_val_; }
+        if (bgmmc_.is_wei_zp_per_k) {
+            const auto &k_group_sz = bgmmc_.wei_zp_K_group;
+            const auto k_idx = k / k_group_sz;
+            // In fact n_group should be equal N since groups over n are not supported
+            const auto n_group = bgmmc_.N / n_group_sz;
+            offset += k_idx * n_group;
+        }
+
+        const auto dt_sz = types::data_type_size(bgmmc_.wei_zp_dt);
+        const auto elems_per_byte
+                = one_of(bgmmc_.wei_zp_dt, data_type::s4, data_type::u4) ? 2
+                                                                         : 1;
+        offset = offset * dt_sz / elems_per_byte;
+        // Need byte arithmetic for types s4/u4/s8/u8
+        return (char *)wei_zp_ptr_ + offset;
+    }
 
     const int32_t *get_zp_ab_mixed_comp_ptr() const {
         return &zero_point_mixed_ab_compensation_component_;
@@ -2412,6 +2416,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     bool packed_sparse_weights() const { return bgmmc_.packed_sparse_weights; }
 
     int get_current_K_pad(int current_K_iters) const {
+        if (bgmmc_.is_wei_zp_per_k || bgmmc_.is_wei_scale_per_k) return current_K_iters; // Kernel is not alligned with k_blk
         if (current_K_iters % bgmmc_.wei_k_blk == 0) return 0;
         return (bgmmc_.extendable_k || bgmmc_.use_fused_copy_a)
                 ? bgmmc_.wei_k_blk
@@ -2486,10 +2491,9 @@ private:
     int32_t *reorder_zp_a_comp_ptr_;
 
     int32_t zero_point_a_negative_val_;
-    int32_t zero_point_b_val_;
-    int32_t zero_point_b_negative_val_;
     int32_t zero_point_mixed_ab_compensation_component_;
     int32_t zero_point_c_val_;
+    const void *wei_zp_ptr_;
     std::vector<const void *> post_ops_binary_rhs_arg_vec_;
 
     int base_brg_ker_idx_;

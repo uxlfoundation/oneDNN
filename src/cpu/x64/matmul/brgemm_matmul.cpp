@@ -102,7 +102,14 @@ template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::pd_t::maybe_set_LDB2() {
     if (bgmmc_.LDB < bgmmc_.N_blk
             && (bgmmc_.N_blk % bgmmc_.LDB == 0 || bgmmc_.N_blk == bgmmc_.N)) {
-        bgmmc_.LDB2 = rnd_up(bgmmc_.K, bgmmc_.wei_k_blk) * bgmmc_.LDB;
+        if (bgmmc_.use_buffer_b) {
+            // If B is copied to a temporary buffer then the layout of B is
+            //      [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+            bgmmc_.LDB2 = rnd_up(bgmmc_.K_blk, bgmmc_.wei_k_blk) * bgmmc_.LDB;
+        } else {
+            //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+            bgmmc_.LDB2 = rnd_up(bgmmc_.K, bgmmc_.wei_k_blk) * bgmmc_.LDB;
+        }
     }
 }
 

@@ -47,6 +47,11 @@ using namespace dnnl::impl::cpu::x64;
 using namespace dnnl::impl::cpu::ppc64;
 #elif DNNL_S390X
 #include "cpu/s390x/gemm.h"
+#elif DNNL_RV64
+#if DNNL_RISCV_USE_RVV_INTRINSICS
+#include "cpu/rv64/gemm/rvv_gemm_bf16.hpp"
+using namespace dnnl::impl::cpu::rv64;
+#endif
 #endif
 
 namespace dnnl {
@@ -305,6 +310,9 @@ dnnl_status_t gemm_bf16bf16f32(const char *transa, const char *transb,
             *ldc);
     return dnnl_success;
 #endif
+#elif DNNL_RV64 && DNNL_RISCV_USE_RVV_INTRINSICS
+    return rvv_gemm_bf16bf16f32(
+            transa, transb, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
 #endif
 
     return ref_gemm_bf16bf16f32(

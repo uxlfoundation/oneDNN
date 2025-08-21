@@ -29,8 +29,6 @@ TESTS=(
     "--reorder --batch=$INPUTS_DIR/reorder_nightly"
 )
 
-N=5
-
 for test in "${TESTS[@]}"
 do
     $SCRIPT_DIR/run_benchdnn_compare.sh $1 $2 $3 $4 $test

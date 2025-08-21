@@ -952,19 +952,19 @@ void gen_kernel_t::init_interface() {
             interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
-            if (problem.asPtrDims > 2) {
+            if (problem.hasAScale()) {
                 interface_.newArgument(
                         "scale_stride_A" + std::to_string(i), DataType::d);
             }
-            if (problem.bsPtrDims > 2) {
+            if (problem.hasBScale()) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
             }
-            if (problem.aoPtrDims > 2) {
+            if (problem.hasAOffset()) {
                 interface_.newArgument(
                         "offset_stride_A" + std::to_string(i), DataType::d);
             }
-            if (problem.boPtrDims > 2) {
+            if (problem.hasBOffset()) {
                 interface_.newArgument(
                         "offset_stride_B" + std::to_string(i), DataType::d);
             }

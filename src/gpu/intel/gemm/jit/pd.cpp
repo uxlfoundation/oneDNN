@@ -36,15 +36,9 @@ int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
 
-    // If quantization is batched (any batch dim > 1), we need to tell gemmstone
-    // it's 3D - so it knows to change the offset as the batch index changes.
-    for (int i = 0; i < qmd.ndims - 2; i++) {
-        if (qmd.dims[i] > 1) return 3;
-    }
-
-    // Count the number of nontrivial (dim > 1) dimensions present
+    // C unt the number of nontrivial (dim > 1) dimensions present
     int count = 0;
-    for (int i = 0; i < qmd.ndims; ++i) {
+    for (int i = qmd.ndims - 2; i < qmd.ndims; ++i) {
         if (qmd.dims[i] > 1) { count++; }
     }
 
@@ -407,15 +401,17 @@ dim_t pd_t::eff_scale_stride(int idx, int arg) const {
             = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_scale_md_ : b_scale_md_;
     gpu_assert(memory_desc_wrapper(scale_md).is_plain())
             << "Expected plain scale_md_";
+    if (scale_md.dims[idx] == 1) return 0;
     return scale_md.format_desc.blocking.strides[idx];
 }
 
 dim_t pd_t::eff_zp_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    auto scale_md = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_zp_md_ : b_zp_md_;
-    gpu_assert(memory_desc_wrapper(scale_md).is_plain())
+    auto zp_md = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_zp_md_ : b_zp_md_;
+    gpu_assert(memory_desc_wrapper(zp_md).is_plain())
             << "Expected plain zp_md_";
-    return scale_md.format_desc.blocking.strides[idx];
+    if (zp_md.dims[idx] == 1) return 0;
+    return zp_md.format_desc.blocking.strides[idx];
 }
 
 } // namespace jit

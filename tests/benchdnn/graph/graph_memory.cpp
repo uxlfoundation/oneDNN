@@ -120,6 +120,13 @@ int dnn_graph_mem_t::fill_mem_with_data(
         SAFE(FAIL, WARN);
     }
 
+    // const auto print_mem = [](const dnn_mem_t &mem) {
+    //     for (size_t idx = 0; idx < MIN2(mem.nelems(), 32); ++idx) {
+    //         std::cout << mem.get_elem(idx) << " ";
+    //     }
+    //     std::cout << "\n=======================\n";
+    // };
+
     int ndims = mem.ndims();
     const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
                                               const dnn_mem_t &prim_mem) {
@@ -139,6 +146,8 @@ int dnn_graph_mem_t::fill_mem_with_data(
         prim_to_graph_memcpy(mem_, mem);
     }
 
+    // print_mem( mem_ );
+
     return OK;
 }
 
@@ -146,6 +155,9 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
         const deserialized_lt_t &lt) const {
     void *data_handle;
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
+
+    printf("Address for lt with id %zu : %p\n", lt.id_, data_handle);
+
     dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,
             str2layout(lt.layout_type_), lt.get_property_type());
     const auto &g_eng = get_graph_engine().operator const dnnl::engine &();

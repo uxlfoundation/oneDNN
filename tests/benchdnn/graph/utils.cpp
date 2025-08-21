@@ -119,12 +119,14 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
     // Warm-up run, this is not measured due to possibility the associated
     // kernel has not been built and skews the results.
+
     auto sz = perf_func_v.size();
-    for (size_t i = 0; i < sz; i++) {
-        DNN_GRAPH_SAFE(
-                perf_func_v[i](stream, inputs_v[i], outputs_v[i]), WARN, res);
-        DNN_GRAPH_SAFE(stream.wait(), WARN, res);
-    }
+    // Disable profiling for the warm-up run for cold cache review.
+    // for (size_t i = 0; i < sz; i++) {
+    //     DNN_GRAPH_SAFE(
+    //             perf_func_v[i](stream, inputs_v[i], outputs_v[i]), WARN, res);
+    //     DNN_GRAPH_SAFE(stream.wait(), WARN, res);
+    // }
 
     int cur_batch_times
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
@@ -137,8 +139,16 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     while (true) {
         for_(int i = 0; i < cur_batch_times; i++)
         for (size_t j = 0; j < sz; j++) {
-            DNN_GRAPH_SAFE(perf_func_v[j](stream, inputs_v[j], outputs_v[j]),
+            const auto &inputs = inputs_v[i % 5];
+            for (const auto &input : inputs) {
+                void *data_ptr = input.get_data_handle();
+                printf("Test with input with address: %p\n", data_ptr);
+            }
+
+            DNN_GRAPH_SAFE(
+                    perf_func_v[j](stream, inputs_v[i % 5], outputs_v[i % 5]),
                     WARN, res);
+            std::cout << "\n==========================\n";
         }
         DNN_GRAPH_SAFE(stream.wait(), WARN, res);
 
@@ -204,13 +214,24 @@ inline int measure_perf_individual(timer::timer_t &t,
     cpp_stream_t stream {get_graph_engine(), flags};
 
     t.reset();
+    size_t idx = 0;
     while (true) {
-        auto sz = perf_func_v.size();
-        for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
-                    WARN, res);
+        // auto sz = perf_func_v.size(); // sz = num of partitions
+
+        const auto &inputs = inputs_v[idx % 5];
+        for (const auto &input : inputs) {
+            void *data_ptr = input.get_data_handle();
+            printf("Test with input with address: %p\n", data_ptr);
         }
+        DNN_GRAPH_SAFE(
+                perf_func_v[0](stream, inputs_v[idx % 5], outputs_v[idx % 5]),
+                WARN, res);
         t.stamp();
+
+        ++idx;
+        std::cout << "Run " << idx << " time(s), "
+                  << "total time: " << t.total_ms() << " ms, " << std::endl;
+        std::cout << "==========================\n";
         if (should_stop(t)) break;
     }
     return OK;
@@ -223,6 +244,7 @@ int measure_perf(timer::timer_t &t, std::vector<perf_function_t> &perf_func_v,
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         // enable GPU profiling, Nvidia/AMD dose not support profiling.
         int ret = OK;
+        std::cout << "Start measuring performance:" << std::endl;
         if (is_cpu() && !is_sycl_engine()) {
             ret = measure_perf_individual(
                     t, perf_func_v, inputs_v, outputs_v, res);

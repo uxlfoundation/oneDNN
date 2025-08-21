@@ -460,6 +460,11 @@ static int init_memory(
 #endif
 
 void dnn_mem_t::map() const {
+    if (is_mapped_) {
+        std::cout << "[DNN_MEM] Memory is already mapped, skipping map "
+                     "operation.\n";
+        return;
+    }
     assert(!is_mapped_ && "memory is already mapped");
     is_mapped_ = true;
 
@@ -478,6 +483,11 @@ void dnn_mem_t::map() const {
 }
 
 void dnn_mem_t::unmap() const {
+    if (!is_mapped_) {
+        std::cout << "[DNN_MEM] Memory is not mapped, skipping unmap "
+                     "operation.\n";
+        return;
+    }
     assert(is_mapped_ && "memory is not mapped");
     is_mapped_ = false;
 
@@ -496,6 +506,8 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     auto mem = m_padded_ ? m_padded_ : m_;
     void *mem_handle;
     DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
+
+    printf("Init memory for address: %p\n", mem_handle);
 
     if (is_opencl) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL

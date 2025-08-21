@@ -83,11 +83,9 @@ parameters are applied after the post-ops as follow:
 \f]
 
 Quantizing/dequantizing values between post-operations can still be
-achieved using one of [eltwise](@ref
-dev_guide_attributes_post_ops_eltwise), [binary](@ref
-dev_guide_attributes_post_ops_binary), or the scale parameter of the
-appropriate post-operation.
-
+achieved using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
+[binary](@ref dev_guide_attributes_post_ops_binary), or the scale parameter of
+the appropriate post-operation.
 
 ### Example: Convolution Quantization Workflow
 

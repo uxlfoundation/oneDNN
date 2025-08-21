@@ -158,7 +158,7 @@ void parse_result(res_t &res, const char *pstr) {
     // This is the common format of the repro line ([] - for optional entries):
     // case_num:status[ (reason)][ (error_stats)] (time) __REPRO: prb_str
     std::string full_repro = std::to_string(bs.tests) + ":" + std::string(state)
-            + reason + error_stat + tct_str + id.str() + " __REPRO: " + pstr;
+            + reason + error_stat + id.str() + " __REPRO: " + pstr;
     if (is_failed) {
         bs.failed++;
         bs.failed_cases.emplace(bs.tests, full_repro);

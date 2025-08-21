@@ -1129,12 +1129,15 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const size_t device_max_capacity
             = is_cpu() ? cpu_device_capacity : gpu_device_capacity;
 
-    // 0.75f is taken randomly and is subject to change in future.
-    const double capacity_factor = 0.75;
+    // `0.70` is taken mostly due to integrated graphics and the way service
+    // reorders are handled by benchdnn. See a comment at `execute_reorder`.
+    // It's always a subject to change in the future.
+    const double capacity_factor = 0.70;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
     // Note: there used to be a separate limit for combined memory pool, however
-    // it didn't work even at 0.80 point due to, likely, system memory
-    // requirements. Use same limit for combined cpu and pure cpu cases.
+    // it didn't work even at 0.80 point due to mentioned reorder peculiarity,
+    // and the way RNN allocates memory for ref computations.
+    // Use same limit for combined cpu and pure cpu cases.
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 

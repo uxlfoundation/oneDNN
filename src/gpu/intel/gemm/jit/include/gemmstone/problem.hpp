@@ -222,10 +222,10 @@ struct GEMMProblem : public CommonProblem {
     bool gemmt() const { return false; }
     bool backward() const { return false; }
 
-    int aScaleGroupDims() const { return std::max(asPtrDims - 2, 0); }
-    int bScaleGroupDims() const { return std::max(bsPtrDims - 2, 0); }
-    int aOffsetGroupDims() const { return std::max(aoPtrDims - 2, 0); }
-    int bOffsetGroupDims() const { return std::max(boPtrDims - 2, 0); }
+    bool hasAScale() const { return (asPtrDims > -1); }
+    bool hasBScale() const { return (bsPtrDims > -1); }
+    bool hasAOffset() const { return (aoPtrDims > -1); }
+    bool hasBOffset() const { return (boPtrDims > -1); }
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }

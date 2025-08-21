@@ -163,16 +163,16 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            if (problem->aScaleGroupDims()) {
+            if (problem->hasAScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
             }
-            if (problem->bScaleGroupDims()) {
+            if (problem->hasBScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
             }
-            if (problem->aOffsetGroupDims()) {
+            if (problem->hasAOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
             }
-            if (problem->bOffsetGroupDims()) {
+            if (problem->hasBOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
             }
         }

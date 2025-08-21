@@ -197,6 +197,17 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     const auto &scratchpad_md = query_md(r_pd, DNNL_ARG_SCRATCHPAD);
     const auto &scratchpad_engine
             = dst.engine_kind() == dnnl_gpu ? dst.engine() : src.engine();
+
+    // Scratchpad memory will be mapped at the call below (if `attr` utilizes
+    // user-mode scratchpad) or inside `execute_and_wait` (for the library-mode)
+    // in the scenario when cpu2gpu or pure gpu reorder will be called (e.g.,
+    // for f64). This might trigger an OOM issue if the amount of previously
+    // allocated memory has already been close to the upper limit, and the large
+    // amount for scratchpad is requested on top of that amount.
+    //
+    // It might be worked around but it will require extra external management
+    // to prevent it. It's decided to increase the amount of "safety pillow"
+    // memory in `check_total_size` instead to save on engineering efforts.
     dnn_mem_t scratchpad(
             scratchpad_md, scratchpad_engine, /* prefill = */ true);
 

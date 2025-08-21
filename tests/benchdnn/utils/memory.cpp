@@ -44,22 +44,69 @@ void memory_registry_t::add(void *ptr, size_t size) {
     total_size_ += size;
 
     BENCHDNN_PRINT(8,
-            "[CHECK_MEM]: zmalloc request with size %s, total "
+            "[CHECK_MEM]: zmalloc request (%p) with size %s, total "
             "allocation size: %s\n",
-            smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
     warn_size_check();
 }
 
 void memory_registry_t::remove(void *ptr) {
     std::lock_guard<std::mutex> g(m_);
-    const size_t size = allocations_[ptr];
+    // Use `at` to catch cases when unallocated pointers are removed.
+    const size_t size = allocations_.at(ptr);
     total_size_ -= size;
 
     BENCHDNN_PRINT(8,
-            "[CHECK_MEM]: zfree request with size %s, total "
+            "[CHECK_MEM]: zfree request (%p) with size %s, total "
             "allocation size: %s\n",
-            smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
     allocations_.erase(ptr);
+}
+
+void memory_registry_t::add_mapped(void *ptr, size_t size) {
+    std::lock_guard<std::mutex> g(m_);
+
+    // It may happen that the same pointer is mapped twice when a mapped
+    // dnn_mem_t src goes through a CPU reorder. When such scenario happens,
+    // just skip accounting as it's already count.
+    if (mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: repeated map request (%p), skip accounting\n",
+                ptr);
+        return;
+    }
+
+    mapped_allocations_.emplace(std::pair<void *, size_t>(ptr, size));
+    total_size_ += size;
+
+    BENCHDNN_PRINT(8,
+            "[CHECK_MEM]: map request (%p) with size %s, total allocation "
+            "size: %s\n",
+            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+    // Do not warn on overflow as it can be a temporary jump due to reorder or
+    // other internal memory manipulation.
+}
+
+void memory_registry_t::remove_mapped(void *ptr) {
+    std::lock_guard<std::mutex> g(m_);
+
+    // Since double mapping may happen, double mapping may happen as well. To
+    // prevent issues, don't raise an error if non-registered ptr is removed.
+    if (mapped_allocations_.find(ptr) == mapped_allocations_.end()) {
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: repeated unmap request (%p), skip accounting\n",
+                ptr);
+        return;
+    }
+
+    const size_t size = mapped_allocations_.at(ptr);
+    total_size_ -= size;
+
+    BENCHDNN_PRINT(8,
+            "[CHECK_MEM]: unmap request (%p) with size %s, total allocation "
+            "size: %s\n",
+            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+    mapped_allocations_.erase(ptr);
 }
 
 void memory_registry_t::set_expected_max(size_t size) {
@@ -88,6 +135,17 @@ void memory_registry_t::warn_size_check() {
                 smart_bytes(expected_max_).c_str());
         // Prevent spamming logs with subsequent overflowing allocations;
         has_warned_ = true;
+    }
+}
+
+memory_registry_t::~memory_registry_t() {
+    if (!allocations_.empty()) {
+        BENCHDNN_PRINT(
+                0, "%s\n", "[CHECK_MEM][ERROR]: Allocations were not cleared");
+    }
+    if (!mapped_allocations_.empty()) {
+        BENCHDNN_PRINT(
+                0, "%s\n", "[CHECK_MEM][ERROR]: Allocations were not cleared");
     }
 }
 

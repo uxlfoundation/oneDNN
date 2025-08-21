@@ -25,6 +25,7 @@
 #include "common/memory_desc.hpp"
 
 #include "utils/fill.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 #include "dnn_types.hpp"

@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 #include "deconv/ref_deconv.hpp"

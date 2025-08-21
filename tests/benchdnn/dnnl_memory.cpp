@@ -39,6 +39,7 @@
 #include "dnnl_memory.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dnnl_query.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(

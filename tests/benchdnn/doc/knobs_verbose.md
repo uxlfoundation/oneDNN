@@ -39,6 +39,9 @@ following information is printed for certain verbosity levels.
 ## Level 7
 * Graph: prints the essential part of the graph (after the rewriter pass).
 
+## Level 8
+* Memory allocations and mapping statistics.
+
 ## Level 50
 * Full path of batch file used.
 

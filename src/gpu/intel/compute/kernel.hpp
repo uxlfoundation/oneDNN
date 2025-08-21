@@ -184,9 +184,11 @@ public:
         if (addr % min_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;
-        // Report an error otherwise.
-        VERROR(common, runtime, "found misaligned buffer: %p", ptr);
-        return status::runtime_error;
+        // Report a warning otherwise.
+        // XXX: This may cause incorrect results but keeping as a warning for
+        // now to preserve the old behavior.
+        VWARN(common, runtime, "found misaligned buffer: %p", ptr);
+        return status::success;
     }
 };
 

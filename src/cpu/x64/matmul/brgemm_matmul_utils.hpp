@@ -135,6 +135,7 @@ struct brgemm_matmul_conf_t {
     data_type_t reduce_dt;
     data_type_t orig_src_dt;
     data_type_t orig_wei_dt;
+    data_type_t wei_zp_dt;
     int nthr;
     int nthr_k = 1, nthr_m = 1, nthr_n = 1, nthr_b = 1;
 
@@ -165,6 +166,9 @@ struct brgemm_matmul_conf_t {
     dim_t C_strides[3];
     dim_t buffer_c_chunk_sz;
     dim_t buffer_c_per_thread_sz;
+
+    dim_t wei_zp_N_group; // per_oc
+    dim_t wei_zp_K_group; // per_ic
 
     dim_t A_ptr_shift_b;
     dim_t B_ptr_shift_b;
@@ -243,6 +247,10 @@ struct brgemm_matmul_conf_t {
     dim_t wei_scales_k_group_size = 0;
     data_type_t wei_scales_dt = data_type::undef;
     bool extendable_k = false;
+    bool is_wei_zp_per_k = false;
+    bool is_wei_zp_per_n = false;
+    bool is_wei_zp_common = false;
+    bool has_wei_zp_groups = false;
 
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;

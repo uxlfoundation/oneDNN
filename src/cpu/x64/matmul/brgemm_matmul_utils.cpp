@@ -1676,7 +1676,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
-    bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
+    if (bgmmc.use_buffer_b) {
+        // If B is copied to a temporary buffer then the layout of B is
+        //      [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+        bgmmc.LDB2 = rnd_up(bgmmc.K_blk, bgmmc.wei_k_blk) * bgmmc.LDB;
+    } else {
+        //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+        bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
+    }
+
     return status::success;
 }
 

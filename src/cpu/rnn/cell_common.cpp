@@ -83,9 +83,15 @@ rnn_cell_execution_sig(
         const int dst_proj_ld
                 = rnn.dt_conf == all_f32 ? dst_layer_ld : rnn.scratch_gates_ld;
 
-        CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb, rnn.dhc,
-                1.0f, w_projection_[0], rnn.weights_projection_ld, dst_postgemm,
-                rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        if (rnn.use_matmul) {
+            CHECK(this->execute_matmul(ctx,
+                    this->get_matmul_projection(cell_position),
+                    w_projection_[0], dst_postgemm, dst_proj));
+        } else {
+            CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb,
+                    rnn.dhc, 1.0f, w_projection_[0], rnn.weights_projection_ld,
+                    dst_postgemm, rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        }
 
         // we have to downconvert the output to dst_layer_t and copy to dst_iter if needed
         this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,

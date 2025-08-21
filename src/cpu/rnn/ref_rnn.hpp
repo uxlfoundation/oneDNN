@@ -167,6 +167,9 @@ struct ref_rnn_common_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> matmul_part2_2_pd_;
         std::shared_ptr<primitive_desc_t> matmul_part2_3_pd_;
         std::shared_ptr<primitive_desc_t> matmul_part2_4_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_projection_1_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_projection_2_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_projection_3_pd_;
 #if DNNL_X64
         std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
         std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
@@ -238,6 +241,8 @@ protected:
             rnn_utils::cell_position_t cell_position) const;
     const std::shared_ptr<primitive_t> &get_matmul_part2(
             rnn_utils::cell_position_t cell_position) const;
+    const std::shared_ptr<primitive_t> &get_matmul_projection(
+            rnn_utils::cell_position_t cell_position) const;
 
     float (*activation_func)(float s, float alpha, float cliping) = nullptr;
 
@@ -282,6 +287,9 @@ protected:
     std::shared_ptr<primitive_t> matmul_part2_2_;
     std::shared_ptr<primitive_t> matmul_part2_3_;
     std::shared_ptr<primitive_t> matmul_part2_4_;
+    std::shared_ptr<primitive_t> matmul_projection_1_;
+    std::shared_ptr<primitive_t> matmul_projection_2_;
+    std::shared_ptr<primitive_t> matmul_projection_3_;
 
     gemm_t gemm_layer_func {};
     gemm_t gemm_iter_func {};

@@ -290,6 +290,37 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                             LDA4, LDB, LDC, do_sum));
             }
         }
+
+        // init projection matmuls
+        if (rnn_.is_lstm_projection) {
+            const dim_t M = rnn_.mb;
+            const dim_t N = rnn_.dic;
+            const dim_t K = rnn_.dhc;
+            const dim_t LDA = rnn_.proj_ht_ld;
+            const dim_t LDB = rnn_.weights_projection_ld;
+
+            const bool do_sum = false;
+
+            if (rnn_.dt_conf == all_f32) {
+                const dim_t LDC1 = rnn_.dst_layer_ld_;
+                const dim_t LDC2 = rnn_.dst_iter_ld_;
+                const dim_t LDC3 = rnn_.ws_states_layer_ld;
+                if (LDC1 >= N)
+                    CHECK(init_matmul_pd(matmul_projection_1_pd_, M, N, K, LDA,
+                            LDB, LDC1, do_sum));
+                if (LDC2 >= N && LDC2 != LDC1)
+                    CHECK(init_matmul_pd(matmul_projection_2_pd_, M, N, K, LDA,
+                            LDB, LDC2, do_sum));
+                if (LDC3 >= N && !utils::one_of(LDC3, LDC1, LDC2))
+                    CHECK(init_matmul_pd(matmul_projection_3_pd_, M, N, K, LDA,
+                            LDB, LDC3, do_sum));
+            } else {
+                const dim_t LDC = rnn_.scratch_gates_ld;
+                if (LDC >= N)
+                    CHECK(init_matmul_pd(matmul_projection_1_pd_, M, N, K, LDA,
+                            LDB, LDC, do_sum));
+            }
+        }
     }
     return status::success;
 }
@@ -609,7 +640,8 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
     const auto nested_pds = {matmul_layer_1_pd_, matmul_layer_2_pd_,
             matmul_layer_3_pd_, matmul_iter_1_pd_, matmul_iter_2_pd_,
             matmul_iter_3_pd_, matmul_part2_1_pd_, matmul_part2_2_pd_,
-            matmul_part2_3_pd_, matmul_part2_4_pd_,
+            matmul_part2_3_pd_, matmul_part2_4_pd_, matmul_projection_1_pd_,
+            matmul_projection_2_pd_, matmul_projection_3_pd_,
 #if DNNL_X64
             bf32_wei_layer_reorder_pd_, bf32_wei_iter_reorder_pd_
 #endif
@@ -713,6 +745,9 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     CREATE_MATMUL(matmul_part2_2_);
     CREATE_MATMUL(matmul_part2_3_);
     CREATE_MATMUL(matmul_part2_4_);
+    CREATE_MATMUL(matmul_projection_1_);
+    CREATE_MATMUL(matmul_projection_2_);
+    CREATE_MATMUL(matmul_projection_3_);
 #undef CREATE_MATMUL
 
 #if DNNL_X64
@@ -812,6 +847,34 @@ dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     else {
         assert(ldb == LDB4);
         return matmul_part2_4_;
+    }
+}
+
+template <prop_kind_t aprop, impl::data_type_t src_type,
+        impl::data_type_t weights_type, impl::data_type_t acc_type>
+const std::shared_ptr<primitive_t> &
+dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
+        acc_type>::get_matmul_projection(cell_position_t cell_position) const {
+    const auto &rnn = pd()->rnn_;
+    if (rnn.dt_conf == all_f32) {
+        const auto ldc = rnn.dst_layer_ld(cell_position, true);
+        const auto LDC1 = rnn.dst_layer_ld_;
+        const auto LDC2 = rnn.dst_iter_ld_;
+        const auto LDC3 = rnn.ws_states_layer_ld;
+        MAYBE_UNUSED(LDC3);
+        if (ldc == LDC1) {
+            assert(matmul_projection_1_);
+            return matmul_projection_1_;
+        } else if (ldc == LDC2) {
+            assert(matmul_projection_2_);
+            return matmul_projection_2_;
+        } else {
+            assert(ldc == LDC3 && matmul_projection_3_);
+            return matmul_projection_3_;
+        }
+    } else {
+        assert(matmul_projection_1_);
+        return matmul_projection_1_;
     }
 }
 

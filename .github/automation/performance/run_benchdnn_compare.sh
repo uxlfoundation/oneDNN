@@ -16,20 +16,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # *******************************************************************************
+#
+# Runs a user-supplied benchdnn command on two oneDNN binaries.
+# Usage
+#   .github/automation/performance/run_benchdnn_compare.sh \
+#       ${BASE_BIN} ${NEW_BIN} ${BASE_OUT} ${NEW_OUT} ${CMD}
 
-# Usage: bash bench_nightly_performance.sh {baseline_benchdnn_executable} {benchdnn_executable} {baseline_results_file} {new_results_file}
+set -euo pipefail
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-INPUTS_DIR="${SCRIPT_DIR}/inputs"
+BASE_BINARY=$1
+NEW_BINARY=$2
+BASE_OUT=$3
+NEW_OUT=$4
+CMD_STR=("${@:5}")
 
-TESTS=(
-    "--matmul --batch=$INPUTS_DIR/matmul_nightly"
-    "--conv --batch=$INPUTS_DIR/conv_nightly"
-    "--eltwise --batch=$INPUTS_DIR/eltwise_nightly"
-    "--reorder --batch=$INPUTS_DIR/reorder_nightly"
-)
+REPS=5
+PERF='--perf-template=%prb%,%-time%,%-ctime%'
+MODE='--mode=P'
 
-for test in "${TESTS[@]}"
-do
-    $SCRIPT_DIR/run_benchdnn_compare.sh $1 $2 $3 $4 $test
+FINAL_ARGS=("${CMD_STR[0]}" "${PERF}" "${MODE}" "${CMD_STR[@]:1}")
+
+echo ${FINAL_ARGS[@]}
+
+SECONDS=0
+
+for i in $(seq 1 "$REPS"); do
+  echo "Testing loop ${i} / ${REPS}..."
+
+  $BASE_BINARY ${FINAL_ARGS[@]} >> $BASE_OUT
+  $NEW_BINARY ${FINAL_ARGS[@]} >> $NEW_OUT
 done
+
+duration=$SECONDS
+echo "Completed in $((duration / 60)):$((duration % 60))"

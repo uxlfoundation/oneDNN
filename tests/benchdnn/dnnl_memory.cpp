@@ -475,6 +475,10 @@ void dnn_mem_t::map() const {
                 DNN_SAFE_V(dnnl_memory_unmap_data_v2(mem, mapped_ptrs_[i], i));
             DNN_SAFE_V(st);
         }
+        // Register a mapped memory entry if a different pointer from `data_`
+        // was returned.
+        if (IMPLICATION(!data_.empty(), data_[i] != mapped_ptrs_[i]))
+            zmalloc_registry().add_mapped(mapped_ptrs_[i], size(i));
     }
 }
 
@@ -486,6 +490,11 @@ void dnn_mem_t::unmap() const {
     auto mem = m_padded_ ? m_padded_ : m_;
     const int nhandles = query_md_num_handles(md_);
     for (int i = 0; i < nhandles; i++) {
+        // Unregister a mapped memory entry if a different pointer from `data_`
+        // was returned when mapped.
+        if (IMPLICATION(!data_.empty(), data_[i] != mapped_ptrs_[i]))
+            zmalloc_registry().remove_mapped(mapped_ptrs_[i], size(i));
+
         DNN_SAFE_V(dnnl_memory_unmap_data_v2(mem, mapped_ptrs_[i], i));
         mapped_ptrs_[i] = nullptr;
     }

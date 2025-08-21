@@ -67,6 +67,65 @@ void memory_registry_t::remove(void *ptr) {
     allocations_.erase(ptr);
 }
 
+void memory_registry_t::add_mapped(void *ptr, size_t size) {
+    std::lock_guard<std::mutex> g(m_);
+    if (!ptr) return;
+
+    // When the library memories, which are mapped when created, reordered with
+    // data, they may choose the fast path with CPU reorder. In that case, the
+    // mapped memory pointer for CPU reorder will be used. Since such service
+    // reorders follow the consolidated execution path, they'll unmap those new
+    // memory objects, but since they are not mapped, unmap won't happen. But
+    // after the execution, the mapping happens and returns the same pointer.
+    // Accounting such mapping at total_size value doesn't make sense as no
+    // extra memory is allocated, but increasing a local state instead to have
+    // an ability to properly decrease.
+    if (mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: repeated map request (%p), increase local size "
+                "state\n",
+                ptr);
+        mapped_allocations_[ptr] += size;
+    } else {
+        mapped_allocations_.emplace(std::pair<void *, size_t>(ptr, size));
+        total_size_ += size;
+
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: map request (%p) with size %s, total allocation "
+                "size: %s\n",
+                ptr, smart_bytes(size).c_str(),
+                smart_bytes(total_size_).c_str());
+    }
+    // Do not warn on overflow as it can be a temporary jump due to reorder or
+    // other internal memory manipulation.
+}
+
+void memory_registry_t::remove_mapped(void *ptr, size_t size) {
+    std::lock_guard<std::mutex> g(m_);
+    if (!ptr) return;
+
+    const size_t stored_size = mapped_allocations_.at(ptr);
+
+    // See `add_mapped` comment.
+    // Since double mapping may happen, double unmapping may happen as well.
+    // Correspondently decrease the local state and return.
+    if (stored_size > size) {
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: repeated unmap request (%p), decrease local size "
+                "state\n",
+                ptr);
+        mapped_allocations_[ptr] -= size;
+    } else {
+        mapped_allocations_.erase(ptr);
+        total_size_ -= size;
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: unmap request (%p) with size %s, total "
+                "allocation size: %s\n",
+                ptr, smart_bytes(size).c_str(),
+                smart_bytes(total_size_).c_str());
+    }
+}
+
 void memory_registry_t::set_expected_max(size_t size) {
     expected_max_ = static_cast<size_t>(expected_trh_ * size);
     has_warned_ = false;
@@ -93,6 +152,21 @@ void memory_registry_t::warn_size_check() {
                 smart_bytes(expected_max_).c_str());
         // Prevent spamming logs with subsequent overflowing allocations;
         has_warned_ = true;
+    }
+}
+
+memory_registry_t::~memory_registry_t() {
+    if (!allocations_.empty()) {
+        BENCHDNN_PRINT(
+                0, "%s\n", "[CHECK_MEM][ERROR]: Allocations were not cleared");
+    }
+    if (!mapped_allocations_.empty()) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "[CHECK_MEM][ERROR]: Mapped allocations were not cleared");
+    }
+    if (total_size_ > 0) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "[CHECK_MEM][ERROR]: Total size wasn't reduced to 0");
     }
 }
 

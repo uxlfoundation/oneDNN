@@ -27,10 +27,19 @@ struct memory_registry_t {
     // Decreases the registered physically allocated memory.
     void remove(void *ptr);
 
+    // Increases the registered mapped memory.
+    void add_mapped(void *ptr, size_t size);
+
+    // Decreases the registered mapped memory. Use `size` to track repeated
+    // mapped regions.
+    void remove_mapped(void *ptr, size_t size);
+
     // Uses `size` as an upper limit to check if allocations fit the
     // expectation. The check takes into account `expected_trh_` which increases
     // the `size`.
     void set_expected_max(size_t size);
+
+    ~memory_registry_t();
 
 private:
     // `expected_trh_` smoothes out small allocations for attributes memory
@@ -40,7 +49,11 @@ private:
     size_t expected_max_ = unset_;
     size_t total_size_ = 0;
     bool has_warned_ = false;
+    // For physically allocated memory.
     std::unordered_map<void *, size_t> allocations_;
+    // For mapped memory. Mapped memory can overflow the upper limit as it
+    // happens in sporadic places.
+    std::unordered_map<void *, size_t> mapped_allocations_;
     std::mutex m_;
 
     size_t size() const { return total_size_; }

@@ -89,11 +89,13 @@ struct Selector {
         auto tupleize = [](const Selector &sel) {
             bool compoundA = sel.precisions[0][0] == '[';
             bool compoundB = sel.precisions[1][0] == '[';
+            char A_ext = sel.precisions[0][compoundA ? 1 : 0];
+            char A     = sel.precisions[0][compoundA ? 2 : 0];
+            char B_ext = sel.precisions[1][compoundB ? 1 : 0];
+            char B     = sel.precisions[1][compoundB ? 2 : 0];
             return std::make_tuple(sel.hw,
-                                   sel.precisions[0][0] & 0x1F,
-                                   compoundA ? sel.precisions[0][1] & 0x1F : 'a',
-                                   sel.precisions[1][0] & 0x1F,
-                                   compoundB ? sel.precisions[1][1] & 0x1F : 'b',
+                                   A_ext & 0x1F, A & 0x1F,
+                                   B_ext & 0x1F, B & 0x1F,
                                    sel.layouts[0][0], sel.layouts[1][0]);
         };
         return tupleize(sel1) < tupleize(sel2);

@@ -15,8 +15,6 @@
 *******************************************************************************/
 #include "cpu/rv64/rvv_matmul.hpp"
 #include "common/dnnl_thread.hpp"
-#include "cpu/cpu_primitive.hpp"
-#include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 #include <riscv_vector.h>
 

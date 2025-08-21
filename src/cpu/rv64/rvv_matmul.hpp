@@ -16,9 +16,7 @@
 #ifndef CPU_RV64_RVV_MATMUL_HPP
 #define CPU_RV64_RVV_MATMUL_HPP
 
-#include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 

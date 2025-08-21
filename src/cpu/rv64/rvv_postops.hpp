@@ -16,9 +16,6 @@
 #ifndef CPU_RV64_RVV_POSTOPS_HPP
 #define CPU_RV64_RVV_POSTOPS_HPP
 
-#include "common/primitive_attr.hpp"
-#include "common/utils.hpp"
-#include "oneapi/dnnl/dnnl_types.h"
 #include <riscv_vector.h>
 
 namespace dnnl {
@@ -27,8 +24,9 @@ namespace cpu {
 namespace rv64 {
 
 struct rvv_postops_t {
-    rvv_postops_t(const post_ops_t &po) : alg_(alg_kind::undef) {
-        if (po.len() > 0) { alg_ = po.entry_[0].eltwise.alg; }
+    rvv_postops_t(const post_ops_t &po)
+        : alg_(po.len() > 0 ? po.entry_[0].eltwise.alg : alg_kind::undef) {
+        assert(po.len() <= 1 && "rvv_postops_t supports at most one post-op");
     }
 
     static bool post_ops_ok(const post_ops_t &po) {
@@ -55,7 +53,7 @@ struct rvv_postops_t {
     }
 
 private:
-    dnnl_alg_kind_t alg_;
+    alg_kind_t alg_;
 };
 
 } // namespace rv64

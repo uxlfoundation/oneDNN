@@ -86,6 +86,8 @@ extern "C" dnnl_status_t dnnl_query_profiling_data(dnnl_stream_t stream,
 #endif
 #endif
 
+extern "C" uint64_t dnnl_primitive_get_id(dnnl_primitive_t);
+
 int check_pd_cache(const_dnnl_primitive_desc_t pd, res_t *res);
 int check_primitive_cache(dnnl_primitive_t p, res_t *res);
 
@@ -525,6 +527,8 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
         user_prim.reset(primw.release());
         return OK;
     }
+
+    res->impl_id = dnnl_primitive_get_id(primw);
 
     auto pd = query_pd(primw);
     res->impl_name = query_impl_info(pd);

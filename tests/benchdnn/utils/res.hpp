@@ -102,6 +102,7 @@ struct check_mem_size_args_t {
 
 struct res_t {
     res_state_t state;
+    uint64_t impl_id = 0;
     size_t errors, total;
     timer::timer_map_t timer_map;
     std::string impl_name;

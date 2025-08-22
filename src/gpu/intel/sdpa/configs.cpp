@@ -177,8 +177,8 @@ static auto constexpr f32 = property::f32;
 
 // Kernel configurations: [ arch, head_size, {sequence length}, {properties} ] -> config
 static std::vector<config_record_t> sorted_configs = []() {
+    // clang-format off
     std::vector<config_record_t> configs = {
-            // clang-format off
         // xe_hpg
         {{compute::gpu_arch_t::xe_hpg, 32},               {32, 16, 16, 16, 2, 16, 2, 16}},
         {{compute::gpu_arch_t::xe_hpg, 32, 256},          {16, 16, 16, 16, 2, 8, 2, 8}},
@@ -309,7 +309,8 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 128, 128, integrated | quantized}, {16, 16, 16, 16, 8, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe_hpc, 128,      second_token | quantized}, {16, 16, 16, 16, 16, 1, 16, 1}},
-        {{compute::gpu_arch_t::xe_hpc, 128, 512, second_token | quantized}, {16, 16, 16, 16, 16, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 512, second_token | quantized}, {16, 16, 16, 16, 32, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 512, second_token | quantized | f32 }, {16, 16, 16, 16, 16, 2, 16, 2}},
         {{compute::gpu_arch_t::xe_hpc, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
         {{compute::gpu_arch_t::xe_hpc, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
 
@@ -349,8 +350,6 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 128, 384,  fma }, {32, 32, 16, 16, 16, 1, 8, 2 }},
         {{compute::gpu_arch_t::xe_hpc, 128, 1024, fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
         {{compute::gpu_arch_t::xe_hpc, 128,       fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
-
-
 
         {{compute::gpu_arch_t::xe_hpc, 256,  384, fma }, {16, 32, 16, 16, 32, 1, 16, 2}},
         {{compute::gpu_arch_t::xe_hpc, 256, 1024, fma }, {16, 16, 32, 16,  8, 4,  8, 4}},
@@ -477,7 +476,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 512,     second_token | quantized}, {16, 16, 64, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe2, 512, 64, second_token | quantized}, {16, 16, 64, 16, 8, 1, 8, 1}},
 
-        {{compute::gpu_arch_t::xe2, 512,      integrated}, {16, 16, 16, 16, 16, 2, 16, 2}},
+        {{compute::gpu_arch_t::xe2, 512,      integrated}, {32, 16, 64, 16, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe2, 512, 128, integrated}, {16, 16, 64, 16, 8, 2, 8, 2}},
 
         {{compute::gpu_arch_t::xe2, 512,       integrated | second_token}, {16, 16, 64, 16, 16, 2, 16, 2}},
@@ -518,6 +517,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 128, fma | second_token }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
         {{compute::gpu_arch_t::xe2, 128, f32 | fma | second_token }, { 16, 16, 32, 16, 8, 2, 8, 2 }},
         {{compute::gpu_arch_t::xe2, 256, fma | second_token }, { 16, 16, 16, 16, 16, 2, 16, 2 }},
+        {{compute::gpu_arch_t::xe2, 512, fma | second_token }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
 
 
         {{compute::gpu_arch_t::xe2,  32, 384, fma | quantized }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
@@ -528,12 +528,12 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2,  32, fma | quantized }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
         {{compute::gpu_arch_t::xe2,  64, fma | quantized }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
         {{compute::gpu_arch_t::xe2, 128, fma | quantized }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
-        {{compute::gpu_arch_t::xe2, 256, fma | quantized }, { 32, 16, 16, 16,32, 1,32, 1 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | quantized }, { 16, 16, 32, 16, 8, 4, 8, 4 }},
 
         {{compute::gpu_arch_t::xe2,  32, fma | second_token | quantized }, { 32, 32, 16, 16,  8, 2,  4, 4}},
         {{compute::gpu_arch_t::xe2,  64, fma | second_token | quantized }, { 16, 32, 16, 16, 16, 2,  8, 4}},
-        {{compute::gpu_arch_t::xe2, 128, fma | second_token | quantized }, { 16, 32, 32, 16, 16, 1,  8, 2}},
-        {{compute::gpu_arch_t::xe2, 256, fma | second_token | quantized }, { 16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe2, 128, fma | second_token | quantized }, { 16, 16, 32, 16,  8, 2,  8, 2}},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token | quantized }, { 16, 16, 16, 16, 16, 2, 16, 2}},
 
 
         {{compute::gpu_arch_t::xe2,  32, 384, fma | integrated }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
@@ -558,25 +558,8 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 128, fma | second_token | integrated }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
         {{compute::gpu_arch_t::xe2, 128, f32 | fma | second_token | integrated }, { 16, 16, 32, 16, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe2, 256, fma | second_token | integrated }, { 16, 16, 16, 16, 16, 2, 16, 2 }},
-
-
-        {{compute::gpu_arch_t::xe2,  32, 384, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
-        {{compute::gpu_arch_t::xe2,  64, 384, fma | quantized | integrated }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
-        {{compute::gpu_arch_t::xe2, 128, 384, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
-        {{compute::gpu_arch_t::xe2, 256, 384, fma | quantized | integrated }, { 32, 16, 16, 16,32, 1,32, 1 }},
-
-        {{compute::gpu_arch_t::xe2,  32, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
-        {{compute::gpu_arch_t::xe2,  64, fma | quantized | integrated }, { 32, 16, 32, 16, 4, 4, 4, 4 }},
-        {{compute::gpu_arch_t::xe2, 128, fma | quantized | integrated }, { 16, 16, 32, 16, 4, 4, 4, 4 }},
-        {{compute::gpu_arch_t::xe2, 256, fma | quantized | integrated }, { 32, 16, 16, 16,32, 1,32, 1 }},
-
-        {{compute::gpu_arch_t::xe2,  32, fma | second_token | quantized | integrated }, { 32, 32, 16, 16,  8, 2,  4, 4}},
-        {{compute::gpu_arch_t::xe2,  64, fma | second_token | quantized | integrated }, { 16, 32, 16, 16, 16, 2,  8, 4}},
-        {{compute::gpu_arch_t::xe2, 128, fma | second_token | quantized | integrated }, { 16, 32, 32, 16, 16, 1,  8, 2}},
-        {{compute::gpu_arch_t::xe2, 256, fma | second_token | quantized | integrated }, { 16, 16, 16, 16, 32, 1, 32, 1}}
-
-            // clang-format on
     };
+    // clang-format on
 
     // ensures configs appear in order of most to least defined/desirable
     std::sort(std::begin(configs), std::end(configs));

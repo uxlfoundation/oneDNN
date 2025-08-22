@@ -1611,7 +1611,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
 
     // Vector length in inner loop.
     const auto nbytes = 64;
-    auto nec = nbytes / Tc;
+    auto nec = std::min(nbytes / Tc, nbytes / Tc_ext);
 
     // 1- and 2-byte types must be padded to 4 bytes.
     bool byte_access = (Tc_ext.size() < 4);

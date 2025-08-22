@@ -257,8 +257,8 @@ struct gen_t : public primitive_t {
                     : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
                     && !wei_decomp_;
-            int_acc &= (!(a_scale_md_.ndims > 1 || b_scale_md_.ndims > 1)
-                    && !(a_zp_md_.ndims > 1 || b_zp_md_.ndims > 1));
+            int_acc &= (!(a_scales_grouped() || b_scales_grouped())
+                    && !(a_zp_grouped() || b_zp_grouped()));
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
@@ -319,9 +319,9 @@ struct gen_t : public primitive_t {
                     get_post_op_specializations()));
 
             jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k_, a_q2d_group_m_};
+                    asc_dims_, a_q2d_group_k(), a_q2d_group_m()};
             jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
+                    bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
 
             VDISPATCH_GEMM_SC(
                     kernel_desc_.select_kernel(arch_, stepping,

@@ -1975,7 +1975,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             auto boBase = state.ra.alloc_sub<uint64_t>();
             auto rem = slmB ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
             auto c = slmB ? state.nb_slm : strategy.unroll[LoopN];
-            eaddScaled(1, boBase, state.inputs.boPtr, slmB ? j0q : state.j0, Tbo, strategy, state);
+            if (problem.batch == BatchMode::Strided) {
+                eadd(1, boBase, state.inputs.boPtr, state.offsetBo, strategy, state);
+                eaddScaled(1, boBase, boBase, slmB ? j0q : state.j0, Tbo, strategy, state);
+            } else {
+                eaddScaled(1, boBase, state.inputs.boPtr, slmB ? j0q : state.j0, Tbo, strategy, state);
+            }
             boLoad = loadVector(problem.Tbo, problem.Tbo, boBase, c, rem, strategy, state);
             B_offsetLayout = RegisterLayout(hw, problem.Tbo, 1, c, false);
             state.ra.safeRelease(boBase);

@@ -660,8 +660,7 @@ private:
             ngen::InstructionModifier &mod, const ngen::RegData &mem_off_op,
             ngen::RegData &rd) const {
         int size = send_func.payload_size();
-        gpu_assert(utils::one_of(send_func.type.kind(), type_kind_t::dword,
-                           type_kind_t::qword)
+        gpu_assert((send_func.type.is_dword() || send_func.type.is_qword())
                 && (size == 32 || size == 64))
                 << "expected atomic message dwordx8 or qwordx8";
         auto load_func = send_t::make(send_func.hw, send_op_t::load,
@@ -674,7 +673,7 @@ private:
                 send_func.fill_buf, send_func.cache_hint);
         auto &cmpwr_send = cmpwr_func.as<send_t>();
         send_impl_t cmpwr(cmpwr_send);
-        bool is_df = send_func.type.kind() == type_kind_t::qword;
+        bool is_df = send_func.type.is_qword();
 
         int grf_size = ngen::GRF::bytes(hw());
         int regs = utils::div_up(size, grf_size);
@@ -752,8 +751,7 @@ private:
         }
         if ((hw() <= ngen::HW::XeLP && send_func.is_atomic())
                 || (hw() == ngen::HW::XeHPG && send_func.is_atomic()
-                        && send_func.type.kind() == type_kind_t::qword
-                        && !with_atomic_fp64_)) {
+                        && send_func.type.is_qword() && !with_atomic_fp64_)) {
             send_atomic_add_emu(
                     scope, send_func, mask_op, mod, mem_off_op.reg_data(), rd);
         } else {
@@ -1044,9 +1042,10 @@ public:
         auto dst_op = alloc_dst_op(obj);
 
         // Handle ptr -> u64 and u64 -> ptr casts.
-        if (utils::one_of(obj.type, type_t::u64(), type_t::byte_ptr())
-                && utils::one_of(
-                        obj.expr.type(), type_t::u64(), type_t::byte_ptr())) {
+        if (utils::one_of(
+                    obj.type, type_t::u64(), type_t::byte(type::attr_t::ptr))
+                && utils::one_of(obj.expr.type(), type_t::u64(),
+                        type_t::byte(type::attr_t::ptr))) {
             eval(obj.expr, dst_op);
             bind(obj, dst_op);
             return;

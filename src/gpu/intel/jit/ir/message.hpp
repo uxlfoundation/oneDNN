@@ -257,8 +257,7 @@ public:
     bool is_slm() const { return address == send_address_t::slm; }
 
     bool is_block() const {
-        return utils::one_of(
-                type.kind(), type_kind_t::oword, type_kind_t::hword);
+        return utils::one_of(type.scalar(), type_t::oword(), type_t::hword());
     }
 
     bool is_scattered() const { return !is_block() && !is_2d(); }

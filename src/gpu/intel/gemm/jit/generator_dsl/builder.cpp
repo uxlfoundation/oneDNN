@@ -265,8 +265,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                             : expr_t(0); //TODO: Get actual size
                 }
 
-                return {arg("binary" + i_s), e.src1_desc.dt, src_g_offset,
-                        coord_t(), g_sizes, g_strides, {}};
+                return {arg("binary" + i_s),
+                        dnnl::impl::gpu::intel::jit::to_ir(e.src1_desc.dt),
+                        src_g_offset, coord_t(), g_sizes, g_strides, {}};
             }();
 
             layout_t src_layout = {src_g.type};

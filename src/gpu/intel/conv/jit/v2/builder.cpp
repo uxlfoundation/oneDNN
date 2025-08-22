@@ -658,7 +658,7 @@ private:
             alg_kind_t alg = (arg == DNNL_ARG_DST ? alg_kind::binary_div
                                                   : alg_kind::binary_mul);
             build_post_op(coord, tile, alg, nullptr, f32_layout, buf,
-                    buf_info_.mem_buf(rhs_buf_name), type_t(data_type),
+                    buf_info_.mem_buf(rhs_buf_name), to_ir(data_type),
                     into<uint16_t>(to_rhs_mask(arg, mask)));
         };
         // Apply non-dst scales.
@@ -679,7 +679,7 @@ private:
             } else if (po.is_sum()) {
                 auto &s = po.as_sum();
                 build_post_op(coord, tile, alg_kind::binary_add, &po,
-                        f32_layout, buf, buf_info_.mem_buf("c"), type_t(s.dt),
+                        f32_layout, buf, buf_info_.mem_buf("c"), to_ir(s.dt),
                         0xFFFF, s.scale, s.zero_point);
             } else if (po.is_binary()) {
                 auto &b = po.as_binary();
@@ -688,7 +688,7 @@ private:
                         b.src1_desc.broadcast_mask ^ 0xFFFF,
                         c_tag.raw_tag().ndims());
                 build_post_op(coord, tile, b.alg, &po, f32_layout, buf,
-                        buf_info_.mem_buf(rhs_buf_name), type_t(b.src1_desc.dt),
+                        buf_info_.mem_buf(rhs_buf_name), to_ir(b.src1_desc.dt),
                         mask);
             } else {
                 gpu_error_not_expected();

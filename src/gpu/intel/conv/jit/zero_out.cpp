@@ -40,7 +40,7 @@ compute::range_t zero_out_kernel_desc_t::local_range() const {
 void zero_out_kernel_desc_t::init_kernel_iface(
         kernel_iface_t &kernel_iface) const {
     kernel_iface.register_arg("size", type_t::u32());
-    kernel_iface.register_arg("ptr", type_t::byte_ptr());
+    kernel_iface.register_arg("ptr", type_t::byte(type::attr_t::ptr));
 }
 
 void zero_out_kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,

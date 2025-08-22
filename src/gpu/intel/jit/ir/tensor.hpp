@@ -278,7 +278,7 @@ public:
 
     layout_t(const memory_desc_wrapper &mdw, const std::string &format,
             bool do_normalize = true)
-        : layout_t(mdw.data_type(), mdw.offset0(), format,
+        : layout_t(to_ir(mdw.data_type()), mdw.offset0(), format,
                 std::vector<dim_t>(mdw.dims(), mdw.dims() + mdw.ndims()),
                 do_normalize) {}
 
@@ -436,7 +436,7 @@ public:
 
     bool is_strictly_equal(const layout_t &other, bool compare_offset = true,
             bool compare_strides = true) const {
-        if (!type_.is_equal(other.type_)) return false;
+        if (type_ != other.type_) return false;
         if (compare_offset && !offset_.is_equal(other.offset_)) return false;
         if (blocks_.size() != other.blocks_.size()) return false;
         for (size_t i = 0; i < blocks_.size(); i++) {
@@ -453,7 +453,7 @@ public:
 
     bool operator!=(const layout_t &other) const { return !operator==(other); }
     bool operator<=(const layout_t &other) const {
-        if (!type_.is_equal(other.type_)) return false;
+        if (type_ != other.type_) return false;
         auto other_blocks = other.normalize().blocks();
         auto self_blocks = normalize().blocks();
         if (self_blocks.size() > other_blocks.size()) return false;

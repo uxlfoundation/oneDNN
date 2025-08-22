@@ -20,12 +20,16 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <numeric>
 #include <string>
 
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
+#include "common/math_utils.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/ir/include/ir.hpp"
+#include "gpu/intel/jit/ir/include/type.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
@@ -126,315 +130,42 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-enum class type_kind_t {
-    undef,
-    _bool,
-
-    // Integer types.
-    u4,
-    s4,
-    u8,
-    s8,
-    u16,
-    s16,
-    u32,
-    s32,
-    u64,
-    s64,
-
-    // Floating point types.
-    f4_e3m0,
-    f4_e2m1,
-    bf8,
-    f8_e5m2 = bf8,
-    hf8,
-    f8_e4m3 = hf8,
-    bf16,
-    f16,
-    tf32,
-    f32,
-    f64,
-
-    // Message data types.
-    byte,
-    dword,
-    qword,
-    oword,
-    hword
-};
-
-static auto type_kind_names = nstl::to_array({
-        make_enum_name(type_kind_t::undef, "undef"),
-        make_enum_name(type_kind_t::u4, "u4"),
-        make_enum_name(type_kind_t::s4, "s4"),
-        make_enum_name(type_kind_t::u8, "u8"),
-        make_enum_name(type_kind_t::s8, "s8"),
-        make_enum_name(type_kind_t::u16, "u16"),
-        make_enum_name(type_kind_t::s16, "s16"),
-        make_enum_name(type_kind_t::u32, "u32"),
-        make_enum_name(type_kind_t::s32, "s32"),
-        make_enum_name(type_kind_t::u64, "u64"),
-        make_enum_name(type_kind_t::s64, "s64"),
-        make_enum_name(type_kind_t::f4_e3m0, "f4_e3m0"),
-        make_enum_name(type_kind_t::f4_e2m1, "f4_e2m1"),
-        make_enum_name(type_kind_t::bf8, "bf8"),
-        make_enum_name(type_kind_t::hf8, "hf8"),
-        make_enum_name(type_kind_t::bf16, "bf16"),
-        make_enum_name(type_kind_t::f16, "f16"),
-        make_enum_name(type_kind_t::tf32, "tf32"),
-        make_enum_name(type_kind_t::f32, "f32"),
-        make_enum_name(type_kind_t::f64, "f64"),
-        make_enum_name(type_kind_t::byte, "byte"),
-        make_enum_name(type_kind_t::dword, "dword"),
-        make_enum_name(type_kind_t::qword, "qword"),
-        make_enum_name(type_kind_t::oword, "oword"),
-        make_enum_name(type_kind_t::hword, "hword"),
-        make_enum_name(type_kind_t::_bool, "bool"),
-});
-GPU_DEFINE_PARSE_ENUM(type_kind_t, type_kind_names)
-
-enum class type_attr_t : uint32_t {
-    undef = 0,
-    ptr = 1,
-    mut = 2,
-    simd = 4,
-    slm = 8
-};
-
-GPU_DEFINE_BIT_MASK_ENUM_OPS(type_attr_t)
-inline type_attr_t &operator|=(type_attr_t &a, type_attr_t b) {
-    return a = a | b;
-}
-inline type_attr_t &operator&=(type_attr_t &a, type_attr_t b) {
-    return a = a & b;
-}
-
-inline type_kind_t get_kind(ngen::DataType t) {
-    switch (t) {
-        case ngen::DataType::uq: return type_kind_t::u64;
-        case ngen::DataType::q: return type_kind_t::s64;
-        case ngen::DataType::ud: return type_kind_t::u32;
-        case ngen::DataType::d: return type_kind_t::s32;
-        case ngen::DataType::uw: return type_kind_t::u16;
-        case ngen::DataType::w: return type_kind_t::s16;
-        case ngen::DataType::ub: return type_kind_t::u8;
-        case ngen::DataType::b: return type_kind_t::s8;
-        case ngen::DataType::u4: return type_kind_t::u4;
-        case ngen::DataType::s4: return type_kind_t::s4;
-
-        case ngen::DataType::df: return type_kind_t::f64;
-        case ngen::DataType::f: return type_kind_t::f32;
-        case ngen::DataType::tf32: return type_kind_t::tf32;
-        case ngen::DataType::hf: return type_kind_t::f16;
-        case ngen::DataType::bf: return type_kind_t::bf16;
-        case ngen::DataType::bf8: return type_kind_t::bf8;
-        case ngen::DataType::hf8: return type_kind_t::hf8;
-        default: return type_kind_t::undef;
-    }
-}
-
-class type_t {
-public:
-    static type_t undef() { return type_t(type_kind_t::undef); }
-
-    static type_t _bool(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::_bool, elems, attr);
-    }
-
-    static type_t u4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::u4, elems, attr);
-    }
-    static type_t s4(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::s4, elems, attr);
-    }
-    static type_t u8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::u8, elems, attr);
-    }
-    static type_t s8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::s8, elems, attr);
-    }
-    static type_t u16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::u16, elems, attr);
-    }
-    static type_t s16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::s16, elems, attr);
-    }
-    static type_t u32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::u32, elems, attr);
-    }
-    static type_t s32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::s32, elems, attr);
-    }
-    static type_t u64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::u64, elems, attr);
-    }
-    static type_t s64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::s64, elems, attr);
-    }
-
-    // Returns unsigned integer type.
-    static type_t u(
-            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        switch (bits) {
-            case 4: return u4(elems, attr);
-            case 8: return u8(elems, attr);
-            case 16: return u16(elems, attr);
-            case 32: return u32(elems, attr);
-            case 64: return u64(elems, attr);
-            default: gpu_error_not_expected();
-        }
-        return type_t::undef();
-    }
-
-    // Returns signed integer type.
-    static type_t s(
-            int bits, int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        switch (bits) {
-            case 4: return s4(elems, attr);
-            case 8: return s8(elems, attr);
-            case 16: return s16(elems, attr);
-            case 32: return s32(elems, attr);
-            case 64: return s64(elems, attr);
-            default: gpu_error_not_expected();
-        }
-        return type_t::undef();
-    }
-
-    static type_t f4_e3m0(
-            int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::f4_e3m0, elems, attr);
-    }
-    static type_t f4_e2m1(
-            int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::f4_e2m1, elems, attr);
-    }
-    static type_t bf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::bf8, elems, attr);
-    }
-    static type_t hf8(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::hf8, elems, attr);
-    }
-    static type_t bf16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::bf16, elems, attr);
-    }
-    static type_t f16(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::f16, elems, attr);
-    }
-    static type_t tf32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::tf32, elems, attr);
-    }
-    static type_t f32(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::f32, elems, attr);
-    }
-    static type_t f64(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::f64, elems, attr);
-    }
-    static type_t byte(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::byte, elems, attr);
-    }
-    static type_t byte_ptr(int elems = 1, bool is_slm = false,
-            type_attr_t attr = type_attr_t::undef) {
-        auto type = type_t(type_kind_t::byte, elems, attr).with_ptr();
-        if (is_slm) type = type.slm();
-        return type;
-    }
-    static type_t dword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::dword, elems, attr);
-    }
-    static type_t qword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::qword, elems, attr);
-    }
-    static type_t oword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::oword, elems, attr);
-    }
-    static type_t hword(int elems = 1, type_attr_t attr = type_attr_t::undef) {
-        return type_t(type_kind_t::hword, elems, attr);
-    }
-
-    template <typename T>
-    static type_t from_cpp() {
+template <typename T>
+type_t from_cpp() {
 #define CASE(cpp_type, type) \
-    if (std::is_same<T, cpp_type>::value) return type()
+    if (std::is_same<T, cpp_type>::value) return type_t::type()
 
-        CASE(bool, _bool);
-        CASE(float, f32);
-        CASE(double, f64);
-        CASE(int16_t, s16);
-        CASE(int32_t, s32);
-        CASE(int64_t, s64);
-        CASE(uint16_t, u16);
-        CASE(uint32_t, u32);
-        CASE(uint64_t, u64);
+    CASE(bool, _bool);
+    CASE(float, f32);
+    CASE(double, f64);
+    CASE(int16_t, s16);
+    CASE(int32_t, s32);
+    CASE(int64_t, s64);
+    CASE(uint16_t, u16);
+    CASE(uint32_t, u32);
+    CASE(uint64_t, u64);
 
 #undef CASE
 
-        gpu_error_not_expected();
+    gpu_error_not_expected();
 
-        return undef();
-    }
+    return type_t::undef();
+}
 
-    template <typename T>
-    T max() const {
-        switch (kind()) {
-            case type_kind_t::u4:
-            case type_kind_t::s4:
-            case type_kind_t::u8:
-            case type_kind_t::s8:
-            case type_kind_t::u16:
-            case type_kind_t::s16:
-            case type_kind_t::u32:
-            case type_kind_t::s32:
-            case type_kind_t::u64:
-            case type_kind_t::s64: {
-                int bits = scalar().bitsize();
-                if (is_signed()) bits--;
-                T ret = T(1) << (bits - 1);
-                return ret + (ret - 1);
-            }
-            default: gpu_error_not_expected();
-        }
-        return 0;
-    }
+template <typename T>
+bool is_cpp(const type_t &t) {
+    return t == from_cpp<T>();
+}
 
-    template <typename T>
-    T min() const {
-        switch (kind()) {
-            case type_kind_t::u4:
-            case type_kind_t::s4:
-            case type_kind_t::u8:
-            case type_kind_t::s8:
-            case type_kind_t::u16:
-            case type_kind_t::s16:
-            case type_kind_t::u32:
-            case type_kind_t::s32:
-            case type_kind_t::u64:
-            case type_kind_t::s64: {
-                if (is_unsigned()) return 0;
-                return -max<T>() - 1;
-            }
-            default: gpu_error_not_expected();
-        }
-        return 0;
-    }
+bool is_subset(const type_t &a, const type_t &b);
 
-    static bool is_vector(int elems) { return elems != 1; }
-
-    type_t() : type_t(type_t::undef()) {}
-
-    type_t(type_kind_t kind, uint32_t elems = 1,
-            type_attr_t attr = type_attr_t::undef)
-        : kind_(kind), elems_(elems), attr_(attr) {}
-
-    type_t(ngen::DataType type, uint32_t elems = 1,
-            type_attr_t attr = type_attr_t::undef)
-        : type_t(get_kind(type), elems, attr) {}
-
-    type_t(const std::string &s) : elems_(1) {
+// type_t and dnnl_data_type_t convertors.
+data_type_t to_dnnl(const type_t &type);
+inline type_t to_ir(const data_type_t &dt) {
+    if (dt == data_type::undef) return type_t();
+    switch ((int)dt) {
 #define CASE(x) \
-    if (to_string(type_kind_t::x) == s) { \
-        kind_ = type_kind_t::x; \
-        return; \
-    }
+    case data_type::x: return type_t::x();
         CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(f8_e5m2);
@@ -444,260 +175,16 @@ public:
         CASE(tf32);
         CASE(f32);
         CASE(f64);
-
-        CASE(s4);
-        CASE(s8);
-        CASE(s16);
         CASE(s32);
-        CASE(s64);
-
-        CASE(u4);
+        CASE(s8);
         CASE(u8);
-        CASE(u16);
-        CASE(u32);
-        CASE(u64);
+        CASE(s4);
+        CASE(u4);
 #undef CASE
-        gpu_error_not_expected();
+        default: gpu_error_not_expected();
     }
-
-    // Constructor from dnnl_data_type_t.
-    type_t(data_type_t dt) {
-        if (dt == data_type::undef) return;
-        elems_ = 1;
-        switch ((int)dt) {
-#define CASE(x) \
-    case data_type::x: kind_ = type_kind_t::x; break;
-            CASE(f4_e3m0);
-            CASE(f4_e2m1);
-            CASE(f8_e5m2);
-            CASE(f8_e4m3);
-            CASE(bf16);
-            CASE(f16);
-            CASE(tf32);
-            CASE(f32);
-            CASE(f64);
-            CASE(s32);
-            CASE(s8);
-            CASE(u8);
-            CASE(s4);
-            CASE(u4);
-#undef CASE
-            default: gpu_error_not_expected();
-        }
-    }
-
-    type_kind_t kind() const { return kind_; }
-
-    int elems() const { return elems_; }
-
-    type_attr_t attr() const { return attr_; }
-
-    bool is_ptr() const { return any(attr() & type_attr_t::ptr); }
-
-    bool is_slm() const { return any(attr() & type_attr_t::slm); }
-
-    type_t operator[](int elems) const { return with_elems(elems); }
-
-    bool operator==(const type_t &other) const {
-        return (kind() == other.kind()) && (elems() == other.elems())
-                && (is_ptr() == other.is_ptr());
-    }
-
-    bool operator!=(const type_t &other) const { return !operator==(other); }
-
-    bool is_equal(const type_t &other) const { return operator==(other); }
-
-    size_t get_hash() const {
-        return ir_utils::get_hash(kind(), elems(), is_ptr());
-    }
-
-    static void init_parse_iface(parse_iface_t<type_t> *iface) {
-        iface->add<type_kind_t, &type_t::kind_>();
-        iface->set_pre_stringify_func([](const type_t &type) {
-            gpu_assert(!type.is_ptr() && (type.is_scalar() || type.is_undef()))
-                    << "Cannot stringify pointer/non-scalar type.";
-        });
-    }
-
-    bool is_undef() const { return kind() == type_kind_t::undef; }
-
-    bool is_vector() const { return type_t::is_vector(elems()); }
-
-    bool is_bool() const { return kind() == type_kind_t::_bool; }
-
-    bool is_fp() const {
-        return is_fp4() || is_fp8()
-                || utils::one_of(kind(), type_kind_t::bf16, type_kind_t::f16,
-                        type_kind_t::tf32, type_kind_t::f32, type_kind_t::f64);
-    }
-
-    bool is_f4_e3m0() const { return kind() == type_kind_t::f4_e3m0; }
-    bool is_f4_e2m1() const { return kind() == type_kind_t::f4_e2m1; }
-    bool is_bf8() const { return kind() == type_kind_t::bf8; }
-    bool is_hf8() const { return kind() == type_kind_t::hf8; }
-    bool is_bf16() const { return kind() == type_kind_t::bf16; }
-    bool is_f16() const { return kind() == type_kind_t::f16; }
-    bool is_tf32() const { return kind() == type_kind_t::tf32; }
-    bool is_f32() const { return kind() == type_kind_t::f32; }
-    bool is_f64() const { return kind() == type_kind_t::f64; }
-
-    bool is_fp4() const { return is_f4_e3m0() || is_f4_e2m1(); }
-    bool is_fp8() const { return is_bf8() || is_hf8(); }
-
-    bool is_int() const {
-        return is_x4() || is_x8() || is_x16() || is_x32() || is_x64();
-    }
-
-    bool is_s4() const { return kind() == type_kind_t::s4; }
-    bool is_u4() const { return kind() == type_kind_t::u4; }
-    bool is_x4() const { return is_s4() || is_u4(); }
-
-    bool is_s8() const { return kind() == type_kind_t::s8; }
-    bool is_u8() const { return kind() == type_kind_t::u8; }
-    bool is_x8() const { return is_s8() || is_u8(); }
-
-    bool is_s16() const { return kind() == type_kind_t::s16; }
-    bool is_u16() const { return kind() == type_kind_t::u16; }
-    bool is_x16() const { return is_s16() || is_u16(); }
-
-    bool is_s32() const { return kind() == type_kind_t::s32; }
-    bool is_u32() const { return kind() == type_kind_t::u32; }
-    bool is_x32() const { return is_s32() || is_u32(); }
-
-    bool is_s64() const { return kind() == type_kind_t::s64; }
-    bool is_u64() const { return kind() == type_kind_t::u64; }
-    bool is_x64() const { return is_s64() || is_u64(); }
-
-    bool is_byte() const { return kind() == type_kind_t::byte; }
-    bool is_dword() const { return kind() == type_kind_t::dword; }
-    bool is_qword() const { return kind() == type_kind_t::qword; }
-    bool is_oword() const { return kind() == type_kind_t::oword; }
-    bool is_hword() const { return kind() == type_kind_t::hword; }
-
-    bool is_signed(int elems = -1) const {
-        if (elems != -1 && elems_ != elems) return false;
-        return utils::one_of(kind(), type_kind_t::s4, type_kind_t::s8,
-                type_kind_t::s16, type_kind_t::s32, type_kind_t::s64);
-    }
-
-    bool is_unsigned(int elems = -1) const {
-        if (elems != -1 && elems_ != elems) return false;
-        return utils::one_of(kind(), type_kind_t::u4, type_kind_t::u8,
-                type_kind_t::u16, type_kind_t::u32, type_kind_t::u64);
-    }
-
-    bool is_scalar() const { return elems() == 1; }
-
-    bool is_mutable() const { return any(attr() & type_attr_t::mut); }
-
-    bool is_simd() const { return any(attr() & type_attr_t::simd); }
-
-    template <typename T>
-    bool is_cpp() const {
-        return *this == type_t::from_cpp<T>();
-    }
-
-    bool is_bitwise_compatible(const type_t &other) const {
-        if (*this == other) return true;
-
-        // tf32 is bitwise compatible with f32.
-        if (kind() == type_kind_t::f32 && other.kind() == type_kind_t::tf32)
-            return elems() == other.elems();
-
-        return false;
-    }
-
-    type_t remove_elems() const { return with_elems(1); }
-
-    type_t remove_ptr() const {
-        type_t copy = *this;
-        copy.attr_ &= ~type_attr_t::ptr;
-        return copy;
-    }
-
-    type_t with_elems(int new_elems) const {
-        type_t copy = *this;
-        copy.elems_ = new_elems;
-        return copy;
-    }
-
-    type_t with_ptr() const {
-        type_t copy = *this;
-        copy.attr_ |= type_attr_t::ptr;
-        return copy;
-    }
-
-    type_t with_attr(type_attr_t attr) const {
-        type_t copy = *this;
-        copy.attr_ = attr;
-        return copy;
-    }
-
-    type_t with_kind(type_kind_t kind) const {
-        type_t copy = *this;
-        copy.kind_ = kind;
-        return copy;
-    }
-
-    type_t simd() const {
-        type_t copy = *this;
-        copy.attr_ |= type_attr_t::simd;
-        return copy;
-    }
-
-    type_t slm() const {
-        type_t copy = *this;
-        copy.attr_ |= type_attr_t::slm;
-        return copy;
-    }
-
-    type_t scalar() const { return with_elems(1); }
-
-    // Returns size in bytes.
-    int size() const;
-
-    // Returns size in bits.
-    int bitsize() const {
-        // 8 elements occupy the same number of bytes that a single element
-        // occupies in bits.
-        constexpr int bits_per_byte = 8;
-        return with_elems(bits_per_byte * elems()).size();
-    }
-
-    // Returns number of elements that fit in `size()` bytes.
-    // The size in bytes of `n` packed elements is
-    //     `div_up(n * size(), packing())`.
-    int packing() const {
-        constexpr int bits_per_byte = 8;
-        return bits_per_byte * size() / bitsize();
-    }
-
-    // For floating point types, returns the number of mantissa bits
-    int mantissa_bits() const;
-
-    std::string str() const {
-        ostringstream_t oss;
-        oss << to_string(kind());
-        if (elems() > 1) oss << "x" << elems();
-        if (is_ptr()) oss << "*";
-        if (is_mutable()) oss << ".mut";
-        if (is_slm()) oss << ".slm";
-        return oss.str();
-    }
-
-    IR_DEFINE_DUMP()
-
-private:
-    type_kind_t kind_ = type_kind_t::undef;
-    int elems_ = 0;
-    type_attr_t attr_ = type_attr_t::undef;
-};
-
-// Can type b represent all values of type a?
-bool is_subset(const type_t &a, const type_t &b);
-
-// type_t to dnnl_data_type_t convertor.
-data_type_t to_dnnl(const type_t &type);
+    return type_t();
+}
 
 // Reference counter for IR objects.
 class ref_count_t {
@@ -1336,7 +823,7 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return type.is_equal(other.type) && expr.is_equal(other.expr)
+        return type == other.type && expr.is_equal(other.expr)
                 && (saturate == other.saturate);
     }
 
@@ -1412,7 +899,7 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return type.is_equal(other.type) && (value == other.value);
+        return type == other.type && (value == other.value);
     }
 
     size_t get_hash() const override { return ir_utils::get_hash(value); }
@@ -1442,7 +929,7 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return type.is_equal(other.type) && (value == other.value);
+        return type == other.type && (value == other.value);
     }
 
     size_t get_hash() const override { return ir_utils::get_hash(value); }
@@ -1598,7 +1085,7 @@ public:
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
-        return type.is_equal(other.type) && buf.is_equal(other.buf)
+        return type == other.type && buf.is_equal(other.buf)
                 && off.is_equal(other.off) && (stride == other.stride);
     }
 
@@ -1788,7 +1275,7 @@ private:
         auto elem_type = vec[0].type();
         if (vec.size() == 1 && elem_type.is_simd()) {
             gpu_assert(idx.size() == 1);
-            return type_t(elem_type.kind());
+            return elem_type.scalar();
         }
 
         for (auto &v : vec)
@@ -1986,7 +1473,7 @@ expr_t to_expr(T value, const type_t &type) {
 
 template <typename T>
 expr_t to_expr(T value) {
-    return to_expr(value, type_t::from_cpp<T>());
+    return to_expr(value, from_cpp<T>());
 }
 
 inline bool is_binary_op(const expr_t &e) {

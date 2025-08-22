@@ -81,8 +81,7 @@ type_t multiply_desc_t::get_c_type(
 }
 
 bool dpas_t::is_src_type(type_t type) {
-    return utils::one_of(type.kind(), type_kind_t::u8, type_kind_t::s8,
-            type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32);
+    return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 
 layout_t dpas_t::a_layout() const {

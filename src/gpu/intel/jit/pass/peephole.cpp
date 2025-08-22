@@ -98,13 +98,9 @@ private:
     static bool add3_type_ok(const expr_t &e) {
         auto t = real_type(e);
         if (!t.is_scalar()) return false;
-        switch (t.kind()) {
-            case type_kind_t::s32:
-            case type_kind_t::u32: return !is_const(e);
-            case type_kind_t::s16:
-            case type_kind_t::u16: return true;
-            default: return false;
-        }
+        if (t.is_x32()) return !is_const(e);
+        if (t.is_x16()) return true;
+        return false;
     }
 };
 

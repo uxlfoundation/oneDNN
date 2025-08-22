@@ -80,10 +80,7 @@ struct global_tensor_t {
     global_tensor_t() = default;
     global_tensor_t(const expr_t &buf, const pvar_map_t<expr_t> &sizes,
             const pvar_map_t<expr_t> &strides)
-        : buf(buf)
-        , type(buf.type().remove_ptr())
-        , sizes(sizes)
-        , strides(strides) {}
+        : buf(buf), type(buf.type().scalar()), sizes(sizes), strides(strides) {}
     global_tensor_t(const expr_t &buf, const type_t &type,
             const expr_t &base_offset, const coord_t &coord,
             const pvar_map_t<expr_t> &sizes, const pvar_map_t<expr_t> &strides,

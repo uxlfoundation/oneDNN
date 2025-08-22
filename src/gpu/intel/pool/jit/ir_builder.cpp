@@ -374,11 +374,13 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     ir_context_t ir_ctx(exec, init_cset);
 
     auto acc_type = cfg.acc_type(simd);
-    auto acc_buf = ir_ctx.create_tmp_var(type_t::byte_ptr(), "acc");
+    auto acc_buf
+            = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "acc");
     const auto acc_sc_size = acc_type.scalar().size();
     const auto acc_size = acc_sc_size * lg[4] * lg[3] * lg[2] * lg[1] * lg[0];
 
-    auto read_buf = ir_ctx.create_tmp_var(type_t::byte_ptr(), "read");
+    auto read_buf
+            = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "read");
     auto read_params = get_send_params(
             exec, send_op_t::load, send_address_t::a64, src_thr_view);
     read_params.try_legacy = false;
@@ -404,8 +406,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
 
     const bool is_identity(prb.kd * prb.kh * prb.kw <= 1);
 
-    const type_t read_type(read_layout.type().kind(), simd);
-    const type_t write_type(write_layout.type().kind(), simd);
+    const type_t read_type(read_layout.type()[simd]);
 
     stmt_t stmt;
 

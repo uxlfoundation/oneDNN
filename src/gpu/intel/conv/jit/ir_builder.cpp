@@ -559,8 +559,8 @@ private:
                 || !plan_.slm.x_reduce_tile_coord.is_invalid());
         auto x_reduce_buf = buf_mgr_.find("x_reduce", /*allow_empty=*/true).buf;
         if (x_reduce_buf.is_empty()) return;
-        auto x_reduce_dummy_buf
-                = var_t::make(type_t::byte_ptr(), "x_reduce_dummy");
+        auto x_reduce_dummy_buf = var_t::make(
+                type_t::byte(type::attr_t::ptr), "x_reduce_dummy");
         auto x_reduce_view
                 = plan_.bia_view.create_sub_view(plan_.x_reduce_tile_coord());
         auto r2g = make_access_builder(ir_ctx_, x_reduce_view, x_reduce_buf_,

@@ -425,7 +425,8 @@ private:
         if (!var && needs_compute()) var = op_var().as_ptr<var_t>();
         gpu_assert(var) << "Can't extract variable from buffer: " << mem_buf();
         auto &name = var->name;
-        return ir_ctx_->create_tmp_var(type_t::byte_ptr(), "tmp_" + name);
+        return ir_ctx_->create_tmp_var(
+                type_t::byte(type::attr_t::ptr), "tmp_" + name);
     }
 
     void register_buffer(const expr_t &buf, uint32_t size) {
@@ -767,7 +768,7 @@ public:
 
 private:
     expr_t make_c_tmp_buffer() const {
-        return ir_ctx_.create_tmp_var(type_t::byte_ptr(), "c_tmp");
+        return ir_ctx_.create_tmp_var(type_t::byte(type::attr_t::ptr), "c_tmp");
     }
 
     // Represents a GRF buffer and layout to store C tensor.

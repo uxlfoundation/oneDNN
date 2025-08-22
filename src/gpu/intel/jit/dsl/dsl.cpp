@@ -108,8 +108,7 @@ struct ctx_t {
     // TODO: Remove IR restriction which requires force_alloc
     lval_t def(type_t _type, const std::string &name, const expr_t &value = {},
             bool force_alloc = false) {
-        auto type = type_t(
-                _type.kind(), _type.elems(), _type.attr() | type_attr_t::mut);
+        auto type = _type.with_attr(_type.attr() | type::attr_t::mut);
         auto alloc_var = var(type, name);
         if (force_alloc || type.is_ptr()) {
             append(alloc_t::make(alloc_var, {}));
@@ -139,7 +138,7 @@ struct ctx_t {
         // scalar values) without GRF alignment.
         auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
                 grf_size() / layout.type().scalar().size());
-        auto t = type_t(layout.type().kind(), elems);
+        auto t = layout.type()[elems];
         return {def(t, name, value, true), layout};
     }
 
@@ -338,7 +337,7 @@ tensor_t def(
 
 tensor_t def_slm(layout_t layout, const std::string &name) {
     auto alloc_elems = into<int>(layout.size() / layout.type().size());
-    auto buf = def(name, layout.type().slm()[alloc_elems]);
+    auto buf = def(name, layout.type().with_slm()[alloc_elems]);
     int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
             * layout.type().size();
     auto off = utils::div_up(

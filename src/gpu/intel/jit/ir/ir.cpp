@@ -788,7 +788,7 @@ bool is_const_broadcast(const expr_t &e, const expr_t &value) {
 }
 
 expr_t make_buffer(const std::string &name) {
-    return var_t::make(type_t::byte_ptr(), name);
+    return var_t::make(type_t::byte(type::attr_t::ptr), name);
 }
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).

@@ -758,7 +758,7 @@ compute::range_t kernel_desc_t::local_range() const {
 void kernel_desc_t::init_kernel_iface(kernel_iface_t &kernel_iface) const {
     auto tensor_config = get_tensor_config(*this);
     for (auto &t : tensor_config.tensors()) {
-        kernel_iface.register_arg(t.name, type_t::byte_ptr());
+        kernel_iface.register_arg(t.name, type_t::byte(type::attr_t::ptr));
     }
     auto _reqs = reqs();
     auto tg_grid = create_thread_group_grid(*this);
@@ -1030,7 +1030,7 @@ jit::layout_t get_kernel_layout(const std::string &name,
     } else if (name.find("binary") == 0) {
         auto out_kind = pick_c(desc.prop, tensor_kind_t::src,
                 tensor_kind_t::wei, tensor_kind_t::dst);
-        tag = make_layout_tag(out_kind, "axb:" + type_t(md.data_type).str());
+        tag = make_layout_tag(out_kind, "axb:" + to_ir(md.data_type).str());
     }
     gpu_assert(!tag.is_empty()) << "Unknown tensor: " << name;
     auto layout = to_layout(tag, md, name == "wei" && !pd->with_groups());

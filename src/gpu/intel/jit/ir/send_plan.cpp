@@ -2323,8 +2323,8 @@ public:
             send_params_t &send_params)
         : send_params_(send_params)
         , ir_ctx_(exec_cfg, cset_)
-        , dummy_mem_buf_(var_t::make(type_t::byte_ptr(), "mem"))
-        , dummy_reg_buf_(var_t::make(type_t::byte_ptr(), "reg"))
+        , dummy_mem_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "mem"))
+        , dummy_reg_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "reg"))
         , access_(make_access_builder(
                   ir_ctx_, view, dummy_mem_buf_, dummy_reg_buf_, send_params))
         , reg_layout_(access_.reg_layout()) {

@@ -29,107 +29,22 @@ namespace jit {
 expr_t const_fold_non_recursive(const expr_t &expr);
 object_t const_fold(const object_t &obj);
 
-int type_t::size() const {
-    if (is_ptr()) return sizeof(uint64_t);
-
-    if (is_bool()) return utils::div_up(elems(), 8);
-    if (is_x4() || is_fp4()) return utils::div_up(elems(), 2);
-
-    if (elems() != 1) return elems() * scalar().size();
-
-    switch (kind()) {
-        case type_kind_t::u8:
-        case type_kind_t::s8:
-        case type_kind_t::bf8:
-        case type_kind_t::hf8:
-        case type_kind_t::byte: return 1;
-        case type_kind_t::u16:
-        case type_kind_t::s16:
-        case type_kind_t::bf16:
-        case type_kind_t::f16: return 2;
-        case type_kind_t::u32:
-        case type_kind_t::s32:
-        case type_kind_t::tf32:
-        case type_kind_t::f32:
-        case type_kind_t::dword: return 4;
-        case type_kind_t::f64:
-        case type_kind_t::u64:
-        case type_kind_t::s64:
-        case type_kind_t::qword: return 8;
-        case type_kind_t::oword: return 16;
-        case type_kind_t::hword: return 32;
-        default: gpu_error_not_expected();
-    }
-    return 0;
-}
-
-int type_t::mantissa_bits() const {
-    if (!is_fp()) return 0;
-
-    switch (kind()) {
-        case type_kind_t::f64: return 52;
-        case type_kind_t::f32: return 23;
-        case type_kind_t::tf32:
-        case type_kind_t::f16: return 10;
-        case type_kind_t::bf16: return 7;
-        case type_kind_t::hf8: return 3;
-        case type_kind_t::bf8: return 2;
-        case type_kind_t::f4_e2m1: return 1;
-        case type_kind_t::f4_e3m0: return 0;
-        default: gpu_error_not_expected();
-    }
-    return 0;
-}
-
-bool is_subset(const type_t &a, const type_t &b) {
-    auto is_untyped = [](const type_t &t) {
-        return t.is_byte() || t.is_dword() || t.is_qword() || t.is_oword()
-                || t.is_hword();
-    };
-
-    if (a.is_undef() || b.is_undef()) return false;
-    if (a.elems() != b.elems()) return false; // unordered
-    if (a.is_ptr() && b.is_ptr()) return true; // XXX: consider alignments?
-    if (a.is_ptr() || b.is_ptr()) return false; // unordered
-    if (a == b) return true;
-    if (a.is_tf32() && b.is_f32()) return true;
-    if (a.is_fp() && b.is_int()) return false;
-
-    const auto a_bits = a.scalar().bitsize();
-    const auto b_bits = b.scalar().bitsize();
-    if (is_untyped(a) && is_untyped(b)) return a_bits <= b_bits;
-    if (is_untyped(a) || is_untyped(b)) return false; // unordered
-    if (a.is_int() && b.is_fp())
-        return a_bits <= b.mantissa_bits() + a.is_signed();
-    if (a.is_int() && b.is_int())
-        // There are 4 cases:
-        // 1. sN is not a subset of uM
-        // 2. uN is a subset of sM if N <= M - 1
-        // 3. sN is a subset of sM if N - 1 <= M - 1
-        // 4. uN is a subset of uM if N <= M
-        return (!a.is_signed() || b.is_signed())
-                && a_bits + b.is_signed() <= b_bits + a.is_signed();
-    return a_bits < b_bits;
-}
-
 data_type_t to_dnnl(const type_t &type) {
     gpu_assert(type.elems() == 1) << type;
     gpu_assert(!type.is_ptr() == 1) << type;
-    switch (type.kind()) {
-        case type_kind_t::f4_e3m0: return data_type::f4_e3m0;
-        case type_kind_t::f4_e2m1: return data_type::f4_e2m1;
-        case type_kind_t::bf8: return data_type::f8_e5m2;
-        case type_kind_t::hf8: return data_type::f8_e4m3;
-        case type_kind_t::bf16: return data_type::bf16;
-        case type_kind_t::f16: return data_type::f16;
-        case type_kind_t::tf32: return data_type::tf32;
-        case type_kind_t::f32: return data_type::f32;
-        case type_kind_t::f64: return data_type::f64;
-        case type_kind_t::s32: return data_type::s32;
-        case type_kind_t::s8: return data_type::s8;
-        case type_kind_t::u8: return data_type::u8;
-        default: gpu_error_not_expected();
-    }
+    if (type.is_f4_e3m0()) return data_type::f4_e3m0;
+    if (type.is_f4_e2m1()) return data_type::f4_e2m1;
+    if (type.is_bf8()) return data_type::f8_e5m2;
+    if (type.is_hf8()) return data_type::f8_e4m3;
+    if (type.is_bf16()) return data_type::bf16;
+    if (type.is_f16()) return data_type::f16;
+    if (type.is_tf32()) return data_type::tf32;
+    if (type.is_f32()) return data_type::f32;
+    if (type.is_f64()) return data_type::f64;
+    if (type.is_s32()) return data_type::s32;
+    if (type.is_s8()) return data_type::s8;
+    if (type.is_u8()) return data_type::u8;
+    gpu_error_not_expected();
     return data_type::undef;
 }
 
@@ -226,15 +141,15 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
     return type_t::undef();
 }
 
-type_attr_t common_attr(const type_t &a, const type_t &b) {
+type::attr_t common_attr(const type_t &a, const type_t &b) {
     gpu_assert(!a.is_ptr() && !b.is_ptr());
-    return (a.attr() | b.attr()) & ~type_attr_t::mut;
+    return (a.attr() | b.attr()) & ~type::attr_t::mut;
 }
 
 type_t common_type(const type_t &base, const type_t &a, const type_t &b) {
     auto attr = common_attr(a, b);
     int elems = std::max(a.elems(), b.elems());
-    return type_t(base.kind(), elems, attr);
+    return base[elems].with_attr(attr);
 }
 
 type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
@@ -287,7 +202,7 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
     if (a.is_undef() || b.is_undef()) return type_t::undef();
     int elems = std::max(a.elems(), b.elems());
 
-    type_attr_t attr = common_attr(a, b);
+    type::attr_t attr = common_attr(a, b);
     if (is_cmp_op(op_kind)) return type_t::_bool(elems, attr);
     if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
         return a[elems].with_attr(attr);

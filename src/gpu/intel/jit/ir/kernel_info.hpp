@@ -82,9 +82,10 @@ public:
             if (a.exttype == ngen::ExternalArgumentType::Scalar) {
                 register_arg(a.name, type_t(a.type));
             } else if (a.exttype == ngen::ExternalArgumentType::GlobalPtr) {
-                register_arg(a.name, type_t::byte_ptr(1, false));
+                register_arg(a.name, type_t::byte(type::attr_t::ptr));
             } else if (a.exttype == ngen::ExternalArgumentType::LocalPtr) {
-                register_arg(a.name, type_t::byte_ptr(1, true));
+                register_arg(a.name,
+                        type_t::byte(type::attr_t::ptr | type::attr_t::slm));
             } else {
                 gpu_assert(false) << "Unimplemented";
             }

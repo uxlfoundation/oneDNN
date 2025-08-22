@@ -61,12 +61,12 @@ inline ngen::DataType to_ngen(const type_t &type) {
     gpu_assert(type.is_scalar()) << "Expected scalar type.";
 
 #define CASE(_kind, ngen_enum) \
-    if (type.kind() == type_kind_t::_kind) return ngen::DataType::ngen_enum
+    if (type.scalar() == type_t::_kind()) return ngen::DataType::ngen_enum
 
     // Until f4_e3m0 lands in ngen
-    if (type.kind() == type_kind_t::f4_e3m0) return ngen_f4_e3m0();
+    if (type.scalar() == type_t::f4_e3m0()) return ngen_f4_e3m0();
     // Until f4_e2m1 lands in ngen
-    if (type.kind() == type_kind_t::f4_e2m1) return ngen_f4_e2m1();
+    if (type.scalar() == type_t::f4_e2m1()) return ngen_f4_e2m1();
 
     CASE(bf16, bf);
     CASE(f16, hf);
@@ -86,7 +86,7 @@ inline ngen::DataType to_ngen(const type_t &type) {
     CASE(u8, ub);
     CASE(u4, u4);
 
-    if (type == type_t::byte_ptr()) return ngen::DataType::uq;
+    if (type == type_t::byte(1, type::attr_t::ptr)) return ngen::DataType::uq;
 
 #undef CASE
     gpu_error_not_expected();
@@ -133,7 +133,7 @@ inline ngen::Immediate to_ngen(
             return ngen::Immediate(imm.value);
             // Do conversion.
 #define CASE(cpp_type) \
-    if (type.is_cpp<cpp_type>()) return ngen::Immediate(cpp_type(imm.value))
+    if (is_cpp<cpp_type>(type)) return ngen::Immediate(cpp_type(imm.value))
 
         CASE(int16_t);
         CASE(int32_t);

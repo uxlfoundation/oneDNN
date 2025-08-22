@@ -83,7 +83,7 @@ layout_t::layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
 }
 
 layout_t::layout_t(const memory_desc_wrapper &mdw, bool do_normalize)
-    : type_(mdw.data_type()), offset_(mdw.offset0()) {
+    : type_(to_ir(mdw.data_type())), offset_(mdw.offset0()) {
     gpu_assert(mdw.is_blocking_desc())
             << "Expected blocking memory descriptor.";
 

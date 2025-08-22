@@ -115,11 +115,11 @@ bool is_small(const type_t &type, dim_t elems) {
 }
 
 bool is_small_ic(const problem_t &prb) {
-    return is_small(prb.src_data_type, prb.ic);
+    return is_small(to_ir(prb.src_data_type), prb.ic);
 }
 
 bool is_small_oc(const problem_t &prb) {
-    return is_small(prb.src_data_type, prb.oc);
+    return is_small(to_ir(prb.src_data_type), prb.oc);
 }
 
 status_t problem_t::init(
@@ -553,12 +553,12 @@ void init_data_tags(const config_t &cfg, const memory_desc_t &src_md,
     auto wei_compute_type = prb.is_bwd_w ? prb.c_data_type : prb.b_data_type;
 
     auto src_blk = nc_block_t::get_default_blocking(cfg.hw(), cfg.fma_kind(),
-            src_compute_type, prb.is_dw, prb.mb, prb.ic, prb.g,
+            to_ir(src_compute_type), prb.is_dw, prb.mb, prb.ic, prb.g,
             /*is_output=*/prb.is_bwd_d);
     auto dst_blk = nc_block_t::get_default_blocking(cfg.hw(), cfg.fma_kind(),
-            dst_compute_type, prb.is_dw, prb.mb, prb.oc, prb.g,
+            to_ir(dst_compute_type), prb.is_dw, prb.mb, prb.oc, prb.g,
             /*is_output=*/prb.is_fwd);
-    auto wei_blk = goi_block_t::get_default_blocking(wei_compute_type,
+    auto wei_blk = goi_block_t::get_default_blocking(to_ir(wei_compute_type),
             cfg.vec_size(), cfg.fma_kind(), prb.is_fwd, prb.is_bwd_d, prb.g,
             prb.oc, prb.ic, prb.ab_swap_transpose);
 
@@ -1058,8 +1058,8 @@ status_t init_simd(config_t &cfg) {
     if (cfg.exec_cfg_param().is_overridden("simd")) return status::success;
 
     const auto &prb = cfg.prb();
-    int simd = get_simd_size(cfg.hw(), cfg.fma_kind(), prb.a_data_type,
-            prb.b_data_type, prb.acc_data_type);
+    int simd = get_simd_size(cfg.hw(), cfg.fma_kind(), to_ir(prb.a_data_type),
+            to_ir(prb.b_data_type), to_ir(prb.acc_data_type));
     cfg.set_simd(simd);
     return status::success;
 }
@@ -1832,8 +1832,8 @@ void validate_config_and_plan(config_t &cfg) {
         b_load_pattern = validate_blocking(
                 cfg, stride_layout_t::input_tensor_t::dst, b_2d);
     }
-    auto dummy_mem(var_t::make(type_t::byte_ptr(), "mem"));
-    auto dummy_reg(var_t::make(type_t::byte_ptr(), "reg"));
+    auto dummy_mem(var_t::make(type_t::byte(type::attr_t::ptr), "mem"));
+    auto dummy_reg(var_t::make(type_t::byte(type::attr_t::ptr), "reg"));
     if (!a_load_pattern.matches(
                 plan.x2r.a_load.create_stmt(dummy_mem, dummy_reg))) {
         gpu_warning() << "Generated load for tensor A does not match "

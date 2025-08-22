@@ -174,7 +174,8 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
     auto dst_buf = kernel_info_.arg_var(1);
 
     ir_context_t ir_ctx(cfg_.exec_cfg(), init_cset);
-    auto reg_buf = ir_ctx.create_tmp_var(type_t::byte_ptr(), "reg");
+    auto reg_buf
+            = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "reg");
 
     std::vector<stmt_t> allocs;
     for (int i = 0; i < kernel_info_.nargs(); i++) {
@@ -216,7 +217,8 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
                 /*force_c_reorder=*/true, post_op_ctx, thr_tile_coord,
                 read_layout, dst_buf, reg_buf, write_buf_size);
     } else if (read_layout != write_layout) {
-        auto tmp_buf = ir_ctx.create_tmp_var(type_t::byte_ptr(), "tmp");
+        auto tmp_buf
+                = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "tmp");
         allocs.push_back(
                 alloc_t::make(tmp_buf, write_buf_size, alloc_kind_t::grf));
         auto reorder_stmt = create_reorder_stmt(

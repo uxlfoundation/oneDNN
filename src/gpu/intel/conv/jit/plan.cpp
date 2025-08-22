@@ -687,9 +687,11 @@ void init_bwd_w(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
 reorder_plan_t create_reorder_plan(
         const hw_t &hw, const layout_t &src, const layout_t &dst) {
     if (src == dst) return reorder_plan_t();
-    if (src.type().is_bitwise_compatible(dst.type())
+    if ((src.type() == dst.type()
+                || (src.type().is_f32() && dst.type().is_tf32()))
             && src.retype(dst.type()) == dst)
         return reorder_plan_t();
+
     reorder_plan_t ret(hw);
     ret.src = src;
     ret.dst = dst;
@@ -1268,8 +1270,8 @@ struct fma_context_t {
         , simd(cfg.simd())
         , vec_size(cfg.vec_size())
         , fma(cfg.fma_kind())
-        , a_type(cfg.prb().a_data_type)
-        , b_type(cfg.prb().b_data_type)
+        , a_type(to_ir(cfg.prb().a_data_type))
+        , b_type(to_ir(cfg.prb().b_data_type))
         , acc_type(get_accumulation_type(cfg, a_type, b_type))
         , is_src1_broadcast(!cfg.prb().is_dw)
         , ab_swap_transpose_(cfg.prb().ab_swap_transpose) {}

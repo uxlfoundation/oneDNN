@@ -59,8 +59,8 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             switch (key) {
                 case DNNL_ARG_SRC:
                     gpu_assert(mask == 0);
-                    src_scales_type = sc_type;
-                    view = po_vm_.create_view(sc_type, mask);
+                    src_scales_type = to_ir(sc_type);
+                    view = po_vm_.create_view(src_scales_type, mask);
                     src_scales = add_input_tensor(view, buf);
                     src_scales_mask = mask;
                     break;
@@ -69,15 +69,16 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
                     // XXX: per_oc for BWD_D is treated as per_ic assuming
                     // it's called from deconvolution.
                     gpu_assert(utils::one_of(mask, 0, 1, 3));
-                    wei_scales_type = sc_type;
-                    view = po_vm_.create_view(sc_type, (mask) ? 1 << 1 : 0);
+                    wei_scales_type = to_ir(sc_type);
+                    view = po_vm_.create_view(
+                            wei_scales_type, (mask) ? 1 << 1 : 0);
                     wei_scales = add_input_tensor(view, buf);
                     wei_scales_mask = mask;
                     break;
                 case DNNL_ARG_DST: // Invert dst scales right after load.
                     gpu_assert(utils::one_of(mask, 0, 2));
-                    dst_scales_type = sc_type;
-                    view = po_vm_.create_view(sc_type, mask);
+                    dst_scales_type = to_ir(sc_type);
+                    view = po_vm_.create_view(dst_scales_type, mask);
                     dst_scales = add_input_tensor(view, buf);
                     dst_scales_mask = mask;
                     break;
@@ -166,7 +167,8 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             float scale = po.sum.scale;
             int32_t zp = po.sum.zero_point;
             auto view = cp_view();
-            if (po.sum.dt != data_type::undef) view = view.retype(po.sum.dt);
+            if (po.sum.dt != data_type::undef)
+                view = view.retype(to_ir(po.sum.dt));
             auto buf = kernel_info.find_arg(
                     (po_vm_.use_dst_in_sum_post_op()) ? "dst" : "src");
             auto c_old = add_input_tensor(view, buf);

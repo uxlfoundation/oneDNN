@@ -59,6 +59,11 @@ inline bool is_dp_fma(fma_kind_t kind) {
 fma_kind_t get_supported_fma_kind(
         const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);
 
+inline fma_kind_t get_supported_fma_kind(
+        const hw_t &hw, data_type_t a, data_type_t b, data_type_t c) {
+    return get_supported_fma_kind(hw, to_ir(a), to_ir(b), to_ir(c));
+}
+
 int get_simd_size(const hw_t &hw, fma_kind_t kind, const type_t &a,
         const type_t &b, const type_t &c);
 

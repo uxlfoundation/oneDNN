@@ -645,7 +645,28 @@ layout_t reorder_impl_t::make_compact_layout(
         // For byte intermediate (only s8<->u8 reorder), use stride-2
         // to avoid using too many temporaries.
         dense_output_stride = 2;
-    for (auto &block : layout.blocks()) {
+
+    auto dense = [&](dim_t stride) -> layout_t {
+        using block_info_t = std::pair<size_t, layout_block_t>;
+        auto by_stride = [](const block_info_t &l, const block_info_t &r) {
+            return l.second.stride < r.second.stride;
+        };
+
+        auto blocks = layout.enumerated_blocks();
+        if (blocks.empty()) return layout;
+        std::sort(blocks.begin(), blocks.end(), by_stride);
+        const dim_t inner_stride = blocks.front().second.stride;
+        std::vector<layout_block_t> new_blocks(blocks.size());
+        for (auto &eb : blocks) {
+            eb.second.stride = eb.second.stride * stride / inner_stride;
+            new_blocks[eb.first] = eb.second;
+        }
+        return {type, layout.ndims(), 0, new_blocks, /*do_normalize=*/false};
+    }(dense_output_stride);
+    auto dense_size = dense.elems() * type.size() / type.packing()
+            * dense_output_stride;
+    if (dense.size() <= dense_size) return dense;
+    for (auto &block : dense.blocks()) {
         dim_t input_stride = block.stride;
         blocks.push_back(block);
         auto &stride = blocks.back().stride;

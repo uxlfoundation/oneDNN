@@ -2761,7 +2761,7 @@ void CopyPlan::optimizeConcatenate(bool initial)
 
             if (i1.op != i2.op || i1.phase != i2.phase || i1.flag || i2.flag) break;
 
-            int lead1 = i1.simd; // arbitrary
+            int simd1 = i1.simd; // arbitrary
             auto joinable = [&](const CopyOperand &o1, const CopyOperand &o2, bool *outTooFar = nullptr) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind == CopyOperand::Null) return true;
@@ -2773,18 +2773,18 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 if (o1.abs != o2.abs) return false;
                 auto lead = bytesToElements((o2.grf - o1.grf) * grf, o1.type) + (int)o2.offset - (int)o1.offset;
                 auto breadth = o1.stride * i1.simd;
+                auto elems = o1.stride ? lead / o1.stride : 0;
                 if (outTooFar) {
                     *outTooFar = (lead > breadth);
-                    lead1 = lead;
+                    simd1 = elems;
                 }
-                return (lead == lead1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
+                return (elems == simd1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
             };
 
             bool tooFar = false;
             bool doJoin = joinable(i1.dst, i2.dst, &tooFar) && joinable(i1.src0, i2.src0)
                        && joinable(i1.src1, i2.src1) && joinable(i1.src2, i2.src2);
 
-            auto simd1 = i1.dst.stride ? lead1 / i1.dst.stride : 0;
             int simd = std::max(simd1 + i2.simd, i1.simd);
             if (!initial) {
                 doJoin &= (simd <= 32);
@@ -2794,7 +2794,10 @@ void CopyPlan::optimizeConcatenate(bool initial)
             if (tooFar) break;
 
             if (doJoin) {
-                if (auto &i = join(i1, i2))
+                if (simd == i1.simd)
+                    // i1 completely overlaps i2; remove it.
+                    i2.invalidate();
+                else if (auto &i = join(i1, i2))
                     i.simd = simd;
             }
         }

@@ -691,15 +691,15 @@ inline bool stream_try_match(std::istream &in, const std::string &s) {
 }
 
 template <typename T>
-using enum_name_t = std::pair<T, const char *>;
+using enum_name_t = std::pair<T, const std::string>;
 
 template <typename T>
-std::pair<T, const char *> make_enum_name(const T &value, const char *name) {
+enum_name_t<T> make_enum_name(const T &value, const char *name) {
     return std::make_pair(value, name);
 }
 
 template <typename E, size_t N>
-std::string to_string_impl(
+const std::string &to_string_impl(
         E e, const std::array<enum_name_t<E>, N> &enum_names);
 
 template <typename E, size_t N>
@@ -711,7 +711,7 @@ bool is_enum_name_templ_impl(
         const std::string &s, const std::array<enum_name_t<E>, N> &enum_names);
 
 #define GPU_DEFINE_PARSE_ENUM(enum_type, enum_names) \
-    inline std::string to_string(enum_type e) { \
+    inline const std::string &to_string(enum_type e) { \
         return to_string_impl(e, enum_names); \
     } \
     inline void to_enum_impl( \
@@ -1140,12 +1140,13 @@ private:
 };
 
 template <typename E, size_t N>
-std::string to_string_impl(
+const std::string &to_string_impl(
         E e, const std::array<enum_name_t<E>, N> &enum_names) {
     for (auto &p : enum_names)
         if (p.first == e) return p.second;
     gpu_error_not_expected();
-    return {};
+    static const std::string invalid = "(invalid enum)";
+    return invalid;
 }
 
 template <typename E, size_t N>

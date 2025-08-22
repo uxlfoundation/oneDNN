@@ -112,6 +112,7 @@ struct micro_t : public primitive_t {
             bool only_ref = gpu_utils::dev_getenv("only_ref_sdpa", false);
             VDISPATCH_SDPA(!only_ref, VERBOSE_SKIP_PRIMITIVE_IMPL);
 
+            // temp- checked
             VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
@@ -168,8 +169,11 @@ struct micro_t : public primitive_t {
             VCHECK_SDPA_COND(utils::one_of(val_md()->data_type, f32, bf16, f16,
                                      u8, s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
+
+            // temp- checked
             VCHECK_SDPA_COND(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
+
             VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 

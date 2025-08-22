@@ -48,15 +48,38 @@ struct ref_t : public primitive_t {
 
             VDISPATCH_SDPA(attr()->has_default_values(smask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
+            // ++++
             VDISPATCH_SDPA(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
+
             if (with_attn_mask()) {
                 VDISPATCH_SDPA(
                         attn_mask_md()->ndims == 4, VERBOSE_UNSUPPORTED_TAG);
             }
+
+            // ++++
             VDISPATCH_SDPA(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            printf("\n");
+            printf("with_attn_scale = %d\n",with_attn_scale());
+            printf("with_attn_mask = %d\n",with_attn_mask());
+            printf("with_causal_mask = %d\n",with_causal_mask());
+            printf("with_key_scales = %d\n",with_key_scales());
+            printf("with_value_scales = %d\n",with_value_scales());
+            printf("with_key_zp = %d\n",with_key_zp());
+            printf("with_value_zp = %d\n\n",with_value_zp());
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
 
             return status::success;
         }
@@ -102,6 +125,8 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
         def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK");
         def_data_type(kernel_ctx, pd()->desc()->scale_dt, "SCALE");
+
+        kernel_ctx.define_int("REF_SDPA", 1);
 
         // !!!!!!!!!!!!!!!!!!!!!!!!!
         GET_KERNEL_PRINT

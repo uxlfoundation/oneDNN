@@ -17,6 +17,8 @@
 #ifndef COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
 #define COMMON_HOST_SCALAR_MEMORY_STORAGE_HPP
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <type_traits>
 
@@ -45,20 +47,34 @@ public:
 
     status_t get_scalar_value(void *value, size_t value_size) const {
         if (!is_initialized_ || value == nullptr
-                || value_size != types::data_type_size(data_type_))
+                || value_size != types::data_type_size(data_type_)
+                || value_size == 0 || value_size > max_scalar_size)
             return status::invalid_arguments;
 
-        std::memcpy(value, &scalar_storage_, value_size);
+        // NOTE: std::copy implementation prevents GCC -Warray-bounds warning with older versions
+        const auto *src
+                = reinterpret_cast<const std::uint8_t *>(&scalar_storage_);
+        auto *dst = static_cast<std::uint8_t *>(value);
+
+        std::copy(src, src + value_size, dst);
         return status::success;
     }
 
     status_t set_scalar_value(const void *scalar_value, data_type_t data_type) {
-        if (scalar_value == nullptr || data_type == dnnl_data_type_undef
-                || types::data_type_size(data_type) > max_scalar_size)
+        if (scalar_value == nullptr || data_type == dnnl_data_type_undef)
             return status::invalid_arguments;
 
-        std::memcpy(&scalar_storage_, scalar_value,
-                types::data_type_size(data_type));
+        const auto data_size = types::data_type_size(data_type);
+
+        if (data_size == 0 || data_size > max_scalar_size)
+            return status::invalid_arguments;
+
+        // NOTE: std::copy implementation prevents GCC -Warray-bounds warning with older versions
+        const auto *src = static_cast<const std::uint8_t *>(scalar_value);
+        auto *dst = reinterpret_cast<std::uint8_t *>(&scalar_storage_);
+
+        std::copy(src, src + data_size, dst);
+
         data_type_ = data_type;
         is_initialized_ = true;
 

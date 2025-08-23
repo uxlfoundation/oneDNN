@@ -247,6 +247,9 @@ struct micro_t : public primitive_t {
                         vgs, static_cast<long int>(val_md()->dims[3]));
             }
 
+
+            // ??? TODO ???
+
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
 

@@ -83,6 +83,8 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
+    int strategy_count() { return entries_.size(); }
+
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
@@ -103,7 +105,9 @@ protected:
     int eu_count_ = -1;
     bool disable_systolic_ = false;
     bool relaxed_acc_ = false;
-
+    int strategy_offset_ = 0;
+    std::map<double, const gemmstone::kcatalog::Entry *> entries_;
+    std::map<double, const gemmstone::kcatalog::Entry *>::iterator entries_it_;
     status_t transfer_post_ops(gpu_post_ops_t &&post_ops, bool swap_ab);
 
     status_t finalize(const char *tags);

@@ -322,39 +322,67 @@ struct gen_t : public primitive_t {
             jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
                     bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
 
-            VDISPATCH_GEMM_SC(
-                    kernel_desc_.select_kernel(arch_, stepping,
-                            dev_info_->eu_count(), has_systolic, is_integrated,
-                            mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
-                            with_sround_, with_c_zero_points(), with_bias(),
-                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                            eff_b_type(), desc()->c_type(), co_type, acc_type,
-                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                            d->batch(), std::move(gpu_post_ops)),
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "matching kernel not found in catalog");
+            //VDISPATCH_GEMM_SC(
+            bool retry = true;
+            int i = 0;
+            while (retry) {
+                auto status = kernel_desc_.select_kernel(arch_, stepping,
+                        dev_info_->eu_count(), has_systolic, is_integrated,
+                        mode, batch_dims(), eff_transa(), eff_transb(),
+                        eff_trans_bias(), swap_ab(), a_quant, b_quant,
+                        with_sround_, with_c_zero_points(), with_bias(),
+                        eff_sum_ab(), alpha(), beta(), eff_a_type(),
+                        eff_b_type(), desc()->c_type(), co_type, acc_type,
+                        eff_align_a(), eff_align_b(), align_c(), eff_m(),
+                        eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                        d->batch(), std::move(gpu_post_ops)); //,
+                //     VERBOSE_UNSUPPORTED_FEATURE,
+                //   "matching kernel not found in catalog
+                // if (status != status::success)
+                //	      continue;
+                // Global k-parallel kernels don't support post-ops or non-f32/s32
+                //   accumulation unless fusion is enabled.
+                bool valid = status == status::success;
+                if (kernel_desc_.driver_info()->kParallel()
+                        && !kernel_desc_.driver_info()->fusedPostOps()) {
+                    valid &= !with_eltwise && !with_binary
+                            && utils::one_of(d->c_type(), f32, s32); //,
+                    // VERBOSE_UNSUPPORTED_POSTOP);
+                }
 
-            // Global k-parallel kernels don't support post-ops or non-f32/s32
-            //   accumulation unless fusion is enabled.
-            if (kernel_desc_.driver_info()->kParallel()
-                    && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(!with_eltwise && !with_binary
-                                && utils::one_of(d->c_type(), f32, s32),
-                        VERBOSE_UNSUPPORTED_POSTOP);
+                // Limited post-op support for low-precision accumulation.
+                if (kernel_desc_.problem()->Tc.size() < 4) {
+                    valid &= !need_x32_acc; //, VERBOSE_UNSUPPORTED_POSTOP);
+                }
+
+                // Ensure kernel can be run deterministically if required.
+                if (attr()->deterministic_)
+                    valid &= !kernel_desc_.driver_info()
+                                      ->nondeterministic(); //,
+                            // VERBOSE_DETERMINISTIC_FAIL);
+                //if (!valid)
+                //	    continue;
+                compute::kernel_t kernel;
+                if (valid) {
+                    auto *intel_engine
+                            = utils::downcast<intel::engine_t *>(engine);
+                    dnnl::impl::gpu::intel::gemm::jit::gen_kernel_t kd(
+                            kernel_desc_);
+                    status = intel_engine->create_kernel(&kernel, &kd);
+                }
+                //status = create_kernel(engine, nocopy_kernel_, "gemm_kernel", kernel_desc_);
+                if (status == status::success
+                        || i >= kernel_desc_.strategy_count())
+                    retry = false;
+                if (retry == false) {
+                    bool impl = status == status::success;
+                    VDISPATCH_GEMM_SC(status, VERBOSE_UNSUPPORTED_FEATURE,
+                            "matching kernel not found in catalog");
+                    VDISPATCH_GEMM(valid, VERBOSE_UNSUPPORTED_POSTOP);
+                }
+
+                i++;
             }
-
-            // Limited post-op support for low-precision accumulation.
-            if (kernel_desc_.problem()->Tc.size() < 4) {
-                VDISPATCH_GEMM(!need_x32_acc, VERBOSE_UNSUPPORTED_POSTOP);
-            }
-
-            // Ensure kernel can be run deterministically if required.
-            if (attr()->deterministic_)
-                VDISPATCH_GEMM(!kernel_desc_.driver_info()->nondeterministic(),
-                        VERBOSE_DETERMINISTIC_FAIL);
-
             init_scratchpad();
 
             return status::success;

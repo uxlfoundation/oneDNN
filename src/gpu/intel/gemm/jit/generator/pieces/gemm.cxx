@@ -822,7 +822,7 @@ bool Generator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strategy, GEMMSta
         success = gemmBodyInternal(problem, strategy, state);
     } catch (...) {
         lastException = std::current_exception();
-    }
+     }
     success ? appendCurrentStream() : discardStream();
 
     return success;

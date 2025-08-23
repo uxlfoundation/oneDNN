@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,39 +25,26 @@
 
 namespace rnn {
 
-void prepare_ws_fwd(const prb_t &prb, std::vector<float> &ws_fwd_buffer,
+void prepare_ws_fwd(const prb_t &prb, float *ws_fwd_buffer,
         AOC<float> &ws_src_layer, AOC<float> &ws_src_iter,
         AOC<float> &ws_src_iter_c, AOC<float> &ws_gates, AOC<float> &ws_ht) {
-    bool is_lstm = prb.alg == VANILLA_LSTM;
-    bool is_lstmp = prb.is_lstm_projection();
-
-    ws_src_layer = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
-    ws_src_iter = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
-    ws_src_iter_c = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
-    ws_gates = AOC<float>(nullptr, prb.n_layer, prb.n_dir(), prb.n_iter, prb.mb,
-            prb.n_gates(), prb.dhc);
-    ws_ht = AOC<float>(
-            nullptr, prb.n_layer, prb.n_dir(), prb.n_iter, prb.mb, prb.wc);
-
-    int64_t size = ws_src_layer.nelems() + is_lstm * ws_src_iter_c.nelems()
-            + ws_gates.nelems() + is_lstmp * ws_ht.nelems();
-    ws_fwd_buffer.resize(size);
-
-    float *ptr = ws_fwd_buffer.data();
-    ws_src_layer.set_base_ptr(ptr);
-    ws_src_iter.set_base_ptr(ptr);
+    float *ptr = ws_fwd_buffer;
+    ws_src_layer = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
+    ws_src_iter = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
 
     ptr += ws_src_iter.nelems();
-    ws_src_iter_c.set_base_ptr(ptr);
+    ws_src_iter_c = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
 
-    ptr += is_lstm * ws_src_iter_c.nelems();
-    ws_gates.set_base_ptr(ptr);
+    ptr += prb.is_lstm() * ws_src_iter_c.nelems();
+    ws_gates = AOC<float>(ptr, prb.n_layer, prb.n_dir(), prb.n_iter, prb.mb,
+            prb.n_gates(), prb.dhc);
 
-    ptr += is_lstmp * ws_gates.nelems();
-    ws_ht.set_base_ptr(ptr);
+    ptr += prb.is_lstm_projection() * ws_gates.nelems();
+    ws_ht = AOC<float>(
+            ptr, prb.n_layer, prb.n_dir(), prb.n_iter, prb.mb, prb.wc);
 }
 
 /******************************************************************************/
@@ -393,13 +380,16 @@ void rnn_linear_fwd(const prb_t &prb, const args_t &args,
 }
 
 void compute_ref_fwd(const prb_t &prb, const args_t &args) {
-    std::vector<float> ws_fwd_buffer;
+    float *ws_fwd_buffer = (float *)zmalloc(prb.get_ws_size(FLAG_FWD), 64);
+
     AOC<float> ws_src_layer, ws_src_iter, ws_src_iter_c, ws_gates, ws_ht;
     prepare_ws_fwd(prb, ws_fwd_buffer, ws_src_layer, ws_src_iter, ws_src_iter_c,
             ws_gates, ws_ht);
 
     rnn_linear_fwd(prb, args, ws_src_layer, ws_src_iter, ws_src_iter_c,
             ws_gates, ws_ht);
+
+    zfree(ws_fwd_buffer);
 }
 
 } // namespace rnn

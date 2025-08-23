@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,27 +27,20 @@
 
 namespace rnn {
 
-void prepare_ws_bwd(const prb_t &prb, std::vector<float> &ws_bwd_buffer,
+void prepare_ws_bwd(const prb_t &prb, float *ws_bwd_buffer,
         AOC<float> &ws_diff_src_layer, AOC<float> &ws_diff_src_iter,
         AOC<float> &ws_diff_src_iter_c) {
-    bool is_lstm = prb.alg == VANILLA_LSTM;
+    float *ptr = ws_bwd_buffer;
+    ws_diff_src_layer = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
 
-    ws_diff_src_layer = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
-    ws_diff_src_iter = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
-    ws_diff_src_iter_c = AOC<float>(nullptr, prb.n_layer + 2, prb.n_dir(),
-            prb.n_iter + 2, prb.mb, prb.wc);
+    ptr += ws_diff_src_layer.nelems();
+    ws_diff_src_iter = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
 
-    int64_t size = ws_diff_src_layer.nelems() + ws_diff_src_iter.nelems()
-            + is_lstm * ws_diff_src_iter_c.nelems();
-    ws_bwd_buffer.resize(size, 0);
-
-    ws_diff_src_layer.set_base_ptr(ws_bwd_buffer.data());
-    ws_diff_src_iter.set_base_ptr(
-            ws_bwd_buffer.data() + ws_diff_src_layer.nelems());
-    ws_diff_src_iter_c.set_base_ptr(ws_bwd_buffer.data()
-            + ws_diff_src_layer.nelems() + ws_diff_src_iter.nelems());
+    ptr += ws_diff_src_iter.nelems();
+    ws_diff_src_iter_c = AOC<float>(
+            ptr, prb.n_layer + 2, prb.n_dir(), prb.n_iter + 2, prb.mb, prb.wc);
 }
 
 /******************************************************************************/
@@ -240,7 +233,7 @@ void rnn_linear_bwd(const prb_t &prb, const args_t &args,
     AOC<float> diff_bias(diff_bias_, prb.n_layer, prb.n_dir(),
             prb.n_gates() + is_lbr, prb.dhc);
 
-    std::vector<float> ws_bwd_buffer;
+    float *ws_bwd_buffer = (float *)zmalloc(prb.get_ws_size(FLAG_BWD), 64);
     AOC<float> ws_diff_src_layer, ws_diff_src_iter, ws_diff_src_iter_c;
     prepare_ws_bwd(prb, ws_bwd_buffer, ws_diff_src_layer, ws_diff_src_iter,
             ws_diff_src_iter_c);
@@ -364,10 +357,12 @@ void rnn_linear_bwd(const prb_t &prb, const args_t &args,
 
     delete[] b_gates;
     delete[] cell_scratchpad_;
+    zfree(ws_bwd_buffer);
 }
 
 void compute_ref_bwd(const prb_t &prb, const args_t &args) {
-    std::vector<float> ws_fwd_buffer;
+    float *ws_fwd_buffer = (float *)zmalloc(prb.get_ws_size(FLAG_FWD), 64);
+
     AOC<float> ws_src_layer, ws_src_iter, ws_src_iter_c, ws_gates, ws_ht;
     prepare_ws_fwd(prb, ws_fwd_buffer, ws_src_layer, ws_src_iter, ws_src_iter_c,
             ws_gates, ws_ht);
@@ -377,6 +372,8 @@ void compute_ref_bwd(const prb_t &prb, const args_t &args) {
 
     rnn_linear_bwd(prb, args, ws_src_layer, ws_src_iter, ws_src_iter_c,
             ws_gates, ws_ht);
+
+    zfree(ws_fwd_buffer);
 }
 
 } // namespace rnn

@@ -407,9 +407,9 @@ struct prb_t : public desc_t {
                 ? 2
                 : 1;
     }
-    int64_t n_states() const { return alg == VANILLA_LSTM ? 2 : 1; }
+    int64_t n_states() const { return 1 + is_lstm(); }
     int64_t n_gates() const {
-        return alg == VANILLA_LSTM
+        return is_lstm()
                 ? 4
                 : (alg == VANILLA_GRU || alg == LBR_GRU || alg == VANILLA_AUGRU
                                         || alg == LBR_AUGRU
@@ -464,9 +464,46 @@ struct prb_t : public desc_t {
     }
     bool is_u8() const { return cfg[SRC_LAYER].dt == dnnl_u8; }
     bool is_s8() const { return cfg[SRC_LAYER].dt == dnnl_s8; }
+    bool is_lstm() const { return alg == VANILLA_LSTM; }
     bool is_lstm_peephole() const { return with_peephole; }
     bool is_lstm_projection() const { return with_projection; }
     bool is_augru() const { return alg == VANILLA_AUGRU || alg == LBR_AUGRU; }
+
+    // Returns the memory size in bytes needed for workspaces used for reference
+    // computations.
+    size_t get_ws_size(dir_t dir) const {
+        if (dir & FLAG_FWD) {
+            auto ws_src_layer = AOC<float>(
+                    nullptr, n_layer + 2, n_dir(), n_iter + 2, mb, wc);
+            auto ws_src_iter_c = AOC<float>(
+                    nullptr, n_layer + 2, n_dir(), n_iter + 2, mb, wc);
+            auto ws_gates = AOC<float>(
+                    nullptr, n_layer, n_dir(), n_iter, mb, n_gates(), dhc);
+            auto ws_ht = AOC<float>(nullptr, n_layer, n_dir(), n_iter, mb, wc);
+
+            int64_t size = ws_src_layer.nelems()
+                    + is_lstm() * ws_src_iter_c.nelems() + ws_gates.nelems()
+                    + is_lstm_projection() * ws_ht.nelems();
+
+            return sizeof(float) * size;
+        } else if (dir & FLAG_BWD) {
+            auto ws_diff_src_layer = AOC<float>(
+                    nullptr, n_layer + 2, n_dir(), n_iter + 2, mb, wc);
+            auto ws_diff_src_iter = AOC<float>(
+                    nullptr, n_layer + 2, n_dir(), n_iter + 2, mb, wc);
+            auto ws_diff_src_iter_c = AOC<float>(
+                    nullptr, n_layer + 2, n_dir(), n_iter + 2, mb, wc);
+
+            int64_t size = ws_diff_src_layer.nelems()
+                    + ws_diff_src_iter.nelems()
+                    + is_lstm() * ws_diff_src_iter_c.nelems();
+
+            return sizeof(float) * size;
+        } else {
+            assert(!"unexpected dir");
+            return 0;
+        }
+    }
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.
@@ -562,7 +599,7 @@ private:
     const prb_t *p_;
 };
 
-void prepare_ws_fwd(const prb_t &prb, std::vector<float> &ws_fwd_buffer,
+void prepare_ws_fwd(const prb_t &prb, float *ws_fwd_buffer,
         AOC<float> &ws_src_layer, AOC<float> &ws_src_iter,
         AOC<float> &ws_src_iter_c, AOC<float> &ws_gates, AOC<float> &ws_ht);
 

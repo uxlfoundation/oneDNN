@@ -358,38 +358,99 @@ struct gen_t : public primitive_t {
                     bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(),
                     b_q2d_group_n(), has_gs(DNNL_ARG_B)};
 
-            VDISPATCH_GEMM_SC(
-                    kernel_desc_.select_kernel(arch_, stepping,
-                            dev_info_->eu_count(), has_systolic, is_integrated,
-                            mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
-                            with_sround_, with_c_zero_points(), with_bias(),
-                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                            eff_b_type(), desc()->c_type(), co_type, acc_type,
-                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                            d->batch(), std::move(gpu_post_ops)),
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "matching kernel not found in catalog");
+            bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
+            bool kernel_success = false;
+            auto entries = kernel_desc_.select_kernel(arch_, stepping,
+                    dev_info_->eu_count(), has_systolic, is_integrated, mode,
+                    batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
+                    swap_ab(), a_quant, b_quant, with_sround_,
+                    with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
+                    beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
+                    co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
+                    eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                    d->batch(), std::move(gpu_post_ops));
+            for (auto &entry : entries) {
+                kernel_desc_.set_entry(entry);
+                auto status = kernel_desc_.finalize();
+                // select_kernel can return a strategy that failed in the finalize call
+                bool valid = status == status::success;
+                if (!valid && print_verbose)
+                    dnnl::impl::verbose_printf(
+                            "info,gpu,gemm,skipping:%s,Strategy finalization "
+                            "failed.\n",
+                            kernel_desc_.entry().str().c_str());
+                // Global k-parallel kernels don't support post-ops or non-f32/s32
+                //   accumulation unless fusion is enabled.
+                if (kernel_desc_.driver_info()->kParallel()
+                        && !kernel_desc_.driver_info()->fusedPostOps()) {
+                    bool po_valid = !non_scale_po_
+                            && !(with_sum_ && with_c_scales())
+                            && utils::one_of(d->c_type(), f32, s32);
+                    if (!po_valid && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
+                                kernel_desc_.entry().str().c_str());
+                    valid &= po_valid;
+                }
+                // Limited post-op support for low-precision accumulation.
+                if (kernel_desc_.problem()->Tc.size() < 4) {
+                    valid &= !need_x32_acc;
+                    if (need_x32_acc && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
+                                kernel_desc_.entry().str().c_str());
+                }
+                // Ensure kernel can be run deterministically if required.
+                if (attr()->deterministic_) {
+                    bool deterministic
+                            = !kernel_desc_.driver_info()->nondeterministic();
+                    valid &= deterministic;
+                    if (!deterministic && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Non deterministic "
+                                "kernel.\n",
+                                kernel_desc_.entry().str().c_str());
+                }
 
-            // Global k-parallel kernels don't support post-ops or non-f32/s32
-            //   accumulation unless fusion is enabled.
-            auto info_ = kernel_desc_.driver_info();
-            if (info_->kParallel() && !info_->fusedPostOps()) {
-                VDISPATCH_GEMM(!non_scale_po_ && !(with_sum_ && with_c_scales())
-                                && utils::one_of(d->c_type(), f32, s32),
-                        VERBOSE_UNSUPPORTED_POSTOP);
+                if (valid) {
+                    auto try_create = [&]() {
+                        std::vector<compute::kernel_t> kernel_(1);
+                        auto *intel_engine
+                                = utils::downcast<intel::engine_t *>(engine);
+                        auto key = std::make_shared<
+                                trivial_key_container_t<dnnl::impl::gpu::intel::
+                                                gemm::jit::gen_nocopy_desc_t>>(
+                                kernel_desc_, intel_engine->engine_id());
+                        cache_state_t kernel_cache_status;
+                        auto kernel_name = "gemm_kernel";
+                        auto verbose
+                                = get_verbose(verbose_t::create_profile) >= 1;
+                        double start_ms = 0;
+                        if (verbose) start_ms = get_msec();
+                        status = get_cached_kernels<typename trivial_key_t<
+                                dnnl::impl::gpu::intel::gemm::jit::
+                                        gen_nocopy_desc_t>::value_type>(
+                                std::move(key), intel_engine, kernel_,
+                                {kernel_name}, kernel_cache_status);
+                        if (verbose && status == status::success) {
+                            double duration_ms = get_msec() - start_ms;
+                            const char *str
+                                    = cache_state2str(kernel_cache_status);
+                            VPROF(start_ms, primitive, create, str,
+                                    info(engine), duration_ms);
+                        }
+                        return status;
+                    };
+                    status = try_create();
+                    if (status == status::success) {
+                        kernel_success = true;
+                        break;
+                    }
+                }
             }
 
-            // Limited post-op support for low-precision accumulation.
-            if (kernel_desc_.problem()->Tc.size() < 4) {
-                VDISPATCH_GEMM(!need_x32_acc, VERBOSE_UNSUPPORTED_POSTOP);
-            }
-
-            // Ensure kernel can be run deterministically if required.
-            if (attr()->deterministic_)
-                VDISPATCH_GEMM(
-                        !info_->nondeterministic(), VERBOSE_DETERMINISTIC_FAIL);
+            VDISPATCH_GEMM(
+                    kernel_success, "matching kernel not found in catalog");
 
             init_scratchpad();
 
@@ -588,7 +649,6 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
-
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));

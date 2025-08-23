@@ -83,10 +83,14 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
+    bool has_entry() { return entry_ != nullptr; }
+
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
     };
+
+    void set_entry(const gemmstone::kcatalog::Entry *entry) { entry_ = entry; }
 
 protected:
     compute::gpu_arch_t arch_;
@@ -138,7 +142,8 @@ struct gen_nocopy_desc_t : public gen_desc_t {
         mode = static_cast<compute_mode>(mode | flag);
     }
 
-    status_t select_kernel(compute::gpu_arch_t arch, int stepping, int eu_count,
+    std::vector<const gemmstone::kcatalog::Entry *> select_kernel(
+            compute::gpu_arch_t arch, int stepping, int eu_count,
             bool has_systolic, bool is_integrated, compute_mode mode,
             int batch_dims, bool trans_a, bool trans_b, bool trans_co,
             bool swap_ab, const quant_params &a_quant,
@@ -148,6 +153,14 @@ struct gen_nocopy_desc_t : public gen_desc_t {
             data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
             int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb,
             dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);
+
+    status_t finalize();
+
+private:
+    std::string tags_;
+    gemmstone::EvaluateParams eval_params_;
+    gemmstone::Type Ts_;
+    gemmstone::Scalar beta_;
 };
 
 struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {

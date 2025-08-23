@@ -24,6 +24,7 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
+#include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
@@ -410,15 +411,16 @@ status_t gen_desc_t::transfer_post_ops(
     return status::success;
 }
 
-status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
-        int stepping, int eu_count, bool has_systolic, bool is_integrated,
-        compute_mode mode, int batch_dims, bool trans_a, bool trans_b,
-        bool trans_co, bool swap_ab, const quant_params &a_quant,
-        const quant_params &b_quant, bool dst_sround, bool c_offset, bool bias,
-        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t co_type,
-        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+std::vector<const gemmstone::kcatalog::Entry *>
+gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
+        int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
+        int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
+        const quant_params &a_quant, const quant_params &b_quant,
+        bool dst_sround, bool c_offset, bool bias, sum_ab_t reduce_ab,
+        float alpha, float beta, data_type_t a_type, data_type_t b_type,
+        data_type_t c_type, data_type_t co_type, data_type_t acc_type,
+        int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
+        dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
@@ -543,7 +545,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
 
     auto status = transfer_post_ops(std::move(post_ops), swap_ab);
-    if (status != status::success) return status;
+    if (status != status::success)
+        return std::vector<const gemmstone::kcatalog::Entry *>();
 
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
@@ -714,23 +717,24 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         match_params.back().selector.precisions[2] = "I";
     }
 
-    EvaluateParams eval_params;
-
-    eval_params.sizes = base.sizes;
-    eval_params.alpha = alpha;
-    eval_params.beta = beta;
-    eval_params.postOps = !problem_.postOps.empty();
-    eval_params.cConvert = (acc_type != c_type);
-    eval_params.euCount = eu_count;
-    eval_params.batch = (batch_dims > 0);
-    eval_params.deterministic = (mode & mode_deterministic);
+    eval_params_.sizes = base.sizes;
+    eval_params_.alpha = alpha;
+    eval_params_.beta = beta;
+    eval_params_.postOps = !problem_.postOps.empty();
+    eval_params_.cConvert = (acc_type != c_type);
+    eval_params_.euCount = eu_count;
+    eval_params_.batch = (batch_dims > 0);
+    eval_params_.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
-    entry_ = select(catalog(), static_cast<int>(match_params.size()),
-            match_params.data(), eval_params, aux_params_, &observer);
+    tags_ = match_params[0].tags;
+    Ts_ = problem_.Ts;
+    beta_ = problem_.beta;
+    return select(catalog(), static_cast<int>(match_params.size()),
+            match_params.data(), eval_params_, aux_params_, &observer);
+}
 
-    if (!entry_) return status::unimplemented;
-
+status_t gen_nocopy_desc_t::finalize() {
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
@@ -759,13 +763,16 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     };
     use_tf32(problem_.Ta_ext, Ta_ext_new);
     use_tf32(problem_.Tb_ext, Tb_ext_new);
+    problem_.Ts = Ts_;
 
     if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
 
     auto block_k = entry_->driverInfo.blocking[LoopK];
-    if (block_k > 0 && k > block_k && beta != 1.0f) problem_.beta = Scalar();
-
-    return finalize(match_params[0].tags);
+    problem_.beta = beta_;
+    if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
+        problem_.beta = Scalar();
+    evaluate(*entry_, eval_params_, aux_params_);
+    return gen_desc_t::finalize(tags_.c_str());
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
@@ -887,11 +894,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
 
     SelectionObserver observer = entryObserver;
-    entry_ = select(
+
+    auto entries = select(
             catalog(), match_params, eval_params, aux_params_, &observer);
 
-    if (!entry_) return status::unimplemented;
-
+    if (entries.size() < 1) return status::unimplemented;
+    entry_ = entries[0];
     return finalize(match_params.tags);
 }
 

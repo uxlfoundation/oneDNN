@@ -333,38 +333,55 @@ struct gen_t : public primitive_t {
             jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
                     bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
 
-            VDISPATCH_GEMM_SC(
-                    kernel_desc_.select_kernel(arch_, stepping,
-                            dev_info_->eu_count(), has_systolic, is_integrated,
-                            mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
-                            with_sround_, with_c_zero_points(), with_bias(),
-                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                            eff_b_type(), desc()->c_type(), co_type, acc_type,
-                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                            d->batch(), std::move(gpu_post_ops)),
-                    VERBOSE_UNSUPPORTED_FEATURE,
+            bool valid = false;
+            status_t status;
+            int strategy_count = 1;
+            for (int i = 0; i < strategy_count; i++) {
+                auto po = gpu_post_ops;
+                status = kernel_desc_.select_kernel(arch_, stepping,
+                        dev_info_->eu_count(), has_systolic, is_integrated,
+                        mode, batch_dims(), eff_transa(), eff_transb(),
+                        eff_trans_bias(), swap_ab(), a_quant, b_quant,
+                        with_sround_, with_c_zero_points(), with_bias(),
+                        eff_sum_ab(), alpha(), beta(), eff_a_type(),
+                        eff_b_type(), desc()->c_type(), co_type, acc_type,
+                        eff_align_a(), eff_align_b(), align_c(), eff_m(),
+                        eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                        d->batch(), std::move(po));
+
+                strategy_count = kernel_desc_.strategy_count();
+                valid = status == status::success;
+                // Global k-parallel kernels don't support post-ops or non-f32/s32
+                //   accumulation unless fusion is enabled.
+                if (kernel_desc_.driver_info()->kParallel()
+                        && !kernel_desc_.driver_info()->fusedPostOps()) {
+                    valid &= !non_scale_po_
+                            && utils::one_of(d->c_type(), f32, s32);
+                }
+                // Limited post-op support for low-precision accumulation.
+                if (kernel_desc_.problem()->Tc.size() < 4) {
+                    valid &= !need_x32_acc;
+                }
+                // Ensure kernel can be run deterministically if required.
+                if (attr()->deterministic_)
+                    valid &= !kernel_desc_.driver_info()->nondeterministic();
+
+                compute::kernel_t kernel;
+                if (valid) {
+                    auto *intel_engine
+                            = utils::downcast<intel::engine_t *>(engine);
+                    dnnl::impl::gpu::intel::gemm::jit::gen_kernel_t kd(
+                            kernel_desc_);
+                    status = intel_engine->create_kernel(&kernel, &kd);
+                }
+                if (status == status::success) break;
+            }
+            VDISPATCH_GEMM_SC(status, VERBOSE_UNSUPPORTED_FEATURE,
                     "matching kernel not found in catalog");
-
-            // Global k-parallel kernels don't support post-ops or non-f32/s32
-            //   accumulation unless fusion is enabled.
-            if (kernel_desc_.driver_info()->kParallel()
-                    && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(
-                        !non_scale_po_ && utils::one_of(d->c_type(), f32, s32),
-                        VERBOSE_UNSUPPORTED_POSTOP);
-            }
-
-            // Limited post-op support for low-precision accumulation.
-            if (kernel_desc_.problem()->Tc.size() < 4) {
-                VDISPATCH_GEMM(!need_x32_acc, VERBOSE_UNSUPPORTED_POSTOP);
-            }
-
-            // Ensure kernel can be run deterministically if required.
             if (attr()->deterministic_)
                 VDISPATCH_GEMM(!kernel_desc_.driver_info()->nondeterministic(),
                         VERBOSE_DETERMINISTIC_FAIL);
+            VDISPATCH_GEMM(valid, VERBOSE_UNSUPPORTED_POSTOP);
 
             init_scratchpad();
 

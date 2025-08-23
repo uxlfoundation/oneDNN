@@ -24,6 +24,7 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
+#include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
@@ -292,7 +293,16 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
-
+    if (problem_.aScale2D()
+            && problem_.aqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
+    if (problem_.bScale2D()
+            && problem_.bqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
     constexpr int perMNGroupSize = 1 << 24;
@@ -682,10 +692,20 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
-    entry_ = select(catalog(), static_cast<int>(match_params.size()),
-            match_params.data(), eval_params, aux_params_, &observer);
+    if (strategy_count() <= 0) {
+        entry_ = select(catalog(), static_cast<int>(match_params.size()),
+                match_params.data(), eval_params, aux_params_, entries_,
+                &observer);
+        entries_it_ = entries_.begin();
+    }
 
     if (!entry_) return status::unimplemented;
+
+    if (entries_it_ != entries_.end()) {
+        entry_ = entries_it_->second.first;
+        aux_params_ = entries_it_->second.second;
+        entries_it_++;
+    }
 
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
@@ -832,10 +852,19 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
 
     SelectionObserver observer = entryObserver;
-    entry_ = select(
-            catalog(), match_params, eval_params, aux_params_, &observer);
+    if (strategy_count() <= 0) {
+        entry_ = select(catalog(), match_params, eval_params, aux_params_,
+                entries_, &observer);
+        entries_it_ = entries_.begin();
+    }
 
     if (!entry_) return status::unimplemented;
+
+    if (entries_it_ != entries_.end()) {
+        entry_ = entries_it_->second.first;
+        aux_params_ = entries_it_->second.second;
+        entries_it_++;
+    }
 
     return finalize(match_params.tags);
 }

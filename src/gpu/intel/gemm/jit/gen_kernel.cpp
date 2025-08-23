@@ -24,6 +24,7 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
+#include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
@@ -60,6 +61,10 @@ bool enable_generator_dsl() {
 
 status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
+    if (kernel_) {
+        kernel = kernel_;
+        return status::success;
+    }
     gen_kernel_t kd(*this);
     return engine.create_kernel(&kernel, &kd);
 }
@@ -294,7 +299,16 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
-
+    if (problem_.aScale2D()
+            && problem_.aqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
+    if (problem_.bScale2D()
+            && problem_.bqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
     constexpr int perMNGroupSize = 1 << 24;
@@ -409,7 +423,7 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t b_type, data_type_t c_type, data_type_t co_type,
         data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
         dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-        gpu_post_ops_t &&post_ops) {
+        gpu_post_ops_t &&post_ops, int entry_idx) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -705,8 +719,10 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
+
     entry_ = select(catalog(), static_cast<int>(match_params.size()),
-            match_params.data(), eval_params, aux_params_, &observer);
+            match_params.data(), eval_params, aux_params_, entry_idx,
+            &observer);
 
     if (!entry_) return status::unimplemented;
 
@@ -743,7 +759,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t b_type, data_type_t c_type, data_type_t ao_type,
         data_type_t bo_type, data_type_t co_type, data_type_t acc_type, dim_t m,
         dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
-        gpu_post_ops_t &&post_ops) {
+        gpu_post_ops_t &&post_ops, int entry_idx) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -855,8 +871,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
 
     SelectionObserver observer = entryObserver;
-    entry_ = select(
-            catalog(), match_params, eval_params, aux_params_, &observer);
+
+    entry_ = select(catalog(), match_params, eval_params, aux_params_,
+            entry_idx, &observer);
 
     if (!entry_) return status::unimplemented;
 

@@ -83,9 +83,15 @@ rnn_cell_execution_sig(
         const int dst_proj_ld
                 = rnn.dt_conf == all_f32 ? dst_layer_ld : rnn.scratch_gates_ld;
 
-        CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb, rnn.dhc,
-                1.0f, w_projection_[0], rnn.weights_projection_ld, dst_postgemm,
-                rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        if (rnn.use_matmul) {
+            CHECK(this->execute_matmul(ctx,
+                    this->get_matmul_projection(cell_position),
+                    w_projection_[0], dst_postgemm, dst_proj));
+        } else {
+            CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb,
+                    rnn.dhc, 1.0f, w_projection_[0], rnn.weights_projection_ld,
+                    dst_postgemm, rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        }
 
         // we have to downconvert the output to dst_layer_t and copy to dst_iter if needed
         this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,
@@ -321,10 +327,17 @@ rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
     cell_position |= merged_layer;
 
-    CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
-            rnn.mb * n_iter, rnn.slc, 1.0, w_layer_[0], rnn.weights_layer_ld,
-            src_layer_, src_layer_ld, 0.0, (gemm_acc_t *)scratch_gates_,
-            rnn.scratch_gates_ld));
+    if (rnn.use_matmul) {
+        assert(n_iter == rnn.n_iter);
+
+        CHECK(this->execute_matmul(ctx, this->get_matmul_layer(cell_position),
+                w_layer_[0], src_layer_, scratch_gates_));
+    } else {
+        CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
+                rnn.mb * n_iter, rnn.slc, 1.0, w_layer_[0],
+                rnn.weights_layer_ld, src_layer_, src_layer_ld, 0.0,
+                (gemm_acc_t *)scratch_gates_, rnn.scratch_gates_ld));
+    }
 
     return dnnl_success;
 }

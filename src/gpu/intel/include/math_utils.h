@@ -764,6 +764,9 @@ uchar __attribute__((overloadable)) cvt_f32_to_f4_e3m0(float a) {
     // and (nz)f0.0 null t0:ud 0x00ffffff:ud
     uint bits = as_uint(intermediate);
     bits -= 0x00400000;
+
+    // Special rounding
+    if (as_float(bits) > 0) bits |= 1;
     uint round_up = bits & 0x00ffffff;
 
     // shr t0:ud t0:ud 23

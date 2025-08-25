@@ -791,6 +791,9 @@ void CopyPlan::planTypeConversions()
         } else if (isInt4(st) && isFP(dt)) {
             copyThrough(i, DataType::hf, 1);
             rerun = true;
+        } else if (isFP(st) && isInt4(dt)) {
+            copyThrough(i, DataType::w);
+            rerun = true;
         } else if (is4(dt))
             stub("Unsupported move to 4-bit type");
         else if (isB(st) && getBytes(dt) == 8)

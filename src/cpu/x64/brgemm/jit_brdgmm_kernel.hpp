@@ -212,7 +212,7 @@ private:
     const injector_utils::reg64_savable_t reg_aux_src_scales {
             regscratchpad_, rax, r19};
     const injector_utils::reg64_savable_t reg_aux_wei_scales {
-            regscratchpad_, rax, r19};
+            regscratchpad_, rax, r27};
     const injector_utils::reg64_savable_t reg_aux_dst_scales {
             regscratchpad_, rax, r20};
     const injector_utils::reg64_savable_t reg_dst_zero_point {

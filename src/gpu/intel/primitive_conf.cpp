@@ -133,6 +133,14 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.wei_zpoints_data_type = zp.get_data_type(DNNL_ARG_WEIGHTS);
     attr_info.dst_zpoints_data_type = zp.get_data_type(DNNL_ARG_DST);
 
+    // host-side scalars for scales or zero-points
+    attr_info.with_host_src_scale = src_scales.is_host_scalar();
+    attr_info.with_host_wei_scale = wei_scales.is_host_scalar();
+    attr_info.with_host_dst_scale = dst_scales.is_host_scalar();
+    attr_info.with_host_src_zp = zp.get(DNNL_ARG_SRC).is_host_scalar();
+    attr_info.with_host_wei_zp = zp.get(DNNL_ARG_WEIGHTS).is_host_scalar();
+    attr_info.with_host_dst_zp = zp.get(DNNL_ARG_DST).is_host_scalar();
+
     attr_info.with_per_ic_src_zpoints = attr_info.with_src_zpoints
             && !zp.has_default_values(DNNL_ARG_SRC)
             && zp.get_mask(DNNL_ARG_SRC) > 0;
@@ -753,6 +761,13 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
             attr_info.wei_zpoints_data_type == dnnl_s8);
     kernel_ctx.define_int("WITH_WEI_ZPOINTS_DT_U8",
             attr_info.wei_zpoints_data_type == dnnl_u8);
+
+    kernel_ctx.define_int("WITH_HOST_SRC_ZP", attr_info.with_host_src_zp);
+    kernel_ctx.define_int("WITH_HOST_WEI_ZP", attr_info.with_host_wei_zp);
+    kernel_ctx.define_int("WITH_HOST_DST_ZP", attr_info.with_host_dst_zp);
+    kernel_ctx.define_int("WITH_HOST_SRC_SCALE", attr_info.with_host_src_scale);
+    kernel_ctx.define_int("WITH_HOST_WEI_SCALE", attr_info.with_host_wei_scale);
+    kernel_ctx.define_int("WITH_HOST_DST_SCALE", attr_info.with_host_dst_scale);
 
     def_binary_alg_kinds(kernel_ctx);
     def_eltwise_alg_kinds(kernel_ctx);

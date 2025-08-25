@@ -244,10 +244,10 @@ status_t gen_gemm_kernel_desc_t::finalize(const char *tags) {
     } catch (...) { return status::unimplemented; }
 
     // Check for legal 2D quantization group size.
-    if (problem_.aoPtrDims == 2 || problem_.aScale2D())
+    if (problem_.aOffset2D() || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
             return status::unimplemented;
-    if (problem_.boPtrDims == 2 || problem_.bScale2D())
+    if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
 
@@ -442,6 +442,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.bsPtrDims = bsc_dims;
         problem_.aqGroupK = wei_q2d_group_k;
         problem_.bqGroupK = src_q2d_group_k;
+        problem_.effAKNGroups = (wei_q2d_group_k ? k / wei_q2d_group_k : 0);
+        problem_.effBKNGroups = (src_q2d_group_k ? k / src_q2d_group_k : 0);
         if (wei_scales_type != data_type::undef) {
             problem_.Ta_scale = convert_dnnl_to_kernel_type(wei_scales_type);
             problem_.A_scale.setAlignment(
@@ -458,6 +460,8 @@ status_t gen_gemm_nocopy_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.asPtrDims = bsc_dims;
         problem_.bqGroupK = wei_q2d_group_k;
         problem_.aqGroupK = src_q2d_group_k;
+        problem_.effBKNGroups = (wei_q2d_group_k ? k / wei_q2d_group_k : 0);
+        problem_.effAKNGroups = (src_q2d_group_k ? k / src_q2d_group_k : 0);
         if (wei_scales_type != data_type::undef) {
             problem_.Tb_scale = convert_dnnl_to_kernel_type(wei_scales_type);
             problem_.B_scale.setAlignment(
@@ -866,9 +870,9 @@ void gen_gemm_kernel_t::init_interface() {
     if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.aoPtrDims == 2 || problem.aScale2D())
+    if (problem.aOffset2D() || problem.aScale2D())
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.boPtrDims == 2 || problem.bScale2D())
+    if (problem.bOffset2D() || problem.bScale2D())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
@@ -909,6 +913,14 @@ void gen_gemm_kernel_t::init_interface() {
             if (problem.bsPtrDims > 2) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
+            }
+            if (problem.aoPtrDims > 2) {
+                interface_.newArgument(
+                        "offset_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.boPtrDims > 2) {
+                interface_.newArgument(
+                        "offset_stride_B" + std::to_string(i), DataType::d);
             }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {

@@ -167,9 +167,10 @@ struct GEMMProblem : public CommonProblem {
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
-    int asPtrDims = -1, bsPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
+    int asPtrDims = -1, bsPtrDims = -1;             // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
+    int effAKNGroups = 0, effBKNGroups = 0;         // # of A, B quantization groups in K dimension.
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
@@ -222,11 +223,18 @@ struct GEMMProblem : public CommonProblem {
     bool gemmt() const { return false; }
     bool backward() const { return false; }
 
+    int aScaleGroupDims() const { return std::max(asPtrDims - 2, 0); }
+    int bScaleGroupDims() const { return std::max(bsPtrDims - 2, 0); }
+    int aOffsetGroupDims() const { return std::max(aoPtrDims - 2, 0); }
+    int bOffsetGroupDims() const { return std::max(boPtrDims - 2, 0); }
+
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
+    bool aOffset2D() const { return (aoPtrDims >= 2); }
+    bool bOffset2D() const { return (boPtrDims >= 2); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D(); }
-    bool quantized2DB() const { return (boPtrDims == 2) || bScale2D(); }
+    bool quantized2DA() const { return aOffset2D() || aScale2D(); }
+    bool quantized2DB() const { return bOffset2D() || bScale2D(); }
 
     bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
     bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }

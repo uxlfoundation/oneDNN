@@ -22,3 +22,15 @@
 2x1x64:1x64x1
 2x1x64:2x64x1
 26x32x64:1x64x65
+
+# batch per_tensor zp
+--reset
+--dt=s8:u4:f16
+--bia-dt=f16 --skip-impl=ref --attr-scales=src0:per_tensor:f16:1x32,src0:per_ocic:f16:1x32 --attr-zero-points=wei:per_tensor:u8:32x1
+
+7x2x64:7x64x8
+16x2x64:16x64x16
+26x2x64:26x64x65
+7x1x64:1x64x8
+128x1x64:1x64x16
+26x1x64:1x64x65

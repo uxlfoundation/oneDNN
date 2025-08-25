@@ -1104,16 +1104,18 @@ int get_gpu_cache_size(size_t &cache_size) {
     return OK;
 }
 
+// `checkit` function verifies the amount of memory needed for the case is
+// complied with the system limits.
+//
 // The function logic is the following:
-// `checkit` function verifies that the bare minimum (the library and the stock
-// reference) memory requirements are complied with the limits.
-// If no, drop the case, can't run it.
-// If yes, the second call to this function with `prim_ref` specified will
-// check memory requirements for prim_ref, update according memory parts and
-// verify updated numbers if they are complied.
-// If yes, good to go with a `prim_ref`.
-// If no, indicate that the system won't make it and drop `prim_ref` falling
-// back to stock reference.
+// If `prim_ref` is provided, the check will include its requirement.
+// If check passes, it's good to go with a `prim_ref` enabled.
+// If not, `checkit` can process this scenario by dropping `prim_ref` (nulling
+// it) and try the check again. It may happen that `prim_ref` used more memory
+// than naive reference implementation. In that case the total consumption will
+// be lower and might fit the limit.
+// It the check without `prim_ref` passes, it will run without it.
+// If not, the case will be skipped as it can't be run.
 int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // Skip the check if it is disabled.
     if (!mem_check) return OK;
@@ -1142,6 +1144,9 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {
+        // TODO: always reports BWD when fwd-for-bwd case runs as the check
+        // moved to `checkit` stage and always has `mem_size_args.dir` set to
+        // BWD.
         assert(res->mem_size_args.dir != DIR_UNDEF);
         return (res->mem_size_args.dir & FLAG_FWD) ? "FWD" : "BWD";
     };

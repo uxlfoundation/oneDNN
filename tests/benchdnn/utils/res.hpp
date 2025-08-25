@@ -62,12 +62,13 @@ struct check_mem_size_args_t {
             const_dnnl_primitive_desc_t pd, bool want_input, dir_t dir)
         : pd(pd), want_input(want_input), dir(dir) {}
 
-    // Input args.
+    // Input args: get their values only at construction.
     const_dnnl_primitive_desc_t pd = nullptr;
     bool want_input = false;
     dir_t dir = DIR_UNDEF; // See ANCHOR: MEM_CHECK_ARGS_DIR;
 
-    // Output args:
+    // Output args: values obtained by the memory collection logic.
+    //
     // `sizes` used to validate OpenCL memory requirements.
     std::vector<size_t> sizes;
     // `total_size_device` specifies memory allocated on device for a test obj.

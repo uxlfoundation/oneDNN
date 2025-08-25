@@ -18,11 +18,9 @@
 import argparse
 import os
 import sys
-from tempfile import NamedTemporaryFile
 
 from matmul import sampler as matmul_sampler
 from matmul import primitive as matmul
-
 
 def log(output):
     print("synthdnn: " + output)
@@ -57,9 +55,7 @@ def setup_collect_subparser(subparsers):
     )
 
     # Interface with benchdnn
-    collect_parser.add_argument(
-        "benchdnn", help="path to benchdnn executable"
-    )
+    collect_parser.add_argument("benchdnn", help="path to benchdnn executable")
     collect_parser.add_argument(
         "--engine", default="cpu", help="engine used for benchdnn execution"
     )
@@ -184,6 +180,34 @@ def matmul_main(args):
         write_batch_file(sys.stdout, samples)
 
 
+def setup_report_subparser(subparsers):
+    report_parser = subparsers.add_parser(
+        "report", help="call with -h for information"
+    )
+    report_parser.add_argument(
+        "--subprogram_main", default=report_main, help=argparse.SUPPRESS
+    )
+    report_parser.add_argument(
+        "logs", nargs="*", help="path to benchdnn executable"
+    )
+    report_parser.add_argument(
+        "--scatter", action="append", help="x_idx,[y_idx],metric,[scale]"
+    )
+
+
+def report_main(args):
+    from report.report_list import ReportList
+
+    reports = ReportList(args.scatter)
+
+    for log in args.logs:
+        with open(log) as f:
+            for line in f:
+                reports.add_line(line)
+
+    reports.finalize()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(
@@ -191,5 +215,6 @@ if __name__ == "__main__":
     )
     setup_collect_subparser(subparsers)
     setup_matmul_subparser(subparsers)
+    setup_report_subparser(subparsers)
     args = parser.parse_args()
     args.subprogram_main(args)

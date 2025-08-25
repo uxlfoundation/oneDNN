@@ -268,7 +268,7 @@ void bench(engine::kind ekind, dnnl_data_type_t dt, const mqa_dims_t &p,
 
 void mqa_perf(engine::kind ekind, int argc, char **argv) {
     // default testing parameters
-    mqa_dims_t params = {32, 384, 16, 64};
+    mqa_dims_t params = {2, 128, 16, 64};
 
     if (argc > 2) {
         if (argc == 6) {

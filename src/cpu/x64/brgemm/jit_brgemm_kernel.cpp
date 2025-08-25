@@ -2056,8 +2056,8 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
     assert(max_num_cols > 0);
 
     reg_buf_aux.saveTo(reg_buf_aux_backup);
+    reg_buf.restoreTo(reg_buf_aux);
 
-    reg_buf_aux.restore();
     if (transform_offset) add(reg_buf_aux, transform_offset);
 
     for (dim_t r = 0; r < num_rows; ++r) {

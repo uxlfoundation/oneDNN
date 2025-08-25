@@ -319,6 +319,17 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         ,
         const int remainder_k, const int remainder_q) {
 
+
+    // !!!!!!!!!!!!!!!!
+    KERNEL_PRINT_HEAD
+    // !!!!!!!!!!!!!!!!
+    if (DPRINT) {
+        printf("\nKEY_D3 = %ld KEY_S3 = %ld KEY_S2 = %ld\nQRY_S2 = %ld VAL_S2 = %ld DST_S2 = %ld\n\n",
+               KEY_D3,KEY_S3,KEY_S2,QRY_S2,VAL_S2,DST_S2);
+    }
+    // !!!!!!!!!!!!!!!!
+
+
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
 

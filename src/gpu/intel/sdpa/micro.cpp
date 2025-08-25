@@ -59,10 +59,15 @@ bool with_quantize_common(const quant_entry_t &entry) {
 } /* anonymous namespace */
 
 status_t update_config_from_devenv_values(config_t *config, bool quantized) {
+
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
             = gpu_utils::dev_getenv("SDPA_CONFIG", std::string(""));
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:update_config_from_devenv_values");
+
+
     if ((!config_str.empty() && !quantized)
             || (!q_config_str.empty() && quantized)) {
         std::array<int, 8> config_values;
@@ -99,6 +104,8 @@ status_t update_config_from_devenv_values(config_t *config, bool quantized) {
 status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init_conf_microkernels");
 
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -353,6 +360,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 }
 
 status_t micro_t::init(impl::engine_t *engine) {
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init");
+
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
     if (!kernel_) return status::runtime_error;
@@ -361,6 +371,8 @@ status_t micro_t::init(impl::engine_t *engine) {
 
 status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init_conf");
 
     auto *pd = this;
     auto *d = pd->desc();
@@ -515,6 +527,9 @@ status_t micro_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
 
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:get_kernel_ctx");
+
+
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);
 
@@ -583,6 +598,12 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!
+    GET_KERNEL_PRINT
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!
+
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -662,10 +683,17 @@ status_t micro_params_t::get_kernel_ctx(
     if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128)
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!
+    //kernel_ctx.print_options();
+    // !!!!!!!!!!!!!!!!!!!!!!!!
+
     return status::success;
 }
 
 status_t micro_t::execute(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute");
+
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);

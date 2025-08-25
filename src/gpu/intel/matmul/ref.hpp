@@ -255,20 +255,6 @@ struct ref_t : public primitive_t {
             kernel_ctx.define_int("NDIMS", ndims);
         }
         kernel_ctx.define_int("RUNTIME_DIMS", runtime_dims);
-        kernel_ctx.define_int("HOST_SRC_SCALE",
-                pd()->attr()->scales_.get(DNNL_ARG_SRC).is_host_scalar());
-        kernel_ctx.define_int("HOST_WEI_SCALE",
-                pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).is_host_scalar());
-        kernel_ctx.define_int("HOST_DST_SCALE",
-                pd()->attr()->scales_.get(DNNL_ARG_DST).is_host_scalar());
-        kernel_ctx.define_int("HOST_SRC_ZP",
-                pd()->attr()->zero_points_.get(DNNL_ARG_SRC).is_host_scalar());
-        kernel_ctx.define_int("HOST_WEI_ZP",
-                pd()->attr()
-                        ->zero_points_.get(DNNL_ARG_WEIGHTS)
-                        .is_host_scalar());
-        kernel_ctx.define_int("HOST_DST_ZP",
-                pd()->attr()->zero_points_.get(DNNL_ARG_DST).is_host_scalar());
 
         def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");

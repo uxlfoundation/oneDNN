@@ -238,9 +238,9 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
             return status::unimplemented;
     }
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)
-            && (!one_of(dt_d, data_type::bf16, data_type::f32))
-            && (!one_of(dt_bias, data_type::undef, data_type::bf16,
-                    data_type::f32)))
+            && ((!one_of(dt_d, data_type::bf16, data_type::f32))
+                    || (!one_of(dt_bias, data_type::undef, data_type::bf16,
+                            data_type::f32))))
         return status::unimplemented;
     if ((brg->dt_a == data_type::f32 && brg->dt_b == data_type::f32)
             && (!one_of(dt_d, data_type::f32))
@@ -250,8 +250,6 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
 
     brg->dt_d = dt_d;
     brg->typesize_D = types::data_type_size(brg->dt_d);
-
-    if (brg->dt_d == bf16) return status::unimplemented;
 
     if (!brg->attr) return status::success;
 

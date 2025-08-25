@@ -100,9 +100,11 @@ status_t set_isa_impl(brgemm_t *brg) {
                 one_of(brg->isa_user, isa_undef, isa);
     };
 
-    if (brg->is_bf32 || brg->is_bf16 || brg->is_f16) {
+    if (brg->is_bf32 || brg->is_f16) {
         return status::unimplemented;
-    } else if (brg->is_f32 || brg->is_int8) {
+    } else if (brg->is_bf16 && !mayiuse_bf16()) {
+        return status::unimplemented;
+    } else if (brg->is_f32 || brg->is_bf16 || brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
                 is_isa_ok(sve_256), sve_256);
         return status::success;

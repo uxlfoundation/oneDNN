@@ -2676,8 +2676,8 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                         = find_similar(&(tloop.bdis[ibdi]), apply_postops);
             }
         }
-
-        num_amx_ops = brg.bdb * brg.rdb * brg.ldb;
+        size_t rdb_including_tail = brg.rdb + (brg.rdb_tail > 0 ? 1 : 0);
+        num_amx_ops = brg.bdb * rdb_including_tail * brg.ldb;
         current_num_amx_ops = 0;
         // Calculate the offsets of A's cache lines to prefetch
         prf_sprinkled_a.reset();

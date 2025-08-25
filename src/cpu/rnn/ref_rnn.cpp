@@ -892,24 +892,24 @@ rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 
     // a_, b_ and c_ are regular, raw CPU pointers that can only be used with
     // memory_t objects created for the classic CPU engine.
-    std::unique_ptr<memory_t, memory_deleter_t> src_mem;
-    CHECK(safe_ptr_assign(src_mem,
-            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
-                    (void *)(a_))));
-    std::unique_ptr<memory_t, memory_deleter_t> wei_mem;
-    CHECK(safe_ptr_assign(wei_mem,
+    // Note that a_ and b_ correspond to Matmul 'weights' and 'src' respectively.
+    std::unique_ptr<memory_t, memory_deleter_t> a_mem;
+    CHECK(safe_ptr_assign(a_mem,
             new memory_t(service_engine, matmul_prim->pd()->weights_md(),
-                    mem_flag, (void *)(b_))));
-    std::unique_ptr<memory_t, memory_deleter_t> dst_mem;
-    CHECK(safe_ptr_assign(dst_mem,
+                    mem_flag, (void *)(a_))));
+    std::unique_ptr<memory_t, memory_deleter_t> b_mem;
+    CHECK(safe_ptr_assign(b_mem,
+            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
+                    (void *)(b_))));
+    std::unique_ptr<memory_t, memory_deleter_t> c_mem;
+    CHECK(safe_ptr_assign(c_mem,
             new memory_t(service_engine, matmul_prim->pd()->dst_md(), mem_flag,
                     (void *)(c_))));
 
     exec_args_t matmul_args;
-    // Note Matmul src and wei may not directly map to RNN primitive src and wei
-    matmul_args[DNNL_ARG_SRC] = {wei_mem.get(), true};
-    matmul_args[DNNL_ARG_WEIGHTS] = {src_mem.get(), true};
-    matmul_args[DNNL_ARG_DST] = {dst_mem.get(), false};
+    matmul_args[DNNL_ARG_SRC] = {b_mem.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {a_mem.get(), true};
+    matmul_args[DNNL_ARG_DST] = {c_mem.get(), false};
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),

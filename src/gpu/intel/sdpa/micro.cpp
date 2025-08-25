@@ -129,10 +129,11 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
             is_integrated, use_fma_config, is_f32);
 
-    if (!config) return status::unimplemented;
+    VCHECK_SDPA_COND(config != nullptr,
+            "No suitable kernel configuration found for the given problem "
+            "size and attributes.");
 
-    auto status = update_config_from_devenv_values(config, quantized);
-    if (status != status::success) return status;
+    CHECK(update_config_from_devenv_values(config, quantized));
 
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"

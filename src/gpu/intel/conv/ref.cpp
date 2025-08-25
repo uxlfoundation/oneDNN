@@ -127,22 +127,22 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int(
             "IS_BWD_W", conf.prop_kind == prop_kind::backward_weights);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.wei_md_info, "WEI");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC", false);
+    def_memory_desc_info(kernel_ctx, conf.wei_md_info, "WEI", false);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", false);
 
     def_dispatch(kernel_ctx, conf.dispatch);
 
     switch (conf.prop_kind) {
         case prop_kind::forward_training:
         case prop_kind::forward_inference:
-            kernel_ctx.set_data_type(conf.dst_data_type);
+            kernel_ctx.set_data_type(conf.dst_data_type, false);
             break;
         case prop_kind::backward_data:
-            kernel_ctx.set_data_type(conf.src_data_type);
+            kernel_ctx.set_data_type(conf.src_data_type, false);
             break;
         case prop_kind::backward_weights:
-            kernel_ctx.set_data_type(conf.weights_data_type);
+            kernel_ctx.set_data_type(conf.weights_data_type, false);
             break;
         default: break;
     }
@@ -151,16 +151,16 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("DST_DT_DIGITS",
             dnnl::impl::types::digits<uint32_t>(conf.dst_data_type));
 
-    def_data_type(kernel_ctx, conf.src_data_type, "SRC");
-    def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
-    def_data_type(kernel_ctx, conf.bias_data_type, "BIA");
-    def_data_type(kernel_ctx, conf.dst_data_type, "DST");
-    def_data_type(kernel_ctx, conf.acc_data_type, "ACC");
+    def_data_type(kernel_ctx, conf.src_data_type, "SRC", false);
+    def_data_type(kernel_ctx, conf.weights_data_type, "WEI", false);
+    def_data_type(kernel_ctx, conf.bias_data_type, "BIA", false);
+    def_data_type(kernel_ctx, conf.dst_data_type, "DST", false);
+    def_data_type(kernel_ctx, conf.acc_data_type, "ACC", false);
     def_data_type(kernel_ctx,
             conf.attr_info.sum_data_type == dnnl_data_type_undef
                     ? conf.dst_data_type
                     : conf.attr_info.sum_data_type,
-            "SUM");
+            "SUM", false);
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
     return status::success;

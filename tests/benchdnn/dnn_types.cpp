@@ -193,7 +193,8 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
         case COMMON: return 0;
-        case HOST_SCALAR: return INT_MIN >> 1; // shouldn't rely on mask
+        case HOST_SCALAR:
+            return 0; // mask=0 is required for compatibility with preprocessing logic
         default: SAFE(FAIL, CRIT); return 0;
     }
 }

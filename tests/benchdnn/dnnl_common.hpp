@@ -1092,6 +1092,56 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         }
     }
 
+    // Precomputed reductions.
+    if (!prb->attr.precomputed_reductions.is_def()) {
+        const auto &pr = prb->attr.precomputed_reductions;
+
+        const auto append_precomputed_reductions = [&](int exec_arg) {
+            const int exec_pr_arg
+                    = DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | exec_arg;
+            const auto &e = pr.get(exec_arg);
+            int64_t ndims = 1;
+            dims_t dims = {};
+            const auto &arg_md = query_md(const_pd, exec_arg);
+            const auto mask
+                    = pr.get_mask(exec_arg, prim_kind, query_md_ndims(arg_md));
+            const auto &groups = e.groups;
+
+            if (mask > 0) {
+                const auto &md = query_md(const_pd, exec_arg);
+                if (has_runtime_dims(md)) {
+                    const auto prb_md = prb->get_md(exec_arg);
+                    dims = md2dims(prb_md, mask, false, groups);
+                    ndims = static_cast<int>(dims.size());
+                } else {
+                    dims = md2dims(md, mask, false, groups);
+                    ndims = static_cast<int>(dims.size());
+                }
+            } else {
+                dims = {1};
+                ndims = 1;
+            }
+            auto pr_md = dnn_mem_t::init_md(ndims, dims.data(), e.dt, tag::abx);
+            mem_map.emplace(exec_pr_arg,
+                    dnn_mem_t(pr_md, test_engine, /* prefill = */ true));
+        };
+
+        for (const auto &exec_arg : supported_exec_args) {
+            if (exec_arg == DNNL_ARG_MULTIPLE_SRC) {
+                // `DNNL_ARG_MULTIPLE_SRC` corresponds to a pack of inputs.
+                const auto n_inputs = query_n_inputs(const_pd);
+                for (int i = 0; i < n_inputs; i++) {
+                    const auto i_exec_arg = exec_arg + i;
+                    if (!pr.is_def(i_exec_arg))
+                        append_precomputed_reductions(i_exec_arg);
+                }
+            } else {
+                if (!pr.is_def(exec_arg))
+                    append_precomputed_reductions(exec_arg);
+            }
+        }
+    }
+
     // rounding mode
     if (!prb->attr.rounding_mode.is_def()) {
         int64_t count = 1;

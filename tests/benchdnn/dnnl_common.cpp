@@ -1235,7 +1235,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     }
 
     size_t total_size_cpu = total_size_ref + total_size_compare
-            + check_mem_size_args.total_size_mapped;
+            + check_mem_size_args.total_size_mapped
+            + check_mem_size_args.extra_size_driver;
 
     // If the problem runs on CPU, the combined memory represents requirements
     // for the library and for the reference paths.

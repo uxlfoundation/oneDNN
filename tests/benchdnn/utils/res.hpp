@@ -67,6 +67,12 @@ struct check_mem_size_args_t {
     bool want_input = false;
     dir_t dir = DIR_UNDEF; // See ANCHOR: MEM_CHECK_ARGS_DIR;
 
+    // Manually input args: must be set by the user to handle additional logic.
+    //
+    // `extra_size_driver` specifies memory allocated by the driver for its
+    // needs. Must be updated manually at `checkit` function.
+    size_t extra_size_driver = 0;
+
     // Output args: values obtained by the memory collection logic.
     //
     // `sizes` used to validate OpenCL memory requirements.

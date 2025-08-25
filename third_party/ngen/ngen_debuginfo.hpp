@@ -1,19 +1,3 @@
-/*******************************************************************************
-* Copyright 2025 Intel Corporation
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*******************************************************************************/
-
 #ifndef NGEN_DEBUGINFO_HPP
 #define NGEN_DEBUGINFO_HPP
 
@@ -23,37 +7,24 @@
 
 #include "ngen_utils.hpp"
 
-#ifdef NGEN_ENABLE_SOURCE_LOCATION
-#include <source_location>
-#endif
 
 
 namespace NGEN_NAMESPACE {
 
 struct DebugConfig {
-    DebugConfig() = default;
-    DebugConfig(const char * name, uint32_t line, bool enableLineMapping): nameCU(name), programLine(line), enableLineMapping(enableLineMapping) {};
-
-    const char *nameCU = "(unknown)";
-    uint32_t programLine = 0;
-    bool enableLineMapping = false;
-};
-
-struct SourceLocation {
-#ifdef NGEN_ENABLE_SOURCE_LOCATION
-    SourceLocation(std::source_location where = std::source_location::current())
-        : value(where) {}
-    SourceLocation(const SourceLocation &) = default;
-    SourceLocation(SourceLocation &&) = default;
-    const char *filePath() { return value.file_name(); }
-    uint32_t line() { return value.line(); }
-    std::source_location value;
-    std::string str() {
-        std::ostringstream oss;
-        oss << value.file_name() << ":" << value.line();
-        return oss.str();
-    }
+#ifdef NGEN_DEFAULT_DEBUG_LINE_MAPPING
+  static const bool enableLineMappingDefault = NGEN_DEFAULT_DEBUG_LINE_MAPPING;
+#else
+  static const bool enableLineMappingDefault = false;
 #endif
+
+  DebugConfig() = default;
+  DebugConfig(const char *name, uint32_t line, bool enableLineMapping = enableLineMappingDefault)
+      : nameCU(name), programLine(line), enableLineMapping(enableLineMapping){};
+
+  const char *nameCU = "(unknown)";
+  uint32_t programLine = 0;
+  bool enableLineMapping = enableLineMappingDefault;
 };
 
 struct DebugLine {

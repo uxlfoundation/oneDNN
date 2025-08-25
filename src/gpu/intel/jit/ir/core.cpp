@@ -18,7 +18,6 @@
 
 #include <algorithm>
 
-#include "gpu/intel/jit/ir/linear_expr.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
@@ -62,6 +61,55 @@ int type_t::size() const {
         default: gpu_error_not_expected();
     }
     return 0;
+}
+
+int type_t::mantissa_bits() const {
+    if (!is_fp()) return 0;
+
+    switch (kind()) {
+        case type_kind_t::f64: return 52;
+        case type_kind_t::f32: return 23;
+        case type_kind_t::tf32:
+        case type_kind_t::f16: return 10;
+        case type_kind_t::bf16: return 7;
+        case type_kind_t::hf8: return 3;
+        case type_kind_t::bf8: return 2;
+        case type_kind_t::f4_e2m1: return 1;
+        case type_kind_t::f4_e3m0: return 0;
+        default: gpu_error_not_expected();
+    }
+    return 0;
+}
+
+bool is_subset(const type_t &a, const type_t &b) {
+    auto is_untyped = [](const type_t &t) {
+        return t.is_byte() || t.is_dword() || t.is_qword() || t.is_oword()
+                || t.is_hword();
+    };
+
+    if (a.is_undef() || b.is_undef()) return false;
+    if (a.elems() != b.elems()) return false; // unordered
+    if (a.is_ptr() && b.is_ptr()) return true; // XXX: consider alignments?
+    if (a.is_ptr() || b.is_ptr()) return false; // unordered
+    if (a == b) return true;
+    if (a.is_tf32() && b.is_f32()) return true;
+    if (a.is_fp() && b.is_int()) return false;
+
+    const auto a_bits = a.scalar().bitsize();
+    const auto b_bits = b.scalar().bitsize();
+    if (is_untyped(a) && is_untyped(b)) return a_bits <= b_bits;
+    if (is_untyped(a) || is_untyped(b)) return false; // unordered
+    if (a.is_int() && b.is_fp())
+        return a_bits <= b.mantissa_bits() + a.is_signed();
+    if (a.is_int() && b.is_int())
+        // There are 4 cases:
+        // 1. sN is not a subset of uM
+        // 2. uN is a subset of sM if N <= M - 1
+        // 3. sN is a subset of sM if N - 1 <= M - 1
+        // 4. uN is a subset of uM if N <= M
+        return (!a.is_signed() || b.is_signed())
+                && a_bits + b.is_signed() <= b_bits + a.is_signed();
+    return a_bits < b_bits;
 }
 
 data_type_t to_dnnl(const type_t &type) {

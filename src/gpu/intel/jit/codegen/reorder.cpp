@@ -543,7 +543,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reg_buf_data_t &src,
         emit(plan, tmp_op, src_op);
         emit(plan, dst_op, tmp_op);
     } else if (do_post_conv) {
-        const auto &tmp_op = in_place
+        auto tmp_op = in_place
                 ? init_operand(std::move(down_layout), from_op(dst_op))
                 : init_operand(std::move(down_layout), from_temp);
         emit(plan, tmp_op, src_op);

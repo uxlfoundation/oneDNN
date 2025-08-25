@@ -18,16 +18,13 @@
 #define GPU_INTEL_JIT_IR_CORE_HPP
 
 #include <algorithm>
-#include <atomic>
 #include <cstdio>
 #include <memory>
-#include <numeric>
 #include <string>
 
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
-#include "common/math_utils.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
@@ -675,6 +672,9 @@ public:
         return bits_per_byte * size() / bitsize();
     }
 
+    // For floating point types, returns the number of mantissa bits
+    int mantissa_bits() const;
+
     std::string str() const {
         ostringstream_t oss;
         oss << to_string(kind());
@@ -692,6 +692,9 @@ private:
     int elems_ = 0;
     type_attr_t attr_ = type_attr_t::undef;
 };
+
+// Can type b represent all values of type a?
+bool is_subset(const type_t &a, const type_t &b);
 
 // type_t to dnnl_data_type_t convertor.
 data_type_t to_dnnl(const type_t &type);

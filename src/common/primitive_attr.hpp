@@ -554,6 +554,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
 
         scales_ = other.scales_;
         zero_points_ = other.zero_points_;
+        precomputed_reductions_ = other.precomputed_reductions_;
         rounding_mode_ = other.rounding_mode_;
         scratchpad_mode_ = other.scratchpad_mode_;
         fpmath_ = other.fpmath_;
@@ -592,6 +593,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         fpmath_mode = 1u << 15,
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
+        precomputed_reductions = 1u << 18,
     };
 
     /** Returns true if the attributes have default values.
@@ -608,6 +610,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
                 && fpmath_ == rhs.fpmath_ && acc_mode_ == rhs.acc_mode_
                 && deterministic_ == rhs.deterministic_
                 && scales_ == rhs.scales_ && zero_points_ == rhs.zero_points_
+                && precomputed_reductions_ == rhs.precomputed_reductions_
                 && post_ops_ == rhs.post_ops_
                 && rnn_data_qparams_ == rhs.rnn_data_qparams_
                 && rnn_weights_qparams_ == rhs.rnn_weights_qparams_
@@ -683,6 +686,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     // NOTE: make sure that the types below have overloaded comparison operator
     dnnl::impl::scales_t scales_;
     dnnl::impl::zero_points_t zero_points_;
+    dnnl::impl::precomputed_reductions_t precomputed_reductions_;
     dnnl::impl::scratchpad_mode_t scratchpad_mode_;
     dnnl::impl::fpmath_t fpmath_;
     dnnl::impl::accumulation_mode_t acc_mode_;

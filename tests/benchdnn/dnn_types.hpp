@@ -154,6 +154,61 @@ struct attr_t {
         std::map<int, entry_t> points;
     };
 
+    struct precomputed_reductions_t {
+        struct entry_t {
+            entry_t(policy_t apolicy = COMMON, dnnl_data_type_t adt = dnnl_s32,
+                    const std::vector<dnnl_dim_t> &agroups = {})
+                : policy(apolicy), dt(adt), groups(agroups) {}
+
+            int from_str(const std::string &s);
+
+            bool is_def() const {
+                return policy == COMMON && dt == dnnl_s32 && groups.empty();
+            }
+
+            policy_t policy = COMMON;
+            dnnl_data_type_t dt = dnnl_s32;
+            std::vector<dnnl_dim_t> groups;
+        };
+
+        int from_str(const std::string &s);
+
+        bool is_def(int arg) const {
+            return entries.empty() || get(arg).is_def();
+        }
+        bool is_def() const {
+            if (entries.empty()) return true;
+
+            bool def = true;
+            for (const auto &e : entries) {
+                def = def && is_def(e.first);
+            }
+            return def;
+        }
+
+        void set(int arg, const entry_t &entry) {
+            if (!entry.is_def()) entries[arg] = entry;
+        }
+        void set(int arg, policy_t policy, dnnl_data_type_t data_type,
+                std::vector<dnnl_dim_t> &groups) {
+            set(arg, entry_t(policy, data_type, groups));
+        }
+        entry_t get(int arg) const {
+            const auto it = entries.find(arg);
+            return it == entries.end() ? entry_t() : it->second;
+        }
+
+        int get_mask(int arg,
+                dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
+                int ndims = -1, bool has_groups = false) const {
+            const auto &e = get(arg);
+            return attr_t::policy2mask(
+                    arg, e.policy, ndims, prim_kind, has_groups);
+        }
+
+        std::map<int, entry_t> entries;
+    };
+
     struct arg_scales_t {
         struct entry_t {
             entry_t(policy_t apolicy = COMMON, float ascale = 1.f,
@@ -436,6 +491,9 @@ struct attr_t {
 
     void insert(const arg_scales_t &as) { this->scales = as; }
     void insert(const zero_points_t &zp) { this->zero_points = zp; }
+    void insert(const precomputed_reductions_t &pr) {
+        this->precomputed_reductions = pr;
+    }
     void insert(const post_ops_t &po) { this->post_ops = po; }
     void insert(dnnl_scratchpad_mode_t sm) { this->scratchpad_mode = sm; }
     void insert(const fpmath_mode_t &fpm) { this->fpmath_mode = fpm; }
@@ -457,6 +515,7 @@ struct attr_t {
 
     arg_scales_t scales;
     zero_points_t zero_points;
+    precomputed_reductions_t precomputed_reductions;
     post_ops_t post_ops;
     dnnl_scratchpad_mode_t scratchpad_mode;
     fpmath_mode_t fpmath_mode;
@@ -581,6 +640,8 @@ std::ostream &operator<<(
 std::ostream &operator<<(std::ostream &s, const policy_t &policy);
 std::ostream &operator<<(
         std::ostream &s, const attr_t::zero_points_t &zero_points);
+std::ostream &operator<<(std::ostream &s,
+        const attr_t::precomputed_reductions_t &precomputed_reductions);
 std::ostream &operator<<(std::ostream &s, const attr_t::arg_scales_t &scales);
 std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t::kind_t &k);
 std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops);

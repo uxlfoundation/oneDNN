@@ -218,6 +218,13 @@ class Converter(metaclass=ConverterMeta):
         return f"--attr-zero-points={params}"
 
     @property
+    def precomputed_reductions(self):
+        params = self._get_quantization(
+            self.entry.exts.precomputed_reductions, 1, "s32"
+        )
+        return f"--attr-precomputed-reductions={params}"
+
+    @property
     def rounding_mode(self):
         rounding_modes = self.entry.exts.rounding_mode
         if rounding_modes is None:
@@ -251,6 +258,7 @@ class Converter(metaclass=ConverterMeta):
             self.post_ops,
             self.scales,
             self.zero_points,
+            self.precomputed_reductions,
             self.scratchpad_mode,
             self.fpmath_mode,
             self.acc_mode,

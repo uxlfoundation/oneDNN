@@ -25,6 +25,8 @@ struct base_settings_t {
 
         void init(const std::vector<attr_t::arg_scales_t> &scales,
                 const std::vector<attr_t::zero_points_t> &zero_points,
+                const std::vector<attr_t::precomputed_reductions_t>
+                        &precomputed_reductions,
                 const std::vector<attr_t::post_ops_t> &post_ops,
                 const std::vector<dnnl_scratchpad_mode_t> &scratchpad_mode,
                 const std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
@@ -34,6 +36,7 @@ struct base_settings_t {
                 const std::vector<attr_t::rounding_mode_t> &rounding_mode) {
             for_(const auto &s : scales)
             for_(const auto &zp : zero_points)
+            for_(const auto &pr : precomputed_reductions)
             for_(const auto &po : post_ops)
             for_(const auto &sm : scratchpad_mode)
             for_(const auto &fm : fpmath_mode)
@@ -41,7 +44,8 @@ struct base_settings_t {
             for_(const auto &d : deterministic)
             for_(const auto &dr : dropout)
             for (const auto &rm : rounding_mode)
-                attrs_.push_back(get_attr(s, zp, po, sm, fm, am, d, dr, rm));
+                attrs_.push_back(
+                        get_attr(s, zp, pr, po, sm, fm, am, d, dr, rm));
         }
 
         using vector_type = std::vector<attr_t>;
@@ -82,6 +86,8 @@ struct base_settings_t {
     std::vector<bool> inplace {false};
     std::vector<attr_t::arg_scales_t> scales {attr_t::arg_scales_t()};
     std::vector<attr_t::zero_points_t> zero_points {attr_t::zero_points_t()};
+    std::vector<attr_t::precomputed_reductions_t> precomputed_reductions {
+            attr_t::precomputed_reductions_t()};
     std::vector<attr_t::post_ops_t> post_ops {attr_t::post_ops_t()};
     std::vector<dnnl_scratchpad_mode_t> scratchpad_mode {
             attr_t::get_default_scratchpad_mode()};
@@ -118,16 +124,18 @@ struct base_settings_t {
     // Returns `true` if all vector members in this class have capacity of one.
     virtual bool has_single_setup() const {
         return mb.size() == 1 && inplace.size() == 1 && scales.size() == 1
-                && zero_points.size() == 1 && post_ops.size() == 1
-                && scratchpad_mode.size() == 1 && fpmath_mode.size() == 1
-                && acc_mode.size() == 1 && deterministic.size() == 1
-                && ctx_init.size() == 1 && ctx_exe.size() == 1;
+                && zero_points.size() == 1 && precomputed_reductions.size() == 1
+                && post_ops.size() == 1 && scratchpad_mode.size() == 1
+                && fpmath_mode.size() == 1 && acc_mode.size() == 1
+                && deterministic.size() == 1 && ctx_init.size() == 1
+                && ctx_exe.size() == 1;
     }
 
     virtual void finalize() {
         attributes.clear();
-        attributes.init(scales, zero_points, post_ops, scratchpad_mode,
-                fpmath_mode, acc_mode, deterministic, dropout, rounding_mode);
+        attributes.init(scales, zero_points, precomputed_reductions, post_ops,
+                scratchpad_mode, fpmath_mode, acc_mode, deterministic, dropout,
+                rounding_mode);
     }
 };
 

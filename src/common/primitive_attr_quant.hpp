@@ -372,6 +372,41 @@ private:
     }
 };
 
+struct precomputed_reductions_t : public quant_entries_t {
+    precomputed_reductions_t() : quant_entries_t(default_data_type_) {};
+
+    // This interface checks the content of all entries, and allows to ignore
+    // certain arguments.
+    // Note: can't be put in `quant_entries_t` because `default_data_type_` is
+    // not a static member, but `has_default_property` requires `predicate`
+    // to have it this way.
+    bool has_default_data_type(
+            const std::vector<int> &supported_args = {}) const {
+        auto predicate = [](const quant_entry_t &s) {
+            // Note: `data_type::undef` represents `default_quant_entry`.
+            return utils::one_of(
+                    s.get_data_type(), default_data_type_, data_type::undef);
+        };
+        return has_default_property(supported_args, predicate);
+    }
+    // Note: must present as compiler doesn't see an overloaded version inside a
+    // base class.
+    bool has_default_data_type(int arg) const {
+        return quant_entries_t::has_default_data_type(arg);
+    }
+
+    static precomputed_reductions_t deserialize(deserializer_t &d);
+
+private:
+    static constexpr data_type_t default_data_type_ = data_type::s32;
+
+    bool check_arg(int arg) const override {
+        // So far, only SRC is supported for dynamic quantization cases.
+        if (arg == DNNL_ARG_SRC) return true;
+        return false;
+    }
+};
+
 } // namespace impl
 } // namespace dnnl
 

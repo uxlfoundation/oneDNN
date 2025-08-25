@@ -264,13 +264,14 @@ void ref_partition_t::exec_ops(res_t *res) {
                         == graph_recognized_pattern_t::sdpa_fwd;
 
         // For SDPA training backward, it is limited for MatMuls used to compute
-        // dQ, dK, dV (which has no child ops).
+        // dQ, dK, dV (which has no child ops or child ops = ReduceSum for GQA).
         const deserialized_op_t *child_op = nullptr;
         const bool is_matmul_in_sdpa_bwd_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul
                 && dg_->get_recognized_pattern()
                         == graph_recognized_pattern_t::sdpa_bwd
-                && !has_child_op(op, &child_op);
+                && (!has_child_op(op, &child_op)
+                        || child_op->kind_ == "ReduceSum");
 
         // For gated-MLP, it is complicated - the Swish op is decomposed into
         // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its

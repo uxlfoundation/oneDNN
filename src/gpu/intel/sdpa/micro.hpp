@@ -88,7 +88,8 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool softmax_inf_as_zero;
     bool q_arrive_await_barrier;
     bool use_systolic_ukernel;
-    uint8_t padding3[1] = {0};
+    bool kq_f16_accumulate, vs_f16_accumulate;
+    uint8_t padding3[7] = {0};
 
     micro_ukernel_params_t ukernel_config;
 };

@@ -214,9 +214,18 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
                 "Q tensor's data type must be bf16 or f16");
     }
     problem.Tc = problem.Tc_ext = Type::f32;
-    problem.Ts = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+    problem.Ts = problem.Tc;
 
     auto problem_kq = problem;
+
+    bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
+            || (vs_acc_dt() == data_type::f16);
+    VCHECK_SDPA_COND(
+            IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
+            "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
+    problem_kq.Tc = problem_kq.Ts
+            = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+
     problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
 
     if (with_key_scales() && !kq_common_scales) {
@@ -287,7 +296,8 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up GEMMProblem structure for second GEMM: V * S  */
     auto problem_vs = std::move(problem);
-    problem.Ts = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+    problem_vs.Tc = problem_vs.Ts
+            = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);
@@ -509,6 +519,8 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.softmax_inf_as_zero
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
+    conf.kq_f16_accumulate = (kq_acc_dt() == data_type::f16);
+    conf.vs_f16_accumulate = (vs_acc_dt() == data_type::f16);
     return status::success;
 }
 
@@ -584,6 +596,8 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+    kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
+    kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

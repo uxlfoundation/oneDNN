@@ -727,7 +727,7 @@ class sdpa_test_t : public ::testing::TestWithParam<sdpa_dims_t> {
 public:
     // Testing reusable functionality requires shared engine between tests.
     static void SetUpTestSuite() {
-        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
+        DPRINT("%s:%s:%d *******> \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -735,17 +735,15 @@ public:
         GTEST_SKIP() << "SDPA primitive tests do not support HIP";
 #endif
 #ifndef DNNL_TEST_WITH_ENGINE_PARAM
-        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "SDPA tests require gpus.");
-        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
         sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
 #endif
-        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
+        DPRINT("%s:%s:%d <******* \n", PRINTHEAD);
     }
 
     void SetUp() override {
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d ++++++> \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -761,21 +759,20 @@ public:
                 "SDPA tests require gpus.");
         eng = get_sdpa_test_engine();
 #endif
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d ++++++ getting  dnnl::stream(eng)\n", PRINTHEAD);
         strm = dnnl::stream(eng);
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d ++++++ getting GetParam()\n", PRINTHEAD);
         p = GetParam();
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d ++++++ calling doubled_memory.reserve(30)\n", PRINTHEAD);
         doubled_memory.reserve(30);
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d ++++++ getting get_descriptors(eng, strm, p, doubled_memory)\n", PRINTHEAD);
         t = get_descriptors(eng, strm, p, doubled_memory);
-        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
+        DPRINT("%s:%s:%d <++++++ \n", PRINTHEAD);
     }
 
     void TearDown() override {
         DPRINT("%s:%s:%d ------ \n", PRINTHEAD);
         for (dnnl_memory_t &mem : doubled_memory) {
-            DPRINT("%s:%s:%d ------ \n", PRINTHEAD);
             CHECK(dnnl_memory_destroy(mem));
         }
     }
@@ -1311,10 +1308,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     }
 
     const auto loop = [&]() {
+        DPRINT("%s:%s:%d &&&&&&&&& calling bmm1_prim.execute\n", PRINTHEAD);
         bmm1_prim.execute(strm, bmm1_args);
         //strm.wait();
         //print_mem(score, "score");
 
+        DPRINT("%s:%s:%d &&&&&&&&& calling sotmax_prim.execute\n", PRINTHEAD);
         softmax_prim.execute(strm,
                 {
                         {DNNL_ARG_SRC, score},
@@ -1323,6 +1322,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         //strm.wait();
         //print_mem(score2, "score2");
 
+        DPRINT("%s:%s:%d &&&&&&&&& calling bmm2_prim.execute\n", PRINTHEAD);
         bmm2_prim.execute(strm,
                 {
                         {DNNL_ARG_SRC, score2},
@@ -1440,7 +1440,7 @@ int to_attn_mask_type(mask_type t) {
 GPU_TEST_P(sdpa_test_t, compare) {
 
 
-    DPRINT("%s:%s:%d @@@@@@@@@@@@@@@@@ >>>>>>>>> \n", PRINTHEAD);
+    DPRINT("%s:%s:%d @@@ GPU_TEST_P(sdpa_test_t, compare) @@@ >>>>>>>>> \n", PRINTHEAD);
 
     memory::data_type scale_dt = t.m_query.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
@@ -1462,6 +1462,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
     try {
+        DPRINT("%s:%s:%d @@@ sdpa_quantized_pd = sdpa::primitive_desc(...\n", PRINTHEAD);
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
@@ -1471,6 +1472,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
                 t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
                 t.sdpa_vs_attr_quantized);
+        DPRINT("%s:%s:%d @@@ sdpa_quantized_p = sdpa(sdpa_quantized_pd)\n", PRINTHEAD);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
     } catch (const dnnl::error &e) {
         if (e.status == dnnl_unimplemented)
@@ -1506,8 +1508,10 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
     if (mask_ptr) { s8_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
+    DPRINT("%s:%s:%d @@@ sdpa_quantized_p.execute(strm, s8_args)\n", PRINTHEAD);
     sdpa_quantized_p.execute(strm, s8_args);
 
+    DPRINT("%s:%s:%d @@@ calling prim_sdpa_quant(...\n", PRINTHEAD);
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
             t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
@@ -1517,6 +1521,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
 #if 0
     if (::getenv("SKIP_CHECK")) return;
 #endif
+    DPRINT("%s:%s:%d @@@ calling check_memory<xxxxx>(t.m_output, t.m_output_quantized, strm)\n", PRINTHEAD);
     if (t.m_output.get_desc().get_data_type() == mdt::f16)
         check_memory<float16_t>(t.m_output, t.m_output_quantized, strm);
     else if (t.m_output.get_desc().get_data_type() == mdt::bf16)
@@ -1532,7 +1537,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 #endif
 
-    DPRINT("%s:%s:%d <<<<<<<<<< @@@@@@@@@@@@@@@@@\n", PRINTHEAD);
+    DPRINT("%s:%s:%d <<<<<< @@@ GPU_TEST_P(sdpa_test_t, compare) @@@\n", PRINTHEAD);
+
 }
 std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {

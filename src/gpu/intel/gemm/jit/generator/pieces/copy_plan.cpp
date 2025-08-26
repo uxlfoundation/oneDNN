@@ -1360,8 +1360,11 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     int simd = i.simd;
 
     auto st = i.src0.type, dt = i.dst.type;
-    if (!isW(st) && !isB(st)) stub();
-    bool s4 = dt == DataType::s4;
+    bool s4 = (dt == DataType::s4);
+    if (isD(st) || isQ(st)) {
+        copyThrough(i, (isSigned(st) && s4) ? DataType::w : DataType::uw, 1);
+        return;
+    }
     auto dst = i.dst;
     auto tmp = newTemp(DataType::uw, simd, 1);
 

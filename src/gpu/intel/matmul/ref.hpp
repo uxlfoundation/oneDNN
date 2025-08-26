@@ -61,7 +61,8 @@ struct ref_t : public primitive_t {
                             | smask_t::scales_groups | smask_t::dropout
                             | smask_t::zero_points_data_type
                             | smask_t::zero_points_groups | smask_t::post_ops
-                            | smask_t::fpmath_mode | smask_t::rounding_mode
+                            | smask_t::accumulation_mode | smask_t::fpmath_mode
+                            | smask_t::rounding_mode
                             | smask_t::precomputed_reductions),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -273,7 +274,17 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
         def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
         def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
-        def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
+        data_type_t acc_type = pd()->desc()->accum_data_type;
+        switch (pd()->attr()->acc_mode_) {
+            case accumulation_mode::strict:
+            case accumulation_mode::relaxed:
+            case accumulation_mode::any: break;
+            case accumulation_mode::f16: acc_type = data_type::f16; break;
+            case accumulation_mode::f32: acc_type = data_type::f32; break;
+            case accumulation_mode::s32: acc_type = data_type::s32; break;
+            default: break;
+        }
+        def_data_type(kernel_ctx, acc_type, "ACC");
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_SCALES");

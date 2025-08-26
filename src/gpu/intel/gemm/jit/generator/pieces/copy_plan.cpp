@@ -1362,51 +1362,45 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     auto st = i.src0.type, dt = i.dst.type;
     if (!isW(st) && !isB(st)) stub();
     bool s4 = dt == DataType::s4;
-    auto ie = splitMultiple<5>(i);
+    auto dst = i.dst;
+    auto tmp = newTemp(DataType::uw, simd, 1);
 
     if (i.sat) {
+        auto ie = splitMultiple<3>(i);
         auto ssrc = i.src0;
-        auto tmp = newTemp(DataType::w, simd, 1);
-        for (int i = 0; i < 5; ++i)
+        if (ssrc.overwrite && isW(st)) {
+            tmp = ssrc;
+            tmp.type = DataType::uw;
+        }
+        for (int i = 0; i < 3; ++i)
             ie[i]->sat = false;
 
-        if (s4) {
-            ie[0]->op = Opcode::add;
-            ie[0]->dst = tmp;
-            ie[0]->src0 = ssrc;
-            ie[0]->src1 = 8;
-        } else {
-            ie[0]->invalidate();
-        }
+        ie[0]->op = Opcode::sel;
+        ie[0]->cmod = ConditionModifier::lt;
+        ie[0]->dst = tmp;
+        ie[0]->src0 = ssrc;
+        ie[0]->src1 = s4 ? 7 : 15;
+        ie[0]->sat = isSigned(ssrc.type) && !s4;
 
-        ie[1]->op = Opcode::sel;
-        ie[1]->cmod = ConditionModifier::gt;
-        ie[1]->dst = tmp;
-        ie[1]->src0 = i.src0;
-        ie[1]->src1 = 0;
+        if (isSigned(ssrc.type) && s4) {
+            ie[0]->dst.type = tmp.type = asSigned(tmp.type);
 
-        ie[2]->op = Opcode::sel;
-        ie[2]->cmod = ConditionModifier::lt;
-        ie[2]->dst = ie[1]->src0 = ie[1]->dst;
-        ie[2]->src1 = 15;
+            ie[1]->op = Opcode::sel;
+            ie[1]->cmod = ConditionModifier::ge;
+            ie[1]->dst = tmp;
+            ie[1]->src0 = tmp;
+            ie[1]->src1 = -8;
+        } else
+            ie[1]->invalidate();
 
-        if (s4) {
-            ie[3]->op = Opcode::xor_;
-            ie[3]->dst = ie[2]->dst;
-            ie[3]->src0 = ie[2]->dst;
-            ie[3]->src1 = 0x8;
-        } else {
-            ie[3]->invalidate();
-        }
-
-        ie[4]->op = Opcode::mov;
-        ie[4]->dst = i.dst;
-        ie[4]->src0 = ie[2]->dst;
-        ie[4]->src0.range = dt;
+        ie[2]->op = Opcode::mov;
+        ie[2]->dst = dst;
+        ie[2]->src0 = tmp;
+        ie[2]->src0.range = dt;
         return;
     }
 
-    auto tmp = newTemp(DataType::uw, simd, 1);
+    auto ie = splitMultiple<5>(i);
     auto osrc = i.src0;
     auto ssrc = newTemp(DataType::uw, simd, 1);
     auto ddst = i.dst;

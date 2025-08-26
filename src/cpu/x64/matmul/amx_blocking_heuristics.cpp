@@ -755,15 +755,6 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         return postops_inst_count / avx_ipc > div_up(k_blk, k_tmul);
     };
 
-    auto skip_extendable_k = [&]() {
-        size_t num_amx_ops_over_k = div_up(k_blk_, 64 / gemm_dt_sz);
-        return k_blk_ % num_amx_ops_over_k == 0
-                && k_blk_ / num_amx_ops_over_k <= 64 / gemm_dt_sz
-                && (k_blk_ / num_amx_ops_over_k)
-                        % data_type_vnni_granularity(wei_dt)
-                == 0;
-    };
-
     if (is_horizontal) {
         size_t l1_eff_factor = div_up(K, k_blk_h);
         // This works for M > 32 in this case k_blk_h << 4096 =~ 512
@@ -841,6 +832,25 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     efficiency_score_ = calculate_blocking_scores();
 
     return true;
+}
+bool matmul_amx_blocking_params_macro_t::skip_extendable_k() const {
+
+    auto skip_for_k_blk = [&](size_t k_to_check) {
+        size_t num_amx_ops_over_k = div_up(k_to_check, 64 / gemm_dt_sz);
+        bool common_k_tile_exists = k_to_check % num_amx_ops_over_k == 0;
+        size_t k_tile = k_to_check / num_amx_ops_over_k;
+        bool k_tile_size_fits = k_tile <= 64 / gemm_dt_sz;
+        bool k_tile_is_vnni = k_tile % data_type_vnni_granularity(wei_dt) == 0;
+
+        return common_k_tile_exists && k_tile_size_fits && k_tile_is_vnni;
+    };
+
+    size_t k_tail = K % k_blk_;
+    if (k_tail) {
+        return skip_for_k_blk(k_blk_) && skip_for_k_blk(k_tail);
+    } else {
+        return skip_for_k_blk(k_blk_);
+    }
 }
 
 void matmul_amx_blocking_params_macro_t::set_core_divs(

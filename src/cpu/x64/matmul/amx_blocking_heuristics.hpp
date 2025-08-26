@@ -147,6 +147,7 @@ private:
     bool operator>(const matmul_amx_blocking_params_macro_t &other) const;
     bool operator!=(const matmul_amx_blocking_params_macro_t &other) const;
     bool operator<(const matmul_amx_blocking_params_macro_t &other) const;
+    bool skip_extendable_k() const;
 };
 
 class matmul_amx_blocking_params_micro_t : public matmul_amx_blocking_params_t {

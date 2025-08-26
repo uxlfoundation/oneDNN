@@ -111,6 +111,28 @@ DECLARE_2D_TILE(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE, ugemm_vs_sg_tile_m,
         8, 1, ugemm_vs_sg_tile_n / 8)
 #endif
 
+#if KQ_F16_ACC
+DECLARE_2D_TILE(s_tile_type_float, float, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1)
+DECLARE_2D_TILE_COPY_REBLOCK(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, CONVERT_FLOAT_T)
+#endif
+
+#if VS_F16_ACC
+DECLARE_2D_TILE(a_tile_type_float, float, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
+        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1)
+DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
+        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_tile_type_float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, CONVERT_FLOAT_T)
+#endif
+
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1 / 2, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
@@ -166,17 +188,31 @@ DECLARE_2D_TILE_BLOCK2D_OPS(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8)
 #endif
 
-#if BLOCK_A
-DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
-        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
-        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
-        ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n, CONVERT_DATA_T)
-#else
-DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
-        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
-        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
-        ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8, CONVERT_DATA_T)
+#if KQ_F16_ACC
+
+DECLARE_2D_TILE_COPY_REBLOCK(s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, s_tile_type_reblock, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
+        ugemm_kq_sg_tile_m, CONVERT_DATA_T)
+
+DECLARE_2D_TILE_VREDUCE(s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, s_sum_tile_type, SUBGROUP_SIZE,
+        ugemm_kq_sg_tile_n, 1, 1, 1)
+
+DECLARE_2D_TILE_HREDUCE(s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, kmask_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_sg_tile_m, 1, 1, 1)
+#if WITH_ATTN_MASK
+DECLARE_2D_TILE_HREDUCE(s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
+        mask_bc, mask_nbr, mask_nbc)
 #endif
+
+#else
 
 DECLARE_2D_TILE_COPY_REBLOCK(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
@@ -199,11 +235,46 @@ DECLARE_2D_TILE_HREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
         mask_bc, mask_nbr, mask_nbc)
 #endif
+#endif
+
+#if VS_F16_ACC
+
+#if BLOCK_A
+DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type_float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n, CONVERT_DATA_T)
+#else
+DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type_float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8, CONVERT_DATA_T)
+#endif
+
+DECLARE_2D_TILE_HREDUCE(a_tile_type_float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_scale_tile_type, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_n, 1, 1, 1)
+
+#else
+
+#if BLOCK_A
+DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
+        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n, CONVERT_DATA_T)
+#else
+DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
+        ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1, a_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8, CONVERT_DATA_T)
+#endif
 
 DECLARE_2D_TILE_HREDUCE(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
         ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1, a_scale_tile_type, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_n, 1, 1, 1)
+#endif
 
 #if ugemm_kq_wg_tile_n == ugemm_vs_wg_tile_n \
         && (ugemm_kq_sg_tile_n % ugemm_vs_sg_tile_n) == 0
@@ -519,7 +590,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     as_uint(neg_inf));
     }
 
+#if VS_F16_ACC
+    a_tile_type_float A_tile;
+#else
     a_tile_type A_tile;
+#endif
     s_sum_tile_type S_sum_tile;
     s_sum_tile_type S_max_tile, S_max_tile_old;
 
@@ -580,7 +655,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 
         /* Calculate S = (K^T) * Q */
+#if KQ_F16_ACC
+        s_tile_type S_tile_f16
+#else
         s_tile_type S_tile
+#endif
                 = ugemm_kq(K, ldk, Q_slm, D_MAX, k0end, ugemm_kq_wg_tile_n, d,
                         k0, 0, 0, sg_i_kq, sg_j_kq, (local char *)ugemm_slm
 #if KEY_SCALES == QUANTIZE_2D
@@ -596,6 +675,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                         ldkq
 #endif
                 );
+#if KQ_F16_ACC
+        s_tile_type_float S_tile;
+        tile_copy_reblock(S_tile_f16, &S_tile);
+#endif
 
 #if KEY_SCALES == QUANTIZE_COMMON
 #define k_scale_op(x) ((x)*k_scale)
@@ -864,23 +947,32 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (last && need_sum_barrier)
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
-        /* Accumulate A += V * S */
-        a_tile_type A_tile1 = ugemm_vs(
-                V, ldv, S_slm, ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n,
-                k_chunk, 0, 0, 0, sg_i_vs, sg_j_vs, (local char *)ugemm_slm
+            /* Accumulate A += V * S */
+#if VS_F16_ACC
+        a_tile_type A_tile1_f16
+#else
+        a_tile_type A_tile1
+#endif
+                = ugemm_vs(V, ldv, S_slm, ugemm_kq_wg_tile_m, d,
+                        ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0, sg_i_vs, sg_j_vs,
+                        (local char *)ugemm_slm
 #if VAL_SCALES == QUANTIZE_2D
-                ,
-                V_scales
+                        ,
+                        V_scales
 #endif
 #if VAL_ZERO_POINTS
-                ,
-                V_zp
+                        ,
+                        V_zp
 #endif
 #if (VAL_SCALES == QUANTIZE_2D) || VAL_ZERO_POINTS
-                ,
-                ldvq
+                        ,
+                        ldvq
 #endif
-        );
+                );
+#if VS_F16_ACC
+        a_tile_type_float A_tile1;
+        tile_copy_reblock(A_tile1_f16, &A_tile1);
+#endif
 
         V += ldv * ugemm_kq_wg_tile_m / VAL_ELEMENTS_PER_BYTE;
 #if VAL_SCALES == QUANTIZE_2D

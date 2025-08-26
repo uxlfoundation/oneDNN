@@ -196,9 +196,9 @@ private:
     const reg64_t reg_aux_A = r10;
     const reg64_t reg_aux_B = abi_param1;
     const injector_utils::reg64_savable_t reg_aux1_A {
-            regscratchpad_, abi_not_param1, r16}; // brgemm_strd
+            regscratchpad_, abi_not_param1}; // brgemm_strd
     const injector_utils::reg64_savable_t reg_aux1_B {
-            regscratchpad_, r8, r17}; // brgemm_strd
+            regscratchpad_, r8}; // brgemm_strd
     const reg64_t reg_a_offset = r9;
     const reg64_t reg_aux_N = r11;
 
@@ -212,7 +212,7 @@ private:
     const injector_utils::reg64_savable_t reg_aux_src_scales {
             regscratchpad_, rax, r19};
     const injector_utils::reg64_savable_t reg_aux_wei_scales {
-            regscratchpad_, rax, r27};
+            regscratchpad_, rax};
     const injector_utils::reg64_savable_t reg_aux_dst_scales {
             regscratchpad_, rax, r20};
     const injector_utils::reg64_savable_t reg_dst_zero_point {

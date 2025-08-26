@@ -92,6 +92,7 @@ if(NOT ONEDNN_BUILD_GRAPH)
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/gated_mlp_wei_combined.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/gated_mlp_int4.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa_bottom_right_causal_mask.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/graph/gqa_training.cpp
         )
 endif()
 

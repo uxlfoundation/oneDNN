@@ -462,7 +462,19 @@ private:
                     ld1b(zmm_in.s, k_full_mask / T_z, op);
                 }
                 break;
-            case data_type::bf16: assert(!"unsupported data type\n"); break;
+            case data_type::bf16:
+                if (mask_flag) {
+                    if (store) {
+                        st1w(zmm_in.s, ktail_mask / T_m, op);
+                    } else {
+                        ld1h(zmm_in.s, ktail_mask / T_z, op);
+                        lsl(zmm_in.s, zmm_in.s, 16);
+                    }
+                } else {
+                    ld1h(zmm_in.s, k_full_mask / T_z, op);
+                    lsl(zmm_in.s, zmm_in.s, 16);
+                }
+                break;
             default: assert(!"unsupported data type");
         }
         if (types::is_integral_dt(type_in)) {
@@ -611,7 +623,7 @@ private:
                 add_imm(X_DEFAULT_ADDR, aux_reg_in,
                         inp_typesize_ * (m * brg.LDC + n * brg.ld_block),
                         X_TMP_0);
-                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
             }
         }
@@ -637,7 +649,7 @@ private:
                 auto vmm_bias = vmm_tmp(0);
                 add_imm(X_DEFAULT_ADDR, aux_reg_bias,
                         bia_typesize_ * (n * brg.ld_block), X_TMP_0);
-                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
                 for (int m = 0; m < m_block; m++) {
                     fadd(vector(m, n).s, vector(m, n).s, vmm_bias.s);
@@ -713,6 +725,15 @@ private:
                             out_typesize_ * (m * LDD_ + n * brg.ld_block),
                             X_TMP_0); //addr
                     st1w(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
+                    break;
+                case data_type::bf16:
+                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
+                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
+                            X_TMP_0); //addr
+                    // bfcvt() converts f32 to bf16 (by zero extension) and places bf16s into even lanes
+                    // st1h(vmm.s, ....) narrows bf16's in even lanes into memory.
+                    bfcvt(vmm.h, k_mask / T_m, vmm.s);
+                    st1h(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
                     break;
                 case data_type::s8: assert(!"unsupported data type\n"); break;
                 case data_type::u8:

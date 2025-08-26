@@ -83,6 +83,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && (jcp_.stride_w < 2 || jcp_.stride_h < 2)) {
         return status::unimplemented;
     }
+
     brgs_ = std::make_shared<brgemm_containers::brgemm_desc_container_t>(16);
 
     const float alpha = 1.0;

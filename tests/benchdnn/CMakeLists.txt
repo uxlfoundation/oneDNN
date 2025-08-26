@@ -196,6 +196,28 @@ foreach(driver ${all_drivers})
             else()
                 register_all_tests(gpu "${driver}" "${test_files_ci}")
             endif()
+        endif()
+        if(has_cpu)
+            register_all_tests(cpu "${driver}" "${test_files_ci}")
+        endif()
+    elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_SIM_CI)
+        if(NOT DNNL_EXPERIMENTAL_SPARSE)
+            list(REMOVE_ITEM test_files_ci "test_matmul_sparse_ci")
+        endif()
+
+        # gpu_ci files may happen if cpu coverage can not be used on gpu
+        # Filter out gpu_ci inputs from ci
+        foreach(test_file ${test_files_gpu_ci} ${test_files_gpu_sim_ci})
+            string(REPLACE "${test_file}" "" test_files_ci "${test_files_ci}")
+        endforeach()
+
+        # use gpu_ci if not empty
+        if(has_gpu)
+            if(test_files_gpu_ci)
+                register_all_tests(gpu "${driver}" "${test_files_gpu_ci}")
+            else()
+                register_all_tests(gpu "${driver}" "${test_files_ci}")
+            endif()
             register_all_tests(gpu "${driver}" "${test_files_gpu_sim_ci}")
         endif()
         if(has_cpu)

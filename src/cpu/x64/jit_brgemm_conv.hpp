@@ -206,6 +206,10 @@ private:
             const char *__restrict input_weights,
             const char *__restrict &wei) const;
 
+    void maybe_pre_apply_comp_pad(const brgemm_thread_ctx_t &btc,
+            char *dst_base, const int kh_s, const int kh_f, const int kw_s,
+            const int kw_f, const bool is_oc_tail, const bool maybe_do_init);
+
     status_t add_po_kernel(brgemm_desc_t *bcfg, int ker_idx, bool is_init);
     void add_po_kernels(int i_N, int init_bcast_dim, int po_bcast_dim);
     status_t add_brg_kernel(int brg_idx);

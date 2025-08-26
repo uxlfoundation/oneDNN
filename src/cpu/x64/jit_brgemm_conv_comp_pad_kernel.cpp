@@ -404,7 +404,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kw_loop(const int icb,
         else
             kw_loop_base(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
     } else {
-        if (jcp_.exec_type == exec_vpad)
+        if (jcp_.exec_type != exec_base)
             kw_loop_base(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
         else
             fwd_kw_ow_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block,

@@ -277,6 +277,7 @@ struct brgemm_desc_t {
     bool with_sum = false;
     bool req_cal_comp_pads = false;
     bool req_comp_pads_with_bcast = false;
+    bool pre_apply_comp_pad = false;
 
     float sum_scale = 0.0f;
     int32_t sum_zp = 0;

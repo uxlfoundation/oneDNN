@@ -1175,6 +1175,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
                         || kw_block_pad != kw);
         if (exec_type == exec_base)
             use_buffer = use_buffer || (maybe_use_buffer && iwp != iw);
+        use_buffer = true;
 
         const status_t st = estimate_brgemm_ur();
         if (st != status::success) continue;
@@ -2395,22 +2396,24 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
     const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    const auto kw_cnt = 1 + utils::div_up(abs(jcp.l_pad), jcp.dilate_w + 1)
+            + utils::div_up(abs(jcp.r_pad), jcp.dilate_w + 1);
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans ? kd_cnt * kh_cnt * kw_cnt
+                    * 4 //nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
+                                                      : kd_cnt * kh_cnt;
+    const auto comp_buffer_ow = jcp.exec_type == exec_base ? jcp.ow : 1;
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
             * comp_buffer_ow * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
     // Dispatch the shapes to VNNI for better performance
     // TODO: optimize the perf for zero point with large buffer on AMX
-    if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
+    /*    if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
             && (jcp.l_pad > 0 || jcp.r_pad > 0) && jcp.oc * jcp.ow > 8192)
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,
                 "no optimization for zero point on amx")
-
+*/
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf
     // For shapes with large ow we calculate the comp inside brgemm kernel too
@@ -2439,6 +2442,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
+    printf("exec type: %d, is relo: %d, comp_buffer_ow: %d, req_brg_comp_pad: "
+           "%d, req_cal_comp_pad: %d\n",
+            jcp.exec_type, jcp.is_relo(), comp_buffer_ow, jcp.req_brg_comp_pad,
+            jcp.req_cal_comp_pad);
+    printf("is os blocking: %d, ic block: %d, oc block: %d, oh block: %d, ow "
+           "block: %d, t pad: %d, b pad: %d, l pad: %d, r pad: %d\n",
+            jcp.is_os_blocking, jcp.ic_block, jcp.oc_block, jcp.oh_block,
+            jcp.ow_block, jcp.t_pad, jcp.b_pad, jcp.l_pad, jcp.r_pad);
 
     return status::success;
 }

@@ -304,6 +304,61 @@ private:
     void generate() override;
 };
 
+template <typename Vmm>
+struct jit_brgemm_kernel_trans_comp_t
+    : public jit_brgemm_kernel_post_ops_base_t,
+      public jit_generator_t {
+    jit_brgemm_kernel_trans_comp_t(const brgemm_desc_t &abrg);
+
+    status_t generate_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+    void operator()(brgemm_kernel_post_ops_args_t *args) const override {
+        return jit_generator_t::operator()(args);
+    }
+
+    ~jit_brgemm_kernel_trans_comp_t() override = default;
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_trans_comp_t)
+
+    // Used for assertion on implementation side in debug mode.
+    int get_bcast_dim() const override { return brg_.bcast_dim; }
+
+private:
+    brgemm_desc_t brg_;
+
+    data_type_t inp_dt_;
+    data_type_t out_dt_;
+
+    int max_vregs_;
+    int inp_typesize_;
+    int out_typesize_;
+
+    using reg64_t = const Xbyak::Reg64;
+
+    // Register decomposition
+    const reg64_t param1 = abi_param1;
+    const reg64_t reg_in = r15;
+    const reg64_t reg_out = r14;
+    const reg64_t aux_reg_in = r13;
+    const reg64_t aux_reg_out = r12;
+
+    const reg64_t reg_zp_a_val = r11;
+    const reg64_t reg_zp_a_comp = r10;
+    const reg64_t reg_s8s8_comp = r9;
+    const reg64_t reg_aux_zp_a_comp = r8;
+    const reg64_t reg_aux_s8s8_comp = rdx;
+
+    const int n_block2_ = 4;
+
+    Vmm vmm_tmp(int i) const { return Vmm(max_vregs_ - 1 - i); }
+
+    Vmm vector(int m, int n, int n_block) { return Vmm(m * n_block + n); };
+
+    //   void loop_by_N(int m_block, int nb2, int nb2_tail, int nb_tail);
+    void generate() override;
+};
+
 } // namespace x64
 } // namespace cpu
 } // namespace impl

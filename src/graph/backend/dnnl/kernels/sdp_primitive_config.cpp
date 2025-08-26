@@ -51,6 +51,12 @@ status_t sdp_primitive_config_t::initial_check(
     // Dispatch f32 implicit causal mask cases into the f32 ukernel impl.
     for (auto &cur_op : sg->get_ops()) {
         const auto opk = cur_op->get_kind();
+        // SDPA with static quantization and dequantization is currently
+        // unsupported in the ukernel. Only compressed KV SDPA pattern with
+        // dynamic dequantization before K and V is supported.
+        VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dequantize
+                        && opk != graph::op_kind::Quantize,
+                status::unimplemented, "Not support quantized SDPA");
         if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
     }
     if (is_f32 && !has_genindex) {

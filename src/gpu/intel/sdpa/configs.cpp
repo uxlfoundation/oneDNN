@@ -45,31 +45,34 @@ inline property &operator^=(property &a, property b) {
     return (property &)((int &)a ^= (int)b);
 }
 
-std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
+std::string to_string(const config_query_t &q) {
+    std::stringstream s;
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
       << " seq:" << q.seq_len
-      << " thinq,qnt,int,fma,f32?: " << (bool)(q.prop & property::second_token)
-      << " " << (bool)(q.prop & property::quantized) << " "
-      << (bool)(q.prop & property::integrated) << " "
-      << (bool)(q.prop & property::fma) << " "
-      << (bool)(q.prop & property::f32);
-    return s;
+      << " prop:" << ((bool)(q.prop & property::second_token) ? " thinq" : "")
+      << ((bool)(q.prop & property::quantized) ? " quant" : "")
+      << ((bool)(q.prop & property::integrated) ? " [integ]" : "")
+      << ((bool)(q.prop & property::fma) ? " fma" : "")
+      << ((bool)(q.prop & property::f32) ? " [f32]" : "");
+    return s.str();
 }
-std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
+std::string to_string(const config_criteria_t &c) {
+    std::stringstream s;
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
       << " seq:" << c.seq_len
-      << " thinq,qnt,int,fma,f32?: " << (bool)(c.prop & property::second_token)
-      << " " << (bool)(c.prop & property::quantized) << " "
-      << (bool)(c.prop & property::integrated) << " "
-      << (bool)(c.prop & property::fma) << " "
-      << (bool)(c.prop & property::f32);
-    return s;
+      << " prop:" << ((bool)(c.prop & property::second_token) ? " thinq" : "")
+      << ((bool)(c.prop & property::quantized) ? " quant" : "")
+      << ((bool)(c.prop & property::integrated) ? " integ" : "")
+      << ((bool)(c.prop & property::fma) ? " fma" : "")
+      << ((bool)(c.prop & property::f32) ? " f32" : "");
+    return s.str();
 }
-std::ostream &operator<<(std::ostream &s, const config_t &c) {
+std::string to_string(const config_t &c) {
+    std::stringstream s;
     s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
       << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
       << c.wg_m_vs << "," << c.wg_n_vs;
-    return s;
+    return s.str();
 }
 
 // A matching config is a combination of mandatory and optional requirements
@@ -603,10 +606,10 @@ config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_configs), end(sorted_configs), query);
     if (it != end(sorted_configs)) {
-        stringstream_t ss;
-        ss << " {query " << query << "} -> {config " << it->criteria << ":"
-           << it->config << " }";
-        VDEBUGINFO(4, primitive, sdpa, "config search: %s,", ss.str().c_str());
+        VDEBUGINFO(4, primitive, sdpa,
+                "config search: {query %s} -> {%s config:%s},",
+                to_string(query).c_str(), to_string(it->criteria).c_str(),
+                to_string(it->config).c_str());
         return &it->config;
     }
     return nullptr;

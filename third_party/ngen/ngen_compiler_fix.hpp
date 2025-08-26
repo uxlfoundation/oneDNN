@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -170,15 +170,15 @@ void _workaround_() {
     (void) M24.getAll();
     (void) M28.getAll();
 
-    (void) SWSBInfo(sb0).hasDist();  (void) SWSBInfo(sb1).hasDist();  (void) SWSBInfo(sb2).hasDist();  (void) SWSBInfo(sb3).hasDist();
-    (void) SWSBInfo(sb4).hasDist();  (void) SWSBInfo(sb5).hasDist();  (void) SWSBInfo(sb6).hasDist();  (void) SWSBInfo(sb7).hasDist();
-    (void) SWSBInfo(sb8).hasDist();  (void) SWSBInfo(sb9).hasDist();  (void) SWSBInfo(sb10).hasDist(); (void) SWSBInfo(sb11).hasDist();
-    (void) SWSBInfo(sb12).hasDist(); (void) SWSBInfo(sb13).hasDist(); (void) SWSBInfo(sb14).hasDist(); (void) SWSBInfo(sb15).hasDist();
-    (void) SWSBInfo(sb16).hasDist(); (void) SWSBInfo(sb17).hasDist(); (void) SWSBInfo(sb18).hasDist(); (void) SWSBInfo(sb19).hasDist();
-    (void) SWSBInfo(sb20).hasDist(); (void) SWSBInfo(sb21).hasDist(); (void) SWSBInfo(sb22).hasDist(); (void) SWSBInfo(sb23).hasDist();
-    (void) SWSBInfo(sb24).hasDist(); (void) SWSBInfo(sb25).hasDist(); (void) SWSBInfo(sb26).hasDist(); (void) SWSBInfo(sb27).hasDist();
-    (void) SWSBInfo(sb28).hasDist(); (void) SWSBInfo(sb29).hasDist(); (void) SWSBInfo(sb30).hasDist(); (void) SWSBInfo(sb31).hasDist();
-    (void) NoAccSBSet.hasDist();
+    (void) SWSBItem(sb0).isToken();  (void) SWSBItem(sb1).isToken();  (void) SWSBItem(sb2).isToken();  (void) SWSBItem(sb3).isToken();
+    (void) SWSBItem(sb4).isToken();  (void) SWSBItem(sb5).isToken();  (void) SWSBItem(sb6).isToken();  (void) SWSBItem(sb7).isToken();
+    (void) SWSBItem(sb8).isToken();  (void) SWSBItem(sb9).isToken();  (void) SWSBItem(sb10).isToken(); (void) SWSBItem(sb11).isToken();
+    (void) SWSBItem(sb12).isToken(); (void) SWSBItem(sb13).isToken(); (void) SWSBItem(sb14).isToken(); (void) SWSBItem(sb15).isToken();
+    (void) SWSBItem(sb16).isToken(); (void) SWSBItem(sb17).isToken(); (void) SWSBItem(sb18).isToken(); (void) SWSBItem(sb19).isToken();
+    (void) SWSBItem(sb20).isToken(); (void) SWSBItem(sb21).isToken(); (void) SWSBItem(sb22).isToken(); (void) SWSBItem(sb23).isToken();
+    (void) SWSBItem(sb24).isToken(); (void) SWSBItem(sb25).isToken(); (void) SWSBItem(sb26).isToken(); (void) SWSBItem(sb27).isToken();
+    (void) SWSBItem(sb28).isToken(); (void) SWSBItem(sb29).isToken(); (void) SWSBItem(sb30).isToken(); (void) SWSBItem(sb31).isToken();
+    (void) NoAccSBSet.isToken();
 
     (void) A32.getModel();
     (void) A32NC.getModel();
@@ -201,4 +201,5 @@ void _workaround_() {
     (void) V64.desc;    (void) V64T.desc;
     (void) transpose.desc;
     (void) vnni.desc;
+
 }

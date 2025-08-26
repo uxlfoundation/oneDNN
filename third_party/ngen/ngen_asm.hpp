@@ -38,6 +38,7 @@ inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelMana
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
 #endif
+
     auto vs = getVS();
     if (detail == PrintDetail::vs_hs)
         if (vs > 8 && (getHS() != 0))
@@ -56,14 +57,20 @@ inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelMana
             default:
                 str << getARFBase();
         }
-    } else if (isIndirect()) {
-        str << "r[";
-        getIndirectReg().outputText(str, PrintDetail::sub_no_type, man);
-        if (getOffset())
-            str << ',' << getOffset();
-        str << ']';
-    } else
-        str << 'r' << base;
+    } else {
+        char file = 'r';
+        if (isIndirect()) {
+            str << file << '[';
+            {
+                getIndirectReg().outputText(str, PrintDetail::sub_no_type, man);
+                if (getOffset())
+                    str << ',' << getOffset();
+            }
+            str << ']';
+        } else {
+            str << file << base;
+        }
+    }
 
     if (detail <= PrintDetail::base) return;
 
@@ -94,6 +101,7 @@ static inline std::ostream& operator<<(std::ostream &str, const RegData &r)
 
 inline void Immediate::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
 {
+
     uint64_t nbytes = getBytes(getType());
     uint64_t val;
 
@@ -113,10 +121,8 @@ inline void ExtendedReg::outputText(std::ostream &str, PrintDetail detail, Label
     if (isInvalid()) throw invalid_object_exception();
 #endif
 
-    if (base.getNeg()) str << '-';
-    if (base.getAbs()) str << "(abs)";
-
-    str << 'r' << base.getBase() << '.';
+    base.outputText(str, PrintDetail::base, man);
+    str << '.';
     if (mmeNum == 8)
         str << "nomme";
     else
@@ -149,7 +155,7 @@ struct NoOperand {
     static const bool emptyOp = true;
     void fixup(HW hw, int esize, int ewidth, DataType defaultType, int srcN, int arity) const {}
     constexpr DataType getType() const { return DataType::invalid; }
-    constexpr bool isScalar() const { return false; }
+    constexpr bool isScalar() const { return true; }
 
     void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const {}
 };
@@ -160,7 +166,7 @@ struct AsmOperand {
         ExtendedReg ereg;
         Immediate imm;
         Label label;
-        GRFRange range;
+        RegisterRange range;
     };
     enum class Type : uint8_t {
         none = 0,
@@ -168,17 +174,17 @@ struct AsmOperand {
         ereg = 2,
         imm = 3,
         label = 4,
-        range = 5
+        range = 5,
     } type;
 
-    AsmOperand()                  : type{Type::none} {}
-    AsmOperand(NoOperand)         : AsmOperand() {}
-    AsmOperand(RegData reg_)      : reg{reg_}, type{Type::reg} {}
-    AsmOperand(ExtendedReg ereg_) : ereg{ereg_}, type{Type::ereg} {}
-    AsmOperand(Immediate imm_)    : imm{imm_}, type{Type::imm} {}
-    AsmOperand(Label label_)      : label{label_}, type{Type::label} {}
-    AsmOperand(GRFRange range_)   : range{range_}, type{Type::range} {}
-    AsmOperand(uint32_t imm_)     : imm{imm_}, type{Type::imm} {}
+    AsmOperand()                     : type{Type::none} {}
+    AsmOperand(NoOperand)            : AsmOperand() {}
+    AsmOperand(RegData reg_)         : reg{reg_}, type{Type::reg} {}
+    AsmOperand(ExtendedReg ereg_)    : ereg{ereg_}, type{Type::ereg} {}
+    AsmOperand(Immediate imm_)       : imm{imm_}, type{Type::imm} {}
+    AsmOperand(Label label_)         : label{label_}, type{Type::label} {}
+    AsmOperand(GRFRange range_)      : range{range_}, type{Type::range} {}
+    AsmOperand(uint32_t imm_)        : imm{imm_}, type{Type::imm} {}
 
     void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const {
         switch (type) {
@@ -192,6 +198,19 @@ struct AsmOperand {
                 break;
             }
             case Type::range:   range.outputText(str, detail, man); break;
+        }
+    }
+
+    bool operator!() const { return (type == Type::none); }
+    operator bool() const  { return !!*this; }
+
+    bool isEmptyOrNull() const {
+        switch (type) {
+            case Type::none: return true;
+            case Type::reg: return reg.isNull();
+            case Type::ereg: return ereg.getBase().isNull();
+            case Type::range: return range.isEmpty();
+            default: return false;
         }
     }
 };
@@ -212,7 +231,7 @@ struct AsmInstruction {
 
     explicit AsmInstruction(uint32_t inum_, const std::string &comment_)
             : op(Opcode::illegal), ext(0), inum(inum_), mod{}, dst{}, src{}, labelManager{nullptr}, comment{comment_} {}
-    inline AsmInstruction(const autoswsb::SyncInsertion &si);
+    inline AsmInstruction(HW hw, const autoswsb::SyncInsertion &si);
     inline AsmInstruction(const autoswsb::DummyMovInsertion &mi);
 
     bool isLabel() const   { return (op == Opcode::illegal) && (dst.type == AsmOperand::Type::label); }
@@ -229,6 +248,7 @@ struct AsmInstruction {
     bool eot() const            { return mod.isEOT(); }
     bool predicated() const     { return !mod.isWrEn() || (mod.getPredCtrl() != PredCtrl::None); }
     bool atomic() const         { return mod.isAtomic(); }
+    static bool is64()          { return false; }
 
     inline unsigned dstTypecode()  const { return getTypecode(dst); }
     inline unsigned src0Typecode() const { return getTypecode(src[0]); }
@@ -267,7 +287,7 @@ protected:
     static inline unsigned getTypecode(const AsmOperand &op);
 };
 
-AsmInstruction::AsmInstruction(const autoswsb::SyncInsertion &si)
+AsmInstruction::AsmInstruction(HW hw, const autoswsb::SyncInsertion &si)
 {
     op = Opcode::sync;
     ext = static_cast<uint8_t>(si.fc);
@@ -349,7 +369,10 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
     switch (operand.type) {
         case AsmOperand::Type::reg:    rd = operand.reg; break;
         case AsmOperand::Type::ereg:   rd = operand.ereg.getBase(); break;
-        case AsmOperand::Type::range:  region = DependencyRegion(hw, operand.range); return true;
+        case AsmOperand::Type::range:
+            if (!operand.range.isValid()) return false;
+            region = DependencyRegion(hw, operand.range);
+            return true;
         case AsmOperand::Type::none:
             if (hw >= HW::Xe3 && (op == Opcode::send || op == Opcode::sendc) && opNum == 1
                     && src[0].type == AsmOperand::Type::reg && src[0].reg.isIndirect()
@@ -427,8 +450,7 @@ class AsmCodeGenerator {
 private:
 #include "ngen_compiler_fix.hpp"
 public:
-    using RootCodeGenerator = AsmCodeGenerator;
-    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr},
+    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr}, cancelAutoSWSB_(false),
                                                   sync{this}, load{this}, store{this}, atomic{this}
     {
         isGen12 = (hardware >= HW::Gen12LP);
@@ -448,10 +470,15 @@ public:
             delete s;
     }
 
+    using RootCodeGenerator = AsmCodeGenerator;
+
     constexpr HW getHardware() const { return hardware; }
 
     inline void getCode(std::ostream &out);
+    inline void getPartialCode(std::ostream &out);
     void enableLineNumbers(bool enable = true) { lineNumbers = enable; }
+    inline void disableAutoSWSB();
+    void cancelAutoSWSB() { cancelAutoSWSB_ = true; }
 
     Product getProduct() const { return product; }
     ProductFamily getProductFamily() const { return product.family; }
@@ -507,6 +534,7 @@ private:
     InstructionModifier defaultModifier;
     LabelManager labelManager;
     std::vector<InstructionStream*> streamStack;
+    std::atomic<bool> cancelAutoSWSB_;
 
     inline void unsupported();
 
@@ -582,19 +610,29 @@ private:
     template <typename S1> void opJmpi(Opcode op, const InstructionModifier &mod, S1 src1) {
         (void) streamStack.back()->append(op, 0, mod | defaultModifier | NoMask, &labelManager, NoOperand(), src1);
     }
-    template <typename S0> void opSync(Opcode op, SyncFunction fc, const InstructionModifier &mod, S0 src0) {
+    template <typename S0> void opSync(SyncFunction fc, const InstructionModifier &mod, S0 src0) {
+        auto op = Opcode::sync;
         (void) streamStack.back()->append(op, static_cast<uint8_t>(fc), mod | defaultModifier, &labelManager, NoOperand(), src0);
+    }
+    template <typename S0> void opDirective(Directive directive, const S0 &src0) {
+        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(directive)), src0);
     }
 
     inline void finalize();
 
-    enum class ModPlacementType {Pre, Mid, Post};
-    inline void outX(std::ostream &out, const AsmInstruction &i, int lineNo);
+    enum class ModPlacementType {
+        Pre, Mid, Post,
+    };
+    inline void outX(std::ostream &out, const AsmInstruction &i, int &lineNo);
     inline void outExt(std::ostream &out, const AsmInstruction &i);
-    inline void outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, ModPlacementType location);
-    inline void outSync(std::ostream &out, const autoswsb::SyncInsertion &si);
+    inline void outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, ModPlacementType location, uint16_t ext = 0, uint32_t ext2 = 0);
+    inline void outComment(std::ostream &out, const AsmInstruction &i);
 
-public:
+    InstructionModifier defaultMods() const {
+        return GRF::bytes(hardware) >> 2;
+    }
+
+protected:
     // Configuration.
     void setDefaultNoMask(bool def = true)          { defaultModifier.setWrEn(def); }
     void setDefaultAutoSWSB(bool def = true)        { defaultModifier.setAutoSWSB(def); }
@@ -622,15 +660,15 @@ public:
     // Instructions.
     template <typename DT = void>
     void add(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
+            opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void add(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
+            opX(Opcode::add, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(Opcode::addc, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
+            opX(Opcode::addc, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void addc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
@@ -646,7 +684,7 @@ public:
     }
     template <typename DT = void>
     void add3(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
-        opX(Opcode::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
+         opX(Opcode::add3, getDataType<DT>(), mod, dst, src0, src1, src2);
     }
     template <typename DT = void>
     void add3(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, const RegData &src1, const Immediate &src2, SourceLocation loc = {}) {
@@ -660,16 +698,6 @@ public:
     void and_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::and_gen12 : Opcode::and_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void and(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        and_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void and(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        and_<DT>(mod, dst, src0, src1);
-    }
-#endif
     template <typename DT = void>
     void asr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::asr_gen12 : Opcode::asr, getDataType<DT>(), mod, dst, src0, src1);
@@ -679,7 +707,7 @@ public:
         opX(isGen12 ? Opcode::asr_gen12 : Opcode::asr, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
-    void avg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        void avg(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(Opcode::avg, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
@@ -746,10 +774,6 @@ public:
     void bfrev(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::bfrev_gen12 : Opcode::bfrev, getDataType<DT>(), mod, dst, src0);
     }
-    template <typename DT = void>
-    void bfrev(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::bfrev_gen12 : Opcode::bfrev, getDataType<DT>(), mod, dst, src0);
-    }
     void brc(const InstructionModifier &mod, Label &jip, Label &uip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
@@ -785,10 +809,6 @@ public:
     }
     template <typename DT = void>
     void cbit(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::cbit, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void cbit(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
         opX(Opcode::cbit, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
@@ -905,20 +925,15 @@ public:
         opX(Opcode::fbh, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
-    void fbh(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(Opcode::fbh, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
     void fbl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::fbl, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void fbl(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
         opX(Opcode::fbl, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
     void frc(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         opX(Opcode::frc, getDataType<DT>(), mod, dst, src0);
+    }
+    template <typename DT = void> void frc(const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
+        frc<DT>(defaultMods(), dst, src0);
     }
     void goto_(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
@@ -950,20 +965,21 @@ public:
     void illegal(SourceLocation loc = {}) {
         opX(Opcode::illegal);
     }
-    void join(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
-        opX(Opcode::join, mod, jip);
-    }
-    void join(const InstructionModifier &mod, SourceLocation loc = {}) {
-        Label next;
-        join(mod, next);
-        mark(next);
-    }
     void jmpi(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         opJmpi(Opcode::jmpi, mod, jip);
     }
     void jmpi(const InstructionModifier &mod, const RegData &jip, SourceLocation loc = {}) {
         opJmpi(Opcode::jmpi, mod, jip);
+    }
+    void join(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
+        (void) jip.getID(labelManager);
+        opX(Opcode::join, mod, jip);
+    }
+    void join(const InstructionModifier &mod, SourceLocation loc = {}) {
+        Label next;
+        join(mod, next);
+        mark(next);
     }
     template <typename DT = void>
     void line(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
@@ -1003,16 +1019,12 @@ public:
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
         if (hardware < HW::Gen10) unsupported();
-#endif
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
         if (hardware < HW::Gen10) unsupported();
-#endif
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
@@ -1071,16 +1083,36 @@ public:
 #ifdef NGEN_SAFE
         if (fc != MathFunction::rsqtm) throw invalid_operand_exception();
 #endif
-        mod.setCMod(ConditionModifier::eo);
-        opX(Opcode::math, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), static_cast<uint8_t>(fc));
+        {
+            mod.setCMod(ConditionModifier::eo);
+            opX(Opcode::math, getDataType<DT>(), mod, dst, src0, NoOperand(), NoOperand(), static_cast<uint8_t>(fc));
+        }
     }
     template <typename DT = void>
     void math(InstructionModifier mod, MathFunction fc, const ExtendedReg &dst, const ExtendedReg &src0, const ExtendedReg &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
         if (fc != MathFunction::invm) throw invalid_operand_exception();
 #endif
-        mod.setCMod(ConditionModifier::eo);
-        opX(Opcode::math, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), static_cast<uint8_t>(fc));
+        {
+            mod.setCMod(ConditionModifier::eo);
+            opX(Opcode::math, getDataType<DT>(), mod, dst, src0, src1, NoOperand(), static_cast<uint8_t>(fc));
+        }
+    }
+    template <typename DT = void>
+    void max_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        sel<DT>(mod | ge | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void max_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        sel<DT>(mod | ge | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void min_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
+        sel<DT>(mod | lt | f0[0], dst, src0, src1);
+    }
+    template <typename DT = void>
+    void min_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        sel<DT>(mod | lt | f0[0], dst, src0, src1);
     }
     template <typename DT = void>
     void mov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
@@ -1102,17 +1134,15 @@ public:
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
+        if (hardware < HW::Gen10) unsupported();
 #ifdef NGEN_SAFE
-        if (hardware < HW::Gen10) throw unsupported_instruction();
         if (!src0.isIndirect()) throw invalid_address_mode_exception();
 #endif
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void movi(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-#ifdef NGEN_SAFE
-        if (hardware < HW::Gen10) throw unsupported_instruction();
-#endif
+        if (hardware < HW::Gen10) unsupported();
         opX(isGen12 ? Opcode::movi_gen12 : Opcode::movi, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
@@ -1133,20 +1163,6 @@ public:
         opX(isGen12 ? Opcode::not_gen12 : Opcode::not_, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
-    void not_(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::not_gen12 : Opcode::not_, getDataType<DT>(), mod, dst, src0);
-    }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void not(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        not_<DT>(mod, dst, src0);
-    }
-    template <typename DT = void>
-    void not(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        not_<DT>(mod, dst, src0);
-    }
-#endif
-    template <typename DT = void>
     void or_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::or_gen12 : Opcode::or_, getDataType<DT>(), mod, dst, src0, src1);
     }
@@ -1154,16 +1170,6 @@ public:
     void or_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::or_gen12 : Opcode::or_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void or(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        or_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void or(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        or_<DT>(mod, dst, src0, src1);
-    }
-#endif
     template <typename DT = void>
     void pln(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(Opcode::pln, getDataType<DT>(), mod, dst, src0, src1);
@@ -1176,15 +1182,7 @@ public:
         opX(Opcode::rndd, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
-    void rndd(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndd, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
     void rnde(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rnde, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void rnde(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
         opX(Opcode::rnde, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
@@ -1192,15 +1190,7 @@ public:
         opX(Opcode::rndu, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
-    void rndu(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndu, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
     void rndz(const InstructionModifier &mod, const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
-        opX(Opcode::rndz, getDataType<DT>(), mod, dst, src0);
-    }
-    template <typename DT = void>
-    void rndz(const InstructionModifier &mod, const RegData &dst, const Immediate &src0, SourceLocation loc = {}) {
         opX(Opcode::rndz, getDataType<DT>(), mod, dst, src0);
     }
     template <typename DT = void>
@@ -1372,7 +1362,6 @@ public:
 #endif
         sendc(mod, static_cast<SharedFunction>(0), dst, src0, src1, exdesc, desc);
     }
-
     template <typename DT = void>
     void shl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::shl_gen12 : Opcode::shl, getDataType<DT>(), mod, dst, src0, src1);
@@ -1424,16 +1413,6 @@ public:
     void xor_(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         opX(isGen12 ? Opcode::xor_gen12 : Opcode::xor_, getDataType<DT>(), mod, dst, src0, src1);
     }
-#ifndef NGEN_NO_OP_NAMES
-    template <typename DT = void>
-    void xor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        xor_<DT>(mod, dst, src0, src1);
-    }
-    template <typename DT = void>
-    void xor(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        xor_<DT>(mod, dst, src0, src1);
-    }
-#endif
 
 private:
     struct Sync {
@@ -1442,19 +1421,19 @@ private:
         Sync(AsmCodeGenerator *parent_) : parent(*parent_) {}
 
         void operator()(SyncFunction fc, const InstructionModifier &mod = InstructionModifier()) {
-            parent.opSync(Opcode::sync, fc, mod, null);
+            parent.opSync(fc, mod, null);
         }
         void operator()(SyncFunction fc, const RegData &src0) {
             this->operator()(fc, InstructionModifier(), src0);
         }
         void operator()(SyncFunction fc, const InstructionModifier &mod, const RegData &src0) {
-            parent.opSync(Opcode::sync, fc, mod, src0);
+            parent.opSync(fc, mod, src0);
         }
         void operator()(SyncFunction fc, int src0) {
             this->operator()(fc, InstructionModifier(), src0);
         }
         void operator()(SyncFunction fc, const InstructionModifier &mod, int src0) {
-            parent.opSync(Opcode::sync, fc, mod, Immediate::ud(src0));
+            parent.opSync(fc, mod, Immediate::ud(src0));
         }
         void allrd() {
             allrd(null);
@@ -1507,10 +1486,7 @@ private:
         void bar(const RegData &src0, SourceLocation loc = {}) {
             this->operator()(SyncFunction::bar, InstructionModifier(), src0);
         }
-        void flush() {
-            flush(InstructionModifier());
-        }
-        void flush(const InstructionModifier &mod) {
+        void flush(const InstructionModifier &mod = InstructionModifier()) {
             this->operator()(SyncFunction::flush, InstructionModifier(), null);
         }
         void host(const InstructionModifier &mod = InstructionModifier()) {
@@ -1525,14 +1501,14 @@ public:
 
     void ignoredep(Operand op) {
         if (hardware >= HW::Gen12LP)
-            opX(Opcode::directive, DataType::ud, InstructionModifier(), GRF(static_cast<int>(op)), NoOperand());
+            opDirective(static_cast<Directive>(op), NullRegister());
     }
     void subdep(Operand op, const GRFRange &r) {
         if (op == Operand::dst) {
 #ifdef NGEN_SAFE
             if (r.getLen() > 32) throw invalid_directive_exception();
 #endif
-            opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::subdep_dst)), r);
+            opDirective(Directive::subdep_dst, r);
         } else {
             ignoredep(op);
             wrdep(r);
@@ -1548,18 +1524,19 @@ public:
         int len = r.getLen();
         for (int o = 0; o < len; o += 32) {
             int thisLen = std::min(len - o, 32);
-            opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::wrdep)), r[o] - r[o + thisLen - 1]);
+            opDirective(Directive::wrdep, r[o] - r[o + thisLen - 1]);
         }
     }
     void wrdep(const GRF &r, SourceLocation loc = {}) {
         wrdep(r-r);
     }
     void fencedep(Label &fenceLocation, SourceLocation loc = {}) {
-        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::fencedep)), fenceLocation);
+        (void) fenceLocation.getID(labelManager);
+        opDirective(Directive::fencedep, fenceLocation);
     }
 
     void disablePVCWARWA(SourceLocation loc) {
-        opX(Opcode::directive, DataType::ud, InstructionModifier::createAutoSWSB(), GRF(static_cast<int>(Directive::pvcwarwa)), NullRegister());
+        opDirective(Directive::pvcwarwa, NullRegister());
     }
 
     void mark(Label &label)            { streamStack.back()->mark(label, labelManager); }
@@ -1567,6 +1544,7 @@ public:
 
     using _self = AsmCodeGenerator;
 
+#include "ngen_shortcuts.hpp"
 #include "ngen_pseudo.hpp"
 #ifndef NGEN_GLOBAL_REGS
 #include "ngen_registers.hpp"
@@ -1607,7 +1585,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 {
     finalize();
 
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer);
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_);
     std::multimap<int32_t, autoswsb::SyncInsertion*> syncs;      // Syncs inserted by auto-SWSB.
     std::multimap<int32_t, autoswsb::DummyMovInsertion*> movs;   // Dummy moves inserted by auto-SWSB.
 
@@ -1624,9 +1602,9 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 
     for (auto &i : streamStack.back()->buffer) {
         while ((nextSync != syncs.end()) && (nextSync->second->inum == i.inum))
-            outX(out, *(nextSync++)->second, lineNo++);
+            outX(out, AsmInstruction(hardware, *(nextSync++)->second), lineNo);
         while ((nextMov != movs.end()) && (nextMov->second->inum == i.inum))
-            outX(out, *(nextMov++)->second, lineNo++);
+            outX(out, *(nextMov++)->second, lineNo);
 
         if (i.isLabel()) {
             i.dst.label.outputText(out, PrintDetail::full, labelManager);
@@ -1634,15 +1612,42 @@ void AsmCodeGenerator::getCode(std::ostream &out)
             if (i.dst.label == _interfaceLabels.localIDsLoaded)
                 lineNo = 0;
         } else if (i.isComment())
-            out << "// " << i.comment << std::endl;
-        else if (i.op != Opcode::directive)
-            outX(out, i, lineNo++);
+            outComment(out, i);
+        else if (!isDirective(i.op))
+            outX(out, i, lineNo);
     }
+}
+
+#define NGEN_ASM_HAS_GET_PARTIAL_CODE
+void AsmCodeGenerator::getPartialCode(std::ostream &out)
+{
+    int nstream = 0;
+    int lineNo = 0;
+    for (auto it = streamStack.rbegin(); it != streamStack.rend(); it++, nstream++) {
+        out << "// Stream " << nstream << std::endl;
+        for (auto &i: (*it)->buffer) {
+            if (i.isLabel()) {
+                i.dst.label.outputText(out, PrintDetail::full, labelManager);
+                out << ':' << std::endl;
+            } else if (i.isComment())
+                outComment(out, i);
+            else if (!isDirective(i.op))
+                outX(out, i, lineNo);
+        }
+    }
+}
+
+#define NGEN_ASM_HAS_DISABLE_AUTOSWSB
+void AsmCodeGenerator::disableAutoSWSB()
+{
+    for (auto &i: streamStack.back()->buffer)
+        i.clearAutoSWSB();
 }
 
 template <typename D, typename S0, typename S1, typename S2>
 void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionModifier &mod, D dst, S0 src0, S1 src1, S2 src2, uint16_t ext)
 {
+
     bool is2Src = !S1::emptyOp;
     bool is3Src = !S2::emptyOp;
     int arity = 1 + is2Src + is3Src;
@@ -1654,7 +1659,7 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
         esize = std::min<int>(esize, 8);        // WA for IGA Align16 emulation issue
 
 #ifdef NGEN_SAFE
-    if (esize > 1 && dst.isScalar())
+    if (esize > 1 && dst.isScalar() && !std::is_base_of<NoOperand, D>::value)
         throw invalid_execution_size_exception();
 #endif
 
@@ -1669,7 +1674,7 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
 
 static const char *getMnemonic(Opcode op, HW hw)
 {
-    const char *names[0x80] = {
+    static const char *names[0x80] = {
         "illegal", "sync", "sel", "movi", "not", "and", "or", "xor",
         "shr", "shl", "smov", "", "asr", "", "ror", "rol",
         "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
@@ -1701,8 +1706,20 @@ static const char *getMnemonic(Opcode op, HW hw)
     return mnemonic;
 }
 
-void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int lineNo)
+void AsmCodeGenerator::outComment(std::ostream &out, const AsmInstruction &i)
 {
+    bool newLine = true;
+    for (auto c: i.comment) {
+        if (newLine) out << "// ";
+        out << c;
+        newLine = (c == '\n');
+    }
+    if (!newLine) out << '\n';
+}
+
+void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int &lineNo)
+{
+
     bool ternary = (i.src[2].type != AsmOperand::Type::none);
     PrintDetail ddst = PrintDetail::hs;
     PrintDetail dsrc01 = ternary ? PrintDetail::vs_hs : PrintDetail::full;
@@ -1764,8 +1781,10 @@ void AsmCodeGenerator::outX(std::ostream &out, const AsmInstruction &i, int line
     }
 
     outMods(out, i.mod, i.op, ModPlacementType::Post);
-    if (lineNumbers)
+    if (lineNumbers) {
         out << "\t// " << lineNo * 2;
+        lineNo++;
+    }
     out << std::endl;
 }
 
@@ -1794,6 +1813,7 @@ void AsmCodeGenerator::outExt(std::ostream &out, const AsmInstruction &i)
         }
         default: break;
     }
+
 }
 
 static const char *toText(PredCtrl ctrl, bool align16) {
@@ -1802,12 +1822,22 @@ static const char *toText(PredCtrl ctrl, bool align16) {
     return names[align16][static_cast<int>(ctrl) & 0xF];
 }
 
-void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod, Opcode op, AsmCodeGenerator::ModPlacementType location)
+void AsmCodeGenerator::outMods(std::ostream &out, const InstructionModifier &mod, Opcode op, AsmCodeGenerator::ModPlacementType location, uint16_t ext, uint32_t ext2)
 {
     ConditionModifier cmod = mod.getCMod();
     PredCtrl ctrl = mod.getPredCtrl();
     bool wrEn = mod.isWrEn();
     bool havePred = (ctrl != PredCtrl::None) && (cmod != ConditionModifier::eo);
+
+    bool havePostMod = false;
+    auto startPostMod = [&](bool space = false) {
+        out << (havePostMod ? "," :
+                      space ? " {" : "{");
+        havePostMod = true;
+    };
+    auto printPostMod = [&](const char *name) {
+        startPostMod(); out << name;
+    };
 
     switch (location) {
         case ModPlacementType::Pre:
@@ -1828,8 +1858,7 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             out << '\t';
             break;
         case ModPlacementType::Mid:
-            if (mod.getExecSize() > 0)
-                out << '(' << mod.getExecSize() << "|M" << mod.getChannelOffset() << ')' << '\t';
+            out << '(' << mod.getExecSize() << "|M" << mod.getChannelOffset() << ')' << '\t';
 
             if (cmod != ConditionModifier::none) {
                 out << '(' << cmod << ')';
@@ -1841,31 +1870,29 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             break;
         case ModPlacementType::Post:
         {
-            bool havePostMod = false;
-            auto startPostMod = [&]() {
-                out << (havePostMod ? ',' : '{');
-                havePostMod = true;
-            };
-            auto printPostMod = [&](const char *name) {
-                startPostMod(); out << name;
-            };
-
-            SWSBInfo swsb = mod.getSWSB();
-            if (swsb.hasToken()) {
-                startPostMod(); out << '$' << swsb.parts.token;
-                if (swsb.parts.src && !swsb.parts.dst) out << ".src";
-                if (swsb.parts.dst && !swsb.parts.src) out << ".dst";
-            }
-            if (swsb.hasDist()) {
+            auto swsb = mod.getSWSB();
+            if (swsb[0] && swsb[1].isToken())
+                std::swap(swsb[0], swsb[1]);
+            for (auto item: swsb) {
+                if (item.empty()) continue;
                 startPostMod();
-                if (hardware > HW::Gen12LP && (op == Opcode::send || op == Opcode::sendc) && swsb.getPipe() == Pipe::Default)
-                    out << Pipe::A;
-                else if (hardware > HW::Gen12LP || !swsb.hasToken())
-                    out << swsb.getPipe();
-                out << '@' << swsb.parts.dist;
+                if (item.isNoAccSBSet())
+                    out << "NoAccSBSet";
+                else if (item.isToken()) {
+                    out << '$' << item.getToken();
+                    if (item.token.src && !item.token.dst) out << ".src";
+                    if (item.token.dst && !item.token.src) out << ".dst";
+                } else {
+                    if (hardware > HW::Gen12LP) {
+                        if ((op == Opcode::send || op == Opcode::sendc) && item.getPipe() == Pipe::Default)
+                            out << Pipe::A;
+                        else
+                            out << item.getPipe();
+                    }
+                    out << '@' << int(item.pipe.dist);
+                }
             }
 
-            if (swsb.parts.noacc)                                         printPostMod("NoAccSBSet");
             if (mod.isAlign16())                                          printPostMod("Align16");
             if (mod.isNoDDClr())                                          printPostMod("NoDDClr");
             if (mod.isNoDDChk())                                          printPostMod("NoDDChk");
@@ -1880,8 +1907,8 @@ void AsmCodeGenerator::outMods(std::ostream &out,const InstructionModifier &mod,
             if (mod.isExBSO())                                            printPostMod("ExBSO");
 
             if (havePostMod) out << '}';
+            break;
         }
-        break;
     }
 }
 

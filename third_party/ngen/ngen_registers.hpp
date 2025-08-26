@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@
 #define constexpr_reg_const constexpr const
 #endif
 
-static constexpr_reg IndirectRegisterFrame indirect{};
+static constexpr_reg IndirectRegisterFrame<RegFileGRF> indirect{};
 #ifdef NGEN_SHORT_NAMES
-static constexpr_reg_const IndirectRegisterFrame &r = indirect;
+static constexpr_reg_const IndirectRegisterFrame<RegFileGRF> &r = indirect;
 #endif
 
 static constexpr_reg GRF r0{0}, r1{1}, r2{2}, r3{3}, r4{4}, r5{5}, r6{6}, r7{7};
@@ -162,7 +162,7 @@ static constexpr_reg SBID sb0{0}, sb1{1}, sb2{2}, sb3{3}, sb4{4}, sb5{5}, sb6{6}
 static constexpr_reg SBID sb8{8}, sb9{9}, sb10{10}, sb11{11}, sb12{12}, sb13{13}, sb14{14}, sb15{15};
 static constexpr_reg SBID sb16{16}, sb17{17}, sb18{18}, sb19{19}, sb20{20}, sb21{21}, sb22{22}, sb23{23};
 static constexpr_reg SBID sb24{24}, sb25{25}, sb26{16}, sb27{27}, sb28{28}, sb29{29}, sb30{30}, sb31{31};
-static constexpr_reg SWSBInfo NoAccSBSet = SWSBInfo::createNoAccSBSet();
+static constexpr_reg SWSBItem NoAccSBSet = SWSBItem::createNoAccSBSet();
 
 static constexpr_reg AddressBase A32 = AddressBase::createA32(true);
 static constexpr_reg AddressBase A32NC = AddressBase::createA32(false);
@@ -227,3 +227,4 @@ static constexpr_reg CacheSettingsLSC L1S_L3WB  = CacheSettingsLSC::L1S_L3WB;
 static constexpr_reg CacheSettingsLSC L1WB_L3WB = CacheSettingsLSC::L1WB_L3WB;
 static constexpr_reg CacheSettingsLSC L1C_L3CC  = CacheSettingsLSC::L1C_L3CC;
 static constexpr_reg CacheSettingsLSC L1UC_L3CC = CacheSettingsLSC::L1UC_L3CC;
+

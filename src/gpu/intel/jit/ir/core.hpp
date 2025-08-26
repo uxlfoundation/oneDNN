@@ -2878,8 +2878,11 @@ public:
             is_first = false;
         };
         if (mod.isAtomic()) append("Atomic");
-        if (mod.getSWSB().empty()) {
-            append(std::string("$") + std::to_string(mod.getSWSB().getToken()));
+        for (auto item : mod.getSWSB()) {
+            if (item.hasTokenSet()) {
+                append(std::string("$")
+                        + std::to_string(mod.getSWSB()[0].getToken()));
+            }
         }
         oss << "}";
         return oss.str();

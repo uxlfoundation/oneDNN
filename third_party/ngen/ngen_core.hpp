@@ -17,6 +17,11 @@
 #ifndef NGEN_CORE_HPP
 #define NGEN_CORE_HPP
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -112,111 +117,119 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
 #ifdef NGEN_SAFE
 class invalid_type_exception : public std::runtime_error {
 public:
-    invalid_type_exception() : std::runtime_error("Instruction does not support this type or combination of types") {}
+    invalid_type_exception(SourceLocation loc = {}) : std::runtime_error("Instruction does not support this type or combination of types" + loc.str(" at ")) {}
 };
 class invalid_object_exception : public std::runtime_error {
 public:
-    invalid_object_exception() : std::runtime_error("Object is invalid") {}
+    invalid_object_exception(SourceLocation loc = {}) : std::runtime_error("Object is invalid" + loc.str(" at ")) {}
 };
 class invalid_immediate_exception : public std::runtime_error {
 public:
-    invalid_immediate_exception() : std::runtime_error("Invalid immediate value") {}
+    invalid_immediate_exception(SourceLocation loc = {}) : std::runtime_error("Invalid immediate value" + loc.str(" at ")) {}
 };
 class invalid_modifiers_exception : public std::runtime_error {
 public:
-    invalid_modifiers_exception() : std::runtime_error("Invalid or conflicting modifiers") {}
+    invalid_modifiers_exception(SourceLocation loc = {}) : std::runtime_error("Invalid or conflicting modifiers" + loc.str(" at ")) {}
 };
 class invalid_operand_exception : public std::runtime_error {
 public:
-    invalid_operand_exception() : std::runtime_error("Invalid operand to instruction") {}
+    invalid_operand_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operand to instruction" + loc.str(" at ")) {}
 };
 class invalid_operand_count_exception : public std::runtime_error {
 public:
-    invalid_operand_count_exception() : std::runtime_error("Invalid operand count") {}
+    invalid_operand_count_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operand count" + loc.str(" at ")) {}
 };
 class invalid_directive_exception : public std::runtime_error {
 public:
-    invalid_directive_exception() : std::runtime_error("Invalid directive") {}
+    invalid_directive_exception(SourceLocation loc = {}) : std::runtime_error("Invalid directive" + loc.str(" at ")) {}
 };
 class invalid_arf_exception : public std::runtime_error {
 public:
-    invalid_arf_exception() : std::runtime_error("Invalid ARF specified") {}
+    invalid_arf_exception(SourceLocation loc = {}) : std::runtime_error("Invalid ARF specified" + loc.str(" at ")) {}
+};
+class invalid_register_file_exception : public std::runtime_error {
+public:
+    invalid_register_file_exception() : std::runtime_error("Invalid register file specified") {}
 };
 class grf_expected_exception : public std::runtime_error {
 public:
-    grf_expected_exception() : std::runtime_error("GRF expected, but found an ARF") {}
+    grf_expected_exception(SourceLocation loc = {}) : std::runtime_error("GRF expected, but found an ARF" + loc.str(" at ")) {}
 };
 class invalid_model_exception : public std::runtime_error {
 public:
-    invalid_model_exception() : std::runtime_error("Invalid addressing model specified") {}
+    invalid_model_exception(SourceLocation loc = {}) : std::runtime_error("Invalid addressing model specified" + loc.str(" at ")) {}
 };
 class invalid_load_store_exception : public std::runtime_error {
 public:
-    invalid_load_store_exception() : std::runtime_error("Invalid operands for load/store/atomic") {}
+    invalid_load_store_exception(SourceLocation loc = {}) : std::runtime_error("Invalid operands for load/store/atomic" + loc.str(" at ")) {}
 };
 class invalid_range_exception : public std::runtime_error {
 public:
-    invalid_range_exception() : std::runtime_error("Invalid register range") {}
+    invalid_range_exception(SourceLocation loc = {}) : std::runtime_error("Invalid register range" + loc.str(" at ")) {}
 };
 class invalid_region_exception : public std::runtime_error {
 public:
-    invalid_region_exception() : std::runtime_error("Unsupported register region") {}
+    invalid_region_exception(SourceLocation loc = {}) : std::runtime_error("Unsupported register region" + loc.str(" at ")) {}
 };
 class missing_type_exception : public std::runtime_error {
 public:
-    missing_type_exception() : std::runtime_error("Operand is missing its type") {}
+    missing_type_exception(SourceLocation loc = {}) : std::runtime_error("Operand or instruction is missing its type" + loc.str(" at ")) {}
 };
 class missing_src1_length_exception : public std::runtime_error {
 public:
-    missing_src1_length_exception() : std::runtime_error("src1 length must be specified") {}
+    missing_src1_length_exception(SourceLocation loc = {}) : std::runtime_error("src1 length must be specified" + loc.str(" at ")) {}
 };
 class read_only_exception : public std::runtime_error {
 public:
-    read_only_exception() : std::runtime_error("Memory model is read-only") {}
+    read_only_exception(SourceLocation loc = {}) : std::runtime_error("Memory model is read-only" + loc.str(" at ")) {}
 };
 class stream_stack_underflow : public std::runtime_error {
 public:
-    stream_stack_underflow() : std::runtime_error("Stream stack underflow occurred") {}
+    stream_stack_underflow(SourceLocation loc = {}) : std::runtime_error("Stream stack underflow occurred" + loc.str(" at ")) {}
 };
 class unfinished_stream_exception : public std::runtime_error {
 public:
-    unfinished_stream_exception() : std::runtime_error("An unfinished instruction stream is still active") {}
+    unfinished_stream_exception(SourceLocation loc = {}) : std::runtime_error("An unfinished instruction stream is still active" + loc.str(" at ")) {}
 };
 class dangling_label_exception : public std::runtime_error {
 public:
-    dangling_label_exception() : std::runtime_error("A label was referenced, but its location was not defined") {}
+    dangling_label_exception(SourceLocation loc = {}) : std::runtime_error("A label was referenced, but its location was not defined" + loc.str(" at ")) {}
 };
 class multiple_label_exception : public std::runtime_error {
 public:
-    multiple_label_exception() : std::runtime_error("Label already has a location") {}
+    multiple_label_exception(SourceLocation loc = {}) : std::runtime_error("Label already has a location" + loc.str(" at ")) {}
 };
 class unsupported_instruction : public std::runtime_error {
 public:
-    unsupported_instruction() : std::runtime_error("Instruction is not supported by the chosen hardware") {}
+    unsupported_instruction(SourceLocation loc = {}) : std::runtime_error("Instruction is not supported by the chosen hardware" + loc.str(" at ")) {}
 };
 class unsupported_message : public std::runtime_error {
 public:
-    unsupported_message() : std::runtime_error("Message is not supported by the chosen hardware") {}
+    unsupported_message(SourceLocation loc = {}) : std::runtime_error("Message is not supported by the chosen hardware" + loc.str(" at ")) {}
+};
+class asm_unsupported_message : public std::runtime_error {
+public:
+    asm_unsupported_message() : std::runtime_error("Cannot format this message as assembly text") {}
 };
 class iga_align16_exception : public std::runtime_error {
 public:
-    iga_align16_exception() : std::runtime_error("Align16 not supported by the IGA assembler; use binary output") {}
+    iga_align16_exception(SourceLocation loc = {}) : std::runtime_error("Align16 not supported by the IGA assembler; use binary output" + loc.str(" at ")) {}
 };
 class sfid_needed_exception : public std::runtime_error {
 public:
-    sfid_needed_exception() : std::runtime_error("SFID must be specified on Gen12+") {}
+    sfid_needed_exception(SourceLocation loc = {}) : std::runtime_error("SFID must be specified on Gen12+" + loc.str(" at ")) {}
 };
 class invalid_execution_size_exception : public std::runtime_error {
 public:
-    invalid_execution_size_exception() : std::runtime_error("Invalid execution size") {}
+    invalid_execution_size_exception(SourceLocation loc = {}) : std::runtime_error("Invalid execution size" + loc.str(" at ")) {}
 };
 class invalid_address_mode_exception : public std::runtime_error {
 public:
-    invalid_address_mode_exception() : std::runtime_error("Invalid address mode") {}
+    invalid_address_mode_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address mode" + loc.str(" at ")) {}
 };
 class invalid_address_modifier_exception : public std::runtime_error {
 public:
-    invalid_address_modifier_exception() : std::runtime_error("Invalid address offset") {}
+    invalid_address_modifier_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address offset" + loc.str(" at ")) {}
 };
 #endif
 
@@ -384,10 +397,11 @@ enum class DataType : uint8_t {
 static inline std::ostream &operator<<(std::ostream &str, DataType type)
 {
     static const char *names[32] = {"ud",   "d",   "uw", "w", "ub", "b", "df", "f", "uq", "q", "hf", "bf", "bf8", "uv", "v",  "vf",
-                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "e2m1",   "",   "u4",  "s4", "u2", "s2"};
+                                    "tf32", "hf8", "",   "",  "",   "",  "",   "",  "",   "",  "",   "",   "u4",  "s4", "u2", "s2"};
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
+
 #endif
 
 static inline constexpr   int getLog2Bits(DataType type)               { return static_cast<int>(type) >> 5; }
@@ -493,7 +507,7 @@ enum class SyncFunction : uint8_t {
     allwr = 3,
     flush = 12,
     bar   = 14,
-    host  = 15
+    host  = 15,
 };
 
 #ifdef NGEN_ASM
@@ -503,6 +517,7 @@ static inline std::ostream &operator<<(std::ostream &str, SyncFunction func)
     str << names[static_cast<uint8_t>(func) & 0xF];
     return str;
 }
+
 #endif
 
 // Shared function IDs (SFIDs).
@@ -574,12 +589,14 @@ enum class ARFType : uint8_t {
 static inline std::ostream &operator<<(std::ostream &str, ARFType type)
 {
     static const char *names[32] = {"null", "a", "acc", "f", "ce", "msg", "sp", "sr", "cr", "n", "ip", "tdr", "tm", "fc", "", "dbg",
-                                    ""    , "" , "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
+                                    "",    "" ,  "",    "",  "",   "",    "s",  "",   "",   "",  "",   "",    "",   "",   "", ""};
     str << names[static_cast<uint8_t>(type) & 0x1F];
     return str;
 }
 
-enum class PrintDetail {base = 0, sub_no_type = 1, sub = 2, hs = 3, vs_hs = 4, full = 5};
+enum class PrintDetail {
+    base = 0, sub_no_type = 1, sub = 2, hs = 3, vs_hs = 4, full = 5,
+};
 #endif
 
 // Invalid singleton class. Can be assigned to nGEN objects to invalidate them.
@@ -675,12 +692,23 @@ struct InterfaceLabels {
     Label crossThreadPatches[2];
 };
 
+enum RegFile : unsigned {
+    RegFileARF = 0,
+    RegFileGRF = 1,
+    RegFileIMM = 3,
+};
+
+enum RegFile8 : unsigned {
+    RegFile8ARF = RegFileARF,
+    RegFile8GRF = RegFileGRF,
+};
+
 // Superclass for registers, subregisters, and register regions, possibly
 // with source modifiers.
 class RegData {
 protected:
     unsigned base : 9;
-    unsigned arf : 1;
+    unsigned rf : 2;
       signed off : 11;
     unsigned mods : 2;
     unsigned type : 8;
@@ -688,11 +716,11 @@ protected:
     unsigned vs : 7;
     unsigned width : 5;
     unsigned hs : 6;
-    unsigned _pad2 : 13;
+    unsigned _pad2 : 12;
     unsigned invalid : 1;
 
-    constexpr RegData(int base_, bool arf_, int off_, bool indirect_, DataType type_, int vs_, int width_, int hs_)
-        : base(base_), arf(arf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
+    constexpr RegData(int base_, int rf_, int off_, bool indirect_, DataType type_, int vs_, int width_, int hs_)
+        : base(base_), rf(rf_), off(off_), mods(0), type(static_cast<int>(type_)), indirect(indirect_), vs(vs_), width(width_), hs(hs_), _pad2(0), invalid(0) {}
 
 public:
 #ifdef NGEN_ASM
@@ -700,10 +728,17 @@ public:
 #endif
 
     constexpr RegData()
-        : base(0), arf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
+        : base(0), rf(0), off(0), mods(0), type(0), indirect(0), vs(0), width(0), hs(0), _pad2(0), invalid(1) {}
 
     constexpr int getBase()            const { return base; }
-    constexpr bool isARF()             const { return arf; }
+    constexpr RegFile getRegFile()     const { return static_cast<RegFile>(rf); }
+    constexpr14 RegFile8 getRegFile8() const {
+#ifdef NGEN_SAFE
+        if (rf > 1) throw invalid_register_file_exception();
+#endif
+        return static_cast<RegFile8>(rf);
+    }
+    constexpr bool isARF()             const { return rf == RegFileARF; }
     constexpr int getARFBase()         const { return base & 0xF; }
     constexpr ARFType getARFType()     const { return static_cast<ARFType>(base >> 4); }
     constexpr bool isIndirect()        const { return indirect; }
@@ -728,13 +763,14 @@ public:
     constexpr bool isScalar()          const { return hs == 0 && vs == 0 && width == 1; }
 
     inline constexpr14 RegData getIndirectReg() const;
+    constexpr14 int getScalarIndex()   const { return getOffset(); }
 
     constexpr14 RegData &setBase(int base_)                      { base = base_; return *this; }
     constexpr14 RegData &setOffset(int off_)                     { off = off_; return *this; }
     constexpr14 RegData &setType(DataType newType)               { type = static_cast<unsigned>(newType); return *this; }
     constexpr14 RegData &setMods(int mods_)                      { mods = mods_; return *this; }
     constexpr14 RegData &setRegion(int vs_, int width_, int hs_) { vs = vs_; width = width_; hs = hs_; return *this; }
-    constexpr14 RegData &setARF(bool arf_)                       { arf = arf_; return *this; }
+    constexpr14 RegData &setRegFile(int rf_)                     { rf = rf_; return *this; }
 
     void invalidate()                     { invalid = true; }
     RegData &operator=(const Invalid &i)  { this->invalidate(); return *this; }
@@ -854,6 +890,7 @@ public:
     constexpr DataType getType()          const { return rd.getType(); }
     constexpr int getOffset()             const { return rd.getOffset(); }
     constexpr int getMods()               const { return rd.getMods(); }
+    constexpr RegFile getRegFile()        const { return rd.getRegFile(); }
     constexpr bool isARF()                const { return rd.isARF(); }
 
     void invalidate() { rd.invalidate(); }
@@ -934,6 +971,9 @@ public:
     }
     constexpr14 Subregister operator~() const { return -*this; }
 
+    inline GRFDisp operator+(int offset) const;
+    inline GRFDisp operator-(int offset) const;
+
     Align16Operand swizzle(int s0, int s1, int s2, int s3)    const { checkGRF(); return Align16Operand(*this, s0, s1, s2, s3); }
     Align16Operand broadcast()                                const { checkGRF(); return Align16Operand::createBroadcast(*this); }
     Align16Operand enable(bool c0, bool c1, bool c2, bool c3) const { checkGRF(); return Align16Operand(*this, (int(c3) << 3) | (int(c2) << 2) | (int(c1) << 1) | int(c0)); }
@@ -971,8 +1011,8 @@ class Register : public RegData
 {
 public:
     constexpr Register() : RegData() {}
-    constexpr Register(int reg_, bool arf_, DataType defaultType = DataType::invalid, int off_ = 0)
-        : RegData(reg_, arf_, off_, false, defaultType, 0, 0, 1) {}
+    constexpr Register(int reg_, RegFile rf_, DataType defaultType = DataType::invalid, int off_ = 0)
+        : RegData(reg_, rf_, off_, false, defaultType, 0, 0, 1) {}
 
     constexpr Register operator+() const { return *this; }
     constexpr14 Register operator-() const {
@@ -981,6 +1021,28 @@ public:
         return result;
     }
     constexpr14 Register operator~() const { return -*this; }
+
+    Register &operator+=(const int &inc) {
+        base += inc;
+        return *this;
+    }
+
+    Register operator++(int i) {
+        auto old = *this;
+        ++*this;
+        return old;
+    }
+
+    Register &operator++() {
+        *this += 1;
+        return *this;
+    }
+
+    Register advance(int inc) {
+        auto result = *this;
+        result += inc;
+        return result;
+    }
 
     constexpr14 Subregister sub(int offset, DataType type_)        const { return Subregister(*this, offset, type_); }
     template <typename T> constexpr14 Subregister sub(int offset)  const { return sub(offset, getDataType<T>()); }
@@ -1037,7 +1099,7 @@ class GRF : public Register
 {
 public:
     GRF() : Register() {}
-    explicit constexpr GRF(int reg_) : Register(reg_, false) {}
+    explicit constexpr GRF(int reg_) : Register(reg_, RegFileGRF) {}
 
     constexpr GRF operator+() const { return *this; }
     constexpr14 GRF operator-() const {
@@ -1137,7 +1199,7 @@ class ARF : public Register
 public:
     constexpr ARF() : Register() {}
     constexpr ARF(ARFType type_, int reg_, DataType defaultType = DataType::invalid, int off_ = 0)
-        : Register((static_cast<int>(type_) << 4) | (reg_ & 0xF), true, defaultType, off_) {}
+        : Register((static_cast<int>(type_) << 4) | (reg_ & 0xF), RegFileARF, defaultType, off_) {}
 
     ARF &operator=(const Invalid &i) { this->invalidate(); return *this; }
 };
@@ -1220,12 +1282,21 @@ public:
     constexpr bool isInvalid()      const { return base.isInvalid(); }
     constexpr bool isValid()        const { return !base.isInvalid(); }
     constexpr bool isScalar()       const { return base.isScalar(); }
+    constexpr RegFile getRegFile()  const { return base.getRegFile(); }
     constexpr bool isARF()          const { return base.isARF(); }
-    constexpr bool isNull()          const { return base.isNull(); }
+    constexpr bool isNull()         const { return base.isNull(); }
 
     constexpr14 RegData &getBase()        { return base; }
     constexpr RegData getBase()     const { return base; }
     constexpr uint8_t getMMENum()   const { return mmeNum; }
+
+    constexpr14 ExtendedReg &setType(DataType newType) { base.setType(newType); return *this; }
+
+    ExtendedReg operator-() const {
+        auto clone = *this;
+        clone.base.negate();
+        return clone;
+    }
 
 #ifdef NGEN_ASM
     inline void outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const;
@@ -1254,17 +1325,23 @@ public:
         result.mods = result.mods ^ 2;
         return result;
     }
+    FlagRegister operator!() const { return ~*this; }
 
     FlagRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 
-    constexpr FlagRegister operator[](int offset) const { return FlagRegister(getARFBase(), getOffset() + offset); }
+    constexpr14 FlagRegister operator[](int offset) const {
+        FlagRegister sub(getARFBase(), getOffset() + offset);
+        sub.mods = mods;
+        return sub;
+    }
 
     int index() const { return (getARFBase() << 1) + getOffset(); }
 
-    static inline constexpr int count(HW hw) {
+    static inline constexpr14 int count(HW hw) {
         return (hw >= HW::XeHPC) ? 4 : 2;
     }
-    static inline constexpr int subcount(HW hw) { return count(hw) * 2; }
+    static inline constexpr14 int subcount(HW hw) { return count(hw) * 2; }
+
 };
 
 class ChannelEnableRegister : public ARF
@@ -1291,6 +1368,7 @@ public:
     RegisterRegion operator()(int vs, int width, int hs) const { return reinterpret_cast<const Subregister &>(*this)(vs, width, hs); }
     RegisterRegion operator()(int vs, int hs) const            { return reinterpret_cast<const Subregister &>(*this)(vs, hs); }
     RegisterRegion operator()(int hs) const                    { return reinterpret_cast<const Subregister &>(*this)(vs); }
+
 };
 
 class StateRegister : public ARF
@@ -1356,7 +1434,19 @@ protected:
 
 public:
     GRFDisp(const GRF &base_, int32_t disp_) : base(base_), disp(disp_) {}
-    /* implicit */ GRFDisp(const RegData &rd) : base(reinterpret_cast<const GRF &>(rd)), disp(0) {}
+
+    /* implicit */ GRFDisp(const RegData &rd) : disp(0) {
+        switch (rd.getRegFile()) {
+            case RegFileGRF: base = reinterpret_cast<const GRF &>(rd); return;
+            case RegFileARF:
+                if (rd.getARFType() == ARFType::null) return;
+                break;
+            default: break;
+        }
+#ifdef NGEN_SAFE
+        throw invalid_operand_exception();
+#endif
+    }
 
     GRFDisp(const GRF &base_, Offset2D offset) : base(base_), disp((uint32_t(uint16_t(offset.y)) << 16) | uint16_t(offset.x)) {}
 
@@ -1377,6 +1467,35 @@ GRFDisp GRF::operator-(int offset)      const { return *this + (-offset); }
 
 GRFDisp GRF::operator+(Offset2D offset) const { return GRFDisp(*this, offset); }
 GRFDisp GRF::operator-(Offset2D offset) const { return *this + (-offset); }
+
+GRFDisp Subregister::operator+(int offset) const
+{
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+GRFDisp Subregister::operator-(int offset) const { return *this + (-offset); }
+
+inline GRFDisp operator+(RegData s, GRF base)
+{
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+
+inline GRFDisp operator+(RegData s, GRFDisp addr)
+{
+#ifdef NGEN_SAFE
+    throw invalid_address_modifier_exception();
+#endif
+    return GRFDisp(GRF(), 0);
+}
+
+inline GRFDisp operator+(GRF base,     RegData s) { return s + base; }
+inline GRFDisp operator+(GRFDisp addr, RegData s) { return s + addr; }
+
 
 inline RegisterRegion Subregister::operator()(int vs, int width, int hs) const
 {
@@ -1425,26 +1544,27 @@ inline Subregister Subregister::reinterpret(int offset, DataType type_) const
 // Indirect register and frames for making them.
 class IndirectRegister : public Register {
 protected:
-    explicit constexpr14 IndirectRegister(const RegData &reg) : Register(reg.getOffset(), false) {
+    explicit constexpr14 IndirectRegister(const RegData &reg, RegFile rf, int offset = 0)
+            : Register(reg.getScalarIndex(), rf)
+    {
         if (reg.getARFType() == ARFType::s)
             base |= 0x100;
         indirect = true;
+        off = offset;
     }
-    friend class IndirectRegisterFrame;
+    template <RegFile rf> friend class IndirectRegisterFrame;
 
     IndirectRegister &operator=(const Invalid &i) { this->invalidate(); return *this; }
 };
 
+template <RegFile rf>
 class IndirectRegisterFrame {
 public:
     IndirectRegister operator[](const RegData &reg) const {
-#ifdef NGEN_SAFE
-        if (!reg.isARF())
-            throw invalid_arf_exception();
-        if (reg.getARFType() != ARFType::a && reg.getARFType() != ARFType::s)
-            throw invalid_arf_exception();
-#endif
-        return IndirectRegister(reg);
+        return IndirectRegister(reg, rf);
+    }
+    IndirectRegister operator[](const GRFDisp &disp) const {
+        return IndirectRegister(disp.getBase(), rf, disp.getDisp());
     }
 };
 
@@ -1459,7 +1579,8 @@ protected:
 public:
     GRFRange() : GRFRange(0, invalidLen) {}
     GRFRange(int base_, int len_) : base(base_), len(len_) {}
-    GRFRange(GRF base_, int len_) : GRFRange(base_.getBase(), len_) {}
+    GRFRange(RegData base_, int len_) : base(base_.getBase())
+                                      , len(base_.isValid() ? len_ : invalidLen) {}
 
     int getBase()    const { return base; }
     int getLen()     const { return len; }
@@ -1519,6 +1640,8 @@ Subregister GRFRange::sub(HW hw, int offset, DataType type) const {
     return (*this)[offset >> lg2Len].sub(offset - ((offset >> lg2Len) << lg2Len), type);
 }
 
+using RegisterRange = GRFRange;
+
 enum class ConditionModifier {
     none = 0,
     ze = 1,
@@ -1541,6 +1664,7 @@ static inline std::ostream &operator<<(std::ostream &str, ConditionModifier cmod
     str << names[static_cast<uint8_t>(cmod) & 0xF];
     return str;
 }
+
 #endif
 
 enum class ChannelMask {
@@ -1741,6 +1865,11 @@ static inline bool isBranch(Opcode op)
     return (static_cast<int>(op) >> 4) == 2;
 }
 
+static inline bool isDirective(Opcode op)
+{
+    return (op == Opcode::directive);
+}
+
 class AllPipes {};
 enum class Pipe : uint8_t {
     Default = 0,
@@ -1759,46 +1888,86 @@ static inline std::ostream &operator<<(std::ostream &str, Pipe pipe)
     str << names[static_cast<uint8_t>(pipe) & 7];
     return str;
 }
+
 #endif
 
-class SWSBInfo
+class SWSBItem
 {
     friend class InstructionModifier;
 
 public:
     union {
         struct {
-            unsigned token : 5;
-            unsigned noacc : 1;
-            unsigned src : 1;
-            unsigned dst : 1;
-            unsigned dist : 4;
-            unsigned pipe : 4;
-        } parts;
-        uint16_t all;
+            uint8_t dist : 3;
+            uint8_t pipe : 4;
+            uint8_t isToken : 1;
+        } pipe;
+        struct {
+            uint8_t token : 5;
+            uint8_t dst : 1;
+            uint8_t src : 1;
+            uint8_t isToken : 1;
+        } token;
+        uint8_t all;
     };
 
-    constexpr bool hasDist() const       { return parts.dist > 0; }
-    constexpr bool hasToken() const      { return parts.src || parts.dst; }
-    constexpr bool hasTokenSet() const   { return parts.src && parts.dst; }
-    constexpr int getToken() const       { return hasToken() ? parts.token : 0; }
-    constexpr unsigned tokenMode() const { return (parts.src << 1) | parts.dst; }
-    constexpr Pipe getPipe() const       { return static_cast<Pipe>(parts.pipe); }
-    void setPipe(Pipe pipe)              { parts.pipe = static_cast<unsigned>(pipe); }
+    constexpr bool isToken() const       { return token.isToken; }
+    constexpr bool hasTokenSet() const   { return token.isToken && token.src && token.dst; }
+    constexpr int getToken() const       { return token.token; }
+    constexpr unsigned tokenMode() const { return ((token.src << 1) | token.dst); }
+
+    constexpr bool isPipe() const        { return !empty() && !pipe.isToken; }
+    constexpr Pipe getPipe() const       { return static_cast<Pipe>(pipe.pipe); }
+    void setPipe(Pipe pipe_)             { pipe.pipe = static_cast<unsigned>(pipe_); }
+
     constexpr bool empty() const         { return (all == 0); }
 
+    explicit operator bool() const       { return !empty(); }
+    bool operator!() const               { return empty(); }
+
 protected:
-    explicit constexpr SWSBInfo(uint16_t all_) : all(all_) {}
+    explicit constexpr SWSBItem(uint8_t all_) : all(all_) {}
 
 public:
-    constexpr SWSBInfo() : all(0) {}
-    constexpr SWSBInfo(Pipe pipe_, int dist_) : all(((dist_ & 0xF) << 8) | (static_cast<unsigned>(pipe_) << 12)) {}
-    constexpr SWSBInfo(int id_, bool src_, bool dst_) : all(id_ | (uint16_t(src_) << 6) | (uint16_t(dst_) << 7)) {}
+    constexpr SWSBItem() : all(0) {}
+    constexpr SWSBItem(Pipe pipe_, int dist_) : all((dist_ & 0x7) | (static_cast<unsigned>(pipe_) << 3)) {}
+    constexpr SWSBItem(int token_, bool src_, bool dst_) : all((token_ & 0x1F) | (uint16_t(src_) << 6) | (uint16_t(dst_) << 5) | 0x80) {}
 
-    static constexpr SWSBInfo createNoAccSBSet() { return SWSBInfo(0x20); }
+    static constexpr SWSBItem createNoAccSBSet() { return SWSBItem(0x08); }
+    constexpr bool isNoAccSBSet() const          { return (all == 0x08); }
 
-    friend constexpr SWSBInfo operator|(const SWSBInfo &i1, const SWSBInfo &i2) { return SWSBInfo(i1.all | i2.all); }
+    static uint32_t pack4(std::array<SWSBItem, 4> items) {
+        return items[0].all | (items[1].all << 8) | (items[2].all << 16) | (items[3].all << 24);
+    }
+    static std::array<SWSBItem, 4> unpack4(uint32_t i) {
+        std::array<SWSBItem, 4> result;
+        result[0].all =  i        & 0xFF;
+        result[1].all = (i >> 8)  & 0xFF;
+        result[2].all = (i >> 16) & 0xFF;
+        result[3].all = (i >> 24) & 0xFF;
+        return result;
+    }
 };
+
+static_assert(sizeof(SWSBItem) == 1, "SWSBItem has been padded by the compiler");
+
+using SWSBInfo = std::array<SWSBItem, 2>;
+
+template <typename T> static constexpr Pipe getPipe() { return (sizeof(T) == 8) ? Pipe::L : Pipe::I; }
+template <> constexpr Pipe getPipe<float>()           { return Pipe::F; }
+template <> constexpr Pipe getPipe<void>()            { return Pipe::Default; }
+template <> constexpr Pipe getPipe<AllPipes>()        { return Pipe::A; }
+
+constexpr SWSBItem SWSB(SWSBItem info)                              { return info; }
+constexpr SWSBItem SWSB(Pipe pipe, int dist)                        { return SWSBItem(pipe, dist); }
+template <typename T = void> constexpr SWSBItem SWSB(int dist = 1)  { return SWSB(getPipe<T>(), dist); }
+
+template <typename T = void> constexpr InstructionModifier SWSB(SWSBItem item, int dist);
+
+static inline void normalizeSWSB(SWSBInfo &info) {
+    if (info[0].isPipe() || info[1].isToken())
+        std::swap(info[0], info[1]);
+}
 
 // Token count.
 constexpr inline int tokenCount(HW hw, int grfCount = 128)
@@ -1812,31 +1981,21 @@ constexpr inline int tokenCount(HW hw, int grfCount = 128)
 class SBID
 {
 public:
-    SWSBInfo set;
-    SWSBInfo src;
-    SWSBInfo dst;
+    SWSBItem set;
+    SWSBItem src;
+    SWSBItem dst;
 
-    constexpr SBID(int id) : set(id, true, true), src(id, true, false), dst(id, false, true) {}
-    constexpr operator SWSBInfo() const { return set; }
+    constexpr explicit SBID(int id) : set(id, true, true), src(id, true, false), dst(id, false, true) {}
+    constexpr operator SWSBItem() const { return set; }
 
     constexpr int getID() const { return set.getToken(); }
 };
-
-template <typename T> static constexpr Pipe getPipe() { return (sizeof(T) == 8) ? Pipe::L : Pipe::I; }
-template <> constexpr Pipe getPipe<float>()           { return Pipe::F; }
-template <> constexpr Pipe getPipe<void>()            { return Pipe::Default; }
-template <> constexpr Pipe getPipe<AllPipes>()        { return Pipe::A; }
-
-constexpr SWSBInfo SWSB(SWSBInfo info)                                        { return info; }
-constexpr SWSBInfo SWSB(Pipe pipe, int dist)                                  { return SWSBInfo(pipe, dist); }
-template <typename T = void> constexpr SWSBInfo SWSB(int dist)                { return SWSB(getPipe<T>(), dist); }
-template <typename T = void> constexpr SWSBInfo SWSB(SWSBInfo info, int dist) { return SWSB<T>(dist) | info; }
 
 class InstructionModifier {
 protected:
     union {
         struct {
-            unsigned execSize : 8;          // Execution size as integer (for internal use).
+            unsigned _pad1 : 8;
             unsigned accessMode : 1;        // From here on matches the low 64-bits of the binary format for Gen8-11
             unsigned noDDClr : 1;
             unsigned noDDChk : 1;
@@ -1844,7 +2003,7 @@ protected:
             unsigned threadCtrl : 2;
             unsigned predCtrl : 4;
             unsigned predInv : 1;
-            unsigned eSizeField : 3;
+            unsigned log2ExecSize : 3;
             unsigned cmod : 4;              // Also stores channel mask temporarily for surface r/w
             unsigned accWrCtrl : 1;         // = noSrcDepSet for send, = branchCtrl for branch instructions
             unsigned cmptCtrl : 1;
@@ -1854,12 +2013,13 @@ protected:
             unsigned flagRegNum : 1;
             unsigned maskCtrl : 1;
             unsigned exBSO : 1;
-            unsigned _zeros_: 8;
+            unsigned _pad2: 8;
             unsigned flagRegNum1 : 1;
             unsigned autoSWSB : 1;
             unsigned fusionCtrl : 1;        // Gen12
             unsigned eot : 1;
-            unsigned swsb : 16;
+            unsigned swsb0 : 8;
+            unsigned swsb1 : 8;
         } parts;
         uint64_t all;
     };
@@ -1870,7 +2030,7 @@ protected:
     friend inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTagXeHPC tag);
 
 public:
-    constexpr int getExecSize()            const { return parts.execSize; }
+    constexpr int getExecSize()            const { return 1 << parts.log2ExecSize; }
     constexpr bool isAlign16()             const { return parts.accessMode; }
     constexpr bool isNoDDClr()             const { return parts.noDDClr; }
     constexpr bool isNoDDChk()             const { return parts.noDDChk; }
@@ -1891,10 +2051,10 @@ public:
     constexpr bool isAutoSWSB()            const { return parts.autoSWSB; }
     constexpr bool isSerialized()          const { return parts.fusionCtrl; }
     constexpr bool isEOT()                 const { return parts.eot; }
-    constexpr SWSBInfo getSWSB()           const { return SWSBInfo(parts.swsb); }
+    constexpr SWSBInfo getSWSB()           const { return {SWSBItem(parts.swsb0), SWSBItem(parts.swsb1)}; }
     constexpr uint64_t getAll()            const { return all; }
 
-    constexpr14 void setExecSize(int execSize_)              { parts.execSize = execSize_; parts.eSizeField = utils::log2(execSize_); }
+    constexpr14 void setExecSize(int execSize_)              { parts.log2ExecSize = utils::log2(execSize_); }
     constexpr14 void setPredCtrl(PredCtrl predCtrl_)         { parts.predCtrl = static_cast<unsigned>(predCtrl_); }
     constexpr14 void setPredInv(bool predInv_)               { parts.predInv = predInv_; }
     constexpr14 void setCMod(const ConditionModifier &cmod_) { parts.cmod = static_cast<unsigned>(cmod_); }
@@ -1902,28 +2062,34 @@ public:
     constexpr14 void setFlagReg(FlagRegister &flag)          { parts.flagRegNum1 = flag.getBase() >> 1; parts.flagRegNum = flag.getBase() & 1; parts.flagSubRegNum = flag.getOffset(); }
     constexpr14 void setWrEn(bool maskCtrl_)                 { parts.maskCtrl = maskCtrl_; }
     constexpr14 void setAutoSWSB(bool autoSWSB_)             { parts.autoSWSB = autoSWSB_; }
-    constexpr14 void setSWSB(SWSBInfo swsb_)                 { parts.swsb = swsb_.all; }
-    constexpr14 void setSWSB(uint16_t swsb_)                 { parts.swsb = swsb_; }
+    constexpr14 void setSWSB(SWSBInfo swsb)                  { parts.swsb0 = swsb[0].all; parts.swsb1 = swsb[1].all; }
 
     constexpr InstructionModifier() : all(0) {}
 
     // Hardcoded shift counts are a workaround for MSVC v140 bug.
-    constexpr /* implicit */ InstructionModifier(const PredCtrl &predCtrl_)
+    constexpr14 /* implicit */ InstructionModifier(FlagRegister flag) : InstructionModifier() {
+        *this |= flag;
+    }
+    constexpr /* implicit */ InstructionModifier(PredCtrl predCtrl_)
         : all{static_cast<uint64_t>(predCtrl_) << 16} {}
 
-    constexpr /* implicit */ InstructionModifier(const ThreadCtrl &threadCtrl_)
+    constexpr /* implicit */ InstructionModifier(ThreadCtrl threadCtrl_)
         : all{static_cast<uint64_t>(threadCtrl_) << 14} {}
 
-    constexpr /* implicit */ InstructionModifier(const ConditionModifier &cmod_)
+    constexpr /* implicit */ InstructionModifier(ConditionModifier cmod_)
         : all{static_cast<uint64_t>(cmod_) << 24} {}
 
-    constexpr14 /* implicit */ InstructionModifier(const int &execSize_) : InstructionModifier() {
+    constexpr14 /* implicit */ InstructionModifier(int execSize_) : InstructionModifier() {
         setExecSize(execSize_);
     }
-    constexpr14 /* implicit */ InstructionModifier(const SWSBInfo &swsb) : InstructionModifier() {
-        parts.swsb = swsb.all;
+    constexpr14 /* implicit */ InstructionModifier(SWSBInfo swsb) : InstructionModifier() {
+        parts.swsb0 = swsb[0].all;
+        parts.swsb1 = swsb[1].all;
     }
-    constexpr14 /* implicit */ InstructionModifier(const SBID &sb)   : InstructionModifier(SWSB(sb)) {}
+    constexpr14 /* implicit */ InstructionModifier(SWSBItem swsb) : InstructionModifier() {
+        parts.swsb0 = swsb.all;
+    }
+    constexpr14 /* implicit */ InstructionModifier(SBID sb) : InstructionModifier(SWSB(sb)) {}
 
 protected:
     constexpr InstructionModifier(bool accessMode_, bool noDDClr_, bool noDDChk_, unsigned chanOff_, bool accWrCtrl_,
@@ -1973,6 +2139,8 @@ public:
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const InstructionModifier &mod2);
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const FlagRegister &mod2);
     friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const PredCtrl &mod2);
+    friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SWSBItem &mod2);
+    friend constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SBID &mod2);
 
     friend constexpr14 InstructionModifier operator^(const InstructionModifier &mod1, const InstructionModifier &mod2);
 
@@ -1983,12 +2151,12 @@ public:
     }
 
     template <typename T>
-    InstructionModifier &operator|=(const T &mod) {
+    constexpr14 InstructionModifier &operator|=(const T &mod) {
         *this = *this | mod;
         return *this;
     }
 
-    InstructionModifier &operator^=(const InstructionModifier &mod) {
+    constexpr14 InstructionModifier &operator^=(const InstructionModifier &mod) {
         *this = *this ^ mod;
         return *this;
     }
@@ -2004,9 +2172,11 @@ inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1
 {
     InstructionModifier mod = mod1;
 
-    mod.parts.flagRegNum1 = flag.getBase() >> 1;
-    mod.parts.flagRegNum = flag.getBase() & 1;
-    mod.parts.flagSubRegNum = flag.getOffset();
+    if (mod.parts.predCtrl == static_cast<int>(PredCtrl::None)) {
+        mod.parts.flagRegNum1 = flag.getBase() >> 1;
+        mod.parts.flagRegNum = flag.getBase() & 1;
+        mod.parts.flagSubRegNum = flag.getOffset();
+    }
 
     if (mod.getCMod() == ConditionModifier::none) {
         mod.parts.predInv = flag.getNeg();
@@ -2023,9 +2193,28 @@ inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1
     return mod;
 }
 
+inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SWSBItem &mod2)
+{
+    InstructionModifier mod = mod1;
+    if (mod.parts.swsb0 == 0)
+        mod.parts.swsb0 = mod2.all;
+    else
+        mod.parts.swsb1 = mod2.all;
+    return mod;
+}
+
+inline constexpr14 InstructionModifier operator|(const InstructionModifier &mod1, const SBID &mod2)
+{
+    return mod1 | SWSBItem(mod2);
+}
+
 inline constexpr14 InstructionModifier operator^(const InstructionModifier &mod1, const InstructionModifier &mod2)
 {
     return InstructionModifier(mod1.all ^ mod2.all);
+}
+
+template <typename T> constexpr InstructionModifier SWSB(SWSBItem item, int dist) {
+    return InstructionModifier(item) | SWSB<T>(dist);
 }
 
 class Immediate {
@@ -2209,6 +2398,8 @@ public:
             throw invalid_immediate_exception();
 #endif
     }
+
+    constexpr RegFile getRegFile() const { return RegFileIMM; }
 
     constexpr14 bool isScalar() const {
         switch (type) {
@@ -3050,7 +3241,7 @@ enum FlushTypeLSC : uint8_t {
 
 struct DataSpecLSC {
     MessageDescriptor desc;
-    uint8_t vcount = 0;
+    uint16_t vcount = 0;
     uint8_t dbytes = 0;
 
     enum { AddrSize16 = 1, AddrSize32 = 2, AddrSize64 = 3 };
@@ -3228,5 +3419,8 @@ static inline void encodeAtomicDescriptors(HW hw, MessageDescriptor &desc, Exten
 
 } /* namespace NGEN_NAMESPACE */
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif /* header guard */

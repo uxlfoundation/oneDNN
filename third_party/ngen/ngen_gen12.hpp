@@ -29,17 +29,10 @@ namespace NGEN_NAMESPACE {
 struct EncodingTag12 {};
 struct EncodingTagXeHPC {};
 
-struct Instruction12;
-struct InstructionXeHPC;
-
 template <HW hw> struct EncodingTag12Dispatch       { using tag = EncodingTag12; };
-template <HW hw> struct Instruction12Dispatch       { using type = Instruction12; };
 template <> struct EncodingTag12Dispatch<HW::XeHPC> { using tag = EncodingTagXeHPC; };
-template <> struct Instruction12Dispatch<HW::XeHPC> { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeHPC; };
-template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
-template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
 
 class SWSBInfo12
 {
@@ -74,19 +67,20 @@ public:
     constexpr SWSBInfo12() : all{0} {}
 
     SWSBInfo12(SWSBInfo info, Opcode op) {
-        if (info.hasDist() && info.hasToken()) {
-            combined.sbid = info.parts.token;
-            combined.dist = info.parts.dist;
+        normalizeSWSB(info);    /* token in slot 0, pipe in slot 1 */
+        if (info[0] && info[1]) {
+            combined.sbid = info[0].token.token;
+            combined.dist = info[1].pipe.dist;
             combined.combined = true;
-        } else if (info.hasDist()) {
+        } else if (info[1]) {
             combined.combined = false;
             uint8_t pipeMap[8] = {0, 1, 2, 3, 10, 0, 0, 0};
-            pipeline.dist = info.parts.dist;
-            pipeline.pipe = pipeMap[info.parts.pipe & 7];
-        } else if (info.hasToken()) {
+            pipeline.dist = info[1].pipe.dist;
+            pipeline.pipe = pipeMap[info[1].pipe.pipe & 7];
+        } else if (info[0]) {
             combined.combined = false;
-            combined.sbid = info.parts.token;
-            scoreboard.mode = 1 + info.tokenMode();
+            combined.sbid = info[0].token.token;
+            scoreboard.mode = 1 + info[0].tokenMode();
         } else
             all = 0;
     }
@@ -95,13 +89,13 @@ public:
         if (combined.combined) {
             bool vl = trackedByToken(HW::Gen12LP, op, dstTypecode);
             auto pipe = (op == Opcode::send || op == Opcode::sendc) ? Pipe::A : Pipe::Default;
-            return SWSBInfo(combined.sbid, vl, true) | SWSBInfo(pipe, combined.dist);
+            return {SWSBItem(combined.sbid, vl, true), SWSBItem(pipe, combined.dist)};
         } else if (isPipeline()) {
             static const Pipe pipeMap[4] = {Pipe::Default, Pipe::A, Pipe::F, Pipe::I};
             auto pipe = (pipeline.pipe == 10) ? Pipe::L : pipeMap[pipeline.pipe & 3];
-            return SWSBInfo(pipe, pipeline.dist);
+            return {SWSBItem(pipe, pipeline.dist)};
         } else
-            return SWSBInfo(scoreboard.sbid, scoreboard.mode != 2, scoreboard.mode != 3);
+            return {SWSBItem(scoreboard.sbid, scoreboard.mode != 2, scoreboard.mode != 3)};
     }
 
     constexpr bool empty() const                              { return all == 0; }
@@ -139,12 +133,12 @@ protected:
 
     constexpr SWSBInfoXeHPC(uint16_t all_, bool dummy) : all{all_} {}
 
-    static constexpr14 unsigned combinedMode(SWSBInfo info, Opcode op) {
-        auto pipe = info.getPipe();
-        if (info.parts.src && info.parts.dst)
+    static constexpr14 unsigned combinedMode(SWSBItem itoken, SWSBItem ipipe, Opcode op) {
+        auto pipe = ipipe.getPipe();
+        if (itoken.token.src && itoken.token.dst)
             return (pipe == Pipe::F) ? 2 : (pipe == Pipe::I) ? 3 : 1;
-        if (info.parts.src) return 2;
-        if (info.parts.dst) return (pipe == Pipe::A || op == Opcode::dpas) ? 3 : 1;
+        if (itoken.token.src) return 2;
+        if (itoken.token.dst) return (pipe == Pipe::A || op == Opcode::dpas) ? 3 : 1;
         return 0;
     }
 
@@ -152,31 +146,34 @@ public:
     constexpr SWSBInfoXeHPC() : all{0} {}
 
     SWSBInfoXeHPC(SWSBInfo info, Opcode op) {
-        if (info.hasDist() && info.hasToken()) {
-            combined.sbid = info.parts.token;
-            combined.dist = info.parts.dist;
-            combined.mode = combinedMode(info, op);
-        } else if (info.hasDist()) {
-            pipeline.dist = info.parts.dist;
-            pipeline.pipe = info.parts.pipe;
+        normalizeSWSB(info);    /* token in slot 0, pipe in slot 1 */
+        if (info[1].isNoAccSBSet())
+            all = 0xF0;
+        else if (info[0] && info[1]) {
+            combined.sbid = info[0].token.token;
+            combined.dist = info[1].pipe.dist;
+            combined.mode = combinedMode(info[0], info[1], op);
+        } else if (info[1]) {
+            pipeline.dist = info[1].pipe.dist;
+            pipeline.pipe = info[1].pipe.pipe;
             pipeline.sb = false;
             pipeline.mode = 0;
-        } else if (info.hasToken()) {
-            scoreboard.sbid = info.parts.token;
-            scoreboard.type = info.tokenMode() - 1;
+        } else if (info[0]) {
+            scoreboard.sbid = info[0].token.token;
+            scoreboard.type = info[0].tokenMode() - 1;
             scoreboard.sb = true;
             scoreboard.mode = 0;
-        } else if (info.parts.noacc)
-            all = 0xF0;
-        else
+        } else
             all = 0;
     }
 
     SWSBInfo decode(Opcode op) const {
         if (all == 0xF0)
-            return SWSBInfo::createNoAccSBSet();
+            return {SWSBItem::createNoAccSBSet()};
 
-        auto result = SWSBInfo(pipe(op), dist());
+        SWSBItem ipipe(pipe(op), dist());
+        SWSBItem itoken;
+
         if (combined.mode) {
             bool src, dst;
             if (isSend(op))
@@ -188,11 +185,11 @@ public:
                 dst = combined.mode & 1;
                 src = !dst;
             }
-            result = result | SWSBInfo(combined.sbid, src, dst);
+            itoken = SWSBItem(combined.sbid, src, dst);
         } else if (scoreboard.sb)
-            result = result | SWSBInfo(scoreboard.sbid, scoreboard.type != 0, scoreboard.type != 1);
+            itoken = SWSBItem(scoreboard.sbid, scoreboard.type != 0, scoreboard.type != 1);
 
-        return result;
+        return {ipipe, itoken};
     }
 
     constexpr bool empty() const { return all == 0; }
@@ -449,8 +446,9 @@ struct Instruction12 {
     unsigned dstTypecode() const  { return binary.dstType; }
     unsigned src0Typecode() const { return srcTypecode(0); }
     unsigned src1Typecode() const { return srcTypecode(1); }
-    void shiftJIP(int32_t shift)  { branches.jip += shift * sizeof(Instruction12); }
-    void shiftUIP(int32_t shift)  { branches.uip += shift * sizeof(Instruction12); }
+    void shiftJIP(int32_t shift)  { branches.jip += shift; }
+    void shiftUIP(int32_t shift)  { branches.uip += shift; }
+    static bool is64()            { return false; }
 
     inline autoswsb::DestinationMask destinations(int &jip, int &uip) const;
     template <typename Tag = EncodingTag12>
@@ -529,7 +527,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
         if (srcN >= 0)
             op.indirect.vs = (rd.isVxIndirect()) ? 0xF : pow2Encode(rd.getVS());
     } else {
-        op.direct.regFile = getRegFile(rd);
+        op.direct.regFile = rd.getRegFile8();
         op.direct.subRegNum = rd.getByteOffset();
         op.direct.regNum = rd.getBase();
         op.direct.addrMode = 0;
@@ -563,7 +561,7 @@ static inline constexpr14 BinaryOperand12 encodeBinaryOperand12(const RegData &r
             op.indirectXeHPC.addrOff0 = (rd.getOffset() & 1);
         }
     } else {
-        op.direct.regFile = getRegFile(rd);
+        op.direct.regFile = rd.getRegFile8();
         op.direct.subRegNum = (rd.getByteOffset() >> 1);
         op.direct.regNum = rd.getBase();
         op.direct.addrMode = 0;
@@ -603,7 +601,7 @@ static inline constexpr14 TernaryOperand12 encodeTernaryOperand12(const RegData 
     if (encodeHS)
         op.direct.hs = dest ? utils::log2(rd.getHS()) : pow2Encode(rd.getHS());
 
-    op.direct.regFile = getRegFile(rd);
+    op.direct.regFile = rd.getRegFile8();
     op.direct.subRegNum = rd.getByteOffset();
     op.direct.regNum = rd.getBase();
 
@@ -623,7 +621,7 @@ static inline constexpr14 TernaryOperand12 encodeTernaryOperand12(const RegData 
     if (encodeHS)
         op.direct.hs = dest ? utils::log2(rd.getHS()) : pow2Encode(rd.getHS());
 
-    op.direct.regFile = getRegFile(rd);
+    op.direct.regFile = rd.getRegFile8();
     op.direct.subRegNum = rd.getByteOffset() >> 1;
     op.direct.regNum = rd.getBase();
 
@@ -644,7 +642,7 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
     Instruction12 i2;   /* separate variable to avoid gcc13 bug */
     i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
     i2.common.swsb = SWSBInfo12(mod.getSWSB(), opcode).raw();
-    i2.common.execSize = mod.parts.eSizeField;
+    i2.common.execSize = mod.parts.log2ExecSize;
     i2.common.execOffset = mod.parts.chanOff;
     i2.common.flagReg = (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
     i2.common.predCtrl = mod.parts.predCtrl;
@@ -663,7 +661,7 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
     Instruction12 i2;   /* separate variable to avoid gcc13 bug */
     i2.common.opcode = static_cast<unsigned>(opcode) | (mod.parts.autoSWSB << 7);
     i2.commonXeHPC.swsb = SWSBInfoXeHPC(mod.getSWSB(), opcode).raw();
-    i2.commonXeHPC.execSize = mod.parts.eSizeField;
+    i2.commonXeHPC.execSize = mod.parts.log2ExecSize;
     i2.commonXeHPC.flagReg = (mod.parts.flagRegNum1 << 2) | (mod.parts.flagRegNum << 1) | mod.parts.flagSubRegNum;
     i2.commonXeHPC.execOffset = mod.parts.chanOff >> 1;
     i2.commonXeHPC.predCtrl = mod.parts.predCtrl;
@@ -1028,7 +1026,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 rd = sub((1 << vs) >> 1, hs);
 
             if (o.direct.regFile == RegFileARF) {
-                rd.setARF(true);
+                rd.setRegFile(RegFileARF);
                 if (!autoswsb::trackableARF(normalizeARFType(rd.getARFType(), hw)))
                     return false;
             }
@@ -1070,7 +1068,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 rd = sub((1 << vs) >> 1, 1 << o.direct.width, hs);
 
             if (o.direct.regFile == RegFileARF) {
-                rd.setARF(true);
+                rd.setRegFile(RegFileARF);
                 if (!autoswsb::trackableARF(normalizeARFType(rd.getARFType(), hw)))
                     return false;
             }
@@ -1141,9 +1139,7 @@ bool Instruction12::getSendDesc(MessageDescriptor &desc) const
 
 int Instruction12::getFencedepJIP() const
 {
-    uint32_t imm = 0;
-    (void) getImm32(imm);
-    return int32_t(imm) / sizeof(Instruction12);
+    return int32_t(imm32.value) / sizeof(Instruction12);
 }
 
 bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
@@ -1197,7 +1193,7 @@ autoswsb::DestinationMask Instruction12::destinations(int &jip, int &uip) const
 
     if (!isBranch(opcode())) {
         if (opcode() == Opcode::send || opcode() == Opcode::sendc)
-            if (send.eot)
+            if (send.eot && !predicated())
                 return DestNone;
         return DestNextIP;
     }

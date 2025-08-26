@@ -20,6 +20,11 @@
 // Drop NGEN_CONFIG define once C++11/14 support dropped
 #if (defined(__has_include) && __has_include("ngen_config.hpp")) || defined(NGEN_CONFIG)
 #include "ngen_config.hpp"
+
+#ifndef NGEN_ASM_SHOW_FORMATS
+#define NGEN_ASM_SHOW_FORMATS 0
+#endif
+
 #else
 // Default config settings
 
@@ -40,5 +45,10 @@
 #endif
 #endif
 
+#ifdef NGEN_ENABLE_SOURCE_LOCATION
+#define NGEN_DEFAULT_DEBUG_LINE_MAPPING true
 #endif
+
+#endif
+
 #endif /* header guard */

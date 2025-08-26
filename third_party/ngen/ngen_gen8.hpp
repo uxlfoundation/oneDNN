@@ -254,17 +254,6 @@ union Instruction8 {
 static_assert(sizeof(Instruction8) == 16, "Internal error: Instruction8 has been padded by the compiler.");
 
 // Encoding routines.
-enum RegFiles : unsigned {
-    RegFileARF = 0,
-    RegFileGRF = 1,
-    RegFileIMM = 3,
-};
-
-inline unsigned getRegFile(const RegData &rd)          { return rd.isARF() ? RegFileARF : RegFileGRF; }
-inline unsigned getRegFile(const Align16Operand &o)    { return getRegFile(o.getReg()); }
-inline unsigned getRegFile(const ExtendedReg &reg)     { return getRegFile(reg.getBase()); }
-inline unsigned getRegFile(const Immediate &imm)       { return RegFileIMM; }
-
 static inline unsigned getImmediateTypecode8(DataType type)
 {
     static const uint8_t conversionTable[16] = {0,1,2,3,2,3,10,7,8,9,11,0,0,4,6,5};

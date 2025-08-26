@@ -37,8 +37,8 @@ public:
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
-    const NEOInterfaceHandler &getInterface() {return interface_;}
-    void setInterface(NEOInterfaceHandler i) {interface_ = std::move(i);}
+    const NEOInterfaceHandler &getInterface()                            { return interface_; }
+    void setInterface(NEOInterfaceHandler i)                             { interface_ = std::move(i); }
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }
 
@@ -99,6 +99,7 @@ public:
     GRF getLocalID(int dim) const                                        { return interface_.getLocalID(dim); }
     Subregister getSIMD1LocalID(int dim) const                           { return interface_.getSIMD1LocalID(dim); }
     Subregister getLocalSize(int dim) const                              { return interface_.getLocalSize(dim); }
+    Subregister getGroupID(int dim) const                                { return interface_.getGroupID(dim); }
 
     void prologue()                                                      { interface_.generatePrologue(*this); }
     void epilogue(RegData r0_info = RegData())
@@ -542,6 +543,7 @@ private:
 #define NGEN_FORWARD_ELF(hw) \
 NGEN_FORWARD_SCOPE_NO_ELF_OVERRIDES(NGEN_NAMESPACE::ELFCodeGenerator<hw>) \
 NGEN_FORWARD_SCOPE_ELF_EXTRA(NGEN_NAMESPACE::ELFCodeGenerator<hw>)        \
+NGEN_FORWARD_SCOPE_ELF_EXTRA2(NGEN_NAMESPACE::ELFCodeGenerator<hw>)       \
 template <typename... Targs> void externalName(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::externalName(std::forward<Targs>(args)...); } \
 const std::string &getExternalName() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getExternalName(); } \
 int getSIMD() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD(); } \
@@ -576,10 +578,13 @@ template <typename... Targs> int getArgumentSurfaceIfExists(Targs&&... args) { r
 template <typename... Targs> NGEN_NAMESPACE::GRF getLocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::Subregister getSIMD1LocalID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD1LocalID(std::forward<Targs>(args)...); } \
 template <typename... Targs> NGEN_NAMESPACE::Subregister getLocalSize(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getLocalSize(std::forward<Targs>(args)...); } \
+template <typename... Targs> NGEN_NAMESPACE::Subregister getGroupID(Targs&&... args) { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getGroupID(std::forward<Targs>(args)...); } \
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
 
 #define NGEN_FORWARD_SCOPE_ELF_EXTRA(scope)
+
+#define NGEN_FORWARD_SCOPE_ELF_EXTRA2(scope)
 
 template <HW hw>
 std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary()

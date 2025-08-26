@@ -687,7 +687,7 @@ public:
             // Enable mask as fdiv_ieee relies on masked if/endif flow.
             BaseGeneratorT::setDefaultNoMask(false);
             fdiv_ieee(div_mod, f0[0], dst_rd(), src0_rd(), src1_rd(), zero, one,
-                    tmp);
+                    tmp, div_mod);
             BaseGeneratorT::setDefaultNoMask(true);
         }
 

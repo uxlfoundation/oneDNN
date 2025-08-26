@@ -1898,11 +1898,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         GRFRange aoLoad;
         bool releaseAOLoad = true;
         if (problem.aoPtrDims == 1) {
+            bool slmAO = slmA && !lateOffsetA;
             reclaimRanges(state.C_regs, state);
             auto aoBase = state.ra.alloc_sub<uint64_t>();
-            eaddScaled(1, aoBase, state.inputs.aoPtr, slmA ? i0q : state.i0, problem.Tao, strategy, state);
-            auto rem = slmA ? state.remaindersCoop[LoopM] : state.remainders[LoopM];
-            auto r = slmA ? state.ma_slm : strategy.unroll[LoopM];
+            eaddScaled(1, aoBase, state.inputs.aoPtr, slmAO ? i0q : state.i0, problem.Tao, strategy, state);
+            auto rem = slmAO ? state.remaindersCoop[LoopM] : state.remainders[LoopM];
+            auto r = slmAO ? state.ma_slm : strategy.unroll[LoopM];
             aoLoad = loadVector(problem.Tao, problem.Tao, aoBase, r, rem, strategy, state);
             A_offsetLayout = RegisterLayout(hw, problem.Tao, r, 1, true);
             state.ra.safeRelease(aoBase);
@@ -1930,11 +1931,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         GRFRange boLoad;
         bool releaseBOLoad = true;
         if (problem.boPtrDims == 1) {
+            bool slmBO = slmB && !lateOffsetB;
             reclaimRanges(state.C_regs, state);
             auto boBase = state.ra.alloc_sub<uint64_t>();
-            auto rem = slmB ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
-            auto c = slmB ? state.nb_slm : strategy.unroll[LoopN];
-            eaddScaled(1, boBase, state.inputs.boPtr, slmB ? j0q : state.j0, Tbo, strategy, state);
+            auto rem = slmBO ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
+            auto c = slmBO ? state.nb_slm : strategy.unroll[LoopN];
+            eaddScaled(1, boBase, state.inputs.boPtr, slmBO ? j0q : state.j0, Tbo, strategy, state);
             boLoad = loadVector(problem.Tbo, problem.Tbo, boBase, c, rem, strategy, state);
             B_offsetLayout = RegisterLayout(hw, problem.Tbo, 1, c, false);
             state.ra.safeRelease(boBase);

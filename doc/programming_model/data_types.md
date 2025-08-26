@@ -211,7 +211,7 @@ library:
  * Xe-LPG
    * Intel Graphics for Intel Core Ultra processors (formerly Meteor Lake)
  * Xe-HPG
-   * Intel Arc Graphics (formerly Achemist)
+   * Intel Arc A-Series Graphics (formerly Achemist)
    * Intel Data Center GPU Flex Series (formerly Arctic Sound)
  * Xe-HPC
    * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
@@ -220,7 +220,7 @@ library:
  * Xe2-HPG
    * Intel Arc B-Series Graphics (formerly Battlemage)
  * Xe3-LPG
-   * Intel Arc graphics for future Intel Core Ultra processors (code name Panther Lake)
+   * Intel Arc Graphics for future Intel Core Ultra processors (code name Panther Lake)
 
 The following table indicates the data types support for each uArch supported by oneDNN.
 

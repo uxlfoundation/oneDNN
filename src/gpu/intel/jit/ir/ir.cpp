@@ -16,6 +16,7 @@
 
 #include "gpu/intel/jit/ir/ir.hpp"
 
+#include <numeric>
 #include <sstream>
 
 #include "common/math_utils.hpp"

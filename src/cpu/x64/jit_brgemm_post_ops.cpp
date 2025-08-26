@@ -855,13 +855,11 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
             const bool is_single_scale = !brg_.is_oc_scale;
 
             const auto vmm = vector(m, n);
-            const auto vmm_m = maybe_mask(vmm, is_tail, false, k_mask);
             const auto vmm_wei_scales = vmm_tmp(0);
-            const auto vmm_wei_scales_masked
-                    = maybe_mask(vmm_wei_scales, is_tail, false, k_mask);
             if (is_single_scale) {
                 if (has_ptr_b_support) {
                     // Same isa has masks support.
+                    const auto vmm_m = maybe_mask(vmm, is_tail, false, k_mask);
                     vmulps(vmm_m, vmm, ptr_b[aux_reg_wei_scales]);
                 } else {
                     vbroadcastss(vmm_wei_scales, addr);
@@ -869,6 +867,9 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                 }
             } else {
                 if (IMPLICATION(is_tail, isa_has_masks(brg_.isa_impl))) {
+                    const auto vmm_m = maybe_mask(vmm, is_tail, false, k_mask);
+                    const auto vmm_wei_scales_masked = maybe_mask(
+                            vmm_wei_scales, is_tail, false, k_mask);
                     vmovups(vmm_wei_scales_masked, addr);
                     vmulps(vmm_m, vmm, vmm_wei_scales);
                 } else {

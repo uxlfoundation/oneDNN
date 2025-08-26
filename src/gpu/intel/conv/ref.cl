@@ -218,9 +218,56 @@ KERNEL_ATTR
 __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
         const __global WEI_DATA_T *wei, const __global DST_DATA_T *diff_dst,
         const __global BIA_DATA_T *bias POST_OP_ARGS,
-        const __global float *src_scales, const __global float *wei_scales,
-        const __global float *dst_scales, const __global int *src_zpoints,
-        const __global WEI_ZP_T *wei_zpoints, const __global int *dst_zpoints) {
+#if WITH_HOST_SRC_SCALE
+        float src_scale_value,
+#else
+        const __global float *src_scales,
+#endif
+#if WITH_HOST_WEI_SCALE
+        float wei_scale_value,
+#else
+        const __global float *wei_scales,
+#endif
+#if WITH_HOST_DST_SCALE
+        float dst_scale_value,
+#else
+        const __global float *dst_scales,
+#endif
+#if WITH_HOST_SRC_ZP
+        int src_zp_value,
+#else
+        const __global int *src_zpoints,
+#endif
+#if WITH_HOST_WEI_ZP
+        WEI_ZP_T wei_zp_value,
+#else
+        const __global WEI_ZP_T *wei_zpoints,
+#endif
+#if WITH_HOST_DST_ZP
+        int dst_zp_value
+#else
+        const __global int *dst_zpoints
+#endif
+) {
+#if WITH_HOST_SRC_SCALE
+    SRC_SCALES_DATA_T *src_scales = &src_scale_value;
+#endif
+#if WITH_HOST_WEI_SCALE
+    WEI_SCALES_DATA_T *wei_scales = &wei_scale_value;
+#endif
+#if WITH_HOST_DST_SCALE
+    DST_SCALES_DATA_T *dst_scales = &dst_scale_value;
+#endif
+#if WITH_HOST_SRC_ZP
+    int *src_zpoints = &src_zp_value;
+#endif
+#if WITH_HOST_DST_ZP
+    int *dst_zpoints = &dst_zp_value;
+#endif
+#if WITH_HOST_WEI_ZP
+    WEI_ZP_T *wei_zpoints = &wei_zp_value;
+#endif
+
     const off_t n = GWS_GET_MB();
     const off_t ic = GWS_GET_IC();
     const off_t g = GWS_GET_G();

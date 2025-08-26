@@ -727,6 +727,7 @@ class sdpa_test_t : public ::testing::TestWithParam<sdpa_dims_t> {
 public:
     // Testing reusable functionality requires shared engine between tests.
     static void SetUpTestSuite() {
+        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -734,13 +735,17 @@ public:
         GTEST_SKIP() << "SDPA primitive tests do not support HIP";
 #endif
 #ifndef DNNL_TEST_WITH_ENGINE_PARAM
+        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "SDPA tests require gpus.");
+        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
         sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
 #endif
+        DPRINT("%s:%s:%d ******* \n", PRINTHEAD);
     }
 
     void SetUp() override {
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -756,14 +761,21 @@ public:
                 "SDPA tests require gpus.");
         eng = get_sdpa_test_engine();
 #endif
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
         strm = dnnl::stream(eng);
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
         p = GetParam();
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
         doubled_memory.reserve(30);
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
         t = get_descriptors(eng, strm, p, doubled_memory);
+        DPRINT("%s:%s:%d ++++++ \n", PRINTHEAD);
     }
 
     void TearDown() override {
+        DPRINT("%s:%s:%d ------ \n", PRINTHEAD);
         for (dnnl_memory_t &mem : doubled_memory) {
+            DPRINT("%s:%s:%d ------ \n", PRINTHEAD);
             CHECK(dnnl_memory_destroy(mem));
         }
     }
@@ -786,6 +798,15 @@ bool with_key_transposed = true;
 bool no_key_transposed = false;
 
 // clang-format off
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+INSTANTIATE_TEST_SUITE_P(MyDebug,
+    sdpa_test_t,
+                   //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,      dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
+    testing::Values(
+        sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD },
+        sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD }
+    ), &print_to_string);
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 INSTANTIATE_TEST_SUITE_P(AllMaskTypes,
     sdpa_test_t,
                                //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,        dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
@@ -1132,6 +1153,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory) {
+
+    DPRINT("%s:%s:%d &&&&&&&&& >>>>>\n", PRINTHEAD);
+
     using namespace dnnl;
     primitive_attr bmm1_attr;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
@@ -1318,10 +1342,15 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     grouped_output.unmap_data(grouped_output_ptr_);
     output.unmap_data(output_ptr_);
     strm.wait();
+    DPRINT("%s:%s:%d <<<<<< &&&&&&&&&\n", PRINTHEAD);
+
 }
 
 template <typename T>
 void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
+
+    DPRINT("%s:%s:%d ***** >>>\n", PRINTHEAD);
+
 
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
@@ -1392,6 +1421,9 @@ void check_memory(memory &gold, memory &test, dnnl::stream &strm) {
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, 0.03f);
+
+    DPRINT("%s:%s:%d <<< *****\n", PRINTHEAD);
+
 }
 
 int to_attn_mask_type(mask_type t) {
@@ -1406,6 +1438,10 @@ int to_attn_mask_type(mask_type t) {
 }
 
 GPU_TEST_P(sdpa_test_t, compare) {
+
+
+    DPRINT("%s:%s:%d @@@@@@@@@@@@@@@@@ >>>>>>>>> \n", PRINTHEAD);
+
     memory::data_type scale_dt = t.m_query.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
     bool invert_scale = true;
@@ -1495,6 +1531,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
         }
     }
 #endif
+
+    DPRINT("%s:%s:%d <<<<<<<<<< @@@@@@@@@@@@@@@@@\n", PRINTHEAD);
 }
 std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {

@@ -21,6 +21,11 @@
 #include <unordered_map>
 
 struct memory_registry_t {
+    static memory_registry_t &get_instance() {
+        static memory_registry_t instance;
+        return instance;
+    }
+
     // Increases the registered physically allocated memory.
     void add(void *ptr, size_t size);
 
@@ -39,8 +44,6 @@ struct memory_registry_t {
     // the `size`.
     void set_expected_max(size_t size);
 
-    ~memory_registry_t();
-
 private:
     // `expected_trh_` smoothes out small allocations for attributes memory
     // objects.
@@ -56,12 +59,14 @@ private:
     std::unordered_map<void *, size_t> mapped_allocations_;
     std::mutex m_;
 
+    memory_registry_t() = default;
+
+    ~memory_registry_t();
+
     size_t size() const { return total_size_; }
 
     void warn_size_check();
 };
-
-memory_registry_t &zmalloc_registry();
 
 void set_zmalloc_max_expected_size(size_t size);
 

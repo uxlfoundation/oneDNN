@@ -170,13 +170,8 @@ memory_registry_t::~memory_registry_t() {
     }
 }
 
-memory_registry_t &zmalloc_registry() {
-    static memory_registry_t reg {};
-    return reg;
-}
-
 void set_zmalloc_max_expected_size(size_t size) {
-    zmalloc_registry().set_expected_max(size);
+    memory_registry_t::get_instance().set_expected_max(size);
 }
 
 namespace {
@@ -247,7 +242,7 @@ void *zmalloc(size_t size, size_t align) {
     if (has_bench_mode_bit(mode_bit_t::exec)
             && !has_bench_mode_bit(mode_bit_t::perf)) {
         void *ptr = zmalloc_protect(size);
-        zmalloc_registry().add(ptr, size);
+        memory_registry_t::get_instance().add(ptr, size);
         return ptr;
     }
 #endif
@@ -267,14 +262,14 @@ void *zmalloc(size_t size, size_t align) {
     if (has_bench_mode_bit(mode_bit_t::perf) && (size < align)) size = align;
     int rc = ::posix_memalign(&ptr, align, size);
 #endif /* _WIN32 */
-    zmalloc_registry().add(ptr, size);
+    memory_registry_t::get_instance().add(ptr, size);
     return rc == 0 ? ptr : nullptr;
 }
 
 // zfree behavior is aligned with UNIX free().
 void zfree(void *ptr) {
     if (!ptr) return;
-    zmalloc_registry().remove(ptr);
+    memory_registry_t::get_instance().remove(ptr);
 #ifdef BENCHDNN_MEMORY_CHECK
     if (has_bench_mode_bit(mode_bit_t::exec)
             && !has_bench_mode_bit(mode_bit_t::perf)) {

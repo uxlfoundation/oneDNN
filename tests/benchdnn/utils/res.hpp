@@ -93,7 +93,7 @@ struct check_mem_size_args_t {
     size_t total_ref_md_size[2] = {0, 0};
     // `scratchpad_size` specifies a scratchpad size for specific checks.
     size_t scratchpad_size = 0;
-    // A setting for zmalloc_registry. It's stashed inside `check_total_size`
+    // A setting for memory_registry. It's stashed inside `check_total_size`
     // call and used later in `doit` due to parallel mode as, otherwise, all
     // test objects will be validated against the numbers from the last created
     // test object.

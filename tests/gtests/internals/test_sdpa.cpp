@@ -28,6 +28,31 @@
 #include <memory>
 #include <random>
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+#include <string.h>
+
+#ifndef __SHORT_FILE_NAME__
+#define __SHORT_FILE_NAME__ \
+    (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#endif
+#ifndef PRINTHEAD
+#define PRINTHEAD __SHORT_FILE_NAME__, __FUNCTION__, __LINE__
+#endif
+
+#ifndef DPRINT
+#define DPRINT(fmt, ...) \
+    do { \
+        if (atoi(getenv("TEST_PRINT")) >= 1) { \
+            printf(fmt, __VA_ARGS__); \
+            fflush(0); \
+        } \
+    } while (0)
+#endif
+
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 using mdt = memory::data_type;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
@@ -1552,12 +1577,21 @@ float compute(OPS ops, TIME duration) {
 static std::once_flag header_flag;
 
 GPU_TEST_P(sdpa_test_t, perf) {
+
+    DPRINT("%s:%s:%d ===================> \n", PRINTHEAD);
+
     memory::data_type scale_dt = t.m_query.get_desc().get_data_type();
     //memory::data_type scale_dt = memory::data_type::undef;
+
+    DPRINT("%s:%s:%d ===== \n", PRINTHEAD);
+
     bool invert_scale = true;
 
     using namespace dnnl::impl;
     auto mask = t.m_mask.get_desc();
+
+    DPRINT("%s:%s:%d ===== \n", PRINTHEAD);
+
 
     memory::desc *mask_ptr = nullptr;
 
@@ -1571,7 +1605,9 @@ GPU_TEST_P(sdpa_test_t, perf) {
 
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
+    DPRINT("%s:%s:%d ===== before try\n", PRINTHEAD);
     try {
+        DPRINT("%s:%s:%d ===== \n", PRINTHEAD);
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
@@ -1580,7 +1616,9 @@ GPU_TEST_P(sdpa_test_t, perf) {
                 to_attn_mask_type(p.mask),
                 alg_kind::softmax_accurate_inf_as_zero, t.sdpa_attr_quantized,
                 t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+        DPRINT("%s:%s:%d ===== \n", PRINTHEAD);
         sdpa_quantized_p = sdpa(sdpa_quantized_pd);
+        DPRINT("%s:%s:%d ===== \n", PRINTHEAD);
     } catch (const dnnl::error &e) {
         if (e.status == dnnl_unimplemented)
             GTEST_SKIP() << "Unimplemented: " << e.what();
@@ -1682,6 +1720,9 @@ GPU_TEST_P(sdpa_test_t, perf) {
                             : 1.f);
 
     std::call_once(header_flag, print_table_header);
+
+    DPRINT("%s:%s:%d <=================== final printing \n", PRINTHEAD);
+
     std::cout << print_row(p) << "|" << qtime.count() << "|"
               << bandwidth(
                          magnitude_cast<gigabyte>(total_bytes_effective), qtime)

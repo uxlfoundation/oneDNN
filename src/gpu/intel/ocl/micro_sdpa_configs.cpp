@@ -43,31 +43,34 @@ inline sdpa_property &operator^=(sdpa_property &a, sdpa_property b) {
     return (sdpa_property &)((int &)a ^= (int)b);
 }
 
-std::ostream &operator<<(std::ostream &s, const config_query_t &q) {
+std::string to_string(const config_query_t &q) {
+    std::stringstream s;
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len << " thinq,qnt,int,fma,f32?: "
-      << (bool)(q.property & sdpa_property::second_token) << " "
-      << (bool)(q.property & sdpa_property::quantized) << " "
-      << (bool)(q.property & sdpa_property::integrated) << " "
-      << (bool)(q.property & sdpa_property::fma) << " "
-      << (bool)(q.property & sdpa_property::f32);
-    return s;
+      << " seq:" << q.seq_len << " prop:"
+      << ((bool)(q.property & sdpa_property::second_token) ? " thinq" : "")
+      << ((bool)(q.property & sdpa_property::quantized) ? " quant" : "")
+      << ((bool)(q.property & sdpa_property::integrated) ? " [integ]" : "")
+      << ((bool)(q.property & sdpa_property::fma) ? " fma" : "")
+      << ((bool)(q.property & sdpa_property::f32) ? " [f32]" : "");
+    return s.str();
 }
-std::ostream &operator<<(std::ostream &s, const config_criteria_t &c) {
+std::string to_string(const config_criteria_t &c) {
+    std::stringstream s;
     s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len << " thinq,qnt,int,fma,f32?: "
-      << (bool)(c.property & sdpa_property::second_token) << " "
-      << (bool)(c.property & sdpa_property::quantized) << " "
-      << (bool)(c.property & sdpa_property::integrated) << " "
-      << (bool)(c.property & sdpa_property::fma) << " "
-      << (bool)(c.property & sdpa_property::f32);
-    return s;
+      << " seq:" << c.seq_len << " prop:"
+      << ((bool)(c.property & sdpa_property::second_token) ? " thinq" : "")
+      << ((bool)(c.property & sdpa_property::quantized) ? " quant" : "")
+      << ((bool)(c.property & sdpa_property::integrated) ? " integ" : "")
+      << ((bool)(c.property & sdpa_property::fma) ? " fma" : "")
+      << ((bool)(c.property & sdpa_property::f32) ? " f32" : "");
+    return s.str();
 }
-std::ostream &operator<<(std::ostream &s, const sdpa_config_t &c) {
+std::string to_string(const sdpa_config_t &c) {
+    std::stringstream s;
     s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
       << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
       << c.wg_m_vs << "," << c.wg_n_vs;
-    return s;
+    return s.str();
 }
 
 // A matching config is a combination of mandatory and optional requirements
@@ -611,10 +614,10 @@ sdpa_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_configs), end(sorted_configs), query);
     if (it != end(sorted_configs)) {
-        stringstream_t ss;
-        ss << " {query " << query << "} -> {config " << it->criteria << ":"
-           << it->config << " }";
-        VDEBUGINFO(4, primitive, sdpa, "config search: %s,", ss.str().c_str());
+        VDEBUGINFO(4, primitive, sdpa,
+                "config search: {query %s} -> {%s config:%s},",
+                to_string(query).c_str(), to_string(it->criteria).c_str(),
+                to_string(it->config).c_str());
         return &it->config;
     }
     return nullptr;

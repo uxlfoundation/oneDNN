@@ -376,6 +376,15 @@ int ref_partition_t::check_partition_correctness(
                         && op.get().in_lts_.front().get_data_type()
                                 == logical_tensor::data_type::f8_e4m3);
 
+        // If ReduceSum exists in the sdpa_bwd pattern, comparison criteria must be relaxed.
+        // Reason: The sub+exp fusion uses reference implementation in the graph path on CPU.
+        // This produces different results compared to ref_partition path, which
+        // uses standalone ops (runs with reference sub + jitted exp).
+        // TODO: Enabling jitted fusion to resolve this inconsistency.
+        bool has_reduce_sum
+                = (opstr2kind(op_kind) == dnnl::graph::op::kind::ReduceSum
+                        && dg_->get_recognized_pattern()
+                                == graph_recognized_pattern_t::sdpa_bwd);
         // get the args that need comparing
         args_t output_args;
         for (size_t out_idx = 0; out_idx < op.get().out_lts_.size();
@@ -412,7 +421,7 @@ int ref_partition_t::check_partition_correctness(
         // The graph driver allows nans from the branch of Sqrt, but for the
         // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
-                output_args, has_eltwise, output_has_nans, res);
+                output_args, has_eltwise, output_has_nans, has_reduce_sum, res);
         if (res->state == FAILED) {
             if (is_nvidia_gpu()) {
                 res->state = SKIPPED;

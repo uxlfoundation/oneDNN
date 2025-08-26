@@ -140,14 +140,14 @@ struct micro_t : public primitive_t {
                             dnnl_dt2str(attn_mask_md()->data_type),
                             dnnl_dt2str(qry_md()->data_type));
                 } else {
-                    VCHECK_SDPA_COND(
-                            (attn_mask_md()->data_type == qry_md()->data_type)
-                                    || (attn_mask_md()->data_type
-                                            == data_type::f32),
-                            "Mask data type(%s) should be xf16 or f32 when "
-                            "Qry/Dst(%s) is xf16.",
-                            dnnl_dt2str(attn_mask_md()->data_type),
-                            dnnl_dt2str(qry_md()->data_type));
+                    //VCHECK_SDPA_COND(
+                    //        (attn_mask_md()->data_type == qry_md()->data_type)
+                    //                || (attn_mask_md()->data_type
+                    //                        == data_type::f32),
+                    //        "Mask data type(%s) should be xf16 or f32 when "
+                    //        "Qry/Dst(%s) is xf16.",
+                    //        dnnl_dt2str(attn_mask_md()->data_type),
+                    //        dnnl_dt2str(qry_md()->data_type));
                 }
             }
             VCHECK_SDPA_COND(

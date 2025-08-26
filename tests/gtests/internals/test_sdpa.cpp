@@ -1617,6 +1617,35 @@ using sdpa_test = sdpa_test_t<sdpa_dims_t>;
 using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 
 // clang-format off
+INSTANTIATE_TEST_SUITE_P(DataTypes_f8_e4m3,
+                         sdpa_test_datatypes,
+                         testing::Combine(
+                                          testing::Values(1), // mb
+                                          testing::Values(num_heads_t{2, 2}), // hd_num
+                                          testing::Values(seq_len_size_t{384, 384}, seq_len_size_t{1, 385}, seq_len_size_t{512, 512}, seq_len_size_t{1, 513}, seq_len_size_t{1024, 1024}, seq_len_size_t{1, 1025}), // seq_len
+                                          testing::Values(head_group_size_t{64, 64, 64}, head_group_size_t{128, 128, 128}, head_group_size_t{256, 256, 256}, head_group_size_t{512,512,512}), // hd_size
+                                          testing::Values(tensor_type_t("Q", mdt::f8_e4m3)), // dt
+                                          testing::Values(tensor_type_t("K", mdt::f8_e4m3), tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8)), // kdt
+                                          testing::Values(tensor_type_t("V", mdt::f8_e4m3), tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
+                                          testing::Values(quantize_type::per_token), // qtype
+                                          testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                                          testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}) // mskdt
+), &print_to_string2);
+
+INSTANTIATE_TEST_SUITE_P(DataTypes_f8_e5m2,
+                         sdpa_test_datatypes,
+                         testing::Combine(
+                                          testing::Values(1), // mb
+                                          testing::Values(num_heads_t{2, 2}), // hd_num
+                                          testing::Values(seq_len_size_t{384, 384}, seq_len_size_t{1, 385}, seq_len_size_t{512, 512}, seq_len_size_t{1, 513}, seq_len_size_t{1024, 1024}, seq_len_size_t{1, 1025}), // seq_len
+                                          testing::Values(head_group_size_t{64, 64, 64}, head_group_size_t{128, 128, 128}, head_group_size_t{256, 256, 256}, head_group_size_t{512,512,512}), // hd_size
+                                          testing::Values(tensor_type_t("Q", mdt::f8_e5m2)), // dt
+                                          testing::Values(tensor_type_t("K", mdt::f8_e5m2), tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8)), // kdt
+                                          testing::Values(tensor_type_t("V", mdt::f8_e5m2), tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
+                                          testing::Values(quantize_type::per_token), // qtype
+                                          testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                                          testing::Values(mask_config_t{mask_type::oneD, mdt::bf16}, mask_config_t{mask_type::twoD, mdt::bf16}) // mskdt
+), &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb

@@ -454,7 +454,13 @@ static int init_memory(
     }
 
     // Memory must be initialized at this point in some of the branches above.
-    if (!*ret) assert(!"not expected");
+    if (!*ret) { assert(!"not expected"); }
+
+    // Register device memory
+    for (int i = 0; i < nhandles; i++) {
+        size_t sz = dnnl_memory_desc_get_size_v2(md, i);
+        memory_registry_t::get_instance().add_device(handles[i], sz);
+    }
 
     return OK;
 }
@@ -951,6 +957,19 @@ static int cleanup_opencl(
 int dnn_mem_t::cleanup() {
     if (!active_) return OK;
     if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) unmap();
+
+    // Unregister device memory.
+    // Done it here to account memory allocated inside the library for
+    // correspondent memory objects.
+    if (is_sycl_engine(engine_) || is_opencl_engine(engine_)) {
+        const int nhandles = query_md_num_handles(md_);
+        std::vector<void *> handles(nhandles);
+        for (int i = 0; i < nhandles; i++) {
+            DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
+            memory_registry_t::get_instance().remove_device(handles[i]);
+        }
+    }
+
     DNN_SAFE(dnnl_memory_desc_destroy(md_), CRIT);
     DNN_SAFE(dnnl_memory_destroy(m_), CRIT);
     if (is_data_owner_) {

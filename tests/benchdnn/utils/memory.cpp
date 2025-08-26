@@ -43,12 +43,11 @@ void memory_registry_t::add(void *ptr, size_t size) {
 
     assert(allocations_.find(ptr) == allocations_.end());
     allocations_.emplace(std::pair<void *, size_t>(ptr, size));
-    total_size_ += size;
+    total_size_cpu_ += size;
 
     BENCHDNN_PRINT(8,
-            "[CHECK_MEM]: zmalloc request (%p) with size %s, total "
-            "allocation size: %s\n",
-            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+            "[CHECK_MEM]: zmalloc (%p) of size %s, CPU total alloc: %s\n", ptr,
+            smart_bytes(size).c_str(), smart_bytes(total_size_cpu_).c_str());
     warn_size_check();
 }
 
@@ -58,12 +57,11 @@ void memory_registry_t::remove(void *ptr) {
 
     // Use `at` to catch cases when unallocated pointers are removed.
     const size_t size = allocations_.at(ptr);
-    total_size_ -= size;
+    total_size_cpu_ -= size;
 
     BENCHDNN_PRINT(8,
-            "[CHECK_MEM]: zfree request (%p) with size %s, total "
-            "allocation size: %s\n",
-            ptr, smart_bytes(size).c_str(), smart_bytes(total_size_).c_str());
+            "[CHECK_MEM]: zfree (%p) of size %s, CPU total alloc: %s\n", ptr,
+            smart_bytes(size).c_str(), smart_bytes(total_size_cpu_).c_str());
     allocations_.erase(ptr);
 }
 
@@ -82,19 +80,17 @@ void memory_registry_t::add_mapped(void *ptr, size_t size) {
     // an ability to properly decrease.
     if (mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
         BENCHDNN_PRINT(8,
-                "[CHECK_MEM]: repeated map request (%p), increase local size "
-                "state\n",
+                "[CHECK_MEM]: repeated map (%p), increase local size state\n",
                 ptr);
         mapped_allocations_[ptr] += size;
     } else {
         mapped_allocations_.emplace(std::pair<void *, size_t>(ptr, size));
-        total_size_ += size;
+        total_size_cpu_ += size;
 
         BENCHDNN_PRINT(8,
-                "[CHECK_MEM]: map request (%p) with size %s, total allocation "
-                "size: %s\n",
-                ptr, smart_bytes(size).c_str(),
-                smart_bytes(total_size_).c_str());
+                "[CHECK_MEM]: map (%p) of size %s, CPU total alloc: %s\n", ptr,
+                smart_bytes(size).c_str(),
+                smart_bytes(total_size_cpu_).c_str());
     }
     // Do not warn on overflow as it can be a temporary jump due to reorder or
     // other internal memory manipulation.
@@ -111,19 +107,56 @@ void memory_registry_t::remove_mapped(void *ptr, size_t size) {
     // Correspondently decrease the local state and return.
     if (stored_size > size) {
         BENCHDNN_PRINT(8,
-                "[CHECK_MEM]: repeated unmap request (%p), decrease local size "
-                "state\n",
+                "[CHECK_MEM]: repeated unmap (%p), decrease local size state\n",
                 ptr);
         mapped_allocations_[ptr] -= size;
     } else {
         mapped_allocations_.erase(ptr);
-        total_size_ -= size;
+        total_size_cpu_ -= size;
         BENCHDNN_PRINT(8,
-                "[CHECK_MEM]: unmap request (%p) with size %s, total "
-                "allocation size: %s\n",
+                "[CHECK_MEM]: unmap (%p) of size %s, CPU total alloc: %s\n",
                 ptr, smart_bytes(size).c_str(),
-                smart_bytes(total_size_).c_str());
+                smart_bytes(total_size_cpu_).c_str());
     }
+}
+
+void memory_registry_t::add_device(void *ptr, size_t size) {
+    std::lock_guard<std::mutex> g(m_);
+    if (!ptr) return;
+
+    assert(allocations_device_.find(ptr) == allocations_device_.end());
+    allocations_device_.emplace(std::pair<void *, size_t>(ptr, size));
+    total_size_gpu_ += size;
+
+    BENCHDNN_PRINT(8,
+            "[CHECK_MEM]: device_malloc (%p) of size %s, device total alloc: "
+            "%s\n",
+            ptr, smart_bytes(size).c_str(),
+            smart_bytes(total_size_gpu_).c_str());
+}
+
+void memory_registry_t::remove_device(void *ptr) {
+    std::lock_guard<std::mutex> g(m_);
+    if (!ptr) return;
+
+    if (mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
+        BENCHDNN_PRINT(8,
+                "[CHECK_MEM]: device_free (%p) attempts to free a mapped "
+                "pointer. Skip this action.\n",
+                ptr);
+        return;
+    }
+
+    // Use `at` to catch cases when unallocated pointers are removed.
+    const size_t size = allocations_device_.at(ptr);
+    total_size_gpu_ -= size;
+
+    BENCHDNN_PRINT(8,
+            "[CHECK_MEM]: device_free (%p) of size %s, device total alloc: "
+            "%s\n",
+            ptr, smart_bytes(size).c_str(),
+            smart_bytes(total_size_gpu_).c_str());
+    allocations_device_.erase(ptr);
 }
 
 void memory_registry_t::set_expected_max(size_t size) {
@@ -138,17 +171,17 @@ void memory_registry_t::warn_size_check() {
     // 1 GB threshold. Small amount of memory is highly unlikely cause OOM.
     // There's an idea to add a portion of RAM into account as well, keep
     // only 1 GB so far to check if it proves working well.
-    const bool is_total_size_big = total_size_ >= 1024 * 1024 * 1024;
-    const bool is_total_size_unexpected = total_size_ > expected_max_;
+    const bool is_total_size_cpu_big = total_size_cpu_ >= 1024 * 1024 * 1024;
+    const bool is_total_size_cpu_unexpected = total_size_cpu_ > expected_max_;
     // Perf mode might have cold-cache enabled which potentially allocates
     // unaccounted memory. To avoid a dependency on a cold-cache in this
     // file, just rely on perf mode.
     if (!has_bench_mode_bit(mode_bit_t::perf) && !has_warned_ && is_max_set
-            && is_total_size_big && is_total_size_unexpected) {
+            && is_total_size_cpu_big && is_total_size_cpu_unexpected) {
         BENCHDNN_PRINT(0,
                 "[CHECK_MEM][ERROR]: Memory use is underestimated. Current "
                 "allocation size: %s; expected size: %s.\n",
-                smart_bytes(total_size_).c_str(),
+                smart_bytes(total_size_cpu_).c_str(),
                 smart_bytes(expected_max_).c_str());
         // Prevent spamming logs with subsequent overflowing allocations;
         has_warned_ = true;
@@ -164,7 +197,11 @@ memory_registry_t::~memory_registry_t() {
         BENCHDNN_PRINT(0, "%s\n",
                 "[CHECK_MEM][ERROR]: Mapped allocations were not cleared");
     }
-    if (total_size_ > 0) {
+    if (!allocations_device_.empty()) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "[CHECK_MEM][ERROR]: Device allocations were not cleared");
+    }
+    if (total_size_cpu_ > 0) {
         BENCHDNN_PRINT(0, "%s\n",
                 "[CHECK_MEM][ERROR]: Total size wasn't reduced to 0");
     }

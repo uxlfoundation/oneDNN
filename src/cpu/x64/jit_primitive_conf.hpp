@@ -936,8 +936,8 @@ struct jit_uni_binary_args_t {
     const void *src2 = nullptr;
     const void *dst = nullptr;
     const void *indices = nullptr;
-    const float *scales_src0 = nullptr;
-    const float *scales_src1 = nullptr;
+    const void *scales_src0 = nullptr;
+    const void *scales_src1 = nullptr;
     size_t spat_offt_count = 0;
     const void *post_ops_binary_rhs_arg_vec = nullptr;
     size_t src1_stride_range = 0;

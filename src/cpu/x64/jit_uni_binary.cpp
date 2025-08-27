@@ -717,7 +717,7 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
 
 void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         const data_t *src1, const data_t *src2, data_t *dst,
-        const float *scale0, const float *scale1,
+        const void *src0_scales, const void *src1_scales,
         const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         const bcast_t bcast_type) const {
     const auto kernel = kernel_.get();
@@ -795,8 +795,8 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
                     p.dst = dst + (start + batch_off) * dst_type_size;
                     p.indices = &indices[0];
                     p.src1_stride_range = src1_stride_range;
-                    p.scales_src0 = scale0;
-                    p.scales_src1 = scale1;
+                    p.scales_src0 = src0_scales;
+                    p.scales_src1 = src1_scales;
                     p.post_ops_binary_rhs_arg_vec
                             = post_ops_binary_rhs_arg_vec.data();
                     p.dst_orig = dst;
@@ -830,8 +830,8 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
                     + (point_broadcast ? 0 : (start * simd_w * src1_type_size));
             p.src2 = src2 + start * simd_w * src2_type_size;
             p.dst = dst + start * simd_w * dst_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
@@ -841,7 +841,7 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
 
 void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
         const data_t *src1, const data_t *src2, data_t *dst,
-        const float *scale0, const float *scale1,
+        const void *src0_scales, const void *src1_scales,
         const std::vector<const void *> &post_ops_binary_rhs_arg_vec) const {
 
     const auto kernel = kernel_.get();
@@ -886,8 +886,8 @@ void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
         p.src1 = src1 + off * src1_type_size;
         p.src2 = src2 + (off + b * nelems0_per_b) * src2_type_size;
         p.dst = dst + (off + b * nelems0_per_b) * dst_type_size;
-        p.scales_src0 = scale0;
-        p.scales_src1 = scale1;
+        p.scales_src0 = src0_scales;
+        p.scales_src1 = src1_scales;
         p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
         p.dst_orig = dst;
         (*kernel)(&p);
@@ -896,7 +896,7 @@ void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
 
 void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
         const data_t *src1, const data_t *src2, data_t *dst,
-        const float *scale0, const float *scale1,
+        const void *src0_scales, const void *src1_scales,
         const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         const op_t op_type, const bcast_t bcast_type,
         const bool blocked_oc_tail) const {
@@ -968,8 +968,8 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             p.src0 = src0 + off * src0_type_size;
             p.src1 = src1 + src1_off(mb, C_blk, off) * src1_type_size;
             p.src2 = src2 + off * src2_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             kernel_blocked(&p, C_blk);
@@ -993,8 +993,8 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             p.src0 = src0 + off * src0_type_size;
             p.src1 = src1 + src1_off(mb, sp, off) * src1_type_size;
             p.src2 = src2 + off * src2_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
@@ -1019,8 +1019,8 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             p.src0 = src0 + off * src0_type_size;
             p.src1 = src1 + src1_off(mb, c, off) * src1_type_size;
             p.src2 = src2 + off * src2_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
@@ -1030,7 +1030,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
 void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
         const data_t *src1, const data_t *src2, data_t *dst,
-        const float *scale0, const float *scale1,
+        const void *src0_scales, const void *src1_scales,
         const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         const op_t op_type, const bool blocked_oc_tail) const {
     const auto kernel = kernel_.get();
@@ -1104,8 +1104,8 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
                             : (mb * SP_no_bcast + sp) * simd_w;
                     p.src1 = src1 + src1_off * src1_type_size;
                     p.src2 = src2 + off * src2_type_size;
-                    p.scales_src0 = scale0;
-                    p.scales_src1 = scale1;
+                    p.scales_src0 = src0_scales;
+                    p.scales_src1 = src1_scales;
                     p.post_ops_binary_rhs_arg_vec
                             = post_ops_binary_rhs_arg_vec.data();
                     p.dst_orig = dst;
@@ -1127,8 +1127,8 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
                     = bcast_dims[0] == 1 ? sp : mb * SP_no_bcast + sp;
             p.src1 = src1 + src1_off * src1_type_size;
             p.src2 = src2 + off * src2_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
@@ -1149,8 +1149,8 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
             const dim_t src1_off = bcast_dims[0] == 1 ? 0 : mb * SP_no_bcast;
             p.src1 = src1 + src1_off * src1_type_size;
             p.src2 = src2 + off * src2_type_size;
-            p.scales_src0 = scale0;
-            p.scales_src1 = scale1;
+            p.scales_src0 = src0_scales;
+            p.scales_src1 = src1_scales;
             p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
@@ -1167,9 +1167,11 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     const auto &post_ops = pd()->attr()->post_ops_;
     const auto &post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);
-    const float *scales[2];
-    ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
-    ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);
+
+    const void *src0_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
+    const void *src1_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1);
 
     const memory_desc_wrapper src0_d(pd()->src_md(0));
     const memory_desc_wrapper src1_d(pd()->src_md(1));
@@ -1202,19 +1204,19 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
             && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
-        execute_no_bcast_strategy(src0, src1, src2, dst, scales[0], scales[1],
-                post_ops_binary_rhs_arg_vec, bcast_type);
+        execute_no_bcast_strategy(src0, src1, src2, dst, src0_scales,
+                src1_scales, post_ops_binary_rhs_arg_vec, bcast_type);
     else if (bcast_type == bcast_t::per_batch
             && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
-        execute_bcast_per_batch_strategy(src0, src1, src2, dst, scales[0],
-                scales[1], post_ops_binary_rhs_arg_vec);
+        execute_bcast_per_batch_strategy(src0, src1, src2, dst, src0_scales,
+                src1_scales, post_ops_binary_rhs_arg_vec);
     else if (bcast_type == bcast_t::per_w)
-        execute_bcast_per_w_strategy(src0, src1, src2, dst, scales[0],
-                scales[1], post_ops_binary_rhs_arg_vec, op_type,
+        execute_bcast_per_w_strategy(src0, src1, src2, dst, src0_scales,
+                src1_scales, post_ops_binary_rhs_arg_vec, op_type,
                 blocked_oc_tail);
     else
-        execute_bcast_per_c_strategy(src0, src1, src2, dst, scales[0],
-                scales[1], post_ops_binary_rhs_arg_vec, op_type, bcast_type,
+        execute_bcast_per_c_strategy(src0, src1, src2, dst, src0_scales,
+                src1_scales, post_ops_binary_rhs_arg_vec, op_type, bcast_type,
                 blocked_oc_tail);
 
     return status::success;

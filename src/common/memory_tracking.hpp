@@ -320,6 +320,7 @@ enum {
     key_rnn_ptrs_wei_layer,
     key_rnn_ptrs_wei_iter,
     key_rnn_ptrs_wei_projection,
+    key_softmax_dst_scales,
     key_softmax_reduction,
     key_softmax_interim_store,
     key_sum_reduction,

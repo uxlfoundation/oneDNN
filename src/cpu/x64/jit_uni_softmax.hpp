@@ -178,10 +178,10 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                     && !types::is_integral_dt(dst_dt)
                     && utils::one_of(attr()->acc_mode_,
                             accumulation_mode::relaxed, accumulation_mode::any);
-            const bool need_scratchpad
+            auto scratchpad = scratchpad_registry().registrar();
+            const bool need_f32_intermediate
                     = dst_dt != data_type::f32 && !relaxed_acc;
-            if (need_scratchpad) {
-                auto scratchpad = scratchpad_registry().registrar();
+            if (need_f32_intermediate) {
                 // When stride != 1, then each thread operates over simd at a
                 // time, thus, increased scratchpad size.
                 dim_t elem_per_thr = 1;
@@ -194,6 +194,10 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
                         scratch_size_per_thr_ * nthr_);
+            }
+            if (!attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                scratchpad.book(memory_tracking::names::key_softmax_dst_scales,
+                        static_cast<size_t>(nthr_) * sizeof(float), 64);
             }
         }
 

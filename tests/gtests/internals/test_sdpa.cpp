@@ -56,6 +56,7 @@
 using mdt = memory::data_type;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class scale_type { host_side, device_side };
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -84,6 +85,7 @@ struct sdpa_dims_t {
     quantize_type qtype;
     bool with_key_transposed;
     mask_type mask;
+    scale_type stype;
 };
 
 struct sdpa_tensors_t {
@@ -134,6 +136,11 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
     }
     if (is_quantized(p.kdt, p.qtype) || is_quantized(p.vdt, p.qtype)) {
         ss << "_" << p.qtype;
+    }
+    if (p.stype == scale_type::host_side) {
+        ss << "_hostscale";
+    } else {
+        ss << "_devicescale";
     }
     return ss;
 }
@@ -800,14 +807,24 @@ protected:
 bool with_key_transposed = true;
 bool no_key_transposed = false;
 
+
+#if 0
+using mdt = memory::data_type;
+
+enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class scale_type { host_side, device_side };
+
+#endif
+
+
 // clang-format off
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 INSTANTIATE_TEST_SUITE_P(MyDebug,
     sdpa_test_t,
                    //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,      dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
     testing::Values(
-        sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD },
-        sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD }
+            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::device_side },
+            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::host_side }
     ), &print_to_string);
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #if 0

@@ -258,11 +258,6 @@ private:
             const float *src_scales, const float *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
 
-    void omp_driver(const char *in, char *out, const float *src_scales,
-            const float *dst_scales, const int32_t *src_zero_points,
-            const int32_t *dst_zero_points,
-            const memory_tracking::grantor_t &scratchpad) const;
-
     void fill_curr_data_chunks(const tr::prb_t &prb, const int off,
             const ptrdiff_t *omp_data_chunks, const int omp_ndims,
             tr::tail_call_param_t &c) const;

@@ -2599,86 +2599,6 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
             });
 }
 
-void jit_uni_reorder_t::omp_driver(const char *in, char *out,
-        const float *src_scales, const float *dst_scales,
-        const int32_t *src_zero_points, const int32_t *dst_zero_points,
-        const memory_tracking::grantor_t &scratchpad) const {
-    in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
-    out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
-
-    DEBUG({
-        verbose_printf(verbose_t::debuginfo, "prb  : %s\n",
-                tr::prb_dump(pd()->prb_).c_str());
-    });
-    DEBUG({
-        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
-                tr::prb_dump(pd()->ker_desc_.prb).c_str());
-    });
-
-    int ndims = pd()->prb_.ndims;
-    int ndims_ker = pd()->ker_desc_.prb.ndims;
-    const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
-    const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
-    const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
-    assert(ndims - ndims_ker <= ndims_driver_max);
-
-    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
-    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
-    int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
-            memory_tracking::names::key_reorder_space);
-
-    const memory_desc_wrapper od(pd()->dst_md());
-    const auto G = pd()->with_groups_ ? od.padded_dims()[0] : 1;
-    const auto N = od.padded_dims()[pd()->with_groups_ ? 1 : 0];
-    static constexpr int cache_line_size = 16;
-    const auto wspace_per_thr_size = utils::rnd_up(G * N, cache_line_size);
-    const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
-
-    if (ndims - ndims_ker == 0) {
-        if (req_compensation)
-            std::memset(compensation_reduce_scratch, 0, wspace_per_thr_bytes);
-
-        omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales, src_zp,
-                dst_zp, compensation_reduce_scratch);
-    } else {
-        parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
-            int32_t *compensation_scratch = nullptr;
-            if (req_compensation) {
-                compensation_scratch = &compensation_reduce_scratch[ithr
-                        * wspace_per_thr_size];
-                std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
-            }
-
-            switch (ndims - ndims_ker) {
-                case 1:
-                    omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 2:
-                    omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 3:
-                    omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                case 4:
-                    omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
-                            dst_scales, src_zp, dst_zp, compensation_scratch);
-                    break;
-                default: assert(!"unimplemented");
-            }
-        });
-    }
-
-    //reduction of intermediate compensation results to the final output
-    if (req_compensation) {
-        const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
-        reduce_compensation(
-                out, compensation_reduce_scratch, nthr, wspace_per_thr_size);
-    }
-}
-
 void jit_uni_reorder_t::reduce_compensation(char *out,
         const int32_t *compensation_reduce_scratch, const int nthr,
         const dim_t wspace_per_thr_size) const {
@@ -2790,8 +2710,81 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    omp_driver(in, out, src_scales, dst_scales, src_zero_points,
-            dst_zero_points, scratchpad);
+    in += pd()->prb_.ioff * data_type_size(pd()->prb_.itype);
+    out += pd()->prb_.ooff * data_type_size(pd()->prb_.otype);
+
+    DEBUG({
+        verbose_printf(verbose_t::debuginfo, "prb  : %s\n",
+                tr::prb_dump(pd()->prb_).c_str());
+    });
+    DEBUG({
+        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
+                tr::prb_dump(pd()->ker_desc_.prb).c_str());
+    });
+
+    int ndims = pd()->prb_.ndims;
+    int ndims_ker = pd()->ker_desc_.prb.ndims;
+    int ndims_level = ndims - ndims_ker;
+
+    const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
+    const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
+    const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
+    assert(ndims_level <= ndims_driver_max);
+
+    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
+    int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
+            memory_tracking::names::key_reorder_space);
+
+    const memory_desc_wrapper od(pd()->dst_md());
+    const auto G = pd()->with_groups_ ? od.padded_dims()[0] : 1;
+    const auto N = od.padded_dims()[pd()->with_groups_ ? 1 : 0];
+    static constexpr int cache_line_size = 16;
+    const auto wspace_per_thr_size = utils::rnd_up(G * N, cache_line_size);
+    const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
+
+    const int nthr_par = ndims_level == 0 ? 1 : pd()->nthr_;
+    parallel(nthr_par, [&](const int ithr, const int nthr) {
+        int32_t *compensation_scratch = nullptr;
+        if (req_compensation) {
+            if (ndims_level == 0)
+                compensation_scratch = compensation_reduce_scratch;
+            else
+                compensation_scratch = &compensation_reduce_scratch[ithr
+                        * wspace_per_thr_size];
+            std::memset(compensation_scratch, 0, wspace_per_thr_bytes);
+        }
+
+        switch (ndims_level) {
+            case 0:
+                omp_driver_0d(ndims_ker, in, out, src_scales, dst_scales,
+                        src_zp, dst_zp, compensation_scratch);
+                break;
+            case 1:
+                omp_driver_1d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 2:
+                omp_driver_2d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 3:
+                omp_driver_3d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            case 4:
+                omp_driver_4d(ithr, nthr, ndims_ker, in, out, src_scales,
+                        dst_scales, src_zp, dst_zp, compensation_scratch);
+                break;
+            default: assert(!"unimplemented");
+        }
+    });
+
+    //reduction of intermediate compensation results to the final output
+    if (req_compensation) {
+        reduce_compensation(out, compensation_reduce_scratch, nthr_par,
+                wspace_per_thr_size);
+    }
 
     return status::success;
 }

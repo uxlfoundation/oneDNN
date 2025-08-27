@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include <chrono>
 
 #include "utils/parallel.hpp"
 
@@ -27,6 +28,11 @@ int64_t wei_ab_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
 }
 int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
     return (mb * prb->n + n) * prb->k + k;
+}
+
+void report(const prb_t *prb, double sec) {
+    int nthr = benchdnn_get_max_threads();
+    printf("benchdnn_ref_matmul[nthr, ops, sec]: %d %f %f\n", nthr, prb->ops, sec);
 }
 
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
@@ -120,6 +126,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto bias_broadcast_mask = prb->bias_broadcast_mask();
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
+    auto start = std::chrono::steady_clock::now();
     benchdnn_parallel_nd(MB, M, N, [&](int64_t mb, int64_t m, int64_t n) {
         float dst = 0;
         int64_t src_mb = 0;
@@ -204,6 +211,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         maybe_round(prb->attr, DNNL_ARG_DST, dst_val, dst_off, prb->dst_dt());
         dst_m.set_f32_elem(dst_off, dst_val);
     });
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    report(prb, duration.count());
 }
 
 void cvt_coo_indices_to_csr_pointers(const int32_t *indices, int32_t *pointers,

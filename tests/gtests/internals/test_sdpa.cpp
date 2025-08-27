@@ -1492,7 +1492,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
@@ -1566,6 +1566,11 @@ GPU_TEST_P(sdpa_test_t, compare) {
     DPRINT("%s:%s:%d <<<<<< @@@ GPU_TEST_P(sdpa_test_t, compare) @@@\n", PRINTHEAD);
 
 }
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#if 0
+
+
 std::vector<std::chrono::nanoseconds> timeit(
         const std::function<void()> &func, dnnl::stream &str, int iterations) {
     using namespace std::chrono;
@@ -1801,3 +1806,5 @@ GPU_TEST_P(sdpa_test_t, perf) {
               << "/" << compute(magnitude_cast<gigaops>(total_flops), qtime)
               << "|" << std::endl;
 }
+
+#endif

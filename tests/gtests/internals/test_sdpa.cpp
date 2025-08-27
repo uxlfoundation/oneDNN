@@ -321,7 +321,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     const memory::dims scale_sz = {1, 1, 1, 1};
 
 
-    DPRINT("%s:%s:%d ##### p.stype = %s\n", PRINTHEAD, p.stype == scale_type::host_side ? "host" : "device");
+    bool with_host_scale = p.stype == scale_type::host_side;
+    DPRINT("%s:%s:%d ##### p.stype = %s\n", PRINTHEAD, with_host_scale ? "host" : "device");
 
     const memory::dims key_scales_sz = [&] {
         switch (p.qtype) {
@@ -382,7 +383,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto query_md            = memory::desc(q_sz,          p.qdt,   abcd);
     auto key_md              = memory::desc(k_sz,          p.dt,    abcd);
     auto value_md            = memory::desc(v_sz,          p.dt,    abcd);
-    auto scale_md            = memory::desc(scale_sz,      p.qdt,    abcd);
+    //auto scale_md            = memory::desc(scale_sz,      p.qdt,    abcd);
 
     auto key_quantized_md    = memory::desc(k_sz,          p.kdt,   abcd);
     auto key_t_quantized_md  = memory::desc(k_sz,          p.kdt,   abdc);
@@ -400,10 +401,17 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto output_quantized_md = memory::desc(q_sz,          p.qdt,   abcd);
     // clang-format on
 
+    auto scale_md = with_host_scale
+        ? memory::desc::host_scalar(p.qdt) // ???? qdt ?????
+        : memory::desc(scale_sz, p.qdt, abcd);
+
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
-    out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
+// !!!!!!!!! ????
+    out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
+// !!!!!!!!! ????
+
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
     out.m_key_t_quantized
@@ -695,7 +703,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     if (p.mask != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
+
+    if (!with_host_scale) { // ??????? correct
+        write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
+    }
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);
@@ -1527,7 +1538,11 @@ GPU_TEST_P(sdpa_test_t, compare) {
     } else {
         s8_args[DNNL_ARG_KEYS] = t.m_key_quantized;
     }
-    if (scale_dt != mdt::undef) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
+    if (scale_dt != mdt::undef
+// !!!!!!!!!
+        && p.stype == scale_type::device_side
+// !!!!!!!!!
+        ) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
 
     bool k_is_16_bit_float = ((p.kdt == mdt::f16) || (p.kdt == mdt::bf16));
     bool v_is_16_bit_float = ((p.vdt == mdt::f16) || (p.vdt == mdt::bf16));

@@ -51,9 +51,6 @@ namespace impl {
 static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
         const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,
-// !!!!!!!!!!!
-        const memory_desc_t *scale_md,
-// !!!!!!!!!!!
         const engine_t *engine, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
     int ndims = dst_desc->ndims;
@@ -78,9 +75,7 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
             md2dim_str(dst_desc).c_str(), c, md2dim_str(v_desc).c_str());
 
     VCHECK_SDPA_COND(!any_memory_desc_host_scalar(
-// ??? temporarly ??? !!!!!!
-//                             q_desc, k_desc, v_desc, dst_desc, attn_mask_md),
-                     q_desc, k_desc, v_desc, dst_desc, attn_mask_md, scale_md),
+                     q_desc, k_desc, v_desc, dst_desc, attn_mask_md),
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     return status::success;
@@ -205,12 +200,8 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *attr, const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
     CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
-// !!!!!!!!!!!!!!!!!
-    //CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
-    //        kq_attr, vs_attr));
-    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, scale_md, engine, attr,
+    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
-// !!!!!!!!!!!!!!!!
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
 // !!!!!!!!!!!!!!!

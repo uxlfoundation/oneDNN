@@ -38,10 +38,8 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
         const_dnnl_primitive_attr_t vs_attr) {
-    // ??? TODO ??? scale_desc checking - temporarly
-    CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc, scale_desc,
+    CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
             engine, attr, kq_attr, vs_attr));
-    // ??? TODO ???
     CHECK(sdpa_attr_check(
             query_desc, key_desc, value_desc, engine, attr, kq_attr, vs_attr));
 

@@ -1473,6 +1473,7 @@ struct zp_plan_impl_t : public base_plan_t {
         if (is_src_precomp_compatible()) {
             ret += comp_init.estimate_fill_regs();
         } else if (has_zp_src()) {
+            ret += load.reg_buf_size() / grf_size();
             ret += comp_init.estimate_regs();
             ret += mask_init.estimate_regs();
         }

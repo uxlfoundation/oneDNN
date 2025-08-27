@@ -28,7 +28,12 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         dnnl_primitive_desc_t *primitive_desc_iface, dnnl_engine_t engine,
         const_dnnl_memory_desc_t query_desc, const_dnnl_memory_desc_t key_desc,
         const_dnnl_memory_desc_t value_desc, const_dnnl_memory_desc_t dst_desc,
-        const_dnnl_memory_desc_t mask_desc, dnnl_data_type_t scale_dt,
+
+// !!!!!!!!!!!!!!
+//        const_dnnl_memory_desc_t mask_desc, dnnl_data_type_t scale_dt,
+        const_dnnl_memory_desc_t mask_desc, const_dnnl_memory_desc_t scale_desc,
+// !!!!!!!!!!!!!!
+
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
@@ -42,7 +47,10 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
 
     dnnl::impl::sdpa_desc_t sdpa_desc = dnnl::impl::create_sdpa_desc(query_desc,
             key_desc, value_desc, dst_desc, mask_desc,
-            (dnnl::impl::data_type_t)scale_dt, invert_scale, kv_head_number,
+// !!!!!!!!!!!!!!!!!!!!
+//            (dnnl::impl::data_type_t)scale_dt, invert_scale, kv_head_number,
+            scale_desc, invert_scale, kv_head_number,
+// !!!!!!!!!!!!!!!!!!!!
             static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg, kq_attr,
             vs_attr);
     return dnnl::impl::primitive_desc_create(primitive_desc_iface, engine,

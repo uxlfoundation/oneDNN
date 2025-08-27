@@ -319,6 +319,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
             = {p.mb, p.kv_head_num, p.seq_len * 2, p.head_size};
     const memory::dims v_sz = {p.mb, p.kv_head_num, p.seq_len, p.head_size};
     const memory::dims scale_sz = {1, 1, 1, 1};
+
+
+    DPRINT("%s:%s:%d ##### p.stype = %s\n", PRINTHEAD, p.stype == scale_type::host_side ? "host" : "device");
+
     const memory::dims key_scales_sz = [&] {
         switch (p.qtype) {
             case quantize_type::no_quantization:
@@ -1485,6 +1489,9 @@ GPU_TEST_P(sdpa_test_t, compare) {
         case mask_type::twoD: mask_ptr = &mask; break;
     }
 
+    // ???? for device ????
+    auto scale_md = memory::desc::host_scalar(scale_dt);
+
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
     try {
@@ -1492,7 +1499,11 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
+
+//                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
+                t.m_value_quantized.get_desc(), mask_ptr, scale_md,
+
+
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,

@@ -173,8 +173,10 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     conf_.is_bf16 = conf_.dst_type == bf16;
     conf_.is_f16 = conf_.dst_type == f16;
     conf_.op_type = get_op_type(src0_md_);
-    conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
-    conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
+    conf_.with_src0_scales
+            = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
+    conf_.with_src1_scales
+            = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
     const auto sum_idx = po.find(primitive_kind::sum);
     conf_.do_sum = sum_idx != -1 && po.entry_[sum_idx].sum.scale != 0.f;
     conf_.with_eltwise = po.find(primitive_kind::eltwise) != -1;

@@ -797,11 +797,10 @@ void Generator<hw>::applyLateABOffset(bool isA, int h, const GEMMProblem &proble
                 return true;
             };
 
-            downcastW(N);
             if (downcastW(V)) vstride = 2;
             if (scalarV) vstride = 0;
 
-            mad(ne, C(1), C(1), V(vstride), -N(0));
+            mad(ne, C(1), C(1), N(0), -V(vstride));
         }
     }
 }

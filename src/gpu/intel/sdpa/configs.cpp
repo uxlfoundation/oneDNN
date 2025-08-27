@@ -88,25 +88,20 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
             && ((key.criteria.seq_len == -1)
                     || (key.criteria.seq_len != -1
                             && query.seq_len <= key.criteria.seq_len))
-            && (((key.criteria.prop & property::second_token) == property::none
-                        || (query.prop & property::second_token)
-                                == (key.criteria.prop & property::second_token))
-                    && ((key.criteria.prop & property::quantized)
-                                    == property::none
-                            || (query.prop & property::quantized)
+            && ((((query.prop & property::second_token)
+                        == (key.criteria.prop & property::second_token)))
+                    && (((query.prop & property::quantized)
+                            == (key.criteria.prop & property::quantized)))
+                    && (((query.prop & property::fma)
+                            == (key.criteria.prop & property::fma)))
+                    && (((key.criteria.prop & property::f32) == property::none)
+                            || ((query.prop & property::f32)
+                                    == (key.criteria.prop & property::f32)))
+                    && (((key.criteria.prop & property::integrated)
+                                == property::none)
+                            || ((query.prop & property::integrated)
                                     == (key.criteria.prop
-                                            & property::quantized))
-                    && ((key.criteria.prop & property::fma) == property::none
-                            || (query.prop & property::fma)
-                                    == (key.criteria.prop & property::fma))
-                    && ((key.criteria.prop & property::f32) == property::none
-                            || (query.prop & property::f32)
-                                    == (key.criteria.prop & property::f32))
-                    && ((key.criteria.prop & property::integrated)
-                                    == property::none
-                            || (query.prop & property::integrated)
-                                    == (key.criteria.prop
-                                            & property::integrated))));
+                                            & property::integrated)))));
     return result;
 }
 
@@ -317,11 +312,18 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
         {{compute::gpu_arch_t::xe_hpc, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc, 256},               {16, 32, 32, 32, 8, 4, 8, 4}},
-        {{compute::gpu_arch_t::xe_hpc, 256, 64},           {16, 32, 32, 32, 8, 1, 8, 1}},
-        {{compute::gpu_arch_t::xe_hpc, 256, second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256},                                 {16, 32, 32, 32, 8,  4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 64},                             {16, 32, 32, 32, 8,  1,  8, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256,       second_token},             {16, 16, 16, 16, 16, 1, 16, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc, 256, fma | second_token}, {16, 16, 32, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256,       fma | second_token},       {16, 16, 32, 16, 32, 1, 32, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 256,       quantized},                {16, 32, 32, 32,  8, 4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 64,   quantized},                {16, 16, 16, 16, 16, 2, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 256,       quantized | second_token}, {16, 16, 16, 16, 32, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 1152, quantized | second_token}, {16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 196,  quantized | second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
 
         {{compute::gpu_arch_t::xe_hpc, 512},      {32, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpc, 512, 128}, {16, 16, 64, 16, 8, 4, 8, 4}},

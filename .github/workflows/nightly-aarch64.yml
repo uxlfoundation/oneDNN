@@ -46,8 +46,8 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: c6g, label: ah-ubuntu_22_04-c6g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
+          { name: c6g, label: ah-ubuntu_22_04-c6g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: PRECOMMIT },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: PRECOMMIT }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
@@ -126,7 +126,7 @@ jobs:
           ONEDNN_ACTION: build
 
       - name: Run oneDNN tests
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh
+        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh > test_results.txt
         working-directory: ${{ github.workspace }}/oneDNN/build
         env:
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
@@ -134,6 +134,9 @@ jobs:
           CTEST_PARALLEL_LEVEL: 8
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
           ONEDNN_THREADING: ${{ matrix.config.threading }}
+
+      - name: Run git bisect
+        run: python ${{ github.workspace }}/oneDNN/.github/automation/aarch64/bisect_test.py --unique test_results.txt
 
   #* This job adds a check named "Nightly AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

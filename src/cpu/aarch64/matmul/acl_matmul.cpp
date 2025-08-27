@@ -346,7 +346,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
         }
     }
 
-    acl_obj_->asm_gemm.run(matmul_pack);
+//     acl_obj_->asm_gemm.run(matmul_pack);
 
     if (do_act) {
         auto dst_to_use = do_transC ? &dst_acc_tensor : &dst_tensor;

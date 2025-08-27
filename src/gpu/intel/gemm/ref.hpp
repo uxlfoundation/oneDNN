@@ -60,6 +60,8 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
             kernel_ctx.define_int("ELTWISE_ALG", eltwise_alg);
         }
         kernel_ctx.define_int("WITH_SUM", with_sum);
+        kernel_ctx.define_int("WITH_SRC_ZPOINTS", with_src_zpoints);
+        kernel_ctx.define_int("WITH_WEI_ZPOINTS", with_wei_zpoints);
         kernel_ctx.define_int("WITH_DST_ZPOINTS", with_dst_zpoints);
 
         return kernel_ctx;
@@ -72,8 +74,12 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
     data_type_t acc_dt = {};
     bool with_post_ops = {};
     bool with_sum = {};
+    bool with_src_zpoints = {};
+    bool with_wei_zpoints = {};
     bool with_dst_zpoints = {};
-    uint8_t pad[1] = {};
+    // NOTE: Padding required for trivial serialization alignment.
+    // When adding bool fields, might need to adjust padding.
+    uint8_t pad[3] = {};
     int eltwise_alg = {};
 };
 
@@ -179,6 +185,8 @@ struct ref_t : public primitive_t {
             conf.acc_dt = acc_dt;
             conf.with_post_ops = attr()->post_ops_.len() > 0;
             conf.with_sum = attr_info.with_sum;
+            conf.with_src_zpoints = attr_info.with_src_zpoints;
+            conf.with_wei_zpoints = attr_info.with_wei_zpoints;
             conf.with_dst_zpoints = attr_info.with_dst_zpoints;
             conf.eltwise_alg = attr_info.eltwise_alg;
 

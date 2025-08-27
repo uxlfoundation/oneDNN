@@ -86,31 +86,24 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
             && ((key.criteria.seq_len == -1)
                     || (key.criteria.seq_len != -1
                             && query.seq_len <= key.criteria.seq_len))
-            && (((key.criteria.property & sdpa_property::second_token)
-                                == sdpa_property::none
-                        || (query.property & sdpa_property::second_token)
-                                == (key.criteria.property
-                                        & sdpa_property::second_token))
-                    && ((key.criteria.property & sdpa_property::quantized)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::quantized)
+            && ((((query.property & sdpa_property::second_token)
+                        == (key.criteria.property
+                                & sdpa_property::second_token)))
+                    && (((query.property & sdpa_property::quantized)
+                            == (key.criteria.property
+                                    & sdpa_property::quantized)))
+                    && (((query.property & sdpa_property::fma)
+                            == (key.criteria.property & sdpa_property::fma)))
+                    && (((key.criteria.property & sdpa_property::f32)
+                                == sdpa_property::none)
+                            || ((query.property & sdpa_property::f32)
                                     == (key.criteria.property
-                                            & sdpa_property::quantized))
-                    && ((key.criteria.property & sdpa_property::fma)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::fma)
+                                            & sdpa_property::f32)))
+                    && (((key.criteria.property & sdpa_property::integrated)
+                                == sdpa_property::none)
+                            || ((query.property & sdpa_property::integrated)
                                     == (key.criteria.property
-                                            & sdpa_property::fma))
-                    && ((key.criteria.property & sdpa_property::f32)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::f32)
-                                    == (key.criteria.property
-                                            & sdpa_property::f32))
-                    && ((key.criteria.property & sdpa_property::integrated)
-                                    == sdpa_property::none
-                            || (query.property & sdpa_property::integrated)
-                                    == (key.criteria.property
-                                            & sdpa_property::integrated))));
+                                            & sdpa_property::integrated)))));
     return result;
 }
 
@@ -325,11 +318,18 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 128, 96,  second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
         {{compute::gpu_arch_t::xe_hpc, 128, integrated | second_token | quantized}, {16, 16, 16, 16, 8, 1, 8, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc, 256},               {16, 32, 32, 32, 8, 4, 8, 4}},
-        {{compute::gpu_arch_t::xe_hpc, 256, 64},           {16, 32, 32, 32, 8, 1, 8, 1}},
-        {{compute::gpu_arch_t::xe_hpc, 256, second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256},                                 {16, 32, 32, 32, 8,  4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 64},                             {16, 32, 32, 32, 8,  1,  8, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256,       second_token},             {16, 16, 16, 16, 16, 1, 16, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc, 256, fma | second_token}, {16, 16, 32, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256,       fma | second_token},       {16, 16, 32, 16, 32, 1, 32, 1}},
+
+        {{compute::gpu_arch_t::xe_hpc, 256,       quantized},                {16, 32, 32, 32,  8, 4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 64,   quantized},                {16, 16, 16, 16, 16, 2, 16, 2}},
+
+        {{compute::gpu_arch_t::xe_hpc, 256,       quantized | second_token}, {16, 16, 16, 16, 32, 1, 16, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 1152, quantized | second_token}, {16, 16, 16, 16, 32, 1, 32, 1}},
+        {{compute::gpu_arch_t::xe_hpc, 256, 196,  quantized | second_token}, {16, 16, 16, 16, 16, 1, 16, 1}},
 
         {{compute::gpu_arch_t::xe_hpc, 512},      {32, 16, 64, 16, 8, 4, 8, 4}},
         {{compute::gpu_arch_t::xe_hpc, 512, 128}, {16, 16, 64, 16, 8, 4, 8, 4}},

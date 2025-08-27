@@ -325,8 +325,8 @@ struct gen_gemm_t : public gpu_gemm_t {
             //   accumulation unless fusion is enabled.
             if (kernel_desc_.driver_info()->kParallel()
                     && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(!with_eltwise && !with_binary
-                                && utils::one_of(d->c_type(), f32, s32),
+                VDISPATCH_GEMM(
+                        !non_scale_po_ && utils::one_of(d->c_type(), f32, s32),
                         VERBOSE_UNSUPPORTED_POSTOP);
             }
 

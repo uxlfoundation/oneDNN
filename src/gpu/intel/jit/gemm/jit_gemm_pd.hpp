@@ -82,6 +82,7 @@ struct jit_gemm_pd_t : public gpu_gemm_pd_t {
     int wei_q2d_group_k_ = 0;
     int src_q2d_group_k_ = 0;
     bool src_po_sc_ = false;
+    bool non_scale_po_ = false;
     data_type_t wei_scales_type_ = data_type::undef;
     data_type_t src_scales_type_ = data_type::undef;
 

@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <numeric>
 #include <random>
 
 #include "gpu/intel/jit/ir/blocking.hpp"

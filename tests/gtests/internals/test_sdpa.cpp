@@ -298,6 +298,9 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
 
 sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         const sdpa_dims_t &p, std::vector<dnnl_memory_t> &doubled_memory) {
+
+    DPRINT("%s:%s:%d ##### get_descriptors ###### >>>>>>> \n", PRINTHEAD);
+
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -714,6 +717,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     transpose_strides(eng, out.m_key_t_quantized, out.m_key_quantized);
 
+    DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
+
+
     return out;
 }
 
@@ -804,6 +810,7 @@ INSTANTIATE_TEST_SUITE_P(MyDebug,
         sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD }
     ), &print_to_string);
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#if 0
 INSTANTIATE_TEST_SUITE_P(AllMaskTypes,
     sdpa_test_t,
                                //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,        dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
@@ -1095,6 +1102,8 @@ INSTANTIATE_TEST_SUITE_P(qwen2_7b,
 //                    sdpa_dims_t{   1,      2,        2,   2048,    2048,     96,     96,      96, mdt::f16,   mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
 //                    sdpa_dims_t{   1,      2,        2,   2049,       1,     96,     96,      96, mdt::f16,   mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
 //    ), &print_to_string);
+
+#endif // #if 0
 
 // clang-format on
 

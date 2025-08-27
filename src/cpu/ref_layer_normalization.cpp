@@ -47,8 +47,15 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
             : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const bool with_src_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    const bool with_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     const dim_t N = pd()->across_axis();
     const dim_t C = pd()->norm_axis();
@@ -108,7 +115,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
             const auto d_off = dst_d.off_l(n * C + c);
             float s = io::load_float_value(src_d.data_type(), src, s_off);
             float d = sm * (s - v_mean) + shift_val;
-            d *= src_scales[0];
+            if (with_src_scales) d *= src_scales[0];
 
             // post-ops
             ref_post_ops_t::args_t args;
@@ -117,7 +124,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(d, args);
 
-            d *= dst_scales[0];
+            if (with_dst_scales) d /= dst_scales[0];
             io::store_float_value(dst_d.data_type(), d, dst, d_off);
         }
 

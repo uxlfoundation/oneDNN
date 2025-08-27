@@ -114,6 +114,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
                 break;
             default: return status::unimplemented;
         }
+        non_scale_po_ = true;
     }
 
     if (!ok) return status::unimplemented;
@@ -134,6 +135,7 @@ status_t jit_gemm_pd_t::init_post_ops() {
         binary_srcs_.insert(
                 binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
     }
+    non_scale_po_ |= bias_via_binary_;
 
     auto maybe_convert_scales_to_postop
             = [this](const dims_t &scales_dims, int arg, data_type_t dt,

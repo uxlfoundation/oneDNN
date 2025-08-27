@@ -508,6 +508,13 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
     const auto &src_dt = src.layout.type();
     const auto &dst_dt = dst.layout.type();
     type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
+    // If not forcing up- and down-conversion of 2d data, and one of the layouts
+    // isn't dense, prefer the type of the dense layout to hopefully dispatch to
+    // 2d reorder.
+    if (utils::one_of(tmp_dt, src_dt, dst_dt) && src.layout.ndims() == 2
+            && math::is_pow2(src.layout.elems())
+            && src.layout.is_dense() ^ dst.layout.is_dense())
+        tmp_dt = src.layout.is_dense() ? src_dt : dst_dt;
 
     const bool do_pre_conv = src_dt != tmp_dt;
     const bool do_post_conv = dst_dt != tmp_dt;

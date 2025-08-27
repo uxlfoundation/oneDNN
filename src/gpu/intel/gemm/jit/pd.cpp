@@ -102,6 +102,7 @@ status_t pd_t::init_post_ops() {
                 break;
             default: return status::unimplemented;
         }
+        non_scale_po_ = true;
     }
 
     if (!ok) return status::unimplemented;
@@ -122,6 +123,7 @@ status_t pd_t::init_post_ops() {
         binary_srcs_.insert(
                 binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
     }
+    non_scale_po_ |= bias_via_binary_;
 
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,

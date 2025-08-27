@@ -80,6 +80,7 @@ struct pd_t : public gemm::pd_t {
     bool quant_enabled_ = false;
     int a_q2d_group_k_ = 0, a_q2d_group_m_ = 0;
     int b_q2d_group_k_ = 0, b_q2d_group_n_ = 0;
+    bool non_scale_po_ = false;
     data_type_t a_scales_type_ = data_type::undef;
     data_type_t b_scales_type_ = data_type::undef;
 

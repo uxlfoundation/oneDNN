@@ -401,10 +401,13 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto output_quantized_md = memory::desc(q_sz,          p.qdt,   abcd);
     // clang-format on
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     auto scale_md = with_host_scale
         ? memory::desc::host_scalar(p.qdt) // ???? qdt ?????
         : memory::desc(scale_sz, p.qdt, abcd);
 
+    //memory host_scale_mem(scale_md, 1.11f);
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!
 #if 0
 // Attempt to create a memory object with a data type that does not match
     try {
@@ -418,14 +421,17 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     }
 #endif
 
-
-
-
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
 // !!!!!!!!! ????
+//
+    DPRINT("%s:%s:%d !!! fill out.m_scale !!!\n", PRINTHEAD);
+//
+//    out.m_scale = with_host_scale ? host_scale_mem : double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
+
+    print_mem(out.m_scale,"out.m_scale just after double_and_resize");
 // !!!!!!!!! ????
 
     out.m_key_quantized
@@ -723,6 +729,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (!with_host_scale) { // ??????? correct
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
     }
+    print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory");
+
+
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);

@@ -26,11 +26,6 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
     // !!!!!!!!!!!!!!!!
     KERNEL_PRINT_HEAD
     // !!!!!!!!!!!!!!!!
-    //if (DPRINT) {
-    //    printf("\nKEY_D3 = %d KEY_S3 = %d KEY_S2 = %d\nQRY_S2 = %d VAL_S2 = %d DST_S2 = %d\nMSK_D0 = %ld MSK_D1 = %ld MSK_S2 = %ld\n",
-    //           KEY_D3,KEY_S3,KEY_S2,QRY_S2,VAL_S2,DST_S2,(long)MSK_D0,(long)MSK_D1,(long)MSK_S2);
-    //}
-    // !!!!!!!!!!!!!!!!
 
     long q = get_global_id(0);
     long b0 = get_global_id(1);
@@ -55,6 +50,10 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
 
 #if WITH_ATTN_SCALE
     SCALE_DATA_T scale = *scale_ptr;
+    if (DPRINT) {
+        printf("kernel: scale = %g\n\n",(float)scale);
+    }
+
 #if INVERT_SCALE
     scale = 1.f / scale;
 #endif

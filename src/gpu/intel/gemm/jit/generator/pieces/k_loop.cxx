@@ -954,8 +954,14 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             auto layoutCopy = layout;
             layoutCopy.unlinkFromMemory();
             sublayout = layoutCopy.slice(true, ha, ha + k_repack, false);
-            for (auto &l: Ar_sublayout)
-                l.offsetC += ha;
+            if (Ar_sublayout.cols() > k_repack){
+                auto Ar_layoutCopy = Ar_sublayout;
+                Ar_layoutCopy.unlinkFromMemory();
+                Ar_sublayout = Ar_layoutCopy.slice(true, ha, ha + k_repack, false);
+            } else {
+                for (auto &l: Ar_sublayout)
+                     l.offsetC += ha;
+            }
 
             // Int4 data is commonly expanded from partial registers as a 64
             // byte register expands to 128 elements. To avoid emitting extra

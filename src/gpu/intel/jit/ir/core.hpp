@@ -550,6 +550,11 @@ struct expr_iface_t : public expr_impl_t, public object_info_t<T> {
     expr_iface_t(const type_t &type)
         : expr_impl_t(object_info_t<T>::_type_info(), type) {}
 
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<T>()) return false;
+        return (*static_cast<const T *>(this) == obj.as<T>());
+    }
+
     object_t _mutate(ir_mutator_t &mutator) const override {
         return mutator._mutate(*static_cast<const T *>(this));
     }
@@ -719,10 +724,7 @@ public:
         return expr_t(new binary_op_t(op_kind, a, b));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const binary_op_t &other) const {
         return (op_kind == other.op_kind)
                 && ((a.is_equal(other.a) && b.is_equal(other.b))
                         || (is_commutative_op(op_kind) && b.is_equal(other.a)
@@ -761,10 +763,7 @@ public:
         return type_t::u(std::max(elems, 16));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const bool_imm_t &other) const {
         return value == other.value;
     }
 
@@ -797,10 +796,7 @@ public:
         return expr_t(new cast_t(type, expr, saturate));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const cast_t &other) const {
         return type == other.type && expr.is_equal(other.expr)
                 && (saturate == other.saturate);
     }
@@ -843,10 +839,7 @@ public:
         return expr_t(new const_var_t(type, name));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        // Do not allow variable cloning.
-        return this == &obj;
-    }
+    bool operator==(const const_var_t &other) const { return this == &other; }
 
     size_t get_hash() const override { return ir_utils::get_hash(name); }
 
@@ -866,10 +859,7 @@ public:
         return expr_t(new float_imm_t(value, type));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const float_imm_t &other) const {
         return type == other.type && (value == other.value);
     }
 
@@ -892,10 +882,7 @@ public:
         return expr_t(new int_imm_t(value, type));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const int_imm_t &other) const {
         return type == other.type && (value == other.value);
     }
 
@@ -940,10 +927,7 @@ public:
         return expr_t(new iif_t(cond, true_expr, false_expr));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const iif_t &other) const {
         return cond.is_equal(other.cond) && true_expr.is_equal(other.true_expr)
                 && false_expr.is_equal(other.false_expr);
     }
@@ -989,10 +973,7 @@ public:
     int nargs() const { return int(v_vec.size()); }
     expr_t to_expr() const;
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const linear_t &other) const {
         return c.is_equal(other.c) && ir_utils::is_equal(u_vec, other.u_vec)
                 && ir_utils::is_equal(v_vec, other.v_vec);
     }
@@ -1033,10 +1014,7 @@ public:
         return expr_t(new load_t(type, buf, off, stride));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const load_t &other) const {
         return type == other.type && buf.is_equal(other.buf)
                 && off.is_equal(other.off) && (stride == other.stride);
     }
@@ -1071,10 +1049,7 @@ public:
         return expr_t(new ptr_t(base, off));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const ptr_t &other) const {
         return base.is_equal(other.base) && off.is_equal(other.off);
     }
 
@@ -1172,10 +1147,7 @@ public:
         return make(vec, idx);
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const shuffle_t &other) const {
         return ir_utils::is_equal(vec, other.vec)
                 && ir_utils::is_equal(idx, other.idx);
     }
@@ -1237,10 +1209,7 @@ public:
         return expr_t(new ternary_op_t(op_kind, a, b, c));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const ternary_op_t &other) const {
         return (op_kind == other.op_kind) && a.is_equal(other.a)
                 && b.is_equal(other.b) && c.is_equal(other.c);
     }
@@ -1284,10 +1253,7 @@ public:
         return expr_t(new unary_op_t(op_kind, a));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const unary_op_t &other) const {
         return (op_kind == other.op_kind) && a.is_equal(other.a);
     }
 
@@ -1308,9 +1274,9 @@ public:
         return expr_t(new var_t(type, name, is_mutable));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool operator==(const var_t &other) const {
         // Do not allow variable cloning.
-        return this == &obj;
+        return this == &other;
     }
 
     size_t get_hash() const override { return ir_utils::get_hash(name); }
@@ -1333,10 +1299,7 @@ public:
         return expr_t(new ref_t(var, off, elems));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const ref_t &other) const {
         return other.var.is_equal(var) && other.off == off
                 && other.elems == elems;
     }
@@ -1499,7 +1462,13 @@ public:
 };
 template <typename T>
 struct stmt_iface_t : public stmt_impl_t, public object_info_t<T> {
+    using self_type = T;
     stmt_iface_t() : stmt_impl_t(object_info_t<T>::_type_info()) {}
+
+    bool is_equal(const object_impl_t &obj) const override {
+        if (!obj.is<T>()) return false;
+        return (*static_cast<const T *>(this) == obj.as<T>());
+    }
 
     object_t _mutate(ir_mutator_t &mutator) const override {
         return mutator._mutate(*static_cast<const T *>(this));
@@ -1667,10 +1636,7 @@ public:
         return stmt_t(new alloc_t(buf, body));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const alloc_t &other) const {
         return buf.is_equal(other.buf) && (size == other.size)
                 && (kind == other.kind)
                 && ir_utils::is_equal(attrs, other.attrs)
@@ -1741,9 +1707,7 @@ public:
         return stmt_t(new assign_t(var, value));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
+    bool operator==(const assign_t &other) const {
         return var.is_equal(other.var) && value.is_equal(other.value);
     }
 
@@ -1798,10 +1762,7 @@ public:
                 new store_t(buf, off, value, stride, mask, fill_mask0 && mask));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const store_t &other) const {
         return buf.is_equal(other.buf) && off.is_equal(other.off)
                 && value.is_equal(other.value) && mask.is_equal(other.mask)
                 && (stride == other.stride) && (fill_mask0 == other.fill_mask0);
@@ -1864,10 +1825,7 @@ public:
         return stmt_t(new for_t(var, init, bound, body, step, unroll));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const for_t &other) const {
         return var.is_equal(other.var) && init.is_equal(other.init)
                 && bound.is_equal(other.bound) && body.is_equal(other.body)
                 && step.is_equal(other.step) && (unroll == other.unroll);
@@ -1917,10 +1875,7 @@ public:
         return stmt_t(new if_t(cond, body, else_body));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const if_t &other) const {
         return cond.is_equal(other.cond) && body.is_equal(other.body)
                 && else_body.is_equal(other.else_body);
     }
@@ -1957,10 +1912,7 @@ public:
         return stmt_t(new let_t(var, value, body));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const let_t &other) const {
         return var.is_equal(other.var) && value.is_equal(other.value)
                 && body.is_equal(other.body);
     }
@@ -2096,10 +2048,7 @@ public:
         return stmt_t(new stmt_group_t(label, body));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const stmt_group_t &other) const {
         return (label == other.label) && body.is_equal(other.body);
     }
 
@@ -2128,10 +2077,7 @@ public:
         return head.append(tail);
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const stmt_seq_t &other) const {
         return ir_utils::is_equal(vec, other.vec);
     }
 
@@ -2154,10 +2100,7 @@ public:
         return stmt_t(new while_t(cond, body));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const while_t &other) const {
         return cond.is_equal(other.cond) && body.is_equal(other.body);
     }
 
@@ -2328,10 +2271,7 @@ public:
         return stmt_t(new func_call_t(func, args, attr));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const func_call_t &other) const {
         return func.is_equal(other.func) && ir_utils::is_equal(args, other.args)
                 && attr.is_equal(other.attr);
     }

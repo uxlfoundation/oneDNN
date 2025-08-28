@@ -43,12 +43,7 @@ class pexpr_t : public expr_iface_t<pexpr_t> {
 public:
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
-        return id == other.id;
-    }
+    bool operator==(const pexpr_t &other) const { return id == other.id; }
 
     size_t get_hash() const override { return ir_utils::get_hash(id); }
 
@@ -108,10 +103,7 @@ public:
         return true;
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const pint_imm_t &other) const {
         return (id == other.id) && (value == other.value);
     }
 
@@ -729,10 +721,7 @@ public:
         return expr_t(new nary_op_t(op_kind, args));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const nary_op_t &other) const {
         return (op_kind == other.op_kind)
                 && ir_utils::is_equal(args, other.args);
     }
@@ -1039,14 +1028,11 @@ public:
         return expr_t(new factored_expr_t(type, factors));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const factored_expr_t &other) const {
         if (factors.size() != other.factors.size()) return false;
         if (!factors.back().is_equal(other.factors.back())) return false;
 
-        auto common = intersect(obj);
+        auto common = intersect(other);
         auto &f_common = common.as<factored_expr_t>();
         return f_common.factors.size() == factors.size();
     }

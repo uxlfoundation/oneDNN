@@ -82,7 +82,8 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool d_full, arch_gte_hpc;
     bool block_q, block_a, block_msk, block_2d_a;
     bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v, prefetch_remainder;
-    uint8_t padding2[5] = {0};
+    bool remainder_q;
+    uint8_t padding2[4] = {0};
     int prefetch_d_max;
 
     bool softmax_inf_as_zero;

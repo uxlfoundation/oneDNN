@@ -181,48 +181,10 @@ HANDLE_CORE_IR_OBJECTS()
 #undef HANDLE_IR_OBJECT
 #undef CLASS_DECLARATION
 
-template <typename T, typename = void>
-struct is_expr_t {
-    static const bool value = false;
-};
-
-template <typename T>
-struct is_expr_t<T,
-        typename std::enable_if<std::is_base_of<expr_impl_t, T>::value>::type> {
-    static const bool value = true;
-};
-
-template <typename T, typename = void>
-struct is_stmt_t {
-    static const bool value = false;
-};
-
-template <typename T>
-struct is_stmt_t<T,
-        typename std::enable_if<std::is_base_of<stmt_impl_t, T>::value>::type> {
-    static const bool value = true;
-};
-
-struct type_info_t {
-    constexpr type_info_t(void *uid, bool is_expr, bool is_stmt)
-        : uid(uid), is_expr(is_expr), is_stmt(is_stmt) {}
-
-    void *uid = nullptr;
-    bool is_expr = false;
-    bool is_stmt = false;
-
-    bool operator==(const type_info_t &other) const { return uid == other.uid; }
-    bool operator!=(const type_info_t &other) const {
-        return !operator==(other);
-    }
-};
-
 // Base class for all IR objects. Implemented as an intrusive pointer, with
 // the reference counter stored inside the object.
 class object_impl_t {
 public:
-    object_impl_t(type_info_t type_info) : type_info_(type_info) {};
-
     object_impl_t(const object_impl_t &) = delete;
     object_impl_t &operator=(const object_impl_t &) = delete;
 
@@ -233,10 +195,8 @@ public:
 
     virtual size_t get_hash() const = 0;
 
-    // Type information.
-    const type_info_t &type_info() const { return type_info_; };
-    bool is_expr() const { return type_info().is_expr; }
-    bool is_stmt() const { return type_info().is_stmt; }
+    bool is_expr() const { return info().is_expr; }
+    bool is_stmt() const { return info().is_stmt; }
 
     // Downcasts the object to the IR type, returns a reference. The IR type
     // must match the real IR type.
@@ -266,7 +226,7 @@ public:
     // Returns true if T matches the real IR type.
     template <typename T>
     bool is() const {
-        return type_info() == T::_type_info();
+        return info() == T::get_info();
     }
 
     virtual std::string str() const;
@@ -277,10 +237,29 @@ public:
 
 protected:
     friend class object_t;
+    template <typename T>
+    friend struct object_info_t;
+
     void retain() { ref_count_.increment(); }
     void release() {
         if (ref_count_.decrement() == 0) { delete this; }
     }
+
+    struct info_t {
+        constexpr info_t(void *uid, bool is_expr, bool is_stmt)
+            : uid(uid), is_expr(is_expr), is_stmt(is_stmt) {}
+
+        void *uid = nullptr;
+        bool is_expr = false;
+        bool is_stmt = false;
+
+        bool operator==(const info_t &other) const { return uid == other.uid; }
+        bool operator!=(const info_t &other) const {
+            return !operator==(other);
+        }
+    };
+
+    object_impl_t(info_t info) : info_(info) {};
 
 private:
     // Reference counter for IR objects.
@@ -298,17 +277,48 @@ private:
         uint32_t value_;
     };
 
+    // Type information.
+    const info_t &info() const { return info_; };
+
     ref_count_t ref_count_;
-    type_info_t type_info_;
+    info_t info_;
 };
 
 template <typename T>
 struct object_info_t {
     using self_type = T;
-    static type_info_t _type_info() {
-        return type_info_t(
-                (void *)_type_info, is_expr_t<T>::value, is_stmt_t<T>::value);
+
+protected:
+    friend class object_impl_t;
+    static object_impl_t::info_t get_info() {
+        return object_impl_t::info_t(
+                (void *)get_info, is_expr_t<T>::value, is_stmt_t<T>::value);
     }
+
+private:
+    template <typename U, typename = void>
+    struct is_expr_t {
+        static const bool value = false;
+    };
+
+    template <typename U>
+    struct is_expr_t<U,
+            typename std::enable_if<
+                    std::is_base_of<expr_impl_t, U>::value>::type> {
+        static const bool value = true;
+    };
+
+    template <typename U, typename = void>
+    struct is_stmt_t {
+        static const bool value = false;
+    };
+
+    template <typename U>
+    struct is_stmt_t<U,
+            typename std::enable_if<
+                    std::is_base_of<stmt_impl_t, U>::value>::type> {
+        static const bool value = true;
+    };
 };
 
 // Base wrapper for IR objects.
@@ -363,8 +373,6 @@ public:
     bool is_empty() const { return !impl_; }
 
     explicit operator bool() const { return !is_empty(); }
-
-    const type_info_t &type_info() const { return impl_->type_info(); }
 
     template <typename T>
     const T &as() const {
@@ -539,7 +547,7 @@ public:
 // Base class for IR expression objects.
 class expr_impl_t : public object_impl_t {
 public:
-    expr_impl_t(type_info_t type_info, const type_t &type)
+    expr_impl_t(object_impl_t::info_t type_info, const type_t &type)
         : object_impl_t(type_info), type(type) {}
 
     type_t type;
@@ -547,8 +555,7 @@ public:
 
 template <typename T>
 struct expr_iface_t : public expr_impl_t, public object_info_t<T> {
-    expr_iface_t(const type_t &type)
-        : expr_impl_t(object_info_t<T>::_type_info(), type) {}
+    expr_iface_t(const type_t &type) : expr_impl_t(T::get_info(), type) {}
 
     bool is_equal(const object_impl_t &obj) const override {
         if (!obj.is<T>()) return false;
@@ -1458,12 +1465,12 @@ expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);
 // Base class for IR statement objects.
 class stmt_impl_t : public object_impl_t {
 public:
-    stmt_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
+    stmt_impl_t(object_impl_t::info_t type_info) : object_impl_t(type_info) {}
 };
 template <typename T>
 struct stmt_iface_t : public stmt_impl_t, public object_info_t<T> {
     using self_type = T;
-    stmt_iface_t() : stmt_impl_t(object_info_t<T>::_type_info()) {}
+    stmt_iface_t() : stmt_impl_t(T::get_info()) {}
 
     bool is_equal(const object_impl_t &obj) const override {
         if (!obj.is<T>()) return false;
@@ -1514,7 +1521,8 @@ enum class alloc_kind_t {
 
 class alloc_attr_impl_t : public object_impl_t {
 public:
-    alloc_attr_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
+    alloc_attr_impl_t(object_impl_t::info_t type_info)
+        : object_impl_t(type_info) {}
 };
 
 class alloc_attr_t : public object_t {
@@ -1563,7 +1571,7 @@ public:
 
 private:
     grf_permute_attr_t(const std::shared_ptr<grf_permutation_t> &grf_perm)
-        : alloc_attr_impl_t(_type_info()), grf_perm(grf_perm) {}
+        : alloc_attr_impl_t(get_info()), grf_perm(grf_perm) {}
 };
 
 // Allocation attribute to store extra information to avoid bank conflicts.
@@ -1601,7 +1609,7 @@ private:
             const std::vector<int> &buf_sizes,
             const std::vector<int> &buf_min_block_sizes,
             const std::vector<stmt_t> &instructions)
-        : alloc_attr_impl_t(_type_info())
+        : alloc_attr_impl_t(get_info())
         , bufs(bufs)
         , buf_sizes(buf_sizes)
         , buf_min_block_sizes(buf_min_block_sizes)
@@ -2122,7 +2130,8 @@ private:
 // Function call attribute.
 class func_call_attr_impl_t : public object_impl_t {
 public:
-    func_call_attr_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
+    func_call_attr_impl_t(object_impl_t::info_t type_info)
+        : object_impl_t(type_info) {}
 };
 
 class func_call_attr_t : public object_t {
@@ -2199,13 +2208,13 @@ public:
 
 private:
     instruction_modifier_attr_t(const ngen::InstructionModifier &mod)
-        : func_call_attr_impl_t(_type_info()), mod(mod) {}
+        : func_call_attr_impl_t(get_info()), mod(mod) {}
 };
 
 // Base class for function IR objects.
 class func_impl_t : public object_impl_t {
 public:
-    func_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
+    func_impl_t(object_impl_t::info_t type_info) : object_impl_t(type_info) {}
 
     size_t get_hash() const override {
         gpu_error_not_expected() << "get_hash() is not implemented.";
@@ -2336,8 +2345,7 @@ public:
     std::string name;
 
 private:
-    builtin_t(const std::string &name)
-        : func_impl_t(_type_info()), name(name) {}
+    builtin_t(const std::string &name) : func_impl_t(get_info()), name(name) {}
 };
 
 #ifndef SANITY_CHECK

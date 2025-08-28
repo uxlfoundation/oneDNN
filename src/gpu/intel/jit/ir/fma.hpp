@@ -196,7 +196,7 @@ private:
     dpas_t(bool is_dpasw, int exec_size, uint8_t sdepth, uint8_t rcount,
             const type_t &dst_type, const type_t &src1_type,
             const type_t &src2_type)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , is_dpasw(is_dpasw)
         , exec_size(exec_size)
         , sdepth(sdepth)
@@ -274,7 +274,7 @@ private:
     mad_t(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t &src2_type,
             int src2_stride)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , dst_type(dst_type)
         , src1_type(src1_type)
         , src2_type(src2_type)

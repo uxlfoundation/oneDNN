@@ -48,7 +48,7 @@ public:
 
 private:
     reduce_t(const layout_t &src_layout, const layout_t &dst_layout)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , src_layout(src_layout)
         , dst_layout(dst_layout) {}
 };

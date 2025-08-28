@@ -411,9 +411,7 @@ private:
     template <typename T>
     object_t mutate_stmt(const T &obj) {
         if (in_ctor_) return ir_mutator_t::_mutate(obj);
-        if (T::_type_info() == stmt_seq_t::_type_info()) {
-            return mutate_stmt_seq(obj);
-        }
+        if (obj.template is<stmt_seq_t>()) { return mutate_stmt_seq(obj); }
         auto undef_bufs = get_undef_bufs();
         auto new_obj = ir_mutator_t::_mutate(obj);
         new_obj = maybe_inject(new_obj, undef_bufs);
@@ -798,7 +796,7 @@ int count_object(const object_t &root, const object_t &obj) {
     std::vector<object_t> found;
     do {
 #define HANDLE_IR_OBJECT(type) \
-    if (obj.type_info() == type::_type_info()) { \
+    if (obj.is<type>()) { \
         found = find_objects<type>(root); \
         break; \
     }

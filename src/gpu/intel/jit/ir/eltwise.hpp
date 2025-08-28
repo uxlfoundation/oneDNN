@@ -99,7 +99,7 @@ public:
 private:
     eltwise_t(alg_kind_t alg_kind, float scale, float alpha, float beta,
             expr_t &seed, ngen::DataType dst_dt)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , alg_kind(alg_kind)
         , scale(scale)
         , alpha(alpha)
@@ -110,7 +110,7 @@ private:
     }
 
     eltwise_t(alg_kind_t alg_kind, float scale, float alpha, float beta)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , alg_kind(alg_kind)
         , scale(scale)
         , alpha(alpha)

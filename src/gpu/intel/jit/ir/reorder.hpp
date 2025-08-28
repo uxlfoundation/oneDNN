@@ -50,7 +50,7 @@ public:
 
 private:
     reorder_t(layout_t src_layout, layout_t dst_layout)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , src_layout(std::move(src_layout))
         , dst_layout(std::move(dst_layout)) {}
 };

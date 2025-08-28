@@ -42,8 +42,8 @@ Index | Argument Name | Required or Optional
 
 SquaredDifference operation supports the following data type combinations.
 
-Src_1 | Src_2 | Dst
--- | -- | --
-f32 | f32 | f32
-bf16 | bf16 | bf16
-f16 | f16 | f16
+Source1/2 | Dst
+-- | --
+f32 | f32
+bf16 | bf16
+f16 | f16

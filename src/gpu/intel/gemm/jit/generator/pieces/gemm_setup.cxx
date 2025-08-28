@@ -1608,7 +1608,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         bool lazyRepack = state.Ta_load.is4() && one_of(Ta, Type::f16, Type::bf16, Type::f32);    // Other cases are unimplemented
         if (lazyRepack)
             state.ka_repack = std::min(state.ka_repack, strategy.kb_load);
-        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, state.ka_repack, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
+        if (problem.aqGroupK % state.ka_repack != 0 && state.ka_repack % problem.aqGroupK != 0)
+		state.ka_repack = minOuterProductCount(hw, problem, strategy);
+	state.Ar_layout = RegisterLayout(hw, Ta, unrollM, state.ka_repack, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
     }
 
     if (state.repackB)

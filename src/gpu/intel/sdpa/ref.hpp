@@ -96,6 +96,9 @@ struct ref_t : public primitive_t {
         const memory_desc_wrapper val_mdw(pd()->val_md());
         const memory_desc_wrapper dst_mdw(pd()->dst_md());
         const memory_desc_wrapper msk_mdw(pd()->attn_mask_md());
+
+        //const memory_desc_wrapper scale_mdw(pd()->scale_md());
+
         using offset_t = decltype(offsets_t().src_off);
         offset_t qry_off, key_off, val_off, dst_off, msk_off;
         set_offsets(qry_mdw, qry_off);

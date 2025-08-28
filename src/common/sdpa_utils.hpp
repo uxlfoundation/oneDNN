@@ -179,7 +179,6 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
 // !!!!!!!!!!!!!!!!!!
 //    sdpa_desc.scale_dt = scale_dt;
     sdpa_desc.scale_dt = scale_md->data_type;
-
     sdpa_desc.scale_desc = *scale_md;
 // !!!!!!!!!!!!!!!!!!
     sdpa_desc.invert_scale = invert_scale;

@@ -41,7 +41,7 @@ passed to compute-intensive primitives. The compute-intensive primitive types
 in oneDNN are @ref dev_guide_convolution, @ref dev_guide_inner_product,
 and @ref dev_guide_rnn.
 
-To accomplish this propagation in a robust manner, its is recommended to
+To accomplish this propagation in a robust manner, it is recommended to
 follow these steps:
 
 A. On compute-intensive operations:
@@ -111,7 +111,7 @@ these weights are essentially constants in the mapping function that the network
 is applying to the input data. As such, the weights should be reordered
 (if necessary) once and then used in the reorder form for the duration
 of the execution. This caching causes the computer to use them in a way similar
-to how a mathematical function applies a constant, i..e, "Grab-and-go"
+to how a mathematical function applies a constant, i.e., "Grab-and-go"
 with no overhead for creation or reorder.
 
 **Primitive Reuse**\
@@ -134,7 +134,7 @@ as a demonstration below. The steps are
 
 * Create a `post_op` for fused ReLU
 * Create **primitive attribute** and add the `post_op`
-* Create a convolution **primitive descriptor**, passing `post_op as` an arg
+* Create a convolution **primitive descriptor**, passing `post_op` as an argument
 
 Create a `post_op` for fused ReLU
 ~~~cpp
@@ -149,7 +149,7 @@ attr.set_post_ops(ops);
 ~~~
 
 Create a convolution **primitive descriptor**, passing the post-op infused
-`attrs` as an arg
+`attrs` as an argument
 ~~~cpp
 auto conv_prim_descr = convolution_forward::primitive_desc(..., attrs, engine);
 ~~~

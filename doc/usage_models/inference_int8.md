@@ -97,7 +97,7 @@ Finally, the quantized input values for the int8 operation are calculated as:
 
 These arrays are the new inputs for the int8 net.
 
-## int8 Support
+## Int8 Support
 
 oneDNN supports int8 computations for inference by allowing one to specify that
 primitives' input and output memory objects use int8 data types. int8
@@ -112,7 +112,7 @@ possible to specify fused post-ops. All primitives support the
 attributes, but not all combinations of parameters are supported. In
 the case of an unsupported combination, the library returns an error.
 
-In oneDNN, the scaling factor are applied to each memory object of a primitive.
+In oneDNN, the scaling factors are applied to each memory object of a primitive.
 Moreover, to perform input transformations (for example, source and
 weights), oneDNN performs quantizing and dequantizing of data for int8 using
 the **reorder primitive**.

@@ -126,7 +126,7 @@ Current implementation supports all tensors up to 3D spatial (n, c, d, h, w).
 
 ## Performance Tips
 
-Its recommended to allow PReLU primitive to choose the appropriate weights
+It's recommended to allow PReLU primitive to choose the appropriate weights
 memory format by passing weights_md with format_tag::any.
 For best performance, the weights memory format should match
 data memory format.

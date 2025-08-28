@@ -79,20 +79,23 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
     MAYBE_UNUSED(scratchpad); \
     const auto input_d = ctx.memory_mdw(DNNL_ARG_FROM, pd->src_md()); \
     const auto output_d = ctx.memory_mdw(DNNL_ARG_TO, pd->dst_md()); \
-    DEFINE_ARG_SCALES_BUFFER_ATTR(pd->attr(), src_scales, DNNL_ARG_FROM); \
-    DEFINE_ARG_SCALES_BUFFER_ATTR(pd->attr(), dst_scales_, DNNL_ARG_TO); \
+    const float *src_scales \
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM); \
+    const float *dst_scales \
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_TO); \
     const auto src_scales_d \
             = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM); \
     MAYBE_UNUSED(src_scales_d); \
+    const bool with_src_scales \
+            = !pd->attr()->scales_.has_default_values(DNNL_ARG_FROM); \
+    const bool with_dst_scales \
+            = !pd->attr()->scales_.has_default_values(DNNL_ARG_TO); \
     int src_scales_mask, dst_scales_mask; \
     CHECK(get_scales_mask(pd->attr(), &src_scales_mask, &dst_scales_mask)); \
     int scales_mask = std::max(src_scales_mask, dst_scales_mask); \
     MAYBE_UNUSED(scales_mask); \
     dim_t D_start, D_mask, D_rest; \
     pd->get_D_values(input_d, scales_mask, &D_start, &D_mask, &D_rest); \
-    const float *dst_scales = pd->precompute_scales( \
-            scratchpad, pd->attr(), D_mask, dst_scales_); \
-    MAYBE_UNUSED(dst_scales); \
     const int32_t *src_zero_points = CTX_IN_MEM( \
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM); \
     const auto src_zps_d \
@@ -104,7 +107,8 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_TO); \
     int dst_zp = dst_zero_points ? dst_zero_points[0] : 0; \
     MAYBE_UNUSED(dst_zp); \
-    const float alpha = src_scales[0] * dst_scales[0]; \
+    const float alpha = (with_src_scales ? src_scales[0] : 1.f) \
+            * (with_dst_scales ? dst_scales[0] : 1.f); \
     MAYBE_UNUSED(alpha); \
     const float beta = pd->beta(); \
     MAYBE_UNUSED(beta);
@@ -325,11 +329,15 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         : output[output_d.blk_off<!w_groups>(g, oc, ic, w)];
                 const size_t os_off
                         = (g * OC + oc) * oc_stride + ic * ic_stride;
-                const float s = src_scales[src_scales_mask == 0 ? 0 : os_off];
-                const float d = dst_scales[dst_scales_mask == 0 ? 0 : os_off];
+                const float s = with_src_scales
+                        ? src_scales[src_scales_mask == 0 ? 0 : os_off]
+                        : 1.f;
+                const float d = with_dst_scales
+                        ? dst_scales[dst_scales_mask == 0 ? 0 : os_off]
+                        : 1.f;
 
                 o = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        i, s * adj_scale * d);
+                        i, s * adj_scale / d);
                 if (req_comp) cp[g * OC + oc] -= (int32_t)o;
                 if (has_asymmetric_comp) zp[g * OC + oc] -= (int32_t)o;
             }
@@ -529,12 +537,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         = oc * plain_d.blocking_desc().strides[w_groups + 0]
                         + ic * plain_d.blocking_desc().strides[w_groups + 1];
                 const size_t os_off = oc * oc_stride + ic * ic_stride;
-                const float src_scale = s[src_scales_mask == 0 ? 0 : os_off];
-                const float dst_scale = d[dst_scales_mask == 0 ? 0 : os_off];
+                const float src_scale = with_src_scales
+                        ? s[src_scales_mask == 0 ? 0 : os_off]
+                        : 1.f;
+                const float dst_scale = with_dst_scales
+                        ? d[dst_scales_mask == 0 ? 0 : os_off]
+                        : 1.f;
                 out[index(oc, ic)]
                         = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
                                 inp[plain_off],
-                                src_scale * adj_scale * dst_scale);
+                                src_scale * adj_scale / dst_scale);
                 if (req_comp) c[oc] -= (128 * (int32_t)(out[index(oc, ic)]));
                 if (has_asymmetric_comp)
                     zp[oc] -= (int32_t)(out[index(oc, ic)]);
@@ -580,10 +592,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 dim_t _offset = (g * NB_OC + O) * ocblksize;
                 dim_t os_nb_off
                         = (g * NB_OC + O) * nb_oc_stride + I * nb_ic_stride;
-                const float *src_scales_ptr
-                        = &src_scales[src_scales_mask == 0 ? 0 : os_nb_off];
-                const float *dst_scales_ptr
-                        = &dst_scales[dst_scales_mask == 0 ? 0 : os_nb_off];
+                const float *src_scales_ptr = with_src_scales
+                        ? &src_scales[src_scales_mask == 0 ? 0 : os_nb_off]
+                        : nullptr;
+                const float *dst_scales_ptr = with_dst_scales
+                        ? &dst_scales[dst_scales_mask == 0 ? 0 : os_nb_off]
+                        : nullptr;
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
                         (order_keep && has_asymmetric_comp) ? &zp[_offset]
                                                             : nullptr,
@@ -695,8 +709,10 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             for (dim_t oc = 0; oc < oc_block; ++oc) {
                 const auto plain_off
                         = oc * plain_d.blocking_desc().strides[w_groups + 0];
+                const float src_scale = with_src_scales ? s[oc] : 1.f;
+                const float dst_scale = with_dst_scales ? d[oc] : 1.f;
                 out[oc] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        inp[plain_off], s[oc] * adj_scale * d[oc]);
+                        inp[plain_off], src_scale * adj_scale / dst_scale);
                 if (has_asymmetric_comp) zp[oc] -= (int32_t)(out[oc]);
             }
             // fill memory with '0' in case of padded channel dimensions
@@ -733,10 +749,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
                         : nullptr;
-                const float *src_scales_ptr
-                        = &src_scales[src_scales_mask == 0 ? 0 : _offset];
-                const float *dst_scales_ptr
-                        = &dst_scales[dst_scales_mask == 0 ? 0 : _offset];
+                const float *src_scales_ptr = with_src_scales
+                        ? &src_scales[src_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
+                const float *dst_scales_ptr = with_dst_scales
+                        ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
                 ker(i, o, zp_ptr, src_scales_ptr, dst_scales_ptr, oc_block);
             }
         });
@@ -889,8 +907,10 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         + ic * plain_d.blocking_desc().strides[w_groups + 1];
                 auto index = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                         oc, ic);
+                const float src_scale = with_src_scales ? s[oc] : 1.f;
+                const float dst_scale = with_dst_scales ? d[oc] : 1.f;
                 out[index] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        inp[plain_off], s[oc] * adj_scale * d[oc]);
+                        inp[plain_off], src_scale * adj_scale / dst_scale);
 
                 if (has_asymmetric_comp) zp[oc] -= (int32_t)(out[index]);
             }
@@ -926,10 +946,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
                         : nullptr;
-                const float *src_scales_ptr
-                        = &src_scales[src_scales_mask == 0 ? 0 : _offset];
-                const float *dst_scales_ptr
-                        = &dst_scales[dst_scales_mask == 0 ? 0 : _offset];
+                const float *src_scales_ptr = with_src_scales
+                        ? &src_scales[src_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
+                const float *dst_scales_ptr = with_dst_scales
+                        ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
                 ker(i, o, zp_ptr, src_scales_ptr, dst_scales_ptr, oc_block,
                         ic_block);
             }
@@ -1062,9 +1084,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     auto index
                             = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                                     d0, d1);
+                    const float src_scale = with_src_scales ? s[0] : 1.f;
+                    const float dst_scale = with_dst_scales ? d[0] : 1.f;
                     out[index]
                             = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                                    inp[plain_off], s[0] * adj_scale * d[0]);
+                                    inp[plain_off],
+                                    src_scale * adj_scale / dst_scale);
 
                     auto o = static_cast<int32_t>(out[index]);
                     if (req_comp) cp[d1] -= (128 * o);
@@ -1074,9 +1099,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     auto index
                             = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                                     d0, d1);
+                    const float src_scale = with_src_scales ? s[0] : 1.f;
+                    const float dst_scale = with_dst_scales ? d[0] : 1.f;
                     out[index]
                             = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                                    0, s[0] * adj_scale * d[0]);
+                                    0, src_scale * adj_scale / dst_scale);
                 }
             }
 
@@ -1084,8 +1111,10 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             for (int d1 = 0; d1 < D1_blksize; ++d1) {
                 auto index = AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>(
                         d0, d1);
+                const float src_scale = with_src_scales ? s[0] : 1.f;
+                const float dst_scale = with_dst_scales ? d[0] : 1.f;
                 out[index] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        0, s[0] * adj_scale * d[0]);
+                        0, src_scale * adj_scale / dst_scale);
             }
         };
 
@@ -1123,10 +1152,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
                         : nullptr;
-                const float *src_scales_ptr
-                        = &src_scales[src_scales_mask == 0 ? 0 : _offset];
-                const float *dst_scales_ptr
-                        = &dst_scales[dst_scales_mask == 0 ? 0 : _offset];
+                const float *src_scales_ptr = with_src_scales
+                        ? &src_scales[src_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
+                const float *dst_scales_ptr = with_dst_scales
+                        ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
+                        : nullptr;
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
                         zp_ptr, src_scales_ptr, dst_scales_ptr, d0_block,
                         d1_block);
@@ -1248,12 +1279,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             PRAGMA_OMP_SIMD()
             for (dim_t g = 0; g < g_block; g++) {
                 const auto i_off = g * input_d.blocking_desc().strides[0];
-                const float src_scale
-                        = src_scales[src_scales_mask == 0 ? 0 : g * OC];
-                const float dst_scale
-                        = dst_scales[dst_scales_mask == 0 ? 0 : g * OC];
+                const float src_scale = with_src_scales
+                        ? src_scales[src_scales_mask == 0 ? 0 : g * OC]
+                        : 1.f;
+                const float dst_scale = with_dst_scales
+                        ? dst_scales[dst_scales_mask == 0 ? 0 : g * OC]
+                        : 1.f;
                 out[g] = q10n::qz_b0_t<data_t<type_i>, data_t<type_o>>()(
-                        inp[i_off], src_scale * adj_scale * dst_scale);
+                        inp[i_off], src_scale * adj_scale / dst_scale);
             }
         };
 
@@ -1305,10 +1338,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     const auto out
                             = &output[wei_blk_off(output_d, gb, O, I, h, w)];
                     dim_t offset = gb * blksize + O;
-                    const float *src_scales_ptr
-                            = &src_scales[src_scales_mask == 0 ? 0 : offset];
-                    const float *dst_scales_ptr
-                            = &dst_scales[dst_scales_mask == 0 ? 0 : offset];
+                    const float *src_scales_ptr = with_src_scales
+                            ? &src_scales[src_scales_mask == 0 ? 0 : offset]
+                            : nullptr;
+                    const float *dst_scales_ptr = with_dst_scales
+                            ? &dst_scales[dst_scales_mask == 0 ? 0 : offset]
+                            : nullptr;
 
                     ker_out(inp, out, src_scales_ptr, dst_scales_ptr, g_block);
                     if (req_comp) ker_s8(out, &cp[offset], g_block);
@@ -2308,13 +2343,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const bool need_transform = input_d.strides()[input_d.ndims() - 1] != 1;
         // * Post-processing, including advanced dequantization parameters as
         //   groups.
-        const auto &scales = pd->attr()->scales_;
-        const bool has_src_scales = !scales.has_default_values(DNNL_ARG_SRC);
         const auto &zps = pd->attr()->zero_points_;
-        const bool has_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
+        const bool with_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
 
         const bool need_second_pass
-                = need_transform || has_src_scales || has_src_zps;
+                = need_transform || with_src_scales || with_src_zps;
         wspace = need_second_pass ? wspace : output;
 
         // To avoid clashes between threads each byte (or 2 elements)
@@ -2344,6 +2377,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         if (!need_second_pass) return status::success;
 
+        const auto &scales = pd->attr()->scales_;
         const int ndims = input_d.ndims();
         // Applied to the pre-last dimension.
         const auto src_scales_group0 = scales.get_group(DNNL_ARG_SRC, 0);
@@ -2351,7 +2385,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto src_scales_group1 = scales.get_group(DNNL_ARG_SRC, 1);
 
         memory_desc_t src_scales_md {};
-        if (has_src_scales) {
+        if (with_src_scales) {
             CHECK(scales.get(DNNL_ARG_SRC).get_md(src_scales_md, *input_d.md_));
         }
 
@@ -2361,7 +2395,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // Applied to the last dimension.
         const auto src_zps_group1 = zps.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_zps_md {};
-        if (has_src_zps) {
+        if (with_src_zps) {
             CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
@@ -2369,11 +2403,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;
-            if (has_src_scales || has_src_zps) {
+            if (with_src_scales || with_src_zps) {
                 utils::l_dims_by_l_offset(
                         input_idx, idx, input_d.dims(), ndims);
             }
-            if (has_src_scales) {
+            if (with_src_scales) {
                 const dim_t src_scales_off = get_quant_off(input_idx, ndims,
                         src_scales_mask, src_scales_group0, src_scales_group1,
                         src_scales_md);
@@ -2386,7 +2420,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             }
 
             int src_zp_val = 0; // Avoid clashing with the one defined for rest.
-            if (has_src_zps) {
+            if (with_src_zps) {
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
@@ -2542,8 +2576,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 attr->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(simple_po_check(attr), VERBOSE_UNSUPPORTED_POSTOP);
         const auto &scales = attr->scales_;
-        const bool has_dst_scales = !scales.has_default_values(DNNL_ARG_DST);
-        if (has_dst_scales) {
+        const bool with_dst_scales = !scales.has_default_values(DNNL_ARG_DST);
+        if (with_dst_scales) {
             VDISPATCH_REORDER_IC(scales.has_default_data_type(DNNL_ARG_DST)
                             && scales.has_default_groups(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -2570,31 +2604,29 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         const int ndims = input_d.ndims();
         const auto &scales = pd->attr()->scales_;
-        const bool has_src_scales = !scales.has_default_values(DNNL_ARG_SRC);
         // Applied to the pre-last dimension.
         const auto src_scales_group0 = scales.get_group(DNNL_ARG_SRC, 0);
         // Applied to the last dimension.
         const auto src_scales_group1 = scales.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_scales_md {};
-        if (has_src_scales) {
+        if (with_src_scales) {
             CHECK(scales.get(DNNL_ARG_SRC).get_md(src_scales_md, *input_d.md_));
         }
 
-        const bool has_dst_scales = !scales.has_default_values(DNNL_ARG_DST);
         memory_desc_t dst_scales_md {};
-        if (has_dst_scales) {
+        if (with_dst_scales) {
             CHECK(scales.get(DNNL_ARG_DST).get_md(dst_scales_md, *input_d.md_));
         }
 
         const auto &zps = pd->attr()->zero_points_;
         int src_zps_mask = zps.get_mask(DNNL_ARG_SRC);
-        const bool has_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
+        const bool with_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
         // Applied to the pre-last dimension.
         const auto src_zps_group0 = zps.get_group(DNNL_ARG_SRC, 0);
         // Applied to the last dimension.
         const auto src_zps_group1 = zps.get_group(DNNL_ARG_SRC, 1);
         memory_desc_t src_zps_md {};
-        if (has_src_zps) {
+        if (with_src_zps) {
             CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
@@ -2602,11 +2634,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;
-            if (has_src_scales || has_dst_scales || has_src_zps) {
+            if (with_src_scales || with_dst_scales || with_src_zps) {
                 utils::l_dims_by_l_offset(
                         input_idx, idx, input_d.dims(), ndims);
             }
-            if (has_src_scales) {
+            if (with_src_scales) {
                 const dim_t src_scales_off = get_quant_off(input_idx, ndims,
                         src_scales_mask, src_scales_group0, src_scales_group1,
                         src_scales_md);
@@ -2619,14 +2651,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             }
 
             float dst_scale = 1.f;
-            if (has_dst_scales) {
+            if (with_dst_scales) {
                 const dim_t dst_scales_off = get_quant_off(
                         input_idx, ndims, dst_scales_mask, 1, 1, dst_scales_md);
                 dst_scale = dst_scales[dst_scales_off];
             }
 
             int src_zp_val = 0; // Avoid clashing with the one defined for rest.
-            if (has_src_zps) {
+            if (with_src_zps) {
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
@@ -2638,7 +2670,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             const auto o_off = output_d.off_l(idx);
             float d = src_scale * (input[i_off] - src_zp_val);
             if (beta) d += beta * output[o_off];
-            d = d * dst_scale + dst_zp;
+            d = d / dst_scale + dst_zp;
             output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
         });
         return status::success;

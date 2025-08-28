@@ -71,18 +71,17 @@
     HANDLE_EXPR_IR_OBJECTS() \
     HANDLE_STMT_IR_OBJECTS()
 
-// Auxiliary macros to reduce boilerplate.
-#define IR_DECL_TYPE_IMPL(type_id, class_name) \
+// Auxiliary macros to reduce boilerplate. External linkage of static member
+// variables ensures that type_info_t::uid is unique to the class.
+#define IR_DECL_TYPE_IMPL(class_name) \
     using self_type = class_name; \
-    static constexpr type_info_t _type_info() { \
-        return type_info_t(type_id, typeid(class_name), \
-                is_expr_t<class_name>::value, is_stmt_t<class_name>::value); \
+    static type_info_t _type_info() { \
+        return type_info_t((void *)_type_info, is_expr_t<class_name>::value, \
+                is_stmt_t<class_name>::value); \
     }
 
-#define IR_DECL_CORE_TYPE(class_name) \
-    IR_DECL_TYPE_IMPL(ir_type_id_t::class_name, class_name)
-#define IR_DECL_TYPE(class_name) \
-    IR_DECL_TYPE_IMPL(ir_type_id_t::undef, class_name)
+#define IR_DECL_CORE_TYPE(class_name) IR_DECL_TYPE_IMPL(class_name)
+#define IR_DECL_TYPE(class_name) IR_DECL_TYPE_IMPL(class_name)
 
 #define IR_DECLARE_TRAVERSERS() \
     object_t _mutate(ir_mutator_t &mutator) const override { \
@@ -208,16 +207,6 @@ class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
 
-enum class ir_type_id_t : uint8_t {
-    undef = 0,
-
-#define HANDLE_IR_OBJECT(type) type,
-
-    HANDLE_CORE_IR_OBJECTS()
-
-#undef HANDLE_IR_OBJECT
-};
-
 // clang-tidy doesn't like the semicolon next to the class name.
 #define CLASS_DECLARATION(name) class name
 #define HANDLE_IR_OBJECT(type) CLASS_DECLARATION(type);
@@ -248,22 +237,14 @@ struct is_stmt_t<T,
 };
 
 struct type_info_t {
-    constexpr type_info_t(ir_type_id_t type_id, const std::type_info &info,
-            bool is_expr, bool is_stmt)
-        : type_id(type_id), info(&info), is_expr(is_expr), is_stmt(is_stmt) {}
+    constexpr type_info_t(void *uid, bool is_expr, bool is_stmt)
+        : uid(uid), is_expr(is_expr), is_stmt(is_stmt) {}
 
-    ir_type_id_t type_id = ir_type_id_t::undef;
-    const std::type_info *info = nullptr;
+    void *uid = nullptr;
     bool is_expr = false;
     bool is_stmt = false;
 
-    bool operator==(const type_info_t &other) const {
-        if (type_id != ir_type_id_t::undef
-                || other.type_id != ir_type_id_t::undef)
-            return type_id == other.type_id;
-        return (info == other.info) || (*info == *other.info);
-    }
-
+    bool operator==(const type_info_t &other) const { return uid == other.uid; }
     bool operator!=(const type_info_t &other) const {
         return !operator==(other);
     }

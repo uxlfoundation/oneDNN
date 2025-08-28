@@ -411,7 +411,7 @@ private:
     template <typename T>
     object_t mutate_stmt(const T &obj) {
         if (in_ctor_) return ir_mutator_t::_mutate(obj);
-        if (T::_type_info().type_id == stmt_seq_t::_type_info().type_id) {
+        if (T::_type_info() == stmt_seq_t::_type_info()) {
             return mutate_stmt_seq(obj);
         }
         auto undef_bufs = get_undef_bufs();

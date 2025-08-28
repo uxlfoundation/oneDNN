@@ -107,10 +107,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         c = slmA ? state.ka_slm : cNoSLM;
         k = slmA ? strategy.unrollKSLM : cNoSLM;
         r = std::max(1, r / xqGroupMN);
-        c = state.kaq = std::max(1, c / xqGroupK);
-        state.kaqStride = std::max(1, k / xqGroupK);
+        c = state.kaq = std::max(1, c % xqGroupK == 0 ? c / xqGroupK : 1);
+        state.kaqStride = std::max(1, k % xqGroupK == 0 ? k /  xqGroupK : 1);
         rNoSLM = std::max(1, rNoSLM / xqGroupMN);
-        cNoSLM = state.kaqLate = std::max(1, cNoSLM / xqGroupK);
+        cNoSLM = state.kaqLate = std::max(1, cNoSLM % xqGroupK == 0 ? cNoSLM /  xqGroupK: 1);
         remR = (strategy.remHandling[LoopM] != RemainderHandling::Ignore);
         if (xqGroupMN <= 1 && xqGroupK > 1) tileC = 1;
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopM] && strategy.unroll[LoopM] % xqGroupMN))
@@ -123,10 +123,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         r = slmB ? state.kb_slm : rNoSLM;
         k = slmB ? strategy.unrollKSLM : rNoSLM;
         c = std::max(1, c / xqGroupMN);
-        r = state.kbq = std::max(1, r / xqGroupK);
-        state.kbqStride = std::max(1, k / xqGroupK);
+        r = state.kbq = std::max(1, r % xqGroupK == 0 ? r / xqGroupK : 1);
+        state.kbqStride = std::max(1, k % xqGroupK == 0 ?  k / xqGroupK : 1);
         cNoSLM = std::max(1, cNoSLM / xqGroupMN);
-        rNoSLM = state.kbqLate = std::max(1, rNoSLM / xqGroupK);
+        rNoSLM = state.kbqLate = std::max(1, rNoSLM % xqGroupK == 0 ?  rNoSLM / xqGroupK : 1);
         remC = (strategy.remHandling[LoopN] != RemainderHandling::Ignore);
         if (xqGroupMN <= 1 && xqGroupK > 1) tileR = 1;
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopN] && strategy.unroll[LoopN] % xqGroupMN))
@@ -331,7 +331,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             auto ii0 = colMajor ? x0 : y0;
             auto jj0 = colMajor ? y0 : x0;
             auto io0 = ii0 + block.offsetR;
-            auto jo0 = jj0 + block.offsetC;
+            auto jo0 = jj0 + block.offsetC % (qlayout.cols()*xqGroupK);
             auto &ho0 = doA ? jo0 : io0;
             auto &lo0 = doA ? io0 : jo0;
             ho0 += hq;

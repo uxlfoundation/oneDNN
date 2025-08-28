@@ -99,6 +99,9 @@ struct sdpa_tensors_t {
 
     int kq_mask, vs_mask;
     memory::dims kq_groups, vs_groups;
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!
+    memory::desc scale_md;
 };
 bool is_quantized(mdt dt, quantize_type qtype) {
     return qtype != quantize_type::no_quantization
@@ -430,8 +433,11 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 //
 //    out.m_scale = with_host_scale ? host_scale_mem : double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
+    out.scale_md = with_host_scale ? scale_md : memory::desc();
 
-    print_mem(out.m_scale,"out.m_scale just after double_and_resize");
+    if (!with_host_scale) {
+        print_mem(out.m_scale, "out.m_scale just after double_and_resize ");
+    }
 // !!!!!!!!! ????
 
     out.m_key_quantized
@@ -729,7 +735,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (!with_host_scale) { // ??????? correct
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
     }
-    print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory");
+    print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
 
 
 
@@ -1543,7 +1549,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
-                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
+//                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
+                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.scale_md : t.m_scale.get_desc(),
 
 
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,

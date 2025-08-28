@@ -211,7 +211,7 @@ bool xe_hp_systolic_t::pd_t::use_nocopy() {
 
     bool xehpc = (arch >= compute::gpu_arch_t::xe_hpc);
 
-    if (any_prepacked_ || (packed_a_ && packed_b_)) return false;
+    if (any_prepacked_) return false;
 
     // Use no-copy for gemv/ger cases.
     if (d->m() <= 1 || d->n() <= 1 || d->k() <= 1) return true;

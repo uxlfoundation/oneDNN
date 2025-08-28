@@ -49,6 +49,10 @@ struct simple_fwd_t : public primitive_t {
 
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
+            const int num_blocks = 2;
+            auto is_not_double_blk
+                    = src_md()->format_desc.blocking.inner_nblks != num_blocks;
+
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(
                     utils::one_of(src_dt, f64, f32, f16, bf16, u8, s8),
@@ -73,6 +77,7 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
                                       | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_SOFTMAX(is_not_double_blk, VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_SOFTMAX(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_SOFTMAX_SC(

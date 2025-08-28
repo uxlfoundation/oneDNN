@@ -1,0 +1,1 @@
+3422:FAILED (errors:160 total:160) (7 ms) __REPRO: --rnn --cfg=bf16f32 --tag=any:any:any --alg=VANILLA_LSTM --activation=UNDEF 

@@ -38,7 +38,11 @@ def parse_ctest(args):
     if args.unique:
         return [x[0] for x in failed_cases.values()]
 
-    return failed_cases.values()
+    return [
+        x
+        for xs in failed_cases.values()
+        for x in xs
+    ] # Flatten list
 
 
 def main():
@@ -59,20 +63,21 @@ def main():
         result = subprocess.run(
             args=[
                 str(F_PATH / "git_bisect.sh HEAD~5 HEAD ")
-                + str(F_PATH.parent.parent.parent / "build")
-                + " "
-                + case
+                , str(F_PATH.parent.parent.parent / "build")
+                , case
             ],
             shell=True,
-            capture_output=True,
+            # capture_output=True,
         )
-        if result.returncode != 0:
-            print(f"Unable to determine hash for {case}")
-            continue
+        # if result.returncode != 0:
+        #     print(f"Unable to determine hash for {case}")
+        #     print(result.stdout)
+        #     continue
 
-        print(
-            f"First bad hash for {case}: {result.stdout.decode("utf-8").split("\n")[-2].split("[")[1].split("]")[0]}"
-        )
+        # bad_hash = result.stdout.decode('utf-8').split('\n')[-2].split('[')[1].split(']')[0]
+        # print(
+        #     f"First bad hash for {case}: {bad_hash}"
+        # )
 
 
 if __name__ == "__main__":

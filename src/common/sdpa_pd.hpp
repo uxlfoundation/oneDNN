@@ -98,6 +98,7 @@ struct sdpa_pd_t : public primitive_desc_t {
     const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
     // !!!!!!!!!!!!!!!!!!!!!!!!
     const memory_desc_t *scale_md() const { return &desc_.scale_desc; }
+
     // !!!!!!!!!!!!!!!!!!!!!!!!
 
     int n_inputs() const override {

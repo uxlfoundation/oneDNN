@@ -838,8 +838,14 @@ INSTANTIATE_TEST_SUITE_P(MyDebug,
     sdpa_test_t,
                    //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,      dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
     testing::Values(
-            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::device_side },
-            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::host_side }
+//            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::device_side },
+//            sdpa_dims_t{1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,   mdt::s8,   mdt::f32,    mdt::s8,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::per_token,        no_key_transposed, mask_type::twoD, scale_type::host_side }
+
+        //sdpa_dims_t{   1,       2,        2,    384,    384,     128,   128,     128,  mdt::f16,  mdt::f16,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::twoD, scale_type::device_side },
+        sdpa_dims_t{   1,       2,        2,    385,      1,     128,   128,     128,  mdt::f16,  mdt::f16,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef,  mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::twoD, scale_type::device_side }
+
+
+
     ), &print_to_string);
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #if 0

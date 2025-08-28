@@ -48,6 +48,7 @@ namespace impl {
     VCONDCHECK(primitive, create, check, sdpa, (cond), status::unimplemented, \
             msg, ##__VA_ARGS__);
 
+// TODO ????? add scale_md ??????
 static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
         const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,

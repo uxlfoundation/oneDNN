@@ -405,6 +405,22 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         ? memory::desc::host_scalar(p.qdt) // ???? qdt ?????
         : memory::desc(scale_sz, p.qdt, abcd);
 
+#if 0
+// Attempt to create a memory object with a data type that does not match
+    try {
+        float scalar_value = 42.0f;
+        memory scalar_mem(scalar_md, scalar_value);
+    } catch (const dnnl::error &e) {
+        EXPECT_EQ(e.status, dnnl_invalid_arguments);
+        EXPECT_EQ(e.message,
+                "scalar type size does not match memory descriptor data type "
+                "size");
+    }
+#endif
+
+
+
+
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
@@ -1508,10 +1524,6 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 
     bool with_host_scale = p.stype == scale_type::host_side;
-    // !!!!!!!
-    auto scale_md = with_host_scale
-        ? memory::desc::host_scalar(scale_dt)
-        : t.m_scale.get_desc();
 
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
@@ -1522,7 +1534,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
-                t.m_value_quantized.get_desc(), mask_ptr, scale_md,
+                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
 
 
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,

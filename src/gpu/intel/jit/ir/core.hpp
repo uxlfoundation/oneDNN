@@ -71,24 +71,6 @@
     HANDLE_EXPR_IR_OBJECTS() \
     HANDLE_STMT_IR_OBJECTS()
 
-// Auxiliary macros to reduce boilerplate. External linkage of static member
-// variables ensures that type_info_t::uid is unique to the class.
-#define IR_DECL_TYPE_IMPL(class_name) \
-    using self_type = class_name; \
-    static type_info_t _type_info() { \
-        return type_info_t((void *)_type_info, is_expr_t<class_name>::value, \
-                is_stmt_t<class_name>::value); \
-    }
-
-#define IR_DECL_CORE_TYPE(class_name) IR_DECL_TYPE_IMPL(class_name)
-#define IR_DECL_TYPE(class_name) IR_DECL_TYPE_IMPL(class_name)
-
-#define IR_DECLARE_TRAVERSERS() \
-    object_t _mutate(ir_mutator_t &mutator) const override { \
-        return mutator._mutate(*this); \
-    } \
-    void _visit(ir_visitor_t &visitor) const override { visitor._visit(*this); }
-
 // Defines getter for a function argument.
 #define IR_DEFINE_ARG_GET(name, index) \
     static const expr_t &arg_##name(const func_call_t &c) { \
@@ -313,6 +295,15 @@ public:
 private:
     ref_count_t ref_count_;
     type_info_t type_info_;
+};
+
+template <typename T>
+struct object_info_t {
+    using self_type = T;
+    static type_info_t _type_info() {
+        return type_info_t(
+                (void *)_type_info, is_expr_t<T>::value, is_stmt_t<T>::value);
+    }
 };
 
 // Base wrapper for IR objects.
@@ -551,6 +542,19 @@ public:
     type_t type;
 };
 
+template <typename T>
+struct expr_iface_t : public expr_impl_t, public object_info_t<T> {
+    expr_iface_t(const type_t &type)
+        : expr_impl_t(object_info_t<T>::_type_info(), type) {}
+
+    object_t _mutate(ir_mutator_t &mutator) const override {
+        return mutator._mutate(*static_cast<const T *>(this));
+    }
+    void _visit(ir_visitor_t &visitor) const override {
+        visitor._visit(*static_cast<const T *>(this));
+    }
+};
+
 // Wrapper for IR expression objects.
 class expr_t : public object_t {
 public:
@@ -706,10 +710,8 @@ type_t ternary_op_type(
 type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
 
 // Binary operation: (a op b).
-class binary_op_t : public expr_impl_t {
+class binary_op_t : public expr_iface_t<binary_op_t> {
 public:
-    IR_DECL_CORE_TYPE(binary_op_t)
-
     static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b) {
         return expr_t(new binary_op_t(op_kind, a, b));
     }
@@ -733,25 +735,22 @@ public:
         return ir_utils::get_hash(op_kind, a, b);
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     op_kind_t op_kind;
     expr_t a;
     expr_t b;
 
 private:
     binary_op_t(op_kind_t op_kind, const expr_t &a, const expr_t &b)
-        : expr_impl_t(_type_info(), binary_op_type(op_kind, a, b))
+        : expr_iface_t(binary_op_type(op_kind, a, b))
         , op_kind(op_kind)
         , a(a)
         , b(b) {}
 };
 
 // Boolean immediate value.
-class bool_imm_t : public expr_impl_t {
+class bool_imm_t : public expr_iface_t<bool_imm_t> {
 public:
     friend class expr_t;
-    IR_DECL_CORE_TYPE(bool_imm_t)
 
     static expr_t make(bool value) { return expr_t(new bool_imm_t(value)); }
 
@@ -768,13 +767,10 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(value); }
 
-    IR_DECLARE_TRAVERSERS()
-
     bool value;
 
 private:
-    bool_imm_t(bool value)
-        : expr_impl_t(_type_info(), type_t::_bool()), value(value) {}
+    bool_imm_t(bool value) : expr_iface_t(type_t::_bool()), value(value) {}
 };
 
 // Cast between data types. In general conversion follows the C++ casting
@@ -784,10 +780,8 @@ private:
 // - Bitwise cast from bool vector to u16 (boolxN -> u16, 2 <= N <= 16):
 //   In this case the lower N bits of the resulting value are initialized based
 //   on the boolean elements. The upper (16 - N) bits are uninitialized.
-class cast_t : public expr_impl_t {
+class cast_t : public expr_iface_t<cast_t> {
 public:
-    IR_DECL_CORE_TYPE(cast_t)
-
     static expr_t make(
             const type_t &type, const expr_t &expr, bool saturate = false) {
         if (expr.type() == type) return expr;
@@ -818,14 +812,12 @@ public:
         return false;
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t expr;
     bool saturate;
 
 private:
     cast_t(const type_t &type, const expr_t &expr, bool saturate)
-        : expr_impl_t(_type_info(), type), expr(expr), saturate(saturate) {
+        : expr_iface_t(type), expr(expr), saturate(saturate) {
         if (!is_bool_vec_u16()) {
             gpu_assert(type.elems() == expr.type().elems())
                     << "Number of elements must match.";
@@ -842,10 +834,8 @@ private:
 };
 
 // Constant variable, used as a coefficient in a linear expression.
-class const_var_t : public expr_impl_t {
+class const_var_t : public expr_iface_t<const_var_t> {
 public:
-    IR_DECL_CORE_TYPE(const_var_t)
-
     static expr_t make(const type_t &type, const std::string &name) {
         return expr_t(new const_var_t(type, name));
     }
@@ -857,20 +847,17 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(name); }
 
-    IR_DECLARE_TRAVERSERS()
-
     std::string name;
 
 private:
     const_var_t(const type_t &type, const std::string &name)
-        : expr_impl_t(_type_info(), type), name(name) {}
+        : expr_iface_t(type), name(name) {}
 };
 
 // Floating-point immediate value.
-class float_imm_t : public expr_impl_t {
+class float_imm_t : public expr_iface_t<float_imm_t> {
 public:
     friend class expr_t;
-    IR_DECL_CORE_TYPE(float_imm_t)
 
     static expr_t make(double value, const type_t &type = type_t::undef()) {
         return expr_t(new float_imm_t(value, type));
@@ -885,21 +872,17 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(value); }
 
-    IR_DECLARE_TRAVERSERS()
-
     double value;
 
 private:
     float_imm_t(double value, const type_t &type = type_t::undef())
-        : expr_impl_t(_type_info(), type.is_undef() ? type_t::f32() : type)
-        , value(value) {}
+        : expr_iface_t(type.is_undef() ? type_t::f32() : type), value(value) {}
 };
 
 // Integer immediate value.
-class int_imm_t : public expr_impl_t {
+class int_imm_t : public expr_iface_t<int_imm_t> {
 public:
     friend class expr_t;
-    IR_DECL_CORE_TYPE(int_imm_t);
 
     template <typename T>
     static expr_t make(T value, const type_t &type = type_t::undef()) {
@@ -932,13 +915,11 @@ public:
         return false;
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     int64_t value;
 
 private:
     int_imm_t(int64_t value, const type_t &type = type_t::undef())
-        : expr_impl_t(_type_info(), type.is_undef() ? shrink_type(value) : type)
+        : expr_iface_t(type.is_undef() ? shrink_type(value) : type)
         , value(value) {}
 
     static type_t shrink_type(int64_t v) {
@@ -949,10 +930,8 @@ private:
 
 // Immediate if or the conditional (ternary) operator.
 // C++ equivalent: (cond ? true_expr : false_expr).
-class iif_t : public expr_impl_t {
+class iif_t : public expr_iface_t<iif_t> {
 public:
-    IR_DECL_CORE_TYPE(iif_t);
-
     static expr_t make(const expr_t &cond, const expr_t &true_expr,
             const expr_t &false_expr) {
         return expr_t(new iif_t(cond, true_expr, false_expr));
@@ -970,16 +949,13 @@ public:
         return ir_utils::get_hash(cond, true_expr, false_expr);
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t cond;
     expr_t true_expr;
     expr_t false_expr;
 
 private:
     iif_t(const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr)
-        : expr_impl_t(
-                _type_info(), common_type(true_expr.type(), false_expr.type()))
+        : expr_iface_t(common_type(true_expr.type(), false_expr.type()))
         , cond(cond)
         , true_expr(true_expr)
         , false_expr(false_expr) {}
@@ -991,9 +967,8 @@ private:
 // - c/u[i] is either an integer immediate (int_imm_t) or a constant variable
 //  (const_var_t)
 // - v[i] is a non-constant variable (var_t)
-class linear_t : public expr_impl_t {
+class linear_t : public expr_iface_t<linear_t> {
 public:
-    IR_DECL_CORE_TYPE(linear_t)
     static expr_t make(const expr_t &c, const std::vector<expr_t> &u_vec,
             const std::vector<expr_t> &v_vec) {
         return expr_t(new linear_t(c, u_vec, v_vec));
@@ -1023,8 +998,6 @@ public:
         return ir_utils::get_hash(c, u_vec, v_vec);
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t c;
     std::vector<expr_t> u_vec;
     std::vector<expr_t> v_vec;
@@ -1032,10 +1005,7 @@ public:
 private:
     linear_t(const expr_t &c, const std::vector<expr_t> &u_vec,
             const std::vector<expr_t> &v_vec)
-        : expr_impl_t(_type_info(), type_t::s32())
-        , c(c)
-        , u_vec(u_vec)
-        , v_vec(v_vec) {}
+        : expr_iface_t(type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
 };
 
 // Updates `base_expr` and `off` so that after return:
@@ -1051,10 +1021,8 @@ void normalize_ptr(const type_t &type, expr_t &base, expr_t &off);
 //     for (int i = 0; i < elems; i++) {
 //         load[i] = *(scalar_type *)(&buf[off + i * _stride]);
 //     }
-class load_t : public expr_impl_t {
+class load_t : public expr_iface_t<load_t> {
 public:
-    IR_DECL_CORE_TYPE(load_t)
-
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of type.scalar() elements).
     static expr_t make(const type_t &type, const expr_t &buf, const expr_t &off,
@@ -1076,8 +1044,6 @@ public:
 
     bool has_default_stride() const { return stride == default_stride; }
 
-    IR_DECLARE_TRAVERSERS()
-
     static const int default_stride = -1;
 
     expr_t buf;
@@ -1087,10 +1053,7 @@ public:
 private:
     load_t(const type_t &_type, const expr_t &_buf, const expr_t &_off,
             int _stride)
-        : expr_impl_t(_type_info(), _type)
-        , buf(_buf)
-        , off(_off)
-        , stride(_stride) {
+        : expr_iface_t(_type), buf(_buf), off(_off), stride(_stride) {
         normalize_ptr(type, buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == type.scalar().size()) stride = default_stride;
@@ -1098,10 +1061,8 @@ private:
 };
 
 // Pointer expression: (base_ptr + off).
-class ptr_t : public expr_impl_t {
+class ptr_t : public expr_iface_t<ptr_t> {
 public:
-    IR_DECL_CORE_TYPE(ptr_t)
-
     // off - offset in bytes.
     static expr_t make(const expr_t &base, const expr_t &off) {
         return expr_t(new ptr_t(base, off));
@@ -1124,14 +1085,12 @@ public:
     static void normalize(
             expr_t &base, expr_t &off, op_kind_t op_kind = op_kind_t::_add);
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t base;
     expr_t off;
 
 private:
     ptr_t(const expr_t &base, const expr_t &off)
-        : expr_impl_t(_type_info(), base.type()), base(base), off(off) {
+        : expr_iface_t(base.type()), base(base), off(off) {
         normalize(this->base, this->off);
     }
 };
@@ -1144,10 +1103,8 @@ inline const expr_t &get_base(const expr_t &e) {
     return e;
 }
 
-class shuffle_t : public expr_impl_t {
+class shuffle_t : public expr_iface_t<shuffle_t> {
 public:
-    IR_DECL_CORE_TYPE(shuffle_t)
-
     static expr_t make(const expr_t &vec_expr, const std::vector<int> &idx) {
         check_indices(idx, vec_expr.type().elems());
         std::vector<expr_t> vec {vec_expr};
@@ -1232,16 +1189,12 @@ public:
 
     bool is_broadcast() const { return vec.size() == 1; }
 
-    IR_DECLARE_TRAVERSERS()
-
     std::vector<expr_t> vec;
     std::vector<int> idx;
 
 private:
     shuffle_t(const std::vector<expr_t> &vec, const std::vector<int> &idx)
-        : expr_impl_t(_type_info(), shuffle_type(vec, idx))
-        , vec(vec)
-        , idx(idx) {}
+        : expr_iface_t(shuffle_type(vec, idx)), vec(vec), idx(idx) {}
 
     static void check_indices(const std::vector<int> &idx, int elems) {
         for (int i : idx) {
@@ -1274,10 +1227,8 @@ private:
 };
 
 // Ternary operation: op(a, b, c).
-class ternary_op_t : public expr_impl_t {
+class ternary_op_t : public expr_iface_t<ternary_op_t> {
 public:
-    IR_DECL_CORE_TYPE(ternary_op_t)
-
     static expr_t make(op_kind_t op_kind, const expr_t &a, const expr_t &b,
             const expr_t &c) {
         return expr_t(new ternary_op_t(op_kind, a, b, c));
@@ -1295,8 +1246,6 @@ public:
         return ir_utils::get_hash(op_kind, a, b, c);
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     op_kind_t op_kind;
     expr_t a;
     expr_t b;
@@ -1305,7 +1254,7 @@ public:
 private:
     ternary_op_t(op_kind_t op_kind, const expr_t &a, const expr_t &b,
             const expr_t &c)
-        : expr_impl_t(_type_info(), ternary_op_type(op_kind, a, b, c))
+        : expr_iface_t(ternary_op_type(op_kind, a, b, c))
         , op_kind(op_kind)
         , a(a)
         , b(b)
@@ -1326,10 +1275,8 @@ inline expr_t ternary_idiv(
 }
 
 // Unary operation: (op a).
-class unary_op_t : public expr_impl_t {
+class unary_op_t : public expr_iface_t<unary_op_t> {
 public:
-    IR_DECL_CORE_TYPE(unary_op_t)
-
     static expr_t make(op_kind_t op_kind, const expr_t &a) {
         return expr_t(new unary_op_t(op_kind, a));
     }
@@ -1343,22 +1290,16 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(op_kind, a); }
 
-    IR_DECLARE_TRAVERSERS()
-
     op_kind_t op_kind;
     expr_t a;
 
 private:
     unary_op_t(op_kind_t op_kind, const expr_t &a)
-        : expr_impl_t(_type_info(), unary_op_type(op_kind, a))
-        , op_kind(op_kind)
-        , a(a) {}
+        : expr_iface_t(unary_op_type(op_kind, a)), op_kind(op_kind), a(a) {}
 };
 
-class var_t : public expr_impl_t {
+class var_t : public expr_iface_t<var_t> {
 public:
-    IR_DECL_CORE_TYPE(var_t)
-
     static expr_t make(const type_t &type, const std::string &name,
             bool is_mutable = false) {
         return expr_t(new var_t(type, name, is_mutable));
@@ -1371,24 +1312,20 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(name); }
 
-    IR_DECLARE_TRAVERSERS()
-
     std::string name;
     bool is_mutable = false;
 
 private:
     var_t(const type_t &type, const std::string &name, bool is_mutable)
-        : expr_impl_t(_type_info(), type), name(name), is_mutable(is_mutable) {}
+        : expr_iface_t(type), name(name), is_mutable(is_mutable) {}
 };
 
 // Index into a buffer
 // off is offset in number of elements
 // elems is number of consecutive elements to access starting from off
 // off and elems must be GRF aligned
-class ref_t : public expr_impl_t {
+class ref_t : public expr_iface_t<ref_t> {
 public:
-    IR_DECL_CORE_TYPE(ref_t)
-
     static expr_t make(const expr_t &var, int off, int elems) {
         return expr_t(new ref_t(var, off, elems));
     }
@@ -1413,15 +1350,13 @@ public:
         return ir_utils::get_hash(var, off, elems);
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t var;
     int off;
     int elems;
 
 private:
     ref_t(const expr_t &var, int off, int elems)
-        : expr_impl_t(_type_info(), var.type().with_elems(elems))
+        : expr_iface_t(var.type().with_elems(elems))
         , var(var)
         , off(off)
         , elems(elems) {}
@@ -1559,7 +1494,17 @@ class stmt_impl_t : public object_impl_t {
 public:
     stmt_impl_t(type_info_t type_info) : object_impl_t(type_info) {}
 };
+template <typename T>
+struct stmt_iface_t : public stmt_impl_t, public object_info_t<T> {
+    stmt_iface_t() : stmt_impl_t(object_info_t<T>::_type_info()) {}
 
+    object_t _mutate(ir_mutator_t &mutator) const override {
+        return mutator._mutate(*static_cast<const T *>(this));
+    }
+    void _visit(ir_visitor_t &visitor) const override {
+        visitor._visit(*static_cast<const T *>(this));
+    }
+};
 // Wrapper for IR statement objects.
 class stmt_t : public object_t {
 public:
@@ -1628,10 +1573,9 @@ private:
 class grf_permutation_t;
 
 // Allocation attribute specifying permutation for a GRF buffer.
-class grf_permute_attr_t : public alloc_attr_impl_t {
+class grf_permute_attr_t : public alloc_attr_impl_t,
+                           public object_info_t<grf_permute_attr_t> {
 public:
-    IR_DECL_TYPE(grf_permute_attr_t)
-
     static alloc_attr_t make(
             const std::shared_ptr<grf_permutation_t> &grf_perm) {
         return alloc_attr_t(new grf_permute_attr_t(grf_perm));
@@ -1651,10 +1595,9 @@ private:
 };
 
 // Allocation attribute to store extra information to avoid bank conflicts.
-class bank_conflict_attr_t : public alloc_attr_impl_t {
+class bank_conflict_attr_t : public alloc_attr_impl_t,
+                             public object_info_t<bank_conflict_attr_t> {
 public:
-    IR_DECL_TYPE(bank_conflict_attr_t)
-
     static alloc_attr_t make(const std::vector<expr_t> &bufs,
             const std::vector<int> &buf_sizes,
             const std::vector<int> &buf_min_block_sizes,
@@ -1699,10 +1642,8 @@ private:
 //         byte *buf = new byte[size];
 //         body;
 //      }
-class alloc_t : public stmt_impl_t {
+class alloc_t : public stmt_iface_t<alloc_t> {
 public:
-    IR_DECL_CORE_TYPE(alloc_t)
-
     static stmt_t make(const expr_t &buf, uint32_t size, alloc_kind_t kind,
             const std::vector<alloc_attr_t> &attrs, const stmt_t &body = {}) {
         return stmt_t(new alloc_t(buf, size, kind, attrs, body));
@@ -1764,8 +1705,6 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t buf;
     uint32_t size;
     alloc_kind_t kind;
@@ -1775,20 +1714,14 @@ public:
 private:
     alloc_t(const expr_t &buf, uint32_t size, alloc_kind_t kind,
             const std::vector<alloc_attr_t> &attrs, const stmt_t &body)
-        : stmt_impl_t(_type_info())
-        , buf(buf)
-        , size(size)
-        , kind(kind)
-        , attrs(attrs)
-        , body(body) {
+        : buf(buf), size(size), kind(kind), attrs(attrs), body(body) {
         gpu_assert(buf.type().is_ptr()
                 || into<uint32_t>(buf.type().size()) == size)
                 << buf;
     }
 
     alloc_t(const expr_t &buf, const stmt_t &body)
-        : stmt_impl_t(_type_info())
-        , buf(buf)
+        : buf(buf)
         , size(buf.type().size())
         , kind(alloc_kind_t::grf)
         , body(body) {
@@ -1799,10 +1732,8 @@ private:
 // Assignment of a value to a variable.
 // C++ equivalent:
 //    var = value;
-class assign_t : public stmt_impl_t {
+class assign_t : public stmt_iface_t<assign_t> {
 public:
-    IR_DECL_CORE_TYPE(assign_t)
-
     static stmt_t make(const expr_t &var, const expr_t &value) {
         return stmt_t(new assign_t(var, value));
     }
@@ -1822,14 +1753,11 @@ public:
         return oss.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t var;
     expr_t value;
 
 private:
-    assign_t(const expr_t &var, const expr_t &value)
-        : stmt_impl_t(_type_info()), var(var), value(value) {}
+    assign_t(const expr_t &var, const expr_t &value) : var(var), value(value) {}
 };
 
 // Store to a GRF buffer.
@@ -1840,10 +1768,8 @@ private:
 //     for (int i = 0; i < elems; i++) {
 //         *(scalar_type *)(&buf[off + i * _stride]) = value[i];
 //     }
-class store_t : public stmt_impl_t {
+class store_t : public stmt_iface_t<store_t> {
 public:
-    IR_DECL_CORE_TYPE(store_t)
-
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of value.type().scalar()
     // elements).
@@ -1895,8 +1821,6 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     static const int default_stride = -1;
 
     expr_t buf;
@@ -1909,8 +1833,7 @@ public:
 private:
     store_t(const expr_t &_buf, const expr_t &_off, const expr_t &_value,
             int _stride, const expr_t &_mask, bool _fill_mask0)
-        : stmt_impl_t(_type_info())
-        , buf(_buf)
+        : buf(_buf)
         , off(_off)
         , value(_value)
         , stride(_stride)
@@ -1930,10 +1853,8 @@ private:
 //        body;
 //    }
 // unroll specifies the unroll factor, unroll = 1 means no unrolling.
-class for_t : public stmt_impl_t {
+class for_t : public stmt_iface_t<for_t> {
 public:
-    IR_DECL_CORE_TYPE(for_t)
-
     static stmt_t make(const expr_t &var, const expr_t &init,
             const expr_t &bound, const stmt_t &body = {},
             const expr_t &step = expr_t(1), int unroll = 1) {
@@ -1961,8 +1882,6 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t var;
     expr_t init;
     expr_t bound;
@@ -1973,8 +1892,7 @@ public:
 private:
     for_t(const expr_t &var, const expr_t &init, const expr_t &bound,
             const stmt_t &body, const expr_t &step, int unroll)
-        : stmt_impl_t(_type_info())
-        , var(var)
+        : var(var)
         , init(init)
         , bound(bound)
         , body(body)
@@ -1989,10 +1907,8 @@ private:
 //     } else {
 //         else_body;
 //     }
-class if_t : public stmt_impl_t {
+class if_t : public stmt_iface_t<if_t> {
 public:
-    IR_DECL_CORE_TYPE(if_t)
-
     static stmt_t make(const expr_t &cond, const stmt_t &body,
             const stmt_t &else_body = stmt_t()) {
         return stmt_t(new if_t(cond, body, else_body));
@@ -2016,18 +1932,13 @@ public:
         return oss.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t cond;
     stmt_t body;
     stmt_t else_body;
 
 private:
     if_t(const expr_t &cond, const stmt_t &body, const stmt_t &else_body)
-        : stmt_impl_t(_type_info())
-        , cond(cond)
-        , body(body)
-        , else_body(else_body) {}
+        : cond(cond), body(body), else_body(else_body) {}
 };
 
 // Let statement, used to bind a variable to a value within a scope.
@@ -2036,10 +1947,8 @@ private:
 //         var = value;
 //         body;
 //     }
-class let_t : public stmt_impl_t {
+class let_t : public stmt_iface_t<let_t> {
 public:
-    IR_DECL_CORE_TYPE(let_t)
-
     static stmt_t make(
             const expr_t &var, const expr_t &value, const stmt_t &body = {}) {
         return stmt_t(new let_t(var, value, body));
@@ -2070,15 +1979,13 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t var;
     expr_t value;
     stmt_t body;
 
 private:
     let_t(const expr_t &var, const expr_t &value, const stmt_t &body)
-        : stmt_impl_t(_type_info()), var(var), value(value), body(body) {
+        : var(var), value(value), body(body) {
         if (value && !is_const(value))
             gpu_assert(var.type() == value.type())
                     << "Variable " << var << " and  value " << value
@@ -2180,10 +2087,8 @@ private:
 };
 
 // Statement group, used to assign a label to a group of statements.
-class stmt_group_t : public stmt_impl_t {
+class stmt_group_t : public stmt_iface_t<stmt_group_t> {
 public:
-    IR_DECL_CORE_TYPE(stmt_group_t)
-
     static stmt_t make(const stmt_label_t &label, const stmt_t &body) {
         return stmt_t(new stmt_group_t(label, body));
     }
@@ -2197,14 +2102,12 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(label, body); }
 
-    IR_DECLARE_TRAVERSERS()
-
     stmt_label_t label;
     stmt_t body;
 
 private:
     stmt_group_t(const stmt_label_t &label, const stmt_t &body)
-        : stmt_impl_t(_type_info()), label(label), body(body) {}
+        : label(label), body(body) {}
 };
 
 // Statement sequence, allows combining multiple statements.
@@ -2214,10 +2117,8 @@ private:
 //         vec[1];
 //         ...
 //     }
-class stmt_seq_t : public stmt_impl_t {
+class stmt_seq_t : public stmt_iface_t<stmt_seq_t> {
 public:
-    IR_DECL_CORE_TYPE(stmt_seq_t)
-
     static stmt_t make(const std::vector<stmt_t> &vec);
 
     static stmt_t make(const stmt_t &head, const stmt_t &tail) {
@@ -2233,13 +2134,10 @@ public:
 
     size_t get_hash() const override { return ir_utils::get_hash(vec); }
 
-    IR_DECLARE_TRAVERSERS()
-
     std::vector<stmt_t> vec;
 
 private:
-    stmt_seq_t(const std::vector<stmt_t> &vec)
-        : stmt_impl_t(_type_info()), vec(vec) {}
+    stmt_seq_t(const std::vector<stmt_t> &vec) : vec(vec) {}
 };
 
 // While loop statement with a condition.
@@ -2247,10 +2145,8 @@ private:
 //    while (cond) {
 //        body;
 //    }
-class while_t : public stmt_impl_t {
+class while_t : public stmt_iface_t<while_t> {
 public:
-    IR_DECL_CORE_TYPE(while_t)
-
     static stmt_t make(const expr_t &cond, const stmt_t &body = {}) {
         return stmt_t(new while_t(cond, body));
     }
@@ -2270,14 +2166,11 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     expr_t cond;
     stmt_t body;
 
 private:
-    while_t(const expr_t &cond, const stmt_t &body)
-        : stmt_impl_t(_type_info()), cond(cond), body(body) {}
+    while_t(const expr_t &cond, const stmt_t &body) : cond(cond), body(body) {}
 };
 
 // Function call attribute.
@@ -2317,10 +2210,10 @@ private:
 };
 
 // Instruction modifier, relies on nGEN API.
-class instruction_modifier_attr_t : public func_call_attr_impl_t {
+class instruction_modifier_attr_t
+    : public func_call_attr_impl_t,
+      public object_info_t<instruction_modifier_attr_t> {
 public:
-    IR_DECL_TYPE(instruction_modifier_attr_t)
-
     static func_call_attr_t make(const ngen::InstructionModifier &mod) {
         return func_call_attr_t(new instruction_modifier_attr_t(mod));
     }
@@ -2381,7 +2274,10 @@ public:
     stmt_t call(const std::vector<expr_t> &args,
             const func_call_attr_t &attr = {}) const;
 
-    IR_DECLARE_TRAVERSERS()
+    object_t _mutate(ir_mutator_t &mutator) const override {
+        return mutator._mutate(*this);
+    }
+    void _visit(ir_visitor_t &visitor) const override { visitor._visit(*this); }
 };
 
 // Wrapper for IR function objects.
@@ -2422,10 +2318,8 @@ private:
 };
 
 // Function call.
-class func_call_t : public stmt_impl_t {
+class func_call_t : public stmt_iface_t<func_call_t> {
 public:
-    IR_DECL_CORE_TYPE(func_call_t)
-
     static stmt_t make(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr = {}) {
         return stmt_t(new func_call_t(func, args, attr));
@@ -2449,8 +2343,6 @@ public:
         return out.str();
     }
 
-    IR_DECLARE_TRAVERSERS()
-
     func_t func;
     std::vector<expr_t> args;
     func_call_attr_t attr;
@@ -2458,7 +2350,7 @@ public:
 private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
-        : stmt_impl_t(_type_info()), func(func), args(args), attr(attr) {
+        : func(func), args(args), attr(attr) {
         gpu_assert(func);
     }
 };
@@ -2483,10 +2375,8 @@ inline bool is_func_call(const stmt_t &s) {
 }
 
 // Generic function with a name.
-class builtin_t : public func_impl_t {
+class builtin_t : public func_impl_t, public object_info_t<builtin_t> {
 public:
-    IR_DECL_TYPE(builtin_t)
-
     static func_t make(const std::string &name) {
         return func_t(new builtin_t(name));
     }

@@ -130,10 +130,8 @@ struct block_2d_info_t {
 };
 
 // Function representing send messages.
-class send_t : public func_impl_t {
+class send_t : public func_impl_t, public object_info_t<send_t> {
 public:
-    IR_DECL_TYPE(send_t)
-
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {

@@ -33,9 +33,9 @@ __kernel void xe_global_pooling_fwd(
 
 #if ALG_MAX
 #if DT_BF16
-    DEF_ACC_DATA_T dst_val = DATA_TO_REF(src[0]);
+    DEF_ACC_DATA_T dst_val = DATA_TO_REF(src[SRC_OFF(mb, oc, 0, 0, 0)]);
 #else
-    float dst_val = src[0];
+    float dst_val = src[SRC_OFF(mb, oc, 0, 0, 0)];
 #endif
 #if IS_TRAINING
     off_t max_idx = -1;

@@ -167,21 +167,6 @@ inline type_t to_ir(const data_type_t &dt) {
     return type_t();
 }
 
-// Reference counter for IR objects.
-class ref_count_t {
-public:
-    ref_count_t() : value_(0) {}
-    ref_count_t(const ref_count_t &) = delete;
-    ref_count_t &operator=(const ref_count_t &) = delete;
-    ~ref_count_t() = default;
-
-    uint32_t increment() { return ++value_; }
-    uint32_t decrement() { return --value_; }
-
-private:
-    uint32_t value_;
-};
-
 // Forward Declare IR objects
 class object_t;
 class expr_impl_t;
@@ -243,8 +228,6 @@ public:
 
     virtual ~object_impl_t() = default;
 
-    ref_count_t &ref_count() { return ref_count_; }
-
     // Provides equality semantics.
     virtual bool is_equal(const object_impl_t &obj) const = 0;
 
@@ -292,7 +275,29 @@ public:
     virtual void _visit(ir_visitor_t &visitor) const;
     IR_DEFINE_DUMP()
 
+protected:
+    friend class object_t;
+    void retain() { ref_count_.increment(); }
+    void release() {
+        if (ref_count_.decrement() == 0) { delete this; }
+    }
+
 private:
+    // Reference counter for IR objects.
+    class ref_count_t {
+    public:
+        ref_count_t() : value_(0) {}
+        ref_count_t(const ref_count_t &) = delete;
+        ref_count_t &operator=(const ref_count_t &) = delete;
+        ~ref_count_t() = default;
+
+        uint32_t increment() { return ++value_; }
+        uint32_t decrement() { return --value_; }
+
+    private:
+        uint32_t value_;
+    };
+
     ref_count_t ref_count_;
     type_info_t type_info_;
 };
@@ -310,7 +315,7 @@ struct object_info_t {
 class object_t {
 public:
     object_t(object_impl_t *impl = nullptr) : impl_(impl) {
-        increment(impl_);
+        retain(impl_);
 #ifdef SANITY_CHECK
         sanity_check();
 #endif
@@ -328,16 +333,16 @@ public:
     }
 
 #ifdef SANITY_CHECK
-    virtual ~object_t() { decrement_and_maybe_destroy(impl_); }
+    virtual ~object_t() { release(impl_); }
 #else
-    ~object_t() { decrement_and_maybe_destroy(impl_); }
+    ~object_t() { release(impl_); }
 #endif
 
     object_t &operator=(const object_t &other) {
         if (&other == this) return *this;
         auto *other_impl = other.impl();
-        increment(other_impl);
-        decrement_and_maybe_destroy(impl_);
+        retain(other_impl);
+        release(impl_);
         impl_ = other_impl;
 #ifdef SANITY_CHECK
         sanity_check();
@@ -411,14 +416,12 @@ protected:
 #endif
 
 private:
-    static void increment(object_impl_t *impl) {
-        if (!impl) return;
-        impl->ref_count().increment();
+    static void retain(object_impl_t *impl) {
+        if (impl) impl->retain();
     }
 
-    static void decrement_and_maybe_destroy(object_impl_t *impl) {
-        if (!impl) return;
-        if (impl->ref_count().decrement() == 0) { delete impl; }
+    static void release(object_impl_t *impl) {
+        if (impl) impl->release();
     }
 
     object_impl_t *impl_;

@@ -25,6 +25,8 @@
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_utils_f32.hpp"
 
+#include "cpu/gemm/f32/ref_gemm_f32.hpp"
+
 #include <riscv_vector.h>
 
 namespace dnnl {
@@ -71,12 +73,20 @@ void kernel_mxn(dim_t K, const float *A, const dim_t lda, const float *B,
     constexpr dim_t m = unroll_factor<float>::m;
     constexpr dim_t n = unroll_factor<float>::n;
 
-    float c[m * n] = {0.0f};
+    static_assert(n == 4, "This kernel is specialized for n=4");
 
-    for (dim_t k = 0; k < K; k++) {
-        dim_t i = 0;
-        while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+    dim_t i = 0;
+    while (i < m) {
+        size_t vl = __riscv_vsetvl_e32m1(m - i);
+
+        vfloat32m1_t v_c0, v_c1, v_c2, v_c3;
+
+        v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+        v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+        v_c2 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+        v_c3 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+
+        for (dim_t k = 0; k < K; ++k) {
             vfloat32m1_t v_a;
             if (isTransA) {
                 ptrdiff_t stride_a = lda * sizeof(float);
@@ -84,38 +94,37 @@ void kernel_mxn(dim_t K, const float *A, const dim_t lda, const float *B,
             } else {
                 v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
             }
-            for (dim_t j = 0; j < n; j++) {
-                float b = isTransB ? B[j + k * ldb] : B[k + j * ldb];
-                float *c_col_ptr = c + m * j + i;
-                vfloat32m1_t v_c = __riscv_vle32_v_f32m1(c_col_ptr, vl);
-                v_c = __riscv_vfmacc_vf_f32m1(v_c, b, v_a, vl);
-                __riscv_vse32_v_f32m1(c_col_ptr, v_c, vl);
-            }
-            i += vl;
+
+            const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
+            const dim_t b_stride = isTransB ? 1 : ldb;
+
+            v_c0 = __riscv_vfmacc_vf_f32m1(v_c0, b_ptr[0 * b_stride], v_a, vl);
+            v_c1 = __riscv_vfmacc_vf_f32m1(v_c1, b_ptr[1 * b_stride], v_a, vl);
+            v_c2 = __riscv_vfmacc_vf_f32m1(v_c2, b_ptr[2 * b_stride], v_a, vl);
+            v_c3 = __riscv_vfmacc_vf_f32m1(v_c3, b_ptr[3 * b_stride], v_a, vl);
         }
-    }
-    for (dim_t j = 0; j < n; j++) {
-        dim_t i = 0;
-        while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
 
-            float *c_final_ptr = C + j * ldc + i;
-            float *c_acc_ptr = c + j * m + i;
+#define STORE_C(J, V_C) \
+    do { \
+        float *c_final_ptr = C + (J)*ldc + i; \
+        if (beta == 0.0f) { \
+            vfloat32m1_t v_res = __riscv_vfmul_vf_f32m1(V_C, alpha, vl); \
+            __riscv_vse32_v_f32m1(c_final_ptr, v_res, vl); \
+        } else { \
+            vfloat32m1_t v_c_old = __riscv_vle32_v_f32m1(c_final_ptr, vl); \
+            vfloat32m1_t v_res = __riscv_vfmul_vf_f32m1(v_c_old, beta, vl); \
+            v_res = __riscv_vfmacc_vf_f32m1(v_res, alpha, V_C, vl); \
+            __riscv_vse32_v_f32m1(c_final_ptr, v_res, vl); \
+        } \
+    } while (0)
 
-            vfloat32m1_t v_acc = __riscv_vle32_v_f32m1(c_acc_ptr, vl);
-            vfloat32m1_t v_res;
+        STORE_C(0, v_c0);
+        STORE_C(1, v_c1);
+        STORE_C(2, v_c2);
+        STORE_C(3, v_c3);
 
-            if (beta == 0.0f) {
-                v_res = __riscv_vfmul_vf_f32m1(v_acc, alpha, vl);
-            } else {
-                vfloat32m1_t v_c_old = __riscv_vle32_v_f32m1(c_final_ptr, vl);
-                v_res = __riscv_vfmul_vf_f32m1(v_c_old, beta, vl);
-                v_res = __riscv_vfmacc_vf_f32m1(v_res, alpha, v_acc, vl);
-            }
-
-            __riscv_vse32_v_f32m1(c_final_ptr, v_res, vl);
-            i += vl;
-        }
+#undef STORE_C
+        i += vl;
     }
 }
 
@@ -229,6 +238,12 @@ dnnl_status_t rvv_gemm_f32(const char *transa_, const char *transb_,
 
     bool isTransA = (*transa_ == 'T' || *transa_ == 't');
     bool isTransB = (*transb_ == 'T' || *transb_ == 't');
+
+    if (isTransA && !isTransB) {
+        return ref_gemm<float>(transa_, transb_, M_, N_, K_, alpha_, A, lda_, B,
+                ldb_, beta_, C, ldc_, bias);
+    }
+
     const dim_t M = *M_, N = *N_, K = *K_;
     const dim_t lda = *lda_, ldb = *ldb_, ldc = *ldc_;
     const float alpha = *alpha_, beta = *beta_;

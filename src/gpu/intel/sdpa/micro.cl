@@ -299,19 +299,17 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 #define cooperative_prefetch_2d_k cooperative_prefetch_2d_maybe_rem
 #endif
 
-#define tile_load_block_rem_q(t, ptr, n, ld, off_r, off_c, load_rem) \
-    if (load_rem) { \
-        tile_load_block(t, ptr, n, ld, off_r, off_c); \
-    } else { \
-        tile_load_block(t, ptr, ld, off_r, off_c); \
-    }
-
-#define tile_store_block_rem_q(t, ptr, n, ld, off_r, off_c, store_rem) \
-    if (store_rem) { \
-        tile_store_block(t, ptr, n, ld, off_r, off_c); \
-    } else { \
-        tile_store_block(t, ptr, ld, off_r, off_c); \
-    }
+#if REMAINDER_Q
+#define tile_load_block_rem_q(t, ptr, n, ld, off_r, off_c) \
+    tile_load_block(t, ptr, n, ld, off_r, off_c);
+#define tile_store_block_rem_q(t, ptr, n, ld, off_r, off_c) \
+    tile_store_block(t, ptr, n, ld, off_r, off_c);
+#else
+#define tile_load_block_rem_q(t, ptr, n, ld, off_r, off_c) \
+    tile_load_block(t, ptr, ld, off_r, off_c);
+#define tile_store_block_rem_q(t, ptr, n, ld, off_r, off_c) \
+    tile_store_block(t, ptr, ld, off_r, off_c);
+#endif
 
 #define binary_add(x, y) ((x) + (y))
 
@@ -334,13 +332,13 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
 */
 
 inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
-        int m, int n, int ldq, int offset_r, int offset_c, int load_rem) {
+        int m, int n, int ldq, int offset_r, int offset_c) {
 
 #if USE_SYSTOLIC_UKERNEL
 
 #if BLOCK_Q
-    tile_load_block_rem_q(Q_tile, (global uint *)Q, n, ldq >> 1, offset_r,
-            offset_c, load_rem);
+    tile_load_block_rem_q(
+            Q_tile, (global uint *)Q, n, ldq >> 1, offset_r, offset_c);
 #elif Q_ALIGN >= 4
     tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r,
             offset_c);
@@ -351,7 +349,7 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 #else // FMA
 
 #if BLOCK_Q
-    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c, load_rem);
+    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c);
 #else
     tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
 #endif
@@ -388,7 +386,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         MSK_OFFSETS
 #endif
         ,
-        const int remainder_k, const int remainder_q) {
+        const int remainder_k) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
@@ -504,8 +502,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
 
-        tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy,
-                remainder_q);
+        tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy);
 
         /* Store Q tile to SLM */
         tile_store_t_slm_src1(
@@ -1029,7 +1026,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     tile_store_block2d(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #elif BLOCK_A
     tile_store_block_rem_q(
-            A_tile_dst, A, q_group_size, lda, sg_i0_vs, sg_j0_vs, remainder_q);
+            A_tile_dst, A, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #else
     tile_store(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #endif

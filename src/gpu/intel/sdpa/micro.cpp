@@ -480,12 +480,18 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
             conf.ukernel_config.wg_n_vs};
 
     const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
+    const int kq_wg_tile_n = config.wg_n_kq * config.unroll_n_kq;
     const int vs_wg_tile_m = config.wg_m_vs * config.unroll_m_vs;
     int tile_k = kq_wg_tile_m;
     int tile_v = vs_wg_tile_m;
 
     bool d_full = (d->head_size() == pd->d_max());
     bool v_full = (d->head_size() == tile_v);
+
+    auto Q = d->queries();
+    const dim_t Q_per_kv_group = (Q == 1 ? Q * conf.kv_group_size : Q);
+    bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
+    conf.remainder_q = d_full && q_full;
 
     conf.d_full = d_full;
     conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
@@ -515,7 +521,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_d_max = 0;
     }
 
-    conf.q_arrive_await_barrier = (d->queries() > 1);
+    conf.q_arrive_await_barrier = (Q > 1);
     conf.softmax_inf_as_zero
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
@@ -592,6 +598,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("PREFETCH_V", prefetch_v);
     kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
     kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
+    kernel_ctx.define_int("REMAINDER_Q", remainder_q);
 
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
@@ -768,14 +775,7 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
     const int remainder_k = (K % kq_wg_tile_m) != 0;
 
-    auto *d = pd()->desc();
-    const bool d_full = (d->head_size() == pd()->d_max());
-    const bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
-
-    const int remainder_q = d_full && q_full;
-
     arg_list.append(remainder_k);
-    arg_list.append(remainder_q);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

@@ -1500,8 +1500,11 @@ GPU_TEST_P(sdpa_test_t, compare) {
         case mask_type::twoD: mask_ptr = &mask; break;
     }
 
-    // ???? for device ????
-    auto scale_md = memory::desc::host_scalar(scale_dt);
+    bool with_host_scale = p.stype == scale_type::host_side;
+    // !!!!!!!
+    auto scale_md = with_host_scale
+        ? memory::desc::host_scalar(scale_dt)
+        : t.m_scale.get_desc();
 
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
@@ -1540,7 +1543,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
     if (scale_dt != mdt::undef
 // !!!!!!!!!
-        && p.stype == scale_type::device_side
+        && !with_host_scale // ????? needed ????
 // !!!!!!!!!
         ) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
 

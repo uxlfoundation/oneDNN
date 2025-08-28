@@ -738,7 +738,7 @@ public:
 #endif
         return static_cast<RegFile8>(rf);
     }
-    constexpr bool isARF()             const { return rf == RegFileARF; }
+    constexpr bool isARF()             const { return isValid() && rf == RegFileARF; }
     constexpr int getARFBase()         const { return base & 0xF; }
     constexpr ARFType getARFType()     const { return static_cast<ARFType>(base >> 4); }
     constexpr bool isIndirect()        const { return indirect; }

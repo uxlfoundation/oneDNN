@@ -101,7 +101,7 @@ struct sdpa_tensors_t {
     memory::dims kq_groups, vs_groups;
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
-    memory::desc scale_md;
+    memory::desc host_scale_md;
     memory m_host_scale;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
 };
@@ -407,27 +407,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     // clang-format on
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ???? universal ???? needed ????? CPU ???? Denis ????
     auto scale_md = with_host_scale
         ? memory::desc::host_scalar(p.qdt)
         : memory::desc(scale_sz, p.qdt, abcd);
-
-    //memory host_scale_mem(scale_md, std::sqrt(p.head_size));
-    //if (with_host_scale) {
-    //    out.m_host_scale
-    //}
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!
-#if 0
-// Attempt to create a memory object with a data type that does not match
-    try {
-        float scalar_value = 42.0f;
-        memory scalar_mem(scalar_md, scalar_value);
-    } catch (const dnnl::error &e) {
-        EXPECT_EQ(e.status, dnnl_invalid_arguments);
-        EXPECT_EQ(e.message,
-                "scalar type size does not match memory descriptor data type "
-                "size");
-    }
-#endif
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
@@ -438,7 +421,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 //
 //    out.m_scale = with_host_scale ? host_scale_mem : double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
-    out.scale_md = with_host_scale ? scale_md : memory::desc();
+    out.host_scale_md = with_host_scale ? scale_md : memory::desc();
 
     if (!with_host_scale) {
         print_mem(out.m_scale, "out.m_scale just after double_and_resize ");
@@ -738,17 +721,15 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (p.mask != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
 
+    DPRINT("%s:%s:%d ######\n", PRINTHEAD);
     if (!with_host_scale) { // ??????? correct
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
         print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
     } else {
-        DPRINT("%s:%s:%d ###### no write_to_dnnl_memory for scale\n", PRINTHEAD);
         auto scale_val = std::sqrt(p.head_size);
         out.m_host_scale.set_host_scalar_value(&scale_val);
+        DPRINT("%s:%s:%d ###### out.m_host_scale.set_host_scalar_value(&scale_val) - done\n", PRINTHEAD);
     }
-
-
-
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);
@@ -1561,7 +1542,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
 //                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
-                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.scale_md : t.m_scale.get_desc(),
+                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.host_scale_md : t.m_scale.get_desc(),
 
 
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,

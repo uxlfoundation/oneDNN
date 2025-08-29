@@ -357,14 +357,33 @@ rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
     cell_position |= merged_layer;
 
-    CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
-            rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
-            (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
-            diff_src_layer_, rnn.ws_diff_states_layer_ld));
     const float beta = rnn.diff_weights_beta(cell_position);
-    CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * n_iter,
-            1.0, (weights_t *)scratch_gates_, rnn.scratch_gates_ld, src_layer_,
-            src_layer_ld, beta, diff_w_layer_, rnn.diff_weights_layer_ld));
+
+    if (rnn.use_matmul) {
+        assert(n_iter == rnn.n_iter);
+
+        CHECK(this->execute_matmul(ctx, this->matmul_layer_1_, w_layer_[0],
+                scratch_gates_, diff_src_layer_));
+        const auto matmul_weights_layer = beta == 0.0
+                ? this->matmul_weights_layer_1_
+                : this->matmul_weights_layer_2_;
+        assert(matmul_weights_layer);
+        CHECK(this->execute_matmul(ctx, matmul_weights_layer, 'T',
+                rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * rnn.n_iter,
+                scratch_gates_, src_type, rnn.scratch_gates_ld, src_layer_,
+                weights_type, src_layer_ld, diff_w_layer_,
+                rnn.diff_weights_layer_ld));
+    } else {
+        CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
+                rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
+                (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
+                diff_src_layer_, rnn.ws_diff_states_layer_ld));
+        CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc,
+                rnn.mb * n_iter, 1.0, (weights_t *)scratch_gates_,
+                rnn.scratch_gates_ld, src_layer_, src_layer_ld, beta,
+                diff_w_layer_, rnn.diff_weights_layer_ld));
+    }
+
     return dnnl_success;
 }
 

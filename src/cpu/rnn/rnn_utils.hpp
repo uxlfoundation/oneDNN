@@ -164,6 +164,13 @@
             const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
             const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
 
+#define rnn_dyn_matmul_sig(f) \
+    dnnl_status_t f(const exec_ctx_t &ctx, \
+            const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
+            const char transB, dim_t m, dim_t n, dim_t k, const void *a_, \
+            data_type_t a_type, dim_t lda, const void *b_, data_type_t b_type, \
+            dim_t ldb, gemm_acc_t *c_, dim_t ldc) const
+
 #define rnn_gemm_sig_args \
     const char transA, const char transB, dim_t m, dim_t n, dim_t k, \
             const float alpha, const weights_t *a_, const dim_t ldA, \
@@ -883,7 +890,12 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     const bool use_matmul_for_avx512_f32_fwd_d = !rnn.is_brgemm && rnn.is_fwd
             && rnn.is_training && rnn.is_cell_dt_f32()
             && x64::mayiuse(x64::avx512_core);
-    rnn.use_matmul = !rnn.is_brgemm && rnn.is_fwd // TODO: Enable BWD
+    // TODO: Enable more BWD cases
+    const bool use_matmul_for_avx512_f32_bwd_dw = !rnn.is_brgemm && !rnn.is_fwd
+            && (rd.cell_kind == alg_kind::vanilla_gru) && rnn.is_cell_dt_f32()
+            && x64::mayiuse(x64::avx512_core);
+    rnn.use_matmul = !rnn.is_brgemm
+            && (rnn.is_fwd || use_matmul_for_avx512_f32_bwd_dw)
     // TODO: Below checks are for legacy and a performance study is
     // required to avoid regressions.
 #if DNNL_X64
@@ -894,7 +906,8 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
                             && utils::one_of(rd.cell_kind,
                                     alg_kind::vanilla_gru,
                                     alg_kind::vanilla_augru))
-                            || use_matmul_for_avx512_f32_fwd_d);
+                            || use_matmul_for_avx512_f32_fwd_d
+                            || use_matmul_for_avx512_f32_bwd_dw);
 #else
             && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
 #endif

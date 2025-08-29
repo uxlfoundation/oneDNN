@@ -171,6 +171,10 @@ struct ref_rnn_common_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> matmul_projection_1_pd_;
         std::shared_ptr<primitive_desc_t> matmul_projection_2_pd_;
         std::shared_ptr<primitive_desc_t> matmul_projection_3_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_weights_layer_1_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_weights_layer_2_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_weights_iter_1_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_weights_iter_2_pd_;
 #if DNNL_X64
         std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
         std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
@@ -224,6 +228,7 @@ protected:
 
     rnn_grid_execution_sig(linear_execution);
     rnn_matmul_sig(execute_matmul);
+    rnn_dyn_matmul_sig(execute_matmul);
     virtual rnn_cell_execution_sig(cell_execution_ref) = 0;
     virtual rnn_merged_layer_execution_sig(merged_layer_execution_ref) = 0;
     virtual rnn_cell_execution_sig(cell_execution_brgemm) = 0;
@@ -292,6 +297,10 @@ protected:
     std::shared_ptr<primitive_t> matmul_projection_1_;
     std::shared_ptr<primitive_t> matmul_projection_2_;
     std::shared_ptr<primitive_t> matmul_projection_3_;
+    std::shared_ptr<primitive_t> matmul_weights_layer_1_;
+    std::shared_ptr<primitive_t> matmul_weights_layer_2_;
+    std::shared_ptr<primitive_t> matmul_weights_iter_1_;
+    std::shared_ptr<primitive_t> matmul_weights_iter_2_;
 
     gemm_t gemm_layer_func;
     gemm_t gemm_iter_func;

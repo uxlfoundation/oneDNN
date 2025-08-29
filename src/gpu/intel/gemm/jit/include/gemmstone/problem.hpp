@@ -174,6 +174,8 @@ struct GEMMProblem : public CommonProblem {
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
+    bool forceGroupSumsA = false;
+    bool forceGroupSumsB = false;
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
 
@@ -225,8 +227,8 @@ struct GEMMProblem : public CommonProblem {
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D(); }
-    bool quantized2DB() const { return (boPtrDims == 2) || bScale2D(); }
+    bool quantized2DA() const { return forceGroupSumsB || (aoPtrDims == 2) || aScale2D(); }
+    bool quantized2DB() const { return forceGroupSumsA || (boPtrDims == 2) || bScale2D(); }
 
     bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
     bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }

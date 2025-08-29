@@ -438,7 +438,7 @@ void fp8_conversion_e4m3_t::vcvt_f32_to_f8(
     host_->vcvtps2phx(ymm_mask(xmm_out), op_in);
     // f8_e4m3 <- f16 (RNE)
     if (is_fp8_native())
-        host_->vcvtph2hf8(xmm_out, ymm_out);
+        host_->vcvtph2hf8s(xmm_out, ymm_out);
     else
         vcvt_f16_to_f8(xmm_out, ymm_out);
 }
@@ -448,7 +448,7 @@ void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
     if (is_fp8_native()) {
-        host_->vcvtph2hf8(xmm_out, op_in);
+        host_->vcvtph2hf8s(xmm_out, op_in);
         return;
     }
 

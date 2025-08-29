@@ -62,6 +62,7 @@ struct ref_t : public primitive_t {
 
             printf("\n");
             printf("with_attn_scale = %d\n",with_attn_scale());
+            printf("with_host_scale = %d\n",with_host_scale());
             printf("with_attn_mask = %d\n",with_attn_mask());
             printf("with_causal_mask = %d\n",with_causal_mask());
             printf("with_key_scales = %d\n",with_key_scales());
@@ -69,13 +70,6 @@ struct ref_t : public primitive_t {
             printf("with_key_zp = %d\n",with_key_zp());
             printf("with_value_zp = %d\n\n",with_value_zp());
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-
-
-
-
-
 
             return status::success;
         }
@@ -117,6 +111,8 @@ struct ref_t : public primitive_t {
         kernel_ctx.define_int("INVERT_SCALE", pd()->desc()->invert_scale);
         kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
         kernel_ctx.define_int("WITH_ATTN_MASK", pd()->with_attn_mask());
+        kernel_ctx.define_int("WITH_HOST_SCALE", pd()->with_host_scale());
+
 
         def_data_type(kernel_ctx, pd()->qry_md()->data_type, "QRY");
         def_data_type(kernel_ctx, pd()->key_md()->data_type, "KEY");

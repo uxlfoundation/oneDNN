@@ -29,6 +29,7 @@
 #include <random>
 
 using mdt = memory::data_type;
+using dnnl::accumulation_mode;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
 
@@ -170,9 +171,24 @@ std::ostream &operator<<(std::ostream &ss, const mask_config_t &m) {
     return ss;
 }
 
+struct accumulation_t {
+    dnnl::accumulation_mode kq_acc;
+    dnnl::accumulation_mode vs_acc;
+};
+
+std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
+    ss << "Acc(KQ/VS) =";
+    std::string kq_str
+            = (accs.kq_acc == accumulation_mode::f16) ? "(f16," : "(f32,";
+    std::string vs_str
+            = (accs.vs_acc == accumulation_mode::f16) ? "f16)" : "f32)";
+    ss << kq_str << vs_str;
+    return ss;
+}
+
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
-        quantize_type, tag_t, mask_config_t>;
+        quantize_type, tag_t, mask_config_t, accumulation_t>;
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -188,6 +204,7 @@ struct sdpa_dims_t {
     quantize_type qtype;
     memory::format_tag key_format_tag;
     mask_config_t mask;
+    accumulation_t acc_modes;
 
     sdpa_dims_t() = default;
     sdpa_dims_t(memory::dim mb_, memory::dim head_num_,
@@ -200,7 +217,9 @@ struct sdpa_dims_t {
             quantize_type qtype_ = quantize_type::no_quantization,
             dnnl::memory::format_tag key_format_tag_
             = dnnl::memory::format_tag::abcd,
-            mask_type mask_ = mask_type::no_mask)
+            mask_type mask_ = mask_type::no_mask,
+            accumulation_mode kq_acc_ = accumulation_mode::f32,
+            accumulation_mode vs_acc_ = accumulation_mode::f32)
         : mb(mb_)
         , heads {head_num_, kv_head_num_}
         , seq_len {query_num_, seq_len_}
@@ -210,7 +229,8 @@ struct sdpa_dims_t {
         , value("V", vdt_, vsdt_, vzpdt_)
         , qtype(qtype_)
         , key_format_tag(key_format_tag_)
-        , mask {mask_, mskdt_} {}
+        , mask {mask_, mskdt_}
+        , acc_modes {kq_acc_, vs_acc_} {}
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
         : mb(std::get<0>(dims))
@@ -222,7 +242,8 @@ struct sdpa_dims_t {
         , value(std::get<6>(dims))
         , qtype(std::get<7>(dims))
         , key_format_tag(std::get<8>(dims))
-        , mask(std::get<9>(dims)) {}
+        , mask(std::get<9>(dims))
+        , acc_modes(std::get<10>(dims)) {}
 };
 
 struct sdpa_tensors_t {
@@ -279,6 +300,8 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case quantize_type::per_tensor1: ss << "_ptensor1"; break;
         case quantize_type::per_tensor3: ss << "_ptensor3"; break;
     }
+    if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
+    if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
     return ss;
 }
 
@@ -619,6 +642,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         case quantize_type::no_quantization: break;
     }
 
+    out.sdpa_kq_attr_quantized.set_accumulation_mode(p.acc_modes.kq_acc);
+    out.sdpa_vs_attr_quantized.set_accumulation_mode(p.acc_modes.vs_acc);
+
     if (p.qtype != quantize_type::no_quantization) {
         if (p.key.dt != mdt::f16 && p.key.dt != mdt::bf16
                 && p.key.sdt != mdt::undef) {
@@ -947,8 +973,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         std::vector<dnnl_memory_t> &doubled_memory) {
     using namespace dnnl;
     primitive_attr bmm1_attr;
-    bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     post_ops bmm1_po;
+    bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     auto scale_f32 = as(strm, scale, mdt::f32);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
@@ -967,8 +993,6 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                         memory::format_tag::abcde});
         bmm1_po.append_binary(algorithm::binary_add, mask_f32.get_desc());
     }
-
-    bmm1_attr.set_post_ops(bmm1_po);
 
     int head_kv_group_size = 0;
     int head_q_group_size = 0;
@@ -1058,13 +1082,56 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     const memory::dims score_sz = {p.mb, head_group_batches, head_q_group_size,
             p.seq_len.q, p.seq_len.kv};
     memory::desc score_md {score_sz, mdt::f32, memory::format_tag::abcde};
+    memory::desc score_f16_md {score_sz, mdt::f16, memory::format_tag::abcde};
 
     auto score = memory(score_md, eng);
+    auto score_f16 = memory(score_f16_md, eng);
     auto score2 = memory(score_md, eng);
-    auto bmm1_pd = matmul::primitive_desc(eng, grouped_query_md,
-            key_dequantized.get_desc(), score_md, bmm1_attr);
+    auto score2_f16 = memory(score_f16_md, eng);
+
+    const bool is_kq_acc_f16 = (p.acc_modes.kq_acc == accumulation_mode::f16);
+    const bool is_vs_acc_f16 = (p.acc_modes.vs_acc == accumulation_mode::f16);
+
+    // matmul primitive for KQ
+    if (is_kq_acc_f16) {
+        bmm1_attr.set_accumulation_mode(dnnl::accumulation_mode::f16);
+    } else {
+        bmm1_attr.set_post_ops(bmm1_po);
+    }
+    auto bmm1_pd = is_kq_acc_f16
+            ? matmul::primitive_desc(eng, grouped_query_md,
+                    key_dequantized.get_desc(), score_f16_md, bmm1_attr)
+            : matmul::primitive_desc(eng, grouped_query_md,
+                    key_dequantized.get_desc(), score_md, bmm1_attr);
     auto bmm1_prim = matmul(bmm1_pd);
 
+    // reorder primitive to convert f16 to f32 after bmm1
+    auto f16_to_f32_pd
+            = dnnl::reorder::primitive_desc(eng, score_f16_md, eng, score_md);
+    auto f16_to_f32_prim = dnnl::reorder(f16_to_f32_pd);
+
+    // binary primitive for scaling (f32)
+    primitive_attr binary_attr;
+    auto scale_algo
+            = invert_scale ? algorithm::binary_div : algorithm::binary_mul;
+    auto bin_pd = binary::primitive_desc(eng, scale_algo, score_md,
+            scale_f32.get_desc(), score_md, binary_attr);
+    auto bin_prim = binary(bin_pd);
+
+    // binary primitive for mask addition if needed
+    binary mask_prim;
+    if (p.mask.type != mask_type::no_mask) {
+        // reshape mask to match score dimensions
+        mask_f32 = reshape(strm, mask_f32,
+                {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
+                        memory::format_tag::abcde});
+
+        auto mask_bin_pd = binary::primitive_desc(eng, algorithm::binary_add,
+                score_md, mask_f32.get_desc(), score_md, binary_attr);
+        mask_prim = binary(mask_bin_pd);
+    }
+
+    // softmax primitive
     primitive_attr softmax_attr;
     softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
     auto softmax_pd = softmax_forward::primitive_desc(eng,
@@ -1073,52 +1140,115 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             score.get_desc(), score.get_desc(), 4, softmax_attr);
     auto softmax_prim = softmax_forward(softmax_pd);
 
+    // reorder primitive to convert f32 to f16 before bmm2
+    auto f32_to_f16_pd
+            = dnnl::reorder::primitive_desc(eng, score_md, eng, score_f16_md);
+    auto f32_to_f16_prim = dnnl::reorder(f32_to_f16_pd);
+
     // attention_output = attention_probs x value
     primitive_attr bmm2_attr;
 
     bmm2_attr.set_scratchpad_mode(scratchpad_mode::library);
+    if (is_vs_acc_f16) {
+        bmm2_attr.set_accumulation_mode(dnnl::accumulation_mode::f16);
+    }
+    memory::desc grouped_output_f16_md(
+            grouped_query_md.get_dims(), mdt::f16, memory::format_tag::abcde);
+    auto grouped_output_f16 = memory(grouped_output_f16_md, eng);
     auto grouped_output
             = double_and_resize(grouped_query_md, eng, strm, doubled_memory);
-    auto bmm2_pd = matmul::primitive_desc(
-            eng, score_md, grouped_value_md, grouped_query_md, bmm2_attr);
+
+    // matmul primitive for VS
+    auto bmm2_pd = is_vs_acc_f16
+            ? matmul::primitive_desc(eng, score_f16_md, grouped_value_md,
+                    grouped_output_f16_md, bmm2_attr)
+            : matmul::primitive_desc(eng, score_md, grouped_value_md,
+                    grouped_query_md, bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
 
+    // reorder primitive to convert f16 to f32 after bmm2
+    auto f16_to_f32_output_pd = dnnl::reorder::primitive_desc(
+            eng, grouped_output_f16_md, eng, grouped_query_md);
+    auto f16_to_f32_output_prim = dnnl::reorder(f16_to_f32_output_pd);
+
+    // setup args
     std::unordered_map<int, memory> bmm1_args = {{DNNL_ARG_SRC, grouped_query},
             {DNNL_ARG_WEIGHTS, key_dequantized}, {DNNL_ARG_DST, score}};
-
-    if (scale_dt != mdt::undef) {
-        bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
-                = std::move(scale_f32);
-        if (p.mask.type != mask_type::no_mask) {
-            bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
-                    = std::move(mask_f32);
-        }
+    if (is_kq_acc_f16) {
+        bmm1_args[DNNL_ARG_DST] = score_f16;
     } else {
-        if (p.mask.type != mask_type::no_mask) {
+        if (scale_dt != mdt::undef) {
             bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
-                    = std::move(mask_f32);
+                    = std::move(scale_f32);
+            if (p.mask.type != mask_type::no_mask) {
+                bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
+                        = std::move(mask_f32);
+            }
+        } else {
+            if (p.mask.type != mask_type::no_mask) {
+                bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
+                        = std::move(mask_f32);
+            }
         }
     }
 
-    const auto loop = [&]() {
-        bmm1_prim.execute(strm, bmm1_args);
-        //strm.wait();
-        //print_mem(score, "score");
+    std::unordered_map<int, memory> scale_args = {{DNNL_ARG_SRC_0, score},
+            {DNNL_ARG_SRC_1, scale_f32}, {DNNL_ARG_DST, score}};
 
+    std::unordered_map<int, memory> mask_args = {{DNNL_ARG_SRC_0, score},
+            {DNNL_ARG_SRC_1, mask_f32}, {DNNL_ARG_DST, score}};
+
+    std::unordered_map<int, memory> bmm2_args
+            = {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, value_dequantized},
+                    {DNNL_ARG_DST, grouped_output}};
+    if (is_vs_acc_f16) {
+        bmm2_args[DNNL_ARG_SRC] = score2_f16;
+        bmm2_args[DNNL_ARG_DST] = grouped_output_f16;
+    }
+
+    const auto loop = [&]() {
+        // KQ
+        if (is_kq_acc_f16) {
+            // f16 accumulation needs separate binary post-ops
+            bmm1_prim.execute(strm, bmm1_args);
+
+            // convert f16 to f32 for binary operations
+            f16_to_f32_prim.execute(
+                    strm, {{DNNL_ARG_FROM, score_f16}, {DNNL_ARG_TO, score}});
+
+            // binary scale
+            bin_prim.execute(strm, scale_args);
+
+            // execute masking if needed
+            if (p.mask.type != mask_type::no_mask) {
+                mask_prim.execute(strm, mask_args);
+            }
+        } else {
+            bmm1_prim.execute(strm, bmm1_args);
+        }
+
+        // softmax
         softmax_prim.execute(strm,
                 {
                         {DNNL_ARG_SRC, score},
                         {DNNL_ARG_DST, score2},
                 });
-        //strm.wait();
-        //print_mem(score2, "score2");
 
-        bmm2_prim.execute(strm,
-                {
-                        {DNNL_ARG_SRC, score2},
-                        {DNNL_ARG_WEIGHTS, value_dequantized},
-                        {DNNL_ARG_DST, grouped_output},
-                });
+        if (is_vs_acc_f16) {
+            // convert f16 output back to f32
+            f32_to_f16_prim.execute(
+                    strm, {{DNNL_ARG_FROM, score2}, {DNNL_ARG_TO, score2_f16}});
+        }
+
+        // SV
+        bmm2_prim.execute(strm, bmm2_args);
+
+        if (is_vs_acc_f16) {
+            // convert f16 output back to f32
+            f16_to_f32_output_prim.execute(strm,
+                    {{DNNL_ARG_FROM, grouped_output_f16},
+                            {DNNL_ARG_TO, grouped_output}});
+        }
     };
 
     // Warmup run.
@@ -1431,6 +1561,12 @@ public:
         } else {
             fthreshold = 0.001466f;
         }
+
+        if (p.acc_modes.kq_acc == dnnl::accumulation_mode::f16
+                || p.acc_modes.vs_acc == dnnl::accumulation_mode::f16) {
+            fthreshold = 0.0079f;
+        }
+
         if (p.key.dt == mdt::s4 || p.value.dt == mdt::s4) {
             max_diff_threshold = 0.063f;
         }
@@ -1628,7 +1764,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8) */), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}) // mask_type
+                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1642,7 +1779,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s4, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::f16, mdt::s8)), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}) // mask_type
+                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1656,7 +1794,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::bf16) /*, tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8)*/), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}) // mask_type
+                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1670,7 +1809,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::bf16), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::s8)), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}) // mask_type
+                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1684,7 +1824,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::f32), tensor_type_t("V", mdt::s8, mdt::f32)), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::twoD, mdt::f32}) // mask_type
+                testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1698,7 +1839,8 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}) // mask_type
+                testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1712,9 +1854,26 @@ INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
                 testing::Values(tensor_type_t("V", mdt::f16)), // vdt
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}) // mask_type
+                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
+
+INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
+        testing::Combine(testing::Values(1), // mb
+                testing::Values(num_heads_t {16, 16}, num_heads_t {12, 2}), // hd_num
+                testing::Values(seq_len_size_t {1024, 1024}, seq_len_size_t {407, 407}), // seq_len
+                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {80, 80, 80}), // hd_size
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
 
 ////llama-2-7b-chat shape: Q [1x32xSEQ_LENx128] KV [1x32xSEQ_LENx128]
 ////llama-3-8b shape: Q [1x32xSEQ_LENx128] KV [1x8xSEQ_LENx128]
@@ -1804,6 +1963,7 @@ INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
                     sdpa_dims_t{   1,     32,       32,   2048,    2048,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,     32,       32,   2049,       1,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
+
 // clang-format on
 
 GPU_TEST_P(sdpa_test, compare) {

@@ -48,7 +48,7 @@ inline property &operator^=(property &a, property b) {
 std::string to_string(const config_query_t &q) {
     std::stringstream s;
     s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len
+      << " seq:" << std::setw(5) << q.seq_len
       << " prop:" << ((bool)(q.prop & property::second_token) ? " thinq" : "")
       << ((bool)(q.prop & property::quantized) ? " quant" : "")
       << ((bool)(q.prop & property::integrated) ? " [integ]" : "")
@@ -58,21 +58,26 @@ std::string to_string(const config_query_t &q) {
 }
 std::string to_string(const config_criteria_t &c) {
     std::stringstream s;
-    s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len
-      << " prop:" << ((bool)(c.prop & property::second_token) ? " thinq" : "")
-      << ((bool)(c.prop & property::quantized) ? " quant" : "")
-      << ((bool)(c.prop & property::integrated) ? " integ" : "")
-      << ((bool)(c.prop & property::fma) ? " fma" : "")
-      << ((bool)(c.prop & property::f32) ? " f32" : "");
+    s << "arch:" << std::to_string((int)c.arch) << " hs:" << std::setw(3)
+      << c.head_size << " seq:" << std::setw(5) << c.seq_len << " prop:"
+      << ((bool)(c.prop & property::second_token) ? " thinq" : "      ")
+      << ((bool)(c.prop & property::quantized) ? " quant" : "      ")
+      << ((bool)(c.prop & property::integrated) ? " integ" : "      ")
+      << ((bool)(c.prop & property::fma) ? " fma" : "    ")
+      << ((bool)(c.prop & property::f32) ? " f32" : "    ");
     return s.str();
 }
+
 std::string to_string(const config_t &c) {
     std::stringstream s;
     s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
       << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
       << c.wg_m_vs << "," << c.wg_n_vs;
     return s.str();
+}
+
+std::string to_string(const config_record_t &r) {
+    return to_string(r.criteria) + " cfg:{" + to_string(r.config) + "}";
 }
 
 // A matching config is a combination of mandatory and optional requirements
@@ -85,31 +90,34 @@ std::string to_string(const config_t &c) {
 bool operator==(const config_record_t &key, const config_query_t &query) {
     bool result = ((query.arch == key.criteria.arch)
             && (query.head_size <= key.criteria.head_size)
-            && ((key.criteria.seq_len == -1)
-                    || (key.criteria.seq_len != -1
-                            && query.seq_len <= key.criteria.seq_len))
-            && ((((query.prop & property::second_token)
-                        == (key.criteria.prop & property::second_token)))
-                    && (((query.prop & property::quantized)
-                            == (key.criteria.prop & property::quantized)))
-                    && (((query.prop & property::fma)
-                            == (key.criteria.prop & property::fma)))
-                    && (((key.criteria.prop & property::f32) == property::none)
-                            || ((query.prop & property::f32)
-                                    == (key.criteria.prop & property::f32)))
-                    && (((key.criteria.prop & property::integrated)
-                                == property::none)
-                            || ((query.prop & property::integrated)
+            && (key.criteria.seq_len == config_query_t::any
+                    || query.seq_len <= key.criteria.seq_len)
+            && (((key.criteria.prop & property::second_token) == property::none
+                        || (query.prop & property::second_token)
+                                == (key.criteria.prop & property::second_token))
+                    && ((key.criteria.prop & property::quantized)
+                                    == property::none
+                            || (query.prop & property::quantized)
                                     == (key.criteria.prop
-                                            & property::integrated)))));
+                                            & property::quantized))
+                    && ((key.criteria.prop & property::fma) == property::none
+                            || (query.prop & property::fma)
+                                    == (key.criteria.prop & property::fma))
+                    && ((key.criteria.prop & property::f32) == property::none
+                            || (query.prop & property::f32)
+                                    == (key.criteria.prop & property::f32))
+                    && ((key.criteria.prop & property::integrated)
+                                    == property::none
+                            || (query.prop & property::integrated)
+                                    == (key.criteria.prop
+                                            & property::integrated))));
     return result;
 }
 
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     auto num_set_fields = [](const config_criteria_t &crit) {
         int set_fields = 0;
-        if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
-        if (crit.head_size != -1) { set_fields++; }
+        if (crit.seq_len != -1) set_fields++;
         if ((int)(crit.prop & property::second_token)) { set_fields++; }
         if ((int)(crit.prop & property::quantized)) { set_fields++; }
         if ((int)(crit.prop & property::integrated)) { set_fields++; }
@@ -119,11 +127,7 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     };
 
     auto noprops = [](const config_criteria_t &crit) {
-        return !(((bool)(crit.prop & property::second_token))
-                || ((bool)(crit.prop & property::quantized))
-                || ((bool)(crit.prop & property::integrated))
-                || ((bool)(crit.prop & property::fma))
-                || ((bool)(crit.prop & property::f32)));
+        return ((int)crit.prop) == 0;
     };
 
     int l_set_fields = num_set_fields(lhs);
@@ -134,32 +138,37 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     // then by head size
     else if (lhs.head_size != rhs.head_size)
         return lhs.head_size < rhs.head_size;
-    else if (noprops(lhs) != noprops(rhs))
-        return noprops(rhs);
-    // then by most->least set properties (ignores seq len)
-    else if (l_set_fields != r_set_fields)
-        return (l_set_fields > r_set_fields);
     // then by sequence length (if both defined)
     else if (lhs.seq_len != rhs.seq_len && lhs.seq_len != -1
             && rhs.seq_len != -1)
-        return lhs.seq_len < rhs.seq_len;
+        return lhs.seq_len <= rhs.seq_len;
     // then if single seq_len == -1 prefer defined seq_len
     else if (lhs.seq_len != rhs.seq_len)
         return lhs.seq_len != -1;
+    // then by most->least set properties (ignores seq len)
+    else if (l_set_fields != r_set_fields)
+        return (l_set_fields > r_set_fields);
+    else
+        return (int)lhs.prop > (int)rhs.prop;
     // ensure consistent order if # fields identical
-    else if ((lhs.prop & property::fma) != (rhs.prop & property::fma))
-        return static_cast<bool>(lhs.prop & property::fma);
-    else if ((lhs.prop & property::quantized)
-            != (rhs.prop & property::quantized))
-        return static_cast<bool>(lhs.prop & property::quantized);
-    else if ((lhs.prop & property::second_token)
-            != (rhs.prop & property::second_token))
-        return static_cast<bool>(lhs.prop & property::second_token);
-    else if ((lhs.prop & property::integrated)
-            != (rhs.prop & property::integrated))
-        return static_cast<bool>(lhs.prop & property::integrated);
-    else if ((lhs.prop & property::f32) != (rhs.prop & property::f32))
-        return static_cast<bool>(lhs.prop & property::f32);
+    //else if ((lhs.prop & property::fma)
+    //        != (rhs.prop & property::fma)) return static_cast<bool>(lhs.prop
+    //        & property::fma);
+    //else if ((lhs.prop & property::quantized)
+    //        != (rhs.prop
+    //                & property::quantized)) return static_cast<bool>(lhs.prop
+    //        & property::quantized);
+    //else if ((lhs.prop & property::second_token)
+    //        != (rhs.prop
+    //                & property::second_token)) return static_cast<bool>(lhs.prop
+    //        & property::second_token);
+    //else if ((lhs.prop & property::integrated)
+    //        != (rhs.prop
+    //                & property::integrated)) return static_cast<bool>(lhs.prop
+    //        & property::integrated);
+    //else if ((lhs.prop & property::f32)
+    //        != (rhs.prop & property::f32)) return static_cast<bool>(lhs.prop
+    //        & property::f32);
     return false;
 }
 
@@ -286,7 +295,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 64,     second_token}, {32, 32, 32, 16, 4, 1, 2, 2}},
         {{compute::gpu_arch_t::xe_hpc, 64, 64, second_token}, {16, 16, 16, 16, 4, 1, 4, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc, 64, 1024, quantized}, {16, 64, 16, 16, 16, 1, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 1024, quantized}, {16, 64, 16, 16,16, 1, 4, 4}},
         {{compute::gpu_arch_t::xe_hpc, 64, 384,  quantized}, {16, 64, 16, 32, 8, 2, 4, 4}},
         {{compute::gpu_arch_t::xe_hpc, 64, 64,   quantized}, {16, 16, 16, 16, 4, 4, 4, 4}},
         {{compute::gpu_arch_t::xe_hpc, 64,       quantized}, {16, 64, 16, 32, 8, 1, 4, 2}},
@@ -344,22 +353,17 @@ static std::vector<config_record_t> sorted_configs = []() {
 
         {{compute::gpu_arch_t::xe_hpc, 32, fma | second_token}, {16, 16, 16, 16, 32, 1, 32, 1}},
 
-        {{compute::gpu_arch_t::xe_hpc,  32, 1024, fma }, {32, 32, 16, 16,  8, 2,  4, 4}},
         {{compute::gpu_arch_t::xe_hpc,  32,       fma }, {32, 32, 16, 16,  8, 2,  4, 4}},
 
         {{compute::gpu_arch_t::xe_hpc,  64,  384, fma }, {16, 16, 16, 16,  8, 4,  8, 4}},
-        {{compute::gpu_arch_t::xe_hpc,  64, 1024, fma }, {16, 32, 16, 16, 16, 2,  8, 4}},
         {{compute::gpu_arch_t::xe_hpc,  64,       fma }, {16, 32, 16, 16, 16, 2,  8, 4}},
 
-        {{compute::gpu_arch_t::xe_hpc, 128, 384,  fma }, {32, 32, 16, 16, 16, 1, 8, 2 }},
-        {{compute::gpu_arch_t::xe_hpc, 128, 1024, fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128,  384, fma }, {32, 32, 16, 16, 16, 1,  8, 2 }},
         {{compute::gpu_arch_t::xe_hpc, 128,       fma }, {32, 32, 16, 32,  8, 2,  8, 2}},
 
         {{compute::gpu_arch_t::xe_hpc, 256,  384, fma }, {16, 32, 16, 16, 32, 1, 16, 2}},
-        {{compute::gpu_arch_t::xe_hpc, 256, 1024, fma }, {16, 16, 32, 16,  8, 4,  8, 4}},
         {{compute::gpu_arch_t::xe_hpc, 256,       fma }, {16, 16, 32, 16,  8, 4,  8, 4}},
 
-        {{compute::gpu_arch_t::xe_hpc, 512, 1024, fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe_hpc, 512,       fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
 
         // xe2
@@ -509,7 +513,7 @@ static std::vector<config_record_t> sorted_configs = []() {
 
         {{compute::gpu_arch_t::xe2,  32, 385, fma | second_token }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2,  64, 385, fma | second_token }, { 32, 16, 16, 16,  8, 4,  8, 4 }},
-        {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
+        {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token }, { 32, 16, 32, 16, 16, 1, 16, 1 }},
         {{compute::gpu_arch_t::xe2, 256, 385, fma | second_token }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
 
         {{compute::gpu_arch_t::xe2,  32, fma | second_token }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
@@ -563,6 +567,9 @@ static std::vector<config_record_t> sorted_configs = []() {
 
     // ensures configs appear in order of most to least defined/desirable
     std::sort(std::begin(configs), std::end(configs));
+    for (auto &c : configs) {
+        VDEBUGINFO(4, primitive, sdpa, "{%s}", to_string(c).c_str());
+    }
     return configs;
 }();
 
@@ -607,7 +614,48 @@ config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
                 "config search: {query %s} -> {%s config:%s},",
                 to_string(query).c_str(), to_string(it->criteria).c_str(),
                 to_string(it->config).c_str());
-        return &it->config;
+
+        auto it2 = it;
+        using iter_t = std::vector<config_record_t>::iterator;
+        int hs = it->criteria.head_size;
+        std::vector<iter_t> found_configs;
+        while (((it2->criteria.seq_len == -1)
+                       || it2->criteria.seq_len >= query.seq_len)
+                && (it2->criteria.head_size == hs)
+                && it2 != end(sorted_configs)) {
+            found_configs.push_back(it2);
+            ++it2;
+        }
+        VDEBUGINFO(4, primitive, sdpa,
+                "config last: {query %s} -> {%s config:%s},",
+                to_string(query).c_str(), to_string(it2->criteria).c_str(),
+                to_string(it2->config).c_str());
+
+        sort(found_configs.begin(), found_configs.end(),
+                [&](iter_t &a, iter_t &b) {
+                    bool a_is_thinq
+                            = (int)(a->criteria.prop & property::second_token);
+                    bool b_is_thinq
+                            = (int)(b->criteria.prop & property::second_token);
+                    if (is_thin_q) {
+                        if (a_is_thinq != b_is_thinq) { return a_is_thinq; }
+                    }
+                    return ((a->criteria.prop & query.prop)
+                            > (b->criteria.prop & query.prop));
+                });
+        for (const auto &cfg : found_configs) {
+            VDEBUGINFO(4, primitive, sdpa,
+                    "config found: {query %s} -> {%s config:%s},",
+                    to_string(query).c_str(), to_string(cfg->criteria).c_str(),
+                    to_string(cfg->config).c_str());
+        }
+
+        VDEBUGINFO(4, primitive, sdpa,
+                "config search: {query %s} -> {%s config:%s},",
+                to_string(query).c_str(),
+                to_string(found_configs.front()->criteria).c_str(),
+                to_string(found_configs.front()->config).c_str());
+        return &found_configs.front()->config; //&it->config;
     }
     return nullptr;
 }

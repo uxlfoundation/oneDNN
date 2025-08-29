@@ -137,6 +137,13 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     const int bf16_emu_zmm_4_idx_ = 26;
     const int tail_opmask_idx_ = 2;
 
+    const int fp8_emu_zmm_1_idx_ = 23;
+    const int fp8_emu_zmm_2_idx_ = 24;
+    const int fp8_emu_zmm_3_idx_ = 25;
+    const int fp8_emu_zmm_4_idx_ = 26;
+    const int fp8_emu_zmm_5_idx_ = 27;
+    const int fp8_emu_kmask_idx_ = 3;
+
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
@@ -979,6 +986,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->prepare_table();
         if (with_eltwise_ && postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
+        io_.prepare_table_fp8();
     }
 
     jit_softmax_dense_kernel_t(const softmax_pd_t *pd)
@@ -1022,10 +1030,14 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                 bf16_emu_zmm_4_idx_);
         io::io_saturation_conf_t io_saturation_conf(
                 vzero.getIdx(), vsaturation_ubound.getIdx(), reg_tmp);
+        io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
+                fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_,
+                fp8_emu_zmm_5_idx_, fp8_emu_kmask_idx_, reg_tmp);
         io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa,
                 {src_d_.data_type(), dst_d_.data_type(), f32 /* stats */},
                 io_conf, io_tail_conf, io_bf16_conf,
-                {{dst_d_.data_type(), io_saturation_conf}});
+                {{dst_d_.data_type(), io_saturation_conf}}, utils::nullopt,
+                io_fp8_conf);
     }
 };
 
@@ -1107,6 +1119,13 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     const int bf16_emu_zmm_3_idx_ = 25;
     const int bf16_emu_zmm_4_idx_ = 26;
     const int tail_opmask_idx_ = 2;
+
+    const int fp8_emu_zmm_1_idx_ = 23;
+    const int fp8_emu_zmm_2_idx_ = 24;
+    const int fp8_emu_zmm_3_idx_ = 25;
+    const int fp8_emu_zmm_4_idx_ = 26;
+    const int fp8_emu_zmm_5_idx_ = 27;
+    const int fp8_emu_kmask_idx_ = 3;
 
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
@@ -1553,6 +1572,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->prepare_table();
         if (with_eltwise_ && postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
+        io_.prepare_table_fp8();
     }
 
     jit_softmax_strided_kernel_t(const softmax_pd_t *pd)
@@ -1601,10 +1621,14 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                 bf16_emu_zmm_4_idx_);
         io::io_saturation_conf_t io_saturation_conf(
                 vzero.getIdx(), vsaturation_ubound.getIdx(), reg_tmp);
+        io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
+                fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_,
+                fp8_emu_zmm_5_idx_, fp8_emu_kmask_idx_, reg_tmp);
         io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa,
                 {src_d_.data_type(), dst_d_.data_type(), f32 /* stats */},
                 io_conf, io_tail_conf, io_bf16_conf,
-                {{dst_d_.data_type(), io_saturation_conf}});
+                {{dst_d_.data_type(), io_saturation_conf}}, utils::nullopt,
+                io_fp8_conf);
     }
 };
 

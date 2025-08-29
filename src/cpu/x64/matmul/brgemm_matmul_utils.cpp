@@ -1544,12 +1544,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 
-    if (bgmmc.wei_n_blk > bgmmc.N_blk
-            && IMPLICATION(
-                    bgmmc.N == bgmmc.N_blk, bgmmc.N >= bgmmc.wei_n_blk)) {
+    if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
                 && "N_blk should not be adjusted for runtime N");
-        bgmmc.wei_n_blk = bgmmc.N_blk;
+        if (bgmmc.use_buffer_b) {
+            // copy kernels do not support unaligned b buffer
+            bgmmc.wei_n_blk = rnd_up(bgmmc.N_blk, 16);
+        } else {
+            bgmmc.wei_n_blk = bgmmc.N_blk;
+        }
+
         VCHECK_BG(bm_conf_utils.update_and_check_B_tag(
                           weights_md, bgmmc.wei_n_blk, helper),
                 VERBOSE_UNSUPPORTED_TAG);

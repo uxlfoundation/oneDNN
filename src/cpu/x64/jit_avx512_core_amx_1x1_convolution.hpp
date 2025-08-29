@@ -18,17 +18,13 @@
 #define CPU_X64_JIT_AVX512_CORE_AMX_1X1_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/cpu_convolution_pd.hpp"
-#include "cpu/scale_utils.hpp"
 
-#include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/jit_avx512_core_amx_1x1_conv_kernel.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -102,20 +98,6 @@ struct jit_avx512_core_amx_1x1_convolution_fwd_t : public primitive_t {
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         CHECK(kernel_->create_kernel());
 
-        // JIT to precompute scales
-        const bool is_jit_supported = mayiuse(avx512_core);
-        const auto attr = pd()->attr();
-        const auto &attr_scales = attr->scales_;
-        if (is_jit_supported && pd()->OC() > 1
-                && req_copy_scales(attr_scales)) {
-            int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-            if (wei_scale_mask > 0) {
-                CHECK(safe_ptr_assign(jit_scale_precompute_,
-                        new jit_avx512_core_scale_precompute_t(attr)));
-                CHECK(jit_scale_precompute_->create_kernel());
-            }
-        }
-
         return status::success;
     }
 
@@ -132,7 +114,6 @@ private:
             const memory_tracking::grantor_t &scratchpad) const;
 
     std::unique_ptr<jit_avx512_core_amx_1x1_fwd_kernel_t> kernel_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 };
 
 } // namespace x64

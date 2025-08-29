@@ -603,8 +603,12 @@ private:
                 gpu_assert(!l.is_empty());
                 gpu_assert(!l.blocks().empty());
                 auto &lb0 = l.blocks()[0];
-                gpu_assert(lb0.dim == b0.dim);
-                gpu_assert(dim_t(lb0.stride) == 1);
+                // Inner blocks do not match, cannot vectorize so switch to
+                // scalar updates.
+                if (lb0.dim != b0.dim) {
+                    inner_block = 1;
+                    break;
+                }
                 inner_block = math::gcd(lb0.block, inner_block);
             }
             dims[b0.dim] = inner_block;

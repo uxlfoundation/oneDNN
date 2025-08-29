@@ -125,15 +125,8 @@ __kernel void ref_convolution_fwd(
                     const off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
                     const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
 
-                    ACC_DATA_T s;
-                    ACC_DATA_T w;
-#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
-                    load(&s, src, src_off);
-                    load(&w, wei, wei_off);
-#else
-                    load(&s, src + src_off);
-                    load(&w, wei + wei_off);
-#endif
+                    ACC_DATA_T s = load(s, src, src_off);
+                    ACC_DATA_T w = load(w, wei, wei_off);
                     d += s * w;
 
 #if WITH_SRC_ZPOINTS
@@ -293,15 +286,8 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
         if (oh < OH && ow < OW && od < OD) {
             const off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
             const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
-            ACC_DATA_T diff_d;
-            ACC_DATA_T w;
-#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
-            load(&diff_d, diff_dst, dst_off);
-            load(&w, wei, wei_off);
-#else
-            load(&diff_d, diff_dst + dst_off);
-            load(&w, wei + wei_off);
-#endif
+            ACC_DATA_T diff_d = load(diff_d, diff_dst, dst_off);
+            ACC_DATA_T w = load(w, wei, wei_off);
             d += diff_d * w;
 #if WITH_SRC_ZPOINTS
             const int src_zp
@@ -419,15 +405,8 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
                     off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
                     off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
 
-                    ACC_DATA_T diff_d;
-                    ACC_DATA_T s;
-#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
-                    load(&diff_d, diff_dst, dst_off);
-                    load(&s, src, src_off);
-#else
-                    load(&diff_d, diff_dst + dst_off);
-                    load(&s, src + src_off);
-#endif
+                    ACC_DATA_T diff_d = load(diff_d, diff_dst, dst_off);
+                    ACC_DATA_T s = load(s, src, src_off);
                     dw += diff_d * s;
                 }
     write(diff_wei + WEI_OFF(g, oc, ic, kd, kh, kw), dw);

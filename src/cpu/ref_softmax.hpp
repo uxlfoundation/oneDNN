@@ -51,11 +51,11 @@ struct ref_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(
-                    utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
+            VDISPATCH_SOFTMAX(utils::one_of(src_md()->data_type, f32, bf16, f16,
+                                      f8_e5m2, f8_e4m3, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(
-                    utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
+            VDISPATCH_SOFTMAX(utils::one_of(dst_md()->data_type, f32, bf16, f16,
+                                      f8_e5m2, f8_e4m3, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
                                       | skip_mask_t::post_ops),

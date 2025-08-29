@@ -1515,7 +1515,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
         case mask_type::twoD: mask_ptr = &mask; break;
     }
 
-    bool with_host_scale = p.stype == scale_type::host_side;
+    //bool with_host_scale = p.stype == scale_type::host_side;
 
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
@@ -1552,9 +1552,10 @@ GPU_TEST_P(sdpa_test_t, compare) {
     } else {
         s8_args[DNNL_ARG_KEYS] = t.m_key_quantized;
     }
+
     if (scale_dt != mdt::undef
 // !!!!!!!!!
-        && !with_host_scale // ????? needed ????
+//        && !with_host_scale // ????? needed ????
 // !!!!!!!!!
         ) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
 

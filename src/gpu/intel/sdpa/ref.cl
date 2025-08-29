@@ -20,7 +20,12 @@
 
 __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
         const __global KEY_DATA_T *K, const __global VAL_DATA_T *V,
-        __global DST_DATA_T *dst, const __global SCALE_DATA_T *scale_ptr,
+        __global DST_DATA_T *dst,
+#if WITH_HOST_SCALE
+        SCALE_DATA_T scale_val,
+#else
+        const __global SCALE_DATA_T *scale_ptr,
+#endif
         const __global MSK_DATA_T *mask, long nv, long nd) {
 
     // !!!!!!!!!!!!!!!!
@@ -49,7 +54,11 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
     float s_sum = 0;
 
 #if WITH_ATTN_SCALE
+#if WITH_HOST_SCALE
+    SCALE_DATA_T scale = scale_val;
+#else
     SCALE_DATA_T scale = *scale_ptr;
+#endif
     if (DPRINT) {
         printf("kernel: scale = %g\n\n",(float)scale);
     }

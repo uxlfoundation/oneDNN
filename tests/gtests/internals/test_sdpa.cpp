@@ -102,6 +102,8 @@ struct sdpa_tensors_t {
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
     memory::desc scale_md;
+    memory m_host_scale;
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!
 };
 bool is_quantized(mdt dt, quantize_type qtype) {
     return qtype != quantize_type::no_quantization
@@ -406,10 +408,13 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     auto scale_md = with_host_scale
-        ? memory::desc::host_scalar(p.qdt) // ???? qdt ?????
+        ? memory::desc::host_scalar(p.qdt)
         : memory::desc(scale_sz, p.qdt, abcd);
 
-    //memory host_scale_mem(scale_md, 1.11f);
+    //memory host_scale_mem(scale_md, std::sqrt(p.head_size));
+    //if (with_host_scale) {
+    //    out.m_host_scale
+    //}
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
 #if 0
 // Attempt to create a memory object with a data type that does not match
@@ -429,7 +434,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
 // !!!!!!!!! ????
 //
-    DPRINT("%s:%s:%d !!! fill out.m_scale !!!\n", PRINTHEAD);
+    DPRINT("%s:%s:%d ###### !!! fill out.m_scale or out.scale_md !!!\n", PRINTHEAD);
 //
 //    out.m_scale = with_host_scale ? host_scale_mem : double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
@@ -438,6 +443,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (!with_host_scale) {
         print_mem(out.m_scale, "out.m_scale just after double_and_resize ");
     }
+
 // !!!!!!!!! ????
 
     out.m_key_quantized
@@ -734,8 +740,13 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     if (!with_host_scale) { // ??????? correct
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
+        print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
+    } else {
+        DPRINT("%s:%s:%d ###### no write_to_dnnl_memory for scale\n", PRINTHEAD);
+        auto scale_val = std::sqrt(p.head_size);
+        out.m_host_scale.set_host_scalar_value(&scale_val);
     }
-    print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
+
 
 
 

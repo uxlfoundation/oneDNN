@@ -101,7 +101,7 @@ struct sdpa_tensors_t {
     memory::dims kq_groups, vs_groups;
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
-    memory::desc host_scale_md;
+    memory::desc host_scale_md; // ???? get from memory
     memory m_host_scale;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
 };
@@ -721,13 +721,16 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (p.mask != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
 
-    DPRINT("%s:%s:%d ######\n", PRINTHEAD);
     if (!with_host_scale) { // ??????? correct
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
         print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
     } else {
-        auto scale_val = std::sqrt(p.head_size);
-        out.m_host_scale.set_host_scalar_value(&scale_val);
+        float scale_val = (float)std::sqrt(p.head_size);
+        // !!!!! TEMP - only for f16 !!!!!
+        float16_t scale_f16 = (float16_t)scale_val;
+        out.m_host_scale = dnnl::memory(out.host_scale_md, scale_f16);
+        //out.m_host_scale.set_host_scalar_value(&scale_val);
+
         DPRINT("%s:%s:%d ###### out.m_host_scale.set_host_scalar_value(&scale_val) - done\n", PRINTHEAD);
     }
 
@@ -1541,7 +1544,6 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
-//                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.host_scale_md : t.m_scale.get_desc(),
 
 

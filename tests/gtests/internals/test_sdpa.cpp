@@ -101,8 +101,8 @@ struct sdpa_tensors_t {
     memory::dims kq_groups, vs_groups;
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
-    memory::desc host_scale_md; // ???? get from memory
-    memory m_host_scale;
+    //memory::desc host_scale_md; // ???? get from memory
+    //memory m_host_scale;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
 };
 bool is_quantized(mdt dt, quantize_type qtype) {
@@ -406,28 +406,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto output_quantized_md = memory::desc(q_sz,          p.qdt,   abcd);
     // clang-format on
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // ???? universal ???? needed ????? CPU ???? Denis ????
-    auto scale_md = with_host_scale
-        ? memory::desc::host_scalar(p.qdt)
-        : memory::desc(scale_sz, p.qdt, abcd);
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
     out.m_key = double_and_resize(key_md, eng, strm, doubled_memory);
-// !!!!!!!!! ????
-//
-    DPRINT("%s:%s:%d ###### !!! fill out.m_scale or out.scale_md !!!\n", PRINTHEAD);
-//
-//    out.m_scale = with_host_scale ? host_scale_mem : double_and_resize(scale_md, eng, strm, doubled_memory);
-    out.m_scale = with_host_scale ? memory() : double_and_resize(scale_md, eng, strm, doubled_memory);
-    out.host_scale_md = with_host_scale ? scale_md : memory::desc();
-
-    if (!with_host_scale) {
-        print_mem(out.m_scale, "out.m_scale just after double_and_resize ");
-    }
-
-// !!!!!!!!! ????
 
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
@@ -721,19 +703,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (p.mask != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
 
-    if (!with_host_scale) { // ??????? correct
-        write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
-        print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
-    } else {
-        float scale_val = (float)std::sqrt(p.head_size);
-        // !!!!! TEMP - only for f16 !!!!!
-        float16_t scale_f16 = (float16_t)scale_val;
-        out.m_host_scale = dnnl::memory(out.host_scale_md, scale_f16);
-        //out.m_host_scale.set_host_scalar_value(&scale_val);
-
-        DPRINT("%s:%s:%d ###### out.m_host_scale.set_host_scalar_value(&scale_val) - done\n", PRINTHEAD);
-    }
-
     // Write data to tensor object's handle.
     write_to_dnnl_memory(key_data.data(), out.m_key, eng, strm);
     write_to_dnnl_memory(value_data.data(), out.m_value, eng, strm);
@@ -764,6 +733,19 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
 
     transpose_strides(eng, out.m_key_t_quantized, out.m_key_quantized);
+
+    // !!!!!!!!!!!+++++++++++++++++++++++++++ scale processing !!!!!!!!!!!!!!!!!
+    if (with_host_scale) {
+        auto scale_md = memory::desc::host_scalar(p.qdt);
+        float scale_val = (float)std::sqrt(p.head_size);
+        // !!!!! TEMP - only for f16 !!!!!
+        out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
+    } else {
+        auto scale_md = memory::desc(scale_sz, p.qdt, abcd);
+        out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
+        write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
+        print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
+    }
 
     DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
 
@@ -1544,8 +1526,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
-                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.host_scale_md : t.m_scale.get_desc(),
-
+//                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.host_scale_md : t.m_scale.get_desc(),
+                t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
 
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),

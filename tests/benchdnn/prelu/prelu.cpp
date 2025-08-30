@@ -200,15 +200,19 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC: SAFE(fill_data(SRC, mem, ref_mem), WARN); break;
-            case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, mem, ref_mem), WARN);
-                break;
-            default: break;
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS:
+                    SAFE(fill_data(WEI, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DIFF_DST:
+                    SAFE(fill_data(DST, mem, ref_mem), WARN);
+                    break;
+                default: break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

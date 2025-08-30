@@ -364,3 +364,39 @@ int fill_random_real(dnn_mem_t &mem_ref, const fill_cfg_t &fill_cfg,
     dnn_mem_t dummy;
     return fill_random_real(dummy, mem_ref, nullptr, fill_cfg, dnnl_memory);
 }
+
+int fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &mem_ref) {
+    static const char format[] = "File '%s' %s; buffer not imported.\n";
+    auto prefix = benchdnn_getenv_string("BENCHDNN_BUFFER_PREFIX", false);
+    if (prefix.empty()) return FAIL;
+
+    prefix += "." + std::to_string(exec_arg);
+    auto file = fopen(prefix.c_str(), "rb");
+    if (!file) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(), "cannot be opened");
+        return FAIL;
+    }
+    fseek(file, 0, SEEK_END);
+    size_t total = 0, size = ftell(file);
+    if (mem.size() != size) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(),
+                "differs in size from the buffer's memory descriptor");
+        return FAIL;
+    }
+    fseek(file, 0, SEEK_SET);
+    for (size_t read = ~0; read && (total < size); total += read)
+        read = fread(
+                static_cast<uint8_t *>(mem) + total, 1, size - total, file);
+    if (total != size) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(), "cannot be read correctly");
+        return FAIL;
+    }
+    fclose(file);
+    if (mem_ref.reorder(mem) != OK) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(), "cannot be reordered");
+        return FAIL;
+    }
+    BENCHDNN_PRINT(2, "File '%s' successfully processed; buffer imported.\n",
+            prefix.c_str());
+    return OK;
+}

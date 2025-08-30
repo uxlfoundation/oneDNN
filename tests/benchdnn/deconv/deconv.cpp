@@ -444,69 +444,70 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS: {
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
-                // To re-use conv implementation, we need additional weights
-                // with transposed input/output channels.
-                dnnl_dims_t wei_tr_dims {};
-                auto wei_ndims = query_md_ndims(mem.md_);
-                std::copy(query_md_dims(mem.md_),
-                        query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
-                // Queried weights are always with groups.
-                std::swap(wei_tr_dims[1], wei_tr_dims[2]);
-                auto wei_tr_md = dnn_mem_t::init_md(
-                        wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS: {
+                    SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                    // To re-use conv implementation, we need additional weights
+                    // with transposed input/output channels.
+                    dnnl_dims_t wei_tr_dims {};
+                    auto wei_ndims = query_md_ndims(mem.md_);
+                    std::copy(query_md_dims(mem.md_),
+                            query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
+                    // Queried weights are always with groups.
+                    std::swap(wei_tr_dims[1], wei_tr_dims[2]);
+                    auto wei_tr_md = dnn_mem_t::init_md(
+                            wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
 
-                ref_mem_map.emplace(DNNL_ARG_WEIGHTS_1,
-                        dnn_mem_t(
-                                wei_tr_md, ref_engine, /* prefill = */ false));
-                SAFE(transpose_data_wei(
-                             prb, ref_mem, ref_mem_map[DNNL_ARG_WEIGHTS_1]),
-                        WARN);
-            } break;
-            case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DST:
-                if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
-                        >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                    ref_mem_map.emplace(DNNL_ARG_WEIGHTS_1,
+                            dnn_mem_t(wei_tr_md, ref_engine,
+                                    /* prefill = */ false));
+                    SAFE(transpose_data_wei(
+                                 prb, ref_mem, ref_mem_map[DNNL_ARG_WEIGHTS_1]),
+                            WARN);
+                } break;
+                case DNNL_ARG_BIAS:
+                    SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DST:
+                    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
+                            >= 0) {
+                        SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
                     }
-                }
-                break;
-            case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DIFF_WEIGHTS: {
-                // To re-use conv implementation, we need additional weights
-                // with transposed input/output channels.
-                dnnl_dims_t wei_tr_dims {};
-                auto wei_ndims = query_md_ndims(mem.md_);
-                std::copy(query_md_dims(mem.md_),
-                        query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
-                // Queried weights are always with groups.
-                std::swap(wei_tr_dims[1], wei_tr_dims[2]);
-                auto wei_tr_md = dnn_mem_t::init_md(
-                        wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
-                ref_mem_map.emplace(DNNL_ARG_DIFF_WEIGHTS_1,
-                        dnn_mem_t(
-                                wei_tr_md, ref_engine, /* prefill = */ false));
-            } break;
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
+                    break;
+                case DNNL_ARG_DIFF_DST:
+                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DIFF_WEIGHTS: {
+                    // To re-use conv implementation, we need additional weights
+                    // with transposed input/output channels.
+                    dnnl_dims_t wei_tr_dims {};
+                    auto wei_ndims = query_md_ndims(mem.md_);
+                    std::copy(query_md_dims(mem.md_),
+                            query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
+                    // Queried weights are always with groups.
+                    std::swap(wei_tr_dims[1], wei_tr_dims[2]);
+                    auto wei_tr_md = dnn_mem_t::init_md(
+                            wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
+                    ref_mem_map.emplace(DNNL_ARG_DIFF_WEIGHTS_1,
+                            dnn_mem_t(wei_tr_md, ref_engine,
+                                    /* prefill = */ false));
+                } break;
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
+            }
         }
-
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
                 cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
 

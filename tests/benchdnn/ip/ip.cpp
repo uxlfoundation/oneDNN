@@ -335,37 +335,38 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DST:
-                if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
-                        >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS:
+                    SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_BIAS:
+                    SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DST:
+                    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
+                            >= 0) {
+                        SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
                     }
-                }
-                break;
-            case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
+                    break;
+                case DNNL_ARG_DIFF_DST:
+                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
+            }
         }
-
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
                 cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
 

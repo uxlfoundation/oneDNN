@@ -202,30 +202,34 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC: SAFE(fill_src(prb, mem, ref_mem), WARN); break;
-            case DNNL_ARG_DST:
-                if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
-                        >= 0) {
-                    SAFE(fill_dst(prb, mem, ref_mem), WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_src(prb, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DST:
+                    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
+                            >= 0) {
+                        SAFE(fill_dst(prb, mem, ref_mem), WARN);
 
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
                     }
-                }
-                break;
-            case DNNL_ARG_DIFF_DST:
-                SAFE(fill_dst(prb, mem, ref_mem), WARN);
-                break;
-            default: {
-                std::unordered_map<int, fill_cfg_t> fill_cfg_map;
-                binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
-                SAFE(init_ref_memory_args_default_case(exec_arg, mem, ref_mem,
-                             prb->attr, res, fill_cfg_map),
-                        WARN);
-            } break;
+                    break;
+                case DNNL_ARG_DIFF_DST:
+                    SAFE(fill_dst(prb, mem, ref_mem), WARN);
+                    break;
+                default: {
+                    std::unordered_map<int, fill_cfg_t> fill_cfg_map;
+                    binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
+                    SAFE(init_ref_memory_args_default_case(exec_arg, mem,
+                                 ref_mem, prb->attr, res, fill_cfg_map),
+                            WARN);
+                } break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

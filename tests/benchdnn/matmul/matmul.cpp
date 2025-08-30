@@ -954,45 +954,46 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             ref_mem.map();
         }
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DST: {
-                const auto &po = prb->attr.post_ops;
-                const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if (sum_idx >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS:
+                    SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_BIAS:
+                    SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DST: {
+                    const auto &po = prb->attr.post_ops;
+                    const int sum_idx = po.find(attr_t::post_ops_t::SUM);
+                    if (sum_idx >= 0) {
+                        SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
                     }
+                } break;
+                case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
+                    // Fill it separately down below.
+                    // TODO: introduce an order of processing arguments to avoid
+                    // post filling manipulations.
+                    break;
+                case DNNL_ARG_ATTR_DROPOUT_SEED: {
+                    ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
+                            /* prefill = */ false);
+                    // No break to fall back into `default` call with initialization.
                 }
-            } break;
-            case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
-                // Fill it separately down below.
-                // TODO: introduce an order of processing arguments to avoid
-                // post filling manipulations.
-                break;
-            case DNNL_ARG_ATTR_DROPOUT_SEED: {
-                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
-                        /* prefill = */ false);
-                // No break to fall back into `default` call with initialization.
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
             }
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
         }
-
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
                 cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
 

@@ -1112,104 +1112,118 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC_LAYER:
-                SAFE(fill_activation(prb, SRC_LAYER, mem, ref_mem, rnn_attr),
-                        WARN);
-                break;
-            case DNNL_ARG_AUGRU_ATTENTION:
-                SAFE(fill_activation(
-                             prb, AUGRU_ATTENTION, mem, ref_mem, rnn_attr),
-                        WARN);
-                break;
-            case DNNL_ARG_SRC_ITER:
-                SAFE(fill_activation(prb, SRC_ITER, mem, ref_mem, rnn_attr),
-                        WARN);
-                break;
-            case DNNL_ARG_SRC_ITER_C:
-                SAFE(fill_src_iter_c(prb, mem, ref_mem, rnn_attr), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS_LAYER:
-                if (is_fwd_prim)
-                    SAFE(fill_weights(
-                                 prb, WEIGHTS_LAYER, mem, ref_mem, rnn_attr),
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC_LAYER:
+                    SAFE(fill_activation(
+                                 prb, SRC_LAYER, mem, ref_mem, rnn_attr),
                             WARN);
-                break;
-            case DNNL_ARG_WEIGHTS_ITER:
-                if (is_fwd_prim)
-                    SAFE(fill_weights(
-                                 prb, WEIGHTS_ITER, mem, ref_mem, rnn_attr),
+                    break;
+                case DNNL_ARG_AUGRU_ATTENTION:
+                    SAFE(fill_activation(
+                                 prb, AUGRU_ATTENTION, mem, ref_mem, rnn_attr),
                             WARN);
-                break;
-            case DNNL_ARG_WEIGHTS_PEEPHOLE:
-                if (is_fwd_prim)
-                    SAFE(fill_memory(prb, WEIGHTS_PEEPHOLE, mem, ref_mem),
+                    break;
+                case DNNL_ARG_SRC_ITER:
+                    SAFE(fill_activation(prb, SRC_ITER, mem, ref_mem, rnn_attr),
                             WARN);
-                break;
-            case DNNL_ARG_WEIGHTS_PROJECTION:
-                if (is_fwd_prim)
-                    SAFE(fill_weights(prb, WEIGHTS_PROJECTION, mem, ref_mem,
-                                 rnn_attr),
+                    break;
+                case DNNL_ARG_SRC_ITER_C:
+                    SAFE(fill_src_iter_c(prb, mem, ref_mem, rnn_attr), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS_LAYER:
+                    if (is_fwd_prim)
+                        SAFE(fill_weights(prb, WEIGHTS_LAYER, mem, ref_mem,
+                                     rnn_attr),
+                                WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS_ITER:
+                    if (is_fwd_prim)
+                        SAFE(fill_weights(
+                                     prb, WEIGHTS_ITER, mem, ref_mem, rnn_attr),
+                                WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS_PEEPHOLE:
+                    if (is_fwd_prim)
+                        SAFE(fill_memory(prb, WEIGHTS_PEEPHOLE, mem, ref_mem),
+                                WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS_PROJECTION:
+                    if (is_fwd_prim)
+                        SAFE(fill_weights(prb, WEIGHTS_PROJECTION, mem, ref_mem,
+                                     rnn_attr),
+                                WARN);
+                    break;
+                case DNNL_ARG_BIAS:
+                    if (is_fwd_prim)
+                        SAFE(fill_memory(prb, BIAS, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DST_LAYER:
+                    if (is_fwd_prim)
+                        SAFE(fill_activation(prb, DST_LAYER, mem, ref_mem),
+                                WARN);
+                    break;
+                case DNNL_ARG_DST_ITER:
+                    if (is_fwd_prim)
+                        SAFE(fill_activation(prb, DST_ITER, mem, ref_mem),
+                                WARN);
+                    break;
+                case DNNL_ARG_DST_ITER_C:
+                    if (is_fwd_prim)
+                        SAFE(fill_memory(prb, DST_ITER_C, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_SCRATCHPAD:
+                    /* Put internal allocations here */ break;
+                case DNNL_ARG_WORKSPACE: /* Or here... */ break;
+                case DNNL_ARG_DIFF_SRC_LAYER:
+                    SAFE(fill_activation(prb, DIFF_SRC_LAYER, mem, ref_mem),
                             WARN);
-                break;
-            case DNNL_ARG_BIAS:
-                if (is_fwd_prim)
-                    SAFE(fill_memory(prb, BIAS, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DST_LAYER:
-                if (is_fwd_prim)
-                    SAFE(fill_activation(prb, DST_LAYER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DST_ITER:
-                if (is_fwd_prim)
-                    SAFE(fill_activation(prb, DST_ITER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DST_ITER_C:
-                if (is_fwd_prim)
-                    SAFE(fill_memory(prb, DST_ITER_C, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_SCRATCHPAD: /* Put internal allocations here */ break;
-            case DNNL_ARG_WORKSPACE: /* Or here... */ break;
-            case DNNL_ARG_DIFF_SRC_LAYER:
-                SAFE(fill_activation(prb, DIFF_SRC_LAYER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_AUGRU_ATTENTION:
-                SAFE(fill_activation(prb, DIFF_AUGRU_ATTENTION, mem, ref_mem),
-                        WARN);
-                break;
-            case DNNL_ARG_DIFF_SRC_ITER:
-                SAFE(fill_activation(prb, DIFF_SRC_ITER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_SRC_ITER_C:
-                SAFE(fill_memory(prb, DIFF_SRC_ITER_C, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_WEIGHTS_LAYER:
-                SAFE(fill_weights(prb, DIFF_WEIGHTS_LAYER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_WEIGHTS_ITER:
-                SAFE(fill_weights(prb, DIFF_WEIGHTS_ITER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE:
-                SAFE(fill_memory(prb, DIFF_WEIGHTS_PEEPHOLE, mem, ref_mem),
-                        WARN);
-                break;
-            case DNNL_ARG_DIFF_WEIGHTS_PROJECTION:
-                SAFE(fill_memory(prb, DIFF_WEIGHTS_PROJECTION, mem, ref_mem),
-                        WARN);
-                break;
-            case DNNL_ARG_DIFF_BIAS:
-                SAFE(fill_bias(prb, DIFF_BIAS, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_DST_LAYER:
-                SAFE(fill_activation(prb, DIFF_DST_LAYER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_DST_ITER:
-                SAFE(fill_activation(prb, DIFF_DST_ITER, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DIFF_DST_ITER_C:
-                SAFE(fill_memory(prb, DIFF_DST_ITER_C, mem, ref_mem), WARN);
-                break;
-            default: break;
+                    break;
+                case DNNL_ARG_DIFF_AUGRU_ATTENTION:
+                    SAFE(fill_activation(
+                                 prb, DIFF_AUGRU_ATTENTION, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_SRC_ITER:
+                    SAFE(fill_activation(prb, DIFF_SRC_ITER, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_SRC_ITER_C:
+                    SAFE(fill_memory(prb, DIFF_SRC_ITER_C, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DIFF_WEIGHTS_LAYER:
+                    SAFE(fill_weights(prb, DIFF_WEIGHTS_LAYER, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_WEIGHTS_ITER:
+                    SAFE(fill_weights(prb, DIFF_WEIGHTS_ITER, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE:
+                    SAFE(fill_memory(prb, DIFF_WEIGHTS_PEEPHOLE, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_WEIGHTS_PROJECTION:
+                    SAFE(fill_memory(
+                                 prb, DIFF_WEIGHTS_PROJECTION, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_BIAS:
+                    SAFE(fill_bias(prb, DIFF_BIAS, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DIFF_DST_LAYER:
+                    SAFE(fill_activation(prb, DIFF_DST_LAYER, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_DST_ITER:
+                    SAFE(fill_activation(prb, DIFF_DST_ITER, mem, ref_mem),
+                            WARN);
+                    break;
+                case DNNL_ARG_DIFF_DST_ITER_C:
+                    SAFE(fill_memory(prb, DIFF_DST_ITER_C, mem, ref_mem), WARN);
+                    break;
+                default: break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

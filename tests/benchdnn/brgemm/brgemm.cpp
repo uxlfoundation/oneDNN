@@ -938,33 +938,35 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DST: {
-                const auto &po = prb->attr.post_ops;
-                const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if (sum_idx >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                }
-            } break;
-            case DNNL_ARG_DST_1: {
-                if (need_fill_acc) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                }
-            } break;
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_WEIGHTS:
+                    SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_BIAS:
+                    SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DST: {
+                    const auto &po = prb->attr.post_ops;
+                    const int sum_idx = po.find(attr_t::post_ops_t::SUM);
+                    if (sum_idx >= 0) {
+                        SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    }
+                } break;
+                case DNNL_ARG_DST_1: {
+                    if (need_fill_acc) {
+                        SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    }
+                } break;
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
+            }
         }
     }
 

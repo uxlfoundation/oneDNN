@@ -245,39 +245,42 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC_0:
-                SAFE(fill_mem(prb, 0, mem, ref_mem), WARN);
-                // Need a copy of source data for inplace mode for bitwise
-                // testing.
-                if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
-                    auto &src_copy = mem_map.at(-exec_arg);
-                    SAFE(bool(src_copy) ? OK : FAIL, WARN);
-                    SAFE(src_copy.reorder(mem), WARN);
-                }
-                break;
-            case DNNL_ARG_SRC_1:
-                SAFE(fill_mem(prb, 1, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_SRC_2:
-                SAFE(fill_mem(prb, 2, mem, ref_mem), WARN);
-                break;
-            case DNNL_ARG_DST:
-                if (prb->attr.post_ops.find(alg_t::SUM) >= 0) {
-                    SAFE(fill_mem(prb, 3, mem, ref_mem), WARN);
-
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC_0:
+                    SAFE(fill_mem(prb, 0, mem, ref_mem), WARN);
+                    // Need a copy of source data for inplace mode for bitwise
+                    // testing.
+                    if (has_bench_mode_bit(mode_bit_t::bitwise)
+                            && prb->inplace) {
+                        auto &src_copy = mem_map.at(-exec_arg);
+                        SAFE(bool(src_copy) ? OK : FAIL, WARN);
+                        SAFE(src_copy.reorder(mem), WARN);
                     }
-                }
-                break;
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
+                    break;
+                case DNNL_ARG_SRC_1:
+                    SAFE(fill_mem(prb, 1, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_SRC_2:
+                    SAFE(fill_mem(prb, 2, mem, ref_mem), WARN);
+                    break;
+                case DNNL_ARG_DST:
+                    if (prb->attr.post_ops.find(alg_t::SUM) >= 0) {
+                        SAFE(fill_mem(prb, 3, mem, ref_mem), WARN);
+
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
+                    }
+                    break;
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

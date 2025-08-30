@@ -790,13 +790,14 @@ int benchdnn_getenv_int(const char *name, int default_value) {
 
 // Copied from utils::getenv_string_user.
 // Collects a string lower case value from an env var.
-std::string benchdnn_getenv_string(const char *name) {
+std::string benchdnn_getenv_string(const char *name, bool lower) {
     // Random number to fit possible string input.
     std::string value;
     const int len = 128;
     char value_str[len];
     if (getenv(name, value_str, len) > 0) { value = value_str; }
-    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+    if (lower)
+        std::transform(value.begin(), value.end(), value.begin(), ::tolower);
     return value;
 }
 

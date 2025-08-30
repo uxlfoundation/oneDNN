@@ -538,34 +538,36 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_FROM: {
-                SAFE(fill_mem(prb, SRC, mem, ref_mem), WARN);
-                // Additional inputs to compare compensation buffers.
-                ref_mem_map.emplace(DNNL_ARG_SRC_1,
-                        setup_compensation_memory(prb, FLAG_S8S8_COMP));
-                ref_mem_map.emplace(DNNL_ARG_SRC_2,
-                        setup_compensation_memory(prb, FLAG_ZP_COMP));
-            } break;
-            case DNNL_ARG_TO: {
-                const auto &po = prb->attr.post_ops;
-                const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                // MIOpen doesn't work properly when tensors are filled with 0xFF.
-                if (sum_idx >= 0 || is_amd_gpu()) {
-                    SAFE(fill_mem(prb, DST, mem, ref_mem), WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_FROM: {
+                    SAFE(fill_mem(prb, SRC, mem, ref_mem), WARN);
+                    // Additional inputs to compare compensation buffers.
+                    ref_mem_map.emplace(DNNL_ARG_SRC_1,
+                            setup_compensation_memory(prb, FLAG_S8S8_COMP));
+                    ref_mem_map.emplace(DNNL_ARG_SRC_2,
+                            setup_compensation_memory(prb, FLAG_ZP_COMP));
+                } break;
+                case DNNL_ARG_TO: {
+                    const auto &po = prb->attr.post_ops;
+                    const int sum_idx = po.find(attr_t::post_ops_t::SUM);
+                    // MIOpen doesn't work properly when tensors are filled with 0xFF.
+                    if (sum_idx >= 0 || is_amd_gpu()) {
+                        SAFE(fill_mem(prb, DST, mem, ref_mem), WARN);
 
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
-                    if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        // Bitwise mode for sum requires a copy due to data for
+                        // post-op will be overwritten and it must be refreshed.
+                        if (has_bench_mode_bit(mode_bit_t::bitwise)) {
+                            SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        }
                     }
-                }
-            } break;
-            default:
-                SAFE(init_ref_memory_args_default_case(
-                             exec_arg, mem, ref_mem, prb->attr, res),
-                        WARN);
-                break;
+                } break;
+                default:
+                    SAFE(init_ref_memory_args_default_case(
+                                 exec_arg, mem, ref_mem, prb->attr, res),
+                            WARN);
+                    break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

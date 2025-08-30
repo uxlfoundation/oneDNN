@@ -298,33 +298,36 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
-                break;
-            case DNNL_ARG_WORKSPACE:
-                if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0
-                        && is_fwd_prim) {
-                    const auto ws_dt
-                            = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
-                    ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
-                            ref_engine, /* prefill = */ false);
-                    SAFE(fill_ws(prb, mem, ref_mem), WARN);
-                }
-                break;
-            case DNNL_ARG_DST:
-                SAFE(!check_md_consistency_with_tag(mem.md_, prb->tag), WARN);
-                break;
-            default:
-                std::unordered_map<int, fill_cfg_t> fill_cfg_map;
-                binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
-                SAFE(init_ref_memory_args_default_case(exec_arg, mem, ref_mem,
-                             prb->attr, res, fill_cfg_map),
-                        WARN);
-                break;
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_SRC:
+                    SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_DIFF_DST:
+                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    break;
+                case DNNL_ARG_WORKSPACE:
+                    if (query_md_ndims(mem_map.at(DNNL_ARG_WORKSPACE).md_) > 0
+                            && is_fwd_prim) {
+                        const bool is_int = is_integral_dt(mem.dt());
+                        const auto ws_dt = (is_int) ? dnnl_s32 : dnnl_f32;
+                        ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt,
+                                tag::abx, ref_engine, /* prefill = */ false);
+                        SAFE(fill_ws(prb, mem, ref_mem), WARN);
+                    }
+                    break;
+                case DNNL_ARG_DST:
+                    SAFE(!check_md_consistency_with_tag(mem.md_, prb->tag),
+                            WARN);
+                    break;
+                default:
+                    std::unordered_map<int, fill_cfg_t> fill_cfg_map;
+                    binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
+                    SAFE(init_ref_memory_args_default_case(exec_arg, mem,
+                                 ref_mem, prb->attr, res, fill_cfg_map),
+                            WARN);
+                    break;
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

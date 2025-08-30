@@ -176,15 +176,17 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        // Scales attach to same (multiple_src + i) arguments. They should be
-        // filtered out and re-directed to a common call.
-        if ((exec_arg & DNNL_ARG_MULTIPLE_SRC)
-                && !(exec_arg & DNNL_ARG_ATTR_SCALES)) {
-            SAFE(fill_src(exec_arg, prb->ddt, mem, ref_mem), WARN);
-        } else {
-            SAFE(init_ref_memory_args_default_case(
-                         exec_arg, mem, ref_mem, prb->attr, res),
-                    WARN);
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            // Scales attach to same (multiple_src + i) arguments. They should
+            // be filtered out and re-directed to a common call.
+            if ((exec_arg & DNNL_ARG_MULTIPLE_SRC)
+                    && !(exec_arg & DNNL_ARG_ATTR_SCALES)) {
+                SAFE(fill_src(exec_arg, prb->ddt, mem, ref_mem), WARN);
+            } else {
+                SAFE(init_ref_memory_args_default_case(
+                             exec_arg, mem, ref_mem, prb->attr, res),
+                        WARN);
+            }
         }
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

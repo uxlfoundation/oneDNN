@@ -159,3 +159,46 @@ problem):
 
 Benchdnn follows certain [guidelines](benchdnn_input_files_naming_convention.md)
 regarding input files naming convention.
+
+## Importing Buffers From Files
+
+In certain circumstances the synthetic buffer contents that the tool uses to
+test the primitives is not enough to reproduce an error. This is where the
+buffer import feature comes in handy.
+
+To use it, the first order of business is to dump the binary contents of the
+faulty primitive's inputs to files. The files have to reside in the same
+arbitrary disk location and have the same arbitrary name, differing only in
+their extensions. The extensions have to match the numeric values of oneDNN's
+`DNNL_ARG_*` constants. Consider these 3 file names:
+* `/path/to/faulty_conv_buffers.1` — this file is for `DNNL_ARG_SRC`
+* `/path/to/faulty_conv_buffers.33` — this file is for `DNNL_ARG_WEIGHTS`
+* `/path/to/faulty_conv_buffers.41` — this file is for `DNNL_ARG_BIAS`
+
+Refer to `include/oneapi/dnnl/dnnl_types.h` for more information.
+
+To pass to `benchdnn` the desired path to the buffers, an environment variable
+named `BENCHDNN_BUFFER_PREFIX` needs to be set:
+```bash
+export BENCHDNN_BUFFER_PREFIX=/path/to/faulty_conv_buffers
+./benchdnn --conv ...
+```
+
+If `benchdnn` recognizes the variable and the buffers get loaded, the following
+messages will appear in verbose levels 2 and above:
+```bash
+export BENCHDNN_BUFFER_PREFIX=/path/to/faulty_conv_buffers
+./benchdnn -v2 --conv ...
+...
+File '/path/to/faulty_conv_buffers.1' successfully processed; buffer imported.
+File '/path/to/faulty_conv_buffers.33' successfully processed; buffer imported.
+File '/path/to/faulty_conv_buffers.41' successfully processed; buffer imported.
+...
+```
+
+In case of import errors the messages are different; the rule of thumb is to
+look for the contents of `BENCHDNN_BUFFER_PREFIX` in the verbose output to find
+out what happened to the buffers.
+
+To be loaded successfully, each file of interest needs to contain the binary
+data of exactly the same type and layout that oneDNN uses for its target buffer.

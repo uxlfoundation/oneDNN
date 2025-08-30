@@ -659,24 +659,26 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
-        switch (exec_arg) {
-            case DNNL_ARG_DST: break; // Skip on backward.
-            case DNNL_ARG_DIFF_SRC: break; // Skip on backward.
-            case DNNL_ARG_MEAN:
-            case DNNL_ARG_VARIANCE:
-                if (prb->dir & FLAG_INF) {
-                    const dnnl_dims_t dims2d = {prb->mb, prb->g};
-                    ref_mem_map[exec_arg] = dnn_mem_t(2, dims2d, dnnl_f32,
-                            tag::abx, ref_engine, /* prefill = */ false);
-                }
-                break;
-            default: {
-                std::unordered_map<int, fill_cfg_t> fill_cfg_map;
-                binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
-                SAFE(init_ref_memory_args_default_case(exec_arg, mem, ref_mem,
-                             prb->attr, res, fill_cfg_map),
-                        WARN);
-            } break;
+        if (fill_from_file(exec_arg, mem, ref_mem) != OK) {
+            switch (exec_arg) {
+                case DNNL_ARG_DST: break; // Skip on backward.
+                case DNNL_ARG_DIFF_SRC: break; // Skip on backward.
+                case DNNL_ARG_MEAN:
+                case DNNL_ARG_VARIANCE:
+                    if (prb->dir & FLAG_INF) {
+                        const dnnl_dims_t dims2d = {prb->mb, prb->g};
+                        ref_mem_map[exec_arg] = dnn_mem_t(2, dims2d, dnnl_f32,
+                                tag::abx, ref_engine, /* prefill = */ false);
+                    }
+                    break;
+                default: {
+                    std::unordered_map<int, fill_cfg_t> fill_cfg_map;
+                    binary_po_fill_cfg(fill_cfg_map, exec_arg, mem, prb->attr);
+                    SAFE(init_ref_memory_args_default_case(exec_arg, mem,
+                                 ref_mem, prb->attr, res, fill_cfg_map),
+                            WARN);
+                } break;
+            }
         }
     }
 

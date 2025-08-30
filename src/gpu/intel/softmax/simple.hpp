@@ -53,8 +53,8 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     utils::one_of(src_dt, f64, f32, f16, bf16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(
-                    utils::one_of(dst_dt, f32, f16, f64, bf16, u8, s8),
+            VDISPATCH_SOFTMAX(utils::one_of(dst_dt, f32, f16, f64, bf16,
+                                      f8_e5m2, f8_e4m3, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       intel_engine->mayiuse(

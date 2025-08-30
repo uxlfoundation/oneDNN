@@ -95,7 +95,7 @@ struct dnn_mem_t {
         return reorder(rhs, nullptr, swap_dt);
     }
 
-    size_t size() const;
+    size_t size(int index = 0) const;
 
     int64_t nelems(bool with_padded_dims = false) const {
         const auto &_dims = with_padded_dims ? padded_dims() : dims();

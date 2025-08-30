@@ -1104,16 +1104,18 @@ int get_gpu_cache_size(size_t &cache_size) {
     return OK;
 }
 
+// `checkit` function verifies the amount of memory needed for the case is
+// complied with the system limits.
+//
 // The function logic is the following:
-// `checkit` function verifies that the bare minimum (the library and the stock
-// reference) memory requirements are complied with the limits.
-// If no, drop the case, can't run it.
-// If yes, the second call to this function with `prim_ref` specified will
-// check memory requirements for prim_ref, update according memory parts and
-// verify updated numbers if they are complied.
-// If yes, good to go with a `prim_ref`.
-// If no, indicate that the system won't make it and drop `prim_ref` falling
-// back to stock reference.
+// If `prim_ref` is provided, the check will include its requirement.
+// If check passes, it's good to go with a `prim_ref` enabled.
+// If not, `checkit` can process this scenario by dropping `prim_ref` (nulling
+// it) and try the check again. It may happen that `prim_ref` used more memory
+// than naive reference implementation. In that case the total consumption will
+// be lower and might fit the limit.
+// It the check without `prim_ref` passes, it will run without it.
+// If not, the case will be skipped as it can't be run.
 int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     // Skip the check if it is disabled.
     if (!mem_check) return OK;
@@ -1129,16 +1131,22 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const size_t device_max_capacity
             = is_cpu() ? cpu_device_capacity : gpu_device_capacity;
 
-    // 0.75f is taken randomly and is subject to change in future.
-    const double capacity_factor = 0.75;
+    // `0.70` is taken mostly due to integrated graphics and the way service
+    // reorders are handled by benchdnn. See a comment at `execute_reorder`.
+    // It's always a subject to change in the future.
+    const double capacity_factor = 0.70;
     const double benchdnn_device_limit = capacity_factor * device_max_capacity;
     // Note: there used to be a separate limit for combined memory pool, however
-    // it didn't work even at 0.80 point due to, likely, system memory
-    // requirements. Use same limit for combined cpu and pure cpu cases.
+    // it didn't work even at 0.80 point due to mentioned reorder peculiarity,
+    // and the way RNN allocates memory for ref computations.
+    // Use same limit for combined cpu and pure cpu cases.
     const double benchdnn_cpu_limit = capacity_factor * cpu_device_capacity;
     assert(benchdnn_device_limit > 0 && benchdnn_cpu_limit > 0);
 
     auto dir_c_str = [&res]() {
+        // TODO: always reports BWD when fwd-for-bwd case runs as the check
+        // moved to `checkit` stage and always has `mem_size_args.dir` set to
+        // BWD.
         assert(res->mem_size_args.dir != DIR_UNDEF);
         return (res->mem_size_args.dir & FLAG_FWD) ? "FWD" : "BWD";
     };
@@ -1227,7 +1235,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     }
 
     size_t total_size_cpu = total_size_ref + total_size_compare
-            + check_mem_size_args.total_size_mapped;
+            + check_mem_size_args.total_size_mapped
+            + check_mem_size_args.extra_size_driver;
 
     // If the problem runs on CPU, the combined memory represents requirements
     // for the library and for the reference paths.

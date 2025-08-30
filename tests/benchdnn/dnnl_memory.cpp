@@ -39,6 +39,7 @@
 #include "dnnl_memory.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dnnl_query.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
@@ -196,6 +197,17 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     const auto &scratchpad_md = query_md(r_pd, DNNL_ARG_SCRATCHPAD);
     const auto &scratchpad_engine
             = dst.engine_kind() == dnnl_gpu ? dst.engine() : src.engine();
+
+    // Scratchpad memory will be mapped at the call below (if `attr` utilizes
+    // user-mode scratchpad) or inside `execute_and_wait` (for the library-mode)
+    // in the scenario when cpu2gpu or pure gpu reorder will be called (e.g.,
+    // for f64). This might trigger an OOM issue if the amount of previously
+    // allocated memory has already been close to the upper limit, and the large
+    // amount for scratchpad is requested on top of that amount.
+    //
+    // It might be worked around but it will require extra external management
+    // to prevent it. It's decided to increase the amount of "safety pillow"
+    // memory in `check_total_size` instead to save on engineering efforts.
     dnn_mem_t scratchpad(
             scratchpad_md, scratchpad_engine, /* prefill = */ true);
 
@@ -238,8 +250,8 @@ int dnn_mem_t::reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
     return status;
 }
 
-size_t dnn_mem_t::size() const {
-    return dnnl_memory_desc_get_size(md_);
+size_t dnn_mem_t::size(int index) const {
+    return dnnl_memory_desc_get_size_v2(md_, index);
 }
 
 bool dnn_mem_t::is_sparse_md() const {
@@ -453,7 +465,13 @@ static int init_memory(
     }
 
     // Memory must be initialized at this point in some of the branches above.
-    if (!*ret) assert(!"not expected");
+    if (!*ret) { assert(!"not expected"); }
+
+    // Register device memory
+    for (int i = 0; i < nhandles; i++) {
+        size_t sz = dnnl_memory_desc_get_size_v2(md, i);
+        memory_registry_t::get_instance().add_device(handles[i], sz);
+    }
 
     return OK;
 }
@@ -474,6 +492,11 @@ void dnn_mem_t::map() const {
                 DNN_SAFE_V(dnnl_memory_unmap_data_v2(mem, mapped_ptrs_[i], i));
             DNN_SAFE_V(st);
         }
+        // Register a mapped memory entry if a different pointer from `data_`
+        // was returned.
+        if (IMPLICATION(!data_.empty(), data_[i] != mapped_ptrs_[i]))
+            memory_registry_t::get_instance().add_mapped(
+                    mapped_ptrs_[i], size(i));
     }
 }
 
@@ -485,6 +508,12 @@ void dnn_mem_t::unmap() const {
     auto mem = m_padded_ ? m_padded_ : m_;
     const int nhandles = query_md_num_handles(md_);
     for (int i = 0; i < nhandles; i++) {
+        // Unregister a mapped memory entry if a different pointer from `data_`
+        // was returned when mapped.
+        if (IMPLICATION(!data_.empty(), data_[i] != mapped_ptrs_[i]))
+            memory_registry_t::get_instance().remove_mapped(
+                    mapped_ptrs_[i], size(i));
+
         DNN_SAFE_V(dnnl_memory_unmap_data_v2(mem, mapped_ptrs_[i], i));
         mapped_ptrs_[i] = nullptr;
     }
@@ -939,6 +968,19 @@ static int cleanup_opencl(
 int dnn_mem_t::cleanup() {
     if (!active_) return OK;
     if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) unmap();
+
+    // Unregister device memory.
+    // Done it here to account memory allocated inside the library for
+    // correspondent memory objects.
+    if (is_sycl_engine(engine_) || is_opencl_engine(engine_)) {
+        const int nhandles = query_md_num_handles(md_);
+        std::vector<void *> handles(nhandles);
+        for (int i = 0; i < nhandles; i++) {
+            DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
+            memory_registry_t::get_instance().remove_device(handles[i]);
+        }
+    }
+
     DNN_SAFE(dnnl_memory_desc_destroy(md_), CRIT);
     DNN_SAFE(dnnl_memory_destroy(m_), CRIT);
     if (is_data_owner_) {

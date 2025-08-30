@@ -153,8 +153,8 @@ std::string prb_dump(const prb_t &p);
 struct call_param_t {
     const void *in = nullptr;
     void *out = nullptr;
-    const float *src_scales = nullptr;
-    const float *dst_scales = nullptr;
+    const void *src_scales = nullptr;
+    const void *dst_scales = nullptr;
     int32_t src_zp = 0;
     int32_t dst_zp = 0;
     int32_t *compensation_scratch = nullptr;
@@ -243,25 +243,20 @@ struct jit_uni_reorder_t : public primitive_t {
 
 private:
     void omp_driver_0d(int off, const char *in, char *out,
-            const float *src_scales, const float *dst_scales, int src_zp,
+            const void *src_scales, const void *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
     void omp_driver_1d(int ithr, int nthr, int off, const char *in, char *out,
-            const float *src_scales, const float *dst_scales, int src_zp,
+            const void *src_scales, const void *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
     void omp_driver_2d(int ithr, int nthr, int off, const char *in, char *out,
-            const float *src_scales, const float *dst_scales, int src_zp,
+            const void *src_scales, const void *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
     void omp_driver_3d(int ithr, int nthr, int off, const char *in, char *out,
-            const float *src_scales, const float *dst_scales, int src_zp,
+            const void *src_scales, const void *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
     void omp_driver_4d(int ithr, int nthr, int off, const char *in, char *out,
-            const float *src_scales, const float *dst_scales, int src_zp,
+            const void *src_scales, const void *dst_scales, int src_zp,
             int dst_zp, int32_t *compensation_scratch) const;
-
-    void omp_driver(const char *in, char *out, const float *src_scales,
-            const float *dst_scales, const int32_t *src_zero_points,
-            const int32_t *dst_zero_points,
-            const memory_tracking::grantor_t &scratchpad) const;
 
     void fill_curr_data_chunks(const tr::prb_t &prb, const int off,
             const ptrdiff_t *omp_data_chunks, const int omp_ndims,

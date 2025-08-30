@@ -109,11 +109,18 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                 : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     }
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const bool with_src_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    const bool with_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     const dim_t N = pd()->across_axis();
     const dim_t C = pd()->norm_axis();
@@ -174,13 +181,13 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     const size_t off = c + C * offset;
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean) + sv;
-                    d *= src_scales[0];
+                    if (with_src_scales) d *= src_scales[0];
                     ref_post_ops_t::args_t args;
                     args.ctx = &ctx;
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
-                    d *= dst_scales[0];
+                    if (with_dst_scales) d /= dst_scales[0];
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else if (use_scale) {
@@ -190,13 +197,13 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     const size_t off = c + C * offset;
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean);
-                    d *= src_scales[0];
+                    if (with_src_scales) d *= src_scales[0];
                     ref_post_ops_t::args_t args;
                     args.ctx = &ctx;
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
-                    d *= dst_scales[0];
+                    if (with_dst_scales) d /= dst_scales[0];
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else if (use_shift) {
@@ -207,13 +214,13 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     const size_t off = c + C * offset;
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean) + sv;
-                    d *= src_scales[0];
+                    if (with_src_scales) d *= src_scales[0];
                     ref_post_ops_t::args_t args;
                     args.ctx = &ctx;
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
-                    d *= dst_scales[0];
+                    if (with_dst_scales) d /= dst_scales[0];
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             } else {
@@ -223,13 +230,13 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                     const size_t off = c + C * offset;
                     float s = io::load_float_value(src_dt, src_ptr, off);
                     float d = sm * (s - v_mean);
-                    d *= src_scales[0];
+                    if (with_src_scales) d *= src_scales[0];
                     ref_post_ops_t::args_t args;
                     args.ctx = &ctx;
                     args.l_offset = N_start * C_padded + off;
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
-                    d *= dst_scales[0];
+                    if (with_dst_scales) d /= dst_scales[0];
                     io::store_float_value(dst_dt, d, dst_ptr, off);
                 }
             }

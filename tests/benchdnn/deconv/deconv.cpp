@@ -422,8 +422,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
-    const auto &ref_engine = get_cpu_engine();
-
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
 
@@ -435,14 +433,46 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (exec_arg <= 0) continue;
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
+        const bool has_sum_po
+                = prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) >= 0;
+        const auto swap_dt = cfg.get_swapped_dt(exec_arg2data_kind(exec_arg));
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
-            ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                            /* prefill = */ false));
+        // To reuse conv implementation we need additional weights
+        // with transposed input/output channels.
+        auto transpose_wei = [](dnn_mem_map_t &ref_mem_map, int exec_arg,
+                                     const dnn_mem_t &mem) {
+            dnnl_dims_t wei_tr_dims {};
+            auto wei_ndims = query_md_ndims(mem.md_);
+            std::copy(query_md_dims(mem.md_),
+                    query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
+            // Queried weights are always with groups.
+            std::swap(wei_tr_dims[1], wei_tr_dims[2]);
+            auto wei_tr_md = dnn_mem_t::init_md(
+                    wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
+            ref_mem_map.emplace(
+                    exec_arg, dnn_mem_t(wei_tr_md, get_cpu_engine(), false));
+        };
+
+        if (fill_from_file(exec_arg, mem, ref_mem_map)) {
+            // Bitwise mode for sum requires a copy due to data for
+            // post-op will be overwritten and it must be refreshed.
+            if ((exec_arg == DNNL_ARG_DST) && has_sum_po
+                    && has_bench_mode_bit(mode_bit_t::bitwise))
+                SAFE(mem_map.at(-exec_arg).reorder(mem), WARN);
+            if (has_bench_mode_bit(mode_bit_t::corr)) {
+                if ((exec_arg == DNNL_ARG_WEIGHTS)
+                        || (exec_arg == DNNL_ARG_DIFF_WEIGHTS))
+                    transpose_wei(ref_mem_map, exec_arg + 1, mem);
+                if (exec_arg == DNNL_ARG_WEIGHTS)
+                    SAFE(transpose_data_wei(prb, ref_mem_map[DNNL_ARG_WEIGHTS],
+                                 ref_mem_map[DNNL_ARG_WEIGHTS_1]),
+                            WARN);
+                update_ref_mem_map_from_prim(
+                        prim_ref, mem, ref_mem_map, exec_arg, swap_dt);
+            }
+            continue;
         }
+        if (!get_empty_ref_mem(exec_arg, mem, ref_mem_map)) continue;
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -451,20 +481,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 break;
             case DNNL_ARG_WEIGHTS: {
                 SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
-                // To re-use conv implementation, we need additional weights
-                // with transposed input/output channels.
-                dnnl_dims_t wei_tr_dims {};
-                auto wei_ndims = query_md_ndims(mem.md_);
-                std::copy(query_md_dims(mem.md_),
-                        query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
-                // Queried weights are always with groups.
-                std::swap(wei_tr_dims[1], wei_tr_dims[2]);
-                auto wei_tr_md = dnn_mem_t::init_md(
-                        wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
-
-                ref_mem_map.emplace(DNNL_ARG_WEIGHTS_1,
-                        dnn_mem_t(
-                                wei_tr_md, ref_engine, /* prefill = */ false));
+                transpose_wei(ref_mem_map, DNNL_ARG_WEIGHTS_1, mem);
                 SAFE(transpose_data_wei(
                              prb, ref_mem, ref_mem_map[DNNL_ARG_WEIGHTS_1]),
                         WARN);
@@ -473,8 +490,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
                 break;
             case DNNL_ARG_DST:
-                if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
-                        >= 0) {
+                if (has_sum_po) {
                     SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
@@ -486,30 +502,17 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_DIFF_DST:
                 SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
                 break;
-            case DNNL_ARG_DIFF_WEIGHTS: {
-                // To re-use conv implementation, we need additional weights
-                // with transposed input/output channels.
-                dnnl_dims_t wei_tr_dims {};
-                auto wei_ndims = query_md_ndims(mem.md_);
-                std::copy(query_md_dims(mem.md_),
-                        query_md_dims(mem.md_) + wei_ndims, wei_tr_dims);
-                // Queried weights are always with groups.
-                std::swap(wei_tr_dims[1], wei_tr_dims[2]);
-                auto wei_tr_md = dnn_mem_t::init_md(
-                        wei_ndims, wei_tr_dims, dnnl_f32, tag::abx);
-                ref_mem_map.emplace(DNNL_ARG_DIFF_WEIGHTS_1,
-                        dnn_mem_t(
-                                wei_tr_md, ref_engine, /* prefill = */ false));
-            } break;
+            case DNNL_ARG_DIFF_WEIGHTS:
+                transpose_wei(ref_mem_map, DNNL_ARG_DIFF_WEIGHTS_1, mem);
+                break;
             default:
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
                         WARN);
                 break;
         }
-
-        update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
-                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
+        update_ref_mem_map_from_prim(
+                prim_ref, mem, ref_mem_map, exec_arg, swap_dt);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

@@ -519,8 +519,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim_ref) {
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
-    const auto &ref_engine = get_cpu_engine();
-
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
         // The function targets regular exec_args that are positive.
@@ -529,30 +527,32 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (exec_arg <= 0) continue;
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
+        const bool has_sum_po
+                = prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) >= 0;
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
-            ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                            /* prefill = */ false));
+        if (fill_from_file(exec_arg, mem, ref_mem_map)) {
+            // Bitwise mode for sum requires a copy due to data for
+            // post-op will be overwritten and it must be refreshed.
+            if ((exec_arg == DNNL_ARG_TO) && (has_sum_po || is_amd_gpu())
+                    && has_bench_mode_bit(mode_bit_t::bitwise))
+                SAFE(mem_map.at(-exec_arg).reorder(mem), WARN);
+            continue;
         }
+        if (!get_empty_ref_mem(exec_arg, mem, ref_mem_map)) continue;
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
-            case DNNL_ARG_FROM: {
+            case DNNL_ARG_FROM:
                 SAFE(fill_mem(prb, SRC, mem, ref_mem), WARN);
                 // Additional inputs to compare compensation buffers.
                 ref_mem_map.emplace(DNNL_ARG_SRC_1,
                         setup_compensation_memory(prb, FLAG_S8S8_COMP));
                 ref_mem_map.emplace(DNNL_ARG_SRC_2,
                         setup_compensation_memory(prb, FLAG_ZP_COMP));
-            } break;
-            case DNNL_ARG_TO: {
-                const auto &po = prb->attr.post_ops;
-                const int sum_idx = po.find(attr_t::post_ops_t::SUM);
+                break;
+            case DNNL_ARG_TO:
                 // MIOpen doesn't work properly when tensors are filled with 0xFF.
-                if (sum_idx >= 0 || is_amd_gpu()) {
+                if (has_sum_po || is_amd_gpu()) {
                     SAFE(fill_mem(prb, DST, mem, ref_mem), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
@@ -561,7 +561,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
                     }
                 }
-            } break;
+                break;
             default:
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),

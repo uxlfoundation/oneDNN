@@ -18,6 +18,7 @@
 #include <random>
 #include <sstream>
 
+#include "dnnl_common.hpp"
 #include "utils/dnnl_query.hpp"
 #include "utils/fill.hpp"
 #include "utils/numeric.hpp"
@@ -363,4 +364,45 @@ int fill_random_real(dnn_mem_t &mem_ref, const fill_cfg_t &fill_cfg,
         const_dnnl_memory_t dnnl_memory) {
     dnn_mem_t dummy;
     return fill_random_real(dummy, mem_ref, nullptr, fill_cfg, dnnl_memory);
+}
+
+bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_map_t &ref_mem_map) {
+    static const char format[] = "File '%s' %s; buffer not imported.\n";
+    auto prefix = benchdnn_getenv_string("BENCHDNN_BUFFER_PREFIX", false);
+    if (prefix.empty()) return false;
+
+    prefix += "." + std::to_string(exec_arg) + ".bin";
+    auto file = fopen(prefix.c_str(), "rb");
+    if (!file) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(), "is missing");
+        return false;
+    }
+    fseek(file, 0, SEEK_END);
+    size_t total = 0, size = ftell(file);
+    if (mem.size() != size) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(),
+                "differs in size from the buffer's memory descriptor");
+        return false;
+    }
+    fseek(file, 0, SEEK_SET);
+    for (size_t read = ~0; read && (total < size); total += read)
+        read = fread(
+                static_cast<uint8_t *>(mem) + total, 1, size - total, file);
+    if (total != size) {
+        BENCHDNN_PRINT(2, format, prefix.c_str(), "cannot be read correctly");
+        return false;
+    }
+    fclose(file);
+    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        const bool has_mem = ref_mem_map.find(exec_arg) != ref_mem_map.end();
+        if (!has_mem) get_empty_ref_mem(exec_arg, mem, ref_mem_map);
+        if (ref_mem_map[exec_arg].reorder(mem) != OK) {
+            if (!has_mem) ref_mem_map.erase(exec_arg);
+            BENCHDNN_PRINT(2, format, prefix.c_str(), "cannot be reordered");
+            return false;
+        }
+    }
+    BENCHDNN_PRINT(2, "File '%s' successfully processed; buffer imported.\n",
+            prefix.c_str());
+    return true;
 }

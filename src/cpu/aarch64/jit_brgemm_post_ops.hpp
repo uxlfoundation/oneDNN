@@ -110,7 +110,7 @@ private:
                     aux_reg_ddst, ddst_typesize_ * mult_ * idx * brg_.ld_block);
             ld1w(vddst.s, k_mask / T_z, addr);
             if (ddst_dt_ == data_type::bf16)
-                assert(!"unsupported\n");
+                bfdot(vbias.s, vreg_unit.h, vddst.h);
             else
                 fadd(vbias.s, vbias.s, vddst.s);
         }
@@ -120,7 +120,10 @@ private:
         auto addr = ptr(reg_bias, bia_typesize_ * idx * brg_.ld_block);
         const auto k_mask = mask_flag ? k_tail_mask : k_full_mask;
         switch (bia_dt_) {
-            case data_type::bf16: assert(!"unsupported\n"); break;
+            case data_type::bf16: 
+                bfcvt(get_bias_reg(idx).h, k_mask / T_m, get_bias_reg(idx).s);
+                st1h(get_bias_reg(idx).s, k_mask, addr);
+                break;
             case data_type::f16: assert(!"unsupported\n"); break;
             case data_type::f32: st1w(get_bias_reg(idx).s, k_mask, addr); break;
             default: assert(!"Unsupported bias data type");
@@ -229,7 +232,10 @@ private:
         zip1(k_tail_mask.b, k_tail_mask.b, P_TMP_0.b);
         zip1(k_tail_mask.h, k_tail_mask.h, P_TMP_0.h);
 
-        if (ddst_dt_ == data_type::bf16) { assert(!"unsupported data type\n"); }
+        if (ddst_dt_ == data_type::bf16) {
+            mov_imm(W_TMP_0, 0x3f80);
+            dup(vreg_unit.h, W_TMP_0);
+        }
 
         if (ddst_dt_ == data_type::f16) { assert(!"unsupported data type\n"); }
 
@@ -450,8 +456,20 @@ private:
                 }
                 break;
             case data_type::s8: assert(!"unsupported data type\n"); break;
-            case data_type::u8: assert(!"unsupported data type\n"); break;
-            case data_type::bf16: assert(!"unsupported data type\n"); break;
+            case data_type::u8: assert(!"unsupported data type\n"); break; 
+            case data_type::bf16:
+                if (mask_flag) {
+                    if (store) {
+                        st1w(zmm_in.s, ktail_mask / T_m, op);
+                    } else {
+                        ld1h(zmm_in.s, ktail_mask / T_z, op);
+                        lsl(zmm_in.s, zmm_in.s, 16);
+                    }
+                } else {
+                    ld1h(zmm_in.s, k_full_mask / T_z, op);
+                    lsl(zmm_in.s, zmm_in.s, 16);
+                }
+                break;
             default: assert(!"unsupported data type");
         }
         if (types::is_integral_dt(type_in)) {
@@ -600,7 +618,7 @@ private:
                 add_imm(X_DEFAULT_ADDR, aux_reg_in,
                         inp_typesize_ * (m * brg.LDC + n * brg.ld_block),
                         X_TMP_0);
-                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
             }
         }
@@ -626,7 +644,7 @@ private:
                 auto vmm_bias = vmm_tmp(0);
                 add_imm(X_DEFAULT_ADDR, aux_reg_bias,
                         bia_typesize_ * (n * brg.ld_block), X_TMP_0);
-                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
                 for (int m = 0; m < m_block; m++) {
                     fadd(vector(m, n).s, vector(m, n).s, vmm_bias.s);
@@ -703,6 +721,13 @@ private:
                             out_typesize_ * (m * LDD_ + n * brg.ld_block),
                             X_TMP_0); //addr
                     st1w(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
+                    break;
+                case data_type::bf16:
+                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
+                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
+                            X_TMP_0); //addr
+                    bfcvt(vmm.h, k_mask / T_m, vmm.s);
+                    st1h(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
                     break;
                 case data_type::s8: assert(!"unsupported data type\n"); break;
                 case data_type::u8: assert(!"unsupported data type\n"); break;

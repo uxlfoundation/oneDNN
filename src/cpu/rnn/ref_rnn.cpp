@@ -226,9 +226,10 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         return status::unimplemented;
     };
 
-    if (rnn_.use_matmul) {
+    if (rnn_.use_matmul && rnn_.is_fwd) {
         { // init layer matmuls
-            const dim_t M = rnn_.mb;
+            const dim_t M
+                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
             const dim_t N = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
             const dim_t K = rnn_.slc;
             const dim_t LDA1 = rnn_.src_layer_ld_;
@@ -289,7 +290,121 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                             LDA4, LDB, LDC, do_sum));
             }
         }
+
+        // init projection matmuls
+        if (rnn_.is_lstm_projection) {
+            const dim_t M = rnn_.mb;
+            const dim_t N = rnn_.dic;
+            const dim_t K = rnn_.dhc;
+            const dim_t LDA = rnn_.proj_ht_ld;
+            const dim_t LDB = rnn_.weights_projection_ld;
+
+            const bool do_sum = false;
+
+            if (rnn_.dt_conf == all_f32) {
+                const dim_t LDC1 = rnn_.dst_layer_ld_;
+                const dim_t LDC2 = rnn_.dst_iter_ld_;
+                const dim_t LDC3 = rnn_.ws_states_layer_ld;
+                if (LDC1 >= N)
+                    CHECK(init_matmul_pd(matmul_projection_1_pd_, M, N, K, LDA,
+                            LDB, LDC1, do_sum));
+                if (LDC2 >= N && LDC2 != LDC1)
+                    CHECK(init_matmul_pd(matmul_projection_2_pd_, M, N, K, LDA,
+                            LDB, LDC2, do_sum));
+                if (LDC3 >= N && !utils::one_of(LDC3, LDC1, LDC2))
+                    CHECK(init_matmul_pd(matmul_projection_3_pd_, M, N, K, LDA,
+                            LDB, LDC3, do_sum));
+            } else {
+                const dim_t LDC = rnn_.scratch_gates_ld;
+                if (LDC >= N)
+                    CHECK(init_matmul_pd(matmul_projection_1_pd_, M, N, K, LDA,
+                            LDB, LDC, do_sum));
+            }
+        }
     }
+
+    if (rnn_.use_matmul && !rnn_.is_fwd) {
+        assert(this->cell_kind() == alg_kind::vanilla_gru);
+
+        auto init_dyn_matmul_pd
+                = [&](std::shared_ptr<primitive_desc_t> &mpd,
+                          impl::data_type_t src_t, impl::data_type_t weights_t,
+                          impl::data_type_t dst_t, bool sum_po) {
+                      memory_desc_t src_desc;
+                      const dims_t src_dims
+                              = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+                      const dims_t src_strides
+                              = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+                      CHECK(memory_desc_init_by_strides(
+                              src_desc, 2, src_dims, src_t, src_strides));
+
+                      memory_desc_t wei_desc;
+                      const dims_t wei_dims
+                              = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+                      const dims_t wei_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+                      CHECK(memory_desc_init_by_strides(
+                              wei_desc, 2, wei_dims, weights_t, wei_strides));
+
+                      memory_desc_t dst_desc;
+                      const dims_t dst_dims
+                              = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+                      const dims_t dst_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+                      CHECK(memory_desc_init_by_strides(
+                              dst_desc, 2, dst_dims, dst_t, dst_strides));
+
+                      matmul_desc_t matmul_desc;
+                      CHECK(matmul_desc_init(&matmul_desc, &src_desc, &wei_desc,
+                              nullptr, &dst_desc));
+                      post_ops_t po;
+                      CHECK(po.append_sum(1.0f));
+                      primitive_attr_t attr;
+                      CHECK(attr.set_post_ops(po));
+                      primitive_desc_iterator_t it(engine,
+                              (op_desc_t *)(&matmul_desc),
+                              sum_po ? &attr : nullptr, nullptr);
+                      if (!it.is_initialized()) return status::out_of_memory;
+
+                      while (++it != it.end()) {
+                          mpd = *it;
+                          const bool ok = mpd->weights_md()->extra.flags == 0;
+                          if (ok) return status::success;
+                      }
+                      return status::unimplemented;
+                  };
+
+        constexpr bool sum_po_off = false;
+        constexpr bool sum_po_on = true;
+
+        // init iter matmuls
+        CHECK(init_dyn_matmul_pd(matmul_iter_1_pd_, src_type, weights_type,
+                acc_type, sum_po_off));
+        CHECK(init_dyn_matmul_pd(matmul_iter_2_pd_, src_type, weights_type,
+                acc_type, sum_po_on));
+
+        // init layer matmuls
+        CHECK(init_matmul_pd(matmul_layer_1_pd_,
+                rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb,
+                rnn_.slc, rnn_.n_gates * rnn_.dhc, rnn_.scratch_gates_ld,
+                rnn_.weights_layer_ld, rnn_.ws_diff_states_layer_ld,
+                sum_po_off));
+
+        // init diff weights layer matmuls
+        if (rnn_.diff_weights_overwrite) {
+            CHECK(init_dyn_matmul_pd(matmul_weights_layer_1_pd_, weights_type,
+                    src_type, acc_type, sum_po_off));
+        }
+        CHECK(init_dyn_matmul_pd(matmul_weights_layer_2_pd_, weights_type,
+                src_type, acc_type, sum_po_on));
+
+        // init diff weights iter matmuls
+        if (rnn_.diff_weights_overwrite) {
+            CHECK(init_dyn_matmul_pd(matmul_weights_iter_1_pd_, weights_type,
+                    src_type, acc_type, sum_po_off));
+        }
+        CHECK(init_dyn_matmul_pd(matmul_weights_iter_2_pd_, weights_type,
+                src_type, acc_type, sum_po_on));
+    }
+
     return status::success;
 }
 
@@ -616,6 +731,13 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
                   matmul_part2_2_pd_,
                   matmul_part2_3_pd_,
                   matmul_part2_4_pd_,
+                  matmul_projection_1_pd_,
+                  matmul_projection_2_pd_,
+                  matmul_projection_3_pd_,
+                  matmul_weights_layer_1_pd_,
+                  matmul_weights_layer_2_pd_,
+                  matmul_weights_iter_1_pd_,
+                  matmul_weights_iter_2_pd_,
 #if DNNL_X64
                   bf32_wei_layer_reorder_pd_,
                   bf32_wei_iter_reorder_pd_
@@ -717,6 +839,13 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     CREATE_MATMUL(matmul_part2_2_);
     CREATE_MATMUL(matmul_part2_3_);
     CREATE_MATMUL(matmul_part2_4_);
+    CREATE_MATMUL(matmul_projection_1_);
+    CREATE_MATMUL(matmul_projection_2_);
+    CREATE_MATMUL(matmul_projection_3_);
+    CREATE_MATMUL(matmul_weights_layer_1_);
+    CREATE_MATMUL(matmul_weights_layer_2_);
+    CREATE_MATMUL(matmul_weights_iter_1_);
+    CREATE_MATMUL(matmul_weights_iter_2_);
 #undef CREATE_MATMUL
 
 #if DNNL_X64
@@ -819,6 +948,34 @@ dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     }
 }
 
+template <prop_kind_t aprop, impl::data_type_t src_type,
+        impl::data_type_t weights_type, impl::data_type_t acc_type>
+const std::shared_ptr<primitive_t> &
+dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
+        acc_type>::get_matmul_projection(cell_position_t cell_position) const {
+    const auto &rnn = pd()->rnn_;
+    if (rnn.dt_conf == all_f32) {
+        const auto ldc = rnn.dst_layer_ld(cell_position, true);
+        const auto LDC1 = rnn.dst_layer_ld_;
+        const auto LDC2 = rnn.dst_iter_ld_;
+        const auto LDC3 = rnn.ws_states_layer_ld;
+        MAYBE_UNUSED(LDC3);
+        if (ldc == LDC1) {
+            assert(matmul_projection_1_);
+            return matmul_projection_1_;
+        } else if (ldc == LDC2) {
+            assert(matmul_projection_2_);
+            return matmul_projection_2_;
+        } else {
+            assert(ldc == LDC3 && matmul_projection_3_);
+            return matmul_projection_3_;
+        }
+    } else {
+        assert(matmul_projection_1_);
+        return matmul_projection_1_;
+    }
+}
+
 template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
 rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
@@ -833,24 +990,78 @@ rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 
     // a_, b_ and c_ are regular, raw CPU pointers that can only be used with
     // memory_t objects created for the classic CPU engine.
-    std::unique_ptr<memory_t, memory_deleter_t> src_mem;
-    CHECK(safe_ptr_assign(src_mem,
-            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
-                    (void *)(a_))));
-    std::unique_ptr<memory_t, memory_deleter_t> wei_mem;
-    CHECK(safe_ptr_assign(wei_mem,
+    // Note that a_ and b_ correspond to Matmul 'weights' and 'src' respectively.
+    std::unique_ptr<memory_t, memory_deleter_t> a_mem;
+    CHECK(safe_ptr_assign(a_mem,
             new memory_t(service_engine, matmul_prim->pd()->weights_md(),
-                    mem_flag, (void *)(b_))));
-    std::unique_ptr<memory_t, memory_deleter_t> dst_mem;
-    CHECK(safe_ptr_assign(dst_mem,
+                    mem_flag, (void *)(a_))));
+    std::unique_ptr<memory_t, memory_deleter_t> b_mem;
+    CHECK(safe_ptr_assign(b_mem,
+            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
+                    (void *)(b_))));
+    std::unique_ptr<memory_t, memory_deleter_t> c_mem;
+    CHECK(safe_ptr_assign(c_mem,
             new memory_t(service_engine, matmul_prim->pd()->dst_md(), mem_flag,
                     (void *)(c_))));
 
     exec_args_t matmul_args;
-    // Note Matmul src and wei may not directly map to RNN primitive src and wei
-    matmul_args[DNNL_ARG_SRC] = {wei_mem.get(), true};
-    matmul_args[DNNL_ARG_WEIGHTS] = {src_mem.get(), true};
-    matmul_args[DNNL_ARG_DST] = {dst_mem.get(), false};
+    matmul_args[DNNL_ARG_SRC] = {b_mem.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {a_mem.get(), true};
+    matmul_args[DNNL_ARG_DST] = {c_mem.get(), false};
+
+    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
+    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+
+    return matmul_prim->execute(matmul_ctx);
+}
+
+// Use Matmul primitive to calculate C=B*A+beta*C, where B has size nxk,
+// A has size kxm, beta (either 0.f or 1.f) is already defined in the Matmul
+// primitive using post-op.
+template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
+        data_type_t acc_type>
+rnn_dyn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
+        acc_type>::execute_matmul)) {
+
+    engine_t *const service_engine = get_service_engine();
+    constexpr auto mem_flag = memory_flags_t::use_runtime_ptr;
+
+    const bool isTransB = utils::one_of(transB, 'T', 't');
+
+    const dims_t wei_dims = {k, m};
+    const dims_t wei_strides = {lda, 1};
+    memory_desc_t wei_desc;
+    CHECK(memory_desc_init_by_strides(
+            wei_desc, 2, wei_dims, a_type, wei_strides));
+    std::unique_ptr<memory_t, memory_deleter_t> a_mem;
+    CHECK(safe_ptr_assign(a_mem,
+            new memory_t(service_engine, &wei_desc, mem_flag, (void *)a_)));
+
+    const dims_t src_dims = {n, k};
+    const dims_t src_strides_T = {1, ldb};
+    const dims_t src_strides_N = {ldb, 1};
+    const dims_t &src_strides = isTransB ? src_strides_T : src_strides_N;
+    memory_desc_t src_desc;
+    CHECK(memory_desc_init_by_strides(
+            src_desc, 2, src_dims, b_type, src_strides));
+    std::unique_ptr<memory_t, memory_deleter_t> b_mem;
+    CHECK(safe_ptr_assign(b_mem,
+            new memory_t(service_engine, &src_desc, mem_flag, (void *)b_)));
+
+    const dims_t dst_dims = {n, m};
+    const dims_t dst_strides = {ldc, 1};
+    memory_desc_t dst_desc;
+    CHECK(memory_desc_init_by_strides(
+            dst_desc, 2, dst_dims, acc_type, dst_strides));
+    std::unique_ptr<memory_t, memory_deleter_t> c_mem;
+    CHECK(safe_ptr_assign(c_mem,
+            new memory_t(service_engine, &dst_desc, mem_flag, (void *)(c_))));
+
+    exec_args_t matmul_args;
+    matmul_args[DNNL_ARG_SRC] = {b_mem.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {a_mem.get(), true};
+    matmul_args[DNNL_ARG_DST] = {c_mem.get(), false};
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
     nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);

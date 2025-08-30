@@ -474,6 +474,15 @@ int skip_unimplemented_partitions(const std::vector<partition> &partitions,
     BENCHDNN_PRINT(3, "[INFO]: n_partitions:%zd; ops_in_partitions:%s\n",
             partitions.size(), verbose_partitions_n_ops(partitions).c_str());
 
+    // As softmax inf_as_zero algorithm is unsupported on NV platform now, we
+    // skip all the SDPA cases in benchdnn graph.
+    if (is_nvidia_gpu()) {
+        if (dg.get_recognized_pattern() == graph_recognized_pattern_t::sdpa) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+        }
+    }
+
     const bool partition_num_mismatch = (prb->expected_n_partition > 0
             && partitions.size() != prb->expected_n_partition);
 

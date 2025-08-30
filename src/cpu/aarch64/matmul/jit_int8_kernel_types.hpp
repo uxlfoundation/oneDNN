@@ -63,7 +63,7 @@ struct brg_int8_t {
     int m_tail, n_tail, k_tail;
     int is_m_tail, is_k_tail, is_n_tail, is_zp_cal;
     int dst_dt_sz;
-    bool is_s8;
+    bool is_s8, is_u8_s8;
     bool is_bias;
     bool with_scales;
     bool with_dst_scales;

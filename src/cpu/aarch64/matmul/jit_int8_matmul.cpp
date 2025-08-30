@@ -135,7 +135,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
     void store_regs(int bdb, int ldb, int tail) {
         for (int a = 0; a < bdb; a++) {
             for (int b = 0; b < ldb; b++) {
-                if (brg_.is_s8)
+                if (brg_.is_s8 || brg_.is_u8_s8)
                     scvtf(acc(a, b).s, P_ALL_ONE, acc(a, b).s);
                 else
                     ucvtf(acc(a, b).s, P_ALL_ONE, acc(a, b).s);
@@ -293,6 +293,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
                 for (ld = 0; ld < ldb; ld++) {
                     if (brg_.is_s8)
                         smmla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                    else if (brg_.is_u8_s8)
+                        usmmla(acc(bd, ld).s, z0.b, loadb(ld).b);
                     else
                         ummla(acc(bd, ld).s, z0.b, loadb(ld).b);
                 }
@@ -429,7 +431,6 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
         LDR_IMM(reg_na, reg_param, GET_OFF(na));
         ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
         mov(reg_aux_a1, reg_a);
-        // mov(reg_b,reg_b);
         mov(reg_aux_c1, reg_c);
         mov(reg_aux_c, reg_aux_c1);
         mov(reg_zp_aux_b, reg_zp_b);
@@ -539,7 +540,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
                 add_imm(reg_tmp, reg_tmp,
                         brg_.k_blk * brg_.n_blk * brg_.ld_block, X_TMP_0);
                 for (ld = 0; ld < ldb; ld++) {
-                    if (brg_.is_s8) {
+                    if (brg_.is_s8 || brg_.is_u8_s8) {
                         smmla(acc(2, ld).s, z0.b, acc(1, ld).b);
                     } else {
                         ummla(acc(2, ld).s, z0.b, acc(1, ld).b);
@@ -600,7 +601,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator {
             LDR_IMM(reg_bias, reg_param, GET_OFF(bias));
             LDR_IMM(reg_scales, reg_param, GET_OFF(scales));
             LDR_IMM(reg_aux_scales, reg_param, GET_OFF(dst_scales));
-            LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point));
+            LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point_buf));
             han_blk();
         }
 
@@ -640,9 +641,10 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
             no_runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    bool is_s8_wei = utils::everyone_is(s8, wei_type);
     bool is_u8 = utils::everyone_is(u8, src_type, wei_type);
     bool is_s8 = utils::everyone_is(s8, src_type, wei_type);
+    bool is_u8_s8 = utils::everyone_is(u8, src_type)
+            && utils::everyone_is(s8, wei_type);
 
     int dims = src_d.ndims();
 
@@ -742,7 +744,7 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
 
     bool no_post_ops = attr()->post_ops_.has_default_values();
     const bool problem_dt_correct
-            = (is_s8 || is_u8) && utils::everyone_is(f32, dst_type);
+            = (is_s8 || is_u8 || is_u8_s8) && utils::everyone_is(f32, dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_MATMUL(no_post_ops, VERBOSE_UNSUPPORTED_ATTR);
@@ -891,7 +893,8 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
     brg_.m_tail = brg_.M % brg_.m_blk;
     brg_.k_tail = brg_.K % (brg_.k_blk * brg_.rd_block);
     brg_.n_tail = brg_.N % (brg_.n_blk * brg_.ld_block);
-    brg_.is_s8 = is_s8_wei;
+    brg_.is_s8 = is_s8;
+    brg_.is_u8_s8 = is_u8_s8;
     brg_.is_bias = with_bias();
     brg_.with_scales = is_scales;
     brg_.with_dst_scales = is_dst_scales;
@@ -962,6 +965,7 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
     b.k_tail = b1.k_tail;
     b.dst_dt_sz = b1.dst_dt_sz;
     b.is_s8 = b1.is_s8;
+    b.is_u8_s8 = b1.is_u8_s8;
     b.B = b1.B;
     b.is_bias = b1.is_bias;
     b.zp_type_a = b1.zp_type_a;

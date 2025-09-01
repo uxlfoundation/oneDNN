@@ -72,6 +72,11 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/acl_winograd_convolution.hpp"
 #endif
 using namespace dnnl::impl::cpu::aarch64;
+#elif DNNL_RV64
+#if DNNL_RISCV_USE_RVV_INTRINSICS
+#include "cpu/rv64/rvv_gemm_convolution.hpp"
+using namespace dnnl::impl::cpu::rv64;
+#endif // DNNL_RISCV_USE_RVV_INTRINSICS
 #endif
 
 namespace dnnl {
@@ -160,6 +165,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_128>)
             CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_128>)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
+            CPU_INSTANCE_RV64GCV(riscv_gemm_convolution_fwd_t)
             CPU_INSTANCE(gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)
             CPU_INSTANCE(ref_fused_convolution_fwd_t)

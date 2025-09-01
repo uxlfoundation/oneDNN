@@ -15,6 +15,7 @@
 # limitations under the License.
 #*******************************************************************************
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lut)
 file(GLOB_RECURSE SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]
     ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]pp

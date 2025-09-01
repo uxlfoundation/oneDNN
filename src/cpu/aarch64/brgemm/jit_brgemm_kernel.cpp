@@ -300,7 +300,7 @@ private:
     void store_accumulators(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_ld_tail, bool skip_accumulation);
     void store_accumulators_without_post_ops(
-            int bd_block, int ld_block, bool is_ld_tail, bool is_gemv);
+            int bd_block, int ld_block, bool is_ld_tail);
     void store_accumulators_apply_post_ops(int bd_block, int ld_block,
             int ldb_and_bdb_offset, bool is_ld_tail);
     void apply_compensation(int bd_block, int ld_block, bool is_ld_tail);
@@ -316,8 +316,7 @@ private:
 
     void dot_product(ZReg z1, ZReg z2, ZReg z3);
     void gemm_microkernel(int bd_block2, bool is_bdb_tail, int ld_block,
-            bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail,
-            bool is_gemv);
+            bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
 
     void ldb_loop(int bd_block2, bool is_bdb_tail, int ld_block,
             int ldb_loop_length, bool is_reg_tail, bool is_ld_tail,
@@ -1175,7 +1174,7 @@ void jit_brgemm_kernel_t::apply_compensation(
 }
 
 void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
-        int bd_block, int ld_block2, bool is_ld_tail, bool is_gemv) {
+        int bd_block, int ld_block2, bool is_ld_tail) {
 
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
     // accumulated values are converted to ps in apply_alpha_beta()
@@ -1204,6 +1203,7 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
     int base_offset = 0;
 
     auto scalar_reg = SReg(0);
+    bool is_gemv = brg.LDB == 1;
 
     for (int bd = 0; bd < bd_block; bd++) {
         for (int ld = 0; ld < ld_block2; ld++) {
@@ -1267,8 +1267,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
 
         L_aligned(label_store_without_post_ops);
     }
-    store_accumulators_without_post_ops(
-            bd_block, ld_block2, is_ld_tail, brg.LDB == 1);
+    store_accumulators_without_post_ops(bd_block, ld_block2, is_ld_tail);
     L_aligned(label_done);
 }
 
@@ -1473,7 +1472,7 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
 
 void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
         int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
-        int rows_for_rd_tail, bool is_gemv) {
+        int rows_for_rd_tail) {
     MAYBE_UNUSED(bd_block2);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(0, vpad);
@@ -1483,6 +1482,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     if (!is_valid_bd) return;
 
     bool is_emdbd = brg.embd_bcst;
+    bool is_gemv = brg.LDB == 1;
 
     int rd_loop = 0, rd_tail_size = 0;
     if (is_gemv) {
@@ -1706,7 +1706,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             {
                 const bool is_rd_tail = false;
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                        is_ld_tail, vpad, rows_for_rd_tail, brg.LDB == 1);
+                        is_ld_tail, vpad, rows_for_rd_tail);
 
                 if (brg.LDB == 1) {
                     add_imm(reg_aux_A, reg_aux_A, cpu_sveLen, X_TMP_0);
@@ -1725,7 +1725,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             const bool is_rd_tail = true;
 
             gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                    is_ld_tail, vpad, rows_for_rd_tail, brg.LDB == 1);
+                    is_ld_tail, vpad, rows_for_rd_tail);
         }
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }

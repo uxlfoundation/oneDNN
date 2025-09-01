@@ -416,3 +416,7 @@ mb1_g50ic50oc50_ih28oh26_kh3sh1ph0_n"dw_post-op_ngroups-tail"
 # tests JIT bf16 depthwise convolution with bf16 bias
 --reset
 --dt=bf16 --bia-dt=bf16 --dir=FWD_I g4mb2_ic4oc4_ih6oh4kh3sh1dh0ph0_iw6ow4kw3sw1dw0pw0_n"aarch64_jit_dw_bia_dt_bf16"
+
+# test big oc tail processing in brgemm kernel
+--reset
+--dir=BWD_D --dt=f16:f16:f16 mb1ic1iw2oc1387ow2kw2pw0_n"brgemm_big_oc_tail"

@@ -33,3 +33,5 @@ __pycache__
 .cache
 .gdb_history
 .gdbinit
+lut_tables*
+

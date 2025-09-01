@@ -17,26 +17,27 @@
 #ifndef CPU_AARCH64_REF_ELTWISE_LUT_HPP
 #define CPU_AARCH64_REF_ELTWISE_LUT_HPP
 
-#include <mutex>
-#include <vector>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <cmath>
+#include <mutex>
+#include <vector>
 
+#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "common/bfloat16.hpp"
-#include "common/dnnl_thread.hpp"
 
+#include "cpu/cpu_eltwise_pd.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/primitive_attr_postops.hpp"
-#include "cpu/cpu_eltwise_pd.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
+namespace aarch64 {
 
 template <::dnnl::impl::data_type_t data_type>
 struct ref_eltwise_lut_fwd_t : public primitive_t {
@@ -55,13 +56,14 @@ struct ref_eltwise_lut_fwd_t : public primitive_t {
 
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_ELTWISE(everyone_is(data_type, src_md()->data_type,
-                                          dst_md()->data_type),
+                                      dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(set_default_formats_common(),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_ELTWISE(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+            VDISPATCH_ELTWISE(
+                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_ELTWISE(
+                    src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_ELTWISE(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -85,28 +87,9 @@ struct ref_eltwise_lut_fwd_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-
-    void maybe_build_gelu_bf16_lut_() const {
-        std::call_once(gelu_bf16_once_, [&]() {
-            constexpr float inv_sqrt2 = 0.70710678118654752440f; // 1/sqrt(2)
-            // gelu_bf16_lut_.resize(1u << 16);
-            for (uint32_t i = 0; i < (1u << 16); ++i) {
-                // Expand bf16 payload to f32
-                const uint32_t expanded = (i << 16);
-                float x;
-                std::memcpy(&x, &expanded, sizeof(float));
-                const float y = x * 0.5f * (1.0f + std::erf(x * inv_sqrt2));
-                gelu_bf16_lut_[i] = data_t(y);
-            }
-        });
-    }
-
-    // Per-primitive-instance storage.
-    mutable std::once_flag gelu_bf16_once_;
-    // mutable std::vector<data_t> gelu_bf16_lut_;
-   mutable  bfloat16_t gelu_bf16_lut_[1u << 16];
 };
 
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

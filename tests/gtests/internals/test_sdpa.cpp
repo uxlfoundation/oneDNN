@@ -1213,18 +1213,54 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr bmm1_attr;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
     post_ops bmm1_po;
-    auto scale_f32 = as(strm, scale, mdt::f32);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
 
+    // !!!!!! scale processing (scale_, xxxx)
+    DPRINT("%s:%s:%d &&&&&&&&& scale processing\n", PRINTHEAD);
+
+#if 0
+    DPRINT("%s:%s:%d &&&&&&&&& before as\n", PRINTHEAD);
+    auto scale_f32 = as(strm, scale, mdt::f32);
+    DPRINT("%s:%s:%d &&&&&&&&& after as\n", PRINTHEAD);
     if (scale_dt != mdt::undef) {
+        DPRINT("%s:%s:%d &&&&&&&&& : scale_dt != mdt::undef\n", PRINTHEAD);
         scale_f32 = reshape(strm, scale_f32,
                 {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
-        if (invert_scale)
+        if (invert_scale) {
+            DPRINT("%s:%s:%d &&&&&&&&& : bmm1_po.append_binary\n", PRINTHEAD);
             bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
-        else
+        }
+        else {
+            DPRINT("%s:%s:%d &&&&&&&&& : bmm1_po.append_binary\n", PRINTHEAD);
             bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
+        }
     }
+#endif
+    memory scale_f32;
+    bool with_host_scale = p.stype == scale_type::host_side;
+    if (with_host_scale) {
+        DPRINT("%s:%s:%d &&&&&&&&& scale: host --> \n", PRINTHEAD);
+        DPRINT("%s:%s:%d &&&&&&&&& scale: <-- host \n", PRINTHEAD);
+    } else {
+        DPRINT("%s:%s:%d &&&&&&&&& scale: device --> \n", PRINTHEAD);
+        scale_f32 = as(strm, scale, mdt::f32);
+        if (scale_dt != mdt::undef) {
+            scale_f32 = reshape(strm, scale_f32,
+                    {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
+            if (invert_scale) {
+                bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
+            }
+            else {
+                bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
+            }
+        }
+        DPRINT("%s:%s:%d &&&&&&&&& scale: <-- device \n", PRINTHEAD);
+    }
+
+
+
+
     if (p.mask != mask_type::no_mask) {
         mask_f32 = reshape(strm, mask_f32,
                 {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
@@ -1524,10 +1560,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
         sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                 p.with_key_transposed ? t.m_key_t_quantized.get_desc()
                                       : t.m_key_quantized.get_desc(),
-
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
                 t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
-
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
                 to_attn_mask_type(p.mask),
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,

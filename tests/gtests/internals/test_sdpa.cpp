@@ -104,6 +104,7 @@ struct sdpa_tensors_t {
     //memory::desc host_scale_md; // ???? get from memory
     //memory m_host_scale;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!
+    memory m_scale_device; // just to use in prim_sdpa_quant
 };
 bool is_quantized(mdt dt, quantize_type qtype) {
     return qtype != quantize_type::no_quantization
@@ -736,16 +737,25 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // !!!!!!!!!!!+++++++++++++++++++++++++++ scale processing !!!!!!!!!!!!!!!!!
     if (with_host_scale) {
+        DPRINT("%s:%s:%d ##### get_descriptors: if with_host_scale\n", PRINTHEAD);
         auto scale_md = memory::desc::host_scalar(p.qdt);
         float scale_val = (float)std::sqrt(p.head_size);
         // !!!!! TEMP - only for f16 !!!!!
         out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
     } else {
+        DPRINT("%s:%s:%d ##### get_descriptors: else with_host_scale\n", PRINTHEAD);
         auto scale_md = memory::desc(scale_sz, p.qdt, abcd);
         out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
         write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
         print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
     }
+    // ???? TODO - unify ???? - maybe just unify the function as(xxxxxxx)
+    auto scale_device_md = memory::desc(scale_sz, p.qdt, abcd);
+    out.m_scale_device = double_and_resize(scale_device_md, eng, strm, doubled_memory);
+    write_to_dnnl_memory(scale_data.data(), out.m_scale_device, eng, strm);
+    print_mem(out.m_scale_device,"out.m_scale_device just after write_to_dnnl_memory ");
+
+    // !!!!!!!!!!!+++++++++++++++++++++++++++ scale processing !!!!!!!!!!!!!!!!!
 
     DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
 
@@ -1202,7 +1212,8 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
 void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
-        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+//        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+        dnnl::memory::data_type scale_dt, dnnl::memory &scale_device,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory) {
@@ -1219,9 +1230,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // !!!!!! scale processing (scale_, xxxx)
     DPRINT("%s:%s:%d &&&&&&&&& scale processing\n", PRINTHEAD);
 
-#if 0
+#if 1
     DPRINT("%s:%s:%d &&&&&&&&& before as\n", PRINTHEAD);
-    auto scale_f32 = as(strm, scale, mdt::f32);
+    auto scale_f32 = as(strm, scale_device, mdt::f32);
     DPRINT("%s:%s:%d &&&&&&&&& after as\n", PRINTHEAD);
     if (scale_dt != mdt::undef) {
         DPRINT("%s:%s:%d &&&&&&&&& : scale_dt != mdt::undef\n", PRINTHEAD);
@@ -1237,6 +1248,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         }
     }
 #endif
+#if 0
     memory scale_f32;
     bool with_host_scale = p.stype == scale_type::host_side;
     if (with_host_scale) {
@@ -1257,7 +1269,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         }
         DPRINT("%s:%s:%d &&&&&&&&& scale: <-- device \n", PRINTHEAD);
     }
-
+#endif
 
 
 
@@ -1611,7 +1623,8 @@ GPU_TEST_P(sdpa_test_t, compare) {
     DPRINT("%s:%s:%d @@@ calling prim_sdpa_quant(...\n", PRINTHEAD);
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
-            t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+//            t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+            t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_device, t.m_mask,
             t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
             invert_scale, doubled_memory);
 

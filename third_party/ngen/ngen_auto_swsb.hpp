@@ -2238,7 +2238,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                             // tokenMaskSrc &= ~depTokenMask;          /* not working in certain cases */
                             tokenMaskSrc |=  produce.tokenMaskDst;
                             if (pww.rs)
-                                bb.movs.push_back({uint32_t(inumSync), SWSBInfo{}, 0, true, dtForPipe(generated.pipe.toPipe())});
+                                bb.movs.push_back(DummyMovInsertion{uint32_t(inumSync), SWSBInfo{}, 0, true, dtForPipe(generated.pipe.toPipe())});
                             break;
                         }
                         case PVCWARWA::DummyMov: {

@@ -38,7 +38,7 @@ __kernel void xe_global_pooling_fwd(
     float dst_val = src[SRC_OFF(mb, oc, 0, 0, 0)];
 #endif
 #if IS_TRAINING
-    off_t max_idx = -1;
+    off_t max_idx = 0;
 #endif
 #else
 #if DT_BF16

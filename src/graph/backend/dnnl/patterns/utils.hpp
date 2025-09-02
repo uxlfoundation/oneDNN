@@ -308,8 +308,6 @@ inline graph::utils::pm::repetition_t *optional_bias_add(
         auto popt_tc_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
         graph::utils::pm::pb_op_t *typecast_bias
                 = popt_tc_graph->append_op(graph::op_kind::TypeCast);
-        typecast_bias->append_decision_function(
-                check_output_dtype<graph::data_type::bf16>);
         popt_tc_graph->create_input_port(0, typecast_bias, 0);
         popt_tc_graph->create_output_port(0, typecast_bias, 0);
         auto popt_tc = popt_bias_graph->append_optional(popt_tc_graph);

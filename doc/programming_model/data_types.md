@@ -112,6 +112,11 @@ intermediate data type (for example f16 or bf16), which may result in
 [double
 rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
 
+Conversions to integral datatypes saturate upon overflow, whereas
+conversions to floating-point datatypes don't. To force saturation behavior for 
+floating-point datatypes use @ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
+
+
 ### Rounding mode and denormal handling
 
 oneDNN floating-point computation behavior follows the floating-point

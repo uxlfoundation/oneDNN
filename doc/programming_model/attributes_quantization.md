@@ -65,8 +65,11 @@ During execution, primitives implementations avoid integer overflows
 and maintain integer accuracy by using wider datatypes (e.g. int32)
 for intermediate values and accumulators. Those are then converted as
 necessary before the result is written to the output memory objects.
-During that conversion, implementations typically saturate in case of
-underflow/overflow (e.g. when converting `s32` to int8).
+
+When converting to integral datatypes, implementations typically
+saturate, whereas for floating-point datatypes, underflow/overflow can
+occur. To force saturation in floating-point datatypes use
+@ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
 
 @warning
 Depending on the architecture, the behavior of int8 computations might slightly

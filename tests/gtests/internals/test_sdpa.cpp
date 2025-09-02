@@ -1526,7 +1526,6 @@ GPU_TEST_P(sdpa_test_t, compare) {
                                       : t.m_key_quantized.get_desc(),
 
 //                t.m_value_quantized.get_desc(), mask_ptr, scale_dt, // ??????
-//                t.m_value_quantized.get_desc(), mask_ptr, with_host_scale ? t.host_scale_md : t.m_scale.get_desc(),
                 t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
 
                 t.m_output_quantized.get_desc(), invert_scale, p.kv_head_num,
@@ -1554,9 +1553,6 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 
     if (scale_dt != mdt::undef
-// !!!!!!!!!
-//        && !with_host_scale // ????? needed ????
-// !!!!!!!!!
         ) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
 
     bool k_is_16_bit_float = ((p.kdt == mdt::f16) || (p.kdt == mdt::bf16));

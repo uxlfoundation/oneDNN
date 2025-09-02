@@ -85,6 +85,10 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     }
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
+    // for bf16/f16 --> matmul --> f32 post ops chain --> tc --> bf16/f16
+    if (!quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
+    }
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
 
     if (quantized) {

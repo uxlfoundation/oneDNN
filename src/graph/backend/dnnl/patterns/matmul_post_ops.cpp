@@ -47,6 +47,8 @@ DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(matmul_post_ops)
            \  \ |
              [select]*
                 |
+            [typecast]*
+                |
 */
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
         .set_priority(8.8f)
@@ -55,6 +57,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
                     pm::pb_op_t *pmatmul
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    pmatmul->append_decision_function(
+                            check_output_dtype<graph::data_type::f32>);
 
                     // Optional bias
                     auto popt_bias = optional_bias_add(pgraph, pmatmul, false);
@@ -71,7 +75,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
                             in_edges_t {in_edge(0, popt_bias, 0)});
 
                     // Optional select
-                    optional_select(pgraph, prep, 2);
+                    auto popt_select = optional_select(pgraph, prep, 2);
+
+                    // Optional post typecast
+                    auto popt_typecast_post_graph
+                            = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptc_post = popt_typecast_post_graph->append_op(
+                            graph::op_kind::TypeCast);
+                    popt_typecast_post_graph->create_input_port(0, ptc_post, 0);
+                    popt_typecast_post_graph->create_output_port(
+                            0, ptc_post, 0);
+                    pgraph->append_optional(popt_typecast_post_graph,
+                            in_edges_t {in_edge(0, popt_select, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<float_matmul>();
@@ -82,6 +97,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
               matmul
                 |
              [bias]*
+                |
+            [typecast]*
                 |
             [Reshape]*
                 |
@@ -100,7 +117,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
                             = pgraph->append_op(graph::op_kind::MatMul);
 
                     // Optional bias_add
-                    auto popt_bias = optional_bias_add(pgraph, pmatmul, false);
+                    auto popt_bias
+                            = optional_bias_add(pgraph, pmatmul, false, true);
+
+                    // Optional post typecast
+                    auto popt_typecast_post_graph
+                            = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptc_post = popt_typecast_post_graph->append_op(
+                            graph::op_kind::TypeCast);
+                    popt_typecast_post_graph->create_input_port(0, ptc_post, 0);
+                    popt_typecast_post_graph->create_output_port(
+                            0, ptc_post, 0);
+                    auto popt_tc
+                            = pgraph->append_optional(popt_typecast_post_graph,
+                                    in_edges_t {in_edge(0, popt_bias, 0)});
 
                     // Optional pre reshape
                     auto popt_reshape_pre_graph
@@ -114,7 +144,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
                             0, preshape_pre, 0);
                     auto popt_reshape_pre
                             = pgraph->append_optional(popt_reshape_pre_graph,
-                                    in_edges_t {in_edge(0, popt_bias, 0)});
+                                    in_edges_t {in_edge(0, popt_tc, 0)});
 
                     // transpose
                     auto ptranspose = pgraph->append_op(
@@ -836,6 +866,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(
                 |
              [bias]*
                 |
+            [typecast]*
+                |
             transpose
                 |
              reorder
@@ -850,12 +882,25 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_transpose_reorder)
                             = pgraph->append_op(graph::op_kind::MatMul);
 
                     // Optional bias_add
-                    auto popt_bias = optional_bias_add(pgraph, pmatmul, false);
+                    auto popt_bias
+                            = optional_bias_add(pgraph, pmatmul, false, true);
+
+                    // Optional post typecast
+                    auto popt_typecast_post_graph
+                            = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptc_post = popt_typecast_post_graph->append_op(
+                            graph::op_kind::TypeCast);
+                    popt_typecast_post_graph->create_input_port(0, ptc_post, 0);
+                    popt_typecast_post_graph->create_output_port(
+                            0, ptc_post, 0);
+                    auto popt_tc
+                            = pgraph->append_optional(popt_typecast_post_graph,
+                                    in_edges_t {in_edge(0, popt_bias, 0)});
 
                     // transpose
                     auto ptranspose
                             = pgraph->append_op(graph::op_kind::StaticTranspose,
-                                    in_edges_t {in_edge(0, popt_bias, 0)});
+                                    in_edges_t {in_edge(0, popt_tc, 0)});
 
                     // reorder
                     pgraph->append_op(graph::op_kind::Reorder,

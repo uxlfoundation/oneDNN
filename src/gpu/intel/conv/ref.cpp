@@ -162,7 +162,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
                     : conf.attr_info.sum_data_type,
             "SUM", false);
 
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
+    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md, false));
     return status::success;
 }
 

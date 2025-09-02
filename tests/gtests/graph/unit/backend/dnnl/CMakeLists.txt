@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,14 @@ FILE(GLOB DNNL_OP_EXECUTION_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/test_typecast.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_pass.cpp
 )
+
+# SDPA/MQA decompose kernel only support OMP and THREADPOOL runtime.
+if(NOT (DNNL_CPU_RUNTIME STREQUAL "OMP" OR DNNL_CPU_RUNTIME STREQUAL "THREADPOOL"))
+    list(REMOVE_ITEM DNNL_OP_EXECUTION_TEST_SOURCES 
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_sdp_decomp.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_mqa_decomp.cpp"
+    )
+endif()
 
 if(_ONEDNN_GRAPH_LAYOUT_DEBUG)
     file(GLOB FILES_REQUIRED_LAYOUT_DEBUG

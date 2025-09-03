@@ -130,7 +130,7 @@ struct block_2d_info_t {
 };
 
 // Function representing send messages.
-class send_t : public func_impl_t, public object_info_t<send_t> {
+class send_t : public func_impl_t, public object::info_t<send_t> {
 public:
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,
@@ -188,7 +188,7 @@ public:
                 zero_out, cache_hint);
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 

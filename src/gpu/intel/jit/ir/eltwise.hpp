@@ -29,7 +29,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-class eltwise_t : public func_impl_t, public object_info_t<eltwise_t> {
+class eltwise_t : public func_impl_t, public object::info_t<eltwise_t> {
 public:
     static func_t make(alg_kind_t alg_kind, float scale, float alpha,
             float beta, expr_t &seed, ngen::DataType dst_dt) {

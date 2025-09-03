@@ -1038,9 +1038,9 @@ public:
     }
 
     // Constant factor is ignored during comparison.
-    bool is_equal_ignore_const(const object_impl_t &obj) const {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
+    bool is_equal_ignore_const(const impl_t &obj) const {
+        if (!obj.is<factored_expr_t>()) return false;
+        auto &other = obj.as<factored_expr_t>();
 
         if (factors.size() != other.factors.size()) return false;
 

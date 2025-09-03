@@ -177,17 +177,18 @@ HANDLE_CORE_IR_OBJECTS()
 #undef HANDLE_IR_OBJECT
 #undef CLASS_DECLARATION
 
+namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
 // the reference counter stored inside the object.
-class object_impl_t {
+class impl_t {
 public:
-    object_impl_t(const object_impl_t &) = delete;
-    object_impl_t &operator=(const object_impl_t &) = delete;
+    impl_t(const impl_t &) = delete;
+    impl_t &operator=(const impl_t &) = delete;
 
-    virtual ~object_impl_t() = default;
+    virtual ~impl_t() = default;
 
     // Provides equality semantics.
-    virtual bool is_equal(const object_impl_t &obj) const = 0;
+    virtual bool is_equal(const impl_t &obj) const = 0;
 
     virtual size_t get_hash() const = 0;
 
@@ -232,9 +233,9 @@ public:
     IR_DEFINE_DUMP()
 
 protected:
-    friend class object_t;
+    friend class dnnl::impl::gpu::intel::jit::object_t;
     template <typename T>
-    friend struct object_info_t;
+    friend struct info_t;
 
     void retain() { ref_count_.increment(); }
     void release() {
@@ -255,7 +256,7 @@ protected:
         }
     };
 
-    object_impl_t(info_t info) : info_(info) {};
+    impl_t(info_t info) : info_(info) {};
 
 private:
     // Reference counter for IR objects.
@@ -281,13 +282,13 @@ private:
 };
 
 template <typename T>
-struct object_info_t {
+struct info_t {
     using self_type = T;
 
 protected:
-    friend class object_impl_t;
-    static object_impl_t::info_t get_info() {
-        return object_impl_t::info_t(
+    friend class impl_t;
+    static impl_t::info_t get_info() {
+        return impl_t::info_t(
                 (void *)get_info, is_expr_t<T>::value, is_stmt_t<T>::value);
     }
 
@@ -316,21 +317,17 @@ private:
         static const bool value = true;
     };
 };
+} // namespace object
 
 // Base wrapper for IR objects.
 class object_t {
 public:
-    object_t(object_impl_t *impl = nullptr) : impl_(impl) {
-        retain(impl_);
-    }
-    object_t(const object_impl_t &impl)
-        : object_t(const_cast<object_impl_t *>(&impl)) {}
-    object_t(const object_impl_t *impl)
-        : object_t(const_cast<object_impl_t *>(impl)) {}
+    using impl_t = object::impl_t;
+    object_t(impl_t *impl = nullptr) : impl_(impl) { retain(impl_); }
+    object_t(const impl_t &impl) : object_t(const_cast<impl_t *>(&impl)) {}
+    object_t(const impl_t *impl) : object_t(const_cast<impl_t *>(impl)) {}
     object_t(const object_t &obj) : object_t(obj.impl()) {}
-    object_t(object_t &&obj) : impl_(obj.impl_) {
-        obj.impl_ = nullptr;
-    }
+    object_t(object_t &&obj) : impl_(obj.impl_) { obj.impl_ = nullptr; }
 
     ~object_t() { release(impl_); }
 
@@ -348,7 +345,7 @@ public:
         return *this;
     }
 
-    object_impl_t *impl() const { return impl_; }
+    impl_t *impl() const { return impl_; }
 
     bool is_empty() const { return !impl_; }
 
@@ -399,21 +396,21 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    static void retain(object_impl_t *impl) {
+    static void retain(impl_t *impl) {
         if (impl) impl->retain();
     }
 
-    static void release(object_impl_t *impl) {
+    static void release(impl_t *impl) {
         if (impl) impl->release();
     }
 
-    object_impl_t *impl_;
+    impl_t *impl_;
 };
 
 // Helper classes for containers to store object_t.
 struct object_id_hash_t {
     size_t operator()(const object_t &obj) const {
-        return std::hash<const object_impl_t *>()(obj.impl());
+        return std::hash<const object::impl_t *>()(obj.impl());
     }
 };
 
@@ -458,6 +455,7 @@ using object_eq_map_t
 // Helper class to mutate IR tree.
 class ir_mutator_t {
 public:
+    using impl_t = object::impl_t;
     virtual ~ir_mutator_t() = default;
 
     object_t mutate(const object_t &obj) {
@@ -476,7 +474,7 @@ public:
     }
 
     // To catch missing _mutate() handlers in ir_mutator_t.
-    object_t _mutate(const object_impl_t &obj) {
+    object_t _mutate(const impl_t &obj) {
         gpu_error_not_expected() << "Can't handle type: " << object_t(&obj);
         return {};
     }
@@ -489,10 +487,11 @@ public:
 // Helper class to walk through IR tree.
 class ir_visitor_t {
 public:
+    using impl_t = object::impl_t;
     virtual ~ir_visitor_t() = default;
 
     void visit(const object_t &obj) {
-        const object_impl_t *impl = obj.impl();
+        const impl_t *impl = obj.impl();
         if (impl) {
             pre_visit(*impl);
             impl->_visit(*this);
@@ -506,11 +505,11 @@ public:
             visit(e);
     }
 
-    virtual void pre_visit(const object_impl_t &obj) {}
-    virtual void post_visit(const object_impl_t &obj) {}
+    virtual void pre_visit(const impl_t &obj) {}
+    virtual void post_visit(const impl_t &obj) {}
 
     // To catch missing _visit() handlers in ir_visitor_t.
-    void _visit(const object_impl_t &obj) {
+    void _visit(const impl_t &obj) {
         gpu_error_not_expected() << "Can't handle type: " << object_t(obj);
     }
 
@@ -520,19 +519,19 @@ public:
 };
 
 // Base class for IR expression objects.
-class expr_impl_t : public object_impl_t {
+class expr_impl_t : public object::impl_t {
 public:
-    expr_impl_t(object_impl_t::info_t type_info, const type_t &type)
-        : object_impl_t(type_info), type(type) {}
+    expr_impl_t(object::impl_t::info_t type_info, const type_t &type)
+        : object::impl_t(type_info), type(type) {}
 
     type_t type;
 };
 
 template <typename T>
-struct expr_iface_t : public expr_impl_t, public object_info_t<T> {
+struct expr_iface_t : public expr_impl_t, public object::info_t<T> {
     expr_iface_t(const type_t &type) : expr_impl_t(T::get_info(), type) {}
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<T>()) return false;
         return (*static_cast<const T *>(this) == obj.as<T>());
     }
@@ -1430,16 +1429,16 @@ DECLARE_BINARY_OPERATOR(^, op_kind_t::_xor)
 expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);
 
 // Base class for IR statement objects.
-class stmt_impl_t : public object_impl_t {
+class stmt_impl_t : public object::impl_t {
 public:
-    stmt_impl_t(object_impl_t::info_t type_info) : object_impl_t(type_info) {}
+    stmt_impl_t(object::impl_t::info_t type_info) : object::impl_t(type_info) {}
 };
 template <typename T>
-struct stmt_iface_t : public stmt_impl_t, public object_info_t<T> {
+struct stmt_iface_t : public stmt_impl_t, public object::info_t<T> {
     using self_type = T;
     stmt_iface_t() : stmt_impl_t(T::get_info()) {}
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<T>()) return false;
         return (*static_cast<const T *>(this) == obj.as<T>());
     }
@@ -1478,10 +1477,10 @@ enum class alloc_kind_t {
     global, // Global memory.
 };
 
-class alloc_attr_impl_t : public object_impl_t {
+class alloc_attr_impl_t : public object::impl_t {
 public:
-    alloc_attr_impl_t(object_impl_t::info_t type_info)
-        : object_impl_t(type_info) {}
+    alloc_attr_impl_t(object::impl_t::info_t type_info)
+        : object::impl_t(type_info) {}
 };
 
 class alloc_attr_t : public object_t {
@@ -1505,14 +1504,14 @@ class grf_permutation_t;
 
 // Allocation attribute specifying permutation for a GRF buffer.
 class grf_permute_attr_t : public alloc_attr_impl_t,
-                           public object_info_t<grf_permute_attr_t> {
+                           public object::info_t<grf_permute_attr_t> {
 public:
     static alloc_attr_t make(
             const std::shared_ptr<grf_permutation_t> &grf_perm) {
         return alloc_attr_t(new grf_permute_attr_t(grf_perm));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         return this == &obj;
     }
 
@@ -1527,7 +1526,7 @@ private:
 
 // Allocation attribute to store extra information to avoid bank conflicts.
 class bank_conflict_attr_t : public alloc_attr_impl_t,
-                             public object_info_t<bank_conflict_attr_t> {
+                             public object::info_t<bank_conflict_attr_t> {
 public:
     static alloc_attr_t make(const std::vector<expr_t> &bufs,
             const std::vector<int> &buf_sizes,
@@ -1537,7 +1536,7 @@ public:
                 bufs, buf_sizes, buf_min_block_sizes, instructions));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         return this == &obj;
     }
 
@@ -2079,10 +2078,10 @@ private:
 };
 
 // Function call attribute.
-class func_call_attr_impl_t : public object_impl_t {
+class func_call_attr_impl_t : public object::impl_t {
 public:
-    func_call_attr_impl_t(object_impl_t::info_t type_info)
-        : object_impl_t(type_info) {}
+    func_call_attr_impl_t(object::impl_t::info_t type_info)
+        : object::impl_t(type_info) {}
 };
 
 class func_call_attr_t : public object_t {
@@ -2109,13 +2108,13 @@ public:
 // Instruction modifier, relies on nGEN API.
 class instruction_modifier_attr_t
     : public func_call_attr_impl_t,
-      public object_info_t<instruction_modifier_attr_t> {
+      public object::info_t<instruction_modifier_attr_t> {
 public:
     static func_call_attr_t make(const ngen::InstructionModifier &mod) {
         return func_call_attr_t(new instruction_modifier_attr_t(mod));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
@@ -2154,16 +2153,16 @@ private:
 };
 
 // Base class for function IR objects.
-class func_impl_t : public object_impl_t {
+class func_impl_t : public object::impl_t {
 public:
-    func_impl_t(object_impl_t::info_t type_info) : object_impl_t(type_info) {}
+    func_impl_t(object::impl_t::info_t type_info) : object::impl_t(type_info) {}
 
     size_t get_hash() const override {
         gpu_error_not_expected() << "get_hash() is not implemented.";
         return 0;
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         gpu_error_not_expected() << "is_equal() is not implemented.";
         return false;
     }
@@ -2261,13 +2260,13 @@ inline bool is_func_call(const stmt_t &s) {
 }
 
 // Generic function with a name.
-class builtin_t : public func_impl_t, public object_info_t<builtin_t> {
+class builtin_t : public func_impl_t, public object::info_t<builtin_t> {
 public:
     static func_t make(const std::string &name) {
         return func_t(new builtin_t(name));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 

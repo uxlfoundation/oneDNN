@@ -624,13 +624,13 @@ public:
         return; \
     }
 
-    void pre_visit(const object_impl_t &obj) override {
+    void pre_visit(const impl_t &obj) override {
         CASE(alloc_t, buf, true);
         CASE(let_t, var, true);
         CASE(for_t, var, true);
     }
 
-    void post_visit(const object_impl_t &obj) override {
+    void post_visit(const impl_t &obj) override {
         CASE(alloc_t, buf, false);
         CASE(let_t, var, false);
         CASE(for_t, var, false);
@@ -653,11 +653,11 @@ private:
 
 class ir_path_t {
 public:
-    void push(const object_impl_t *obj) { path_.push_back(obj); }
+    void push(const object::impl_t *obj) { path_.push_back(obj); }
 
     void pop() { path_.pop_back(); }
 
-    const object_impl_t *back() const {
+    const object::impl_t *back() const {
         gpu_assert(!is_empty());
         return path_.back();
     }
@@ -674,7 +674,7 @@ public:
     }
 
 private:
-    std::vector<const object_impl_t *> path_;
+    std::vector<const object::impl_t *> path_;
 };
 
 // Only for statements that create scope.

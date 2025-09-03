@@ -28,7 +28,7 @@ namespace intel {
 namespace jit {
 
 // Implements reduction of GRF buffer for given layout.
-class reduce_t : public func_impl_t, public object_info_t<reduce_t> {
+class reduce_t : public func_impl_t, public object::info_t<reduce_t> {
 public:
     static func_t make(const layout_t &src_layout, const layout_t &dst_layout) {
         return func_t(new reduce_t(src_layout, dst_layout));

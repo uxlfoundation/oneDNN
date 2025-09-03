@@ -283,7 +283,7 @@ public:
 
 #define HANDLE_IR_OBJECT(type) \
     object_t _mutate(const type &obj) override { \
-        if (from_.impl() == (const object_impl_t *)&obj) { \
+        if (from_.impl() == (const impl_t *)&obj) { \
             substitutions_++; \
             return to_; \
         } \
@@ -556,7 +556,7 @@ private:
 
 } // namespace
 
-std::string object_impl_t::str() const {
+std::string object::impl_t::str() const {
     ostringstream_t oss;
     ir_printer_t printer(oss);
     printer.visit(this);

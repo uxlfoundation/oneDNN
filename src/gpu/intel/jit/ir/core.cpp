@@ -393,10 +393,10 @@ DEFINE_BINARY_ASSIGN_OPERATOR(&)
 
 #undef DEFINE_BINARY_ASSIGN_OPERATOR
 
-object_t object_impl_t::_mutate(ir_mutator_t &mutator) const {
+object_t object::impl_t::_mutate(ir_mutator_t &mutator) const {
     return *this;
 }
-void object_impl_t::_visit(ir_visitor_t &visitor) const {}
+void object::impl_t::_visit(ir_visitor_t &visitor) const {}
 
 #define DECL_TRAVERSE_LEAF(name) \
     object_t ir_mutator_t::_mutate(const name &obj) { return obj; } \

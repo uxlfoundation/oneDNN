@@ -103,7 +103,7 @@ private:
 };
 
 // Function representing DPAS instruction.
-class dpas_t : public func_impl_t, public object_info_t<dpas_t> {
+class dpas_t : public func_impl_t, public object::info_t<dpas_t> {
 public:
     static func_t make(bool is_dpasw, int exec_size, uint8_t sdepth,
             uint8_t rcount, const type_t &dst_type, const type_t &src1_type,
@@ -130,7 +130,7 @@ public:
 
     bool is_dp4a() const { return rcount == 1 && sdepth == 1; }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
@@ -207,7 +207,7 @@ private:
 };
 
 // Function representing MAD instruction.
-class mad_t : public func_impl_t, public object_info_t<mad_t> {
+class mad_t : public func_impl_t, public object::info_t<mad_t> {
 public:
     static func_t make(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t src2_type,

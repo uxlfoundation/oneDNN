@@ -24,6 +24,7 @@
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/zero_pool.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
@@ -231,6 +232,15 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
             VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
+
+            // Grouped scales break pre-XeHPG kernels due to increased register pressure
+            bool A_grouped
+                    = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
+            bool B_grouped
+                    = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
+            VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
+                                   !(A_grouped || B_grouped)),
+                    VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
 
             bool has_systolic
                     = intel_engine->mayiuse(compute::device_ext_t::

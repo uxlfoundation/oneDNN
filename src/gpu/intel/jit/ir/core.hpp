@@ -32,10 +32,6 @@
 #include "gpu/intel/jit/ir/include/type.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
-#if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
-#define SANITY_CHECK 1
-#endif
-
 // All IR expression objects.
 #define HANDLE_EXPR_IR_OBJECTS() \
     HANDLE_IR_OBJECT(binary_op_t) \
@@ -326,9 +322,6 @@ class object_t {
 public:
     object_t(object_impl_t *impl = nullptr) : impl_(impl) {
         retain(impl_);
-#ifdef SANITY_CHECK
-        sanity_check();
-#endif
     }
     object_t(const object_impl_t &impl)
         : object_t(const_cast<object_impl_t *>(&impl)) {}
@@ -337,16 +330,9 @@ public:
     object_t(const object_t &obj) : object_t(obj.impl()) {}
     object_t(object_t &&obj) : impl_(obj.impl_) {
         obj.impl_ = nullptr;
-#ifdef SANITY_CHECK
-        sanity_check();
-#endif
     }
 
-#ifdef SANITY_CHECK
-    virtual ~object_t() { release(impl_); }
-#else
     ~object_t() { release(impl_); }
-#endif
 
     object_t &operator=(const object_t &other) {
         if (&other == this) return *this;
@@ -354,17 +340,11 @@ public:
         retain(other_impl);
         release(impl_);
         impl_ = other_impl;
-#ifdef SANITY_CHECK
-        sanity_check();
-#endif
         return *this;
     }
 
     object_t &operator=(object_t &&other) {
         std::swap(impl_, other.impl_);
-#ifdef SANITY_CHECK
-        sanity_check();
-#endif
         return *this;
     }
 
@@ -417,11 +397,6 @@ public:
     }
 
     IR_DEFINE_DUMP()
-
-protected:
-#ifdef SANITY_CHECK
-    virtual void sanity_check() const {}
-#endif
 
 private:
     static void retain(object_impl_t *impl) {
@@ -618,14 +593,6 @@ public:
     // Returns a pointer shifted by `off` bytes relative to this pointer. The
     // base expression must be a pointer.
     expr_t operator[](const expr_t &off) const;
-
-private:
-#ifdef SANITY_CHECK
-    void sanity_check() const override {
-        gpu_assert(dynamic_cast<const expr_impl_t *>(impl()) == impl())
-                << object_t(impl());
-    }
-#endif
 };
 
 // Helper functions.
@@ -1502,14 +1469,6 @@ public:
     }
 
     stmt_t append(const stmt_t &s) const;
-
-private:
-#ifdef SANITY_CHECK
-    void sanity_check() const override {
-        gpu_assert(dynamic_cast<const stmt_impl_t *>(impl()) == impl())
-                << object_t(impl());
-    }
-#endif
 };
 
 enum class alloc_kind_t {
@@ -1540,14 +1499,6 @@ public:
         object_t::operator=(obj);
         return *this;
     }
-
-private:
-#ifdef SANITY_CHECK
-    void sanity_check() const override {
-        gpu_assert(dynamic_cast<const alloc_attr_impl_t *>(impl()) == impl())
-                << object_t(impl());
-    }
-#endif
 };
 
 class grf_permutation_t;
@@ -2153,15 +2104,6 @@ public:
     // Returns a function call with the attribute applied. The input statement
     // must be a function call.
     stmt_t apply_to(const stmt_t &s) const;
-
-private:
-#ifdef SANITY_CHECK
-    void sanity_check() const override {
-        gpu_assert(
-                dynamic_cast<const func_call_attr_impl_t *>(impl()) == impl())
-                << object_t(impl());
-    }
-#endif
 };
 
 // Instruction modifier, relies on nGEN API.
@@ -2262,14 +2204,6 @@ public:
     }
 
     stmt_t operator()(const expr_t &arg) const { return call({arg}); }
-
-private:
-#ifdef SANITY_CHECK
-    void sanity_check() const override {
-        gpu_assert(dynamic_cast<const func_impl_t *>(impl()) == impl())
-                << object_t(impl());
-    }
-#endif
 };
 
 // Function call.
@@ -2348,7 +2282,6 @@ private:
     builtin_t(const std::string &name) : func_impl_t(get_info()), name(name) {}
 };
 
-#ifndef SANITY_CHECK
 // The following types are intrusive pointers and, as such, should have the same
 // size as a pointer.
 static_assert(sizeof(object_t) <= sizeof(void *),
@@ -2358,7 +2291,6 @@ static_assert(sizeof(expr_t) <= sizeof(void *),
         "intrusive pointer type expr_t size is greater than void * size.");
 static_assert(sizeof(stmt_t) <= sizeof(void *),
         "intrusive pointer type stmt_t size is greater than void * size.");
-#endif
 
 } // namespace jit
 } // namespace intel

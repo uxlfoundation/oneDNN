@@ -1037,13 +1037,16 @@ void CopyPlan::legalizeShfl()
 {
     for (auto &i: insns) {
         if (i.op != Opcode::shfl) continue;
-        if (i.src0.stride == 0) {
+        if (!one_of(i.simd, 16, 32)) stub();
+        if (i.simd == 32) {
             i.src0.stride = 1;
-            if (i.simd > 16) {
-                i.src0.width = 16;
-                i.src0.vs = 0;
-            }
-        }
+            i.src0.width = 16;
+            i.src0.vs = 0;
+        }else{
+            i.src0.stride = 0;
+            i.src0.width = 1;
+            i.src0.vs = 1;
+       }
     }
 }
 #endif

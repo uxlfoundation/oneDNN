@@ -59,7 +59,6 @@ struct ref_t : public primitive_t {
             VDISPATCH_SDPA(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
             printf("\n");
             printf("with_attn_scale = %d\n",with_attn_scale());
             printf("with_host_scale = %d\n",with_host_scale());

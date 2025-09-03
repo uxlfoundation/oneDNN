@@ -170,7 +170,7 @@ public:
     bool is_local() const { return kind() == kernel_arg_kind_t::local; }
 
     kernel_arg_t &set_value(const memory_storage_t &storage) {
-        printf("---- [%d]set_value\n",__LINE__);fflush(0);
+        //printf("---- [%d]set_value\n",__LINE__);fflush(0);
         kind_ = kernel_arg_kind_t::global;
         size_ = 0;
         value_ = static_cast<const void *>(&storage);
@@ -179,7 +179,6 @@ public:
 
     template <typename T>
     kernel_arg_t &set_value(const T &value, void *&data_pool) {
-        printf("---- [%d]set_value\n",__LINE__);fflush(0);
         assert(size_ <= sizeof(T));
         if (value_ == nullptr) {
             assert(data_pool != nullptr);
@@ -195,7 +194,6 @@ public:
     }
 
     kernel_arg_t &set_value(size_t size, std::nullptr_t) {
-        printf("---- [%d]set_value\n",__LINE__);fflush(0);
         kind_ = kernel_arg_kind_t::local;
         size_ = size;
         value_ = nullptr;
@@ -257,7 +255,7 @@ public:
     }
 
     void set(int index, const memory_storage_t &storage) {
-        printf("**** set [%d]\n",__LINE__);fflush(0);
+        //printf("**** set [%d]\n",__LINE__);fflush(0);
         if (!storage.is_host_scalar()) {
             assert(index < storage_size);
             if ((index + 1) > nargs()) { args_.resize(index + 1); };
@@ -265,7 +263,7 @@ public:
             return;
         }
 
-        printf("**** set [%d]\n",__LINE__);fflush(0);
+        //printf("**** set [%d]\n",__LINE__);fflush(0);
         auto *host_storage
                 = utils::downcast<const host_scalar_memory_storage_t *>(
                         &storage);
@@ -286,7 +284,6 @@ public:
 
     template <class T>
     void set(int index, const T &value) {
-        printf("**** set [%d]\n",__LINE__);fflush(0);
         assert(index < storage_size);
         if ((index + 1) > nargs()) { args_.resize(index + 1); };
         args_[index].set_value(value, unused_storage);
@@ -296,7 +293,6 @@ public:
     }
 
     void set(int index, size_t size, std::nullptr_t) {
-        printf("**** set [%d]\n",__LINE__);fflush(0);
         assert(index < storage_size);
         if ((index + 1) > nargs()) { args_.resize(index + 1); };
         args_[index].set_value(size, nullptr);

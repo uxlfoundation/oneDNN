@@ -252,19 +252,13 @@ std::string kernel_t::name() const {
 
 status_t kernel_t::check_alignment(
         const compute::kernel_arg_list_t &arg_list) const {
-    printf("$$$$$ [%d] check_alignment ----->\n",__LINE__);fflush(0);
+    //printf("$$$$$ [%d] check_alignment ----->\n",__LINE__);fflush(0);
 
     for (int i = 0; i < arg_list.nargs(); ++i) {
-
-        printf("$$$$$ [%d] check_alignment ; i = %d\n",__LINE__,i);fflush(0);
-
         auto &arg = arg_list.get(i);
-        printf("$$$$$ [%d] check_alignment ; i = %d ; arg.is_global() = %d\n",__LINE__,i,arg.is_global());fflush(0);
-
         if (!arg.is_global()) {
             // !!!! here if ref is running !!!!!!
-            printf("$$$$$ [%d] check_alignment ; i = %d ; continue\n",__LINE__,i);fflush(0);
-
+            //printf("$$$$$ [%d] check_alignment ; i = %d ; continue\n",__LINE__,i);fflush(0);
             continue;
         }
         auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
@@ -273,7 +267,6 @@ status_t kernel_t::check_alignment(
                 = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
                         mem_storage);
         if (ocl_mem_storage->memory_kind() != xpu::ocl::memory_kind::usm) {
-            printf("$$$$$ [%d] check_alignment ; i = %d ; continue\n",__LINE__,i);fflush(0);
             continue;
         }
         auto *m = utils::downcast<const xpu::ocl::usm_memory_storage_t *>(
@@ -281,7 +274,7 @@ status_t kernel_t::check_alignment(
         auto *usm_ptr = m->usm_ptr();
         CHECK(compute::kernel_impl_t::check_alignment(usm_ptr, i));
     }
-    printf("$$$$$ [%d] check_alignment <-----\n",__LINE__);fflush(0);
+    //printf("$$$$$ [%d] check_alignment <-----\n",__LINE__);fflush(0);
 
     return status::success;
 }

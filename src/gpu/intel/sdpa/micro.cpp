@@ -775,17 +775,13 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    printf("\nadding scale ....\n");fflush(0);
     arg_list.append(scale);
-    printf("\nadded scale ....\n");fflush(0);
-#else
+#else // !!!! workaround !!!!!
     arg_list.set(0,key);
     arg_list.set(1,qry);
     arg_list.set(2,val);
     arg_list.set(3,dst);
-    printf("\nadding scale ....\n");fflush(0);
     arg_list.set(4,scale);
-    printf("\nadded scale ....\n");fflush(0);
 #endif
 
     arg_list.append((int)D);

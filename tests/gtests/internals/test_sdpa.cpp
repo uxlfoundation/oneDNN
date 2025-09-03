@@ -1230,48 +1230,15 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // !!!!!! scale processing (scale_, xxxx)
     DPRINT("%s:%s:%d &&&&&&&&& scale processing\n", PRINTHEAD);
 
-#if 1
-    DPRINT("%s:%s:%d &&&&&&&&& before as\n", PRINTHEAD);
     auto scale_f32 = as(strm, scale_device, mdt::f32);
-    DPRINT("%s:%s:%d &&&&&&&&& after as\n", PRINTHEAD);
     if (scale_dt != mdt::undef) {
-        DPRINT("%s:%s:%d &&&&&&&&& : scale_dt != mdt::undef\n", PRINTHEAD);
         scale_f32 = reshape(strm, scale_f32,
                 {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
-        if (invert_scale) {
-            DPRINT("%s:%s:%d &&&&&&&&& : bmm1_po.append_binary\n", PRINTHEAD);
+        if (invert_scale)
             bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
-        }
-        else {
-            DPRINT("%s:%s:%d &&&&&&&&& : bmm1_po.append_binary\n", PRINTHEAD);
+        else
             bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
-        }
     }
-#endif
-#if 0
-    memory scale_f32;
-    bool with_host_scale = p.stype == scale_type::host_side;
-    if (with_host_scale) {
-        DPRINT("%s:%s:%d &&&&&&&&& scale: host --> \n", PRINTHEAD);
-        DPRINT("%s:%s:%d &&&&&&&&& scale: <-- host \n", PRINTHEAD);
-    } else {
-        DPRINT("%s:%s:%d &&&&&&&&& scale: device --> \n", PRINTHEAD);
-        scale_f32 = as(strm, scale, mdt::f32);
-        if (scale_dt != mdt::undef) {
-            scale_f32 = reshape(strm, scale_f32,
-                    {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
-            if (invert_scale) {
-                bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
-            }
-            else {
-                bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
-            }
-        }
-        DPRINT("%s:%s:%d &&&&&&&&& scale: <-- device \n", PRINTHEAD);
-    }
-#endif
-
-
 
     if (p.mask != mask_type::no_mask) {
         mask_f32 = reshape(strm, mask_f32,
@@ -1412,12 +1379,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     }
 
     const auto loop = [&]() {
-        DPRINT("%s:%s:%d &&&&&&&&& calling bmm1_prim.execute\n", PRINTHEAD);
+        //DPRINT("%s:%s:%d &&&&&&&&& calling bmm1_prim.execute\n", PRINTHEAD);
         bmm1_prim.execute(strm, bmm1_args);
         //strm.wait();
         //print_mem(score, "score");
 
-        DPRINT("%s:%s:%d &&&&&&&&& calling sotmax_prim.execute\n", PRINTHEAD);
+        //DPRINT("%s:%s:%d &&&&&&&&& calling sotmax_prim.execute\n", PRINTHEAD);
         softmax_prim.execute(strm,
                 {
                         {DNNL_ARG_SRC, score},
@@ -1426,7 +1393,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         //strm.wait();
         //print_mem(score2, "score2");
 
-        DPRINT("%s:%s:%d &&&&&&&&& calling bmm2_prim.execute\n", PRINTHEAD);
+        //DPRINT("%s:%s:%d &&&&&&&&& calling bmm2_prim.execute\n", PRINTHEAD);
         bmm2_prim.execute(strm,
                 {
                         {DNNL_ARG_SRC, score2},
@@ -1649,9 +1616,7 @@ GPU_TEST_P(sdpa_test_t, compare) {
         }
     }
 #endif
-
     DPRINT("%s:%s:%d <<<<<< @@@ GPU_TEST_P(sdpa_test_t, compare) @@@\n", PRINTHEAD);
-
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

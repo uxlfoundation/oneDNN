@@ -3424,9 +3424,6 @@ struct memory : public handle<dnnl_memory_t> {
         // Check that the data type of T matches the memory descriptor's data type
         // For host-side scalars, md.get_size() is data_type size
         if (sizeof(T) != md.get_size()) {
-
-            printf("size : val = %ld : md = %ld\n", sizeof(T), md.get_size());
-
             DNNL_THROW_ERROR(dnnl_invalid_arguments,
                     "scalar type size does not match memory descriptor data "
                     "type size");

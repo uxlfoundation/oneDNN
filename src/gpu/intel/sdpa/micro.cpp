@@ -63,6 +63,10 @@ status_t update_config_from_devenv_values(config_t *config, bool quantized) {
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
             = gpu_utils::dev_getenv("SDPA_CONFIG", std::string(""));
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:update_config_from_devenv_values");
+
+
     if ((!config_str.empty() && !quantized)
             || (!q_config_str.empty() && quantized)) {
         std::array<int, 8> config_values;
@@ -99,6 +103,8 @@ status_t update_config_from_devenv_values(config_t *config, bool quantized) {
 status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init_conf_microkernels");
 
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -365,6 +371,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 }
 
 status_t micro_t::init(impl::engine_t *engine) {
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init");
+
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
     if (!kernel_) return status::runtime_error;
@@ -373,6 +382,8 @@ status_t micro_t::init(impl::engine_t *engine) {
 
 status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:init_conf");
 
     auto *pd = this;
     auto *d = pd->desc();
@@ -419,6 +430,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.transpose_k = gemm_desc_t::get_trans(*pd->key_md()) == dnnl_trans;
 
+    // ??? TODO ???
     int kq_scale_mask = (static_cast<int>(pd->with_key_scales()) << 1)
             | static_cast<int>(with_quantize_common(d->kq_scales));
     conf.kq_scale_mask = kq_scale_mask;
@@ -465,6 +477,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.invert_scale = d->invert_scale;
     conf.with_attn_scale = pd->with_attn_scale();
+    conf.with_host_scale = pd->with_host_scale();
     conf.with_attn_mask = (pd->with_attn_mask() && !pd->with_causal_mask());
     conf.broadcast_mask_q = (msk_mdw.dims()[pd_t::mask_q_index] == 1);
     conf.with_causal_mask = pd->with_causal_mask();
@@ -534,6 +547,9 @@ status_t micro_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
 
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:get_kernel_ctx");
+
+
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);
 
@@ -575,6 +591,7 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
+    kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_undef);
     kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_buffer);
     kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_top_left);
@@ -605,6 +622,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
+    GET_KERNEL_PRINT
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -688,6 +706,9 @@ status_t micro_params_t::get_kernel_ctx(
 }
 
 status_t micro_t::execute(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute");
+
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
@@ -752,11 +773,21 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+
+#if 0
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
     arg_list.append(scale);
+#else // !!!! workaround !!!!!
+    arg_list.set(0,key);
+    arg_list.set(1,qry);
+    arg_list.set(2,val);
+    arg_list.set(3,dst);
+    arg_list.set(4,scale);
+#endif
+
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

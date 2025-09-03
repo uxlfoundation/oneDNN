@@ -208,7 +208,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         for (int arg : supported_args) {
             if (!zp.has_default_values(arg)) {
                 const int mask = zp.get_mask(arg);
-                if (mask > 0) return false;
+                if (mask > 0 && mask != 2) return false;
             }
         }
         return true;

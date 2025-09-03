@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "oneapi/dnnl/dnnl_types.h"
-
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/utils.hpp"
@@ -227,14 +225,14 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
 }
 } // namespace
 
-dnnl_status_t rvv_gemm_f32(const char *transa_, const char *transb_,
-        const dim_t *M_, const dim_t *N_, const dim_t *K_, const float *alpha_,
-        const float *A, const dim_t *lda_, const float *B, const dim_t *ldb_,
+status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
+        const dim_t *N_, const dim_t *K_, const float *alpha_, const float *A,
+        const dim_t *lda_, const float *B, const dim_t *ldb_,
         const float *beta_, float *C, const dim_t *ldc_, const float *bias) {
 
     if (!(utils::one_of(*transa_, 'n', 'N', 't', 'T')
                 && utils::one_of(*transb_, 'n', 'N', 't', 'T')))
-        return dnnl_unimplemented;
+        return status::unimplemented;
 
     bool isTransA = (*transa_ == 'T' || *transa_ == 't');
     bool isTransB = (*transb_ == 'T' || *transb_ == 't');
@@ -249,7 +247,7 @@ dnnl_status_t rvv_gemm_f32(const char *transa_, const char *transb_,
     const float alpha = *alpha_, beta = *beta_;
 
     // early out and avoid division by zero in partitioning
-    if (utils::one_of(0, M, N)) return dnnl_success;
+    if (utils::one_of(0, M, N)) return status::success;
 
     int max_nthr = dnnl_get_current_num_threads();
     int nthr_m, nthr_n, nthr_k;
@@ -387,7 +385,7 @@ dnnl_status_t rvv_gemm_f32(const char *transa_, const char *transb_,
     free(ws_buffers);
     free(c_buffers);
 
-    return dnnl_success;
+    return status::success;
 }
 
 } // namespace rv64

@@ -172,25 +172,6 @@ void partition_unit_diff(
     if (*t_offset + *t_block > n) { *t_block = n - *t_offset; }
 }
 
-// Sum the m*n values from p_src into p_dst, assuming the two-dimensional
-// arrays have leading dimensions ld_src and ld_dst, respectively
-template <typename data_t>
-void sum_two_matrices(dim_t m, dim_t n, data_t *__restrict p_src, dim_t ld_src,
-        data_t *__restrict p_dst, dim_t ld_dst) {
-
-    for (dim_t j = 0; j < n; j++) {
-        for (dim_t i = 0; i < m; i++) {
-            p_dst[i + j * ld_dst] += p_src[i + j * ld_src];
-        }
-    }
-}
-
-template void sum_two_matrices<float>(dim_t m, dim_t n, float *__restrict p_src,
-        dim_t ld_src, float *__restrict p_dst, dim_t ld_dst);
-
-template void sum_two_matrices<double>(dim_t m, dim_t n,
-        double *__restrict p_src, dim_t ld_src, double *__restrict p_dst,
-        dim_t ld_dst);
 } // namespace gemm_utils
 } // namespace rv64
 } // namespace cpu

@@ -17,8 +17,6 @@
 #ifndef CPU_RV64_GEMM_RVV_GEMM_F32_HPP
 #define CPU_RV64_GEMM_RVV_GEMM_F32_HPP
 
-#include "oneapi/dnnl/dnnl_types.h"
-
 #include "common/c_types_map.hpp"
 
 namespace dnnl {
@@ -26,10 +24,10 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-dnnl_status_t rvv_gemm_f32(const char *transa, const char *transb,
-        const dim_t *M, const dim_t *N, const dim_t *K, const float *alpha,
-        const float *A, const dim_t *lda, const float *B, const dim_t *ldb,
-        const float *beta, float *C, const dim_t *ldc, const float *bias);
+status_t rvv_gemm_f32(const char *transa, const char *transb, const dim_t *M,
+        const dim_t *N, const dim_t *K, const float *alpha, const float *A,
+        const dim_t *lda, const float *B, const dim_t *ldb, const float *beta,
+        float *C, const dim_t *ldc, const float *bias);
 } // namespace rv64
 } // namespace cpu
 } // namespace impl

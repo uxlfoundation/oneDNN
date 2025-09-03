@@ -294,7 +294,7 @@ expr_t linear_t::to_expr() const {
     return simplify_rewrite(ret);
 }
 
-void stmt_seq_flatten(std::vector<stmt_t> &out, const stmt_t &s) {
+static void stmt_seq_flatten(std::vector<stmt_t> &out, const stmt_t &s) {
     if (auto *seq = s.as_ptr<stmt_seq_t>()) {
         out.insert(out.end(), seq->vec.begin(), seq->vec.end());
         return;
@@ -308,95 +308,6 @@ stmt_t stmt_seq_t::make(const std::vector<stmt_t> &_vec) {
         stmt_seq_flatten(vec, s);
     return stmt_t(new stmt_seq_t(vec));
 }
-
-stmt_t stmt_t::append(const stmt_t &s) const {
-    if (is_empty()) return s;
-    if (s.is_empty()) return *this;
-    std::vector<stmt_t> vec;
-    stmt_seq_flatten(vec, *this);
-    stmt_seq_flatten(vec, s);
-    return stmt_seq_t::make(vec);
-}
-
-expr_t expr_t::operator[](const expr_t &off) const {
-    if (is<shuffle_t>()) {
-        gpu_assert(is_const(off)) << "Offset is not constant.";
-        auto &shuffle = as<shuffle_t>();
-        int idx = shuffle.idx[to_cpp<int>(off)];
-        return shuffle.vec[idx];
-    }
-    gpu_assert(type().is_ptr()
-            || (is_const(off) && to_cpp<int>(off) < type().size()));
-    return shift_ptr(op_kind_t::_add, *this, off);
-}
-
-expr_t::expr_t(bool value) : object_t(new bool_imm_t(value)) {}
-expr_t::expr_t(float value) : object_t(new float_imm_t(value)) {}
-expr_t::expr_t(double value)
-    : object_t(new float_imm_t(value, type_t::f64())) {}
-expr_t::expr_t(int16_t value) : object_t(new int_imm_t(value)) {}
-expr_t::expr_t(int32_t value) : object_t(new int_imm_t(value)) {}
-expr_t::expr_t(int64_t value) : object_t(new int_imm_t(value)) {}
-expr_t::expr_t(uint16_t value) : object_t(new int_imm_t(value)) {}
-expr_t::expr_t(uint32_t value) : object_t(new int_imm_t(value)) {}
-expr_t::expr_t(uint64_t value) : object_t(new int_imm_t(value)) {}
-
-expr_t operator-(const expr_t &a) {
-    return const_fold_non_recursive(unary_op_t::make(op_kind_t::_minus, a));
-}
-
-expr_t div_up(const expr_t &a, const expr_t &b) {
-    return const_fold_non_recursive(
-            binary_op_t::make(op_kind_t::_div_up, a, b));
-}
-
-#define DEFINE_BINARY_OPERATOR(op, op_kind) \
-    expr_t operator op(const expr_t &a, const expr_t &b) { \
-        if (a.type().is_ptr()) return shift_ptr(op_kind, a, b); \
-        return const_fold_non_recursive(binary_op_t::make(op_kind, a, b)); \
-    }
-
-DEFINE_BINARY_OPERATOR(+, op_kind_t::_add)
-DEFINE_BINARY_OPERATOR(-, op_kind_t::_sub)
-DEFINE_BINARY_OPERATOR(*, op_kind_t::_mul)
-DEFINE_BINARY_OPERATOR(/, op_kind_t::_div)
-DEFINE_BINARY_OPERATOR(%, op_kind_t::_mod)
-DEFINE_BINARY_OPERATOR(<<, op_kind_t::_shl)
-DEFINE_BINARY_OPERATOR(>>, op_kind_t::_shr)
-
-DEFINE_BINARY_OPERATOR(==, op_kind_t::_eq)
-DEFINE_BINARY_OPERATOR(!=, op_kind_t::_ne)
-DEFINE_BINARY_OPERATOR(>, op_kind_t::_gt)
-DEFINE_BINARY_OPERATOR(>=, op_kind_t::_ge)
-DEFINE_BINARY_OPERATOR(<, op_kind_t::_lt)
-DEFINE_BINARY_OPERATOR(<=, op_kind_t::_le)
-
-DEFINE_BINARY_OPERATOR(&, op_kind_t::_and)
-DEFINE_BINARY_OPERATOR(|, op_kind_t::_or)
-DEFINE_BINARY_OPERATOR(^, op_kind_t::_xor)
-
-#undef DEFINE_BINARY_OPERATOR
-
-#define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
-    expr_t &expr_t::operator op##=(const expr_t &rhs) { \
-        auto tmp = (*this)op rhs; \
-        *this = std::move(tmp); \
-        return *this; \
-    }
-
-DEFINE_BINARY_ASSIGN_OPERATOR(+)
-DEFINE_BINARY_ASSIGN_OPERATOR(-)
-DEFINE_BINARY_ASSIGN_OPERATOR(*)
-DEFINE_BINARY_ASSIGN_OPERATOR(/)
-DEFINE_BINARY_ASSIGN_OPERATOR(%)
-DEFINE_BINARY_ASSIGN_OPERATOR(&)
-
-#undef DEFINE_BINARY_ASSIGN_OPERATOR
-
-object_t object::impl_t::_mutate(ir_mutator_t &mutator) const {
-    return *this;
-}
-void object::impl_t::_visit(ir_visitor_t &visitor) const {}
 
 #define DECL_TRAVERSE_LEAF(name) \
     object_t ir_mutator_t::_mutate(const name &obj) { return obj; } \

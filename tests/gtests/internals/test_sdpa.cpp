@@ -362,6 +362,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         throw std::runtime_error("Quantization type not supported\n");
     }();
 
+    auto def_scale_value = [&] {
+        return std::sqrt(p.head_size);
+    }();
+
     memory::dims mask_sz;
     switch (p.mask) {
         case mask_type::no_mask: mask_sz = {}; break;
@@ -429,7 +433,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
+    std::vector<float> scale_data(product(scale_sz), def_scale_value);
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
@@ -740,11 +744,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         write_to_dnnl_memory(scale_data.data(), *outmem, eng, strm);
         };
 
-
     if (with_host_scale) {
         DPRINT("%s:%s:%d ##### get_descriptors: if with_host_scale\n", PRINTHEAD);
         auto scale_md = memory::desc::host_scalar(p.qdt);
-        float scale_val = (float)std::sqrt(p.head_size);
+        float scale_val = (float)def_scale_value;
         // !!!!! TEMP - only for f16 !!!!!
         out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
     } else

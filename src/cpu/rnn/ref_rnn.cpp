@@ -51,6 +51,116 @@ using namespace dnnl::impl::memory_tracking::names;
 using namespace rnn_utils;
 #define AOC array_offset_calculator
 
+// Create new primitive descriptor for Matmul primitive that calculates C=B*A+beta*C,
+// where B has dimensions NxK, A has dimensions KxM. All parameters are defined using @p key.
+status_t rnn_matmul_primitive_descriptors_t::create_if_not_exist(
+        const key_t &key, engine_t *engine) {
+    for (const auto &kv : pds_) {
+        if (kv.first == key) return status::success;
+    }
+
+    memory_desc_t src_desc;
+    const dims_t src_dims = {key.N, key.K};
+    const dims_t src_strides_T = {1, key.LDB};
+    const dims_t src_strides_N = {key.LDB, 1};
+    const dims_t &src_strides = key.transB ? src_strides_T : src_strides_N;
+    CHECK(memory_desc_init_by_strides(
+            src_desc, 2, src_dims, key.B_type, src_strides));
+
+    memory_desc_t wei_desc;
+    const dims_t wei_dims = {key.K, key.M};
+    const dims_t wei_strides = {key.LDA, 1};
+    CHECK(memory_desc_init_by_strides(
+            wei_desc, 2, wei_dims, key.B_type, wei_strides));
+
+    memory_desc_t dst_desc;
+    const dims_t dst_dims = {key.N, key.M};
+    const dims_t dst_strides = {key.LDC, 1};
+    CHECK(memory_desc_init_by_strides(
+            dst_desc, 2, dst_dims, key.C_type, dst_strides));
+
+    matmul_desc_t matmul_desc;
+    CHECK(matmul_desc_init(
+            &matmul_desc, &src_desc, &wei_desc, nullptr, &dst_desc));
+    post_ops_t po;
+    CHECK(po.append_sum(1.0f));
+    primitive_attr_t attr;
+    CHECK(attr.set_post_ops(po));
+    primitive_desc_iterator_t it(engine, (op_desc_t *)(&matmul_desc),
+            key.do_sum ? &attr : nullptr, nullptr);
+    if (!it.is_initialized()) return status::out_of_memory;
+
+    pd_ptr mpd;
+    while (++it != it.end()) {
+        mpd = *it;
+        const bool ok = mpd->weights_md()->extra.flags == 0;
+        if (ok) {
+            pds_.emplace_back(key, mpd);
+            return status::success;
+        }
+    }
+
+    return status::unimplemented;
+}
+
+size_t rnn_matmul_primitive_descriptors_t::get_max_scratchpad_size() const {
+    size_t result = 0;
+    for (const auto &kv : pds_) {
+        result = nstl::max(result, kv.second->scratchpad_registry().size());
+    }
+    return result;
+}
+
+status_t rnn_matmul_primitives_t::create_primitives(
+        const rnn_matmul_primitive_descriptors_t &pds, engine_t *engine) {
+    for (auto pdi = pds.begin(); pdi != pds.end(); ++pdi) {
+        mm_ptr p;
+        CHECK(pdi->second->create_primitive(p, engine));
+        mms_.emplace_back(pdi->first, p);
+    }
+    return status::success;
+}
+
+status_t rnn_matmul_primitives_t::apply(const exec_ctx_t &ctx, const key_t &key,
+        const void *A, const void *B, void *C) const {
+    const auto matmul_prim = find(key);
+    assert(matmul_prim);
+    if (!matmul_prim) return status::runtime_error;
+
+    // Service engine is just a global classic CPU engine that is used
+    // when it's required to create memory_t objects for classic CPU
+    // engine regardless of the CPU runtime. For example, SYCL CPU engine
+    // cannot be used to create such objects.
+    engine_t *const service_engine = get_service_engine();
+    constexpr auto mem_flag = memory_flags_t::use_runtime_ptr;
+
+    // A, B and C are regular, raw CPU pointers that can only be used with
+    // memory_t objects created for the classic CPU engine.
+    std::unique_ptr<memory_t, memory_deleter_t> A_mem;
+    CHECK(safe_ptr_assign(A_mem,
+            new memory_t(service_engine, matmul_prim->pd()->weights_md(),
+                    mem_flag, (void *)(A))));
+    std::unique_ptr<memory_t, memory_deleter_t> B_mem;
+    CHECK(safe_ptr_assign(B_mem,
+            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
+                    (void *)(B))));
+    std::unique_ptr<memory_t, memory_deleter_t> C_mem;
+    CHECK(safe_ptr_assign(C_mem,
+            new memory_t(service_engine, matmul_prim->pd()->dst_md(), mem_flag,
+                    (void *)(C))));
+
+    exec_args_t matmul_args;
+    matmul_args[DNNL_ARG_SRC] = {B_mem.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {A_mem.get(), true};
+    matmul_args[DNNL_ARG_DST] = {C_mem.get(), false};
+
+    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
+    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+
+    return matmul_prim->execute(matmul_ctx);
+}
+
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
@@ -226,7 +336,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         return status::unimplemented;
     };
 
-    if (rnn_.use_matmul) {
+    if (rnn_.use_matmul && rnn_.is_fwd) {
         { // init layer matmuls
             const dim_t M
                     = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
@@ -322,6 +432,214 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             }
         }
     }
+
+    if (rnn_.use_matmul && !rnn_.is_fwd) {
+        constexpr bool trans_B_off = false;
+        constexpr bool trans_B_on = true;
+        constexpr bool do_sum_off = false;
+        constexpr bool do_sum_on = true;
+
+        const bool is_gru = one_of(this->cell_kind(), alg_kind::vanilla_gru,
+                alg_kind::vanilla_augru);
+        const bool is_lbr_gru = one_of(
+                this->cell_kind(), alg_kind::lbr_gru, alg_kind::lbr_augru);
+
+        const auto C_type = is_gru ? acc_type : data_type::f32;
+
+        auto check_strides = [](dim_t M, dim_t N, dim_t K, bool transB,
+                                     dim_t LDA, dim_t LDB, dim_t LDC) {
+            return LDA >= M && LDB >= (transB ? N : K) && LDC >= M;
+        };
+
+        { // init iter matmuls
+            const dim_t M = rnn_.sic;
+            const dim_t N = rnn_.mb;
+            const dim_t LDA = rnn_.weights_iter_ld;
+            const dim_t LDC = rnn_.ws_diff_states_iter_ld;
+            constexpr auto transB = trans_B_off;
+
+            if (is_gru) {
+                const dim_t LDB = rnn_.scratch_gates_ld;
+
+                // K and do_sum
+                using dim_bool = std::tuple<dim_t, bool>;
+                const dim_bool K_and_sum[] = {{rnn_.dhc, do_sum_off},
+                        {(rnn_.n_gates - 1) * rnn_.dhc, do_sum_on}};
+
+                for (const auto &ks : K_and_sum) {
+                    const auto K = std::get<0>(ks);
+                    if (!check_strides(M, N, K, transB, LDA, LDB, LDC))
+                        continue;
+
+                    CHECK(bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, weights_type, src_type,
+                                    C_type, transB, std::get<1>(ks)},
+                            engine));
+                }
+            } else {
+                const dim_t K = rnn_.n_gates * rnn_.dhc;
+                const dim_t LDB
+                        = is_lbr_gru ? rnn_.ws_gates_ld : rnn_.scratch_gates_ld;
+                const bool do_sum = is_lbr_gru ? do_sum_on : do_sum_off;
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                    CHECK(bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, weights_type, src_type,
+                                    C_type, transB, do_sum},
+                            engine));
+                }
+            }
+        }
+
+        { // init layer matmuls
+            const dim_t M = rnn_.slc;
+            const dim_t N
+                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
+            const dim_t K = rnn_.n_gates * rnn_.dhc;
+            const dim_t LDA = rnn_.weights_layer_ld;
+            const dim_t LDB = rnn_.scratch_gates_ld;
+            const dim_t LDC = rnn_.ws_diff_states_layer_ld;
+            constexpr auto transB = trans_B_off;
+
+            if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                CHECK(bwd_matmul_pds.create_if_not_exist(
+                        {M, N, K, LDA, LDB, LDC, weights_type, src_type, C_type,
+                                transB, do_sum_off},
+                        engine));
+            }
+        }
+
+        { // init weights layer matmuls
+            const auto B_type = is_gru ? weights_type : src_type;
+            const dim_t M = rnn_.n_gates * rnn_.dhc;
+            const dim_t N = rnn_.slc;
+            const dim_t K
+                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
+            // LDB values are from rnn_conf_t::src_layer_ld()
+            const dim_t LDBs[] = {rnn_.src_layer_ld_, rnn_.dst_iter_ld_,
+                    rnn_.ws_states_layer_ld};
+            const dim_t LDA = rnn_.scratch_gates_ld;
+            const dim_t LDC = rnn_.diff_weights_layer_ld;
+            constexpr auto transB = trans_B_on;
+
+            auto create_descriptor = [&](bool do_sum, dim_t LDB) {
+                return bwd_matmul_pds.create_if_not_exist(
+                        {M, N, K, LDA, LDB, LDC, src_type, B_type, C_type,
+                                transB, do_sum},
+                        engine);
+            };
+
+            for (const auto &LDB : LDBs) {
+                if (!check_strides(M, N, K, transB, LDA, LDB, LDC)) continue;
+
+                CHECK(create_descriptor(do_sum_on, LDB));
+
+                if (rnn_.diff_weights_overwrite) {
+                    CHECK(create_descriptor(do_sum_off, LDB));
+                }
+            }
+        }
+
+        { // init weights iter matmuls
+            const auto A_type = is_gru ? weights_type : src_type;
+            const dim_t N = rnn_.sic;
+            const dim_t K = rnn_.mb;
+            const dim_t LDA = is_gru || is_lbr_gru ? rnn_.ws_gates_ld
+                                                   : rnn_.scratch_gates_ld;
+            const dim_t LDC = rnn_.diff_weights_iter_ld;
+            constexpr auto transB = trans_B_on;
+
+            auto create_descriptors = [&](dim_t M, dim_t LDB) {
+                auto create_descriptor = [&](bool do_sum) {
+                    return bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, A_type, src_type, C_type,
+                                    transB, do_sum},
+                            engine);
+                };
+
+                CHECK(create_descriptor(do_sum_on));
+                if (rnn_.diff_weights_overwrite) {
+                    CHECK(create_descriptor(do_sum_off));
+                }
+
+                return status::success;
+            };
+
+            if (is_gru) {
+                // M and ldb
+                using dim2 = std::tuple<dim_t, dim_t>;
+                const dim_t M1 = (rnn_.n_gates - 1) * rnn_.dhc;
+                const dim_t M2 = rnn_.dhc;
+                // LDB values for M1 are from rnn_conf_t::src_iter_ld()
+                dim2 M_and_LDB[] = {{M1, rnn_.src_iter_ld_},
+                        {M1, rnn_.dst_layer_ld_}, {M1, rnn_.ws_states_iter_ld},
+                        {M2, rnn_.ws_states_layer_ld}};
+
+                for (const auto &m_ldb : M_and_LDB) {
+                    const dim_t M = std::get<0>(m_ldb);
+                    const dim_t LDB = std::get<1>(m_ldb);
+                    if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                        CHECK(create_descriptors(M, LDB));
+                    }
+                }
+            } else {
+                const dim_t M = rnn_.n_gates * rnn_.dhc;
+                // LDB values are from rnn_conf_t::src_iter_ld()
+                dim_t LDBs[] = {rnn_.src_iter_ld_, rnn_.dst_layer_ld_,
+                        rnn_.ws_states_iter_ld};
+
+                for (const auto &LDB : LDBs) {
+                    if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                        CHECK(create_descriptors(M, LDB));
+                    }
+                }
+            }
+        }
+
+        if (rnn_.is_lstm_projection) {
+            { // init proj matmuls
+                const dim_t M = rnn_.dhc;
+                const dim_t N = rnn_.mb;
+                const dim_t K = rnn_.dic;
+                const dim_t LDA = rnn_.weights_projection_ld;
+                const dim_t LDB = rnn_.scratch_diff_ht_ld;
+                const dim_t LDC = rnn_.ws_diff_states_layer_ld;
+                constexpr auto transB = trans_B_off;
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                    CHECK(bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, weights_type, weights_type,
+                                    C_type, transB, do_sum_off},
+                            engine));
+                }
+            }
+
+            { // init weights proj matmuls
+                const dim_t M = rnn_.dlc;
+                const dim_t N = rnn_.dhc;
+                const dim_t K = rnn_.mb;
+                const dim_t LDA = rnn_.scratch_diff_ht_ld;
+                const dim_t LDB = rnn_.ws_ht_ld;
+                const dim_t LDC = rnn_.diff_weights_projection_ld;
+                constexpr auto transB = trans_B_on;
+
+                auto create_descriptor = [&](bool do_sum) {
+                    return bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, src_type, src_type, C_type,
+                                    transB, do_sum},
+                            engine);
+                };
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                    CHECK(create_descriptor(do_sum_on));
+                    if (rnn_.diff_weights_overwrite) {
+                        CHECK(create_descriptor(do_sum_off));
+                    }
+                }
+            }
+        }
+    }
+
     return status::success;
 }
 
@@ -653,6 +971,8 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
             max_nested_scratchpad_size = nstl::max(max_nested_scratchpad_size,
                     n_pd->scratchpad_registry().size());
     }
+    max_nested_scratchpad_size = nstl::max(max_nested_scratchpad_size,
+            bwd_matmul_pds.get_max_scratchpad_size());
 
     scratchpad.template book<void *>(
             key_nested_multiple + 0, max_nested_scratchpad_size);
@@ -749,6 +1069,8 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     CREATE_MATMUL(matmul_projection_2_);
     CREATE_MATMUL(matmul_projection_3_);
 #undef CREATE_MATMUL
+
+    CHECK(bwd_mm_primitives_.create_primitives(pd()->bwd_matmul_pds, engine));
 
 #if DNNL_X64
     const auto rnn = pd()->rnn_;

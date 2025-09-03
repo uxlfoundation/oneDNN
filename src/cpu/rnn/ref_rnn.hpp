@@ -76,6 +76,79 @@ void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
 #endif
 }
 
+// A set of matmul primitive descriptors for unique shapes, leading dimensions, etc.
+class rnn_matmul_primitive_descriptors_t {
+public:
+    using pd_ptr = std::shared_ptr<primitive_desc_t>;
+
+    struct key_t {
+        dim_t M, N, K, LDA, LDB, LDC;
+        data_type_t A_type, B_type, C_type;
+        bool transB, do_sum;
+
+        key_t(dim_t M, dim_t N, dim_t K, dim_t LDA, dim_t LDB, dim_t LDC,
+                data_type_t A_type, data_type_t B_type, data_type_t C_type,
+                bool transB, bool sum_po)
+            : M(M)
+            , N(N)
+            , K(K)
+            , LDA(LDA)
+            , LDB(LDB)
+            , LDC(LDC)
+            , A_type(A_type)
+            , B_type(B_type)
+            , C_type(C_type)
+            , transB(transB)
+            , do_sum(sum_po) {}
+
+        bool operator==(const key_t &rhs) const {
+            return M == rhs.M && N == rhs.N && K == rhs.K && LDA == rhs.LDA
+                    && LDB == rhs.LDB && LDC == rhs.LDC && A_type == rhs.A_type
+                    && B_type == rhs.B_type && C_type == rhs.C_type
+                    && transB == rhs.transB && do_sum == rhs.do_sum;
+        }
+    };
+
+    // Create a new primitive descriptor if the descriptor with the same key data doesn't exist
+    status_t create_if_not_exist(const key_t &key, engine_t *engine);
+
+    size_t get_max_scratchpad_size() const;
+
+private:
+    using pd_vector = std::vector<std::pair<key_t, pd_ptr>>;
+    pd_vector pds_;
+
+    using pd_iter = pd_vector::const_iterator;
+    pd_iter begin() const { return pds_.begin(); }
+    pd_iter end() const { return pds_.end(); }
+
+    friend class rnn_matmul_primitives_t;
+};
+
+// A set of matmul primitives for unique shapes, leading dimensions, etc.
+class rnn_matmul_primitives_t {
+public:
+    using key_t = rnn_matmul_primitive_descriptors_t::key_t;
+
+    status_t create_primitives(
+            const rnn_matmul_primitive_descriptors_t &pds, engine_t *engine);
+
+    // Run execute function for corresponding matmul primitive instance
+    status_t apply(const exec_ctx_t &ctx, const key_t &key, const void *A,
+            const void *B, void *C) const;
+
+private:
+    using mm_ptr = std::shared_ptr<primitive_t>;
+    std::vector<std::pair<key_t, mm_ptr>> mms_;
+
+    mm_ptr find(const key_t &key) const {
+        for (const auto &kv : mms_) {
+            if (kv.first == key) return kv.second;
+        }
+        return {};
+    }
+};
+
 template <impl::data_type_t src_type, impl::data_type_t weights_type,
         impl::data_type_t acc_type>
 struct ref_rnn_fwd_t;
@@ -174,6 +247,8 @@ struct ref_rnn_common_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
         std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
 #endif
+        rnn_matmul_primitive_descriptors_t bwd_matmul_pds;
+
     protected:
         void init_scratchpad(size_t scratchpad_sz);
     };
@@ -290,6 +365,8 @@ protected:
     std::shared_ptr<primitive_t> matmul_projection_1_;
     std::shared_ptr<primitive_t> matmul_projection_2_;
     std::shared_ptr<primitive_t> matmul_projection_3_;
+
+    rnn_matmul_primitives_t bwd_mm_primitives_ {};
 
     gemm_t gemm_layer_func {};
     gemm_t gemm_iter_func {};

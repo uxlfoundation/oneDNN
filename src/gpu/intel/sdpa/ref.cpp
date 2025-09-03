@@ -26,6 +26,9 @@ namespace intel {
 namespace sdpa {
 
 status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute_ref");
+
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);

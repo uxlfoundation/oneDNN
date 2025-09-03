@@ -27,6 +27,20 @@ namespace sdpa {
 
 using pd_t = sdpa_pd_t;
 
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+#define  GET_KERNEL_PRINT \
+    kernel_ctx.define_int("KERNEL_PRINT", getenv_int("KERNEL_PRINT", 0)); \
+    int g0 = getenv_int("G0", 0); \
+    int g1 = getenv_int("G1", 0); \
+    int g2 = getenv_int("G2", 0); \
+    kernel_ctx.define_int("G0", g0); \
+    kernel_ctx.define_int("G1", g1); \
+    kernel_ctx.define_int("G2", g2);
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 } // namespace sdpa
 } // namespace intel
 } // namespace gpu

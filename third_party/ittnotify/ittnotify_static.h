@@ -207,6 +207,12 @@ ITT_STUBV(ITTAPI, void, counter_dec_delta_v3, (const __itt_domain *domain, __itt
 
 ITT_STUBV(ITTAPI, void, marker, (const __itt_domain *domain, __itt_id id, __itt_string_handle *name, __itt_scope scope), (ITT_FORMAT domain, id, name, scope), marker, __itt_group_structure, "%p, %lu, %p, %d")
 
+ITT_STUBV(ITTAPI, void, formatted_metadata_add, (const __itt_domain *domain, __itt_string_handle *format, ...), \
+  (ITT_FORMAT domain, format), formatted_metadata_add, __itt_group_structure, "%p, %p")
+
+ITT_STUBV(ITTAPI, void, formatted_metadata_add_overlapped, (const __itt_domain *domain, __itt_id id, __itt_string_handle *format, ...), \
+  (ITT_FORMAT domain, id, format), formatted_metadata_add_overlapped, __itt_group_structure, "%p, %lu, %p")
+
 ITT_STUBV(ITTAPI, void, metadata_add,      (const __itt_domain *domain, __itt_id id, __itt_string_handle *key, __itt_metadata_type type, size_t count, void *data), (ITT_FORMAT domain, id, key, type, count, data), metadata_add, __itt_group_structure, "%p, %lu, %p, %d, %lu, %p")
 #if ITT_PLATFORM==ITT_PLATFORM_WIN
 ITT_STUBV(ITTAPI, void, metadata_str_addA, (const __itt_domain *domain, __itt_id id, __itt_string_handle *key, const char* data, size_t length),    (ITT_FORMAT domain, id, key, data, length), metadata_str_addA, __itt_group_structure, "%p, %lu, %p, %p, %lu")

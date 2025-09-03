@@ -301,7 +301,14 @@ inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, global DST_DATA_T *A,
-        const global SCALE_DATA_T *scale_ptr, int d, int k, int q,
+
+#if WITH_HOST_SCALE
+        SCALE_DATA_T scale_val,
+#else
+        const global SCALE_DATA_T *scale_ptr,
+#endif
+
+        int d, int k, int q,
         const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
@@ -461,12 +468,23 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     float iscale = 1.f;
     if (k0end > 0) {
 #if WITH_ATTN_SCALE
+
+#if WITH_HOST_SCALE
+#if INVERT_SCALE
+        iscale = (float)scale_val;
+        scale = native_recip(iscale);
+#else
+        scale = (float)scale_val;
+        iscale = native_recip(scale);
+#endif
+#else
 #if INVERT_SCALE
         iscale = SCALES_TO_FLOAT(*scale_ptr);
         scale = native_recip(iscale);
 #else
         scale = SCALES_TO_FLOAT(*scale_ptr);
         iscale = native_recip(scale);
+#endif
 #endif
 #endif
         scale *= 1.442695f; // log2(e)

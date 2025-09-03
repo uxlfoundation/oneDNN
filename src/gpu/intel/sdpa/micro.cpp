@@ -466,6 +466,9 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.invert_scale = d->invert_scale;
     conf.with_attn_scale = pd->with_attn_scale();
+    // !!!!!!!!!!!!!!!!!!!
+    conf.with_host_scale = pd->with_host_scale();
+    // !!!!!!!!!!!!!!!!!!!
     conf.with_attn_mask = (pd->with_attn_mask() && !pd->with_causal_mask());
     conf.broadcast_mask_q = (msk_mdw.dims()[pd_t::mask_q_index] == 1);
     conf.with_causal_mask = pd->with_causal_mask();
@@ -571,6 +574,11 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
+    // !!!!!!!!!!!!!!!!!!!!!!
+    kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
+    // !!!!!!!!!!!!!!!!!!!!!!
+
+
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_undef);
     kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_buffer);
     kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_top_left);
@@ -700,7 +708,10 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:before &scale = CTX_IN_STORAGE(...");
     const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:after &scale = CTX_IN_STORAGE(...");
+
     const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
 
     const auto &key_scales
@@ -758,11 +769,25 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+
+#if 0
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
+    printf("\nadding scale ....\n");fflush(0);
     arg_list.append(scale);
+    printf("\nadded scale ....\n");fflush(0);
+#else
+    arg_list.set(0,key);
+    arg_list.set(1,qry);
+    arg_list.set(2,val);
+    arg_list.set(3,dst);
+    printf("\nadding scale ....\n");fflush(0);
+    arg_list.set(4,scale);
+    printf("\nadded scale ....\n");fflush(0);
+#endif
+
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

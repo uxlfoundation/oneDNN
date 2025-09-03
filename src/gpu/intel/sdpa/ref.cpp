@@ -50,7 +50,9 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(1, key);
     arg_list.set(2, val);
     arg_list.set(3, dst);
+
     arg_list.set(4, scale);
+
     arg_list.set(5, attn_mask);
     arg_list.set(6, V);
     arg_list.set(7, D);

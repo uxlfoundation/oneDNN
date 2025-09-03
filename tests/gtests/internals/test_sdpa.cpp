@@ -1563,8 +1563,6 @@ GPU_TEST_P(sdpa_test_t, compare) {
         case mask_type::twoD: mask_ptr = &mask; break;
     }
 
-    //bool with_host_scale = p.stype == scale_type::host_side;
-
     sdpa::primitive_desc sdpa_quantized_pd;
     sdpa sdpa_quantized_p;
     try {
@@ -1599,7 +1597,10 @@ GPU_TEST_P(sdpa_test_t, compare) {
     }
 
     if (scale_dt != mdt::undef
-        ) { s8_args[DNNL_ARG_SCALE] = t.m_scale; }
+        ) {
+        DPRINT("%s:%s:%d @@@ scale_dt != mdt::undef\n", PRINTHEAD);
+        s8_args[DNNL_ARG_SCALE] = t.m_scale;
+    }
 
     bool k_is_16_bit_float = ((p.kdt == mdt::f16) || (p.kdt == mdt::bf16));
     bool v_is_16_bit_float = ((p.vdt == mdt::f16) || (p.vdt == mdt::bf16));
@@ -1624,7 +1625,9 @@ GPU_TEST_P(sdpa_test_t, compare) {
     prim_sdpa_quant(p, t, eng, strm, t.m_query,
             p.with_key_transposed ? t.m_key_t_quantized : t.m_key_quantized,
 //            t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+// ??? !!!!! _device - WA
             t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_device, t.m_mask,
+// ??? !!!!!
             t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
             invert_scale, doubled_memory);
 

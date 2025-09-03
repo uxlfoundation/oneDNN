@@ -717,6 +717,7 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         if ((T.bits() != T_new.bits()) && !sz_change) return;
         if (T.isF8() && T_new.isF8()) return;
         if (T.isF4() && (T_new.isF4() || T_new.isInt4())) return;
+        if (T == Type::bf16 && T_new == Type::f16) return;
         T = T.isSigned() ? T_new.asSigned() : T_new.asUnsigned();
     };
     update_type(problem_.Ta, Ta_new, true);

@@ -89,9 +89,11 @@ struct sdpa_dims_t {
 };
 
 struct sdpa_tensors_t {
-    memory m_query, m_key, m_scale, m_mask, m_value, m_output;
+    memory m_query, m_key, m_mask, m_value, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
     memory m_key_t_quantized;
+    memory m_scale; // tested sdpa arg, can be host-side scalar
+    memory m_scale_device; // reference impl param
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -100,11 +102,6 @@ struct sdpa_tensors_t {
     int kq_mask, vs_mask;
     memory::dims kq_groups, vs_groups;
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!
-    //memory::desc host_scale_md; // ???? get from memory
-    //memory m_host_scale;
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!
-    memory m_scale_device; // just to use in prim_sdpa_quant
 };
 bool is_quantized(mdt dt, quantize_type qtype) {
     return qtype != quantize_type::no_quantization
@@ -735,27 +732,26 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     transpose_strides(eng, out.m_key_t_quantized, out.m_key_quantized);
 
-    // !!!!!!!!!!!+++++++++++++++++++++++++++ scale processing !!!!!!!!!!!!!!!!!
+    // +++++++++++++++++++++++++++ scale processing
+
+    auto setup_device_scale = [&](memory *outmem) {
+        auto scale_md = memory::desc(scale_sz, p.qdt, abcd);
+        *outmem = double_and_resize(scale_md, eng, strm, doubled_memory);
+        write_to_dnnl_memory(scale_data.data(), *outmem, eng, strm);
+        };
+
+
     if (with_host_scale) {
         DPRINT("%s:%s:%d ##### get_descriptors: if with_host_scale\n", PRINTHEAD);
         auto scale_md = memory::desc::host_scalar(p.qdt);
         float scale_val = (float)std::sqrt(p.head_size);
         // !!!!! TEMP - only for f16 !!!!!
         out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
-    } else {
-        DPRINT("%s:%s:%d ##### get_descriptors: else with_host_scale\n", PRINTHEAD);
-        auto scale_md = memory::desc(scale_sz, p.qdt, abcd);
-        out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
-        write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
-        print_mem(out.m_scale,"out.m_scale just after write_to_dnnl_memory ");
-    }
-    // ???? TODO - unify ???? - maybe just unify the function as(xxxxxxx)
-    auto scale_device_md = memory::desc(scale_sz, p.qdt, abcd);
-    out.m_scale_device = double_and_resize(scale_device_md, eng, strm, doubled_memory);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale_device, eng, strm);
-    print_mem(out.m_scale_device,"out.m_scale_device just after write_to_dnnl_memory ");
+    } else
+        setup_device_scale(&out.m_scale);
+    setup_device_scale(&out.m_scale_device);
 
-    // !!!!!!!!!!!+++++++++++++++++++++++++++ scale processing !!!!!!!!!!!!!!!!!
+    // +++++++++++++++++++++++++++ scale processing
 
     DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
 
@@ -851,7 +847,6 @@ enum class scale_type { host_side, device_side };
 
 
 // clang-format off
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 INSTANTIATE_TEST_SUITE_P(MyDebug,
     sdpa_test_t,
                    //  mb, hd_num,kv_hd_num,seq_len,qry_num, hd_size, kg_sz,  vgrp_sz,      dt,       qdt,       kdt,       ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,     mskdt, qtype
@@ -866,7 +861,7 @@ INSTANTIATE_TEST_SUITE_P(MyDebug,
 
 
     ), &print_to_string);
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 #if 0
 INSTANTIATE_TEST_SUITE_P(AllMaskTypes,
     sdpa_test_t,
@@ -1227,9 +1222,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
 
-    // !!!!!! scale processing (scale_, xxxx)
     DPRINT("%s:%s:%d &&&&&&&&& scale processing\n", PRINTHEAD);
-
     auto scale_f32 = as(strm, scale_device, mdt::f32);
     if (scale_dt != mdt::undef) {
         scale_f32 = reshape(strm, scale_f32,

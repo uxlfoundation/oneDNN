@@ -551,6 +551,10 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem_);
 
+    // By default gemmstone assumes that the accumulation type must be at least
+    // as wide as the output type. For oneDNN this restriction is not needed.
+    base.precisionCExt = '\0';
+
     base.sizes.m = m;
     base.sizes.n = n;
     base.sizes.k = k;
@@ -795,6 +799,10 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     // Find it in the catalog.
     MatchParams match_params(hw_, true, is_integrated, problem_);
+
+    // By default gemmstone assumes that the accumulation type must be at least
+    // as wide as the output type. For oneDNN this restriction is not needed.
+    match_params.precisionCExt = '\0';
 
     match_params.sizes.m = m;
     match_params.sizes.n = n;

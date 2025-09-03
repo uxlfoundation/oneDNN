@@ -372,6 +372,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     selector.layouts[1] = &temp[14];
     selector.layouts[2] = &temp[16];
 
+    precisionCExt = precisionChar(problem.Tc_ext);
+
     alignment[0] = problem.A.alignment;
     alignment[1] = problem.B.alignment;
     alignment[2] = problem.C.alignment;

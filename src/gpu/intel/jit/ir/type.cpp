@@ -165,7 +165,7 @@ std::string type_t::str() const {
     return oss.str();
 }
 
-type_t type_t::parse(std::istream &in) {
+void type_t::parse(std::istream &in) {
     bool found = false;
     kind_t kind = {};
     for (auto &entry : type::kind_names) {
@@ -174,7 +174,10 @@ type_t type_t::parse(std::istream &in) {
             found = true;
         }
     }
-    if (!found) return {};
+    if (!found) {
+        *this = {};
+        return;
+    };
 
     int elems = 1;
     if (stream_try_match(in, "x")) { in >> elems; }
@@ -183,7 +186,7 @@ type_t type_t::parse(std::istream &in) {
     if (stream_try_match(in, "*")) { attr |= attr_t::ptr; }
     if (stream_try_match(in, ".mut")) { attr |= attr_t::mut; }
     if (stream_try_match(in, ".slm")) { attr |= attr_t::slm; }
-    return type_t(kind, elems, attr);
+    *this = type_t(kind, elems, attr);
 }
 
 bool is_subset(const type_t &a, const type_t &b) {

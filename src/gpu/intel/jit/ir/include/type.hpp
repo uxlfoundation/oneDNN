@@ -364,7 +364,7 @@ public:
     }
 
     std::string str() const;
-    static type_t parse(std::istream &in);
+    void parse(std::istream &in);
 
 protected:
     enum class kind_t {

@@ -357,14 +357,40 @@ rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
     cell_position |= merged_layer;
 
-    CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
-            rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
-            (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
-            diff_src_layer_, rnn.ws_diff_states_layer_ld));
     const float beta = rnn.diff_weights_beta(cell_position);
-    CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * n_iter,
-            1.0, (weights_t *)scratch_gates_, rnn.scratch_gates_ld, src_layer_,
-            src_layer_ld, beta, diff_w_layer_, rnn.diff_weights_layer_ld));
+
+    if (rnn.use_matmul) {
+        assert(n_iter == rnn.n_iter);
+
+        constexpr bool trans_B_off = false;
+        constexpr bool trans_B_on = true;
+        constexpr bool do_sum_off = false;
+
+        CHECK(this->bwd_mm_primitives_.apply(ctx,
+                {rnn.slc, rnn.mb * rnn.n_iter, rnn.n_gates * rnn.dhc,
+                        rnn.weights_layer_ld, rnn.scratch_gates_ld,
+                        rnn.ws_diff_states_layer_ld, weights_type, src_type,
+                        acc_type, trans_B_off, do_sum_off},
+                w_layer_[0], scratch_gates_, diff_src_layer_));
+
+        const bool do_sum = beta == 1.0f;
+        CHECK(this->bwd_mm_primitives_.apply(ctx,
+                {rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * n_iter,
+                        rnn.scratch_gates_ld, src_layer_ld,
+                        rnn.diff_weights_layer_ld, src_type, weights_type,
+                        acc_type, trans_B_on, do_sum},
+                scratch_gates_, src_layer_, diff_w_layer_));
+    } else {
+        CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
+                rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
+                (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
+                diff_src_layer_, rnn.ws_diff_states_layer_ld));
+        CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc,
+                rnn.mb * n_iter, 1.0, (weights_t *)scratch_gates_,
+                rnn.scratch_gates_ld, src_layer_, src_layer_ld, beta,
+                diff_w_layer_, rnn.diff_weights_layer_ld));
+    }
+
     return dnnl_success;
 }
 

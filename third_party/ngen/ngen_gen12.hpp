@@ -725,13 +725,15 @@ static inline void encodeTernaryTypes(Instruction12 &i, D dst, S0 src0, S1 src1,
 template <typename S0, typename Tag>
 static inline void encodeTernarySrc0(Instruction12 &i, S0 src0, Tag tag)
 {
-    i.ternary.src0 = encodeTernaryOperand12<false>(src0, tag).bits;
-    i.ternary.src0Mods = src0.getMods();
+    auto i2 = i; /* separate variable to avoid gcc13 bug */
+    i2.ternary.src0 = encodeTernaryOperand12<false>(src0, tag).bits;
+    i2.ternary.src0Mods = src0.getMods();
 
     auto vs0 = encodeTernaryVS01(src0);
 
-    i.ternary.src0VS0 = vs0 & 1;
-    i.ternary.src0VS1 = vs0 >> 1;
+    i2.ternary.src0VS0 = vs0 & 1;
+    i2.ternary.src0VS1 = vs0 >> 1;
+    i = i2;
 }
 
 template <typename Tag>
@@ -744,13 +746,15 @@ static inline void encodeTernarySrc0(Instruction12 &i, const Immediate &src0, Ta
 template <typename S1, typename Tag>
 static inline void encodeTernarySrc1(Instruction12 &i, S1 src1, Tag tag)
 {
-    i.ternary.src1 = encodeTernaryOperand12<false>(src1, tag).bits;
-    i.ternary.src1Mods = src1.getMods();
+    auto i2 = i; /* separate variable to avoid gcc13 bug */
+    i2.ternary.src1 = encodeTernaryOperand12<false>(src1, tag).bits;
+    i2.ternary.src1Mods = src1.getMods();
 
     auto vs1 = encodeTernaryVS01(src1);
 
-    i.ternary.src1VS0 = vs1 & 1;
-    i.ternary.src1VS1 = vs1 >> 1;
+    i2.ternary.src1VS0 = vs1 & 1;
+    i2.ternary.src1VS1 = vs1 >> 1;
+    i = i2;
 }
 
 template <typename S2, typename Tag>

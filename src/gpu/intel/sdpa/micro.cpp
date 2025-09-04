@@ -126,8 +126,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
-    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config, is_f32);
+    auto record = choose_config(arch_, d->head_size(), d->keys(), thin_q,
+            quantized, is_integrated, use_fma_config, is_f32);
+    config = record ? &record->config : nullptr;
 
     VCHECK_SDPA_COND(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -281,9 +282,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m
-            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
-                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
+    heuristic_sizes.m = nearest_conf_seq_interval(record);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (queries <= thin_q_threshold)
             ? thin_q_threshold

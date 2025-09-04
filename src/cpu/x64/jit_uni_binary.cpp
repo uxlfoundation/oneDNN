@@ -29,6 +29,7 @@ namespace x64 {
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -110,6 +111,31 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
+// TODO: Temporary workaround for unsupported per_w binary post-op broadcasting patterns.
+// Remove this code and add proper kernel support for these cases.
+static bool is_per_w_skipped(const memory_desc_wrapper &src0_md,
+        const memory_desc_wrapper &src1_md) {
+    const dims_t &src0_dims = src0_md.dims();
+    const dims_t &src1_dims = src1_md.dims();
+    const int ndims = src0_md.ndims();
+
+    if (ndims != 4) return false;
+
+    // src0: 1 x a x b x c, src1: 1 x a x 1 x 1
+    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src0_dims[1] == src1_dims[1]
+            && src1_dims[2] == 1 && src1_dims[3] == 1) {
+        return true;
+    }
+
+    // src0: 1 x a x b x c, src1: 1 x 1 x b x c
+    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src1_dims[1] == 1
+            && src0_dims[2] == src1_dims[2] && src0_dims[3] == src1_dims[3]) {
+        return true;
+    }
+
+    return false;
+}
+
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
@@ -147,6 +173,12 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     VDISPATCH_BINARY(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    conf_.postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
+    VDISPATCH_BINARY(!(conf_.postops_per_w_broadcast_exists
+                             && is_per_w_skipped(src0_md_, src1_md_)),
+            "unsupported dimensions for per_w broadcasting pattern");
     // All operations over blocking descriptors should have md initialized.
     conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
     VDISPATCH_BINARY(post_ops_ok(attr(), src_md(0), dst_md(),
@@ -916,9 +948,19 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
+
+    const bool postops_per_w_broadcast_exists
+            = pd()->get_conf().postops_per_w_broadcast_exists;
     const dim_t MB = dims[0];
-    const dim_t C = ndims >= 2 ? dims[1] : 1;
-    const dim_t SP = ndims >= 3 ? utils::array_product(dims + 2, ndims - 2) : 1;
+    dim_t C = 1;
+    dim_t SP = 1;
+    if (postops_per_w_broadcast_exists) {
+        C = (ndims >= 3) ? dims[1] * dims[2] : 1;
+        SP = (ndims >= 4) ? utils::array_product(dims + 3, ndims - 3) : 1;
+    } else {
+        C = (ndims >= 2) ? dims[1] : 1;
+        SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
+    }
 
     const auto &bcast_dims = pd()->broadcast_dims();
 
@@ -1180,6 +1222,9 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     const bool postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     post_ops, src0_d, get_supported_postops_bcast_strategies());
+    const bool postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
+                    post_ops, src0_d, get_supported_postops_bcast_strategies());
     const auto &bcast_type = pd()->get_conf().bcast_type;
     const bool point_broadcast = bcast_type == bcast_t::scalar;
     const auto &op_type = pd()->get_conf().op_type;
@@ -1199,11 +1244,13 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
                     || vector_overwrite);
 
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
-            && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
+            && !postops_per_oc_broadcast_exists && !blocked_oc_tail
+            && !postops_per_w_broadcast_exists)
         execute_no_bcast_strategy(src0, src1, src2, dst, scales[0], scales[1],
                 post_ops_binary_rhs_arg_vec, bcast_type);
     else if (bcast_type == bcast_t::per_batch
-            && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
+            && !postops_per_oc_broadcast_exists && !blocked_oc_tail
+            && !postops_per_w_broadcast_exists)
         execute_bcast_per_batch_strategy(src0, src1, src2, dst, scales[0],
                 scales[1], post_ops_binary_rhs_arg_vec);
     else if (bcast_type == bcast_t::per_w)

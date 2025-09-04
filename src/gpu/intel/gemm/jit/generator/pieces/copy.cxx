@@ -248,9 +248,9 @@ void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
 
     // Workaround probable scheduling / hw issue
     if (hw == HW::Xe2)
-	    sync(SyncFunction::nop, SWSB<uint32_t>(1));
+        sync(SyncFunction::nop, SWSB<uint32_t>(1));
 
-     // Generate code.
+    // Generate code.
     plan.execute(*this);
 
     // Restore flag registers that were clobbered, and invalidate

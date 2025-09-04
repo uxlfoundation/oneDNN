@@ -1787,7 +1787,6 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
             if (Xi_layoutK.size() == 1) hh_layout = 0;
             if (Xi_addrsK.size()  == 1) hh_addr = 0;
 
-            
             int kx_stride = unrollKSLM;
             if (strategy.kInterleave && (h % strategy.kInterleaveChunk) >= (strategy.kInterleaveChunk - unrollKSLM))
                 kx_stride = unrollKSLM + strategy.kInterleaveChunk * (strategy.wg[LoopK] - 1);

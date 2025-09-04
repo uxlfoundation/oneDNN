@@ -224,7 +224,7 @@ std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
 //        quantize_type, tag_t, mask_config_t, accumulation_t>;
-        quantize_type, tag_t, mask_config_t, accumulation_t, scale_type>;
+        quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -240,10 +240,11 @@ struct sdpa_dims_t {
     quantize_type qtype;
     memory::format_tag key_format_tag;
     mask_config_t mask;
-    accumulation_t acc_modes;
     // !!!!!!!!!!!!!
     scale_type stype;
     // !!!!!!!!!!!!!
+    accumulation_t acc_modes;
+
     sdpa_dims_t() = default;
     sdpa_dims_t(memory::dim mb_, memory::dim head_num_,
             memory::dim kv_head_num_, memory::dim seq_len_,
@@ -256,13 +257,11 @@ struct sdpa_dims_t {
             dnnl::memory::format_tag key_format_tag_
             = dnnl::memory::format_tag::abcd,
             mask_type mask_ = mask_type::no_mask,
+// !!!!!!!!!!!!!!!
+            scale_type stype_ = scale_type::device_side, // or host ????
+// !!!!!!!!!!!!!!!
             accumulation_mode kq_acc_ = accumulation_mode::f32,
-#if 0
             accumulation_mode vs_acc_ = accumulation_mode::f32)
-#else
-            accumulation_mode vs_acc_ = accumulation_mode::f32,
-            scale_type stype_ = scale_type::device_side)
-#endif
         : mb(mb_)
         , heads {head_num_, kv_head_num_}
         , seq_len {query_num_, seq_len_}
@@ -276,8 +275,8 @@ struct sdpa_dims_t {
 #if 0
         , acc_modes {kq_acc_, vs_acc_} {}
 #else
-        , acc_modes {kq_acc_, vs_acc_}
-        , stype(stype_) {}
+        , stype(stype_)
+        , acc_modes {kq_acc_, vs_acc_} {}
 #endif
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
@@ -294,8 +293,8 @@ struct sdpa_dims_t {
 #if 0
         , acc_modes(std::get<10>(dims)) {}
 #else
-        , acc_modes(std::get<10>(dims))
-        , stype(std::get<11>(dims)) {}
+        , stype(std::get<10>(dims))
+        , acc_modes(std::get<11>(dims)) {}
 #endif
 };
 
@@ -356,8 +355,6 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case quantize_type::per_tensor1: ss << "_ptensor1"; break;
         case quantize_type::per_tensor3: ss << "_ptensor3"; break;
     }
-    if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
-    if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
 // !!!!!!!!!!!!!
     if (p.stype == scale_type::host_side) {
         ss << "_hostscale";
@@ -365,6 +362,8 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         ss << "_devicescale";
     }
 // !!!!!!!!!!!!!
+    if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
+    if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
     return ss;
 }
 
@@ -2007,11 +2006,13 @@ INSTANTIATE_TEST_SUITE_P(MyDebug,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
     testing::Values(
-//       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side}
-       sdpa_dims_t(1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side)
+//  orig     sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side}
+       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::host_side, accumulation_mode::f32,accumulation_mode::f32},
+       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::device_side},
+       sdpa_dims_t{1,    32,       32,   512,      512,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::device_side},
+       sdpa_dims_t{1,    32,       32,   513,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::host_side, accumulation_mode::f32}
     ), &print_to_string);
 
-#if 0
 INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
@@ -2026,6 +2027,7 @@ INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
                     sdpa_dims_t{   1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl }
     ), &print_to_string);
 
+#if 1
 INSTANTIATE_TEST_SUITE_P(llama_3_8b,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype

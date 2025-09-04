@@ -217,7 +217,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpg, 64, second_token | quantized | fma | f32}, {16, 16,  8,  8, 32, 1, 16, 2 }},
 
 
-        {{compute::gpu_arch_t::xe_hpg, 80, fma}, {8, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 80, fma}, {16, 16, 16, 16, 5, 4, 5, 4}},
 
         {{compute::gpu_arch_t::xe_hpg, 128},                    {16, 16, 32, 8, 8, 4, 4, 8}},
         {{compute::gpu_arch_t::xe_hpg, 128, 32},                {16, 16, 16, 8, 16, 2, 8, 4}},

@@ -306,7 +306,9 @@ private:
     const Xbyak::Reg64 reg_kd = r9;
 
     const Xbyak::Reg64 reg_bias = r11;
-    const Xbyak::Reg64 reg_ptr_scales = r10;
+    const Xbyak::Reg64 reg_ptr_src_scales = r10;
+    const Xbyak::Reg64 reg_ptr_wei_scales = r10;
+    const Xbyak::Reg64 reg_ptr_dst_scales = r10;
     const Xbyak::Reg64 reg_ptr_sum_scale = r9;
     const Xbyak::Reg64 reg_ptr_sum_zp = abi_not_param1;
     const Xbyak::Reg64 reg_aux_saturation = reg_ptr_sum_scale;
@@ -318,7 +320,6 @@ private:
     const Xbyak::Reg64 reg_src_zero_point = r8;
     const Xbyak::Reg64 reg_zero_point_pbuff = rsi;
     const Xbyak::Reg64 reg_dst_zero_point = abi_not_param1;
-    const Xbyak::Reg64 reg_dst_scale = reg_dst_zero_point;
 
     // rbp - reserved for EVEX compression
     const Xbyak::Reg64 reg_last_h = abi_not_param1;
@@ -339,8 +340,6 @@ private:
     const Xbyak::Zmm &zmm_zp = zmm29;
     const Xbyak::Zmm &zmm_src_zp = zmm28;
     const Xbyak::Zmm &zmm_dst_zp = zmm27;
-    /* dst scale */
-    const Xbyak::Zmm &zmm_dst_scale = zmm25;
 
     const Xbyak::Reg64 bin_injector_helper_reg_1 = r14;
     const Xbyak::Reg64 bin_injector_helper_reg_2 = r15;

@@ -122,6 +122,27 @@ onednn_verbose,v1,graph,info,serialize graph,
   field names, or using enums for layout/property types, but some
   post-processing may still be required for downstream tools
 
+### Option 3: Enable `ONEDNN_ENABLE_GRAPH_DUMP` by Default
+
+This option proposes enabling the `ONEDNN_ENABLE_GRAPH_DUMP` CMake option by
+default, so users do not need to manually set it when debugging oneDNN Graph.
+However, generating graph JSON files still requires setting the
+`ONEDNN_GRAPH_DUMP` environment variable at runtime. Note that this environment
+variable is different from the one used for primitives (`ONEDNN_VERBOSE`), so
+the workflow is not fully unified.
+
+**Pros:**
+
+- Reduces friction by removing the need to set the CMake option manually
+- Makes it easier for users to generate graph JSON files when needed
+- Minimal changes required to the library compared to other options
+
+**Cons:**
+
+- The environment variable required for graph dumps does not match the primitive
+  API, so full consistency is not achieved
+- May increase disk usage and I/O overhead if users enable dumps frequently
+
 ## Scope
 
 This RFC targets the graph API, specifically the `partition::compile` and

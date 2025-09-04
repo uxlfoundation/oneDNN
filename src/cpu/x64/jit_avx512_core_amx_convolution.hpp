@@ -104,19 +104,6 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         CHECK(kernel_->create_kernel());
 
-        // JIT to precompute scales
-        const bool is_jit_supported = mayiuse(avx512_core);
-        const auto attr = pd()->attr();
-        const auto &attr_scales = attr->scales_;
-        if (is_jit_supported && pd()->OC() > 1
-                && req_copy_scales(attr_scales)) {
-            int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-            if (wei_scale_mask > 0) {
-                CHECK(safe_ptr_assign(jit_scale_precompute_,
-                        new jit_avx512_core_scale_precompute_t(attr)));
-                CHECK(jit_scale_precompute_->create_kernel());
-            }
-        }
         return status::success;
     }
 

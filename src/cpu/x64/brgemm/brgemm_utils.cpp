@@ -57,12 +57,11 @@ status_t init_kernel_datatype(
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
             && utils::one_of(dt_b, data_type::u8, data_type::s8);
     brg->is_bf16 = (dt_a == data_type::bf16) && (dt_b == data_type::bf16);
-    // Note: f32:bf16 is treated as f32 case while f32:f16 has already been
-    // treated as f16. Probably, need a common ground here.
     brg->is_f32 = (dt_a == data_type::f32)
             && utils::one_of(
                     dt_b, data_type::f32, data_type::bf16, data_type::f16);
-    brg->is_f16 = utils::one_of(data_type::f16, dt_a, dt_b) && !brg->is_f32;
+    brg->is_f16 = (dt_a == data_type::f16)
+            && utils::one_of(dt_b, data_type::f32, data_type::f16);
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
             && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
     if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,

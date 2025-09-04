@@ -49,6 +49,8 @@ void init_thunk_params(
 template <typename... param_types>
 status_t submit_cpu_primitive_with_params_impl(
         submit_ctx_t *submit_ctx, ::sycl::handler &cgh, param_types... params) {
+    // Prevents dereferencing an empty pointer in a host task.
+    if (!submit_ctx) return status::invalid_arguments;
 
     xpu::sycl::compat::host_task(cgh, [=]() {
         thunk_params_t thunk_params;

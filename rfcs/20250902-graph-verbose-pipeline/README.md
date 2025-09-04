@@ -122,6 +122,42 @@ onednn_verbose,v1,graph,info,serialize graph,
   field names, or using enums for layout/property types, but some
   post-processing may still be required for downstream tools
 
+### Option 3: Enable `ONEDNN_ENABLE_GRAPH_DUMP` by Default
+
+This option proposes enabling the `ONEDNN_ENABLE_GRAPH_DUMP` CMake option by
+default, so users do not need to manually configure it for graph debugging. By
+default, no graph JSON files are generated unless the
+`ONEDNN_GRAPH_DUMP` environment variable is set, so performance remains
+unaffected. When `ONEDNN_GRAPH_DUMP=subgraph` is specified, graph JSON files are
+dumped, and corresponding verbose lines are printed during partition compilation:
+
+```shell
+onednn_verbose,v1,graph,info,serialize graph to a json file graph-100002-9333857264675079303.json
+```
+
+The file name format is `graph`-`partition id`-`partition hash key`.json, where
+the partition id matches the one in the verbose log, allowing users to identify
+relevant cases:
+
+```shell
+onednn_verbose,v1,graph,exec,gpu,100002,sdp,matmul_qk;scale_div;mask_add;softmax;matmul_v,,in0_f16:1:strided:undef:1x16x384x64:393216s24576s64s1 in1_f16:2:strided:undef:1x16x384x64:393216s24576s64s1 in2_f16:4:strided:constant:1:1 in3_f16:5:strided:undef:1x1x384x384:147456s147456s384s1 in4_f16:3:strided:undef:1x16x384x64:393216s24576s64s1 out0_f16:6:strided:undef:1x16x384x64:393216s24576s64s1,fpm:strict,sdp_primitive_v1_kernel_t,dnnl_backend,0.874023
+```
+
+**Pros:**
+
+- Removes manual CMake configuration for graph dumps, which simplifies
+  generation of graph JSON files for debugging
+- Minimal changes required to the library
+
+**Cons:**
+
+- The environment variable required for graph dumps does not match the primitive
+  API, so full consistency is not achieved. This could be mitigated by
+  automatically setting `ONEDNN_GRAPH_DUMP=subgraph` when
+  `ONEDNN_VERBOSE=profile_exec` is enabled
+- Possible increase in disk usage if dumps are enabled frequently
+- Frameworks need to provide both verbose logs and JSON files for issue reproduction
+
 ## Scope
 
 This RFC targets the graph API, specifically the `partition::compile` and

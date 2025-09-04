@@ -171,7 +171,7 @@ status_t dnnl_binary_primitive_desc_create_v2(
 
     bod.src_desc[0] = *src0_md;
     bod.src_desc[1] = *src1_md;
-    if (alg_kind == binary_select) bod.src_desc[2] = *src2_md;
+    if (src2_md) bod.src_desc[2] = *src2_md;
     bod.dst_desc = *dst_md;
 
     CHECK(binary_attr_check(bod, engine, attr));

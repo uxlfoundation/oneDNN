@@ -60,7 +60,9 @@ jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::maybe_adjust_dw_oscales(
         const float *dw_wei_scales) const {
     if (!pd()->jcp_.with_dw_conv) return nullptr;
 
-    const auto &jcp_dw = pd()->jcp_dw_;
+    const auto *jcp_dw = pd()->jcp_dw_;
+    if (!jcp_dw) return nullptr;
+
     memory_tracking::grantor_t dw_scratchpad(
             scratchpad, memory_tracking::names::prefix_fusion);
     auto dw_loc_scales
@@ -191,7 +193,7 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
             : jcp.nb_load_blocking_max;
 
     // Begin: declare Variables needed for dw conv.
-    const auto jcp_dw = pd()->jcp_dw_;
+    const auto *jcp_dw = pd()->jcp_dw_;
     const auto &dw_pd = pd()->dw_conv_pd_;
     memory_tracking::grantor_t dw_scratchpad(
             scratchpad, memory_tracking::names::prefix_fusion);

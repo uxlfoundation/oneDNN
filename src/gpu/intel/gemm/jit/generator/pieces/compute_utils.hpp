@@ -60,7 +60,7 @@ static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, 
         return params.ksys;
     }
     int kfma = std::max(strategy.dotVL, 1);
-    if (hw >= ngen::HW::Gen12LP && problem.isIGEMM())
+    if (problem.isIGEMM())
         kfma *= 4;
     return kfma;
 }

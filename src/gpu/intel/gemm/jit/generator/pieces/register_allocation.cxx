@@ -219,7 +219,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
     switch (strategy.registerScheme) {
         case GEMMStrategy::CSeparate:
         {
-            // Standard allocation (Gen9-11). A and B allocated together in lower half of registers.
+            // Standard allocation. A and B allocated together in lower half of registers.
             // Interleave allocation of A and B to minimize wasted registers. Test the waters to find out
             //  whether to try bank 0 or 1 first.
             int bases[2];

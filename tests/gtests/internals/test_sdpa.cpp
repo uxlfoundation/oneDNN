@@ -1874,18 +1874,18 @@ using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 
 // clang-format off
 
-INSTANTIATE_TEST_SUITE_P(MyDebug2, sdpa_test_datatypes,
+INSTANTIATE_TEST_SUITE_P(ScaleTypes, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {2, 2}), // hd_num
                 testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                testing::Values(head_group_size_t {128, 128, 128}), // hd_size
                 testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8) */), // vdt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}), // mask_type
+                testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2024,17 +2024,6 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
 ////qwen2-7b shape: Q [1x28xSEQ_LENx128] KV [1x4xSEQ_LENx128]
 ////phi3-mini-4k-instruct shape: Q [1x32xSEQ_LENx96] KV [1x32xSEQ_LENx96]
 
-INSTANTIATE_TEST_SUITE_P(MyDebug,
-    sdpa_test,
-                               // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
-    testing::Values(
-//  orig     sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side}
-       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::host_side, accumulation_mode::f32,accumulation_mode::f32},
-       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::device_side},
-       sdpa_dims_t{1,    32,       32,   512,      512,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::device_side},
-       sdpa_dims_t{1,    32,       32,   513,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, scale_type::host_side, accumulation_mode::f32}
-    ), &print_to_string);
-
 INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
@@ -2049,7 +2038,6 @@ INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
                     sdpa_dims_t{   1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl }
     ), &print_to_string);
 
-#if 1
 INSTANTIATE_TEST_SUITE_P(llama_3_8b,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
@@ -2118,7 +2106,6 @@ INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
                     sdpa_dims_t{   1,     32,       32,   2048,    2048,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,     32,       32,   2049,       1,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
-#endif
 // clang-format on
 
 GPU_TEST_P(sdpa_test, compare) {

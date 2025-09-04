@@ -1041,6 +1041,16 @@ pvar_t select_non_blocked_iter_dim(
     return dims[max_it - scores.begin()];
 }
 
+bool is_nchw(const config_t &cfg) {
+    auto &prb = cfg.prb();
+    bool src_nchw = (cfg.src_layout().compute_unnormalized_tag() == "abx");
+    bool dst_nchw = (cfg.dst_layout().compute_unnormalized_tag() == "abx");
+    if (prb.is_fwd && src_nchw) return true;
+    if (prb.is_bwd_d && dst_nchw) return true;
+    if (prb.is_bwd_w && (src_nchw || dst_nchw)) return true;
+    return false;
+}
+
 pvar_t select_iter_dim(const config_t &cfg, const std::vector<pvar_t> &_dims) {
     bool is_bwd_d_w_opt = utils::one_of(cfg.bwd_d_optimize_kind(),
             bwd_d_optimize_kind_t::skip_strided_dhw,
@@ -1048,6 +1058,7 @@ pvar_t select_iter_dim(const config_t &cfg, const std::vector<pvar_t> &_dims) {
     std::vector<pvar_t> dims;
     for (auto &d : _dims) {
         if (is_bwd_d_w_opt && d == pvars::iw) continue;
+        if (is_nchw(cfg) && d == pvars::mb) continue;
         dims.push_back(d);
     }
     gpu_assert(!dims.empty());

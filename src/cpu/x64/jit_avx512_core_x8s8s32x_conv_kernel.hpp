@@ -33,7 +33,7 @@ namespace x64 {
 
 template <typename Vmm>
 struct jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_conv_fwd_ker_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_x8s8s32x_conv_fwd_ker_t)
 
     enum { STATE_FIRST_DST_LOAD = 0x1U };
 
@@ -66,7 +66,10 @@ private:
     };
 
     /* data regs */
-    const Xbyak::Reg64 reg_ptr_scales = rax;
+    const Xbyak::Reg64 reg_src_scales = rax;
+    const Xbyak::Reg64 reg_wei_scales = rax;
+    const Xbyak::Reg64 reg_scale_adjust = rax;
+    const Xbyak::Reg64 reg_dst_scales = r15;
     const Xbyak::Reg64 aux_reg_saturation = rax;
     const Xbyak::Reg64 reg_inp = r8;
     const Xbyak::Reg64 reg_ker = r9;
@@ -87,18 +90,15 @@ private:
     const Xbyak::Reg64 reg_src_zero_point = aux_reg_ker_d;
     const Xbyak::Reg64 reg_dst_zero_point = reg_src_zero_point;
 
-    // dst scale
-    const Xbyak::Reg64 reg_dst_scale = reg_src_zero_point;
-
     /* counter regs */
     const Xbyak::Reg64 reg_oi = rbx;
     const Xbyak::Reg64 reg_bias = rdx;
     const Xbyak::Reg64 reg_oc_blocks = rsi;
     const Xbyak::Reg64 reg_owb = aux_reg_ker;
     const Xbyak::Reg64 reg_scratch = reg_compensation;
-    const Xbyak::Reg64 reg_kj = reg_ptr_scales;
+    const Xbyak::Reg64 reg_kj = rax;
     const Xbyak::Reg64 reg_ki = reg_compensation;
-    const Xbyak::Reg64 reg_overflow = reg_ptr_scales;
+    const Xbyak::Reg64 reg_overflow = rax;
     const Xbyak::Reg64 reg_icb = reg_bias;
     const Xbyak::Reg64 reg_jmp_tbl_base = reg_kj;
 
@@ -131,8 +131,7 @@ private:
     const Vmm vmm_zp = Vmm(25);
     const Vmm vmm_zp_one = Vmm(26);
     const Vmm vmm_zp_tmp = vmm_zp;
-
-    const Vmm vmm_dst_scale = Vmm(31);
+    const Vmm vmm_scale_adjust = Vmm(31);
 
     /* bf16 emulation */
     Xbyak::Zmm bf16_emu_reserv_1 = Xbyak::Zmm(26);

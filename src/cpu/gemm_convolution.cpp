@@ -166,11 +166,11 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                         const size_t end_oc
                                 = (os == last_os) ? last_oc : jcp.oc - 1;
 
-                        const data_t *__restrict bia_arr
-                                = bia_base ? bia_base + g * jcp.oc : nullptr;
                         data_t *__restrict dst_arr = dst + os * dst_os_stride;
 
                         if (jcp.with_bias) {
+                            const data_t *__restrict bia_arr
+                                    = bia_base + g * jcp.oc;
                             PRAGMA_OMP_SIMD()
                             for (size_t oc = start_oc; oc <= end_oc; oc++) {
                                 dst_arr[oc] += bia_arr[oc];

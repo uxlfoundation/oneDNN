@@ -1196,7 +1196,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
             if ((state.ka_slm < A_slmCP) && (unrollKSLM != A_slmCP) && (A_tileC != A_slmCP))
                 stub("ka_slm must be a multiple of crosspack, or unrollKSLM = crosspack.");
-            if (isPacked(problem.A.layout) && problem.A.packSize != unrollM)
+            if (isPacked(problem.A.layout) && problem.A.packSize != static_cast<uint32_t>(unrollM))
                 stub("A panel height must match unroll");
 
             // Layout in from memory...
@@ -1341,7 +1341,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
             if ((state.kb_slm < B_slmCP) && (unrollKSLM != B_slmCP) && (B_tileR != B_slmCP))
                 stub("kb_slm must be a multiple of crosspack, or unrollKSLM = crosspack.");
-            if (isPacked(problem.B.layout) && problem.B.packSize != unrollN)
+            if (isPacked(problem.B.layout) && problem.B.packSize != static_cast<uint32_t>(unrollN))
                 stub("B panel height must match unroll");
 
             // Layout in from memory...

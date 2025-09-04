@@ -153,7 +153,7 @@ static inline void append(std::ostringstream &ss, Type T, const MatrixAddressing
         ss << ',' << int(atype.tileC);
     }
     if (isPacked(atype.layout))
-        ss << '%' << int(atype.packSize);
+        ss << '%' << atype.packSize;
     if (atype.alignment != atype.defaultAlignment(T))
         ss << '@' << int(atype.alignment);
 }

@@ -1081,13 +1081,17 @@ private:
     stmt_t build_post_op_block_stmt(
             std::vector<post_op_tensor_t> &sub_po_tensors, int po_beg,
             int po_end) const {
-        // Collect post-op inputs/outputs.
+        // Collect post-op inputs/outputs. The tensors vector is used to ensure a
+        // deterministic ordering of stmts.
         object_map_t<expr_t, post_op_tensor_t *> args;
+        std::vector<post_op_tensor_t *> tensors;
         for (int i = po_beg; i < po_end; i++) {
             auto &po_builder = post_op_builders_[i];
             for (auto &t : sub_po_tensors) {
-                if (po_builder.post_op().uses(t.op_var())) {
+                if (po_builder.post_op().uses(t.op_var())
+                        && args.find(t.op_var()) == args.end()) {
                     args.insert({t.op_var(), &t});
+                    tensors.emplace_back(&t);
                 }
             }
         }
@@ -1095,13 +1099,12 @@ private:
         // Generate load and convert statements for the post-op.
         stmt_t load_stmt;
         stmt_t convert_stmt;
-        for (auto &kv : args) {
-            auto &t = *kv.second;
-            if (!t.needs_load()) continue;
-            if (t.do_preload()) continue;
-            load_stmt = load_stmt.append(t.build_load_stmt(c_mem_view_));
-            if (t.needs_f32_convert()) {
-                convert_stmt = convert_stmt.append(t.build_convert_stmt());
+        for (auto t : tensors) {
+            if (!t->needs_load()) continue;
+            if (t->do_preload()) continue;
+            load_stmt = load_stmt.append(t->build_load_stmt(c_mem_view_));
+            if (t->needs_f32_convert()) {
+                convert_stmt = convert_stmt.append(t->build_convert_stmt());
             }
         }
 
@@ -1117,11 +1120,10 @@ private:
 
         // Generate alloc statements for post-op tensors.
         std::vector<stmt_t> allocs;
-        for (auto &kv : args) {
-            auto &t = *kv.second;
-            if (!t.needs_load()) continue;
-            if (t.do_preload()) continue;
-            auto t_allocs = t.allocs();
+        for (auto t : tensors) {
+            if (!t->needs_load()) continue;
+            if (t->do_preload()) continue;
+            auto t_allocs = t->allocs();
             allocs.insert(allocs.end(), t_allocs.begin(), t_allocs.end());
         }
         stmt = jit::inject_alloc_stmts(stmt, allocs);

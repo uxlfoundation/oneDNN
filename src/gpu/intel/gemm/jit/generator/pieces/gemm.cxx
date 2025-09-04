@@ -128,8 +128,8 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         mov(1, s, 0);
     };
 
-    if (!strategy.AO.base.isStateless() && problem.aoPtrDims == 2)    replace0(state.inputs.aoPtr);
-    if (!strategy.BO.base.isStateless() && problem.boPtrDims == 2)    replace0(state.inputs.boPtr);
+    if (!strategy.AO.base.isStateless() && problem.aOffset2D())       replace0(state.inputs.aoPtr);
+    if (!strategy.BO.base.isStateless() && problem.bOffset2D())       replace0(state.inputs.boPtr);
     if (!strategy.A_scale.base.isStateless() && problem.aScale2D())   replace0(state.inputs.aScalePtr);
     if (!strategy.B_scale.base.isStateless() && problem.bScale2D())   replace0(state.inputs.bScalePtr);
     if (!strategy.Ag.base.isStateless() && problem.needsAGroupSums()) replace0(state.inputs.agPtr);

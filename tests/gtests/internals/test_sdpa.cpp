@@ -71,6 +71,15 @@ std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
     return ss;
 }
 
+std::ostream &operator<<(std::ostream &ss, const scale_type &p) {
+    ss << "scale:";
+    switch (p) {
+        case scale_type::device_side: ss << "device_side"; break;
+        case scale_type::host_side: ss << "host_side"; break;
+    }
+    return ss;
+}
+
 struct tag_t {
     dnnl::memory::format_tag t;
     tag_t() : t(dnnl::memory::format_tag::undef) {}
@@ -214,7 +223,8 @@ std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
 
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
-        quantize_type, tag_t, mask_config_t, accumulation_t>;
+//        quantize_type, tag_t, mask_config_t, accumulation_t>;
+        quantize_type, tag_t, mask_config_t, accumulation_t, scale_type>;
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -231,9 +241,9 @@ struct sdpa_dims_t {
     memory::format_tag key_format_tag;
     mask_config_t mask;
     accumulation_t acc_modes;
-
+    // !!!!!!!!!!!!!
     scale_type stype;
-
+    // !!!!!!!!!!!!!
     sdpa_dims_t() = default;
     sdpa_dims_t(memory::dim mb_, memory::dim head_num_,
             memory::dim kv_head_num_, memory::dim seq_len_,
@@ -247,7 +257,12 @@ struct sdpa_dims_t {
             = dnnl::memory::format_tag::abcd,
             mask_type mask_ = mask_type::no_mask,
             accumulation_mode kq_acc_ = accumulation_mode::f32,
+#if 0
             accumulation_mode vs_acc_ = accumulation_mode::f32)
+#else
+            accumulation_mode vs_acc_ = accumulation_mode::f32,
+            scale_type stype_ = scale_type::device_side)
+#endif
         : mb(mb_)
         , heads {head_num_, kv_head_num_}
         , seq_len {query_num_, seq_len_}
@@ -258,7 +273,12 @@ struct sdpa_dims_t {
         , qtype(qtype_)
         , key_format_tag(key_format_tag_)
         , mask {mask_, mskdt_}
+#if 0
         , acc_modes {kq_acc_, vs_acc_} {}
+#else
+        , acc_modes {kq_acc_, vs_acc_}
+        , stype(stype_) {}
+#endif
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
         : mb(std::get<0>(dims))
@@ -271,7 +291,12 @@ struct sdpa_dims_t {
         , qtype(std::get<7>(dims))
         , key_format_tag(std::get<8>(dims))
         , mask(std::get<9>(dims))
+#if 0
         , acc_modes(std::get<10>(dims)) {}
+#else
+        , acc_modes(std::get<10>(dims))
+        , stype(std::get<11>(dims)) {}
+#endif
 };
 
 struct sdpa_tensors_t {
@@ -605,7 +630,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto query_md            = memory::desc(q_sz,          p.dt.dt,      abcd);
     auto key_md              = memory::desc(k_sz,          p.dt.dt,       abcd);
     auto value_md            = memory::desc(v_sz,          p.dt.dt,       abcd);
-    auto scale_md            = memory::desc(scale_sz,      p.dt.dt,      abcd);
+    //auto scale_md            = memory::desc(scale_sz,      p.dt.dt,      abcd);
 
     auto query_test_md       = memory::desc(q_sz,          p.dt.dt,      abcd);
 
@@ -626,7 +651,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
-    out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
+    //out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
     out.m_key_scales
@@ -1682,6 +1707,7 @@ public:
     }
 #endif
     }
+
 #if 0
     void perf() {
         using namespace dnnl::impl;
@@ -1828,6 +1854,7 @@ public:
                   << "/" << compute(magnitude_cast<gigaops>(total_flops), qtime)
                   << "|" << std::endl;
     }
+#endif
 
 protected:
     dnnl::engine eng;
@@ -1839,7 +1866,7 @@ protected:
     bool invert_scale = true;
     memory::data_type scale_dt;
 };
-#endif
+
 memory::format_tag with_key_transposed = memory::format_tag::abdc;
 memory::format_tag no_key_transposed = memory::format_tag::abcd;
 
@@ -1847,7 +1874,7 @@ using sdpa_test = sdpa_test_t<sdpa_dims_t>;
 using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 
 // clang-format off
-
+#if 0
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {2, 2}), // hd_num
@@ -1862,6 +1889,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
+#endif
 #if 0
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb
@@ -1967,7 +1995,7 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
                 testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
-
+#endif
 
 ////llama-2-7b-chat shape: Q [1x32xSEQ_LENx128] KV [1x32xSEQ_LENx128]
 ////llama-3-8b shape: Q [1x32xSEQ_LENx128] KV [1x8xSEQ_LENx128]
@@ -1975,6 +2003,15 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
 ////qwen2-7b shape: Q [1x28xSEQ_LENx128] KV [1x4xSEQ_LENx128]
 ////phi3-mini-4k-instruct shape: Q [1x32xSEQ_LENx96] KV [1x32xSEQ_LENx96]
 
+INSTANTIATE_TEST_SUITE_P(MyDebug,
+    sdpa_test,
+                               // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
+    testing::Values(
+//       sdpa_dims_t{1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side}
+       sdpa_dims_t(1,    32,       32,   2049,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl, accumulation_mode::f32,accumulation_mode::f32,scale_type::host_side)
+    ), &print_to_string);
+
+#if 0
 INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype

@@ -1885,14 +1885,11 @@ INSTANTIATE_TEST_SUITE_P(MyDebug2, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(scale_type::device_side), // stype
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
-
-
-#if 0
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {2, 2}), // hd_num
@@ -1904,6 +1901,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1919,6 +1917,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1934,6 +1933,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1949,6 +1949,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1964,6 +1965,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1979,6 +1981,7 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1994,6 +1997,7 @@ INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2009,10 +2013,10 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(scale_type::device_side), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
-#endif
 
 ////llama-2-7b-chat shape: Q [1x32xSEQ_LENx128] KV [1x32xSEQ_LENx128]
 ////llama-3-8b shape: Q [1x32xSEQ_LENx128] KV [1x8xSEQ_LENx128]
